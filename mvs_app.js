@@ -13750,21 +13750,65 @@ async function _attMountBatchBar(){
   var host=document.getElementById('a-tt-batchbar'); if(!host) return;
   try{
     var r=await api('/api/admin/batches'); var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
+    window._attBatchList=list;
     if(!list.length){ host.innerHTML=''; return; }
     if(window._attBatch===undefined) window._attBatch='';
-    _sbInjectCSS();
-    host.innerHTML='<div class="sb-bar" style="margin-bottom:14px"><span class="sb-lbl">'+ic('folder')+' Batch timetable</span><div class="sb-pills">'
-      +'<button class="sb-pill'+(!window._attBatch?' on':'')+'" onclick="_attSetBatch(\'\')">All</button>'
-      +list.map(function(b){ var md=(b.mode==='live')?'<span class="sb-tag live">\u25cf</span>':'<span class="sb-tag rec">\u25b6</span>'; return '<button class="sb-pill'+(String(window._attBatch)===String(b.id)?' on':'')+'" onclick="_attSetBatch('+b.id+')">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+' '+md+'</button>'; }).join('')
-      +'<button class="sb-pill'+(window._attBatch==='global'?' on':'')+'" onclick="_attSetBatch(\'global\')" title="Older entries not tied to any batch">Global</button>'
-      +'</div></div>';
+    _attInjectCSS();
+    var live=list.filter(function(b){return (b.mode||'live')==='live';}), rec=list.filter(function(b){return b.mode==='rec';}), syc=list.filter(function(b){return b.mode==='syc';});
+    var opt=function(b){ return '<option value="'+b.id+'"'+(String(window._attBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>'; };
+    var grp=function(lbl,arr){ return arr.length?'<optgroup label="'+lbl+'">'+arr.map(opt).join('')+'</optgroup>':''; };
+    host.innerHTML='<div class="att-bar"><span class="att-lbl">'+ic('folder')+' Batch timetable</span>'
+      +'<select class="input att-sel" onchange="_attSetBatch(this.value)"><option value=""'+(!window._attBatch?' selected':'')+'>All batches</option>'
+        +grp('\uD83D\uDD34 Live',live)+grp('\u25B6 Recorded',rec)+grp('\u25B6 On-Demand',syc)
+        +'<option value="global"'+(window._attBatch==='global'?' selected':'')+'>Global (no batch)</option></select>'
+      +((window._attBatch&&window._attBatch!=='global')?'<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button>':'')
+      +'</div>';
   }catch(e){ host.innerHTML=''; }
 }
-function _attSetBatch(v){ window._attBatch=v; try{ aRenderTT(); }catch(e){} setTimeout(_attMountBatchBar,10); }
+function _attInjectCSS(){
+  if(document.getElementById('att-css')) return;
+  var s=document.createElement('style'); s.id='att-css';
+  s.textContent=['.att-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--border);border-radius:14px;background:var(--card);margin-bottom:14px}',
+   '.att-lbl{display:flex;align-items:center;gap:6px;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted)}',
+   '.att-sel{min-width:220px;font-weight:700}',
+   '.bs-list{max-height:52vh;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}',
+   '@media(max-width:560px){.bs-list{grid-template-columns:1fr}}',
+   '.bs-row{display:flex;align-items:center;gap:8px;padding:7px 4px;font-size:.9rem;cursor:pointer;border-bottom:1px dashed var(--border)}'].join('');
+  document.head.appendChild(s);
+}
+async function _attSetBatch(v){
+  window._attBatch=v; window._attBatchSubs=null;
+  if(v && v!=='global' && v!==''){ try{ var m=await api('/api/admin/batch-subjects?batch_id='+v); window._attBatchSubs=(m&&m.subjects)||[]; }catch(e){} }
+  try{ aRenderTT(); }catch(e){}
+  setTimeout(_attMountBatchBar,10);
+}
+async function openBatchSubjects(bid){
+  var name=((window._attBatchList||[]).filter(function(b){return b.id===bid;})[0]||{}).name||'Batch';
+  _attInjectCSS();
+  var all=[], mapped=[];
+  try{ var s=await api('/api/admin/tt-subjects'); all=(s&&s.subjects)||[]; }catch(e){}
+  try{ var m=await api('/api/admin/batch-subjects?batch_id='+bid); mapped=(m&&m.subjects)||[]; }catch(e){}
+  var mset={}; mapped.forEach(function(x){mset[x]=1;});
+  var rows=all.map(function(sub){ return '<label class="bs-row"><input type="checkbox" value="'+esc(sub).replace(/"/g,'&quot;')+'" '+(mset[sub]?'checked':'')+'> '+esc(sub)+'</label>'; }).join('');
+  showModal('Batch Subjects \u2014 '+esc(name),
+    '<p class="vtc-help">Tick the <b>LIVE</b> subjects this batch offers. This batch\u2019s students will see the timetable for these subjects, plus any timetable created specifically for this batch. Recorded subjects are handled by the subject itself \u2014 no need to add them here.</p>'
+    +'<div class="bs-list" id="bs-list">'+(rows||'<div class="vtc-empty">No subjects in the timetable yet.</div>')+'</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_saveBatchSubjects('+bid+')">Save subjects</button>');
+}
+async function _saveBatchSubjects(bid){
+  var subs=[].slice.call(document.querySelectorAll('#bs-list input:checked')).map(function(c){return c.value;});
+  try{ await api('/api/admin/batch-subjects','POST',{batch_id:bid,subjects:subs}); toast(subs.length+' subject'+(subs.length!==1?'s':'')+' assigned.'); closeModal(); window._attBatchSubs=subs; try{ aRenderTT(); }catch(e){} }
+  catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
 function aFilteredTT(){
+  var bsubs=window._attBatchSubs;
   return _attEntries.filter(e=>{
     if(window._attBatch==='global'){ if(e.batch_id) return false; }
-    else if(window._attBatch){ if(String(e.batch_id||'')!==String(window._attBatch)) return false; }
+    else if(window._attBatch){
+      var own=String(e.batch_id||'')===String(window._attBatch);
+      var sharedGlobal=(!e.batch_id && bsubs && bsubs.indexOf(e.subject)>=0);
+      if(!own && !sharedGlobal) return false;
+    }
     if(_attClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
     if(_attClass==='12') return /12/.test(e.class_name||'');
     return true;

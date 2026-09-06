@@ -135,6 +135,15 @@ class StudentBatch(Base):
     is_primary  = Column(Boolean, default=False)
     created_at  = Column(DateTime, default=func.now())
 
+
+# Which LIVE subjects belong to which batch (Phase 3). Global timetable entries of a mapped
+# subject are shown to that batch's students; batch-specific entries always win. Additive.
+class BatchSubject(Base):
+    __tablename__ = "batch_subjects"
+    id          = Column(Integer, primary_key=True)
+    batch_id    = Column(Integer, ForeignKey("batches.id"), index=True)
+    subject     = Column(String(120), index=True)
+
 # =============================================
 # USER (Teachers, Students, Admins)
 # =============================================

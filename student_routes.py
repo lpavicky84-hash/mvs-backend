@@ -59,15 +59,23 @@ def _student_batch_ids(db, sp, only_batch_id=None):
 
 
 def _tt_batch_filter(db, sp, only_batch_id=None):
-    """A TimetableEntry filter scoped to the student's batch. If the student's batch has any
-    batch-specific timetable, show ONLY that batch's entries (so two batches never clash);
-    otherwise fall back to legacy global entries (batch_id IS NULL). Backward compatible."""
-    from models import TimetableEntry
+    """A TimetableEntry filter scoped to the student's batch. If the batch has a subject mapping,
+    show its batch-specific entries PLUS global entries of the subjects it offers (shared subjects).
+    Otherwise: batch-specific if any exist, else legacy global. Backward compatible."""
+    from models import TimetableEntry, BatchSubject
+    from sqlalchemy import or_ as _or, and_ as _and
     bids = _student_batch_ids(db, sp, only_batch_id)
-    if bids:
-        has_specific = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
-        if has_specific:
-            return TimetableEntry.batch_id.in_(bids)
+    if not bids:
+        return TimetableEntry.batch_id.is_(None)
+    mapped = [r[0] for r in db.query(BatchSubject.subject)
+              .filter(BatchSubject.batch_id.in_(bids)).distinct().all()]
+    mapped = [m for m in mapped if m]
+    if mapped:
+        return _or(TimetableEntry.batch_id.in_(bids),
+                   _and(TimetableEntry.batch_id.is_(None), TimetableEntry.subject.in_(mapped)))
+    has_specific = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
+    if has_specific:
+        return TimetableEntry.batch_id.in_(bids)
     return TimetableEntry.batch_id.is_(None)
 
 

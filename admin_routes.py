@@ -265,9 +265,9 @@ def _ensure_enrollments():
     Import-time, idempotent, bounded, additive."""
     try:
         from database import engine, SessionLocal
-        from models import Base, StudentBatch, StudentProfile
+        from models import Base, StudentBatch, StudentProfile, BatchSubject
         try:
-            Base.metadata.create_all(bind=engine, tables=[StudentBatch.__table__])
+            Base.metadata.create_all(bind=engine, tables=[StudentBatch.__table__, BatchSubject.__table__])
         except Exception:
             pass
         db = SessionLocal()
@@ -2535,6 +2535,43 @@ def admin_timetable_reject(payload: dict = Body(...), db: Session = Depends(get_
     n = q.delete(synchronize_session=False)
     db.commit()
     return {"ok": True, "rejected": n}
+
+
+@router.get("/tt-subjects")
+def admin_tt_subjects(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Distinct subjects present in the timetable (for the batch-subject picker)."""
+    from models import TimetableEntry
+    rows = db.query(TimetableEntry.subject).filter(TimetableEntry.subject != None,
+                                                   TimetableEntry.subject != "").distinct().all()
+    return {"subjects": sorted({(r[0] or "").strip() for r in rows if (r[0] or "").strip()})}
+
+
+@router.get("/batch-subjects")
+def admin_get_batch_subjects(batch_id: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Subjects mapped to a batch (the LIVE subjects that batch offers)."""
+    from models import BatchSubject
+    if not batch_id:
+        return {"subjects": []}
+    rows = db.query(BatchSubject.subject).filter(BatchSubject.batch_id == batch_id).all()
+    return {"subjects": sorted({(r[0] or "").strip() for r in rows if (r[0] or "").strip()})}
+
+
+@router.post("/batch-subjects")
+def admin_set_batch_subjects(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Replace a batch's subject mapping. Global timetable of these subjects will show to this
+    batch's students; batch-specific entries always win."""
+    from models import BatchSubject
+    try:
+        batch_id = int(payload.get("batch_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="batch_id required")
+    subjects = payload.get("subjects") or []
+    subjects = sorted({(s or "").strip() for s in subjects if (s or "").strip()})
+    db.query(BatchSubject).filter(BatchSubject.batch_id == batch_id).delete(synchronize_session=False)
+    for s in subjects:
+        db.add(BatchSubject(batch_id=batch_id, subject=s))
+    db.commit()
+    return {"ok": True, "count": len(subjects)}
 
 
 @router.get("/timetable-chapters")
