@@ -17938,17 +17938,21 @@ function _pickCol(row,names){
   return '';
 }
 function _parseSalesRows(rows){
-  const out=[];
+  const out=[], bad=[];
   for(const row of rows){
     const name=_pickCol(row,['Name']);
     const phone=_pickCol(row,['Phone No.','Phone No','Phone Number','Phone','Mobile']);
     const batch=_pickCol(row,['Item','Batch','Course','Plan']);
     const email=_pickCol(row,['Email','E-mail','Email Id','Email Address']);
     const digits=(phone||'').replace(/\D/g,'');
-    if(digits.length<10) continue;
+    if(digits.length<10){
+      // don't silently drop — record any row that has some data so the admin can see & fix it
+      if(name||phone||batch) bad.push({name:name||'\u2014', phone:(phone||'\u2014'), batch:batch||'', reason:(digits.length?('phone too short ('+digits.length+' digits)'):'no phone')});
+      continue;
+    }
     out.push({name, phone:digits.slice(-10), batch, email});
   }
-  return out;
+  return {students:out, skipped:bad};
 }
 async function previewExcel(){
   const fi=document.getElementById('excel-file'); const pv=document.getElementById('excel-preview');
@@ -17959,13 +17963,15 @@ async function previewExcel(){
     const data=await fi.files[0].arrayBuffer();
     const wb=XLSX.read(data,{type:'array'});
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    const parsed=_parseSalesRows(rows);
+    const _pr=_parseSalesRows(rows);
+    const parsed=_pr.students; const _bad=_pr.skipped||[];
     window._excelParsed=parsed;
     if(parsed.length===0){ pv.innerHTML=`<div class="alert alert-danger">No valid rows found. The sheet must have <strong>Name</strong>, <strong>Phone No.</strong>, <strong>Item</strong> columns are required.</div>`; return; }
     const uniq=new Map(); parsed.forEach(p=>uniq.set(p.phone,p));
     const dup=parsed.length-uniq.size;
-    const sample=[...uniq.values()].slice(0,3).map(p=>`<div class="slist-row"><div class="slist-info"><div class="slist-name">${esc(p.name||'—')}</div><div class="slist-meta">${esc(p.phone)} · ${esc(p.batch||'No batch')}</div></div></div>`).join('');
-    pv.innerHTML=`<div class="alert alert-success"><strong>${uniq.size}</strong> unique students mile${dup>0?` (${dup} duplicate in the sheet — auto-removed)`:''}.</div>
+    const _badHtml=_bad.length?`<div class="alert alert-warning" style="margin-top:8px"><strong>\u26a0 ${_bad.length} row(s) skipped — missing/invalid phone</strong> (they will NOT be imported). Fix their Phone No. in the sheet and re-upload.<div class="hide-scroll" style="max-height:160px;margin-top:6px">${_bad.map(b=>`<div class="slist-meta" style="padding:3px 0">${esc(b.name)} \u00b7 phone: ${esc(b.phone)}${b.batch?(' \u00b7 '+esc(b.batch)):''} <span style="color:#b45309">(${esc(b.reason)})</span></div>`).join('')}</div></div>`:'';
+    const sample=[...uniq.values()].slice(0,3).map(p=>`<div class="slist-row"><div class="slist-info"><div class="slist-name">${esc(p.name||'\u2014')}</div><div class="slist-meta">${esc(p.phone)} \u00b7 ${esc(p.batch||'No batch')}</div></div></div>`).join('');
+    pv.innerHTML=`<div class="alert alert-success"><strong>${uniq.size}</strong> unique students mile${dup>0?` (${dup} duplicate in the sheet — auto-removed)`:''}.</div>${_badHtml}
       <div id="excel-breakdown" style="margin:10px 0"><div class="spinner" style="width:20px;height:20px"></div> Checking who is new / already added…</div>${sample}`;
     // pre-import breakdown (kuch add nahi hota — sirf ginti)
     try{
@@ -17989,7 +17995,8 @@ async function processExcel(){
   try{
     // hamesha CURRENT file se parse karo — purani file ka stale cache use na ho
     const data=await fi.files[0].arrayBuffer(); const wb=XLSX.read(data,{type:'array'});
-    let parsed=_parseSalesRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
+    const _pr=_parseSalesRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
+    let parsed=_pr.students; const _badRows=_pr.skipped||[];
     if(!parsed.length){ toast('No valid students found.',true); btn.disabled=false; btn.textContent='Import Students'; return; }
     // remove duplicate phone numbers WITHIN the sheet (keep latest occurrence)
     const map=new Map();
@@ -18014,7 +18021,8 @@ async function processExcel(){
       <strong>${updated}</strong> already existed as MVS App (batch refreshed)<br>
       ${dups.length?`<strong style="color:#b07f1e">${dups.length}</strong> duplicate(s) already exist from <strong>MVS Portal</strong> — <strong>not added again</strong>, verify below<br>`:''}
       ${inSheetDup>0?`<strong>${inSheetDup}</strong> duplicates inside the sheet (auto-removed)<br>`:''}
-      ${skipped>0?`<strong>${skipped}</strong> invalid phone skipped`:''}</div>
+      ${(skipped+_badRows.length)>0?`<strong style="color:#b45309">${skipped+_badRows.length}</strong> skipped — invalid/missing phone`:''}</div>
+      ${_badRows.length?`<div style="font-size:.75rem;font-weight:800;color:#b45309;margin:12px 0 6px">\u26a0 SKIPPED — FIX PHONE &amp; RE-UPLOAD (${_badRows.length})</div><div class="hide-scroll" style="max-height:200px">${_badRows.map(b=>`<div class="slist-meta" style="padding:3px 0">${esc(b.name)} \u00b7 phone: ${esc(b.phone)}${b.batch?(' \u00b7 '+esc(b.batch)):''} <span style="color:#b45309">(${esc(b.reason)})</span></div>`).join('')}</div>`:''}
       ${dups.length?`<div style="font-size:.75rem;font-weight:800;color:var(--text-muted);margin:12px 0 6px">MVS PORTAL DUPLICATES \u2014 VERIFY THESE (${dups.length})</div><div class="hide-scroll" style="max-height:250px">${dupRows}</div>`:''}`;
     toast(`${created} new, ${updated} refreshed, ${dups.length} portal duplicates skipped`);
     if(created>0 && (document.getElementById('excel-wa')||{}).checked){
