@@ -1395,8 +1395,9 @@ async function pdfSubjOptions(selId,cls){
 }
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
- `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div class="form-group" id="apdf-fd-wrap" style="display:none;margin-top:-6px"><label>Change only from this date onwards (optional)</label><input type="date" class="form-control" id="apdf-from"><div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Classes before this date stay exactly as they are — only entries from this date onwards are replaced by the new PDF.</div></div><div id="apdf-status"></div>`,
+ `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Batch <span style="font-weight:400;color:var(--text-muted);font-size:.78rem">\u2014 iss batch ka apna timetable</span></label><select class="form-control" id="apdf-batch"><option value="">All batches (global / legacy)</option></select></div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div class="form-group" id="apdf-fd-wrap" style="display:none;margin-top:-6px"><label>Change only from this date onwards (optional)</label><input type="date" class="form-control" id="apdf-from"><div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Classes before this date stay exactly as they are — only entries from this date onwards are replaced by the new PDF.</div></div><div id="apdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="apdf-btn" onclick="uploadAdminPdf()">Upload & Parse</button>`);
+  setTimeout(_ttFillBatches, 40);
   const clsSel=document.getElementById('apdf-class');
   const cls=()=>String((clsSel&&clsSel.value)||'').replace(/\D/g,'')||'12';
   pdfSubjOptions('apdf-subject',cls());
@@ -1407,6 +1408,14 @@ function openAdminPdf(){
   const repCb=document.getElementById('apdf-replace');
   if(repCb) repCb.addEventListener('change',()=>{ const w=document.getElementById('apdf-fd-wrap'); if(w) w.style.display=repCb.checked?'':'none'; });
 }
+async function _ttFillBatches(){
+  var sel=document.getElementById('apdf-batch'); if(!sel) return;
+  try{
+    var r=await api('/api/admin/batches');
+    var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
+    sel.innerHTML='<option value="">All batches (global / legacy)</option>'+list.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.type?' ('+esc(b.type)+')':'')+'</option>';}).join('');
+  }catch(e){}
+}
 async function uploadAdminPdf(){
   const fi=document.getElementById('apdf-file');
   if(!fi.files.length){ toast('Please select a PDF.',true); return; }
@@ -1415,6 +1424,7 @@ async function uploadAdminPdf(){
   const fd=new FormData();
   fd.append('file',fi.files[0]); fd.append('class_name',val('apdf-class'));
   fd.append('subject',val('apdf-subject')||''); fd.append('replace',document.getElementById('apdf-replace').checked?'true':'false');
+  fd.append('batch_id',(document.getElementById('apdf-batch')||{}).value||'');
   // v124: partial replace — date chuni ho to backend ko bhejo (sirf us date se aage badlega)
   const _fd=(document.getElementById('apdf-replace').checked)?(val('apdf-from')||''):'';
   if(_fd) fd.append('from_date',_fd);
@@ -1424,7 +1434,7 @@ async function uploadAdminPdf(){
  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
  const _cls=val('apdf-class'), _rep=document.getElementById('apdf-replace')&&document.getElementById('apdf-replace').checked;
  closeModal();
- openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep,from_date:_fd,skipped_before:(d.skipped_before_date||0)});
+ openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep,from_date:_fd,batch_id:((document.getElementById('apdf-batch')||{}).value||''),skipped_before:(d.skipped_before_date||0)});
  return;
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload & Parse'; }
 }
@@ -11465,6 +11475,7 @@ async function openBatchMgr(){
   _vtcInjectCSS();
   var list=[], unlinked=0;
   try{ var r=await api('/api/admin/batches'); list=(r&&r.batches)||[]; unlinked=(r&&r.unlinked)||0; }catch(e){ toast('Could not load batches',true); }
+  window._bmgrBatches=list;
   var active=list.filter(function(b){return b.active!==false;});
   var inactive=list.filter(function(b){return b.active===false;});
   var rowHTML=function(b){
@@ -11474,6 +11485,7 @@ async function openBatchMgr(){
       +'<span class="sbb-av">'+ic('folder')+'</span>'
       +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
       +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
+      +'<button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')" title="Welcome banner + congrats message">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
       +(b.active===false
         ? '<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>'
         : '<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')
@@ -11509,6 +11521,109 @@ async function batchToggleActive(id,active,used){
   try{ await api('/api/admin/batches/'+id,'POST',{active:!!active}); toast(active?'Restored.':'Archived.'); openBatchMgr(); }
   catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
+// --- batch welcome banner editor ---
+function openBatchBanner(id,name){
+  var b=((window._bmgrBatches||[]).find(function(x){return x.id===id;}))||{};
+  window._bmgrBannerB64='';
+  showModal('Welcome banner \u2014 '+esc(name),
+    '<p class="vtc-help">Yeh banner + message student ko <b>pehli baar</b> apna batch open karne par ek congratulations popup me dikhega.</p>'
+    +'<div class="form-group"><label>Welcome message</label><textarea id="bm-wmsg" class="input" rows="3" placeholder="e.g. Welcome to Lakshya Science 2027! Aapka safar shuru \uD83C\uDF89">'+esc(b.welcome_message||'')+'</textarea></div>'
+    +'<div class="form-group"><label>Banner image '+(b.has_banner?'<span style="color:#166534;font-size:.78rem">(\u2713 already set \u2014 upload a new one to replace)</span>':'<span style="color:var(--text-muted);font-size:.78rem">(optional)</span>')+'</label>'
+    +'<div id="bm-ban-prev" style="margin-bottom:8px"></div>'
+    +'<div class="file-drop" onclick="document.getElementById(\'bm-ban-file\').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="_bmBanDrop(event)"><div class="fd-icon"></div><div style="font-size:.85rem">Click or drag an image here</div><input type="file" id="bm-ban-file" accept="image/*" style="display:none" onchange="_bmBanPick(this)"></div></div>',
+    '<button class="btn btn-ghost" onclick="openBatchMgr()">Back</button><button class="btn btn-primary" onclick="_bmBannerSave('+id+')">Save</button>');
+}
+async function _bmBanRead(f){
+  try{ var cf=await compressIfImage(f,1400,0.75); var b64=await _fileB64(cf||f); window._bmgrBannerB64=b64;
+    var p=document.getElementById('bm-ban-prev'); if(p) p.innerHTML='<img src="'+b64+'" style="max-width:100%;max-height:150px;border-radius:10px;border:1px solid var(--border)">';
+  }catch(e){ toast('Could not read image',true); }
+}
+function _bmBanPick(inp){ var f=inp.files&&inp.files[0]; if(f&&f.type.indexOf('image')===0) _bmBanRead(f); }
+function _bmBanDrop(e){ e.preventDefault(); try{ var f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f&&f.type.indexOf('image')===0) _bmBanRead(f); }catch(x){} }
+async function _bmBannerSave(id){
+  var msg=((document.getElementById('bm-wmsg')||{}).value||'').trim();
+  var payload={welcome_message:msg};
+  if(window._bmgrBannerB64) payload.banner_b64=window._bmgrBannerB64;
+  try{ await api('/api/admin/batches/'+id,'POST',payload); toast('Banner saved.'); openBatchMgr(); }
+  catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+// --- student first-time batch welcome (congrats) popup ---
+function _bwInjectCSS(){
+  if(document.getElementById('bw-css')) return;
+  var s=document.createElement('style'); s.id='bw-css';
+  s.textContent=[
+   '#bw-ov{position:fixed;inset:0;background:rgba(15,12,8,.6);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;animation:bwFade .18s ease}',
+   '@keyframes bwFade{from{opacity:0}to{opacity:1}}',
+   '@keyframes bwPop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}',
+   '.bw-card{width:min(440px,94vw);background:var(--card,#fffdf7);border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);animation:bwPop .25s cubic-bezier(.2,.9,.3,1.2)}',
+   '.bw-img{width:100%;display:block;max-height:230px;object-fit:cover}',
+   '.bw-body{padding:20px 22px 22px;text-align:center}',
+   '.bw-congrats{font-size:1.35rem;font-weight:900;color:var(--primary,#b8941f)}',
+   '.bw-batch{font-size:1.02rem;color:var(--text,#2a2418);margin-top:5px}',
+   '.bw-msg{font-size:.9rem;color:var(--text-muted,#7a6f58);margin-top:10px;line-height:1.55;white-space:pre-wrap}',
+   '.bw-go{margin-top:18px;width:100%;font-weight:800;padding:12px}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _selBatch(){ try{ return parseInt(localStorage.getItem('sel_batch')||'0',10)||0; }catch(e){ return 0; } }
+function _bq(){ var b=_selBatch(); return b?('?batch='+b):''; }
+async function _mountBatchSelector(){
+  var host=document.getElementById('s-batch-sel'); if(!host) return;
+  try{
+    var d=await api('/api/student/my-batches');
+    var list=(d&&d.batches)||[];
+    if(list.length<=1){ host.innerHTML=''; return; }   // selector sirf multi-batch students ke liye
+    var sel=_selBatch();
+    // agar selected batch ab valid nahi, primary/first pe reset
+    if(!sel || !list.some(function(b){return b.id===sel;})){
+      var prim=list.filter(function(b){return b.is_primary;})[0]||list[0];
+      sel=prim.id; try{ localStorage.setItem('sel_batch',String(sel)); }catch(e){}
+    }
+    _sbInjectCSS();
+    host.innerHTML='<div class="sb-bar"><span class="sb-lbl">'+ic('folder')+' Your batch</span><div class="sb-pills">'
+      +list.map(function(b){ return '<button class="sb-pill'+(b.id===sel?' on':'')+'" onclick="_selBatchChange('+b.id+')">'+esc(b.name)+'</button>'; }).join('')
+      +'</div></div>';
+  }catch(e){ host.innerHTML=''; }
+}
+function _sbInjectCSS(){
+  if(document.getElementById('sb-css')) return;
+  var s=document.createElement('style'); s.id='sb-css';
+  s.textContent=[
+   '.sb-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--border,#e8e0cf);border-radius:14px;background:var(--card,#fffdf7);margin-bottom:16px}',
+   '.sb-lbl{display:flex;align-items:center;gap:6px;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#998)}',
+   '.sb-pills{display:flex;gap:7px;flex-wrap:wrap}',
+   '.sb-pill{font-size:.84rem;font-weight:700;padding:7px 14px;border-radius:999px;border:1px solid var(--border,#e8e0cf);background:var(--bg,#fff);color:var(--text,#3a3020);cursor:pointer}',
+   '.sb-pill.on{background:var(--primary,#b8941f);border-color:var(--primary,#b8941f);color:#fff}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _selBatchChange(bid){
+  try{ localStorage.setItem('sel_batch',String(bid)); }catch(e){}
+  toast('Batch switched');
+  try{ if(typeof loadSDashboard==='function') loadSDashboard(); }catch(e){}
+  setTimeout(function(){ _batchWelcomePopup(); }, 300);
+}
+async function _batchWelcomePopup(){
+  try{
+    if(document.getElementById('bw-ov')) return;
+    var d=await api('/api/student/batch-welcome'+_bq());
+    var b=d&&d.batch;
+    if(!b || !b.id || (!b.banner && !b.message)) return;
+    var key='bw_seen_'+b.id;
+    try{ if(localStorage.getItem(key)) return; }catch(e){}
+    _bwInjectCSS();
+    var ov=document.createElement('div'); ov.id='bw-ov';
+    ov.innerHTML='<div class="bw-card">'
+      +(b.banner?'<img src="'+esc(b.banner)+'" class="bw-img" alt="" onerror="this.remove()">':'')
+      +'<div class="bw-body"><div class="bw-congrats">\uD83C\uDF89 Congratulations!</div>'
+      +'<div class="bw-batch">Welcome to <b>'+esc(b.name)+'</b></div>'
+      +(b.message?'<div class="bw-msg">'+esc(b.message)+'</div>':'')
+      +'<button class="btn btn-primary bw-go" onclick="_bwClose('+b.id+')">Let\u2019s go \u2192</button></div></div>';
+    ov.addEventListener('click',function(e){ if(e.target===ov) _bwClose(b.id); });
+    document.body.appendChild(ov);
+  }catch(e){}
+}
+function _bwClose(id){ try{ localStorage.setItem('bw_seen_'+id,'1'); }catch(e){} var o=document.getElementById('bw-ov'); if(o) o.remove(); }
 
 // ===== Student multi-batch enrollment (Phase 3, sub-step 4) =====
 async function openStudentBatches(sid,name){
@@ -13646,7 +13761,7 @@ function startStudentPreload(){
   jobs.forEach((fn,i)=>{ setTimeout(()=>{ try{ fn(); }catch(e){} }, 1200+i*450); });
 }
 async function loadStudentLiveBanner(){
-  try{ if(sMode()==='live'){ const ents=await api('/api/student/timetable-plan'); startLiveCountdown(ents); } }catch(e){}
+  try{ if(sMode()==='live'){ const ents=await api('/api/student/timetable-plan'+_bq()); startLiveCountdown(ents); } }catch(e){}
 }
 function showSubjectScreen(p){
   selectedClass=null; selectedSubjects=[]; selectedBatch=null; selectedMedium=null;
@@ -13924,7 +14039,7 @@ async function loadSDashboard(){
   const el=document.getElementById('s-dashboard-content');
   try{
     let w={},prof={};
-    try{ w=await api('/api/student/workspace'); }catch(e){ w={}; }
+    try{ w=await api('/api/student/workspace'+_bq()); }catch(e){ w={}; }
     try{ prof=await api('/api/student/profile'); }catch(e){}
     const batch=prof.batch_name||'';
     document.getElementById('s-batch').textContent=batch||'Student';
@@ -14013,7 +14128,9 @@ async function loadSDashboard(){
     if(_ms.dpp&&(_ms.dpp.pend||0)>0) window._naS.push({label:_ms.dpp.pend+' DPP'+(_ms.dpp.pend>1?'s':'')+' pending',cta:'Solve',onclick:"navTo('student-app','dpp')"});
     if(_ms.doubt&&(_ms.doubt.pend||0)>0) window._naS.push({label:_ms.doubt.pend+' of your doubt'+(_ms.doubt.pend>1?'s':'')+' still open',cta:'View',onclick:"navTo('student-app','doubts')"});
     setTimeout(function(){ _mountWhatsNew('student'); }, 60);
-    setIf(el,`${greetingCard(NAME)}${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
+    setTimeout(function(){ _mountBatchSelector(); }, 50);
+    setTimeout(function(){ _batchWelcomePopup(); }, 400);
+    setIf(el,`${greetingCard(NAME)}<div id="s-batch-sel"></div>${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
       ${prio}
       <div id="s-today-wrap"></div>
       ${statsHtml}
@@ -14038,7 +14155,7 @@ async function _renderTodayClassesStudent(){
     return;
   }
   try{
-    const plan=await api('/api/student/timetable-plan');
+    const plan=await api('/api/student/timetable-plan'+_bq());
     window._tcPlan=plan||[];
     _tcPaint();
   }catch(e){ wrap.innerHTML=''; }
@@ -14193,7 +14310,7 @@ async function loadSTimetable(){
  // profile pehle — recorded batch ka timetable hota hi nahi
  try{ const p0=await api('/api/student/profile'); window._sBatch=p0.batch_name||p0.batch||window._sBatch||''; window._sClass=p0.class_level||window._sClass||'12'; window._sSubjects=p0.subjects||window._sSubjects||[]; applyBatchMode(); }catch(e){}
  if(sMode()!=='live'){ renderRecordedTimetable(el); return; }
- _sttEntries=await api('/api/student/timetable-plan');
+ _sttEntries=await api('/api/student/timetable-plan'+_bq());
  // scaffolding sirf pehli baar — revisit par sections apni jagah silently update hote hain (no blank flash)
  if(!document.getElementById('s-tline-wrap')) el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
  _loadRecordedSubjects();
@@ -14217,7 +14334,7 @@ function sSetSubj(s){ _sttActiveSub=decodeURIComponent(s||''); renderStudentTime
 async function loadSToday(){
   const el=document.getElementById('s-today-content');
   try{
- const plan=await api('/api/student/timetable-plan');
+ const plan=await api('/api/student/timetable-plan'+_bq());
  const t=new Date(); t.setDate(t.getDate()+1);
  const tmrStr=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
  const dayName=t.toLocaleDateString('en-GB',{weekday:'long'});
@@ -18252,7 +18369,7 @@ async function commitPdfPreview(){
   if(!P.rows.length){ toast('No rows left.',true); return; }
   const btn=document.getElementById('pvw-btn'); btn.disabled=true; btn.textContent='Uploading...';
   try{
-    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,from_date:(P.from_date||'')});
+    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,from_date:(P.from_date||''),batch_id:(P.batch_id||'')});
     const isA=P.isAdmin; window._pdfPreview=null; closeModal();
     toast(r.added+' entries uploaded! ');
     if(isA) loadATimetable(); else loadTTimetable();

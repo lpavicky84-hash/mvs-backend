@@ -156,6 +156,19 @@ def _ensure_batches_seed():
             Base.metadata.create_all(bind=engine, tables=[Batch.__table__])
         except Exception:
             pass
+        # additive columns for existing batches tables
+        try:
+            from sqlalchemy import text as _bt
+            for _st in ["ALTER TABLE batches ADD COLUMN banner_b64 MEDIUMTEXT NULL",
+                        "ALTER TABLE batches ADD COLUMN welcome_message VARCHAR(1000) DEFAULT ''"]:
+                try:
+                    with engine.connect() as conn:
+                        conn.execute(_bt(_st))
+                        conn.commit()
+                except Exception:
+                    pass
+        except Exception:
+            pass
         db = SessionLocal()
         try:
             existing = {b.code for b in db.query(Batch).all()}
@@ -300,6 +313,29 @@ def _ensure_perf_indexes():
 
 
 _ensure_perf_indexes()
+
+
+def _ensure_timetable_batch():
+    """Add timetable_entries.batch_id (if missing) + index. Import-time, safe, additive.
+    NULL batch_id = legacy/global entry (backward compatible)."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+        for st in [
+            "ALTER TABLE timetable_entries ADD COLUMN batch_id INTEGER NULL",
+            "CREATE INDEX ix_timetable_entries_batch_id ON timetable_entries (batch_id)",
+        ]:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(st))
+                    conn.commit()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+_ensure_timetable_batch()
 
 def _resolve_batch_id(db, name):
     """Batch.id for a display name, creating the Batch if needed. None for empty. Used for dual-write."""
@@ -561,6 +597,8 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
         "description": b.description or "", "status": b.status or "live",
         "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
+        "has_banner": bool(getattr(b, "banner_b64", None)),
+        "welcome_message": getattr(b, "welcome_message", "") or "",
         "usage": int(by_id.get(b.id, 0) or 0) + int(by_name.get(b.name, 0) or 0),
     } for b in rows]}
 
@@ -606,6 +644,11 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
             setattr(b, fld, (payload.get(fld) or "").strip())
     if payload.get("is_new") is not None:
         b.is_new = bool(payload.get("is_new"))
+    if payload.get("welcome_message") is not None:
+        b.welcome_message = (payload.get("welcome_message") or "")[:990]
+    if payload.get("banner_b64") is not None:
+        _bb = payload.get("banner_b64") or ""
+        b.banner_b64 = _bb if _bb else None
     if payload.get("active") is not None:
         b.active = bool(payload.get("active"))
         if not b.active and (b.status or "") != "archived":
@@ -1698,6 +1741,7 @@ async def admin_upload_timetable_pdf(
     replace: str = Form("false"),
     preview: str = Form("false"),
     from_date: str = Form(""),
+    batch_id: str = Form(""),
     db: Session = Depends(get_db),
     _=Depends(get_admin)
 ):
@@ -1768,10 +1812,15 @@ async def admin_upload_timetable_pdf(
                 "from_date": (from_dt.isoformat() if from_dt else ""),
                 "skipped_before_date": skipped_before}
     # replace sirf SAME CLASS ki entries hatao — dusri class ka same-name subject alag timetable hai
+    try:
+        _u_bid = int(batch_id) if batch_id else None
+    except Exception:
+        _u_bid = None
     if replace.lower() == "true":
         _delq = db.query(TimetableEntry).filter(
             TimetableEntry.subject.in_(subjects_found),
-            TimetableEntry.class_name == class_name
+            TimetableEntry.class_name == class_name,
+            TimetableEntry.batch_id == _u_bid
         )
         if from_dt:
             # entry_date NULL ya from_dt se pahle wali entries haath hi nahi lagti
@@ -1783,7 +1832,7 @@ async def admin_upload_timetable_pdf(
         try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
         except Exception: pass
         db.add(TimetableEntry(
-            teacher_id=None, subject=r["subject"], class_name=class_name,
+            teacher_id=None, subject=r["subject"], class_name=class_name, batch_id=_u_bid,
             chapter=r["chapter"], part=r["part"], entry_date=edate,
             day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
         ))
@@ -1800,6 +1849,11 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
     rows = payload.get("rows") or []
     class_name = (payload.get("class_name") or "Class 12").strip()
     replace = str(payload.get("replace") or "false")
+    _tt_bid = payload.get("batch_id")
+    try:
+        _tt_bid = int(_tt_bid) if _tt_bid else None
+    except Exception:
+        _tt_bid = None
     # v124: partial replace — from_date se pahle ki purani entries as-is rakho
     from_dt = None
     _fd = (payload.get("from_date") or "").strip()
@@ -1838,7 +1892,8 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
     if replace.lower() == "true":
         _delq = db.query(TimetableEntry).filter(
             TimetableEntry.subject.in_(subjects_found),
-            TimetableEntry.class_name == class_name
+            TimetableEntry.class_name == class_name,
+            TimetableEntry.batch_id == _tt_bid
         )
         if from_dt:
             _delq = _delq.filter(TimetableEntry.entry_date >= from_dt)
@@ -1849,7 +1904,7 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
         try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
         except Exception: pass
         db.add(TimetableEntry(
-            teacher_id=None, subject=r["subject"], class_name=class_name,
+            teacher_id=None, subject=r["subject"], class_name=class_name, batch_id=_tt_bid,
             chapter=r["chapter"], part=r["part"], entry_date=edate,
             day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
         ))

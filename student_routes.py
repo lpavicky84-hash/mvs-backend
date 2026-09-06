@@ -37,6 +37,81 @@ def get_student_profile(user, db) -> StudentProfile:
         raise HTTPException(status_code=404, detail="Student profile not found")
     return sp
 
+
+def _student_batch_ids(db, sp, only_batch_id=None):
+    """The batch ids a student belongs to. If only_batch_id is given (selector), just that one
+    (when the student is actually enrolled in it); else all their enrolled batches."""
+    try:
+        from models import StudentBatch
+        bids = [e.batch_id for e in db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()]
+    except Exception:
+        bids = []
+    if not bids and getattr(sp, "batch_id", None):
+        bids = [sp.batch_id]
+    if only_batch_id:
+        try:
+            oid = int(only_batch_id)
+            if oid in bids:
+                return [oid]
+        except Exception:
+            pass
+    return bids
+
+
+def _tt_batch_filter(db, sp, only_batch_id=None):
+    """A TimetableEntry filter scoped to the student's batch. If the student's batch has any
+    batch-specific timetable, show ONLY that batch's entries (so two batches never clash);
+    otherwise fall back to legacy global entries (batch_id IS NULL). Backward compatible."""
+    from models import TimetableEntry
+    bids = _student_batch_ids(db, sp, only_batch_id)
+    if bids:
+        has_specific = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
+        if has_specific:
+            return TimetableEntry.batch_id.in_(bids)
+    return TimetableEntry.batch_id.is_(None)
+
+
+@router.get("/batch-welcome")
+def student_batch_welcome(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """The welcome banner + message for the student's batch (for the first-time congrats popup).
+    If a selected batch is passed, that batch's welcome is preferred."""
+    sp = get_student_profile(current_user, db)
+    from models import Batch, StudentBatch
+    bids = _student_batch_ids(db, sp)
+    if not bids:
+        return {"batch": None}
+    prim = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id,
+                                         StudentBatch.is_primary == True).first()
+    order = ([batch] if batch and batch in bids else []) + ([prim.batch_id] if prim else []) + list(bids)
+    seen = set()
+    for bid in order:
+        if bid in seen:
+            continue
+        seen.add(bid)
+        b = db.query(Batch).filter(Batch.id == bid).first()
+        if b and (getattr(b, "banner_b64", None) or getattr(b, "welcome_message", None)):
+            return {"batch": {"id": b.id, "name": b.name,
+                              "banner": getattr(b, "banner_b64", "") or "",
+                              "message": getattr(b, "welcome_message", "") or ""}}
+    return {"batch": None}
+
+
+@router.get("/my-batches")
+def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """The batches this student belongs to (for the student-side batch selector)."""
+    sp = get_student_profile(current_user, db)
+    from models import Batch, StudentBatch
+    enr = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
+    bids = [e.batch_id for e in enr]
+    prim = {e.batch_id: bool(e.is_primary) for e in enr}
+    if not bids and getattr(sp, "batch_id", None):
+        bids = [sp.batch_id]
+        prim = {sp.batch_id: True}
+    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids)).all() if bids else [])}
+    out = [{"id": bid, "name": bmap[bid].name, "is_primary": bool(prim.get(bid))}
+           for bid in bids if bid in bmap]
+    return {"batches": out}
+
 def notify(db, user_id, title, message, notif_type):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
     db.add(n)
@@ -91,7 +166,7 @@ def student_dashboard(db: Session = Depends(get_db), current_user=Depends(get_st
 
 # ===== ACADEMIC WORKSPACE (dashboard aggregation) =====
 @router.get("/workspace")
-def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Everything the redesigned dashboard needs, computed from real data:
     today's priority, pending work, per-subject material progress, study
     overview, upcoming deadlines, recent activity. No fabricated numbers."""
@@ -159,7 +234,7 @@ def student_workspace(db: Session = Depends(get_db), current_user=Depends(get_st
     deadlines = []
     try:
         _sc = _subj_scope_for(db, TimetableEntry, subs)
-        tt = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(_sc))).all() if subs else []
+        tt = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(_sc)), _tt_batch_filter(db, sp, batch)).all() if subs else []
         for e in tt:
             et = (getattr(e, "entry_type", "") or "").lower()
             if e.entry_date and e.entry_date >= today and et in ("test", "exam", "assignment", "dpp"):
@@ -920,13 +995,14 @@ def _report_duration_min(e):
 
 
 @router.get("/timetable-plan")
-def timetable_plan(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def timetable_plan(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
     from models import TimetableEntry
     from sqlalchemy import or_
     _scope = _subj_scope_for(db, TimetableEntry, sp.subjects or [])
     es = db.query(TimetableEntry).filter(
         TimetableEntry.subject.in_(list(_scope)),
+        _tt_batch_filter(db, sp, batch),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')
     ).order_by(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date).all()
     # CLASS-WARE FILTER (permanent fix): same-name subjects (English 202 vs 302,

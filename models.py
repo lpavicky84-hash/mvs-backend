@@ -114,6 +114,8 @@ class Batch(Base):
     active       = Column(Boolean, default=True)
     is_new       = Column(Boolean, default=False)                # "new batch" indicator
     sort         = Column(Integer, default=0)                    # display order
+    banner_b64   = Column(Text, nullable=True)                   # welcome banner image (base64 / drive url)
+    welcome_message = Column(String(1000), default="")           # congrats message shown 1st time student opens the batch
     start_date   = Column(Date, nullable=True)
     end_date     = Column(Date, nullable=True)
     created_at   = Column(DateTime, default=func.now())
@@ -680,6 +682,7 @@ class TimetableEntry(Base):
     teacher_id  = Column(Integer, ForeignKey("teacher_profiles.id"))
     subject     = Column(String(60))
     class_name  = Column(String(40))
+    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped timetable (Phase 3; NULL = legacy/global)
     chapter     = Column(String(200))
     part        = Column(String(200), nullable=True)
     entry_date  = Column(Date, nullable=True)
