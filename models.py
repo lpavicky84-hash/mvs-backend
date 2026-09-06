@@ -110,6 +110,7 @@ class Batch(Base):
     name         = Column(String(160))                           # display name (may duplicate across batches)
     type         = Column(String(48), default="")                # Science / Commerce / Arts / Class 10 ... (free)
     mode         = Column(String(16), default="live")             # live | rec (recorded) | syc (on-demand) — drives student dashboard style
+    session      = Column(String(40), default="")                 # e.g. "Oct 2026", "April 2027" — session-wise batches
     description  = Column(String(600), default="")
     status       = Column(String(20), default="live")            # draft | upcoming | live | completed | archived
     active       = Column(Boolean, default=True)

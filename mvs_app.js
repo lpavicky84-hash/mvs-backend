@@ -11487,7 +11487,7 @@ function _batchRow(b){
   return '<div class="vtc-row bm-card'+(b.active===false?' vtc-off':'')+'">'
     +'<div class="bm-row1">'
     +'<span class="sbb-av">'+ic('folder')+'</span>'
-    +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
+    +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.session?'<b style="color:var(--primary,#8a6d1a)">'+esc(b.session)+'</b> \u00b7 ':'')+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
     +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
     +'<select class="input vtc-sc" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live mode</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
     +'<button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')" title="Welcome banner + congrats message">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
@@ -11496,6 +11496,7 @@ function _batchRow(b){
       : '<button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')
     +'</div>'
     +'<div class="bm-row2"><label class="bm-newck"><input type="checkbox" '+(b.is_new?'checked':'')+' onchange="batchSetNew('+b.id+',this.checked)"> Show <b>NEW</b> badge</label>'
+    +'<label class="bm-dt">Session <input class="input" style="width:110px" placeholder="e.g. Oct 2026" value="'+esc(b.session||'')+'" onchange="batchSetSession('+b.id+',this.value)"></label>'
     +'<label class="bm-dt">Starts <input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
     +'<label class="bm-dt">Expires <input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
     +'</div>';
@@ -11509,7 +11510,7 @@ function _batchMgrBody(list,unlinked){
     +(active.length?'<div class="vtc-cap">Active</div>':'')
     +'<div class="vtc-list">'+(active.map(_batchRow).join('')||'<div class="vtc-empty">No batches yet \u2014 add one below</div>')+'</div>'
     +(inactive.length?'<div class="vtc-cap">Archived</div><div class="vtc-list">'+inactive.map(_batchRow).join('')+'</div>':'')
-    +'<div class="vtc-add"><input id="bm-new" class="input" placeholder="New batch name" style="flex:1;min-width:140px"><input id="bm-type" class="input" placeholder="Type (e.g. Science)" style="width:150px"><button class="btn btn-primary btn-sm" onclick="batchAdd()">'+ic('plus')+' Add</button></div>';
+    +'<div class="vtc-add"><input id="bm-new" class="input" placeholder="New batch name" style="flex:1;min-width:130px"><input id="bm-type" class="input" placeholder="Type (e.g. Science)" style="width:130px"><input id="bm-session" class="input" placeholder="Session (e.g. Oct 2026)" style="width:150px"><button class="btn btn-primary btn-sm" onclick="batchAdd()">'+ic('plus')+' Add</button></div>';
 }
 function _bmInjectCSS(){
   if(document.getElementById('bm-css')) return;
@@ -11526,6 +11527,7 @@ function _bmInjectCSS(){
 }
 async function batchSetNew(id,on){ try{ await api('/api/admin/batches/'+id,'POST',{is_new:!!on}); toast(on?'NEW badge on.':'NEW badge off.'); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
 async function batchSetDate(id,field,val){ var p={}; p[field]=val||''; try{ await api('/api/admin/batches/'+id,'POST',p); toast('Date saved.'); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
+async function batchSetSession(id,val){ try{ await api('/api/admin/batches/'+id,'POST',{session:(val||'').trim()}); toast('Session saved.'); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
 // --- Student "My Batches" sidebar section (nav item + page injected via JS) ---
 function initStudentMyBatches(){
   var app=document.getElementById('student-app'); if(!app) return;
@@ -11622,7 +11624,8 @@ async function batchAdd(){
   var name=((document.getElementById('bm-new')||{}).value||'').trim();
   if(!name){ toast('Enter a batch name'); return; }
   var type=((document.getElementById('bm-type')||{}).value||'').trim();
-  try{ await api('/api/admin/batches','POST',{name:name,type:type}); toast('Batch added.'); _batchMgrRefresh(); }
+  var session=((document.getElementById('bm-session')||{}).value||'').trim();
+  try{ await api('/api/admin/batches','POST',{name:name,type:type,session:session}); toast('Batch added.'); _batchMgrRefresh(); }
   catch(e){ toast((e&&e.message)||'Could not add',true); }
 }
 async function batchRename(id,name){
@@ -11763,6 +11766,43 @@ async function _batchWelcomePopup(){
   }catch(e){}
 }
 function _bwClose(id){ try{ localStorage.setItem('bw_seen_'+id,'1'); }catch(e){} var o=document.getElementById('bw-ov'); if(o) o.remove(); }
+// --- Batch expiry gate: block the portal if the selected batch has expired ---
+function _expInjectCSS(){
+  if(document.getElementById('exp-css')) return;
+  var s=document.createElement('style'); s.id='exp-css';
+  s.textContent=[
+   '#exp-ov{position:fixed;inset:0;background:rgba(15,12,8,.72);backdrop-filter:blur(5px);z-index:100000;display:flex;align-items:center;justify-content:center;padding:18px}',
+   '.exp-card{width:min(420px,94vw);background:var(--card,#fffdf7);border-radius:20px;padding:26px 24px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.45)}',
+   '.exp-ic{font-size:2.6rem}',
+   '.exp-ttl{font-size:1.3rem;font-weight:900;color:#dc2626;margin-top:6px}',
+   '.exp-sub{font-size:.92rem;color:var(--text,#3a3020);margin-top:8px;line-height:1.55}',
+   '.exp-alt{font-size:.82rem;color:var(--text-muted,#7a6f58);margin-top:16px}',
+   '.exp-go{width:100%;margin-top:9px}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function _checkBatchExpiry(){
+  try{
+    var list=window._sBatchList;
+    if(!list){ var d=await api('/api/student/my-batches'); list=(d&&d.batches)||[]; window._sBatchList=list; }
+    if(!list.length) return;
+    var sel=_selBatch();
+    var cur=list.filter(function(b){return b.id===sel;})[0];
+    if(!cur) cur=list.filter(function(b){return b.is_primary;})[0]||list[0];
+    var o0=document.getElementById('exp-ov'); if(o0) o0.remove();
+    if(cur && cur.expired){
+      var alive=list.filter(function(b){return !b.expired;});
+      _expInjectCSS();
+      var ov=document.createElement('div'); ov.id='exp-ov';
+      ov.innerHTML='<div class="exp-card"><div class="exp-ic">\u23F0</div><div class="exp-ttl">Your batch has expired</div>'
+        +'<div class="exp-sub"><b>'+esc(cur.name)+'</b>'+(cur.end_date?' expired on '+esc(cur.end_date):'')+'. Please renew to continue.</div>'
+        +(alive.length?'<div class="exp-alt">You still have an active batch:</div>'+alive.map(function(b){return '<button class="btn btn-primary exp-go" onclick="_expSwitch('+b.id+')">Open '+esc(b.name)+' \u2192</button>';}).join(''):'<div class="exp-alt">Contact your institute to renew this batch.</div>')
+        +'</div>';
+      document.body.appendChild(ov);
+    }
+  }catch(e){}
+}
+function _expSwitch(bid){ var o=document.getElementById('exp-ov'); if(o) o.remove(); _selBatchChange(bid); }
 
 // ===== Student multi-batch enrollment (Phase 3, sub-step 4) =====
 async function openStudentBatches(sid,name){
@@ -14275,6 +14315,7 @@ async function loadSDashboard(){
     if(_ms.doubt&&(_ms.doubt.pend||0)>0) window._naS.push({label:_ms.doubt.pend+' of your doubt'+(_ms.doubt.pend>1?'s':'')+' still open',cta:'View',onclick:"navTo('student-app','doubts')"});
     setTimeout(function(){ _mountWhatsNew('student'); }, 60);
     setTimeout(function(){ _mountBatchSelector(); }, 50);
+    setTimeout(function(){ _checkBatchExpiry(); }, 500);
     setTimeout(function(){ _batchWelcomePopup(); }, 400);
     setIf(el,`${greetingCard(NAME)}<div id="s-batch-sel"></div>${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
       ${prio}

@@ -161,7 +161,8 @@ def _ensure_batches_seed():
             from sqlalchemy import text as _bt
             for _st in ["ALTER TABLE batches ADD COLUMN banner_b64 MEDIUMTEXT NULL",
                         "ALTER TABLE batches ADD COLUMN welcome_message VARCHAR(1000) DEFAULT ''",
-                        "ALTER TABLE batches ADD COLUMN mode VARCHAR(16) DEFAULT 'live'"]:
+                        "ALTER TABLE batches ADD COLUMN mode VARCHAR(16) DEFAULT 'live'",
+                        "ALTER TABLE batches ADD COLUMN session VARCHAR(40) DEFAULT ''"]:
                 try:
                     with engine.connect() as conn:
                         conn.execute(_bt(_st))
@@ -597,6 +598,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     return {"unlinked": unlinked, "batches": [{
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
         "mode": getattr(b, "mode", "live") or "live",
+        "session": getattr(b, "session", "") or "",
         "start_date": (b.start_date.isoformat() if getattr(b, "start_date", None) else ""),
         "end_date": (b.end_date.isoformat() if getattr(b, "end_date", None) else ""),
         "description": b.description or "", "status": b.status or "live",
@@ -624,6 +626,7 @@ def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=
     mx = db.query(Batch).order_by(Batch.sort.desc()).first()
     b = Batch(code=code, name=name, type=(payload.get("type") or "").strip(),
               description=(payload.get("description") or "").strip(),
+              session=(payload.get("session") or "").strip(),
               status=(payload.get("status") or "live"),
               is_new=bool(payload.get("is_new")),
               active=True, sort=((mx.sort + 1) if mx else 0))
@@ -643,7 +646,7 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
         nm = (payload.get("name") or "").strip()
         if nm:
             b.name = nm
-    for fld in ("type", "description", "status", "mode"):
+    for fld in ("type", "description", "status", "mode", "session"):
         if payload.get(fld) is not None:
             setattr(b, fld, (payload.get(fld) or "").strip())
     if payload.get("is_new") is not None:

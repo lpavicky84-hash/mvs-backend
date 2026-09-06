@@ -108,12 +108,22 @@ def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_s
         bids = [sp.batch_id]
         prim = {sp.batch_id: True}
     bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids)).all() if bids else [])}
-    out = [{"id": bid, "name": bmap[bid].name, "is_primary": bool(prim.get(bid)),
-            "mode": getattr(bmap[bid], "mode", "live") or "live",
-            "is_new": bool(getattr(bmap[bid], "is_new", False)),
-            "banner": getattr(bmap[bid], "banner_b64", "") or "",
-            "message": getattr(bmap[bid], "welcome_message", "") or ""}
-           for bid in bids if bid in bmap]
+    from datetime import date as _date
+    _today = _date.today()
+    out = []
+    for bid in bids:
+        if bid not in bmap:
+            continue
+        bb = bmap[bid]
+        _end = getattr(bb, "end_date", None)
+        out.append({"id": bid, "name": bb.name, "is_primary": bool(prim.get(bid)),
+                    "mode": getattr(bb, "mode", "live") or "live",
+                    "is_new": bool(getattr(bb, "is_new", False)),
+                    "session": getattr(bb, "session", "") or "",
+                    "end_date": (_end.isoformat() if _end else ""),
+                    "expired": bool(_end and _end < _today),
+                    "banner": getattr(bb, "banner_b64", "") or "",
+                    "message": getattr(bb, "welcome_message", "") or ""})
     return {"batches": out}
 
 def notify(db, user_id, title, message, notif_type):
