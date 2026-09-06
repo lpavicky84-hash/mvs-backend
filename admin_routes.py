@@ -362,6 +362,105 @@ def _resolve_batch_id(db, name):
     return nb.id
 
 
+# ==================================================================
+#  SESSION-AWARE BATCHES  (session split)
+#  A batch CARD = (base name, session). "Lakshya Science" can have an
+#  "October 2026" card and an "April 2027" card; future sessions
+#  ("October 2027" ...) create their own cards automatically on upload.
+#  A student's own exam_session field is NEVER changed for grouping —
+#  a Stream-2 student keeps exam_session='stream2' (so the Students
+#  section can still filter Stream-2 separately) but is shown inside the
+#  current October card.
+# ==================================================================
+
+# The live October session that Stream-1 / Stream-2 students group under.
+# Bump this when the running October session rolls over (e.g. "October 2027").
+_CURRENT_OCT_SESSION = "October 2026"
+
+_MONTH_FULL = {"jan": "January", "feb": "February", "mar": "March", "apr": "April",
+               "may": "May", "jun": "June", "jul": "July", "aug": "August",
+               "sep": "September", "oct": "October", "nov": "November", "dec": "December"}
+
+
+def _parse_batch_and_session(text):
+    """From a sheet batch string -> (base_name, session_label, exam_session_id).
+
+    'Lakshya Science Oct. 2026'   -> ('Lakshya Science', 'October 2026', 'oct2026')
+    'Lakshya Science April 2027'  -> ('Lakshya Science', 'April 2027', 'apr2027')
+    '... Stream 2'                -> (base, 'October 2026', 'stream2')  # grouped under Oct
+    """
+    base = _normalize_batch(text)
+    t = (text or "").strip().lower()
+    if not t:
+        return base, "", ""
+    import re as _re
+    m = _re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?\s*(20\d{2})", t)
+    if m:
+        mon = m.group(1)[:3]
+        yr = m.group(2)
+        return base, (_MONTH_FULL[mon] + " " + yr), (mon + yr)
+    if "stream" in t and "2" in t:
+        return base, _CURRENT_OCT_SESSION, "stream2"
+    if "stream" in t and "1" in t:
+        return base, _CURRENT_OCT_SESSION, ""   # exam_session set elsewhere from portal
+    return base, "", ""
+
+
+def _session_id_to_batch_label(db, sid):
+    """exam_session id -> the batch session label it groups under.
+    oct2026->'October 2026', apr2027->'April 2027', stream1/stream2->current October,
+    ondemand / unknown -> '' (not a Lakshya/Udaan session bucket)."""
+    sid = (sid or "").strip().lower()
+    if not sid:
+        return ""
+    import re as _re
+    m = _re.fullmatch(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(20\d{2})", sid)
+    if m:
+        return _MONTH_FULL[m.group(1)] + " " + m.group(2)
+    if sid in ("stream1", "stream2"):
+        return _CURRENT_OCT_SESSION
+    return ""
+
+
+def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
+    """Batch.id for (base_name, session_label), creating the session-specific card if
+    missing. Empty session_label -> legacy name-only resolve. A same-name card that has
+    NO session AND NO students yet is upgraded (stamped) rather than duplicated; a
+    populated card is never re-labelled."""
+    base_name = (base_name or "").strip()
+    if not base_name:
+        return None
+    if not session_label:
+        return _resolve_batch_id(db, base_name)
+    from models import Batch, StudentProfile
+    import re as _re
+    b = db.query(Batch).filter(Batch.name == base_name, Batch.session == session_label).first()
+    if b:
+        return b.id
+    # claim an EMPTY same-name card (no session, no students) instead of duplicating
+    b0 = (db.query(Batch).filter(Batch.name == base_name)
+          .filter((Batch.session == None) | (Batch.session == ""))
+          .order_by(Batch.id.asc()).first())
+    if b0:
+        has_students = db.query(StudentProfile.id).filter(StudentProfile.batch_id == b0.id).first()
+        if not has_students:
+            b0.session = session_label
+            db.flush()
+            return b0.id
+    base = _re.sub(r"[^a-z0-9]+", "_", (base_name + " " + session_label).lower()).strip("_") or "batch"
+    code = base
+    k = 1
+    while db.query(Batch).filter(Batch.code == code).first():
+        k += 1
+        code = base + "_" + str(k)
+    mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    nb = Batch(code=code, name=base_name, session=session_label, type="", mode=mode,
+               status="live", active=True, sort=((mx.sort + 1) if mx else 0))
+    db.add(nb)
+    db.flush()
+    return nb.id
+
+
 def _batch_label(db, sp):
     """Resolved batch display name for a student — reads the linked Batch first (Phase 3),
     falls back to the legacy batch_name / batch enum. Safe during the transition."""
@@ -3121,7 +3220,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
             skipped += 1; continue
         phone = phone[-10:]
         name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
-        batch = _normalize_batch(r.get("batch"))
+        batch, _sheet_sess_label, _sheet_sess_id = _parse_batch_and_session(r.get("batch"))
         email = (r.get("email") or "").strip() or None
 
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
@@ -3156,7 +3255,12 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                                    "source": "mvs_portal"})
             if batch:
                 existing.batch_name = batch
-                existing.batch_id = _resolve_batch_id(db, batch)
+                # session: portal exam_session (set above) wins; else take it from the sheet.
+                # Stream-2 stays 'stream2' (filterable) but still groups under October below.
+                if _sheet_sess_id and _sheet_sess_id != "stream2" and not (existing.exam_session or ""):
+                    existing.exam_session = _sheet_sess_id
+                _bucket = _session_id_to_batch_label(db, existing.exam_session) or _sheet_sess_label
+                existing.batch_id = _resolve_session_batch_id(db, batch, _bucket)
             if email:
                 existing.email = email
             if existing.user and name and existing.user.name == ("Student " + phone[-4:]):
@@ -3208,17 +3312,22 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                               plain_password=phone, source=psrc,
                               medium=pmed, class_level=pcls)
         db.add(_nsp)
-        try:
-            if batch:
-                db.flush()
-                _nsp.batch_id = _resolve_batch_id(db, batch)
-        except Exception:
-            pass
+        # exam session FIRST (portal wins; else from the sheet) so the batch bucket
+        # can honour the Stream-2 -> October grouping rule.
         if _st_exam:
             try:
                 _apply_portal_exam_info(_nsp, _st_exam, db)
             except Exception:
                 pass
+        if _sheet_sess_id and _sheet_sess_id != "stream2" and not (_nsp.exam_session or ""):
+            _nsp.exam_session = _sheet_sess_id
+        try:
+            if batch:
+                db.flush()
+                _bucket = _session_id_to_batch_label(db, _nsp.exam_session) or _sheet_sess_label
+                _nsp.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+        except Exception:
+            pass
         if psrc == "mvs_portal":
             duplicates.append({"phone": phone, "sheet_name": name,
                                "existing_name": name, "existing_user_id": u.user_id,
