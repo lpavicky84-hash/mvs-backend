@@ -109,6 +109,7 @@ class Batch(Base):
     code         = Column(String(48), unique=True, index=True)   # internal slug/code — the real identifier
     name         = Column(String(160))                           # display name (may duplicate across batches)
     type         = Column(String(48), default="")                # Science / Commerce / Arts / Class 10 ... (free)
+    mode         = Column(String(16), default="live")             # live | rec (recorded) | syc (on-demand) — drives student dashboard style
     description  = Column(String(600), default="")
     status       = Column(String(20), default="live")            # draft | upcoming | live | completed | archived
     active       = Column(Boolean, default=True)

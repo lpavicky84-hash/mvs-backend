@@ -11485,6 +11485,7 @@ async function openBatchMgr(){
       +'<span class="sbb-av">'+ic('folder')+'</span>'
       +'<div class="vtc-main"><input class="vtc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename"><div class="vtc-sub">'+(b.type?esc(b.type)+' \u00b7 ':'')+usageChip+(b.is_new?' \u00b7 <b style="color:#16a34a">NEW</b>':'')+'</div></div>'
       +'<select class="input vtc-sc" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select>'
+      +'<select class="input vtc-sc" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live mode</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
       +'<button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')" title="Welcome banner + congrats message">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
       +(b.active===false
         ? '<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button>'
@@ -11514,6 +11515,10 @@ async function batchRename(id,name){
 }
 async function batchSetStatus(id,status){
   try{ await api('/api/admin/batches/'+id,'POST',{status:status}); toast('Status updated.'); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+async function batchSetMode(id,mode){
+  try{ await api('/api/admin/batches/'+id,'POST',{mode:mode}); toast('Mode set to '+(mode==='live'?'Live':mode==='rec'?'Recorded':'On-Demand')+'.'); }
   catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
 async function batchToggleActive(id,active,used){
@@ -11572,16 +11577,19 @@ async function _mountBatchSelector(){
   try{
     var d=await api('/api/student/my-batches');
     var list=(d&&d.batches)||[];
+    window._sBatchList=list;
     if(list.length<=1){ host.innerHTML=''; return; }   // selector sirf multi-batch students ke liye
     var sel=_selBatch();
-    // agar selected batch ab valid nahi, primary/first pe reset
     if(!sel || !list.some(function(b){return b.id===sel;})){
       var prim=list.filter(function(b){return b.is_primary;})[0]||list[0];
       sel=prim.id; try{ localStorage.setItem('sel_batch',String(sel)); }catch(e){}
     }
+    // selected batch ka naam + mode window pe set karo taaki sMode()/dashboard sahi dikhe
+    var cur=list.filter(function(b){return b.id===sel;})[0];
+    if(cur){ window._sBatch=cur.name||window._sBatch; window._sBatchMode=(cur.mode||'live'); try{ applyBatchMode(); }catch(e){} }
     _sbInjectCSS();
     host.innerHTML='<div class="sb-bar"><span class="sb-lbl">'+ic('folder')+' Your batch</span><div class="sb-pills">'
-      +list.map(function(b){ return '<button class="sb-pill'+(b.id===sel?' on':'')+'" onclick="_selBatchChange('+b.id+')">'+esc(b.name)+'</button>'; }).join('')
+      +list.map(function(b){ var md=(b.mode||'live'); var tag=(md==='live')?'<span class="sb-tag live">\u25cf LIVE</span>':(md==='rec'?'<span class="sb-tag rec">\u25b6 REC</span>':'<span class="sb-tag rec">\u25b6 ON-DEMAND</span>'); return '<button class="sb-pill'+(b.id===sel?' on':'')+'" onclick="_selBatchChange('+b.id+')">'+esc(b.name)+' '+tag+'</button>'; }).join('')
       +'</div></div>';
   }catch(e){ host.innerHTML=''; }
 }
@@ -11592,16 +11600,30 @@ function _sbInjectCSS(){
    '.sb-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--border,#e8e0cf);border-radius:14px;background:var(--card,#fffdf7);margin-bottom:16px}',
    '.sb-lbl{display:flex;align-items:center;gap:6px;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#998)}',
    '.sb-pills{display:flex;gap:7px;flex-wrap:wrap}',
-   '.sb-pill{font-size:.84rem;font-weight:700;padding:7px 14px;border-radius:999px;border:1px solid var(--border,#e8e0cf);background:var(--bg,#fff);color:var(--text,#3a3020);cursor:pointer}',
-   '.sb-pill.on{background:var(--primary,#b8941f);border-color:var(--primary,#b8941f);color:#fff}'
+   '.sb-pill{display:inline-flex;align-items:center;gap:6px;font-size:.84rem;font-weight:700;padding:7px 14px;border-radius:999px;border:1px solid var(--border,#e8e0cf);background:var(--bg,#fff);color:var(--text,#3a3020);cursor:pointer}',
+   '.sb-pill.on{background:var(--primary,#b8941f);border-color:var(--primary,#b8941f);color:#fff}',
+   '.sb-tag{font-size:.6rem;font-weight:800;padding:1px 6px;border-radius:999px;letter-spacing:.03em}',
+   '.sb-tag.live{background:rgba(220,38,38,.14);color:#dc2626}.sb-pill.on .sb-tag.live{background:rgba(255,255,255,.25);color:#fff}',
+   '.sb-tag.rec{background:rgba(99,102,241,.16);color:#4f46e5}.sb-pill.on .sb-tag.rec{background:rgba(255,255,255,.25);color:#fff}'
   ].join('');
   document.head.appendChild(s);
 }
 function _selBatchChange(bid){
-  try{ localStorage.setItem('sel_batch',String(bid)); }catch(e){}
-  toast('Batch switched');
+  var b=((window._sBatchList||[]).filter(function(x){return x.id===bid;})[0])||null;
+  try{ localStorage.setItem('sel_batch',String(bid)); if(b){ localStorage.setItem('sel_batch_mode',b.mode||'live'); localStorage.setItem('sel_batch_name',b.name||''); } }catch(e){}
+  if(b){ window._sBatch=b.name||window._sBatch; window._sBatchMode=(b.mode||'live'); }
+  try{ applyBatchMode(); }catch(e){}
+  toast('Switched to '+((b&&b.name)||'batch'));
   try{ if(typeof loadSDashboard==='function') loadSDashboard(); }catch(e){}
   setTimeout(function(){ _batchWelcomePopup(); }, 300);
+}
+function _restoreSelBatch(){
+  try{
+    if(!_selBatch()) return;   // no batch selected -> use profile default
+    var sm=localStorage.getItem('sel_batch_mode'), sn=localStorage.getItem('sel_batch_name');
+    if(sm) window._sBatchMode=sm;
+    if(sn) window._sBatch=sn;
+  }catch(e){}
 }
 async function _batchWelcomePopup(){
   try{
@@ -13705,7 +13727,7 @@ async function openStudent(){
   try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){} [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
   // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
   api('/api/student/profile').then(p=>{
-    window._sBatch=p.batch_name||p.batch||'';
+    window._sBatch=p.batch_name||p.batch||''; _restoreSelBatch();
     window._sClass=p.class_level||'12';
     window._sSubjects=p.subjects||[];
     applyBatchMode();
@@ -13817,6 +13839,10 @@ async function saveSubjects(){
 // rec  = Manzil/Aarambh (recorded; Classes Material milta hai)
 // syc  = Safalta/Jeet — On Demand/SYC (recorded; sirf Study Material)
 function sMode(){
+  var em=(window._sBatchMode||'').toLowerCase();
+  if(em==='rec'||em==='recorded') return 'rec';
+  if(em==='syc') return 'syc';
+  if(em==='live') return 'live';
   const b=(window._sBatch||'').toLowerCase();
   if(b.includes('safalta')||b.includes('jeet')) return 'syc';
   if(b.includes('manzil')||b.includes('aarambh')) return 'rec';
@@ -14036,6 +14062,7 @@ function dismissPrio(ev){
   try{ localStorage.setItem('s_prio_hide', new Date().toLocaleDateString('en-CA')); }catch(e){}
 }
 async function loadSDashboard(){
+  _restoreSelBatch();
   const el=document.getElementById('s-dashboard-content');
   try{
     let w={},prof={};
@@ -14308,7 +14335,7 @@ async function loadSTimetable(){
   softSpin(el);
   try{
  // profile pehle — recorded batch ka timetable hota hi nahi
- try{ const p0=await api('/api/student/profile'); window._sBatch=p0.batch_name||p0.batch||window._sBatch||''; window._sClass=p0.class_level||window._sClass||'12'; window._sSubjects=p0.subjects||window._sSubjects||[]; applyBatchMode(); }catch(e){}
+ try{ const p0=await api('/api/student/profile'); window._sBatch=p0.batch_name||p0.batch||window._sBatch||''; window._sClass=p0.class_level||window._sClass||'12'; window._sSubjects=p0.subjects||window._sSubjects||[]; _restoreSelBatch(); applyBatchMode(); }catch(e){}
  if(sMode()!=='live'){ renderRecordedTimetable(el); return; }
  _sttEntries=await api('/api/student/timetable-plan'+_bq());
  // scaffolding sirf pehli baar — revisit par sections apni jagah silently update hote hain (no blank flash)

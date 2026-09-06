@@ -108,7 +108,8 @@ def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_s
         bids = [sp.batch_id]
         prim = {sp.batch_id: True}
     bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids)).all() if bids else [])}
-    out = [{"id": bid, "name": bmap[bid].name, "is_primary": bool(prim.get(bid))}
+    out = [{"id": bid, "name": bmap[bid].name, "is_primary": bool(prim.get(bid)),
+            "mode": getattr(bmap[bid], "mode", "live") or "live"}
            for bid in bids if bid in bmap]
     return {"batches": out}
 

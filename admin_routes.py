@@ -160,7 +160,8 @@ def _ensure_batches_seed():
         try:
             from sqlalchemy import text as _bt
             for _st in ["ALTER TABLE batches ADD COLUMN banner_b64 MEDIUMTEXT NULL",
-                        "ALTER TABLE batches ADD COLUMN welcome_message VARCHAR(1000) DEFAULT ''"]:
+                        "ALTER TABLE batches ADD COLUMN welcome_message VARCHAR(1000) DEFAULT ''",
+                        "ALTER TABLE batches ADD COLUMN mode VARCHAR(16) DEFAULT 'live'"]:
                 try:
                     with engine.connect() as conn:
                         conn.execute(_bt(_st))
@@ -595,6 +596,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         pass
     return {"unlinked": unlinked, "batches": [{
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
+        "mode": getattr(b, "mode", "live") or "live",
         "description": b.description or "", "status": b.status or "live",
         "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
         "has_banner": bool(getattr(b, "banner_b64", None)),
@@ -639,7 +641,7 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
         nm = (payload.get("name") or "").strip()
         if nm:
             b.name = nm
-    for fld in ("type", "description", "status"):
+    for fld in ("type", "description", "status", "mode"):
         if payload.get(fld) is not None:
             setattr(b, fld, (payload.get(fld) or "").strip())
     if payload.get("is_new") is not None:
