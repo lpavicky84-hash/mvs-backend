@@ -12172,10 +12172,20 @@ function _selBatch(){ try{ return parseInt(localStorage.getItem('sel_batch')||'0
 function _bq(){ var b=_selBatch(); return b?('?batch='+b):''; }
 function _pageBatchBar(contentId){
   try{
-    var el=document.getElementById(contentId); if(!el) return;
-    var host=el.querySelector('.s-pagebat'); 
-    if(!host){ host=document.createElement('div'); host.className='s-pagebat'; host.id=contentId+'-batbar'; el.insertBefore(host, el.firstChild); }
-    _mountBatchSelector(host.id);
+    var content=document.getElementById(contentId); if(!content || !content.parentNode) return;
+    var barId=contentId+'-batbar';
+    var host=document.getElementById(barId);
+    // Batch bar SIBLING banao — content div ke THEEK PEHLE, uske andar nahi. Isse loader ka
+    // `content.innerHTML=...` (ya koi bhi background refresh) bar ko kabhi wipe nahi kar sakta.
+    // Yahi "batch selector baar baar hat jaata tha" wale bug ka asli fix hai.
+    if(!host){
+      host=document.createElement('div'); host.className='s-pagebat'; host.id=barId;
+      content.parentNode.insertBefore(host, content);
+    } else if(host.parentNode!==content.parentNode || host.nextSibling!==content){
+      // purana/galat-position bar (e.g. kisi pehle build ka andar wala) -> bahar sahi jagah le aao
+      content.parentNode.insertBefore(host, content);
+    }
+    _mountBatchSelector(barId);
   }catch(e){}
 }
 async function _mountBatchSelector(hostId){
@@ -12184,7 +12194,7 @@ async function _mountBatchSelector(hostId){
     var d=await api('/api/student/my-batches');
     var list=(d&&d.batches)||[];
     window._sBatchList=list;
-    if(list.length<=1){ host.innerHTML=''; return; }   // selector sirf multi-batch students ke liye
+    if(list.length<=1){ host.innerHTML=''; try{ host.dataset.sig=''; }catch(e){} return; }   // selector sirf multi-batch students ke liye
     var sel=_selBatch();
     if(!sel || !list.some(function(b){return b.id===sel;})){
       // auto-pick a LIVE (non-expired) batch; among those prefer the primary. So when the
@@ -12198,10 +12208,31 @@ async function _mountBatchSelector(hostId){
     var cur=list.filter(function(b){return b.id===sel;})[0];
     if(cur){ window._sBatch=cur.name||window._sBatch; window._sBatchMode=(cur.mode||'live'); try{ applyBatchMode(); }catch(e){} }
     _sbInjectCSS();
+    // Idempotent: agar bar pehle se INHI batches ke liye bana hai to sirf active pill
+    // update karo — poora rebuild nahi. Isse switch flicker-free rehta hai aur re-paint nahi hota.
+    var sig=list.map(function(b){return b.id+':'+(b.mode||'')+':'+(b.name||'');}).join('|');
+    if(host.dataset && host.dataset.sig===sig && host.querySelector('.sb-bar')){
+      host.querySelectorAll('.sb-pill').forEach(function(p){
+        var m=/_selBatchChange\((\d+)\)/.exec(p.getAttribute('onclick')||'');
+        p.classList.toggle('on', (m?parseInt(m[1],10):0)===sel);
+      });
+      return;
+    }
     host.innerHTML='<div class="sb-bar"><span class="sb-lbl">'+ic('folder')+' Your batch</span><div class="sb-pills">'
       +list.map(function(b){ var md=(b.mode||'live'); var tag=(md==='live')?'<span class="sb-tag live">\u25cf LIVE</span>':(md==='rec'?'<span class="sb-tag rec">\u25b6 REC</span>':'<span class="sb-tag rec">\u25b6 ON-DEMAND</span>'); return '<button class="sb-pill'+(b.id===sel?' on':'')+'" onclick="_selBatchChange('+b.id+')">'+esc(b.name)+' '+tag+'</button>'; }).join('')
       +'</div></div>';
-  }catch(e){ host.innerHTML=''; }
+    try{ host.dataset.sig=sig; }catch(e){}
+  }catch(e){ /* transient fail (cold-start/network blip) pe MOJUDA bar rehne do — blank MAT karo (wo bhi disappearing ka ek reason tha) */ }
+}
+// Sirf active pill flip karo (rebuild ke bina) — instant switch feedback ke liye.
+function _syncBatchBarActive(){
+  try{
+    var sel=_selBatch();
+    document.querySelectorAll('.s-pagebat .sb-pill, #s-batch-sel .sb-pill').forEach(function(p){
+      var m=/_selBatchChange\((\d+)\)/.exec(p.getAttribute('onclick')||'');
+      p.classList.toggle('on', (m?parseInt(m[1],10):0)===sel);
+    });
+  }catch(e){}
 }
 function _sbInjectCSS(){
   if(document.getElementById('sb-css')) return;
@@ -12219,19 +12250,19 @@ function _sbInjectCSS(){
   document.head.appendChild(s);
 }
 function _selBatchChange(bid){
+  bid=parseInt(bid,10)||0;
+  if(bid && bid===_selBatch()){ _syncBatchBarActive(); return; }   // pehle se isi batch pe -> koi reload nahi (bekaar flicker se bacho)
   var b=((window._sBatchList||[]).filter(function(x){return x.id===bid;})[0])||null;
   try{ localStorage.setItem('sel_batch',String(bid)); if(b){ localStorage.setItem('sel_batch_mode',b.mode||'live'); localStorage.setItem('sel_batch_name',b.name||''); } }catch(e){}
   if(b){ window._sBatch=b.name||window._sBatch; window._sBatchMode=(b.mode||'live'); }
   try{ applyBatchMode(); }catch(e){}
+  _syncBatchBarActive();             // INSTANT feedback — selected pill turant flip, bar hilti nahi
   toast('Switched to '+((b&&b.name)||'batch'));
-  try{ _apiForget(''); }catch(e){}   // batch scopes timetable/dashboard/materials/progress -> drop all cache
-  // smooth transition: fade the app out, reload for the new batch, fade back in (no glitch)
-  var _app=document.getElementById('student-app')||document.body;
-  try{ _app.style.transition='opacity .16s ease'; _app.style.opacity='0.35'; }catch(e){}
-  setTimeout(function(){
-    try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
-    setTimeout(function(){ try{ _app.style.opacity='1'; }catch(e){} }, 240);
-  }, 110);
+  try{ _apiForget(''); }catch(e){}   // batch scopes timetable/dashboard/materials/progress -> saara cache drop
+  // Silent + smooth: poore app ko fade nahi karte (wo jerky lagta tha). Sirf current page ka
+  // data chupchaap reload — loader ka apna soft-spinner hi gentle transition de deta hai. Bar
+  // sibling hai isliye reload me bilkul nahi hilti.
+  try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
   setTimeout(function(){ _batchWelcomePopup(); }, 400);
 }
 function _restoreSelBatch(){
@@ -14755,9 +14786,10 @@ function _sLoadPage(page){
   else if(page==='qbank') loadSQBank();
   else if(page==='complaints') loadSComplaints();
   else if(page==='feedback') loadSFeedback();
-  // batch switcher on the content pages (after the async loader paints)
+  // Batch switcher content pages pe. Bar ab content ka SIBLING hai (loader se wipe nahi hoti),
+  // isliye purane 180/600/1400ms wale jugaad ki zaroorat nahi — ek hi baar mount kaafi hai.
   var _cid={timetable:'s-timetable-content',materials:'s-materials-content',dpp:'s-dpp-content',tests:'s-tests-content',progress:'s-progress-content'}[page];
-  if(_cid){ [180,600,1400].forEach(function(ms){ setTimeout(function(){ _pageBatchBar(_cid); }, ms); }); }
+  if(_cid){ _pageBatchBar(_cid); }
 }
 
 async function loadSProfile(){
