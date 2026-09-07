@@ -397,7 +397,7 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
 
     # ---- notes / materials read tracking
     notes = db.query(Material).options(defer(Material.content_b64)).filter(
-        Material.subject.in_(subs), Material.material_type == "notes").all() if subs else []
+        Material.subject.in_(subs), _mat_batch_filter(db, sp, batch), Material.material_type == "notes").all() if subs else []
     viewed_ids = set()
     try:
         for v in db.query(MaterialView).filter(MaterialView.student_id == sp.id).all():

@@ -4082,7 +4082,7 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase, keepSub){
   try{
     const d=await api(_ep);
     _mtData=d.subjects||[];
-    if(!_mtData.length){ _mtSub=null; wrap.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83d\udcda</div><p>No material'+(window._mtBatch?' for this course':'')+' yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; _mtInjectBatchBar(wrapId); return; }
+    if(!_mtData.length){ _mtSub=null; wrap.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">'+ic('book')+'</div><p>No material'+(window._mtBatch?' for this course':'')+' yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; _mtInjectBatchBar(wrapId); return; }
     if(!keepSub||!_mtData.find(s=>s.subject===_mtSub)) _mtSub=null;
     const _mtRole=apiBase.indexOf('admin')>=0?'admin':'teacher';
     window._mtNew=_matNewIds(_mtRole, _mtData.flatMap(s=>s.chapters.flatMap(c=>c.items)));
@@ -7003,7 +7003,7 @@ function _renderADppTracker(){
     '.yt-scope .ytc-dl.over{color:#dc2626;font-weight:700}',
     '.yt-scope .ytc-next{margin-top:6px;font-size:.72rem;color:#8a6d10;font-weight:600}',
     '.yt-scope .yt-empty{text-align:center;padding:40px 16px;color:var(--text-muted)}',
-    '.yt-scope .yt-empty .big{font-size:2rem;opacity:.5}'
+    '.yt-scope .yt-empty .big{font-size:2rem;opacity:.5}.big svg{width:42px;height:42px;stroke-width:1.5}'
   ].join('\n'); document.head.appendChild(st); }catch(e){} })();
 
 function initAdminYtTasks(){
@@ -12258,12 +12258,28 @@ function _selBatchChange(bid){
   try{ applyBatchMode(); }catch(e){}
   _syncBatchBarActive();             // INSTANT feedback — selected pill turant flip, bar hilti nahi
   toast('Switched to '+((b&&b.name)||'batch'));
-  try{ _apiForget(''); }catch(e){}   // batch scopes timetable/dashboard/materials/progress -> saara cache drop
-  // Silent + smooth: poore app ko fade nahi karte (wo jerky lagta tha). Sirf current page ka
-  // data chupchaap reload — loader ka apna soft-spinner hi gentle transition de deta hai. Bar
-  // sibling hai isliye reload me bilkul nahi hilti.
+  // Purane batch ka RENDERED content invalid ho gaya -> use blank karo taaki navigate karne pe
+  // "dusre batch ka jhalak" na dikhe (softSpin kept='1' ki wajah se purana content dikhaata tha).
+  _sResetBatchPages();
+  // HARD-nuke (_apiForget) NAHI: cache batch-key wise hai. Sirf stale-mark (_apiBust) -> jis batch
+  // pe ja rahe hain agar pehle khola hai to uska data TURANT (0ms) cached milega (koi delay nahi),
+  // aur fresh bg me aa jaata hai. Yahi switch ko fast + delay-free banata hai.
+  try{ _apiBust(); }catch(e){}
+  // Sirf current page silently reload — poore app ka jerky fade nahi.
   try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
   setTimeout(function(){ _batchWelcomePopup(); }, 400);
+}
+// Batch badalte hi saare student section pages ka purana (dusre batch ka) rendered content
+// invalidate karo — kept flag hatao + content blank karo — taaki agli baar navigate karne pe
+// stale jhalak na dikhe, seedha naye batch ka data aaye.
+function _sResetBatchPages(){
+  try{
+    document.querySelectorAll('#student-app .page [id$="-content"]').forEach(function(c){
+      try{ delete c.dataset.kept; }catch(_){ try{ c.dataset.kept=''; }catch(__){} }
+      try{ c.__h=''; }catch(_){}
+      c.innerHTML='';
+    });
+  }catch(e){}
 }
 function _restoreSelBatch(){
   try{
@@ -15121,7 +15137,7 @@ async function loadSDashboard(){
     // ---- Today's Tasks
     const tasks=(w.tasks||[]);
     const tasksHtml=`<div class="card"><div class="card-header"><h3>Today's Tasks</h3></div><div class="card-body">${
-      tasks.length?tasks.map(t=>`<div class="task-row ${t.done?'done':''}"><div class="task-box ${t.done?'on':''}">${t.done?ic('check'):''}</div><div class="task-txt">${esc(t.text)}</div>${t.done?'':`<button class="task-go" onclick="wsGo('${_WS_TASK_ACT[t.kind]||'materials'}')">Go \u2192</button>`}</div>`).join(''):'<div class="ws-empty"><div class="big">\u2705</div><p>You\u2019re all caught up!</p></div>'}</div></div>`;
+      tasks.length?tasks.map(t=>`<div class="task-row ${t.done?'done':''}"><div class="task-box ${t.done?'on':''}">${t.done?ic('check'):''}</div><div class="task-txt">${esc(t.text)}</div>${t.done?'':`<button class="task-go" onclick="wsGo('${_WS_TASK_ACT[t.kind]||'materials'}')">Go \u2192</button>`}</div>`).join(''):'<div class="ws-empty"><div class="big">'+ic('check')+'</div><p>You\u2019re all caught up!</p></div>'}</div></div>`;
 
     // ---- Pending Work
     const pn=w.pending||{dpps:0,tests:0,unread:0,deadlines_today:0};
@@ -15130,7 +15146,7 @@ async function loadSDashboard(){
     if(_rec) pn.deadlines_today=0;
     const allZero=(pn.dpps+pn.tests+pn.unread+pn.deadlines_today)===0;
     const pendHtml=`<div class="card"><div class="card-header"><h3>Pending Work</h3></div><div class="card-body">${
-      allZero?'<div class="ws-empty"><div class="big">\ud83c\udf89</div><p>Nothing pending. Great work!</p><small>Keep the momentum going.</small></div>'
+      allZero?'<div class="ws-empty"><div class="big">'+ic('check')+'</div><p>Nothing pending. Great work!</p><small>Keep the momentum going.</small></div>'
       :`<div class="pend-grid">${_rec?'':cell(pn.dpps,'Pending DPPs','dpp')}${cell(pn.tests,'Pending Tests','tests')}${sMode()==='syc'?'':cell(pn.unread,'Unread Materials','materials')}${_rec?'':cell(pn.deadlines_today,'Due Today','timetable')}</div>`}</div></div>`;
 
     // ---- Study Progress overview
@@ -15145,7 +15161,7 @@ async function loadSDashboard(){
     // ---- Upcoming Deadlines
     const dls=_rec?[]:(w.deadlines||[]);
     const dlHtml=`<div class="card"><div class="card-header"><h3>Upcoming Deadlines</h3></div><div class="card-body">${
-      dls.length?dls.map(d=>{const wl=d.days_left===0?'Today':(d.days_left===1?'Tomorrow':('in '+d.days_left+' days'));return `<div class="dl-row"><span class="dl-dot ${d.urgency}"></span><div class="dl-main"><div class="dl-title">${esc(d.title)}</div><div class="dl-sub">${esc(d.subject||'')} \u00b7 ${esc((d.type||'').toUpperCase())}</div></div><span class="dl-when ${d.urgency}">${wl}</span></div>`;}).join(''):'<div class="ws-empty"><div class="big">\ud83d\uddd3\ufe0f</div><p>No upcoming deadlines</p><small>You\u2019re ahead of schedule!</small></div>'}</div></div>`;
+      dls.length?dls.map(d=>{const wl=d.days_left===0?'Today':(d.days_left===1?'Tomorrow':('in '+d.days_left+' days'));return `<div class="dl-row"><span class="dl-dot ${d.urgency}"></span><div class="dl-main"><div class="dl-title">${esc(d.title)}</div><div class="dl-sub">${esc(d.subject||'')} \u00b7 ${esc((d.type||'').toUpperCase())}</div></div><span class="dl-when ${d.urgency}">${wl}</span></div>`;}).join(''):'<div class="ws-empty"><div class="big">'+ic('calendar')+'</div><p>No upcoming deadlines</p><small>You\u2019re ahead of schedule!</small></div>'}</div></div>`;
 
     // ---- Recent Activity
     const ac=(w.activity||[]);
@@ -15232,7 +15248,7 @@ function _tcPaint(){
   }
   let rows='';
   if(!list.length){
-    rows=`<div class="ws-empty"><div class="big">\u2615</div><p>No classes on ${dStr}</p><small>${_tcMode==='today'?'Use the free time to revise or clear pending work.':'Check another day from the buttons above.'}</small></div>`;
+    rows=`<div class="ws-empty"><div class="big">${ic('calendar')}</div><p>No classes on ${dStr}</p><small>${_tcMode==='today'?'Use the free time to revise or clear pending work.':'Check another day from the buttons above.'}</small></div>`;
   }else{
     const nowMin=new Date().getHours()*60+new Date().getMinutes();
     rows=list.map(c=>{
@@ -17323,7 +17339,7 @@ async function loadSLectures(){
   softSpin(el);
   try{
     const lecs=await api('/api/student/lectures');
-    if(!lecs.length){ el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Mark each lecture done after watching it in the Manish Verma Classes App.</p></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83c\udf93</div><p>No lectures yet</p><small>When your teacher posts a lecture report, it appears here.</small></div></div></div>`; return; }
+    if(!lecs.length){ el.innerHTML=`<div class="sm-head"><h2>Lectures</h2><p>Mark each lecture done after watching it in the Manish Verma Classes App.</p></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('play')}</div><p>No lectures yet</p><small>When your teacher posts a lecture report, it appears here.</small></div></div></div>`; return; }
     const cards=lecs.map(l=>{
       const st=l.status==='verified'?'verified':(l.cooling?'cooling':'pending');
       const stLabel=st==='verified'?'\u2714 Done':(st==='cooling'?'On cooldown':'Pending');
@@ -20015,7 +20031,7 @@ function _nextActionHTML(actions, okMsg){
   _naInjectCSS();
   actions=(actions||[]).filter(function(a){return a&&a.label;});
   if(!actions.length){
-    return '<div class="na-card na-ok"><div class="na-ic">'+ic('check')+'</div><div class="na-body"><div class="na-ttl">You\u2019re all set</div><div class="na-main">All caught up \uD83C\uDF89</div><div class="na-sub">'+_ape(okMsg||'Nothing needs your attention right now.')+'</div></div></div>';
+    return '<div class="na-card na-ok"><div class="na-ic">'+ic('check')+'</div><div class="na-body"><div class="na-ttl">You\u2019re all set</div><div class="na-main">All caught up</div><div class="na-sub">'+_ape(okMsg||'Nothing needs your attention right now.')+'</div></div></div>';
   }
   var top=actions[0], rest=actions.slice(1);
   return '<div class="na-card'+(top.urgent?' na-urgent':'')+'">'
