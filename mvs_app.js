@@ -1399,23 +1399,27 @@ function _ttbInjectCSS(){
   if(document.getElementById('ttb-css')) return;
   var s=document.createElement('style'); s.id='ttb-css';
   s.textContent=[
-   '.ttb-top{display:grid;grid-template-columns:1fr 130px 1fr;gap:12px;margin-bottom:14px}',
-   '.ttb-top .form-group{margin:0}',
+   '.ttb-top{display:grid;grid-template-columns:1.1fr 120px 1.3fr;gap:12px;margin-bottom:14px;align-items:end}',
+   '.ttb-top .form-group{margin:0;min-width:0}',
+   '.ttb-top .form-group>label{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a);margin-bottom:5px;display:block}',
+   '.ttb-top .input{width:100%}',
    '@media(max-width:600px){.ttb-top{grid-template-columns:1fr}}',
    '.ttb-rows-h{display:none}',
    '#ttb-rows{display:flex;flex-direction:column;gap:12px}',
    '.ttb-card{border:1px solid var(--border,rgba(184,148,31,.22));border-radius:16px;padding:14px 15px;background:var(--card,#fffdf6);box-shadow:0 6px 18px -14px rgba(120,90,10,.35)}',
    '.ttb-cgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:11px}',
    '@media(max-width:520px){.ttb-cgrid{grid-template-columns:1fr 1fr}}',
-   '.ttb-fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}',
+   '.ttb-fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px;min-width:0}',
    '.ttb-cgrid .ttb-fld{margin-bottom:0}',
    '.ttb-fld>label{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a)}',
    '.ttb-opt{font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#a08a55);font-size:.66rem}',
-   '.ttb-card .input{padding:10px 12px;font-size:.9rem;border:1.4px solid var(--border,rgba(184,148,31,.3));border-radius:11px;background:#fff;width:100%}',
-   '.ttb-card .input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}',
-   '.ttb-ch{display:flex;flex-direction:column;gap:6px;min-width:0}',
-   '.ttb-chips{display:flex;flex-wrap:wrap;gap:5px}',
-   '.ttb-chip{font-size:.74rem;font-weight:700;padding:3px 7px 3px 10px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);display:inline-flex;align-items:center;gap:5px}',
+   '.ttb-card .input,.ttb-top .input{padding:11px 13px;font-size:.9rem;font-weight:600;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:12px;background:#fff;width:100%;color:var(--text,#2b2410)}',
+   '.ttb-card .input:focus,.ttb-top .input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}',
+   '.ttb-card select.input,.ttb-top select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;padding-right:34px;background:#fff url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2714%27 height=%279%27 viewBox=%270 0 14 9%27%3E%3Cpath d=%27M1 1.5l6 6 6-6%27 stroke=%27%239a7d1a%27 stroke-width=%272.2%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") no-repeat right 13px center;background-size:13px 8px}',
+   '.ttb-chrow{display:flex;gap:8px;align-items:center}.ttb-chrow>select.input{flex:1.4}.ttb-chrow>.ttb-chcustom{flex:1}',
+   '@media(max-width:520px){.ttb-chrow{flex-direction:column}.ttb-chrow>.input{width:100%}}',
+   '.ttb-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}',
+   '.ttb-chip{font-size:.76rem;font-weight:700;padding:4px 8px 4px 11px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);display:inline-flex;align-items:center;gap:6px}',
    '.ttb-chip b{cursor:pointer;font-weight:900}',
    '.ttb-yt{border-color:rgba(220,38,38,.35) !important}.ttb-yt:focus{border-color:#dc2626 !important;box-shadow:0 0 0 3px rgba(220,38,38,.12) !important}',
    '.ttb-del2{color:#c0392b;margin-top:4px}',
@@ -1453,24 +1457,34 @@ async function openTTBuilder(){
 async function _ttbLoadChapters(){
   var subj=(document.getElementById('ttb-subject')||{}).value||'';
   var cl=(document.getElementById('ttb-class')||{}).value||'';
-  if(!subj) return;
+  if(!subj){ window._ttbChapters=[]; _ttbRender(); return; }
   var ep=window._ttbTeacher?'/api/teacher/tt-chapters':'/api/admin/timetable-chapters';
   try{ var d=await api(ep+'?subject='+encodeURIComponent(subj)+'&class_level='+encodeURIComponent(cl));
-    var dl=document.getElementById('ttb-ch-dl'); if(dl) dl.innerHTML=((d&&d.chapters)||[]).map(function(c){return '<option value="'+esc(c)+'">';}).join(''); }catch(e){}
+    window._ttbChapters=(d&&d.chapters)||[]; }catch(e){ window._ttbChapters=[]; }
+  _ttbRender();
 }
+function _to24h(v){ var m=/^(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(String(v||'')); if(!m) return ''; var h=+m[1],mi=m[2],ap=(m[3]||'').toUpperCase(); if(ap==='PM'&&h<12)h+=12; if(ap==='AM'&&h===12)h=0; return String(h).padStart(2,'0')+':'+mi; }
+function _to12h(v){ var m=/^(\d{1,2}):(\d{2})/.exec(String(v||'')); if(!m) return String(v||''); var h=+m[1],mi=m[2],ap=h>=12?'PM':'AM'; h=h%12; if(h===0)h=12; return h+':'+mi+' '+ap; }
+function _ttbSetTime(i,v){ if(_ttbRows[i]) _ttbRows[i].time=v?_to12h(v):''; }
+function ttbAddChapterSel(i,sel){ var v=sel.value; if(!v) return; _ttbRows[i].chapters=_ttbRows[i].chapters||[]; if(_ttbRows[i].chapters.indexOf(v)<0)_ttbRows[i].chapters.push(v); sel.value=''; _ttbRender(); }
 function _ttbRender(){
   var host=document.getElementById('ttb-rows'); if(!host) return;
+  var allCh=window._ttbChapters||[];
   host.innerHTML=_ttbRows.map(function(r,i){
-    var chips=(r.chapters||[]).map(function(c,ci){return '<span class="ttb-chip">'+esc(c)+'<b onclick="ttbDelChip('+i+','+ci+')">\u00d7</b></span>';}).join('');
+    var sel=(r.chapters||[]);
+    var chips=sel.map(function(c,ci){return '<span class="ttb-chip">'+esc(c)+'<b onclick="ttbDelChip('+i+','+ci+')">\u00d7</b></span>';}).join('');
+    var chOpts='<option value="">'+(allCh.length?'\uFF0B Add a chapter':'\uFF0B Type a chapter below')+'</option>'+allCh.filter(function(c){return sel.indexOf(c)<0;}).map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('');
     return '<div class="ttb-card">'
       +'<div class="ttb-cgrid">'
       +'<div class="ttb-fld"><label>Date</label><input type="date" class="input" value="'+esc(r.date||'')+'" onchange="_ttbSet('+i+',\'date\',this.value)"></div>'
-      +'<div class="ttb-fld"><label>Time</label><input class="input" placeholder="5:00 PM" value="'+esc(r.time||'')+'" onchange="_ttbSet('+i+',\'time\',this.value)"></div>'
+      +'<div class="ttb-fld"><label>Time</label><input type="time" class="input" value="'+esc(_to24h(r.time))+'" onchange="_ttbSetTime('+i+',this.value)"></div>'
       +'<div class="ttb-fld"><label>Type</label><select class="input" onchange="_ttbSet('+i+',\'type\',this.value)"><option value="lecture"'+(r.type==='lecture'?' selected':'')+'>Lecture</option><option value="test"'+(r.type==='test'?' selected':'')+'>Test</option><option value="revision"'+(r.type==='revision'?' selected':'')+'>Revision</option><option value="doubt"'+(r.type==='doubt'?' selected':'')+'>Doubt</option></select></div>'
       +'</div>'
-      +'<div class="ttb-fld"><label>Chapter(s)</label><div class="ttb-ch">'+(chips?'<div class="ttb-chips">'+chips+'</div>':'')+'<input class="input" list="ttb-ch-dl" placeholder="Type a chapter + Enter (merge multiple for crash course)" onkeydown="ttbChKey(event,'+i+')"></div></div>'
-      +'<div class="ttb-fld"><label>\u25b6 YouTube link <span class="ttb-opt">optional \u2014 if this class runs on YouTube</span></label><input class="input ttb-yt" placeholder="Paste the YouTube video / live link" value="'+esc(r.youtube||'')+'" onchange="_ttbSet('+i+',\'youtube\',this.value)"></div>'
-      +'<button class="btn btn-ghost btn-sm ttb-del2" onclick="ttbDelRow('+i+')">'+ic('trash')+' Remove this class</button>'
+      +'<div class="ttb-fld"><label>Chapter(s) <span class="ttb-opt">pick from syllabus (add multiple), or type a custom one</span></label>'
+        +(chips?'<div class="ttb-chips">'+chips+'</div>':'')
+        +'<div class="ttb-chrow"><select class="input" onchange="ttbAddChapterSel('+i+',this)">'+chOpts+'</select><input class="input ttb-chcustom" placeholder="Custom + Enter" onkeydown="ttbChKey(event,'+i+')"></div></div>'
+      +'<div class="ttb-fld"><label>YouTube link <span class="ttb-opt">(optional)</span></label><input class="input ttb-yt" placeholder="Paste link if the class is on YouTube" value="'+esc(r.youtube||'')+'" onchange="_ttbSet('+i+',\'youtube\',this.value)"></div>'
+      +'<button class="btn btn-ghost btn-sm ttb-del2" onclick="ttbDelRow('+i+')">'+ic('trash')+' Remove class</button>'
       +'</div>';
   }).join('');
 }

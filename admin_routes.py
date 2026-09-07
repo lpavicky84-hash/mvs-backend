@@ -3097,18 +3097,31 @@ def admin_timetable_chapters(subject: str = "", class_level: str = "",
     from models import TimetableEntry
     subject = (subject or "").strip()
     out, seen = [], set()
+    def _add(p):
+        p = (p or "").strip()
+        if p and p.lower() not in seen:
+            seen.add(p.lower()); out.append(p)
     if subject:
-        rows = (db.query(TimetableEntry.chapter)
-                .filter(TimetableEntry.subject == subject,
-                        TimetableEntry.chapter != None, TimetableEntry.chapter != "")
-                .distinct().all())
-        for r in rows:
-            for part in (r[0] or "").split(" + "):
-                p = part.strip()
-                if p and p.lower() not in seen:
-                    seen.add(p.lower())
-                    out.append(p)
-    return {"chapters": sorted(out)[:300]}
+        # 1) Syllabus Manager chapters (the full, authoritative list for this subject+class)
+        try:
+            from video_tasks import _chapters_for
+            titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "", "")
+            for t in (titles or []):
+                _add(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
+        except Exception:
+            pass
+        # 2) any custom chapters already used in the timetable (kept for continuity)
+        try:
+            rows = (db.query(TimetableEntry.chapter)
+                    .filter(TimetableEntry.subject == subject,
+                            TimetableEntry.chapter != None, TimetableEntry.chapter != "")
+                    .distinct().all())
+            for r in rows:
+                for part in (r[0] or "").split(" + "):
+                    _add(part)
+        except Exception:
+            pass
+    return {"chapters": out[:500]}
 
 
 _TT_YT_READY = False
