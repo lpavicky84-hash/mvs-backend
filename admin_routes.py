@@ -3198,7 +3198,11 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
     ).join(User, StudentProfile.user_id == User.id)
     if source: cols = cols.filter(StudentProfile.source == source)
     if cls: cols = cols.filter(StudentProfile.class_level == str(cls))
-    if session: cols = cols.filter(StudentProfile.exam_session == session)
+    if session:
+        if session == "__none__":
+            cols = cols.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
+        else:
+            cols = cols.filter(StudentProfile.exam_session == session)
     if medium: cols = cols.filter(StudentProfile.medium == medium)
     if batch:
         if batch == "__none__":
@@ -3249,7 +3253,11 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     from models import StudentProfile
     base = db.query(StudentProfile)
     if source: base = base.filter(StudentProfile.source == source)
-    if session: base = base.filter(StudentProfile.exam_session == session)
+    if session:
+        if session == "__none__":
+            base = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
+        else:
+            base = base.filter(StudentProfile.exam_session == session)
     if medium: base = base.filter(StudentProfile.medium == medium)
     if cls: base = base.filter(StudentProfile.class_level == str(cls))
     total = base.count()
@@ -3259,6 +3267,7 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     batches.sort(key=lambda x: (-x["count"], x["label"].lower()))
     classes = sorted([c for (c,) in base.with_entities(StudentProfile.class_level).distinct().all() if c])
     sessions = [s for (s,) in base.with_entities(StudentProfile.exam_session).distinct().all() if s]
+    none_session = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == "")).count()
     # subject counts — sirf subjects+class column load karke Python me gino (light)
     subj = {}
     for ssubs, clv in base.with_entities(StudentProfile.subjects, StudentProfile.class_level):
@@ -3274,7 +3283,7 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
                 subj[k] = {"subject": str(x), "class": clv, "count": 0}
             subj[k]["count"] += 1
     subjects = sorted(subj.values(), key=lambda a: (-a["count"], str(a["subject"]).lower()))
-    res = {"total": total, "batches": batches, "classes": classes, "sessions": sessions, "subjects": subjects}
+    res = {"total": total, "batches": batches, "classes": classes, "sessions": sessions, "none_session": none_session, "subjects": subjects}
     _SFC_CACHE[ckey] = (_time.time(), res)
     return res
 

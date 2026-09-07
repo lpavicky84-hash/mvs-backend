@@ -3509,7 +3509,8 @@ async function fetchSlist(){
     // Session dropdown data se banao (sirf jo sessions actually hain)
     const ss=document.getElementById('slist-sess');
     if(ss){ const sess=[...new Set(_slistData.map(x=>x.exam_session).filter(Boolean))];
-      ss.innerHTML='<option value="">All Sessions</option>'+sess.map(x=>`<option value="${esc(x)}">${esc(_sylSessName(x))}</option>`).join(''); }
+      const noneN=_slistData.filter(x=>!x.exam_session).length;
+      ss.innerHTML='<option value="">All Sessions</option>'+sess.map(x=>`<option value="${esc(x)}">${esc(_sylSessName(x))}</option>`).join('')+(noneN?`<option value="__none__">No session set (${noneN})</option>`:''); }
     renderSlist();
   }
   catch(e){ document.getElementById('slist-wrap').innerHTML=errHtml(e); }
@@ -3532,7 +3533,8 @@ function renderSlist(){
   const q=(val('slist-q')||'').toLowerCase();
   const wrap=document.getElementById('slist-wrap'); if(!wrap) return;
   let rows=_slistData.filter(s=>!q || (s.name||'').toLowerCase().includes(q) || (s.phone||'').includes(q));
-  if(_slistSess) rows=rows.filter(s=>(s.exam_session||'')===_slistSess);
+  if(_slistSess==='__none__') rows=rows.filter(s=>!s.exam_session);
+  else if(_slistSess) rows=rows.filter(s=>(s.exam_session||'')===_slistSess);
   if(_slistMed) rows=rows.filter(s=>(s.medium||'')===_slistMed);
   const hint=document.querySelector('.slist-hint');
   if(hint) hint.textContent=`${rows.length} student${rows.length===1?'':'s'}${(_slistSess||_slistMed)?' (filtered)':''} — tap for complete details.`;
@@ -13276,7 +13278,7 @@ function aRenderStudents(){
     : `<select class="fbar-sel" style="min-width:250px" disabled title="Select a class first"><option>Select class first</option></select>`;
   const cards=[`<div class="fbar fbar-wide">
       <div class="fbar-l">${ic('calendar')}<span>Session</span></div>
-      <select class="fbar-sel" onchange="aStuSess(this.value)"><option value="">All Sessions</option>${sessions.map(x=>`<option value="${esc(x)}"${_stuSess===x?' selected':''}>${esc(_sylSessName(x))}</option>`).join('')}</select>
+      <select class="fbar-sel" onchange="aStuSess(this.value)"><option value="">All Sessions</option>${sessions.map(x=>`<option value="${esc(x)}"${_stuSess===x?' selected':''}>${esc(_sylSessName(x))}</option>`).join('')}${(_aStuFC.none_session)?`<option value="__none__"${_stuSess==='__none__'?' selected':''}>No session set (${_aStuFC.none_session})</option>`:''}</select>
       <div class="fbar-l">${ic('book')}<span>Medium</span></div>
       <select class="fbar-sel" onchange="aStuMed(this.value)"><option value="">All Mediums</option>${['Hindi','English'].map(x=>`<option${_stuMed===x?' selected':''}>${x}</option>`).join('')}</select>
       <div class="fbar-l">${ic('user')}<span>Class</span></div>
