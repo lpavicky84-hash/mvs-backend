@@ -106,13 +106,20 @@ def _sel_batch_subjects(db, sp, batch=None):
 
 
 def _mat_batch_filter(db, sp, only_batch_id=None):
-    """Material filter scoped to the student's batch: global/legacy material (batch_id NULL)
-    PLUS the selected batch's own — never another batch's (DPPs, tests, class notes)."""
-    from models import Material
+    """Material filter scoped to the student's SELECTED batch.
+    A 'self-contained' batch — one that has its OWN timetable or its OWN material — shows ONLY
+    its own material (e.g. a new Crash Course starts empty, not the old global DPPs/notes).
+    A legacy batch with neither (October 2026 / April 2027 / Stream 2, which use the shared
+    global timetable) keeps showing the global/legacy material."""
+    from models import Material, TimetableEntry
     from sqlalchemy import or_ as _or
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Material.batch_id.is_(None)
+    has_own_tt = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
+    has_own_mat = db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
+    if has_own_tt or has_own_mat:
+        return Material.batch_id.in_(bids)
     return _or(Material.batch_id.is_(None), Material.batch_id.in_(bids))
 
 
@@ -1305,12 +1312,8 @@ def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     _q = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(list(_subj_scope_for(db, Material, subs))),
+        _mat_batch_filter(db, sp, batch),
         Material.material_type.in_(["notes", "dpp", "other"]))
-    # Classes Material is batch-scoped: show GLOBAL/legacy material (batch_id NULL) PLUS the
-    # selected batch's own material — never another batch's (so class PDFs don't merge).
-    _bids = _student_batch_ids(db, sp, batch)
-    if _bids:
-        _q = _q.filter(_or(Material.batch_id.is_(None), Material.batch_id.in_(_bids)))
     ms = _q.order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
     # Same-naam subject (Class 10 & 12) ho to sirf apni class ka material dikhe
     # (material pe class tag nahi hai to sabko dikhta hai — backward compatible)
