@@ -1399,21 +1399,22 @@ function _ttbInjectCSS(){
   if(document.getElementById('ttb-css')) return;
   var s=document.createElement('style'); s.id='ttb-css';
   s.textContent=[
-   '.ttb-top{display:grid;grid-template-columns:1.1fr 120px 1.3fr;gap:12px;margin-bottom:14px;align-items:end}',
+   '.ttb-top{display:grid;grid-template-columns:1.1fr 120px 1.3fr;gap:14px;margin:6px 0 20px;align-items:end}',
    '.ttb-top .form-group{margin:0;min-width:0}',
-   '.ttb-top .form-group>label{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a);margin-bottom:5px;display:block}',
+   '.ttb-top .form-group>label{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a);margin-bottom:6px;display:block}',
    '.ttb-top .input{width:100%}',
    '@media(max-width:600px){.ttb-top{grid-template-columns:1fr}}',
    '.ttb-rows-h{display:none}',
-   '#ttb-rows{display:flex;flex-direction:column;gap:12px}',
-   '.ttb-card{border:1px solid var(--border,rgba(184,148,31,.22));border-radius:16px;padding:14px 15px;background:var(--card,#fffdf6);box-shadow:0 6px 18px -14px rgba(120,90,10,.35)}',
-   '.ttb-cgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:11px}',
+   '#ttb-rows{display:flex;flex-direction:column;gap:14px}',
+   '.ttb-card{border:1px solid var(--border,rgba(184,148,31,.22));border-radius:18px;padding:17px 18px;background:var(--card,#fffdf6);box-shadow:0 8px 22px -14px rgba(120,90,10,.4)}',
+   '.ttb-cgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:15px}',
    '@media(max-width:520px){.ttb-cgrid{grid-template-columns:1fr 1fr}}',
-   '.ttb-fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px;min-width:0}',
+   '.ttb-fld{display:flex;flex-direction:column;gap:6px;margin-bottom:15px;min-width:0}',
+   '.ttb-fld:last-of-type{margin-bottom:6px}',
    '.ttb-cgrid .ttb-fld{margin-bottom:0}',
-   '.ttb-fld>label{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a)}',
+   '.ttb-fld>label{font-size:.67rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a)}',
    '.ttb-opt{font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#a08a55);font-size:.66rem}',
-   '.ttb-card .input,.ttb-top .input{padding:11px 13px;font-size:.9rem;font-weight:600;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:12px;background:#fff;width:100%;color:var(--text,#2b2410)}',
+   '.ttb-card .input,.ttb-top .input{padding:12px 14px;font-size:.9rem;font-weight:600;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:12px;background:#fff;width:100%;color:var(--text,#2b2410)}',
    '.ttb-card .input:focus,.ttb-top .input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}',
    '.ttb-card select.input,.ttb-top select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;padding-right:34px;background:#fff url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2714%27 height=%279%27 viewBox=%270 0 14 9%27%3E%3Cpath d=%27M1 1.5l6 6 6-6%27 stroke=%27%239a7d1a%27 stroke-width=%272.2%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") no-repeat right 13px center;background-size:13px 8px}',
    '.ttb-chrow{display:flex;gap:8px;align-items:center}.ttb-chrow>select.input{flex:1.4}.ttb-chrow>.ttb-chcustom{flex:1}',
@@ -1448,11 +1449,25 @@ async function openTTBuilder(){
     +'<button class="btn btn-ghost btn-sm" onclick="ttbAddRow()" style="margin-top:10px">'+ic('plus')+' Add class</button>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ttbCreate()">'+ic('check')+' Create timetable</button>');
   var cls=function(){ var c=document.getElementById('ttb-class'); return String((c&&c.value)||'').replace(/\D/g,'')||'12'; };
-  try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){}
+  try{ _ttbSubjOptions('ttb-subject', cls()); }catch(e){}
   var clsSel=document.getElementById('ttb-class');
-  if(clsSel) clsSel.addEventListener('change', function(){ try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){} _ttbLoadChapters(); });
+  if(clsSel) clsSel.addEventListener('change', function(){ try{ _ttbSubjOptions('ttb-subject', cls()); }catch(e){} _ttbLoadChapters(); });
   _ttbRender();
   _ttbLoadChapters();
+}
+async function _ttbSubjOptions(selId,cls){
+  var sel=document.getElementById(selId); if(!sel) return;
+  var cur=sel.value; var list=[];
+  if(window._ttbTeacher){
+    var subs=(window._tProfile&&window._tProfile.subjects)||[];
+    if(!subs.length){ try{ var pp=await api('/api/teacher/profile'); window._tProfile=pp; subs=(pp&&pp.subjects)||[]; }catch(e){} }
+    var seen={};
+    subs.forEach(function(x){ var nm=(typeof x==='string')?x:((x&&(x.name||x.subject))||''); nm=(nm||'').trim(); if(nm&&!seen[nm.toLowerCase()]){ seen[nm.toLowerCase()]=1; list.push({name:nm}); } });
+  } else {
+    try{ await ensureSubjects(); }catch(e){}
+    list=((window._allSubjects||{})[cls]||[]);
+  }
+  sel.innerHTML='<option value="">Select subject</option>'+list.map(function(x){return '<option value="'+esc(x.name)+'"'+(x.name===cur?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');
 }
 async function _ttbLoadChapters(){
   var subj=(document.getElementById('ttb-subject')||{}).value||'';
@@ -1519,7 +1534,7 @@ async function openTTBuilderT(){
   var batOpts='<option value="">No batch (global)</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>';}).join('');
   var pendHtml=pending.length?('<div class="vtc-cap" style="margin-top:14px">Awaiting admin approval</div>'+pending.map(function(g){return '<div class="ttb-pend"><div><b>'+esc(g.subject)+'</b> \u00b7 '+esc(g.batch)+' \u00b7 '+esc(g.class_name||'')+' <span class="ttb-pill">'+g.count+' classes</span></div><button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="ttbTeacherDelPending(\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">'+ic('trash')+' Withdraw</button></div>';}).join('')):'';
   showModal('Create Timetable',
-    '<p class="vtc-help">Pick <b>batch</b> + <b>subject</b>, add classes (type a chapter + Enter, merge multiple for crash course). Your timetable goes to the <b>admin for approval</b> \u2014 once approved it goes live and is locked.</p>'
+    '<p class="vtc-help">Pick a <b>batch</b> and <b>subject</b>, then add each class below.</p>'
     +'<div class="ttb-top">'
     +'<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch">'+batOpts+'</select></div>'
     +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
@@ -1531,9 +1546,9 @@ async function openTTBuilderT(){
     +pendHtml,
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ttbCreate()">'+ic('check')+' Submit for approval</button>');
   var cls=function(){ var c=document.getElementById('ttb-class'); return String((c&&c.value)||'').replace(/\D/g,'')||'12'; };
-  try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){}
+  try{ _ttbSubjOptions('ttb-subject', cls()); }catch(e){}
   var clsSel=document.getElementById('ttb-class');
-  if(clsSel) clsSel.addEventListener('change', function(){ try{ pdfSubjOptions('ttb-subject', cls()); }catch(e){} _ttbLoadChapters(); });
+  if(clsSel) clsSel.addEventListener('change', function(){ try{ _ttbSubjOptions('ttb-subject', cls()); }catch(e){} _ttbLoadChapters(); });
   _ttbRender(); _ttbLoadChapters();
 }
 async function ttbTeacherDelPending(subject,class_name,batch_id){
