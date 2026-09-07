@@ -33,28 +33,39 @@ router = APIRouter(prefix="/api/student", tags=["Student"])
 
 
 _BATCH_COLS_READY = False
-def _ensure_batch_cols(db):
-    """Ensure the batch_id columns exist right before a query uses them — runs until it
-    verifiably succeeds (DB may not have been ready at import time). Raw SQL, ORM-independent."""
+def _ensure_batch_cols(db=None):
+    """Ensure the batch_id columns exist before a query uses them. Uses a SEPARATE DB session
+    for the DDL (so it never clashes with the request's transaction) and only marks itself
+    done after verifying the columns are really there. Runs until it verifiably succeeds."""
     global _BATCH_COLS_READY
     if _BATCH_COLS_READY:
         return
-    from sqlalchemy import text as _t
-    for _tbl in ("materials", "dpp_packs", "exams"):
-        for _st in ("ALTER TABLE %s ADD COLUMN batch_id INTEGER NULL" % _tbl,
-                    "ALTER TABLE %s ADD COLUMN batch_id INTEGER" % _tbl):
-            try:
-                db.execute(_t(_st)); db.commit(); break
-            except Exception:
-                db.rollback()
     try:
-        for _tbl in ("materials", "dpp_packs", "exams"):
-            db.execute(_t("SELECT batch_id FROM %s LIMIT 1" % _tbl))
-        db.commit()
-        _BATCH_COLS_READY = True
+        from database import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _d = _SL()
+        try:
+            for _tbl in ("materials", "dpp_packs", "exams"):
+                for _st in ("ALTER TABLE %s ADD COLUMN batch_id INTEGER NULL" % _tbl,
+                            "ALTER TABLE %s ADD COLUMN batch_id INTEGER" % _tbl):
+                    try:
+                        _d.execute(_t(_st)); _d.commit(); break
+                    except Exception:
+                        _d.rollback()
+            for _st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
+                        "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+                try:
+                    _d.execute(_t(_st)); _d.commit(); break
+                except Exception:
+                    _d.rollback()
+            for _tbl in ("materials", "dpp_packs", "exams"):
+                _d.execute(_t("SELECT batch_id FROM %s LIMIT 1" % _tbl))
+            _d.commit()
+            _BATCH_COLS_READY = True
+        finally:
+            _d.close()
     except Exception:
-        try: db.rollback()
-        except Exception: pass
+        pass
 
 
 def _ensure_batch_columns_startup():
