@@ -554,6 +554,67 @@ def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
     return nb.id
 
 
+def _resolve_crash_batch_id(db, base_name):
+    """A student's CRASH COURSE batch for the given stream. Matches an existing active
+    crash-course card by stream keyword (bulletproof against naming variations like
+    'Lakshya Science Crash Course' vs 'Lakshya (Science) Crash Course'); creates a canonical
+    '<base> Crash Course' card only if none exists. A crash course carries NO exam session."""
+    from models import Batch
+    low = (base_name or "").lower()
+    if "science" in low:
+        kw = "science"
+    elif "commerce" in low:
+        kw = "commerce"
+    elif "art" in low:
+        kw = "art"
+    elif "udaan" in low or "10" in low:
+        kw = "10"
+    else:
+        kw = None
+    for b in db.query(Batch).filter(Batch.active != False).order_by(Batch.id.asc()).all():
+        nm = (b.name or "").lower()
+        if "crash" not in nm:
+            continue
+        if kw is None:
+            return b.id
+        if kw == "10":
+            if "10" in nm or "udaan" in nm:
+                return b.id
+        elif kw in nm:
+            return b.id
+    return _resolve_batch_id(db, (base_name or "Batch").strip() + " Crash Course")
+
+
+def _ensure_primary_enrollment(db, sid):
+    """If the student has a primary batch_id but no StudentBatch rows yet, create the primary
+    row — so adding an extra batch (crash course) never hides their main batch."""
+    from models import StudentBatch, StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp or not sp.batch_id:
+        return
+    if db.query(StudentBatch).filter(StudentBatch.student_id == sid).first():
+        return
+    db.add(StudentBatch(student_id=sid, batch_id=sp.batch_id, is_primary=True))
+    db.flush()
+
+
+def _add_extra_enrollment(db, sid, bid):
+    """Add an ADDITIONAL batch enrolment (e.g. crash course) without disturbing the primary.
+    Dedup by (sid, bid). Becomes primary only if the student truly has no batch at all."""
+    from models import StudentBatch, StudentProfile
+    if not sid or not bid:
+        return
+    if db.query(StudentBatch).filter(StudentBatch.student_id == sid, StudentBatch.batch_id == bid).first():
+        return
+    has_any = db.query(StudentBatch).filter(StudentBatch.student_id == sid).first() is not None
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    prim = (not has_any) and not (sp and sp.batch_id)
+    db.add(StudentBatch(student_id=sid, batch_id=bid, is_primary=prim))
+    if prim and sp:
+        sp.batch_id = bid
+    db.flush()
+
+
 def _batch_label(db, sp):
     """Resolved batch display name for a student — reads the linked Batch first (Phase 3),
     falls back to the legacy batch_name / batch enum. Safe during the transition."""
@@ -3446,6 +3507,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         phone = phone[-10:]
         name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
         batch, _sheet_sess_label, _sheet_sess_id = _parse_batch_and_session(r.get("batch"))
+        _is_crash = "crash" in str(r.get("batch") or "").lower()
         email = (r.get("email") or "").strip() or None
 
         existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
@@ -3479,13 +3541,19 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                                    "existing_batch": existing.batch_name or "",
                                    "source": "mvs_portal"})
             if batch:
-                existing.batch_name = batch
-                # session: portal exam_session (set above) wins; else take it from the sheet.
-                # Stream-2 stays 'stream2' (filterable) but still groups under October below.
-                if _sheet_sess_id and _sheet_sess_id != "stream2" and not (existing.exam_session or ""):
-                    existing.exam_session = _sheet_sess_id
-                _bucket = _session_id_to_batch_label(db, existing.exam_session) or _sheet_sess_label
-                existing.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+                if _is_crash:
+                    # CRASH COURSE: add it as an EXTRA batch (never overwrite the primary
+                    # batch or the exam session — the student fills their session themselves).
+                    _ensure_primary_enrollment(db, existing.id)
+                    _add_extra_enrollment(db, existing.id, _resolve_crash_batch_id(db, batch))
+                else:
+                    existing.batch_name = batch
+                    # session: portal exam_session (set above) wins; else from the sheet.
+                    # Stream-2 stays 'stream2' (filterable) but still groups under October.
+                    if _sheet_sess_id and _sheet_sess_id != "stream2" and not (existing.exam_session or ""):
+                        existing.exam_session = _sheet_sess_id
+                    _bucket = _session_id_to_batch_label(db, existing.exam_session) or _sheet_sess_label
+                    existing.batch_id = _resolve_session_batch_id(db, batch, _bucket)
             if email:
                 existing.email = email
             if existing.user and name and existing.user.name == ("Student " + phone[-4:]):
@@ -3549,8 +3617,17 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         try:
             if batch:
                 db.flush()
-                _bucket = _session_id_to_batch_label(db, _nsp.exam_session) or _sheet_sess_label
-                _nsp.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+                if _is_crash:
+                    from models import Batch as _Batch
+                    _cbid = _resolve_crash_batch_id(db, batch)
+                    _add_extra_enrollment(db, _nsp.id, _cbid)
+                    if _cbid:
+                        _cb = db.query(_Batch).filter(_Batch.id == _cbid).first()
+                        if _cb:
+                            _nsp.batch_name = _cb.name
+                else:
+                    _bucket = _session_id_to_batch_label(db, _nsp.exam_session) or _sheet_sess_label
+                    _nsp.batch_id = _resolve_session_batch_id(db, batch, _bucket)
         except Exception:
             pass
         if psrc == "mvs_portal":

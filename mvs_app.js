@@ -12197,14 +12197,14 @@ async function openStudentBatches(sid,name){
   }).join(''):'<div class="vtc-empty">Not in any batch yet</div>';
   var _sessSet=[]; avail.forEach(function(b){var s=(b.session||'').trim(); if(s&&_sessSet.indexOf(s)<0)_sessSet.push(s);});
   var _hasNone=avail.some(function(b){return !(b.session||'').trim();});
-  var sessOpts='<option value="">All sessions</option>'+_sessSet.map(function(s){return '<option value="'+esc(s)+'">'+esc(s)+'</option>';}).join('')+(_hasNone?'<option value="__none__">No session</option>':'');
+  var sessOpts='<option value="">Select session\u2026</option>'+_sessSet.map(function(s){return '<option value="'+esc(s)+'">'+esc(s)+'</option>';}).join('')+(_hasNone?'<option value="__none__">No session</option>':'')+'<option value="__all__">All sessions</option>';
   _sbInjectCSS();
   showModal('Batches \u2014 '+esc(name),
     '<p class="vtc-help">A student can be in multiple batches. The first one is the <b>primary</b> batch (used wherever a single batch is needed).</p>'
     +'<div class="vtc-list">'+rows+'</div>'
     +'<div class="sbp-wrap"><div class="sbp-title">'+ic('plus')+' Add to a batch</div>'
-    +'<div class="sbp-filters"><select class="input" id="sb-f-sess" onchange="_sbRenderPicker()">'+sessOpts+'</select>'
-    +'<select class="input" id="sb-f-cls" onchange="_sbRenderPicker()"><option value="">All classes</option><option value="12">Class 12</option><option value="10">Class 10</option></select></div>'
+    +'<div class="sbp-filters"><div class="sbp-sel"><select class="input" id="sb-f-sess" onchange="_sbRenderPicker()">'+sessOpts+'</select></div>'
+    +'<div class="sbp-sel"><select class="input" id="sb-f-cls" onchange="_sbRenderPicker()"><option value="">Select class\u2026</option><option value="12">Class 12</option><option value="10">Class 10</option><option value="__all__">All classes</option></select></div></div>'
     +'<div class="sbp-list" id="sb-pick-list"></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="stuAddBatch('+sid+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('check')+' Add to selected batch</button></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
@@ -12216,10 +12216,11 @@ function _sbRenderPicker(){
   var host=document.getElementById('sb-pick-list'); if(!host) return;
   var sess=(document.getElementById('sb-f-sess')||{}).value||'';
   var cls=(document.getElementById('sb-f-cls')||{}).value||'';
+  if(!sess && !cls){ host.innerHTML='<div class="sbp-hint">'+ic('folder')+'<span>Choose a <b>session</b> and <b>class</b> above to see the matching batches.</span></div>'; return; }
   var list=(window._sbAll||[]).filter(function(b){
     var s=(b.session||'').trim();
-    if(sess==='__none__'){ if(s) return false; } else if(sess){ if(s!==sess) return false; }
-    if(cls && _sbClass(b)!==cls) return false;
+    if(sess==='__none__'){ if(s) return false; } else if(sess && sess!=='__all__'){ if(s!==sess) return false; }
+    if(cls && cls!=='__all__' && _sbClass(b)!==cls) return false;
     return true;
   });
   if(!list.length){ host.innerHTML='<div class="sbp-empty">No batch matches this session / class.</div>'; return; }
@@ -12234,7 +12235,11 @@ function _sbInjectCSS(){
   var s=document.createElement('style'); s.id='sbp-css';
   s.textContent='.sbp-wrap{margin-top:14px;border-top:1px solid var(--border,rgba(184,148,31,.2));padding-top:14px}'
     +'.sbp-title{display:flex;align-items:center;gap:7px;font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:10px}.sbp-title svg{width:14px;height:14px}'
-    +'.sbp-filters{display:flex;gap:8px;margin-bottom:10px}.sbp-filters .input{flex:1;font-weight:700}'
+    +'.sbp-filters{display:flex;gap:8px;margin-bottom:10px}.sbp-sel{flex:1;position:relative}'
+    +'.sbp-sel select.input{width:100%;font-weight:700;font-size:.9rem;color:var(--text,#2b2410);padding:11px 36px 11px 14px;height:auto;line-height:1.3;border:1.5px solid var(--border,rgba(184,148,31,.28));border-radius:12px;background:var(--card,#fffdf6);appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer}'
+    +'.sbp-sel::after{content:"";position:absolute;right:14px;top:50%;width:9px;height:9px;border-right:2px solid var(--primary,#9a7d1a);border-bottom:2px solid var(--primary,#9a7d1a);transform:translateY(-70%) rotate(45deg);pointer-events:none}'
+    +'.sbp-sel select.input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}'
+    +'.sbp-hint{display:flex;align-items:center;gap:10px;color:var(--text-muted,#9a8a5a);font-size:.85rem;background:rgba(184,148,31,.06);border:1px dashed rgba(184,148,31,.35);border-radius:14px;padding:18px 16px;line-height:1.4}.sbp-hint svg{width:20px;height:20px;flex:0 0 auto;color:var(--primary,#b8941f)}'
     +'.sbp-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;padding:2px}'
     +'.sbp-empty{color:var(--text-muted,#a08a55);font-size:.82rem;text-align:center;padding:16px}'
     +'.sbp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1.5px solid var(--border,rgba(184,148,31,.22));border-radius:13px;cursor:pointer;background:var(--card,#fffdf6);transition:border-color .14s,box-shadow .14s,background .14s}'
