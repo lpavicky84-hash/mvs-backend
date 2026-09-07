@@ -257,7 +257,6 @@ class Timetable(Base):
     start_time  = Column(Time)
     topic       = Column(String(200))
     is_active   = Column(Boolean, default=True)
-    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy)
     created_at  = Column(DateTime, default=func.now())
 
     teacher = relationship("TeacherProfile")
@@ -817,6 +816,7 @@ class Exam(Base):
     duration_min= Column(Integer, default=60)
     scheduled_at= Column(DateTime, nullable=True)        # test goes live at this date/time
     is_active   = Column(Boolean, default=True)
+    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy)
     created_at  = Column(DateTime, default=func.now())
 
 class ExamQuestion(Base):
