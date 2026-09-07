@@ -223,8 +223,13 @@ def _ensure_batch_link():
         db = SessionLocal()
         try:
             by_name = {b.name: b.id for b in db.query(Batch).all()}
+            # Only backfill from students who are NOT already linked to a batch (batch_id IS
+            # NULL). A student who already has a batch_id is properly placed — their legacy
+            # batch_name is just history and must NOT resurrect a batch you deleted (e.g. a
+            # merged duplicate whose old name still sits in batch_name).
             distinct_names = [r[0] for r in db.query(StudentProfile.batch_name)
-                              .filter(StudentProfile.batch_name != None, StudentProfile.batch_name != "")
+                              .filter(StudentProfile.batch_name != None, StudentProfile.batch_name != "",
+                                      StudentProfile.batch_id == None)
                               .distinct().all()]
             mx = db.query(Batch).order_by(Batch.sort.desc()).first()
             nxt = (mx.sort + 1) if mx else 0
@@ -821,12 +826,14 @@ def _merge_batch_into(db, src_id, target_id):
     # 1) Primary link — students whose primary batch_id points at the source
     for sp in db.query(StudentProfile).filter(StudentProfile.batch_id == src_id).all():
         sp.batch_id = target_id
+        sp.batch_name = tgt.name        # keep legacy name in sync so it can't resurrect src
         moved_students += 1
     # 2) Legacy free-text link — unlinked students counted under the source by name
     for sp in db.query(StudentProfile).filter(
             StudentProfile.batch_id == None,
             StudentProfile.batch_name == src.name).all():
         sp.batch_id = target_id
+        sp.batch_name = tgt.name
         moved_students += 1
     db.flush()
 

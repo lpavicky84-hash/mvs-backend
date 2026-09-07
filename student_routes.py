@@ -111,19 +111,32 @@ def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_s
     sp = get_student_profile(current_user, db)
     from models import Batch, StudentBatch
     enr = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
-    bids = [e.batch_id for e in enr]
-    prim = {e.batch_id: bool(e.is_primary) for e in enr}
+    prim = {}
+    bids = []
+    for e in enr:
+        if e.batch_id not in prim:
+            bids.append(e.batch_id)                      # unique batch_id, keep order
+        prim[e.batch_id] = prim.get(e.batch_id, False) or bool(e.is_primary)
     if not bids and getattr(sp, "batch_id", None):
         bids = [sp.batch_id]
         prim = {sp.batch_id: True}
-    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids)).all() if bids else [])}
+    # primary first, so it wins when two cards look identical
+    bids.sort(key=lambda b: 0 if prim.get(b) else 1)
+    # ACTIVE batches only — a student may still be enrolled in an archived/merged duplicate,
+    # which must NOT show up as a second card.
+    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids), Batch.active != False).all() if bids else [])}
     from datetime import date as _date
     _today = _date.today()
     out = []
+    seen = set()                                          # collapse identical (name, session)
     for bid in bids:
         if bid not in bmap:
             continue
         bb = bmap[bid]
+        key = ((bb.name or "").strip().lower(), (getattr(bb, "session", "") or "").strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
         _end = getattr(bb, "end_date", None)
         out.append({"id": bid, "name": bb.name, "is_primary": bool(prim.get(bid)),
                     "mode": getattr(bb, "mode", "live") or "live",
