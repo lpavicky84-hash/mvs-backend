@@ -14484,12 +14484,27 @@ function openEditMyProfile(){
   const p=window._sProf||{};
   const medOpt=['Hindi','English','Both'].map(m=>`<option${(p.medium===m)?' selected':''}>${m}</option>`).join('');
   const sessOpt='<option value="">— Select —</option>'+_S_SESSIONS.map(x=>`<option value="${x[0]}"${p.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('');
-  showModal('Edit My Details',
-    '<p class="vtc-help">You can update these yourself. To change your <b>Subjects</b>, use “Request change”. Name, phone and batch are managed by the admin.</p>'
-    +'<div class="form-group"><label>Medium</label><select class="input" id="emp-med"><option value="">— Select —</option>'+medOpt+'</select></div>'
-    +'<div class="form-group"><label>Exam Session</label><select class="input" id="emp-sess">'+sessOpt+'</select></div>'
-    +'<div class="form-group"><label>NIOS Reference No.</label><input class="input" id="emp-ref" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. 2024XXXXXXX"></div>',
-    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMyProfile()">Save</button>');
+  const css='<style>'
+    +'.empx{display:flex;flex-direction:column;gap:12px}'
+    +'.empx-note{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.10),rgba(184,148,31,.04));border:1px solid rgba(184,148,31,.28);border-radius:14px;padding:11px 13px;font-size:.82rem;color:var(--text,#3a2f10);line-height:1.45}'
+    +'.empx-note .empx-i{flex:0 0 auto;font-size:1rem;line-height:1.2}'
+    +'.empx-f{background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.22));border-radius:14px;padding:12px 14px;transition:border-color .15s,box-shadow .15s}'
+    +'.empx-f:focus-within{border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}'
+    +'.empx-l{display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:7px}'
+    +'.empx-l .empx-ic{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:rgba(184,148,31,.14);font-size:.82rem}'
+    +'.empx-f .input,.empx-f select.input{border:none;background:transparent;padding:2px 0;font-size:.95rem;font-weight:600;width:100%;box-shadow:none}'
+    +'.empx-f .input:focus{outline:none;box-shadow:none}'
+    +'.empx-hint{font-size:.7rem;color:var(--text-muted,#9a8a5a);margin-top:5px}'
+    +'</style>';
+  showModal('\u270E Edit My Details',
+    css
+    +'<div class="empx">'
+    +'<div class="empx-note"><span class="empx-i">\u2139\uFE0F</span><span>You can update these yourself. To change your <b>Subjects</b>, tap <b>“Request change”</b> on your profile. Your <b>name, phone and batch</b> are managed by the admin.</span></div>'
+    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">\uD83C\uDF10</span> Medium</div><select class="input" id="emp-med"><option value="">— Select —</option>'+medOpt+'</select></div>'
+    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">\uD83D\uDCC5</span> Exam Session</div><select class="input" id="emp-sess">'+sessOpt+'</select></div>'
+    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">\uD83C\uDD94</span> NIOS Reference No.</div><input class="input" id="emp-ref" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. 2024XXXXXXX"><div class="empx-hint">Your NIOS enrolment / reference number (optional).</div></div>'
+    +'</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMyProfile()">'+ic('check')+' Save Changes</button>');
 }
 async function saveMyProfile(){
   const body={medium:val('emp-med'),exam_session:val('emp-sess'),nios_ref:val('emp-ref')};
