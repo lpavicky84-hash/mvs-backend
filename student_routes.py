@@ -176,7 +176,9 @@ def _sel_batch_subjects(db, sp, batch=None):
 def _exam_batch_filter(db, sp, only_batch_id=None):
     """Self-contained test scoping (mirrors _dpp_batch_filter) for the Exam model."""
     from models import Exam, TimetableEntry, Material, DppPack
-    from sqlalchemy import or_ as _or
+    from sqlalchemy import or_ as _or, true as _true
+    if not hasattr(Exam, "batch_id"):
+        return _true()   # models.py without batch_id not deployed yet -> no scoping (safe)
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Exam.batch_id.is_(None)
@@ -194,7 +196,9 @@ def _dpp_batch_filter(db, sp, only_batch_id=None):
     timetable/material/DPP shows ONLY its own DPP packs (a new Crash Course starts empty);
     a legacy batch (Oct 2026 / April 2027 / Stream 2) keeps showing the global DPP packs."""
     from models import DppPack, TimetableEntry, Material
-    from sqlalchemy import or_ as _or
+    from sqlalchemy import or_ as _or, true as _true
+    if not hasattr(DppPack, "batch_id"):
+        return _true()
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return DppPack.batch_id.is_(None)
@@ -213,7 +217,9 @@ def _mat_batch_filter(db, sp, only_batch_id=None):
     A legacy batch with neither (October 2026 / April 2027 / Stream 2, which use the shared
     global timetable) keeps showing the global/legacy material."""
     from models import Material, TimetableEntry
-    from sqlalchemy import or_ as _or
+    from sqlalchemy import or_ as _or, true as _true
+    if not hasattr(Material, "batch_id"):
+        return _true()
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Material.batch_id.is_(None)
