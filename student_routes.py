@@ -63,26 +63,23 @@ def _tt_batch_filter(db, sp, only_batch_id=None):
     show its batch-specific entries PLUS global entries of the subjects it offers (shared subjects).
     Otherwise: batch-specific if any exist, else legacy global. Backward compatible."""
     from models import TimetableEntry, BatchSubject
-    from sqlalchemy import or_ as _or, and_ as _and, not_ as _not
+    from sqlalchemy import and_ as _and
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return TimetableEntry.batch_id.is_(None)
-    mapped = [r[0] for r in db.query(BatchSubject.subject)
-              .filter(BatchSubject.batch_id.in_(bids)).distinct().all()]
-    mapped = [m for m in mapped if m]
-    # subjects for which THIS batch has its OWN timetable -> use only those, never ALSO pull
-    # the global/legacy timetable of the same subject (that belongs to another batch).
-    own_subs = [r[0] for r in db.query(TimetableEntry.subject)
-                .filter(TimetableEntry.batch_id.in_(bids)).distinct().all()]
-    own_subs = [s for s in own_subs if s]
-    if mapped:
-        _g = _and(TimetableEntry.batch_id.is_(None), TimetableEntry.subject.in_(mapped))
-        if own_subs:
-            _g = _and(_g, _not(TimetableEntry.subject.in_(own_subs)))
-        return _or(TimetableEntry.batch_id.in_(bids), _g)
+    # If the batch has ANY timetable of its own, show ONLY that batch's timetable — never pull
+    # the global/legacy timetable of the subjects it merely offers. So a Crash Course that has
+    # only a Physics timetable shows ONLY Physics, not the old global Biology/Chem/etc.
     has_specific = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
     if has_specific:
         return TimetableEntry.batch_id.in_(bids)
+    # Legacy batch with no timetable of its own -> fall back to the global entries of the
+    # subjects it offers (Oct 2026 / April 2027 keep showing the shared global timetable).
+    mapped = [r[0] for r in db.query(BatchSubject.subject)
+              .filter(BatchSubject.batch_id.in_(bids)).distinct().all()]
+    mapped = [m for m in mapped if m]
+    if mapped:
+        return _and(TimetableEntry.batch_id.is_(None), TimetableEntry.subject.in_(mapped))
     return TimetableEntry.batch_id.is_(None)
 
 

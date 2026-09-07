@@ -14138,18 +14138,22 @@ async function _saveBatchSubjects(bid){
 }
 function aFilteredTT(){
   var bsubs=window._attBatchSubs;
-  // subjects for which the selected batch has its OWN entries -> don't also show the global
-  // timetable of the same subject (that belongs to another batch)
-  var _ownSubs={};
+  // Does the selected batch have any timetable of its own?
+  var _hasOwn=false;
   if(window._attBatch && window._attBatch!=='global'){
-    (_attEntries||[]).forEach(function(e){ if(String(e.batch_id||'')===String(window._attBatch) && e.subject) _ownSubs[e.subject]=1; });
+    _hasOwn=(_attEntries||[]).some(function(e){ return String(e.batch_id||'')===String(window._attBatch); });
   }
   return _attEntries.filter(e=>{
     if(window._attBatch==='global'){ if(e.batch_id) return false; }
     else if(window._attBatch){
-      var own=String(e.batch_id||'')===String(window._attBatch);
-      var sharedGlobal=(!e.batch_id && bsubs && bsubs.indexOf(e.subject)>=0 && !_ownSubs[e.subject]);
-      if(!own && !sharedGlobal) return false;
+      if(_hasOwn){
+        // this batch has its own timetable -> show ONLY that batch's entries (no global)
+        if(String(e.batch_id||'')!==String(window._attBatch)) return false;
+      } else {
+        // legacy batch with no own timetable -> only the global entries of its offered subjects
+        var sharedGlobal=(!e.batch_id && bsubs && bsubs.indexOf(e.subject)>=0);
+        if(!sharedGlobal) return false;
+      }
     }
     if(_attClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
     if(_attClass==='12') return /12/.test(e.class_name||'');
