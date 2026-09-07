@@ -12902,6 +12902,37 @@ async function runMediumFix(){
   }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
   btn.disabled=false; btn.textContent='Start';
 }
+// ============ FIX EXAM SESSION (backfill from MVS Portal) ============
+function openSessionFix(){
+  showModal('Fix Exam Session from MVS Portal',
+    `<p style="font-size:.83rem;color:var(--text-muted);margin-bottom:12px">Students whose <b>Exam Session is blank</b> will get it from the MVS Portal (April 2027, October 2026, Stream 2, On Demand — mapped bulletproof). Only the session/stream is set — no other field changes. After this they'll appear under the correct session filter instead of "No session set".</p>
+     <div id="sfx-out" style="margin-top:12px"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" id="sfx-btn" onclick="runSessionFix()">Start</button>`);
+}
+async function runSessionFix(){
+  const btn=document.getElementById('sfx-btn'); btn.disabled=true; btn.textContent='Fixing\u2026';
+  const out=document.getElementById('sfx-out');
+  out.innerHTML=`<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" id="sfx-fill"></div></div><div class="prog-text" id="sfx-text">Starting\u2026</div></div>`;
+  let afterId=0, total=0, done=0, filled=0, notFound=0, noSess=0, rows=[], more=true;
+  try{
+    while(more){
+      const r=await api('/api/admin/students/backfill-session','POST',{after_id:afterId,limit:40,deep:true});
+      if(r.total!=null) total=r.total;
+      done+=r.checked||0; filled+=r.filled||0; notFound+=r.not_found||0; noSess+=r.no_session||0;
+      afterId=r.last_id||afterId; more=!!r.has_more;
+      rows=rows.concat(r.students||[]);
+      const pct=total?Math.min(100,Math.round(done/total*100)):(more?60:100);
+      const f=document.getElementById('sfx-fill'), t=document.getElementById('sfx-text');
+      if(f) f.style.width=pct+'%';
+      if(t) t.textContent=`${pct}% \u2014 ${done}${total?'/'+total:''} checked \u00b7 ${filled} session set`;
+    }
+    const list=rows.slice(0,200).map((x,i)=>`<div class="topper-row"><div class="rank-b">${i+1}</div><div class="topper-name">${esc(x.name||'Student')}<div class="topper-sub">${esc(x.phone||'')} \u00b7 ${esc(x.user_id||'')}</div></div><span class="xm-chip" style="background:rgba(16,185,129,.15);color:#059669">${esc(_sylSessName?_sylSessName(x.session):x.session)}</span></div>`).join('');
+    const diag=(notFound||noSess)?`<div class="alert alert-info" style="font-size:.8rem;margin-top:8px"><b>${notFound}</b> not found on the portal (phone didn't match) \u00b7 <b>${noSess}</b> found but the portal has no session for them. Those need the session set manually (Edit student) or re-uploading their sales sheet with the session in the batch name.</div>`:'';
+    out.innerHTML=`<div class="alert alert-success"><b>${filled}</b> student(s) got a session (${done} checked).</div>${diag}${list?`<div class="hide-scroll" style="max-height:40vh;margin-top:10px">${list}</div>`:''}`;
+    toast(`${filled} exam sessions set from Portal`); loadAStudents();
+  }catch(e){ out.innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
+  btn.disabled=false; btn.textContent='Start';
+}
 async function openWhatsApp(){
   showModal('WhatsApp (Combirds)','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
@@ -13303,7 +13334,7 @@ function aRenderStudents(){
       <div class="seg">${segB('','All Students',ov.total)}${segB('mvs_portal','MVS Portal',ov.mvs_portal)}${segB('mvs_app','MVS App',ov.mvs_app)}</div>
       <button class="pp-btn" onclick="openPortalPending()">${ic('bell')} Portal Pending<span class="pp-n">${ov.portal_reachable?ov.pending_count:'?'}</span></button>
     </div>`:'';
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-success btn-sm" onclick="openFormUpload()">${ic('upload')} Form Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
+  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-success btn-sm" onclick="openFormUpload()">${ic('upload')} Form Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSessionFix()">${ic('calendar')} Fix Session</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     ${cards.join('')}
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>

@@ -4912,6 +4912,10 @@ def _map_session_text(db, text):
         for x in sess:
             if x.get("tma", True):
                 return x.get("id") or ""
+    # bulletproof fallback: "April 2027" / "Apr 2027" / "October 2026" -> apr2027 / oct2026
+    m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?\s*(20\d{2})", t)
+    if m:
+        return m.group(1)[:3] + m.group(2)
     return ""
 
 
@@ -5033,6 +5037,60 @@ def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db
                       "user_id": sp.user.user_id if sp.user else ""})
     db.commit()
     return {"checked": len(chunk), "moved": len(moved), "students": moved[:200],
+            "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
+
+
+@router.post("/students/backfill-session")
+def backfill_session_from_portal(payload: dict = None, db: Session = Depends(get_db),
+                                 _=Depends(get_admin)):
+    """Fill EXAM SESSION for students whose exam_session is blank — from MVS Portal.
+    Uses the cached bulk map first, then a per-student fetch (deep) on a miss, and maps the
+    portal's session text bulletproof-ly (April 2027 -> apr2027, Stream 2 -> stream2, ...).
+    Only exam_session/stream are touched. Cursor: after_id."""
+    from models import StudentProfile as _SP
+    from ext_materials import _cfg, portal_fetch_student
+    url, key = _cfg()
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 40)
+    deep = payload.get("deep", True)
+    pmap = _portal_phone_map()
+    empty = (_SP.exam_session.is_(None)) | (_SP.exam_session == "")
+    base = db.query(_SP).filter(empty, _SP.phone.isnot(None))
+    total = base.count() if after_id == 0 else None
+    chunk = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    filled, rows, last_id = 0, [], after_id
+    not_found, no_session = 0, 0
+    for sp in chunk:
+        last_id = sp.id
+        ph = "".join(c for c in str(sp.phone or "") if c.isdigit())[-10:]
+        st = pmap.get(ph)
+        found = bool(st)
+        if not st and deep:
+            try:
+                st = portal_fetch_student(sp.phone)
+                found = bool(st)
+            except Exception:
+                st = None
+        before = sp.exam_session
+        if st:
+            try:
+                _apply_portal_exam_info(sp, st, db)
+            except Exception:
+                pass
+        if sp.exam_session and sp.exam_session != before:
+            filled += 1
+            rows.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                         "user_id": sp.user.user_id if sp.user else "", "session": sp.exam_session})
+        elif not found:
+            not_found += 1
+        else:
+            no_session += 1
+    db.commit()
+    return {"checked": len(chunk), "filled": filled, "students": rows[:200],
+            "not_found": not_found, "no_session": no_session,
             "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
 
 
