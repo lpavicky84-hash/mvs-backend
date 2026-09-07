@@ -14485,26 +14485,30 @@ function openEditMyProfile(){
   const medOpt=['Hindi','English','Both'].map(m=>`<option${(p.medium===m)?' selected':''}>${m}</option>`).join('');
   const sessOpt='<option value="">— Select —</option>'+_S_SESSIONS.map(x=>`<option value="${x[0]}"${p.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('');
   const css='<style>'
-    +'.empx{display:flex;flex-direction:column;gap:12px}'
-    +'.empx-note{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.10),rgba(184,148,31,.04));border:1px solid rgba(184,148,31,.28);border-radius:14px;padding:11px 13px;font-size:.82rem;color:var(--text,#3a2f10);line-height:1.45}'
-    +'.empx-note .empx-i{flex:0 0 auto;font-size:1rem;line-height:1.2}'
-    +'.empx-f{background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.22));border-radius:14px;padding:12px 14px;transition:border-color .15s,box-shadow .15s}'
-    +'.empx-f:focus-within{border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}'
-    +'.empx-l{display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:7px}'
-    +'.empx-l .empx-ic{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:rgba(184,148,31,.14);font-size:.82rem}'
-    +'.empx-f .input,.empx-f select.input{border:none;background:transparent;padding:2px 0;font-size:.95rem;font-weight:600;width:100%;box-shadow:none}'
+    +'.empx{display:flex;flex-direction:column;gap:14px;padding-top:2px}'
+    +'.empx-note{display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.12),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.26);border-radius:16px;padding:13px 15px;font-size:.83rem;color:var(--text,#4a3d16);line-height:1.5}'
+    +'.empx-note .empx-nic{flex:0 0 auto;width:26px;height:26px;border-radius:9px;background:var(--primary,#b8941f);color:#fff;display:inline-flex;align-items:center;justify-content:center}'
+    +'.empx-note .empx-nic svg{width:15px;height:15px}'
+    +'.empx-f{position:relative;background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.20));border-radius:16px;padding:14px 16px 14px 18px;overflow:hidden;transition:border-color .16s,box-shadow .16s}'
+    +'.empx-f::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--primary,#b8941f),rgba(184,148,31,.4));opacity:.0;transition:opacity .16s}'
+    +'.empx-f:focus-within{border-color:var(--primary,#b8941f);box-shadow:0 6px 22px -10px rgba(184,148,31,.5)}'
+    +'.empx-f:focus-within::before{opacity:1}'
+    +'.empx-l{display:flex;align-items:center;gap:9px;font-size:.7rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:9px}'
+    +'.empx-l .empx-ic{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:rgba(184,148,31,.14);color:var(--primary,#9a7d1a)}'
+    +'.empx-l .empx-ic svg{width:14px;height:14px}'
+    +'.empx-f .input,.empx-f select.input{border:none;background:transparent;padding:0;font-size:1rem;font-weight:700;color:var(--text,#2b2410);width:100%;box-shadow:none;appearance:auto}'
+    +'.empx-f .input::placeholder{font-weight:600;color:var(--text-muted,#b3a06a)}'
     +'.empx-f .input:focus{outline:none;box-shadow:none}'
-    +'.empx-hint{font-size:.7rem;color:var(--text-muted,#9a8a5a);margin-top:5px}'
     +'</style>';
-  showModal('\u270E Edit My Details',
+  showModal('Edit My Details',
     css
     +'<div class="empx">'
-    +'<div class="empx-note"><span class="empx-i">\u2139\uFE0F</span><span>You can update these yourself. To change your <b>Subjects</b>, tap <b>“Request change”</b> on your profile. Your <b>name, phone and batch</b> are managed by the admin.</span></div>'
-    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">\uD83C\uDF10</span> Medium</div><select class="input" id="emp-med"><option value="">— Select —</option>'+medOpt+'</select></div>'
-    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">\uD83D\uDCC5</span> Exam Session</div><select class="input" id="emp-sess">'+sessOpt+'</select></div>'
-    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">\uD83C\uDD94</span> NIOS Reference No.</div><input class="input" id="emp-ref" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. 2024XXXXXXX"><div class="empx-hint">Your NIOS enrolment / reference number (optional).</div></div>'
+    +'<div class="empx-note"><span class="empx-nic">'+ic('shield')+'</span><span>You can update these yourself. To change your <b>Subjects</b>, tap <b>“Request change”</b> on your profile. Your <b>name, phone and batch</b> are managed by the admin.</span></div>'
+    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">'+ic('globe')+'</span> Medium</div><select class="input" id="emp-med"><option value="">— Select —</option>'+medOpt+'</select></div>'
+    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">'+ic('calendar')+'</span> Exam Session</div><select class="input" id="emp-sess">'+sessOpt+'</select></div>'
+    +'<div class="empx-f"><div class="empx-l"><span class="empx-ic">'+ic('clipboard')+'</span> NIOS Reference No.</div><input class="input" id="emp-ref" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. 2024XXXXXXX"></div>'
     +'</div>',
-    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMyProfile()">'+ic('check')+' Save Changes</button>');
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMyProfile()">Save Changes</button>');
 }
 async function saveMyProfile(){
   const body={medium:val('emp-med'),exam_session:val('emp-sess'),nios_ref:val('emp-ref')};
