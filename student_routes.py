@@ -32,6 +32,31 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
 
+_BATCH_COLS_READY = False
+def _ensure_batch_cols(db):
+    """Ensure the batch_id columns exist right before a query uses them — runs until it
+    verifiably succeeds (DB may not have been ready at import time). Raw SQL, ORM-independent."""
+    global _BATCH_COLS_READY
+    if _BATCH_COLS_READY:
+        return
+    from sqlalchemy import text as _t
+    for _tbl in ("materials", "dpp_packs", "exams"):
+        for _st in ("ALTER TABLE %s ADD COLUMN batch_id INTEGER NULL" % _tbl,
+                    "ALTER TABLE %s ADD COLUMN batch_id INTEGER" % _tbl):
+            try:
+                db.execute(_t(_st)); db.commit(); break
+            except Exception:
+                db.rollback()
+    try:
+        for _tbl in ("materials", "dpp_packs", "exams"):
+            db.execute(_t("SELECT batch_id FROM %s LIMIT 1" % _tbl))
+        db.commit()
+        _BATCH_COLS_READY = True
+    except Exception:
+        try: db.rollback()
+        except Exception: pass
+
+
 def _ensure_batch_columns_startup():
     """Guarantee the batch_id columns exist BEFORE any student query runs — no matter which
     files were deployed or in what import order. ORM models now include these columns, so a
@@ -317,6 +342,7 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     overview, upcoming deadlines, recent activity. No fabricated numbers."""
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     subs = _sel_batch_subjects(db, sp, batch)
@@ -1371,6 +1397,7 @@ def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_
     from models import Material
     from sqlalchemy import or_ as _or
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     subs = _sel_batch_subjects(db, sp, batch)
@@ -1426,6 +1453,7 @@ def _my_submission(db, sp, parent_id):
 def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     subs = _sel_batch_subjects(db, sp, batch)
@@ -1444,6 +1472,7 @@ def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user
 def student_tests_list(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     subs = _sel_batch_subjects(db, sp, batch)
@@ -1815,6 +1844,7 @@ def _class_digits(x):
 def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     subs = _sel_batch_subjects(db, sp, batch)
@@ -2494,6 +2524,7 @@ def student_dpp_packs(batch: int = 0, db: Session = Depends(get_db), current_use
     from models import DppPack, DppAnswer, TeacherProfile, User
     from sqlalchemy import func as _func
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
@@ -3041,6 +3072,7 @@ def student_batch_board(batch: int = 0, db: Session = Depends(get_db), current_u
     import time as _time
     from models import User as _User, StudentBatch, Batch
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     # XP map ek hi query-set se banta hai (saare students) — 60s cache, har request par recompute nahi
@@ -3093,6 +3125,7 @@ def student_performance(batch: int = 0, db: Session = Depends(get_db), current_u
     """Everything the Academic Performance Dashboard needs, all from real data."""
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
+    _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
     # short-TTL cache (per student+batch) — repeated polls/re-renders recompute na karein
