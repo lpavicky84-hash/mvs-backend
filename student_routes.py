@@ -83,6 +83,17 @@ def _tt_batch_filter(db, sp, only_batch_id=None):
     return TimetableEntry.batch_id.is_(None)
 
 
+def _mat_batch_filter(db, sp, only_batch_id=None):
+    """Material filter scoped to the student's batch: global/legacy material (batch_id NULL)
+    PLUS the selected batch's own — never another batch's (DPPs, tests, class notes)."""
+    from models import Material
+    from sqlalchemy import or_ as _or
+    bids = _student_batch_ids(db, sp, only_batch_id)
+    if not bids:
+        return Material.batch_id.is_(None)
+    return _or(Material.batch_id.is_(None), Material.batch_id.in_(bids))
+
+
 @router.get("/batch-welcome")
 def student_batch_welcome(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """The welcome banner + message for the student's batch (for the first-time congrats popup).
@@ -212,6 +223,8 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     overview, upcoming deadlines, recent activity. No fabricated numbers."""
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     subs = sp.subjects or []
     today = ist_today()
 
@@ -220,11 +233,11 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
         Material.student_id == sp.id, Material.material_type == "answer").all()
     done_parents = set(a.parent_id for a in answers if a.parent_id)
 
-    # ---- DPPs & tests (Material-based) for my subjects
+    # ---- DPPs & tests (Material-based) for my subjects, scoped to the selected batch
     dpps = db.query(Material).options(defer(Material.content_b64)).filter(
-        Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
+        Material.subject.in_(subs), _mat_batch_filter(db, sp, batch), Material.material_type == "dpp").all() if subs else []
     tests = db.query(Material).options(defer(Material.content_b64)).filter(
-        Material.subject.in_(subs), Material.material_type == "test").all() if subs else []
+        Material.subject.in_(subs), _mat_batch_filter(db, sp, batch), Material.material_type == "test").all() if subs else []
     pending_dpps = [m for m in dpps if m.id not in done_parents]
     pending_tests = [m for m in tests if m.id not in done_parents]
 
@@ -1320,11 +1333,14 @@ def _my_submission(db, sp, parent_id):
         Material.student_id == sp.id).first()
 
 @router.get("/dpp-list")
-def student_dpp_list(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     sp = get_student_profile(current_user, db)
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     subs = sp.subjects or []
     ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
+                                   _mat_batch_filter(db, sp, batch),
                                    Material.material_type == "dpp").order_by(Material.created_at.desc()).all()
     out = []
     for m in ms:
@@ -1335,11 +1351,14 @@ def student_dpp_list(db: Session = Depends(get_db), current_user=Depends(get_stu
     return out
 
 @router.get("/tests-list")
-def student_tests_list(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_tests_list(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     sp = get_student_profile(current_user, db)
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     subs = sp.subjects or []
     ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
+                                   _mat_batch_filter(db, sp, batch),
                                    Material.material_type == "test").order_by(Material.created_at.desc()).all()
     out = []
     for m in ms:

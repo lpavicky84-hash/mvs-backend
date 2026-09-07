@@ -15509,7 +15509,7 @@ async function _loadSDppReal(){
     html+=`</div></div>`;
     // legacy materials-based DPPs (old records) — read-only archive
     try{
-      const old=await api('/api/student/dpp-list');
+      const old=await api('/api/student/dpp-list'+_bq());
       if(old&&old.length) html+=`<div class="card"><div class="card-header"><h3> Previous DPPs (Archive)</h3></div><div class="card-body">`
         +old.map(d2=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d2.subject)}</div><div class="tr-topic">${esc(d2.chapter||'')} — ${esc(d2.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-ghost btn-sm" onclick="downloadMaterial('student',${d2.id},'DPP.pdf')">${ic('download')} Download</button></div></div>`).join('')
         +`</div></div>`;
