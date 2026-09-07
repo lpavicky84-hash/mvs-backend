@@ -105,6 +105,22 @@ def _sel_batch_subjects(db, sp, batch=None):
     return stu
 
 
+def _exam_batch_filter(db, sp, only_batch_id=None):
+    """Self-contained test scoping (mirrors _dpp_batch_filter) for the Exam model."""
+    from models import Exam, TimetableEntry, Material, DppPack
+    from sqlalchemy import or_ as _or
+    bids = _student_batch_ids(db, sp, only_batch_id)
+    if not bids:
+        return Exam.batch_id.is_(None)
+    has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
+               or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
+               or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None
+               or db.query(Exam.id).filter(Exam.batch_id.in_(bids)).first() is not None)
+    if has_own:
+        return Exam.batch_id.in_(bids)
+    return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(bids))
+
+
 def _dpp_batch_filter(db, sp, only_batch_id=None):
     """Self-contained DPP scoping (mirrors _mat_batch_filter): a batch that has its OWN
     timetable/material/DPP shows ONLY its own DPP packs (a new Crash Course starts empty);
@@ -290,7 +306,7 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     # ---- online exams (ExamAttempt-based)
     pending_exams = []
     try:
-        exams = db.query(Exam).filter(Exam.is_active == True).all() if subs else []
+        exams = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch)).all() if subs else []
         for ex in exams:
             if ex.subject and subs and ex.subject not in subs:
                 continue
@@ -1764,12 +1780,14 @@ def _class_digits(x):
 
 
 @router.get("/exams")
-def student_exams(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
-    subs = sp.subjects or []
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
+    subs = _sel_batch_subjects(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    q = db.query(Exam).filter(Exam.is_active == True)
+    q = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch))
     if subs:
         # Naam-variant tolerant ('PHYSICS' wala student bhi 'Physics' ka test dekhe)
         q = q.filter(Exam.subject.in_(list(_subj_scope_for(db, Exam, subs))))
@@ -2985,21 +3003,42 @@ def student_dpp_file(pack_id: int, kind: str = "q", med: str = "", db: Session =
 
 
 @router.get("/batch-board")
-def student_batch_board(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_batch_board(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Batch-wise XP leaderboard for the student's Progress page —
     podium top 3 + full ranked list (click -> comparison + suggestions)."""
     import time as _time
-    from models import User as _User
+    from models import User as _User, StudentBatch, Batch
     sp = get_student_profile(current_user, db)
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     # XP map ek hi query-set se banta hai (saare students) — 60s cache, har request par recompute nahi
     _xc = globals().setdefault("_XPMAP_CACHE", {"t": 0.0, "m": {}})
     if _time.time() - _xc["t"] > 60:
         _xc["m"] = _student_xp_map(db); _xc["t"] = _time.time()
     xp_map = _xc["m"]
+    # Rank within the SELECTED batch: its enrolled students (StudentBatch). Falls back to the
+    # student's batch_name so single-batch/legacy students are unaffected.
     my_batch = sp.batch_name or ""
+    member_ids = None
+    if batch:
+        try:
+            b = db.query(Batch).filter(Batch.id == batch).first()
+            if b:
+                my_batch = b.name or my_batch
+            member_ids = [r[0] for r in db.query(StudentBatch.student_id)
+                          .filter(StudentBatch.batch_id == batch).distinct().all()]
+            if sp.id not in member_ids:
+                member_ids.append(sp.id)
+        except Exception:
+            member_ids = None
     # sirf id + naam + has_photo (photo BLOB load nahi, user N+1 nahi)
     q = db.query(StudentProfile.id, _User.name, (StudentProfile.photo_b64.isnot(None)).label("hp")).join(_User, StudentProfile.user_id == _User.id)
-    mates = (q.filter(StudentProfile.batch_name == my_batch).all() if my_batch else q.all())
+    if member_ids:
+        mates = q.filter(StudentProfile.id.in_(member_ids)).all()
+    elif my_batch:
+        mates = q.filter(StudentProfile.batch_name == my_batch).all()
+    else:
+        mates = q.all()
     rows = []
     for mid, mname, hp in mates:
         rows.append({"id": mid, "name": (mname or "") or "Student",
@@ -3084,7 +3123,7 @@ def student_performance(batch: int = 0, db: Session = Depends(get_db), current_u
 
     exam_attempts = db.query(ExamAttempt).filter(ExamAttempt.student_id == sp.id).all()
     graded = [a for a in exam_attempts if (a.status or "") == "graded"]
-    exams_all = db.query(Exam).filter(Exam.is_active == True).all()
+    exams_all = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch)).all()
     exams_mine = [e for e in exams_all if (not e.subject) or (e.subject in subs)]
     test_total = len(exams_mine)
     test_done = len(exam_attempts)

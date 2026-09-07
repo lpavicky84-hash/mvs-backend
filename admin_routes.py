@@ -300,6 +300,12 @@ def _ensure_tt_youtube_startup():
                     _db.execute(_t(_st)); _db.commit(); break
                 except Exception:
                     _db.rollback()
+            for _st in ("ALTER TABLE exams ADD COLUMN batch_id INTEGER NULL",
+                        "ALTER TABLE exams ADD COLUMN batch_id INTEGER"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
         finally:
             _db.close()
     except Exception:

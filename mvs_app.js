@@ -6666,7 +6666,7 @@ function spCdStart(){
 /* student: next upcoming scheduled test (shared by banner + dedupe + reminder) */
 async function _sUpcomingExam(){
   try{
-    const exs=await api('/api/student/exams');
+    const exs=await api('/api/student/exams'+_bq());
     const fut=exs.map(e=>({e,sch:spSchedOf(e)}))
       .filter(x=>x.sch&&x.sch.getTime()>Date.now()&&x.e.status!=='graded'&&x.e.status!=='grading')
       .sort((a,b)=>a.sch.getTime()-b.sch.getTime());
@@ -12225,8 +12225,14 @@ function _selBatchChange(bid){
   try{ applyBatchMode(); }catch(e){}
   toast('Switched to '+((b&&b.name)||'batch'));
   try{ _apiForget(''); }catch(e){}   // batch scopes timetable/dashboard/materials/progress -> drop all cache
-  try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
-  setTimeout(function(){ _batchWelcomePopup(); }, 300);
+  // smooth transition: fade the app out, reload for the new batch, fade back in (no glitch)
+  var _app=document.getElementById('student-app')||document.body;
+  try{ _app.style.transition='opacity .16s ease'; _app.style.opacity='0.35'; }catch(e){}
+  setTimeout(function(){
+    try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
+    setTimeout(function(){ try{ _app.style.opacity='1'; }catch(e){} }, 240);
+  }, 110);
+  setTimeout(function(){ _batchWelcomePopup(); }, 400);
 }
 function _restoreSelBatch(){
   try{
@@ -15066,7 +15072,7 @@ async function loadSDashboard(){
       _ms.doubt={total:(db2||[]).length,res:res,pend:(db2||[]).length-res};
     }catch(e){}
     try{
-      const bb2=await api('/api/student/batch-board');
+      const bb2=await api('/api/student/batch-board'+_bq());
       if(bb2&&bb2.me) _ms.rank={r:bb2.me.rank,t:bb2.total};
     }catch(e){}
     // v114: Classes Material ke naye uploads ka nav badge (cache-friendly)
@@ -16318,7 +16324,7 @@ async function loadSTests(){
   const el=document.getElementById('s-tests-content');
   softSpin(el);
   try{
-    const exams=await api('/api/student/exams');
+    const exams=await api('/api/student/exams'+_bq());
     const F=window._sTestFilter||'mcq';
     const mcqs=exams.filter(e=>e.test_type==='mcq'), subs=exams.filter(e=>e.test_type!=='mcq');
     const graded=exams.filter(e=>e.status==='graded');
@@ -17345,7 +17351,7 @@ async function loadSProgress(){
     // ---------- 1) BATCH RANKING (podium + your rank + clickable list) ----------
     let rankSec='';
     try{
-      const bb=await api('/api/student/batch-board');
+      const bb=await api('/api/student/batch-board'+_bq());
       window._sbbRows=bb.rows||[]; window._sbbMe=bb.me||null;
       if(_sbbRows.length){
         const medal=['#f59e0b','#a2946d','#b45309'];
