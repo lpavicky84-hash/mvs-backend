@@ -461,6 +461,7 @@ class DppPack(Base):
     questions   = Column(JSON, default=list)              # created DPP ke Q+A
     q_pdf       = Column(_FILETEXT)  # base64 — questions paper (no answers)
     s_pdf       = Column(_FILETEXT)  # base64 — solutions paper (with answers)
+    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped DPP (NULL = global/legacy)
     created_at  = Column(DateTime, default=func.now())
 
 

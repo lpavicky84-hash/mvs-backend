@@ -12170,8 +12170,16 @@ function _bwInjectCSS(){
 }
 function _selBatch(){ try{ return parseInt(localStorage.getItem('sel_batch')||'0',10)||0; }catch(e){ return 0; } }
 function _bq(){ var b=_selBatch(); return b?('?batch='+b):''; }
-async function _mountBatchSelector(){
-  var host=document.getElementById('s-batch-sel'); if(!host) return;
+function _pageBatchBar(contentId){
+  try{
+    var el=document.getElementById(contentId); if(!el) return;
+    var host=el.querySelector('.s-pagebat'); 
+    if(!host){ host=document.createElement('div'); host.className='s-pagebat'; host.id=contentId+'-batbar'; el.insertBefore(host, el.firstChild); }
+    _mountBatchSelector(host.id);
+  }catch(e){}
+}
+async function _mountBatchSelector(hostId){
+  var host=document.getElementById(hostId||'s-batch-sel'); if(!host) return;
   try{
     var d=await api('/api/student/my-batches');
     var list=(d&&d.batches)||[];
@@ -14741,6 +14749,9 @@ function _sLoadPage(page){
   else if(page==='qbank') loadSQBank();
   else if(page==='complaints') loadSComplaints();
   else if(page==='feedback') loadSFeedback();
+  // batch switcher on the content pages (after the async loader paints)
+  var _cid={timetable:'s-timetable-content',materials:'s-materials-content',dpp:'s-dpp-content',tests:'s-tests-content',progress:'s-progress-content'}[page];
+  if(_cid){ [180,600,1400].forEach(function(ms){ setTimeout(function(){ _pageBatchBar(_cid); }, ms); }); }
 }
 
 async function loadSProfile(){
@@ -15039,7 +15050,7 @@ async function loadSDashboard(){
     // ---- My Stats (clickable cards: syllabus / DPP / tests / doubts + batch rank chip)
     let _ms={syl:null,dpp:null,test:null,doubt:null,rank:null};
     try{
-      const perf=await api('/api/student/performance');
+      const perf=await api('/api/student/performance'+_bq());
       _ms.dpp={done:perf.dpp.done,total:perf.dpp.total,pend:Math.max(0,perf.dpp.total-perf.dpp.done)};
       _ms.test={done:perf.tests.done,total:perf.tests.total,miss:Math.max(0,perf.tests.total-perf.tests.done)};
     }catch(e){}
@@ -15343,7 +15354,7 @@ async function loadSMaterials(){
   softSpin(el);
   try{
     // DPP section ke packs bhi laao — table me part-wise / whole-chapter rows banenge
-    try{ const dd=await api('/api/student/dpp-packs'); window._sMatDppPacks=dd.packs||[]; }catch(e){ window._sMatDppPacks=[]; }
+    try{ const dd=await api('/api/student/dpp-packs'+_bq()); window._sMatDppPacks=dd.packs||[]; }catch(e){ window._sMatDppPacks=[]; }
     const mats=await api('/api/student/materials-v2'+_bq());
     window._sMats=mats;
     window._sMatNew=_matNewIds('student',mats); _matBadge('student');
@@ -15489,7 +15500,7 @@ async function _loadSDppReal(){
   const el=document.getElementById('s-dpp-content');
   softSpin(el);
   try{
-    const d=await api('/api/student/dpp-packs');
+    const d=await api('/api/student/dpp-packs'+_bq());
     const packs=(d&&d.packs)||[];
     window._sDppPacks=packs;
     let html=`<div class="card"><div class="card-header"><h3> DPP — Practice & Submit</h3><span class="chip-sub">${packs.length} DPP</span></div><div class="card-body">`;
@@ -16262,7 +16273,7 @@ async function submitDppFile(pid){
 async function openDppRemarks(pid){
   showModal(' Teacher Remarks','<div class="spinner"></div>','');
   try{
-    const d=await api('/api/student/dpp-packs');
+    const d=await api('/api/student/dpp-packs'+_bq());
     const pk=((d&&d.packs)||[]).find(x=>x.id===pid);
     if(!pk) throw new Error('nf');
     document.getElementById('modal-body').innerHTML=
@@ -17378,7 +17389,7 @@ async function loadSProgress(){
     }catch(e1){}
 
     // ---------- 3) STUDY SNAPSHOT (simple real numbers) ----------
-    const d=await api('/api/student/performance');
+    const d=await api('/api/student/performance'+_bq());
     const snap=`<div class="card"><div class="card-header"><h3>Study Snapshot</h3></div><div class="card-body">
       <div class="ovv-grid">
         <div class="ovv-cell"><div class="ovv-num">${d.lectures.verified}/${d.lectures.total}</div><div class="ovv-lbl">Chapters Done</div></div>

@@ -105,6 +105,23 @@ def _sel_batch_subjects(db, sp, batch=None):
     return stu
 
 
+def _dpp_batch_filter(db, sp, only_batch_id=None):
+    """Self-contained DPP scoping (mirrors _mat_batch_filter): a batch that has its OWN
+    timetable/material/DPP shows ONLY its own DPP packs (a new Crash Course starts empty);
+    a legacy batch (Oct 2026 / April 2027 / Stream 2) keeps showing the global DPP packs."""
+    from models import DppPack, TimetableEntry, Material
+    from sqlalchemy import or_ as _or
+    bids = _student_batch_ids(db, sp, only_batch_id)
+    if not bids:
+        return DppPack.batch_id.is_(None)
+    has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
+               or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
+               or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None)
+    if has_own:
+        return DppPack.batch_id.in_(bids)
+    return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(bids))
+
+
 def _mat_batch_filter(db, sp, only_batch_id=None):
     """Material filter scoped to the student's SELECTED batch.
     A 'self-contained' batch — one that has its OWN timetable or its OWN material — shows ONLY
@@ -2421,14 +2438,19 @@ def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
 
 # ================== STUDENT DPP PACKS ==================
 @router.get("/dpp-packs")
-def student_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_dpp_packs(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Mere subjects+class ke DPP packs + meri submission status. (BATCHED — no N+1:
     ~6 queries total instead of ~5 per pack.)"""
     from models import DppPack, DppAnswer, TeacherProfile, User
     from sqlalchemy import func as _func
     sp = get_student_profile(current_user, db)
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, sp.subjects or []))))
+    _dsubs = _sel_batch_subjects(db, sp, batch)
+    packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf))
+             .filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, _dsubs))),
+                     _dpp_batch_filter(db, sp, batch))
              .order_by(DppPack.created_at.desc()).all())
     # class filter first
     packs = [pk for pk in packs
@@ -2996,16 +3018,18 @@ _STU_PERF_TTL = 30   # seconds — lakhs students par heavy endpoint ko fast rak
 
 
 @router.get("/performance")
-def student_performance(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_performance(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Everything the Academic Performance Dashboard needs, all from real data."""
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
-    # short-TTL cache (per student) — repeated polls/re-renders recompute na karein
-    _ck = sp.id
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
+    # short-TTL cache (per student+batch) — repeated polls/re-renders recompute na karein
+    _ck = (sp.id, batch)
     _ce = _STU_PERF_CACHE.get(_ck)
     if _ce and (_stu_perf_time.time() - _ce[0]) < _STU_PERF_TTL:
         return _ce[1]
-    subs = sp.subjects or []
+    subs = _sel_batch_subjects(db, sp, batch)
     today = ist_today()
     st = _get_stats(db, sp.id)
 
@@ -3037,7 +3061,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
     answers = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.student_id == sp.id, Material.material_type == "answer").all()
     done_parents = set(a.parent_id for a in answers if a.parent_id)
-    dpps = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs), Material.material_type == "dpp").all() if subs else []
+    dpps = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs), _mat_batch_filter(db, sp, batch), Material.material_type == "dpp").all() if subs else []
     dpp_total = len(dpps); dpp_done = sum(1 for m in dpps if m.id in done_parents)
     # new DPP packs (v42+) bhi count karo — warna stats 0/0 dikhta hai
     try:
@@ -3046,7 +3070,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
         counted_ids = set()
         if subs:
             for pk in db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(
-                    DppPack.subject.in_(list(_subj_scope_for(db, DppPack, subs)))).all():
+                    DppPack.subject.in_(list(_subj_scope_for(db, DppPack, subs))), _dpp_batch_filter(db, sp, batch)).all():
                 pk_cls = _class_digits(pk.class_name)
                 if my_cls and pk_cls and pk_cls != my_cls:
                     continue
@@ -3079,7 +3103,7 @@ def student_performance(db: Session = Depends(get_db), current_user=Depends(get_
             viewed.add(v.material_id)
     except Exception:
         pass
-    notes = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs), Material.material_type == "notes").all() if subs else []
+    notes = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs), _mat_batch_filter(db, sp, batch), Material.material_type == "notes").all() if subs else []
     learn = notes + dpps
     read_pct = round(len([m for m in learn if m.id in viewed]) * 100 / len(learn)) if learn else 0
 
