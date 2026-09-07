@@ -1141,6 +1141,10 @@ def _report_duration_min(e):
 @router.get("/timetable-plan")
 def timetable_plan(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
+    # Default to the student's PRIMARY batch when the app didn't pass one, so a multi-batch
+    # student never sees a mixed "all batches" timetable (e.g. finished batch + crash course).
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     from models import TimetableEntry
     from sqlalchemy import or_
     _scope = _subj_scope_for(db, TimetableEntry, sp.subjects or [])

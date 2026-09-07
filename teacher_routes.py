@@ -1035,6 +1035,8 @@ def _serialize_tt(e, canon=None):
         "start_time": getattr(e, "start_time", None),
         "end_time": getattr(e, "end_time", None),
         "resched_by": getattr(e, "resched_by", None),
+        "batch_id": getattr(e, "batch_id", None),
+        "youtube_link": getattr(e, "youtube_link", None) or "",
         "completed_at": str(getattr(e, "completed_at", "")) if getattr(e, "completed_at", None) else None
     }
 

@@ -1558,20 +1558,41 @@ async function ttbTeacherDelPending(subject,class_name,batch_id){
 }
 // ===== Admin approval queue =====
 async function openTTApprovals(){
-  _ttbInjectCSS();
+  _ttaInjectCSS();
   var groups=[];
   try{ var d=await api('/api/admin/timetable-pending'); groups=(d&&d.groups)||[]; }catch(e){ toast('Could not load',true); }
   var body=groups.length?groups.map(function(g){
-    var smp=(g.sample||[]).map(function(s){return '<div class="ttb-smp">'+(s.date?esc(s.date):'')+(s.time?' \u00b7 '+esc(s.time):'')+' \u2014 '+esc(s.chapter||'')+'</div>';}).join('');
-    return '<div class="vtc-row bm-card"><div class="bm-row1"><span class="sbb-av">'+ic('calendar')+'</span><div class="vtc-main"><div style="font-weight:800">'+esc(g.subject)+' \u00b7 '+esc(g.batch)+'</div><div class="vtc-sub">'+esc(g.teacher||'')+' \u00b7 '+esc(g.class_name||'')+' \u00b7 <b>'+g.count+' classes</b></div></div>'
-      +'<button class="btn btn-primary btn-sm" onclick="ttbApprove('+(g.teacher_id||0)+',\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">'+ic('check')+' Approve</button>'
-      +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="ttbReject('+(g.teacher_id||0)+',\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">Reject</button></div>'
-      +(smp?'<div class="bm-row2" style="flex-direction:column;align-items:flex-start;gap:3px">'+smp+'</div>':'')+'</div>';
-  }).join(''):'<div class="vtc-empty">No timetables awaiting approval.</div>';
+    var smp=(g.sample||[]).map(function(s){return '<div class="tta-smp"><span class="tta-when">'+(s.date?esc(s.date):'')+(s.time?' \u00b7 '+esc(s.time):'')+'</span>'+esc(s.chapter||'')+'</div>';}).join('');
+    var _s=esc((g.subject||'').replace(/'/g,'')), _c=esc((g.class_name||'').replace(/'/g,''));
+    return '<div class="tta-card">'
+      +'<div class="tta-top"><span class="tta-ic">'+ic('calendar')+'</span><div class="tta-hd"><div class="tta-title">'+esc(g.subject)+'</div><div class="tta-batch">'+esc(g.batch||'No batch')+'</div></div><span class="tta-count">'+g.count+' class'+(g.count===1?'':'es')+'</span></div>'
+      +'<div class="tta-meta">'+esc(g.teacher||'\u2014')+(g.class_name?(' \u00b7 '+esc(g.class_name)):'')+'</div>'
+      +(smp?'<div class="tta-samples">'+smp+'</div>':'')
+      +'<div class="tta-acts"><button class="btn btn-ghost btn-sm tta-rej" onclick="ttbReject('+(g.teacher_id||0)+',\''+_s+'\',\''+_c+'\','+(g.batch_id||0)+')">'+ic('trash')+' Reject</button><button class="btn btn-primary btn-sm" onclick="ttbApprove('+(g.teacher_id||0)+',\''+_s+'\',\''+_c+'\','+(g.batch_id||0)+')">'+ic('check')+' Approve &amp; make live</button></div>'
+      +'</div>';
+  }).join(''):'<div class="tta-empty">'+ic('check')+'<span>No timetables are waiting for approval.</span></div>';
   showModal('Timetable Approvals',
-    '<p class="vtc-help">Teachers ke banaye timetables yahan approve karein. Approve karne par woh live ho jaate hain aur teacher unhe edit nahi kar sakta.</p>'
-    +'<div class="vtc-list">'+body+'</div>',
+    '<div class="tta-note">'+ic('shield')+'<span>Timetables that <b>teachers</b> built are waiting here. When you approve, that batch\u2019s timetable goes <b>live for its students</b> and the teacher can no longer edit it. Each approval applies only to the <b>batch shown on the card</b>.</span></div>'
+    +'<div class="tta-list">'+body+'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+function _ttaInjectCSS(){
+  if(document.getElementById('tta-css')) return;
+  var s=document.createElement('style'); s.id='tta-css';
+  s.textContent='.tta-note{display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.12),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.26);border-radius:16px;padding:13px 15px;font-size:.83rem;color:var(--text,#4a3d16);line-height:1.5;margin-bottom:14px}'
+    +'.tta-note svg{width:20px;height:20px;flex:0 0 auto;color:var(--primary,#b8941f)}'
+    +'.tta-list{display:flex;flex-direction:column;gap:12px}'
+    +'.tta-card{border:1px solid var(--border,rgba(184,148,31,.22));border-radius:16px;padding:15px 16px;background:var(--card,#fffdf6);box-shadow:0 8px 22px -16px rgba(120,90,10,.4)}'
+    +'.tta-top{display:flex;align-items:center;gap:11px}'
+    +'.tta-ic{width:38px;height:38px;flex:0 0 auto;border-radius:11px;background:rgba(184,148,31,.14);color:var(--primary,#9a7d1a);display:inline-flex;align-items:center;justify-content:center}.tta-ic svg{width:18px;height:18px}'
+    +'.tta-hd{flex:1;min-width:0}.tta-title{font-weight:800;font-size:1.02rem;color:var(--text,#2b2410)}.tta-batch{font-size:.8rem;font-weight:700;color:var(--primary,#9a7d1a)}'
+    +'.tta-count{flex:0 0 auto;font-size:.68rem;font-weight:800;padding:4px 10px;border-radius:999px;background:rgba(184,148,31,.15);color:#8a6d1a}'
+    +'.tta-meta{font-size:.78rem;color:var(--text-muted,#a08a55);margin:8px 0 0 49px}'
+    +'.tta-samples{margin:10px 0 0 49px;display:flex;flex-direction:column;gap:4px;background:rgba(184,148,31,.05);border-radius:10px;padding:8px 11px}'
+    +'.tta-smp{font-size:.79rem;color:var(--text,#3a2f10);line-height:1.4}.tta-when{font-weight:700;color:var(--text-muted,#a08a55);margin-right:7px}'
+    +'.tta-acts{display:flex;gap:8px;margin-top:13px}.tta-acts .btn{flex:1}.tta-rej{color:#c0392b}'
+    +'.tta-empty{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text-muted,#a08a55);padding:30px 16px;font-size:.9rem}.tta-empty svg{width:34px;height:34px;color:rgba(16,185,129,.7)}';
+  document.head.appendChild(s);
 }
 async function ttbApprove(tid,subject,class_name,batch_id){
   try{ var d=await api('/api/admin/timetable-approve','POST',{teacher_id:tid,subject:subject,class_name:class_name,batch_id:batch_id}); toast((d.approved||0)+' classes approved \u2014 now live.'); openTTApprovals(); _apiBust&&_apiBust(); }
@@ -3626,7 +3647,17 @@ async function loadTTimetable(){
       return;
     }
     _ttEntries=await api('/api/teacher/my-timetable');
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
+    if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
+    var _bIds={}; (_ttEntries||[]).forEach(function(e){ if(e.batch_id) _bIds[e.batch_id]=1; });
+    var _bList=(window._ttBatchList||[]).filter(function(b){ return _bIds[b.id]; });
+    var _hasGlobal=(_ttEntries||[]).some(function(e){ return !e.batch_id; });
+    var _batSelHtml='';
+    if(_bList.length+(_hasGlobal?1:0)>1){
+      _batSelHtml='<select class="input tt-batsel" onchange="tSetTTBatch(this.value)" style="max-width:230px;font-weight:700"><option value="">All courses</option>'
+        +_bList.map(function(b){return '<option value="'+b.id+'"'+(String(_ttBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('')
+        +(_hasGlobal?'<option value="__none__"'+(_ttBatch==='__none__'?' selected':'')+'>No course (global)</option>':'')+'</select>';
+    }
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${_batSelHtml}<button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||'';
     // apni photo har subject par timeline me dikhe
     try{
@@ -3641,8 +3672,12 @@ async function loadTTimetable(){
 }
 function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 let _ttClass='';
+let _ttBatch='';
+function tSetTTBatch(v){ _ttBatch=v; loadTTimetable(); }
 function tFilteredTT(){
   return (_ttEntries||[]).filter(e=>{
+    if(_ttBatch==='__none__'){ if(e.batch_id) return false; }
+    else if(_ttBatch){ if(String(e.batch_id||'')!==String(_ttBatch)) return false; }
     if(_ttClass==='10') return /(^|[^0-9])10([^0-9]|$)/.test(e.class_name||'');
     if(_ttClass==='12') return /12/.test(e.class_name||'');
     return true;
