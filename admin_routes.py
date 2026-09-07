@@ -5147,6 +5147,120 @@ def backfill_medium_from_portal(payload: dict = None, db: Session = Depends(get_
             "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
 
 
+# ===== STUDENT REQUESTS (subject / batch change — student asks, admin approves) =====
+def _student_requests_list(db):
+    from models import AppSetting
+    import json as _json
+    row = db.query(AppSetting).filter(AppSetting.key == "student_requests").first()
+    if not row or not row.value:
+        return []
+    try:
+        d = _json.loads(row.value)
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def _student_requests_save(db, lst):
+    from models import AppSetting
+    import json as _json
+    row = db.query(AppSetting).filter(AppSetting.key == "student_requests").first()
+    if not row:
+        row = AppSetting(key="student_requests")
+        db.add(row)
+    row.value = _json.dumps(lst[-600:])
+    db.commit()
+
+
+def add_student_request(db, rec):
+    """Append a pending change request (called from the student endpoints)."""
+    lst = _student_requests_list(db)
+    rec["id"] = (max([int(r.get("id", 0) or 0) for r in lst] + [0]) + 1)
+    rec.setdefault("status", "pending")
+    lst.append(rec)
+    _student_requests_save(db, lst)
+    return rec["id"]
+
+
+@router.get("/student-requests")
+def admin_student_requests(status: str = "pending", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Student change requests for the admin queue. Refreshes each student's CURRENT
+    subjects/batch live so the admin sees the real before/after."""
+    from models import StudentProfile
+    lst = _student_requests_list(db)
+    pending = sum(1 for r in lst if (r.get("status") or "pending") == "pending")
+    if status:
+        lst = [r for r in lst if (r.get("status") or "pending") == status]
+    out = []
+    for r in sorted(lst, key=lambda x: x.get("at", ""), reverse=True)[:300]:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == r.get("student_id")).first()
+        out.append({**r,
+                    "current_subjects": ((sp.subjects or []) if sp else []),
+                    "current_batch": ((sp.batch_name if sp else "") or ""),
+                    "student_name": (sp.user.name if sp and sp.user else r.get("name") or "Student"),
+                    "phone": ((sp.phone if sp else "") or r.get("phone") or ""),
+                    "class_level": ((sp.class_level if sp else "") or r.get("class_level") or ""),
+                    "exists": bool(sp)})
+    return {"requests": out, "pending": pending}
+
+
+@router.get("/student-requests/count")
+def admin_student_requests_count(db: Session = Depends(get_db), _=Depends(get_admin)):
+    return {"pending": sum(1 for r in _student_requests_list(db) if (r.get("status") or "pending") == "pending")}
+
+
+@router.post("/student-requests/{rid}/review")
+def admin_student_request_review(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve -> apply the change to the student's profile automatically (subjects or
+    batch) and notify them. Reject -> just close it and notify. No manual editing needed."""
+    from models import StudentProfile, Notification
+    from datetime import datetime as _dt
+    action = (payload.get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action must be approve or reject")
+    lst = _student_requests_list(db)
+    rec = next((r for r in lst if int(r.get("id", 0) or 0) == int(rid)), None)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if (rec.get("status") or "pending") != "pending":
+        raise HTTPException(status_code=400, detail="This request is already " + str(rec.get("status")))
+    sp = db.query(StudentProfile).filter(StudentProfile.id == rec.get("student_id")).first()
+    applied = ""
+    if not sp:
+        rec["status"] = "rejected"
+        _student_requests_save(db, lst)
+        raise HTTPException(status_code=404, detail="Student no longer exists")
+    if action == "approve":
+        if rec.get("type") == "subject":
+            subs = rec.get("requested") or []
+            sp.subjects = (_SR.canon_list(subs, sp.class_level) if _SR else subs)
+            applied = "Subjects updated"
+        elif rec.get("type") == "batch":
+            bn = (rec.get("requested") or "").strip()
+            if bn:
+                sp.batch_name = bn
+                try:
+                    sp.batch_id = _resolve_batch_id(db, bn)
+                except Exception:
+                    pass
+                applied = "Batch changed to " + bn
+        rec["status"] = "approved"
+    else:
+        rec["status"] = "rejected"
+    rec["reviewed_at"] = _dt.utcnow().isoformat()
+    _student_requests_save(db, lst)   # commits sp changes too (same session)
+    if sp.user:
+        if action == "approve":
+            msg = "Your %s-change request has been approved. %s." % (rec.get("type", ""), applied or "Done")
+        else:
+            msg = "Your %s-change request was reviewed but not approved. Contact the admin if needed." % rec.get("type", "")
+        db.add(Notification(user_id=sp.user.id,
+                            title=("\u2705 Request approved" if action == "approve" else "Request reviewed"),
+                            message=msg, notif_type="student_request"))
+        db.commit()
+    return {"ok": True, "status": rec["status"], "applied": applied}
+
+
 # ==================================================================
 #  WHATSAPP — WELCOME MESSAGE (sirf MVS App students ko)
 # ==================================================================

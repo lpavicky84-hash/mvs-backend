@@ -988,7 +988,47 @@ def student_request_subject_change(payload: dict = Body(...), db: Session = Depe
         db.add(Notification(user_id=a.id, title="\U0001f4da " + title, message=msg,
                             notif_type="subject_request"))
     db.commit()
+    try:
+        from admin_routes import add_student_request
+        from datetime import datetime as _dt
+        add_student_request(db, {"type": "subject", "student_id": sp.id,
+                                 "name": current_user.name or "", "phone": sp.phone or "",
+                                 "class_level": sp.class_level or "", "requested": want,
+                                 "note": note, "at": _dt.utcnow().isoformat()})
+    except Exception:
+        pass
     return {"ok": True, "message": "Your request has been sent to the admin. They'll update your subjects soon."}
+
+
+@router.post("/request-batch-change")
+def student_request_batch_change(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Batch shown is wrong / student wants a different batch -> send a request to the admin
+    (batch is not student-editable). Admin approves it from the Student Requests section."""
+    from models import Notification, User, UserRole
+    sp = get_student_profile(current_user, db)
+    bn = (payload.get("batch_name") or "").strip()[:80]
+    note = (payload.get("note") or "").strip()[:300]
+    if not bn and not note:
+        raise HTTPException(status_code=400, detail="Please choose the batch you want or add a note.")
+    cur = sp.batch_name or "\u2014"
+    msg = ("%s (%s%s) says their batch is wrong / wants a change.\nCurrent: %s\nRequested: %s%s"
+           % (current_user.name or "A student", (sp.phone or "no phone"),
+              (" \u00b7 Class " + sp.class_level) if sp.class_level else "",
+              cur, (bn or "\u2014"), ("\nNote: " + note) if note else ""))
+    for a in db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all():
+        db.add(Notification(user_id=a.id, title="\U0001f501 Batch change request", message=msg,
+                            notif_type="batch_request"))
+    db.commit()
+    try:
+        from admin_routes import add_student_request
+        from datetime import datetime as _dt
+        add_student_request(db, {"type": "batch", "student_id": sp.id,
+                                 "name": current_user.name or "", "phone": sp.phone or "",
+                                 "class_level": sp.class_level or "", "requested": bn,
+                                 "note": note, "at": _dt.utcnow().isoformat()})
+    except Exception:
+        pass
+    return {"ok": True, "message": "Your batch change request has been sent to the admin."}
 
 
 @router.get("/available-subjects")

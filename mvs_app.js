@@ -8971,6 +8971,7 @@ function adminAllowed(page){
   const secs=me.sections||[];
   if(page==='dpptracker') return secs.includes('tests')||secs.includes('dpptracker');
   if(page==='batches') return secs.includes('batches')||secs.includes('students');
+  if(page==='requests') return secs.includes('requests')||secs.includes('students');
   if(page==='ytasks') return secs.includes('ytasks')||secs.includes('vtasks');
   return secs.includes(page);
 }
@@ -9006,6 +9007,7 @@ function openAdmin(){
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
   try{ initAdminBatches(); }catch(e){}
+  try{ initAdminRequests(); }catch(e){}
   try{ initAdminYtTasks(); }catch(e){}
   try{ initAdminProdTeam(); }catch(e){}
   try{ initAdminCategories(); }catch(e){}
@@ -9138,6 +9140,7 @@ function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
   else if(page==='dpptracker') loadADppTracker();
   else if(page==='batches') loadABatches();
+  else if(page==='requests') loadAStudentRequests();
   else if(page==='prodteam') loadAProductionTeam();
   else if(page==='categories') loadACategories();
   else if(page==='matcheck') loadAMatCheck();
@@ -11842,6 +11845,83 @@ async function loadTMyBatches(){
     el.innerHTML='<div class="sm-head" style="padding:0 4px 12px;border:none"><h2 style="font-size:1.3rem">My Batches</h2></div><div class="mb-grid">'+cards+'</div>';
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+// --- Admin "Student Requests" sidebar section (subject/batch change approvals) ---
+function initAdminRequests(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="aPage(\u0027requests"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'students'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('requests',this)");
+    d.innerHTML=ic('bell')+'<span>Student Requests</span><span class="nav-req-badge" id="nav-req-badge" style="display:none"></span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-requests')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-requests';
+    pg.innerHTML='<div id="a-requests-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+  try{ _reqInjectCSS(); refreshReqBadge(); }catch(e){}
+}
+async function refreshReqBadge(){
+  try{ var r=await api('/api/admin/student-requests/count'); var b=document.getElementById('nav-req-badge');
+    if(b){ if(r&&r.pending>0){ b.textContent=r.pending; b.style.display='inline-flex'; } else b.style.display='none'; } }catch(e){}
+}
+async function loadAStudentRequests(){
+  var el=document.getElementById('a-requests-content'); if(!el) return;
+  _reqInjectCSS(); softSpin(el);
+  try{
+    var r=await api('/api/admin/student-requests?status=pending'); var list=(r&&r.requests)||[];
+    var head='<div class="sm-head" style="padding:0 4px 12px;border:none"><h2 style="font-size:1.3rem">Student Requests</h2><span class="chip">'+(r.pending||0)+' pending</span></div>';
+    if(!list.length){ el.innerHTML=head+'<div class="empty-state"><p>No pending requests. When a student asks to change their subjects or batch, it shows up here.</p></div>'; refreshReqBadge(); return; }
+    el.innerHTML=head+'<div class="req-list">'+list.map(_reqCard).join('')+'</div>';
+    refreshReqBadge();
+  }catch(e){ el.innerHTML=errHtml(e); }
+}
+function _reqCard(r){
+  var isSub=r.type==='subject';
+  var when=(r.at||'').slice(0,10);
+  var reqTxt=isSub?((r.requested||[]).join(', ')||'\u2014'):(r.requested||'\u2014');
+  var curTxt=isSub?((r.current_subjects||[]).join(', ')||'\u2014'):(r.current_batch||'\u2014');
+  return '<div class="req-card">'
+    +'<div class="req-top"><span class="req-tag '+(isSub?'sub':'bat')+'">'+ic(isSub?'book':'folder')+' '+(isSub?'Subjects':'Batch')+'</span><span class="req-when">'+esc(when)+'</span></div>'
+    +'<div class="req-name">'+esc(r.student_name||'Student')+'</div>'
+    +'<div class="req-meta">'+esc(r.phone||'')+(r.class_level?(' \u00b7 Class '+esc(r.class_level)):'')+(r.exists?'':' \u00b7 <span style="color:#dc2626">student deleted</span>')+'</div>'
+    +'<div class="req-diff"><div><div class="req-k">Current</div><div class="req-v">'+esc(curTxt)+'</div></div><div class="req-arrow">'+ic('refresh')+'</div><div><div class="req-k">Requested</div><div class="req-v req-new">'+esc(reqTxt)+'</div></div></div>'
+    +(r.note?('<div class="req-note">\u201c'+esc(r.note)+'\u201d</div>'):'')
+    +'<div class="req-acts"><button class="btn btn-ghost btn-sm" onclick="reqReview('+r.id+',\'reject\')">'+ic('trash')+' Reject</button><button class="btn btn-primary btn-sm" onclick="reqReview('+r.id+',\'approve\')">'+ic('check')+' Approve &amp; apply</button></div>'
+    +'</div>';
+}
+async function reqReview(id,action){
+  if(action==='approve'){ if(!confirm('Approve this request and apply the change to the student now?')) return; }
+  try{ var r=await api('/api/admin/student-requests/'+id+'/review','POST',{action:action});
+    toast(action==='approve'?('Approved \u2014 '+(r.applied||'done')):'Request rejected'); loadAStudentRequests(); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+function _reqInjectCSS(){
+  if(document.getElementById('req-css')) return;
+  var s=document.createElement('style'); s.id='req-css';
+  s.textContent='.req-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}'
+    +'.req-card{background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.2));border-radius:16px;padding:15px 16px;box-shadow:0 8px 22px -16px rgba(120,90,10,.4)}'
+    +'.req-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}'
+    +'.req-tag{display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px}'
+    +'.req-tag svg{width:12px;height:12px}'
+    +'.req-tag.sub{background:rgba(184,148,31,.14);color:#9a7d1a}.req-tag.bat{background:rgba(139,92,246,.14);color:#7c3aed}'
+    +'.req-when{font-size:.7rem;color:var(--text-muted,#a08a55)}'
+    +'.req-name{font-size:1.02rem;font-weight:800;color:var(--text,#2b2410)}'
+    +'.req-meta{font-size:.76rem;color:var(--text-muted,#a08a55);margin-bottom:10px}'
+    +'.req-diff{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;background:rgba(184,148,31,.05);border-radius:12px;padding:10px 12px}'
+    +'.req-k{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted,#a08a55);margin-bottom:3px}'
+    +'.req-v{font-size:.82rem;font-weight:600;color:var(--text,#3a2f10);line-height:1.35;word-break:break-word}'
+    +'.req-v.req-new{color:#059669}'
+    +'.req-arrow{color:var(--primary,#b8941f)}.req-arrow svg{width:16px;height:16px}'
+    +'.req-note{margin-top:10px;font-size:.8rem;color:var(--text,#4a3d16);background:rgba(184,148,31,.06);border-radius:10px;padding:8px 10px}'
+    +'.req-acts{display:flex;gap:8px;margin-top:12px}.req-acts .btn{flex:1}'
+    +'.nav-req-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:10px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.64rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center}';
+  document.head.appendChild(s);
+}
+
 // --- Admin "Batches" sidebar section (nav item + page injected via JS) ---
 function initAdminBatches(){
   var app=document.getElementById('admin-app'); if(!app) return;
@@ -14464,6 +14544,7 @@ async function loadSProfile(){
         <div class="prof-id"><h2>${esc(p.name||'Student')}</h2><span class="chip" style="margin-top:6px">${esc(p.batch_name||'MVS Foundation Student')}</span></div>
         <button class="btn btn-primary btn-sm" onclick="openSetStudentPhoto()">${ic('upload')} Change Photo</button>
         <button class="btn btn-ghost btn-sm" onclick="openEditMyProfile()">${ic('edit')} Edit Details</button>
+        <button class="btn btn-ghost btn-sm" onclick="openRequestBatch()">${ic('folder')} Request batch change</button>
       </div>
       <div class="prof-grid">
         ${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}
@@ -14535,6 +14616,25 @@ async function submitSubjectRequest(){
   const note=val('rsub-note');
   if(!subs.length && !note){ toast('Pick subjects or add a note.'); return; }
   try{ const r=await api('/api/student/request-subject-change','POST',{subjects:subs,note:note}); toast((r&&r.message)||'Request sent.'); closeModal(); }
+  catch(e){ toast((e&&e.message)||'Could not send request',true); }
+}
+async function openRequestBatch(){
+  const p=window._sProf||{};
+  showModal('Request Batch Change','<div class="spinner"></div>','');
+  let batches=[];
+  try{ batches=await api('/api/student/batches'); }catch(e){}
+  const cur=(p.batch_name||'').trim();
+  const opts='<option value="">— Select the correct batch —</option>'+(batches||[]).map(b=>`<option value="${esc(b.name)}"${cur===b.name?' selected':''}>${esc(b.name)}</option>`).join('');
+  showModal('Request Batch Change',
+    '<p class="vtc-help">Your current batch is <b>'+esc(cur||'—')+'</b>. If it\u2019s wrong, pick the correct one and send a request \u2014 the admin will update it.</p>'
+    +'<div class="form-group"><label>Correct batch</label><select class="input" id="rbat-sel">'+opts+'</select></div>'
+    +'<div class="form-group"><label>Note to admin (optional)</label><textarea class="input" id="rbat-note" rows="2" placeholder="Why is your batch wrong?"></textarea></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitBatchRequest()">Send request</button>');
+}
+async function submitBatchRequest(){
+  const bn=val('rbat-sel'); const note=val('rbat-note');
+  if(!bn && !note){ toast('Pick a batch or add a note.'); return; }
+  try{ const r=await api('/api/student/request-batch-change','POST',{batch_name:bn,note:note}); toast((r&&r.message)||'Request sent.'); closeModal(); }
   catch(e){ toast((e&&e.message)||'Could not send request',true); }
 }
 // ============ MANISH VERMA CLASSES APP — SMART OPEN ============
@@ -18137,7 +18237,7 @@ async function processExcel(){
 try{injectNavIcons();injectTopbarIcons();}catch(e){}
 try{initResponsiveCss();}catch(e){}
 try{initNavCollapse();}catch(e){}
-try{initAdminDppTracker();}catch(e){}try{initAdminBatches();}catch(e){}try{initAdminYtTasks();}catch(e){}
+try{initAdminDppTracker();}catch(e){}try{initAdminBatches();}catch(e){}try{initAdminRequests();}catch(e){}try{initAdminYtTasks();}catch(e){}
 try{initNavAccordion();}catch(e){}
 setTimeout(function(){ try{initNavAccordion();}catch(e){} },500);
 function initResponsiveCss(){
