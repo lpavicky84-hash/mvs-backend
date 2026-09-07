@@ -14097,7 +14097,7 @@ async function _attMountBatchBar(){
       +'<select class="input att-sel" onchange="_attSetBatch(this.value)"><option value=""'+(!window._attBatch?' selected':'')+'>All batches</option>'
         +grp('\uD83D\uDD34 Live',live)+grp('\u25B6 Recorded',rec)+grp('\u25B6 On-Demand',syc)
         +'<option value="global"'+(window._attBatch==='global'?' selected':'')+'>Global (no batch)</option></select>'
-      +((window._attBatch&&window._attBatch!=='global')?'<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button>':'')
+      +((window._attBatch&&window._attBatch!=='global')?'<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button><button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>':'')
       +'</div>';
   }catch(e){ host.innerHTML=''; }
 }
@@ -14323,6 +14323,16 @@ async function submitAdminMaterial(){
   }catch(e){ document.getElementById('am-status').innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload'; }
 }
 function aSetSubj(s){ _attActiveSub=decodeURIComponent(s); renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No entries',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true}); }
+async function _ttImportGlobal(bid){
+  var nm=((window._attBatchList||[]).filter(function(b){return String(b.id)===String(bid);})[0]||{}).name||'this batch';
+  if(!confirm('Copy the shared/global timetable of "'+nm+'"\u2019s subjects INTO this batch?\n\nThe batch will get its own copy of those subjects\u2019 timetable. Subjects it already has its own timetable for are skipped.')) return;
+  var rmGlobal=confirm('Also REMOVE those subjects from the global timetable afterwards?\n\nOK = remove global (do this only after every relevant batch has imported it).\nCancel = keep global as-is (safe).');
+  try{
+    var r=await api('/api/admin/timetable-import-global','POST',{batch_id:parseInt(bid,10),remove_global:!!rmGlobal});
+    toast((r.copied||0)+' class'+((r.copied||0)===1?'':'es')+' imported into '+nm+(r.subjects&&r.subjects.length?(' ('+r.subjects.join(', ')+')'):'')+(r.removed_global?(' \u00b7 '+r.removed_global+' removed from global'):''));
+    _apiForget('timetable'); _attEntries=await api('/api/admin/timetable-all'); aRenderTT();
+  }catch(e){ toast((e&&e.message)||'Could not import',true); }
+}
 async function setSubjMode(id,mode){
   try{ const r=await api('/api/admin/subjects/'+id+'/mode','POST',{mode}); await invalidateSubjects(); toast(r.message); loadASubjects(); }
   catch(e){ toast(e.message,true); }

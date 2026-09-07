@@ -3140,6 +3140,61 @@ def _ensure_tt_youtube_column(db):
     _TT_YT_READY = True
 
 
+@router.post("/timetable-import-global")
+def admin_timetable_import_global(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Copy the GLOBAL/legacy timetable (batch_id NULL) of a batch's subjects INTO that batch,
+    so the batch gets its own timetable and nothing shows as 'global' anymore. Additive and
+    idempotent (skips subjects the batch already has). Optionally remove the global copies
+    afterwards (remove_global=true) once every relevant batch has imported them.
+    Body: {"batch_id": <int>, "remove_global": <bool optional>}."""
+    from models import TimetableEntry, BatchSubject, Batch
+    _ensure_tt_youtube_column(db)
+    try:
+        bid = int(payload.get("batch_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="batch_id is required")
+    b = db.query(Batch).filter(Batch.id == bid).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    subs = [r[0] for r in db.query(BatchSubject.subject).filter(BatchSubject.batch_id == bid).distinct().all()]
+    subs = [s for s in subs if s]
+    if not subs:
+        raise HTTPException(status_code=400, detail="This batch has no subjects assigned yet. Use 'Assign Subjects' first.")
+    own = {r[0] for r in db.query(TimetableEntry.subject)
+           .filter(TimetableEntry.batch_id == bid).distinct().all()}
+    todo = [s for s in subs if s not in own]
+    copied = 0
+    subj_done = []
+    for s in todo:
+        rows = db.query(TimetableEntry).filter(
+            TimetableEntry.batch_id.is_(None), TimetableEntry.subject == s).all()
+        if not rows:
+            continue
+        for e in rows:
+            db.add(TimetableEntry(
+                teacher_id=e.teacher_id, subject=e.subject, class_name=e.class_name,
+                batch_id=bid, chapter=e.chapter, part=e.part, entry_date=e.entry_date,
+                day=e.day, time_text=getattr(e, "time_text", None),
+                entry_type=getattr(e, "entry_type", None) or "chapter",
+                status=getattr(e, "status", None) or "approved",
+                completed=bool(getattr(e, "completed", False)),
+                completed_at=getattr(e, "completed_at", None),
+                topic_covered=getattr(e, "topic_covered", None),
+                start_time=getattr(e, "start_time", None), end_time=getattr(e, "end_time", None),
+                homework=getattr(e, "homework", None), remarks=getattr(e, "remarks", None),
+                youtube_link=getattr(e, "youtube_link", None)))
+            copied += 1
+        subj_done.append(s)
+    removed = 0
+    if payload.get("remove_global") and subj_done:
+        removed = db.query(TimetableEntry).filter(
+            TimetableEntry.batch_id.is_(None), TimetableEntry.subject.in_(subj_done)
+        ).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "copied": copied, "subjects": subj_done,
+            "already_had": sorted(own), "removed_global": removed}
+
+
 @router.post("/timetable-create")
 def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
     """Build a timetable from the smart builder — one row per class. Merged chapters are joined
