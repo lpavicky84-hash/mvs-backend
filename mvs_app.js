@@ -12200,24 +12200,34 @@ async function openStudentBatches(sid,name){
   var _hasRec=avail.some(function(b){return _sbCat(b).key==='recorded';});
   var _hasSyc=avail.some(function(b){return _sbCat(b).key==='ondemand';});
   var _hasNone=avail.some(function(b){var c=_sbCat(b); return c.key==='session' && !(b.session||'').trim();});
-  var liveOpts=_sessSet.map(function(s){return '<option value="sess:'+esc(s)+'">'+esc(s)+'</option>';}).join('')+(_hasNone?'<option value="__none__">No session (set later)</option>':'');
-  var typeOpts=(_hasCrash?'<option value="__crash__">Crash Course</option>':'')+(_hasRec?'<option value="__rec__">Recorded</option>':'')+(_hasSyc?'<option value="__syc__">On Demand</option>':'');
-  var sessOpts='<option value="">Select session / type\u2026</option>'
-    +(liveOpts?'<optgroup label="Live \u2014 by session">'+liveOpts+'</optgroup>':'')
-    +(typeOpts?'<optgroup label="Recorded / On-Demand / Crash">'+typeOpts+'</optgroup>':'')
-    +'<option value="__all__">All batches</option>';
+  var classOpts=[['','Select class\u2026'],['12','Class 12'],['10','Class 10'],['__all__','All classes']];
+  var sessOptsArr=[['','Select session / type\u2026']];
+  _sessSet.forEach(function(s){ sessOptsArr.push(['sess:'+s, s]); });
+  if(_hasNone) sessOptsArr.push(['__none__','No session (set later)']);
+  if(_hasCrash) sessOptsArr.push(['__crash__','Crash Course']);
+  if(_hasRec) sessOptsArr.push(['__rec__','Recorded']);
+  if(_hasSyc) sessOptsArr.push(['__syc__','On Demand']);
+  sessOptsArr.push(['__all__','All batches']);
+  window._sbpF={cls:'',sess:''};
   _sbpInjectCSS();
   showModal('Batches \u2014 '+esc(name),
     '<p class="vtc-help">A student can be in multiple batches. The first one is the <b>primary</b> batch (used wherever a single batch is needed).</p>'
     +'<div class="vtc-list">'+rows+'</div>'
     +'<div class="sbp-wrap"><div class="sbp-title">'+ic('plus')+' Add to a batch</div>'
-    +'<div class="sbp-filters"><div class="sbp-sel"><select class="input" id="sb-f-cls" onchange="_sbRenderPicker()"><option value="">Select class\u2026</option><option value="12">Class 12</option><option value="10">Class 10</option><option value="__all__">All classes</option></select></div>'
-    +'<div class="sbp-sel"><select class="input" id="sb-f-sess" onchange="_sbRenderPicker()">'+sessOpts+'</select></div></div>'
+    +'<div class="sbp-filters">'+_sbpDDHtml('cls','Select class\u2026',classOpts)+_sbpDDHtml('sess','Select session / type\u2026',sessOptsArr)+'</div>'
     +'<div class="sbp-list" id="sb-pick-list"></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="stuAddBatch('+sid+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('check')+' Add to selected batch</button></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   _sbRenderPicker();
 }
+function _sbpDDHtml(which,label,opts){
+  return '<div class="sbp-dd" id="sbp-dd-'+which+'"><button type="button" class="sbp-dd-btn" onclick="_sbpDDToggle(\''+which+'\',event)"><span id="sbp-dd-'+which+'-lbl">'+esc(label)+'</span><i class="sbp-dd-ch"></i></button><div class="sbp-dd-menu">'
+    +opts.map(function(o){ return '<div class="sbp-dd-opt" data-v="'+esc(o[0])+'" onclick="_sbpDDPick(\''+which+'\',\''+esc(String(o[0]).replace(/'/g,""))+'\',\''+esc(String(o[1]).replace(/'/g,""))+'\')">'+esc(o[1])+'</div>'; }).join('')
+    +'</div></div>';
+}
+function _sbpDDToggle(which,ev){ if(ev){ ev.stopPropagation(); } var dd=document.getElementById('sbp-dd-'+which); if(!dd) return; var open=dd.classList.contains('open'); document.querySelectorAll('.sbp-dd.open').forEach(function(x){x.classList.remove('open');}); if(!open) dd.classList.add('open'); }
+function _sbpDDPick(which,val,label){ if(!window._sbpF) window._sbpF={cls:'',sess:''}; window._sbpF[which]=val; var l=document.getElementById('sbp-dd-'+which+'-lbl'); if(l) l.textContent=label; var dd=document.getElementById('sbp-dd-'+which); if(dd){ dd.classList.remove('open'); dd.querySelectorAll('.sbp-dd-opt').forEach(function(o){ o.classList.toggle('sel', o.getAttribute('data-v')===String(val)); }); } _sbRenderPicker(); }
+document.addEventListener('click',function(){ document.querySelectorAll('.sbp-dd.open').forEach(function(x){x.classList.remove('open');}); });
 function _sbClass(b){ var t=((b&&b.type)||'')+' '+((b&&b.name)||''); return /udaan|aarambh|jeet|class\s*10|(^|[^0-9])10([^0-9]|$)/i.test(t)?'10':'12'; }
 function _sbCat(b){
   var nm=((b&&b.name)||'').toLowerCase();
@@ -12229,8 +12239,8 @@ function _sbCat(b){
 function _sbPick(id){ window._sbSel=id; _sbRenderPicker(); }
 function _sbRenderPicker(){
   var host=document.getElementById('sb-pick-list'); if(!host) return;
-  var cls=(document.getElementById('sb-f-cls')||{}).value||'';
-  var sess=(document.getElementById('sb-f-sess')||{}).value||'';
+  var f=window._sbpF||{cls:'',sess:''};
+  var cls=f.cls||''; var sess=f.sess||'';
   if(!cls && !sess){ host.innerHTML='<div class="sbp-hint">'+ic('folder')+'<span>First pick a <b>class</b>, then a <b>session / type</b> above to see the matching batches.</span></div>'; return; }
   var list=(window._sbAll||[]).filter(function(b){
     if(cls && cls!=='__all__' && _sbClass(b)!==cls) return false;
@@ -12258,6 +12268,18 @@ function _sbpInjectCSS(){
   s.textContent='.sbp-wrap{margin-top:14px;border-top:1px solid var(--border,rgba(184,148,31,.2));padding-top:14px}'
     +'.sbp-title{display:flex;align-items:center;gap:7px;font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:10px}.sbp-title svg{width:14px;height:14px}'
     +'.sbp-filters{display:flex;gap:8px;margin-bottom:10px}.sbp-sel{flex:1;position:relative}'
+    +'.sbp-dd{flex:1;position:relative}'
+    +'.sbp-dd-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 15px;font-size:.93rem;font-weight:800;color:var(--text,#2b2410);background:#fff;border:1.6px solid var(--border,rgba(184,148,31,.35));border-radius:13px;cursor:pointer;text-align:left;transition:border-color .14s,box-shadow .14s}'
+    +'.sbp-dd-btn:hover{border-color:rgba(184,148,31,.6)}'
+    +'.sbp-dd.open .sbp-dd-btn{border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.16)}'
+    +'.sbp-dd-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    +'.sbp-dd-ch{width:9px;height:9px;border-right:2.2px solid var(--primary,#9a7d1a);border-bottom:2.2px solid var(--primary,#9a7d1a);transform:rotate(45deg);transition:transform .16s;flex:0 0 auto;margin-top:-4px}'
+    +'.sbp-dd.open .sbp-dd-ch{transform:rotate(-135deg);margin-top:3px}'
+    +'.sbp-dd-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:70;background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.25));border-radius:14px;box-shadow:0 18px 44px -14px rgba(120,90,10,.55);padding:6px;display:none;max-height:260px;overflow:auto}'
+    +'.sbp-dd.open .sbp-dd-menu{display:block}'
+    +'.sbp-dd-opt{padding:10px 12px;border-radius:10px;font-size:.9rem;font-weight:700;color:var(--text,#3a2f10);cursor:pointer;transition:background .12s,color .12s}'
+    +'.sbp-dd-opt:hover{background:rgba(184,148,31,.1)}'
+    +'.sbp-dd-opt.sel{background:var(--primary,#b8941f);color:#fff}'
     +'.sbp-sel select.input{width:100%;font-weight:700;font-size:.9rem;color:var(--text,#2b2410);padding:11px 36px 11px 14px;height:auto;line-height:1.3;border:1.5px solid var(--border,rgba(184,148,31,.28));border-radius:12px;background:var(--card,#fffdf6);appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer}'
     +'.sbp-sel::after{content:"";position:absolute;right:14px;top:50%;width:9px;height:9px;border-right:2px solid var(--primary,#9a7d1a);border-bottom:2px solid var(--primary,#9a7d1a);transform:translateY(-70%) rotate(45deg);pointer-events:none}'
     +'.sbp-sel select.input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}'
