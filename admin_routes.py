@@ -1780,6 +1780,7 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             "completed": bool(e.completed), "has_lecture": (e.id in lec_entry_ids),
             "topic_covered": e.topic_covered or "", "start_time": e.start_time or "",
             "end_time": e.end_time or "", "homework": e.homework or "",
+            "youtube_link": getattr(e, "youtube_link", None) or "",
             "remarks": e.remarks or "",
         })
     return result
@@ -3087,11 +3088,28 @@ def admin_timetable_chapters(subject: str = "", class_level: str = "",
     return {"chapters": sorted(out)[:300]}
 
 
+_TT_YT_READY = False
+def _ensure_tt_youtube_column(db):
+    """Add timetable_entries.youtube_link on first use (existing DBs upgrade themselves)."""
+    global _TT_YT_READY
+    if _TT_YT_READY:
+        return
+    from sqlalchemy import text as _text
+    for st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
+               "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+        try:
+            db.execute(_text(st)); db.commit(); break
+        except Exception:
+            db.rollback()
+    _TT_YT_READY = True
+
+
 @router.post("/timetable-create")
 def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
     """Build a timetable from the smart builder — one row per class. Merged chapters are joined
     with ' + '. Scoped to a batch (batch_id) so it never clashes with another batch."""
     from models import TimetableEntry
+    _ensure_tt_youtube_column(db)
     class_name = (payload.get("class_name") or "Class 12").strip()
     subject = (payload.get("subject") or "").strip()
     if not subject:
@@ -3123,7 +3141,8 @@ def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_
             teacher_id=teacher_id, subject=subject, class_name=class_name, batch_id=batch_id,
             chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
             day=(e.get("day") or None), time_text=(e.get("time") or None),
-            entry_type=(e.get("type") or "lecture")))
+            entry_type=(e.get("type") or "lecture"),
+            youtube_link=((e.get("youtube") or "").strip() or None)))
         added += 1
     db.commit()
     return {"ok": True, "added": added}

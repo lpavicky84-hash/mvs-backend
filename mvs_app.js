@@ -1399,18 +1399,26 @@ function _ttbInjectCSS(){
   if(document.getElementById('ttb-css')) return;
   var s=document.createElement('style'); s.id='ttb-css';
   s.textContent=[
-   '.ttb-top{display:grid;grid-template-columns:1fr 120px 1fr;gap:10px;margin-bottom:12px}',
+   '.ttb-top{display:grid;grid-template-columns:1fr 130px 1fr;gap:12px;margin-bottom:14px}',
+   '.ttb-top .form-group{margin:0}',
    '@media(max-width:600px){.ttb-top{grid-template-columns:1fr}}',
-   '.ttb-rows-h,.ttb-row{display:grid;grid-template-columns:130px 100px 1fr 120px 34px;gap:8px;align-items:start}',
-   '.ttb-rows-h{font-size:.68rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.03em;padding:0 2px 6px}',
-   '.ttb-row{padding:6px 0;border-top:1px solid var(--border)}',
-   '.ttb-row .input{padding:6px 8px;font-size:.84rem}',
-   '.ttb-ch{display:flex;flex-direction:column;gap:5px;min-width:0}',
-   '.ttb-chips{display:flex;flex-wrap:wrap;gap:4px}',
-   '.ttb-chip{font-size:.72rem;font-weight:700;padding:2px 6px 2px 9px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);display:inline-flex;align-items:center;gap:5px}',
+   '.ttb-rows-h{display:none}',
+   '#ttb-rows{display:flex;flex-direction:column;gap:12px}',
+   '.ttb-card{border:1px solid var(--border,rgba(184,148,31,.22));border-radius:16px;padding:14px 15px;background:var(--card,#fffdf6);box-shadow:0 6px 18px -14px rgba(120,90,10,.35)}',
+   '.ttb-cgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:11px}',
+   '@media(max-width:520px){.ttb-cgrid{grid-template-columns:1fr 1fr}}',
+   '.ttb-fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}',
+   '.ttb-cgrid .ttb-fld{margin-bottom:0}',
+   '.ttb-fld>label{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#9a7d1a)}',
+   '.ttb-opt{font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#a08a55);font-size:.66rem}',
+   '.ttb-card .input{padding:10px 12px;font-size:.9rem;border:1.4px solid var(--border,rgba(184,148,31,.3));border-radius:11px;background:#fff;width:100%}',
+   '.ttb-card .input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.14)}',
+   '.ttb-ch{display:flex;flex-direction:column;gap:6px;min-width:0}',
+   '.ttb-chips{display:flex;flex-wrap:wrap;gap:5px}',
+   '.ttb-chip{font-size:.74rem;font-weight:700;padding:3px 7px 3px 10px;border-radius:999px;background:var(--primary-soft,rgba(184,148,31,.15));color:var(--primary,#8a6d1a);display:inline-flex;align-items:center;gap:5px}',
    '.ttb-chip b{cursor:pointer;font-weight:900}',
-   '.ttb-del{border:0;background:transparent;color:#c0392b;cursor:pointer;padding:6px}',
-   '@media(max-width:600px){.ttb-rows-h{display:none}.ttb-row{grid-template-columns:1fr 1fr;gap:6px;border:1px solid var(--border);border-radius:10px;padding:9px;margin-bottom:8px}.ttb-ch{grid-column:1/-1}}',
+   '.ttb-yt{border-color:rgba(220,38,38,.35) !important}.ttb-yt:focus{border-color:#dc2626 !important;box-shadow:0 0 0 3px rgba(220,38,38,.12) !important}',
+   '.ttb-del2{color:#c0392b;margin-top:4px}',
    '.ttb-pend{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--bg);margin-top:7px;font-size:.85rem}',
    '.ttb-pill{font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(184,148,31,.14);color:var(--primary,#8a6d1a)}',
    '.ttb-smp{font-size:.76rem;color:var(--text-muted)}'
@@ -1420,7 +1428,7 @@ function _ttbInjectCSS(){
 async function openTTBuilder(){
   _ttbInjectCSS();
   window._ttbTeacher=false;
-  _ttbRows=[{date:'',time:'',chapters:[],type:'lecture'}];
+  _ttbRows=[{date:'',time:'',chapters:[],type:'lecture',youtube:''}];
   var batches=[];
   try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
   var batOpts='<option value="">No batch (global)</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>';}).join('');
@@ -1454,18 +1462,21 @@ function _ttbRender(){
   var host=document.getElementById('ttb-rows'); if(!host) return;
   host.innerHTML=_ttbRows.map(function(r,i){
     var chips=(r.chapters||[]).map(function(c,ci){return '<span class="ttb-chip">'+esc(c)+'<b onclick="ttbDelChip('+i+','+ci+')">\u00d7</b></span>';}).join('');
-    return '<div class="ttb-row">'
-      +'<input type="date" class="input" value="'+esc(r.date||'')+'" onchange="_ttbSet('+i+',\'date\',this.value)">'
-      +'<input class="input" placeholder="5:00 PM" value="'+esc(r.time||'')+'" onchange="_ttbSet('+i+',\'time\',this.value)">'
-      +'<div class="ttb-ch">'+(chips?'<div class="ttb-chips">'+chips+'</div>':'')+'<input class="input" list="ttb-ch-dl" placeholder="Type chapter + Enter (merge multiple)" onkeydown="ttbChKey(event,'+i+')"></div>'
-      +'<select class="input" onchange="_ttbSet('+i+',\'type\',this.value)"><option value="lecture"'+(r.type==='lecture'?' selected':'')+'>Lecture</option><option value="test"'+(r.type==='test'?' selected':'')+'>Test</option><option value="revision"'+(r.type==='revision'?' selected':'')+'>Revision</option><option value="doubt"'+(r.type==='doubt'?' selected':'')+'>Doubt</option></select>'
-      +'<button class="ttb-del" title="Remove" onclick="ttbDelRow('+i+')">'+ic('trash')+'</button>'
+    return '<div class="ttb-card">'
+      +'<div class="ttb-cgrid">'
+      +'<div class="ttb-fld"><label>Date</label><input type="date" class="input" value="'+esc(r.date||'')+'" onchange="_ttbSet('+i+',\'date\',this.value)"></div>'
+      +'<div class="ttb-fld"><label>Time</label><input class="input" placeholder="5:00 PM" value="'+esc(r.time||'')+'" onchange="_ttbSet('+i+',\'time\',this.value)"></div>'
+      +'<div class="ttb-fld"><label>Type</label><select class="input" onchange="_ttbSet('+i+',\'type\',this.value)"><option value="lecture"'+(r.type==='lecture'?' selected':'')+'>Lecture</option><option value="test"'+(r.type==='test'?' selected':'')+'>Test</option><option value="revision"'+(r.type==='revision'?' selected':'')+'>Revision</option><option value="doubt"'+(r.type==='doubt'?' selected':'')+'>Doubt</option></select></div>'
+      +'</div>'
+      +'<div class="ttb-fld"><label>Chapter(s)</label><div class="ttb-ch">'+(chips?'<div class="ttb-chips">'+chips+'</div>':'')+'<input class="input" list="ttb-ch-dl" placeholder="Type a chapter + Enter (merge multiple for crash course)" onkeydown="ttbChKey(event,'+i+')"></div></div>'
+      +'<div class="ttb-fld"><label>\u25b6 YouTube link <span class="ttb-opt">optional \u2014 if this class runs on YouTube</span></label><input class="input ttb-yt" placeholder="Paste the YouTube video / live link" value="'+esc(r.youtube||'')+'" onchange="_ttbSet('+i+',\'youtube\',this.value)"></div>'
+      +'<button class="btn btn-ghost btn-sm ttb-del2" onclick="ttbDelRow('+i+')">'+ic('trash')+' Remove this class</button>'
       +'</div>';
   }).join('');
 }
 function _ttbSet(i,k,v){ if(_ttbRows[i]) _ttbRows[i][k]=v; }
-function ttbAddRow(){ _ttbRows.push({date:'',time:'',chapters:[],type:'lecture'}); _ttbRender(); }
-function ttbDelRow(i){ _ttbRows.splice(i,1); if(!_ttbRows.length) _ttbRows.push({date:'',time:'',chapters:[],type:'lecture'}); _ttbRender(); }
+function ttbAddRow(){ _ttbRows.push({date:'',time:'',chapters:[],type:'lecture',youtube:''}); _ttbRender(); }
+function ttbDelRow(i){ _ttbRows.splice(i,1); if(!_ttbRows.length) _ttbRows.push({date:'',time:'',chapters:[],type:'lecture',youtube:''}); _ttbRender(); }
 function ttbChKey(e,i){ if(e.key==='Enter'){ e.preventDefault(); var v=(e.target.value||'').trim(); if(v){ _ttbRows[i].chapters=_ttbRows[i].chapters||[]; _ttbRows[i].chapters.push(v); e.target.value=''; _ttbRender(); } } }
 function ttbDelChip(i,ci){ if(_ttbRows[i]&&_ttbRows[i].chapters) _ttbRows[i].chapters.splice(ci,1); _ttbRender(); }
 function _ttbDay(dstr){ try{ var d=new Date(dstr+'T00:00:00'); return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; }catch(e){ return ''; } }
@@ -1475,7 +1486,7 @@ async function ttbCreate(){
   var cl=String((document.getElementById('ttb-class')||{}).value||'12').replace(/\D/g,'')||'12';
   if(!subject){ toast('Pick a subject'); return; }
   var entries=_ttbRows.filter(function(r){return r.date||(r.chapters&&r.chapters.length)||r.time;})
-    .map(function(r){ return {date:r.date,time:r.time,chapters:r.chapters,type:r.type,day:_ttbDay(r.date)}; });
+    .map(function(r){ return {date:r.date,time:r.time,chapters:r.chapters,type:r.type,day:_ttbDay(r.date),youtube:(r.youtube||'')}; });
   if(!entries.length){ toast('Add at least one class'); return; }
   var ep=window._ttbTeacher?'/api/teacher/tt-create':'/api/admin/timetable-create';
   try{ var d=await api(ep,'POST',{batch_id:batch_id,subject:subject,class_name:'Class '+cl,entries:entries});
@@ -1487,7 +1498,7 @@ async function ttbCreate(){
 async function openTTBuilderT(){
   _ttbInjectCSS();
   window._ttbTeacher=true;
-  _ttbRows=[{date:'',time:'',chapters:[],type:'lecture'}];
+  _ttbRows=[{date:'',time:'',chapters:[],type:'lecture',youtube:''}];
   var batches=[], pending=[];
   try{ var r=await api('/api/teacher/tt-batches'); batches=(r&&r.batches)||[]; }catch(e){}
   try{ var p=await api('/api/teacher/tt-pending'); pending=(p&&p.groups)||[]; }catch(e){}
@@ -1704,6 +1715,11 @@ function parseClassDT(dateStr,timeStr){
   }
   d.setHours(h,m,0,0); return d;
 }
+function _ytWatch(link){ if(link){ try{ window.open(link,'_blank','noopener'); }catch(e){ location.href=link; } } }
+function _ytBtn(link,blink){ if(!link) return ''; return '<button class="btn btn-primary btn-sm lb-join'+(blink?' ytw-blink':'')+'" data-yt="'+esc(link)+'" onclick="_ytWatch(this.dataset.yt)" style="background:linear-gradient(135deg,#ef4444,#dc2626);border-color:#dc2626">'+ic('play')+' Watch on YouTube</button>'; }
+(function(){ if(document.getElementById('ytw-css')) return; var s=document.createElement('style'); s.id='ytw-css';
+  s.textContent='@keyframes ytwPulse{0%,100%{box-shadow:0 4px 14px -4px rgba(220,38,38,.6),0 0 0 0 rgba(220,38,38,.55)}50%{box-shadow:0 4px 14px -4px rgba(220,38,38,.7),0 0 0 8px rgba(220,38,38,0)}}.ytw-blink{animation:ytwPulse 1.2s ease-in-out infinite}';
+  document.head.appendChild(s); })();
 let _cdTimer=null;
 function startLiveCountdown(entries){
   clearInterval(_cdTimer);
@@ -1720,7 +1736,7 @@ function startLiveCountdown(entries){
  const now=new Date(); const {live,next}=pick();
  if(live){
  banner.style.display='flex'; banner.className='live-banner now'; banner.style.background='';
- setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Live Now</span><h3>${esc(live.subject)}</h3><small>${esc(live.part||live.chapter||'')} ${live.time?'• '+esc(live.time):''}</small></div></div><button class="btn btn-primary btn-sm lb-join" onclick="openMVC()">${ic('play')} Join Class</button>`);
+ setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Live Now</span><h3>${esc(live.subject)}</h3><small>${esc(live.part||live.chapter||'')} ${live.time?'• '+esc(live.time):''}</small></div></div>${live.youtube_link?_ytBtn(live.youtube_link,true):`<button class="btn btn-primary btn-sm lb-join" onclick="openMVC()">${ic('play')} Join Class</button>`}`);
  return;
  }
  if(next){
@@ -1730,10 +1746,10 @@ function startLiveCountdown(entries){
  if(mins<=60){
  banner.className='live-banner soon';
  const tot=Math.floor(diff/1000), hh=Math.floor(tot/3600), mi=Math.floor((tot%3600)/60), ss=tot%60;
- setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Starting Soon</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div><div class="countdown">${hh>0?`<div class="cd-box"><div class="num">${hh}</div><div class="lbl">hrs</div></div>`:''}<div class="cd-box"><div class="num">${String(mi).padStart(2,'0')}</div><div class="lbl">min</div></div><div class="cd-box"><div class="num">${String(ss).padStart(2,'0')}</div><div class="lbl">sec</div></div></div>`);
+ setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Starting Soon</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div><div class="countdown">${hh>0?`<div class="cd-box"><div class="num">${hh}</div><div class="lbl">hrs</div></div>`:''}<div class="cd-box"><div class="num">${String(mi).padStart(2,'0')}</div><div class="lbl">min</div></div><div class="cd-box"><div class="num">${String(ss).padStart(2,'0')}</div><div class="lbl">sec</div></div></div>${_ytBtn(next.youtube_link,true)}`);
  }else{
  banner.className='live-banner upcoming';
- setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Next Class</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div>`);
+ setIf(banner,`<div class="lb-left"><div class="lb-icon">${ic('calendar')}</div><div><span class="lb-tag"><span class="live-dot"></span>Next Class</span><h3>${esc(next.subject)}</h3><small>${esc(next.part||next.chapter||'')} • ${dstr} ${next.time?'• '+esc(next.time):''}</small></div></div>${_ytBtn(next.youtube_link,false)}`);
  }
  return;
  }

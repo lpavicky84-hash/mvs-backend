@@ -107,6 +107,11 @@ def teacher_tt_create(payload: dict = Body(...), db: Session = Depends(get_db), 
     """Teacher builds a timetable -> saved as PENDING (hidden from students until admin approves)."""
     from models import TimetableEntry
     from datetime import datetime as _dt
+    try:
+        from admin_routes import _ensure_tt_youtube_column
+        _ensure_tt_youtube_column(db)
+    except Exception:
+        pass
     tp = get_teacher_profile(current_user, db)
     class_name = (payload.get("class_name") or "Class 12").strip()
     subject = (payload.get("subject") or "").strip()
@@ -135,7 +140,8 @@ def teacher_tt_create(payload: dict = Body(...), db: Session = Depends(get_db), 
             teacher_id=tp.id, subject=subject, class_name=class_name, batch_id=batch_id,
             chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
             day=(e.get("day") or None), time_text=(e.get("time") or None),
-            entry_type=(e.get("type") or "lecture"), status="pending"))
+            entry_type=(e.get("type") or "lecture"), status="pending",
+            youtube_link=((e.get("youtube") or "").strip() or None)))
         added += 1
     db.commit()
     return {"ok": True, "added": added, "pending": True}

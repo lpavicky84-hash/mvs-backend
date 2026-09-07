@@ -1201,6 +1201,7 @@ def timetable_plan(batch: int = 0, db: Session = Depends(get_db), current_user=D
             "date": str(e.entry_date) if e.entry_date else None,
             "day": e.day, "time": getattr(e,"time_text",None),
             "type": getattr(e,"entry_type",None) or "chapter",
+            "youtube_link": getattr(e, "youtube_link", None) or "",
             "teacher_id": e.teacher_id, "teacher_name": tname,
             "lecture_id": (lec.id if lec else None),
             "has_notes": bool(lec and lec.id in _notes_ids),

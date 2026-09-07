@@ -711,6 +711,7 @@ class TimetableEntry(Base):
     dpp_given       = Column(Boolean, default=False)
     remarks         = Column(Text, nullable=True)
     resched_by      = Column(String(20), nullable=True)  # v86: kaun move kiya — teacher | admin | leave (NULL = kabhi move nahi)
+    youtube_link    = Column(String(300), nullable=True)  # class on YouTube -> student gets a blinking "Watch" button
     created_at  = Column(DateTime, default=func.now())
 
 
