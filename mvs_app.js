@@ -14414,6 +14414,7 @@ async function loadSProfile(){
   const el=document.getElementById('s-profile-content');
   try{
     const p=await api('/api/student/profile');
+    window._sProf=p;
     const subs=(p.subjects||[]).map(s=>`<span class="chip">${esc(s)}</span>`).join('')||'<span style="color:var(--text-muted)">No subjects selected yet</span>';
     const rows=[
       ['User ID', p.user_id||'—'],
@@ -14431,11 +14432,12 @@ async function loadSProfile(){
         <div class="prof-photo" id="prof-photo">${esc(initials(p.name||'S'))}</div>
         <div class="prof-id"><h2>${esc(p.name||'Student')}</h2><span class="chip" style="margin-top:6px">${esc(p.batch_name||'MVS Foundation Student')}</span></div>
         <button class="btn btn-primary btn-sm" onclick="openSetStudentPhoto()">${ic('upload')} Change Photo</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEditMyProfile()">${ic('edit')} Edit Details</button>
       </div>
       <div class="prof-grid">
         ${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}
       </div>
-      <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>
+      <div class="prof-cell" style="margin-top:14px"><div class="prof-k" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Subjects <button class="btn btn-ghost btn-sm" style="font-size:.68rem;padding:3px 10px" onclick="openRequestSubjects()">${ic('edit')} Request change</button></div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>
     </div></div>`;
     // load photo if set
     if(p.has_photo){
@@ -14445,7 +14447,46 @@ async function loadSProfile(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
-// Manish Verma Classes App — lectures live here, not in this portal.
+// ---- Student self-edit: Medium / Exam Session / NIOS Ref only ----
+const _S_SESSIONS=[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']];
+function openEditMyProfile(){
+  const p=window._sProf||{};
+  const medOpt=['Hindi','English','Both'].map(m=>`<option${(p.medium===m)?' selected':''}>${m}</option>`).join('');
+  const sessOpt='<option value="">— Select —</option>'+_S_SESSIONS.map(x=>`<option value="${x[0]}"${p.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('');
+  showModal('Edit My Details',
+    '<p class="vtc-help">You can update these yourself. To change your <b>Subjects</b>, use “Request change”. Name, phone and batch are managed by the admin.</p>'
+    +'<div class="form-group"><label>Medium</label><select class="input" id="emp-med"><option value="">— Select —</option>'+medOpt+'</select></div>'
+    +'<div class="form-group"><label>Exam Session</label><select class="input" id="emp-sess">'+sessOpt+'</select></div>'
+    +'<div class="form-group"><label>NIOS Reference No.</label><input class="input" id="emp-ref" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. 2024XXXXXXX"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveMyProfile()">Save</button>');
+}
+async function saveMyProfile(){
+  const body={medium:val('emp-med'),exam_session:val('emp-sess'),nios_ref:val('emp-ref')};
+  try{ await api('/api/student/update-profile','POST',body); toast('Details updated.'); closeModal(); loadSProfile(); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+async function openRequestSubjects(){
+  const p=window._sProf||{};
+  const cls=(p.class_level||'').trim();
+  showModal('Request Subject Change','<div class="spinner"></div>','');
+  let avail=[];
+  try{ if(cls) avail=await api('/api/student/available-subjects?class_level='+encodeURIComponent(cls)); }catch(e){}
+  const cur=new Set(p.subjects||[]);
+  const boxes=(avail||[]).map(s=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:.86rem"><input type="checkbox" class="rsub-cb" value="${esc(s.name)}"${cur.has(s.name)?' checked':''}> ${esc(s.name)}</label>`).join('')
+    || '<p style="color:var(--text-muted);font-size:.82rem">Subject list unavailable — describe your change in the note below.</p>';
+  showModal('Request Subject Change',
+    '<p class="vtc-help">Pick the subjects you want. This goes to the admin as a request — your subjects change only after they approve it.</p>'
+    +'<div class="hide-scroll" style="max-height:240px;border:1px solid var(--border);border-radius:10px;padding:6px 10px">'+boxes+'</div>'
+    +'<div class="form-group" style="margin-top:10px"><label>Note to admin (optional)</label><textarea class="input" id="rsub-note" rows="2" placeholder="Why do you want this change?"></textarea></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitSubjectRequest()">Send request</button>');
+}
+async function submitSubjectRequest(){
+  const subs=[...document.querySelectorAll('.rsub-cb:checked')].map(x=>x.value);
+  const note=val('rsub-note');
+  if(!subs.length && !note){ toast('Pick subjects or add a note.'); return; }
+  try{ const r=await api('/api/student/request-subject-change','POST',{subjects:subs,note:note}); toast((r&&r.message)||'Request sent.'); closeModal(); }
+  catch(e){ toast((e&&e.message)||'Could not send request',true); }
+}
 // ============ MANISH VERMA CLASSES APP — SMART OPEN ============
 // Android: app installed -> app khulta hai; nahi -> seedha Play Store listing
 // iOS: Manish Verma Classes ki apni App Store listing (id6768236345)

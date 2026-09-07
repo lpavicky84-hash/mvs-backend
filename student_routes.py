@@ -923,6 +923,74 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "has_photo": bool(sp.photo_b64)
     }
 
+@router.post("/update-profile")
+def student_update_profile(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student self-service: update ONLY medium, exam_session and nios_ref.
+    Name / phone / email / batch / subjects are NOT student-editable. Writes straight to
+    the profile so the admin panel reflects the change live (no separate sync needed)."""
+    sp = get_student_profile(current_user, db)
+    changed = []
+    if "medium" in payload:
+        m = (payload.get("medium") or "").strip()
+        if m in ("Hindi", "English", "Both"):
+            sp.medium = m
+            changed.append("medium")
+    if "exam_session" in payload:
+        raw = (payload.get("exam_session") or "").strip()
+        if raw:
+            sid = ""
+            try:
+                from admin_routes import _map_session_text, _stream_for_session
+                sid = _map_session_text(db, raw) or (raw if re.fullmatch(r"[a-z0-9_]+", raw or "", re.I) else "")
+            except Exception:
+                sid = raw if re.fullmatch(r"[a-z0-9_]+", raw or "", re.I) else ""
+            if sid:
+                sp.exam_session = sid
+                try:
+                    from admin_routes import _stream_for_session
+                    stv = _stream_for_session(db, sid)
+                    if stv:
+                        sp.exam_stream = stv
+                except Exception:
+                    pass
+                changed.append("exam_session")
+    if "nios_ref" in payload:
+        ref = (payload.get("nios_ref") or "").strip().upper()[:40]
+        sp.nios_ref = ref or None
+        changed.append("nios_ref")
+    db.commit()
+    return {"ok": True, "changed": changed, "medium": sp.medium,
+            "exam_session": sp.exam_session, "exam_session_label": _session_label(db, sp.exam_session),
+            "exam_stream": sp.exam_stream, "nios_ref": sp.nios_ref}
+
+
+@router.post("/request-subject-change")
+def student_request_subject_change(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Students can't change subjects themselves — they send a request to the admin.
+    Creates a notification for every admin with the student's details + requested subjects.
+    Admin then applies it from the student's Edit screen (auto-syncs everywhere)."""
+    from models import Notification, User, UserRole
+    sp = get_student_profile(current_user, db)
+    want = payload.get("subjects") or []
+    want = [str(s).strip() for s in want if str(s).strip()][:20]
+    note = (payload.get("note") or "").strip()[:300]
+    if not want and not note:
+        raise HTTPException(status_code=400, detail="Please pick the subjects you want or add a note.")
+    cur = ", ".join(sp.subjects or []) or "—"
+    req = ", ".join(want) or "—"
+    title = "Subject change request"
+    msg = ("%s (%s%s) wants a subject change.\nCurrent: %s\nRequested: %s%s"
+           % (current_user.name or "A student", (sp.phone or "no phone"),
+              (" · Class " + sp.class_level) if sp.class_level else "",
+              cur, req, ("\nNote: " + note) if note else ""))
+    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for a in admins:
+        db.add(Notification(user_id=a.id, title="\U0001f4da " + title, message=msg,
+                            notif_type="subject_request"))
+    db.commit()
+    return {"ok": True, "message": "Your request has been sent to the admin. They'll update your subjects soon."}
+
+
 @router.get("/available-subjects")
 def available_subjects(class_level: str, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import AvailableSubject
