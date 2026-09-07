@@ -31,6 +31,38 @@ def _hsafe(_n):
 
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
+
+def _ensure_batch_columns_startup():
+    """Guarantee the batch_id columns exist BEFORE any student query runs — no matter which
+    files were deployed or in what import order. ORM models now include these columns, so a
+    missing column would 500 every read. Idempotent and safe."""
+    try:
+        from database import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            for _tbl in ("materials", "dpp_packs", "exams"):
+                for _st in ("ALTER TABLE %s ADD COLUMN batch_id INTEGER NULL" % _tbl,
+                            "ALTER TABLE %s ADD COLUMN batch_id INTEGER" % _tbl):
+                    try:
+                        _db.execute(_t(_st)); _db.commit(); break
+                    except Exception:
+                        _db.rollback()
+            for _st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
+                        "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+        finally:
+            _db.close()
+    except Exception:
+        pass
+
+
+_ensure_batch_columns_startup()
+
+
 def get_student_profile(user, db) -> StudentProfile:
     sp = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if not sp:
