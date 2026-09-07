@@ -12195,42 +12195,64 @@ async function openStudentBatches(sid,name){
   var rows=enrolled.length?enrolled.map(function(b){
     return '<div class="vtc-row"><span class="sbb-av">'+ic('folder')+'</span><div class="vtc-main"><div style="font-weight:700;font-size:.9rem">'+esc(b.name)+(b.is_primary?' <span style="font-size:.62rem;font-weight:800;color:var(--primary,#8a6d1a);background:var(--primary-soft,rgba(184,148,31,.15));padding:1px 7px;border-radius:999px;vertical-align:middle">PRIMARY</span>':'')+'</div></div><button class="btn btn-ghost btn-sm vtc-del" onclick="stuRemoveBatch('+sid+','+b.id+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('trash')+' Remove</button></div>';
   }).join(''):'<div class="vtc-empty">Not in any batch yet</div>';
-  var _sessSet=[]; avail.forEach(function(b){var s=(b.session||'').trim(); if(s&&_sessSet.indexOf(s)<0)_sessSet.push(s);});
-  var _hasNone=avail.some(function(b){return !(b.session||'').trim();});
-  var sessOpts='<option value="">Select session\u2026</option>'+_sessSet.map(function(s){return '<option value="'+esc(s)+'">'+esc(s)+'</option>';}).join('')+(_hasNone?'<option value="__none__">No session</option>':'')+'<option value="__all__">All sessions</option>';
-  _sbInjectCSS();
+  var _sessSet=[]; avail.forEach(function(b){var s=(b.session||'').trim(); if(s&&_sessSet.indexOf(s)<0 && !_sbCat(b).special)_sessSet.push(s);});
+  var _hasCrash=avail.some(function(b){return _sbCat(b).key==='crash';});
+  var _hasRec=avail.some(function(b){return _sbCat(b).key==='recorded';});
+  var _hasSyc=avail.some(function(b){return _sbCat(b).key==='ondemand';});
+  var _hasNone=avail.some(function(b){var c=_sbCat(b); return c.key==='session' && !(b.session||'').trim();});
+  var liveOpts=_sessSet.map(function(s){return '<option value="sess:'+esc(s)+'">'+esc(s)+'</option>';}).join('')+(_hasNone?'<option value="__none__">No session (set later)</option>':'');
+  var typeOpts=(_hasCrash?'<option value="__crash__">Crash Course</option>':'')+(_hasRec?'<option value="__rec__">Recorded</option>':'')+(_hasSyc?'<option value="__syc__">On Demand</option>':'');
+  var sessOpts='<option value="">Select session / type\u2026</option>'
+    +(liveOpts?'<optgroup label="Live \u2014 by session">'+liveOpts+'</optgroup>':'')
+    +(typeOpts?'<optgroup label="Recorded / On-Demand / Crash">'+typeOpts+'</optgroup>':'')
+    +'<option value="__all__">All batches</option>';
+  _sbpInjectCSS();
   showModal('Batches \u2014 '+esc(name),
     '<p class="vtc-help">A student can be in multiple batches. The first one is the <b>primary</b> batch (used wherever a single batch is needed).</p>'
     +'<div class="vtc-list">'+rows+'</div>'
     +'<div class="sbp-wrap"><div class="sbp-title">'+ic('plus')+' Add to a batch</div>'
-    +'<div class="sbp-filters"><div class="sbp-sel"><select class="input" id="sb-f-sess" onchange="_sbRenderPicker()">'+sessOpts+'</select></div>'
-    +'<div class="sbp-sel"><select class="input" id="sb-f-cls" onchange="_sbRenderPicker()"><option value="">Select class\u2026</option><option value="12">Class 12</option><option value="10">Class 10</option><option value="__all__">All classes</option></select></div></div>'
+    +'<div class="sbp-filters"><div class="sbp-sel"><select class="input" id="sb-f-cls" onchange="_sbRenderPicker()"><option value="">Select class\u2026</option><option value="12">Class 12</option><option value="10">Class 10</option><option value="__all__">All classes</option></select></div>'
+    +'<div class="sbp-sel"><select class="input" id="sb-f-sess" onchange="_sbRenderPicker()">'+sessOpts+'</select></div></div>'
     +'<div class="sbp-list" id="sb-pick-list"></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="stuAddBatch('+sid+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('check')+' Add to selected batch</button></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   _sbRenderPicker();
 }
 function _sbClass(b){ var t=((b&&b.type)||'')+' '+((b&&b.name)||''); return /udaan|aarambh|jeet|class\s*10|(^|[^0-9])10([^0-9]|$)/i.test(t)?'10':'12'; }
+function _sbCat(b){
+  var nm=((b&&b.name)||'').toLowerCase();
+  if(nm.indexOf('crash')>=0) return {key:'crash',special:true,label:'CRASH',cls:'crash'};
+  if(b&&b.mode==='rec') return {key:'recorded',special:true,label:'RECORDED',cls:'rec'};
+  if(b&&b.mode==='syc') return {key:'ondemand',special:true,label:'ON-DEMAND',cls:'rec'};
+  return {key:'session',special:false,label:'LIVE',cls:'live'};
+}
 function _sbPick(id){ window._sbSel=id; _sbRenderPicker(); }
 function _sbRenderPicker(){
   var host=document.getElementById('sb-pick-list'); if(!host) return;
-  var sess=(document.getElementById('sb-f-sess')||{}).value||'';
   var cls=(document.getElementById('sb-f-cls')||{}).value||'';
-  if(!sess && !cls){ host.innerHTML='<div class="sbp-hint">'+ic('folder')+'<span>Choose a <b>session</b> and <b>class</b> above to see the matching batches.</span></div>'; return; }
+  var sess=(document.getElementById('sb-f-sess')||{}).value||'';
+  if(!cls && !sess){ host.innerHTML='<div class="sbp-hint">'+ic('folder')+'<span>First pick a <b>class</b>, then a <b>session / type</b> above to see the matching batches.</span></div>'; return; }
   var list=(window._sbAll||[]).filter(function(b){
-    var s=(b.session||'').trim();
-    if(sess==='__none__'){ if(s) return false; } else if(sess && sess!=='__all__'){ if(s!==sess) return false; }
     if(cls && cls!=='__all__' && _sbClass(b)!==cls) return false;
+    if(!sess) return true;
+    if(sess==='__all__') return true;
+    var c=_sbCat(b);
+    if(sess==='__crash__') return c.key==='crash';
+    if(sess==='__rec__') return c.key==='recorded';
+    if(sess==='__syc__') return c.key==='ondemand';
+    if(sess==='__none__') return c.key==='session' && !(b.session||'').trim();
+    if(sess.indexOf('sess:')===0) return c.key==='session' && (b.session||'').trim()===sess.slice(5);
     return true;
   });
-  if(!list.length){ host.innerHTML='<div class="sbp-empty">No batch matches this session / class.</div>'; return; }
+  if(!list.length){ host.innerHTML='<div class="sbp-empty">No batch matches this class / session-type.</div>'; return; }
   host.innerHTML=list.map(function(b){
-    var modeL=b.mode==='rec'?'RECORDED':(b.mode==='syc'?'ON-DEMAND':'LIVE');
+    var c=_sbCat(b);
+    var sub=c.key==='session'?((b.session||'No session')+' \u00b7 Class '+_sbClass(b)):(c.label.charAt(0)+c.label.slice(1).toLowerCase()+' \u00b7 Class '+_sbClass(b));
     var sel=(String(window._sbSel)===String(b.id));
-    return '<div class="sbp-row'+(sel?' sel':'')+'" onclick="_sbPick('+b.id+')"><span class="sbp-rad"></span><div class="sbp-main"><div class="sbp-nm">'+esc(b.name)+'</div><div class="sbp-sub">'+esc(b.session||'No session')+' \u00b7 Class '+_sbClass(b)+'</div></div><span class="sbp-mode '+(b.mode==='live'||!b.mode?'live':'rec')+'">'+modeL+'</span></div>';
+    return '<div class="sbp-row'+(sel?' sel':'')+'" onclick="_sbPick('+b.id+')"><span class="sbp-rad"></span><div class="sbp-main"><div class="sbp-nm">'+esc(b.name)+'</div><div class="sbp-sub">'+esc(sub)+'</div></div><span class="sbp-mode '+c.cls+'">'+c.label+'</span></div>';
   }).join('');
 }
-function _sbInjectCSS(){
+function _sbpInjectCSS(){
   if(document.getElementById('sbp-css')) return;
   var s=document.createElement('style'); s.id='sbp-css';
   s.textContent='.sbp-wrap{margin-top:14px;border-top:1px solid var(--border,rgba(184,148,31,.2));padding-top:14px}'
@@ -12249,7 +12271,7 @@ function _sbInjectCSS(){
     +'.sbp-row.sel .sbp-rad{border-color:var(--primary,#b8941f)}.sbp-row.sel .sbp-rad::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--primary,#b8941f)}'
     +'.sbp-main{flex:1;min-width:0}.sbp-nm{font-weight:800;font-size:.92rem;color:var(--text,#2b2410)}.sbp-sub{font-size:.73rem;color:var(--text-muted,#a08a55);margin-top:1px}'
     +'.sbp-mode{flex:0 0 auto;font-size:.6rem;font-weight:900;letter-spacing:.03em;padding:3px 9px;border-radius:999px;color:#fff}'
-    +'.sbp-mode.live{background:#dc2626}.sbp-mode.rec{background:#4f46e5}';
+    +'.sbp-mode.live{background:#dc2626}.sbp-mode.rec{background:#4f46e5}.sbp-mode.crash{background:linear-gradient(135deg,#f97316,#ea580c)}';
   document.head.appendChild(s);
 }
 async function stuAddBatch(sid,name){
@@ -14629,6 +14651,7 @@ function openEditMyProfile(){
     +'.empx-l .empx-ic{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:rgba(184,148,31,.14);color:var(--primary,#9a7d1a)}'
     +'.empx-l .empx-ic svg{width:14px;height:14px}'
     +'.empx-f .input,.empx-f select.input{border:none;background:transparent;padding:0;font-size:1rem;font-weight:700;color:var(--text,#2b2410);width:100%;box-shadow:none;appearance:auto}'
+    +'.empx-f select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-right:24px;cursor:pointer;background:transparent url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%278%27 viewBox=%270 0 12 8%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%239a7d1a%27 stroke-width=%272%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") no-repeat right 2px center;background-size:12px 8px}'
     +'.empx-f .input::placeholder{font-weight:600;color:var(--text-muted,#b3a06a)}'
     +'.empx-f .input:focus{outline:none;box-shadow:none}'
     +'</style>';
@@ -14659,6 +14682,7 @@ function _rqxCSS(){
     +'.rqx-l{display:flex;align-items:center;gap:9px;font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:9px}'
     +'.rqx-l .rqx-ic{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:rgba(184,148,31,.14);color:var(--primary,#9a7d1a)}.rqx-l .rqx-ic svg{width:14px;height:14px}'
     +'.rqx-f .input,.rqx-f select.input,.rqx-f textarea.input{border:none;background:transparent;padding:0;font-size:1rem;font-weight:700;color:var(--text,#2b2410);width:100%;box-shadow:none;resize:vertical}'
+    +'.rqx-f select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;padding-right:24px;cursor:pointer;background:transparent url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%278%27 viewBox=%270 0 12 8%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%239a7d1a%27 stroke-width=%272%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") no-repeat right 2px center;background-size:12px 8px}'
     +'.rqx-f textarea.input{font-weight:600;font-size:.92rem;min-height:48px}.rqx-f .input:focus{outline:none;box-shadow:none}'
     +'.rqx-subs{display:flex;flex-wrap:wrap;gap:8px;max-height:210px;overflow:auto;padding:2px}'
     +'.rqx-chip{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;border:1.5px solid var(--border,rgba(184,148,31,.28));background:var(--card,#fffdf6);font-size:.86rem;font-weight:700;color:var(--text,#3a2f10);cursor:pointer;user-select:none;transition:all .13s}'
