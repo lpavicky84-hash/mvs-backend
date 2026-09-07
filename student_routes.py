@@ -83,6 +83,28 @@ def _tt_batch_filter(db, sp, only_batch_id=None):
     return TimetableEntry.batch_id.is_(None)
 
 
+def _sel_batch_subjects(db, sp, batch=None):
+    """The subjects to show for the student's SELECTED batch: the batch's assigned subjects
+    (Assign Subjects / BatchSubject), intersected with the student's own subjects. Falls back
+    to all the student's subjects if the batch has no subject mapping (or none match). This is
+    what makes each batch show only its own subjects (e.g. a Crash Course that only teaches
+    Physics shows just Physics)."""
+    stu = list(sp.subjects or [])
+    try:
+        from models import BatchSubject
+        bids = _student_batch_ids(db, sp, batch)
+        if not bids:
+            return stu
+        mapped = {r[0] for r in db.query(BatchSubject.subject)
+                  .filter(BatchSubject.batch_id.in_(bids)).distinct().all() if r[0]}
+        if mapped:
+            inter = [s for s in stu if s in mapped]
+            return inter if inter else stu
+    except Exception:
+        pass
+    return stu
+
+
 def _mat_batch_filter(db, sp, only_batch_id=None):
     """Material filter scoped to the student's batch: global/legacy material (batch_id NULL)
     PLUS the selected batch's own — never another batch's (DPPs, tests, class notes)."""
@@ -225,7 +247,7 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     sp = get_student_profile(current_user, db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
-    subs = sp.subjects or []
+    subs = _sel_batch_subjects(db, sp, batch)
     today = ist_today()
 
     # ---- my answer submissions -> which parents are done
@@ -1279,7 +1301,7 @@ def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_
     sp = get_student_profile(current_user, db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
-    subs = sp.subjects or []
+    subs = _sel_batch_subjects(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     _q = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(list(_subj_scope_for(db, Material, subs))),
@@ -1338,7 +1360,7 @@ def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user
     sp = get_student_profile(current_user, db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
-    subs = sp.subjects or []
+    subs = _sel_batch_subjects(db, sp, batch)
     ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
                                    _mat_batch_filter(db, sp, batch),
                                    Material.material_type == "dpp").order_by(Material.created_at.desc()).all()
@@ -1356,7 +1378,7 @@ def student_tests_list(batch: int = 0, db: Session = Depends(get_db), current_us
     sp = get_student_profile(current_user, db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
-    subs = sp.subjects or []
+    subs = _sel_batch_subjects(db, sp, batch)
     ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
                                    _mat_batch_filter(db, sp, batch),
                                    Material.material_type == "test").order_by(Material.created_at.desc()).all()

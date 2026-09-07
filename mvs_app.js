@@ -4070,20 +4070,42 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase, keepSub){
   softSpin(wrap);
   _mtBase=apiBase;
   _mtLast={wrapId:wrapId, endpoint:endpoint, apiBase:apiBase};
+  if(window._mtBatch===undefined) window._mtBatch='';
+  if(window._mtBatchBase!==apiBase){ window._mtBatchList=null; window._mtBatchBase=apiBase; window._mtBatch=''; }
+  if(!window._mtBatchList){
+    try{
+      if(apiBase.indexOf('admin')>=0){ var _rb=await api('/api/admin/batches'); window._mtBatchList=((_rb&&_rb.batches)||[]).filter(function(b){return b.active!==false;}); }
+      else { var _tb=await api('/api/teacher/tt-batches'); window._mtBatchList=(_tb&&_tb.batches)||[]; }
+    }catch(e){ window._mtBatchList=[]; }
+  }
+  var _ep=endpoint+(window._mtBatch?((endpoint.indexOf('?')>=0?'&':'?')+'batch='+encodeURIComponent(window._mtBatch)):'');
   try{
-    const d=await api(endpoint);
+    const d=await api(_ep);
     _mtData=d.subjects||[];
-    if(!_mtData.length){ _mtSub=null; wrap.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83d\udcda</div><p>No material uploaded yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; return; }
-    // v114: page pe har fresh entry me pehle subject CARDS; sirf delete-refresh
-    // (_mtReload) par khula subject bana rehta hai (wo delete ho gaya ho to cards).
+    if(!_mtData.length){ _mtSub=null; wrap.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">\ud83d\udcda</div><p>No material'+(window._mtBatch?' for this course':'')+' yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; _mtInjectBatchBar(wrapId); return; }
     if(!keepSub||!_mtData.find(s=>s.subject===_mtSub)) _mtSub=null;
-    // v130: naye notes/dpp uploads ka NEW blink ab teacher ko bhi (pehle sirf admin).
     const _mtRole=apiBase.indexOf('admin')>=0?'admin':'teacher';
     window._mtNew=_matNewIds(_mtRole, _mtData.flatMap(s=>s.chapters.flatMap(c=>c.items)));
     _matBadge(_mtRole);
     _mtPaint(wrapId);
+    _mtInjectBatchBar(wrapId);
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
+function _mtInjectBatchBar(wrapId){
+  var wrap=document.getElementById(wrapId); if(!wrap) return;
+  var list=window._mtBatchList||[]; if(list.length<1) return;
+  if(!document.getElementById('mt-batbar-css')){ var st=document.createElement('style'); st.id='mt-batbar-css';
+    st.textContent='.mt-batbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--border,rgba(184,148,31,.25));border-radius:14px;background:var(--card,#fffdf6);margin-bottom:14px}'
+      +'.mt-batlbl{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#a08a55)}.mt-batlbl svg{width:15px;height:15px}'
+      +'.mt-batsel{min-width:220px;font-weight:700;padding:9px 13px;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:11px;background:#fff;appearance:none;-webkit-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%278%27 viewBox=%270 0 12 8%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%239a7d1a%27 stroke-width=%272%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}';
+    document.head.appendChild(st); }
+  var opts='<option value="">All courses</option>'+list.map(function(b){return '<option value="'+b.id+'"'+(String(window._mtBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('')+'<option value="-1"'+(window._mtBatch==='-1'?' selected':'')+'>No course (global)</option>';
+  var bar=document.createElement('div');
+  bar.className='mt-batbar';
+  bar.innerHTML='<span class="mt-batlbl">'+ic('folder')+' Course</span><select class="mt-batsel" onchange="_mtSetBatch(this.value)">'+opts+'</select>';
+  wrap.insertBefore(bar, wrap.firstChild);
+}
+function _mtSetBatch(v){ window._mtBatch=v; var l=_mtLast; if(l) _renderMaterialTree(l.wrapId,l.endpoint,l.apiBase,false); }
 function _mtReload(){ if(_mtLast) _renderMaterialTree(_mtLast.wrapId,_mtLast.endpoint,_mtLast.apiBase,true); }
 function deleteMaterial(who,id,name){
   const nm=decodeURIComponent(name||'this file');

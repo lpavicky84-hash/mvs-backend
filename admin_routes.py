@@ -4482,10 +4482,11 @@ def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),
 
 # ============================================================ MATERIAL ANALYTICS
 @router.get("/materials-tree")
-def admin_materials_tree(db: Session = Depends(get_db), current_user=Depends(get_admin)):
-    """Every subject's uploaded material, chapter/part-wise, with engagement."""
+def admin_materials_tree(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Every subject's uploaded material, chapter/part-wise, with engagement. Optional batch
+    filter (batch=<id> shows that batch + global; batch=-1 shows global/legacy only)."""
     from teacher_routes import _material_tree
-    return {"subjects": _material_tree(db, None)}
+    return {"subjects": _material_tree(db, None, (batch or None))}
 
 
 @router.get("/material/{mid}/audience")

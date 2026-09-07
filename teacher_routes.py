@@ -1528,13 +1528,21 @@ async def upload_material(
     return {"id": m.id, "message": "Uploaded successfully!"}
 
 @router.get("/materials")
-def teacher_materials(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    from models import Material
+def teacher_materials(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Material, Batch
     tp = get_teacher_profile(current_user, db)
-    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.teacher_id == tp.id,
-                                   Material.material_type != "answer").order_by(Material.created_at.desc()).all()
+    q = db.query(Material).options(defer(Material.content_b64)).filter(
+        Material.teacher_id == tp.id, Material.material_type != "answer")
+    if batch == -1:
+        q = q.filter(Material.batch_id.is_(None))   # -1 = global/legacy only
+    elif batch:
+        q = q.filter(Material.batch_id == batch)
+    ms = q.order_by(Material.created_at.desc()).all()
+    bmap = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()}
     return [{"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
              "title": m.title, "filename": m.filename, "duration_min": m.duration_min,
+             "batch_id": getattr(m, "batch_id", None),
+             "batch": (bmap.get(getattr(m, "batch_id", None)) if getattr(m, "batch_id", None) else None),
              "date": str(m.created_at)[:10]} for m in ms]
 
 @router.get("/chapter-status")
@@ -4155,13 +4163,18 @@ def teacher_class_reports(db: Session = Depends(get_db), current_user=Depends(ge
 # counts and the actual student lists behind those counts. Shared shape so the
 # teacher portal and the admin portal render from the same renderer.
 
-def _material_tree(db, subjects=None):
+def _material_tree(db, subjects=None, only_batch=None):
     from models import Material, MaterialView, StudentProfile
     q = db.query(Material).options(defer(Material.content_b64)).filter(Material.material_type != "answer")
     if subjects is not None:
         if not subjects:
             return []
         q = q.filter(Material.subject.in_(list(_subj_scope_for(db, Material, subjects))))
+    if only_batch == -1:
+        q = q.filter(Material.batch_id.is_(None))   # global/legacy only
+    elif only_batch:
+        from sqlalchemy import or_ as _or_mt
+        q = q.filter(_or_mt(Material.batch_id == only_batch, Material.batch_id.is_(None)))
     mats = q.order_by(Material.created_at.desc()).all()
     ids = [m.id for m in mats]
     views, downloads = {}, {}
@@ -4298,9 +4311,9 @@ def _material_audience(db, material_id):
 
 
 @router.get("/materials-tree")
-def teacher_materials_tree(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def teacher_materials_tree(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
-    return {"subjects": _material_tree(db, tp.subjects or [])}
+    return {"subjects": _material_tree(db, tp.subjects or [], (batch or None))}
 
 
 @router.get("/material/{mid}/audience")
