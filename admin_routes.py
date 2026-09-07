@@ -274,6 +274,29 @@ def _ensure_batch_link():
 _ensure_batch_link()
 
 
+def _ensure_tt_youtube_startup():
+    """Add timetable_entries.youtube_link at STARTUP (before any read), so ORM queries that
+    now include the column never fail on databases that don't have it yet."""
+    try:
+        from database import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            for _st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
+                        "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+        finally:
+            _db.close()
+    except Exception:
+        pass
+
+
+_ensure_tt_youtube_startup()
+
+
 def _ensure_enrollments():
     """Create student_batches (if missing) and backfill one enrollment per student's primary batch.
     Import-time, idempotent, bounded, additive."""
