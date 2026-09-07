@@ -12157,7 +12157,11 @@ async function _mountBatchSelector(){
     if(list.length<=1){ host.innerHTML=''; return; }   // selector sirf multi-batch students ke liye
     var sel=_selBatch();
     if(!sel || !list.some(function(b){return b.id===sel;})){
-      var prim=list.filter(function(b){return b.is_primary;})[0]||list[0];
+      // auto-pick a LIVE (non-expired) batch; among those prefer the primary. So when the
+      // old batch has ended, the student lands on the new live batch automatically.
+      var _liveList=list.filter(function(b){return !b.expired;});
+      var _pool=_liveList.length?_liveList:list;
+      var prim=_pool.filter(function(b){return b.is_primary;})[0]||_pool[0];
       sel=prim.id; try{ localStorage.setItem('sel_batch',String(sel)); }catch(e){}
     }
     // selected batch ka naam + mode window pe set karo taaki sMode()/dashboard sahi dikhe
@@ -12190,7 +12194,8 @@ function _selBatchChange(bid){
   if(b){ window._sBatch=b.name||window._sBatch; window._sBatchMode=(b.mode||'live'); }
   try{ applyBatchMode(); }catch(e){}
   toast('Switched to '+((b&&b.name)||'batch'));
-  try{ if(typeof loadSDashboard==='function') loadSDashboard(); }catch(e){}
+  try{ _apiForget(''); }catch(e){}   // batch scopes timetable/dashboard/materials/progress -> drop all cache
+  try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
   setTimeout(function(){ _batchWelcomePopup(); }, 300);
 }
 function _restoreSelBatch(){
