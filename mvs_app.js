@@ -14180,7 +14180,15 @@ async function _attMountBatchBar(){
       +'<select class="input att-sel" onchange="_attSetBatch(this.value)"><option value=""'+(!window._attBatch?' selected':'')+'>All batches</option>'
         +grp('\uD83D\uDD34 Live',live)+grp('\u25B6 Recorded',rec)+grp('\u25B6 On-Demand',syc)
         +'<option value="global"'+(window._attBatch==='global'?' selected':'')+'>Global (no batch)</option></select>'
-      +((window._attBatch&&window._attBatch!=='global')?'<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button><button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>':'')
+      +((window._attBatch&&window._attBatch!=='global')?(function(){
+        var _sa=_attBatchStandalone(window._attBatch);
+        var _saBtn=_sa
+          ? '<button class="btn btn-ghost btn-sm" style="border-color:var(--primary);color:var(--primary)" onclick="_attSetStandalone('+window._attBatch+',false)" title="Yeh batch abhi SIRF apna timetable dikhata hai. Global (shared) timetable inherit karne ke liye click karo.">'+ic('shield')+' Standalone \u2713</button>'
+          : '<button class="btn btn-ghost btn-sm" onclick="_attSetStandalone('+window._attBatch+',true)" title="Yeh batch abhi global (shared) timetable inherit kar raha hai. Sirf apna timetable dikhane ke liye click karo.">'+ic('shield')+' Make standalone</button>';
+        return '<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button>'
+          +_saBtn
+          +'<button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>';
+      })():'')
       +'</div>';
   }catch(e){ host.innerHTML=''; }
 }
@@ -14198,6 +14206,15 @@ function _attInjectCSS(){
 async function _attSetBatch(v){
   window._attBatch=v; window._attBatchSubs=null;
   if(v && v!=='global' && v!==''){ try{ var m=await api('/api/admin/batch-subjects?batch_id='+v); window._attBatchSubs=(m&&m.subjects)||[]; }catch(e){} }
+  try{ aRenderTT(); }catch(e){}
+  setTimeout(_attMountBatchBar,10);
+}
+async function _attSetStandalone(bid,val){
+  try{ await api('/api/admin/batches/'+bid,'POST',{standalone:!!val}); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); return; }
+  (window._attBatchList||[]).forEach(function(b){ if(String(b.id)===String(bid)) b.standalone=!!val; });
+  try{ _apiForget('batches'); _apiForget('timetable'); }catch(e){}
+  toast(val?'Ab yeh batch sirf apna timetable dikhayega.':'Ab yeh batch global (shared) timetable inherit karega.');
   try{ aRenderTT(); }catch(e){}
   setTimeout(_attMountBatchBar,10);
 }
@@ -14219,21 +14236,30 @@ async function _saveBatchSubjects(bid){
   try{ await api('/api/admin/batch-subjects','POST',{batch_id:bid,subjects:subs}); toast(subs.length+' subject'+(subs.length!==1?'s':'')+' assigned.'); closeModal(); window._attBatchSubs=subs; try{ aRenderTT(); }catch(e){} }
   catch(e){ toast((e&&e.message)||'Could not save',true); }
 }
+function _attBatchStandalone(bid){
+  var b=(window._attBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0];
+  if(!b) return false;
+  if(b.standalone===true) return true;
+  if(b.standalone===false) return false;
+  return /crash/i.test(b.name||'');   // NULL/auto -> "Crash" naam wala batch standalone
+}
 function aFilteredTT(){
   var bsubs=window._attBatchSubs;
-  // Does the selected batch have any timetable of its own?
-  var _hasOwn=false;
+  // Does the selected batch have any timetable of its own? Aur kya wo standalone hai?
+  var _hasOwn=false, _standalone=false;
   if(window._attBatch && window._attBatch!=='global'){
     _hasOwn=(_attEntries||[]).some(function(e){ return String(e.batch_id||'')===String(window._attBatch); });
+    _standalone=_attBatchStandalone(window._attBatch);
   }
   return _attEntries.filter(e=>{
     if(window._attBatch==='global'){ if(e.batch_id) return false; }
     else if(window._attBatch){
-      if(_hasOwn){
-        // this batch has its own timetable -> show ONLY that batch's entries (no global)
+      if(_hasOwn || _standalone){
+        // apna timetable ho YA batch standalone ho -> sirf iss batch ke entries (global bilkul nahi).
+        // Standalone khaali batch => kuch nahi dikhega (jab tak uska apna timetable upload/create na ho).
         if(String(e.batch_id||'')!==String(window._attBatch)) return false;
       } else {
-        // legacy batch with no own timetable -> only the global entries of its offered subjects
+        // legacy (non-standalone) batch with no own timetable -> only the global entries of its offered subjects
         var sharedGlobal=(!e.batch_id && bsubs && bsubs.indexOf(e.subject)>=0);
         if(!sharedGlobal) return false;
       }

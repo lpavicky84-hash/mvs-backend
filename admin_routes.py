@@ -897,6 +897,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "end_date": (b.end_date.isoformat() if getattr(b, "end_date", None) else ""),
         "description": b.description or "", "status": b.status or "live",
         "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
+        "standalone": (None if getattr(b, "standalone", None) is None else bool(b.standalone)),
         "has_banner": bool(getattr(b, "banner_b64", None)),
         "banner": getattr(b, "banner_b64", "") or "",
         "welcome_message": getattr(b, "welcome_message", "") or "",
@@ -929,6 +930,13 @@ def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=
               status=(payload.get("status") or "live"),
               is_new=bool(payload.get("is_new")),
               active=True, sort=((mx.sort + 1) if mx else 0))
+    # New batches default to STANDALONE — apna hi timetable/material dikhega, purana global inherit
+    # nahi hoga (owner ka model: "batch banao, uska timetable upload/create karo"). Chahe to
+    # payload standalone=false bhej ke ya baad me toggle se global-inherit on kiya ja sakta hai.
+    try:
+        b.standalone = (True if payload.get("standalone") is None else bool(payload.get("standalone")))
+    except Exception:
+        b.standalone = True
     db.add(b)
     db.commit()
     return {"ok": True, "id": b.id, "code": b.code}
@@ -950,6 +958,9 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
             setattr(b, fld, (payload.get(fld) or "").strip())
     if payload.get("is_new") is not None:
         b.is_new = bool(payload.get("is_new"))
+    if "standalone" in payload:
+        _sv = payload.get("standalone")
+        b.standalone = (None if _sv is None else bool(_sv))   # None=auto, True=own only, False=inherit global
     for _df in ("start_date", "end_date"):
         if payload.get(_df) is not None:
             _dv = (payload.get(_df) or "").strip()

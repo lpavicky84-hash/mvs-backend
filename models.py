@@ -115,6 +115,10 @@ class Batch(Base):
     status       = Column(String(20), default="live")            # draft | upcoming | live | completed | archived
     active       = Column(Boolean, default=True)
     is_new       = Column(Boolean, default=False)                # "new batch" indicator
+    # standalone: batch apna hi timetable/material/DPP dikhaayega, global kabhi inherit nahi karega.
+    # None = auto (naam me "Crash" ho to standalone, warna legacy batch global inherit karta hai),
+    # True = sirf apna (khaali to khaali), False = purana behaviour (global inherit). New batches -> True.
+    standalone   = Column(Boolean, nullable=True)
     sort         = Column(Integer, default=0)                    # display order
     banner_b64   = Column(Text, nullable=True)                   # welcome banner image (base64 / drive url)
     welcome_message = Column(String(1000), default="")           # congrats message shown 1st time student opens the batch
@@ -257,6 +261,7 @@ class Timetable(Base):
     start_time  = Column(Time)
     topic       = Column(String(200))
     is_active   = Column(Boolean, default=True)
+    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy)
     created_at  = Column(DateTime, default=func.now())
 
     teacher = relationship("TeacherProfile")
@@ -816,7 +821,6 @@ class Exam(Base):
     duration_min= Column(Integer, default=60)
     scheduled_at= Column(DateTime, nullable=True)        # test goes live at this date/time
     is_active   = Column(Boolean, default=True)
-    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy)
     created_at  = Column(DateTime, default=func.now())
 
 class ExamQuestion(Base):

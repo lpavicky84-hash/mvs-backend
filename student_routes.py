@@ -58,6 +58,13 @@ def _ensure_batch_cols(db=None):
                     _d.execute(_t(_st)); _d.commit(); break
                 except Exception:
                     _d.rollback()
+            for _st in ("ALTER TABLE batches ADD COLUMN standalone TINYINT NULL",
+                        "ALTER TABLE batches ADD COLUMN standalone BOOLEAN NULL",
+                        "ALTER TABLE batches ADD COLUMN standalone TINYINT"):
+                try:
+                    _d.execute(_t(_st)); _d.commit(); break
+                except Exception:
+                    _d.rollback()
             for _tbl in ("materials", "dpp_packs", "exams"):
                 _d.execute(_t("SELECT batch_id FROM %s LIMIT 1" % _tbl))
             _d.commit()
@@ -86,6 +93,13 @@ def _ensure_batch_columns_startup():
                         _db.rollback()
             for _st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
                         "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+            for _st in ("ALTER TABLE batches ADD COLUMN standalone TINYINT NULL",
+                        "ALTER TABLE batches ADD COLUMN standalone BOOLEAN NULL",
+                        "ALTER TABLE batches ADD COLUMN standalone TINYINT"):
                 try:
                     _db.execute(_t(_st)); _db.commit(); break
                 except Exception:
@@ -129,6 +143,28 @@ def _student_batch_ids(db, sp, only_batch_id=None):
     return bids
 
 
+def _bids_standalone(db, bids):
+    """True if the selected batch is self-contained — it shows ONLY its own timetable/material/
+    DPP/exam and NEVER inherits the shared global one. `standalone` column: True = own only,
+    False = inherit global (legacy), NULL = auto (a 'Crash Course' is standalone by default; any
+    other legacy batch inherits). An explicit True/False always wins over the name heuristic.
+    Empty standalone batch => empty (jab tak uska apna timetable/material upload/create na ho)."""
+    if not bids:
+        return False
+    try:
+        from models import Batch
+        for b in db.query(Batch).filter(Batch.id.in_(bids)).all():
+            s = getattr(b, "standalone", None)
+            if s is not None:
+                if bool(s):
+                    return True
+            elif "crash" in ((b.name or "").lower()):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def _tt_batch_filter(db, sp, only_batch_id=None):
     """A TimetableEntry filter scoped to the student's batch. If the batch has a subject mapping,
     show its batch-specific entries PLUS global entries of the subjects it offers (shared subjects).
@@ -138,6 +174,9 @@ def _tt_batch_filter(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return TimetableEntry.batch_id.is_(None)
+    # Standalone batch (naya/crash-course) -> SIRF apna timetable, global kabhi nahi (khaali to khaali).
+    if _bids_standalone(db, bids):
+        return TimetableEntry.batch_id.in_(bids)
     # If the batch has ANY timetable of its own, show ONLY that batch's timetable — never pull
     # the global/legacy timetable of the subjects it merely offers. So a Crash Course that has
     # only a Physics timetable shows ONLY Physics, not the old global Biology/Chem/etc.
@@ -185,6 +224,8 @@ def _exam_batch_filter(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Exam.batch_id.is_(None)
+    if _bids_standalone(db, bids):
+        return Exam.batch_id.in_(bids)
     has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
                or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
                or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None
@@ -205,6 +246,8 @@ def _dpp_batch_filter(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return DppPack.batch_id.is_(None)
+    if _bids_standalone(db, bids):
+        return DppPack.batch_id.in_(bids)
     has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
                or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
                or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None)
@@ -226,6 +269,8 @@ def _mat_batch_filter(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Material.batch_id.is_(None)
+    if _bids_standalone(db, bids):
+        return Material.batch_id.in_(bids)
     has_own_tt = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
     has_own_mat = db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
     if has_own_tt or has_own_mat:
