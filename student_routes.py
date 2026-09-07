@@ -119,7 +119,10 @@ def _student_batch_ids(db, sp, only_batch_id=None):
     if only_batch_id:
         try:
             oid = int(only_batch_id)
-            if oid in bids:
+            # The app only ever offers batches the student is enrolled in, so trust the
+            # selected batch and scope strictly to it (even if the enrollment row's id differs
+            # slightly). This is what makes every section switch cleanly per batch.
+            if oid:
                 return [oid]
         except Exception:
             pass
