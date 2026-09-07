@@ -12191,19 +12191,65 @@ async function openStudentBatches(sid,name){
   try{ var a=await api('/api/admin/batches'); all=((a&&a.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
   var have={}; enrolled.forEach(function(b){have[b.id]=1;});
   var avail=all.filter(function(b){return !have[b.id];});
+  window._sbAll=avail; window._sbSel='';
   var rows=enrolled.length?enrolled.map(function(b){
     return '<div class="vtc-row"><span class="sbb-av">'+ic('folder')+'</span><div class="vtc-main"><div style="font-weight:700;font-size:.9rem">'+esc(b.name)+(b.is_primary?' <span style="font-size:.62rem;font-weight:800;color:var(--primary,#8a6d1a);background:var(--primary-soft,rgba(184,148,31,.15));padding:1px 7px;border-radius:999px;vertical-align:middle">PRIMARY</span>':'')+'</div></div><button class="btn btn-ghost btn-sm vtc-del" onclick="stuRemoveBatch('+sid+','+b.id+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('trash')+' Remove</button></div>';
   }).join(''):'<div class="vtc-empty">Not in any batch yet</div>';
-  var addSel='<select id="stu-bat-add" class="input" style="flex:1;min-width:150px"><option value="">Add to a batch\u2026</option>'+avail.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+'</option>';}).join('')+'</select>';
+  var _sessSet=[]; avail.forEach(function(b){var s=(b.session||'').trim(); if(s&&_sessSet.indexOf(s)<0)_sessSet.push(s);});
+  var _hasNone=avail.some(function(b){return !(b.session||'').trim();});
+  var sessOpts='<option value="">All sessions</option>'+_sessSet.map(function(s){return '<option value="'+esc(s)+'">'+esc(s)+'</option>';}).join('')+(_hasNone?'<option value="__none__">No session</option>':'');
+  _sbInjectCSS();
   showModal('Batches \u2014 '+esc(name),
     '<p class="vtc-help">A student can be in multiple batches. The first one is the <b>primary</b> batch (used wherever a single batch is needed).</p>'
     +'<div class="vtc-list">'+rows+'</div>'
-    +'<div class="vtc-add">'+addSel+'<button class="btn btn-primary btn-sm" onclick="stuAddBatch('+sid+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('plus')+' Add</button></div>',
+    +'<div class="sbp-wrap"><div class="sbp-title">'+ic('plus')+' Add to a batch</div>'
+    +'<div class="sbp-filters"><select class="input" id="sb-f-sess" onchange="_sbRenderPicker()">'+sessOpts+'</select>'
+    +'<select class="input" id="sb-f-cls" onchange="_sbRenderPicker()"><option value="">All classes</option><option value="12">Class 12</option><option value="10">Class 10</option></select></div>'
+    +'<div class="sbp-list" id="sb-pick-list"></div>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="stuAddBatch('+sid+',\''+esc((name||'').replace(/'/g,''))+'\')">'+ic('check')+' Add to selected batch</button></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  _sbRenderPicker();
+}
+function _sbClass(b){ var t=((b&&b.type)||'')+' '+((b&&b.name)||''); return /udaan|aarambh|jeet|class\s*10|(^|[^0-9])10([^0-9]|$)/i.test(t)?'10':'12'; }
+function _sbPick(id){ window._sbSel=id; _sbRenderPicker(); }
+function _sbRenderPicker(){
+  var host=document.getElementById('sb-pick-list'); if(!host) return;
+  var sess=(document.getElementById('sb-f-sess')||{}).value||'';
+  var cls=(document.getElementById('sb-f-cls')||{}).value||'';
+  var list=(window._sbAll||[]).filter(function(b){
+    var s=(b.session||'').trim();
+    if(sess==='__none__'){ if(s) return false; } else if(sess){ if(s!==sess) return false; }
+    if(cls && _sbClass(b)!==cls) return false;
+    return true;
+  });
+  if(!list.length){ host.innerHTML='<div class="sbp-empty">No batch matches this session / class.</div>'; return; }
+  host.innerHTML=list.map(function(b){
+    var modeL=b.mode==='rec'?'RECORDED':(b.mode==='syc'?'ON-DEMAND':'LIVE');
+    var sel=(String(window._sbSel)===String(b.id));
+    return '<div class="sbp-row'+(sel?' sel':'')+'" onclick="_sbPick('+b.id+')"><span class="sbp-rad"></span><div class="sbp-main"><div class="sbp-nm">'+esc(b.name)+'</div><div class="sbp-sub">'+esc(b.session||'No session')+' \u00b7 Class '+_sbClass(b)+'</div></div><span class="sbp-mode '+(b.mode==='live'||!b.mode?'live':'rec')+'">'+modeL+'</span></div>';
+  }).join('');
+}
+function _sbInjectCSS(){
+  if(document.getElementById('sbp-css')) return;
+  var s=document.createElement('style'); s.id='sbp-css';
+  s.textContent='.sbp-wrap{margin-top:14px;border-top:1px solid var(--border,rgba(184,148,31,.2));padding-top:14px}'
+    +'.sbp-title{display:flex;align-items:center;gap:7px;font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:10px}.sbp-title svg{width:14px;height:14px}'
+    +'.sbp-filters{display:flex;gap:8px;margin-bottom:10px}.sbp-filters .input{flex:1;font-weight:700}'
+    +'.sbp-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;padding:2px}'
+    +'.sbp-empty{color:var(--text-muted,#a08a55);font-size:.82rem;text-align:center;padding:16px}'
+    +'.sbp-row{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1.5px solid var(--border,rgba(184,148,31,.22));border-radius:13px;cursor:pointer;background:var(--card,#fffdf6);transition:border-color .14s,box-shadow .14s,background .14s}'
+    +'.sbp-row:hover{border-color:rgba(184,148,31,.5)}'
+    +'.sbp-row.sel{border-color:var(--primary,#b8941f);background:rgba(184,148,31,.07);box-shadow:0 6px 18px -12px rgba(184,148,31,.6)}'
+    +'.sbp-rad{flex:0 0 auto;width:18px;height:18px;border-radius:50%;border:2px solid var(--border,rgba(184,148,31,.4));position:relative;transition:border-color .14s}'
+    +'.sbp-row.sel .sbp-rad{border-color:var(--primary,#b8941f)}.sbp-row.sel .sbp-rad::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--primary,#b8941f)}'
+    +'.sbp-main{flex:1;min-width:0}.sbp-nm{font-weight:800;font-size:.92rem;color:var(--text,#2b2410)}.sbp-sub{font-size:.73rem;color:var(--text-muted,#a08a55);margin-top:1px}'
+    +'.sbp-mode{flex:0 0 auto;font-size:.6rem;font-weight:900;letter-spacing:.03em;padding:3px 9px;border-radius:999px;color:#fff}'
+    +'.sbp-mode.live{background:#dc2626}.sbp-mode.rec{background:#4f46e5}';
+  document.head.appendChild(s);
 }
 async function stuAddBatch(sid,name){
-  var bid=(document.getElementById('stu-bat-add')||{}).value;
-  if(!bid){ toast('Pick a batch'); return; }
+  var bid=window._sbSel;
+  if(!bid){ toast('Pick a batch from the list first'); return; }
   try{ await api('/api/admin/students/'+sid+'/batches','POST',{batch_id:parseInt(bid,10)}); toast('Added to batch.'); openStudentBatches(sid,name); }
   catch(e){ toast((e&&e.message)||'Could not add',true); }
 }
@@ -14219,7 +14265,7 @@ const ADMIN_SECTIONS=[
   ['dashboard','Dashboard'],['approvals','Approvals'],['live','Live Users'],['timetable','Time Table'],
   ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
   ['vtasks','Task Manager'],['ytasks','YouTuber Tasks'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
-  ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],
+  ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],['requests','Student Requests'],
   ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['categories','Teacher Categories'],['matcheck','Material Checker'],['complaints','Complaints'],['feedback','Feedback'],['admins','Admin Users']
 ];
 let _aaFull=false, _aaSel=new Set(['dashboard']), _aaEdit={};
@@ -14596,23 +14642,48 @@ async function saveMyProfile(){
   try{ await api('/api/student/update-profile','POST',body); toast('Details updated.'); closeModal(); loadSProfile(); }
   catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
+function _rqxCSS(){
+  if(document.getElementById('rqx-css')) return '';
+  var s=document.createElement('style'); s.id='rqx-css';
+  s.textContent='.rqx{display:flex;flex-direction:column;gap:14px;padding-top:2px}'
+    +'.rqx-note{display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.12),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.26);border-radius:16px;padding:13px 15px;font-size:.83rem;color:var(--text,#4a3d16);line-height:1.5}'
+    +'.rqx-note .rqx-ni{flex:0 0 auto;width:26px;height:26px;border-radius:9px;background:var(--primary,#b8941f);color:#fff;display:inline-flex;align-items:center;justify-content:center}.rqx-note .rqx-ni svg{width:15px;height:15px}'
+    +'.rqx-f{position:relative;background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.2));border-radius:16px;padding:14px 16px;overflow:hidden;transition:border-color .16s,box-shadow .16s}'
+    +'.rqx-f::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--primary,#b8941f),rgba(184,148,31,.4));opacity:0;transition:opacity .16s}'
+    +'.rqx-f:focus-within{border-color:var(--primary,#b8941f);box-shadow:0 6px 22px -12px rgba(184,148,31,.5)}.rqx-f:focus-within::before{opacity:1}'
+    +'.rqx-l{display:flex;align-items:center;gap:9px;font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:9px}'
+    +'.rqx-l .rqx-ic{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:rgba(184,148,31,.14);color:var(--primary,#9a7d1a)}.rqx-l .rqx-ic svg{width:14px;height:14px}'
+    +'.rqx-f .input,.rqx-f select.input,.rqx-f textarea.input{border:none;background:transparent;padding:0;font-size:1rem;font-weight:700;color:var(--text,#2b2410);width:100%;box-shadow:none;resize:vertical}'
+    +'.rqx-f textarea.input{font-weight:600;font-size:.92rem;min-height:48px}.rqx-f .input:focus{outline:none;box-shadow:none}'
+    +'.rqx-subs{display:flex;flex-wrap:wrap;gap:8px;max-height:210px;overflow:auto;padding:2px}'
+    +'.rqx-chip{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;border:1.5px solid var(--border,rgba(184,148,31,.28));background:var(--card,#fffdf6);font-size:.86rem;font-weight:700;color:var(--text,#3a2f10);cursor:pointer;user-select:none;transition:all .13s}'
+    +'.rqx-chip:hover{border-color:rgba(184,148,31,.55)}'
+    +'.rqx-chip.on{border-color:var(--primary,#b8941f);background:linear-gradient(135deg,rgba(184,148,31,.16),rgba(184,148,31,.06));color:#8a6d1a;box-shadow:0 4px 12px -6px rgba(184,148,31,.5)}'
+    +'.rqx-chip .rqx-tick{width:16px;height:16px;border-radius:50%;border:2px solid var(--border,rgba(184,148,31,.5));display:inline-flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff}'
+    +'.rqx-chip.on .rqx-tick{background:var(--primary,#b8941f);border-color:var(--primary,#b8941f)}';
+  document.head.appendChild(s); return '';
+}
+function _rqxToggle(el){ el.classList.toggle('on'); }
 async function openRequestSubjects(){
   const p=window._sProf||{};
   const cls=(p.class_level||'').trim();
   showModal('Request Subject Change','<div class="spinner"></div>','');
   let avail=[];
   try{ if(cls) avail=await api('/api/student/available-subjects?class_level='+encodeURIComponent(cls)); }catch(e){}
+  _rqxCSS();
   const cur=new Set(p.subjects||[]);
-  const boxes=(avail||[]).map(s=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:.86rem"><input type="checkbox" class="rsub-cb" value="${esc(s.name)}"${cur.has(s.name)?' checked':''}> ${esc(s.name)}</label>`).join('')
+  const chips=(avail||[]).map(s=>`<span class="rqx-chip${cur.has(s.name)?' on':''}" data-sub="${esc(s.name)}" onclick="_rqxToggle(this)"><span class="rqx-tick">${ic('check')}</span>${esc(s.name)}</span>`).join('')
     || '<p style="color:var(--text-muted);font-size:.82rem">Subject list unavailable — describe your change in the note below.</p>';
   showModal('Request Subject Change',
-    '<p class="vtc-help">Pick the subjects you want. This goes to the admin as a request — your subjects change only after they approve it.</p>'
-    +'<div class="hide-scroll" style="max-height:240px;border:1px solid var(--border);border-radius:10px;padding:6px 10px">'+boxes+'</div>'
-    +'<div class="form-group" style="margin-top:10px"><label>Note to admin (optional)</label><textarea class="input" id="rsub-note" rows="2" placeholder="Why do you want this change?"></textarea></div>',
+    '<div class="rqx">'
+    +'<div class="rqx-note"><span class="rqx-ni">'+ic('book')+'</span><span>Tap the subjects you want. This goes to the admin as a <b>request</b> — your subjects change only after they approve it.</span></div>'
+    +'<div class="rqx-f"><div class="rqx-l"><span class="rqx-ic">'+ic('grid')+'</span> Choose subjects</div><div class="rqx-subs">'+chips+'</div></div>'
+    +'<div class="rqx-f"><div class="rqx-l"><span class="rqx-ic">'+ic('edit')+'</span> Note to admin (optional)</div><textarea class="input" id="rsub-note" rows="2" placeholder="Why do you want this change?"></textarea></div>'
+    +'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitSubjectRequest()">Send request</button>');
 }
 async function submitSubjectRequest(){
-  const subs=[...document.querySelectorAll('.rsub-cb:checked')].map(x=>x.value);
+  const subs=[...document.querySelectorAll('.rqx-chip.on')].map(x=>x.getAttribute('data-sub'));
   const note=val('rsub-note');
   if(!subs.length && !note){ toast('Pick subjects or add a note.'); return; }
   try{ const r=await api('/api/student/request-subject-change','POST',{subjects:subs,note:note}); toast((r&&r.message)||'Request sent.'); closeModal(); }
@@ -14623,12 +14694,15 @@ async function openRequestBatch(){
   showModal('Request Batch Change','<div class="spinner"></div>','');
   let batches=[];
   try{ batches=await api('/api/student/batches'); }catch(e){}
+  _rqxCSS();
   const cur=(p.batch_name||'').trim();
   const opts='<option value="">— Select the correct batch —</option>'+(batches||[]).map(b=>`<option value="${esc(b.name)}"${cur===b.name?' selected':''}>${esc(b.name)}</option>`).join('');
   showModal('Request Batch Change',
-    '<p class="vtc-help">Your current batch is <b>'+esc(cur||'—')+'</b>. If it\u2019s wrong, pick the correct one and send a request \u2014 the admin will update it.</p>'
-    +'<div class="form-group"><label>Correct batch</label><select class="input" id="rbat-sel">'+opts+'</select></div>'
-    +'<div class="form-group"><label>Note to admin (optional)</label><textarea class="input" id="rbat-note" rows="2" placeholder="Why is your batch wrong?"></textarea></div>',
+    '<div class="rqx">'
+    +'<div class="rqx-note"><span class="rqx-ni">'+ic('folder')+'</span><span>Your current batch is <b>'+esc(cur||'\u2014')+'</b>. If it\u2019s wrong, pick the correct one and send a <b>request</b> — the admin will update it.</span></div>'
+    +'<div class="rqx-f"><div class="rqx-l"><span class="rqx-ic">'+ic('folder')+'</span> Correct batch</div><select class="input" id="rbat-sel">'+opts+'</select></div>'
+    +'<div class="rqx-f"><div class="rqx-l"><span class="rqx-ic">'+ic('edit')+'</span> Note to admin (optional)</div><textarea class="input" id="rbat-note" rows="2" placeholder="Why is your batch wrong?"></textarea></div>'
+    +'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitBatchRequest()">Send request</button>');
 }
 async function submitBatchRequest(){
