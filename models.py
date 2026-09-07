@@ -777,6 +777,7 @@ class Material(Base):
     student_name  = Column(String(120), nullable=True)
     medium        = Column(String(20), nullable=True)    # Hindi | English (for question bank)
     is_global     = Column(Boolean, default=False)        # visible to ALL students
+    batch_id      = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped classes material (NULL = global/legacy, shown to all)
     external_link = Column(String(500), nullable=True)    # original PDF link (no-compress option)
     approval_status = Column(String(20), default="approved")  # approved | pending | rejected
     created_at    = Column(DateTime, default=func.now())

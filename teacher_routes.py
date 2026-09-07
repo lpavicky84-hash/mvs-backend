@@ -3928,6 +3928,16 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
     # Mirror the uploads into Materials so students find them under Study Material
     # and view/download analytics work exactly like any other material.
     from models import Material
+    # batch-scope the class material to the same batch as its timetable class (NULL = global)
+    _mat_batch_id = None
+    try:
+        if payload.get("timetable_entry_id"):
+            from models import TimetableEntry as _TTE2
+            _te2 = db.query(_TTE2).filter(_TTE2.id == int(payload.get("timetable_entry_id"))).first()
+            if _te2 is not None:
+                _mat_batch_id = getattr(_te2, "batch_id", None)
+    except Exception:
+        _mat_batch_id = None
     def _mk(kind, b64, fname):
         if not b64:
             return
@@ -3937,6 +3947,7 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
             subject=subject, class_name=(_eff_cls or None),
             chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
             material_type=kind, title=(lec.title or subject),
+            batch_id=_mat_batch_id,
             filename=(fname or ("%s.pdf" % kind)), content_b64=stored))
     _mk("notes", payload.get("pdf_b64"), payload.get("pdf_filename"))
     _mk("dpp", payload.get("dpp_b64"), payload.get("dpp_filename"))

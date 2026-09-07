@@ -1260,15 +1260,23 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
     return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), False, sniff=True)
 
 @router.get("/materials-v2")
-def student_materials_v2(db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
+    from sqlalchemy import or_ as _or
     sp = get_student_profile(current_user, db)
+    if not batch and getattr(sp, "batch_id", None):
+        batch = sp.batch_id
     subs = sp.subjects or []
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    ms = db.query(Material).options(defer(Material.content_b64)).filter(
+    _q = db.query(Material).options(defer(Material.content_b64)).filter(
         Material.subject.in_(list(_subj_scope_for(db, Material, subs))),
-        Material.material_type.in_(["notes", "dpp", "other"])
-    ).order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
+        Material.material_type.in_(["notes", "dpp", "other"]))
+    # Classes Material is batch-scoped: show GLOBAL/legacy material (batch_id NULL) PLUS the
+    # selected batch's own material — never another batch's (so class PDFs don't merge).
+    _bids = _student_batch_ids(db, sp, batch)
+    if _bids:
+        _q = _q.filter(_or(Material.batch_id.is_(None), Material.batch_id.in_(_bids)))
+    ms = _q.order_by(Material.subject, Material.chapter, Material.created_at.desc()).all()
     # Same-naam subject (Class 10 & 12) ho to sirf apni class ka material dikhe
     # (material pe class tag nahi hai to sabko dikhta hai — backward compatible)
     # v123: single-class subject (Social Science=10) ka purana galat-tagged material

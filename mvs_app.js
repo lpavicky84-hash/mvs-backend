@@ -15037,7 +15037,7 @@ async function loadSDashboard(){
       if(bb2&&bb2.me) _ms.rank={r:bb2.me.rank,t:bb2.total};
     }catch(e){}
     // v114: Classes Material ke naye uploads ka nav badge (cache-friendly)
-    try{ const mats0=await api('/api/student/materials-v2'); window._sMatNew=_matNewIds('student',mats0); _matBadge('student'); }catch(e){}
+    try{ const mats0=await api('/api/student/materials-v2'+_bq()); window._sMatNew=_matNewIds('student',mats0); _matBadge('student'); }catch(e){}
 
     // ---- Today's Priority (hidden when the upcoming-test banner already covers a test)
     const _up=await _sUpcomingExam();
@@ -15322,7 +15322,7 @@ async function loadSMaterials(){
   try{
     // DPP section ke packs bhi laao — table me part-wise / whole-chapter rows banenge
     try{ const dd=await api('/api/student/dpp-packs'); window._sMatDppPacks=dd.packs||[]; }catch(e){ window._sMatDppPacks=[]; }
-    const mats=await api('/api/student/materials-v2');
+    const mats=await api('/api/student/materials-v2'+_bq());
     window._sMats=mats;
     window._sMatNew=_matNewIds('student',mats); _matBadge('student');
     const packCount=(window._sMatDppPacks||[]).length;
