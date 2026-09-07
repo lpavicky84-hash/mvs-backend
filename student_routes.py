@@ -133,7 +133,7 @@ def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_s
         if bid not in bmap:
             continue
         bb = bmap[bid]
-        key = ((bb.name or "").strip().lower(), (getattr(bb, "session", "") or "").strip().lower())
+        key = (bb.name or "").strip().lower()
         if key in seen:
             continue
         seen.add(key)

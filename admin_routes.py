@@ -307,6 +307,75 @@ def _ensure_enrollments():
 _ensure_enrollments()
 
 
+def _dedupe_student_batches():
+    """Collapse duplicate batch enrolments so a student has ONE enrolment per real batch.
+    Buggy session-split runs left some students enrolled in several same-named
+    "Lakshya Science" cards. For each student, per base batch NAME, keep a single
+    enrolment — the one matching their primary (StudentProfile.batch_id), else an active
+    card with a session, else the lowest id — and drop the rest. Never moves a student
+    between batches; only removes redundant enrolment rows. Import-time, idempotent, safe."""
+    try:
+        from database import SessionLocal
+        from models import StudentBatch, Batch, StudentProfile
+        from collections import defaultdict
+        db = SessionLocal()
+        try:
+            batches = {b.id: b for b in db.query(Batch).all()}
+
+            def _nm(bid):
+                b = batches.get(bid)
+                return (b.name or "").strip().lower() if b else None
+
+            def _active(bid):
+                b = batches.get(bid)
+                return bool(b) and (b.active is not False)
+
+            def _hassess(bid):
+                b = batches.get(bid)
+                return bool(b and (getattr(b, "session", "") or "").strip())
+
+            prim = dict(db.query(StudentProfile.id, StudentProfile.batch_id)
+                        .filter(StudentProfile.batch_id != None).all())
+            by_student = defaultdict(list)
+            for e in db.query(StudentBatch).all():
+                by_student[e.student_id].append(e)
+            removed = 0
+            for sid, rows in by_student.items():
+                if len(rows) < 2:
+                    continue
+                sp_bid = prim.get(sid)
+                groups = defaultdict(list)
+                for e in rows:
+                    nm = _nm(e.batch_id)
+                    if nm is None:                       # enrolment to a deleted batch -> drop
+                        db.delete(e)
+                        removed += 1
+                        continue
+                    groups[nm].append(e)
+                for nm, grp in groups.items():
+                    if len(grp) < 2:
+                        continue
+                    grp.sort(key=lambda e: (0 if e.batch_id == sp_bid else 1,
+                                            0 if _active(e.batch_id) else 1,
+                                            0 if _hassess(e.batch_id) else 1,
+                                            e.batch_id))
+                    keeper = grp[0]
+                    if any(x.is_primary for x in grp):
+                        keeper.is_primary = True
+                    for e in grp[1:]:
+                        db.delete(e)
+                        removed += 1
+            if removed:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_dedupe_student_batches()
+
+
 def _ensure_perf_indexes():
     """Create indexes on hot-path columns that were added via raw ALTER (no auto-index).
     Import-time, safe — skipped silently if the index already exists."""
@@ -913,6 +982,61 @@ def _consolidate_session_dupes(db):
     return merged
 
 
+def _dedupe_student_enrollments(db, limit=40000):
+    """Self-heal: collapse a student's duplicate batch enrolments so each distinct ACTIVE
+    batch NAME appears once. Removes exact-duplicate rows, extra same-name rows, and stale
+    rows pointing at archived/deleted batches. Keeps one primary (prefers sp.batch_id).
+    Safe + idempotent — a student is never removed from a genuinely different-named batch."""
+    from models import StudentBatch, Batch, StudentProfile
+    binfo = {b.id: ((b.active is not False), (b.name or "").strip().lower())
+             for b in db.query(Batch).all()}
+    rows_by_stu = {}
+    for sb in db.query(StudentBatch).limit(limit).all():
+        rows_by_stu.setdefault(sb.student_id, []).append(sb)
+    removed = 0
+    for sid, rows in rows_by_stu.items():
+        if len(rows) < 2:
+            continue
+        prim_bid = None
+        sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+        if sp:
+            prim_bid = getattr(sp, "batch_id", None)
+        kept = {}                       # name -> StudentBatch we keep
+        for sb in rows:
+            info = binfo.get(sb.batch_id)
+            if not info or not info[0]:  # batch gone or archived -> stale enrolment
+                db.delete(sb); removed += 1; continue
+            nm = info[1]
+            if nm in kept:
+                keep = kept[nm]
+                # prefer the row that matches the student's primary batch_id
+                if prim_bid and sb.batch_id == prim_bid:
+                    db.delete(keep); kept[nm] = sb
+                else:
+                    if sb.is_primary:
+                        keep.is_primary = True
+                    db.delete(sb)
+                removed += 1
+            else:
+                kept[nm] = sb
+        # exactly one primary
+        if kept:
+            chosen = None
+            for sb in kept.values():
+                if prim_bid and sb.batch_id == prim_bid:
+                    chosen = sb
+            if not chosen:
+                chosen = list(kept.values())[0]
+            for sb in kept.values():
+                sb.is_primary = (sb is chosen)
+    if removed:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    return removed
+
+
 @router.post("/batches/{src_id}/merge")
 def admin_merge_batch(src_id: int, payload: dict = Body(...),
                       db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -988,11 +1112,21 @@ def admin_student_batches(sid: int, db: Session = Depends(get_db), _=Depends(get
     from models import StudentBatch, Batch
     enr = db.query(StudentBatch).filter(StudentBatch.student_id == sid).all()
     bids = [e.batch_id for e in enr]
-    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids)).all() if bids else [])}
-    return {"batches": [{"id": e.batch_id,
-                         "name": (bmap[e.batch_id].name if e.batch_id in bmap else ""),
-                         "is_primary": bool(e.is_primary)}
-                        for e in enr if e.batch_id in bmap]}
+    # ACTIVE batches only — archived/merged duplicates must not show as extra rows
+    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids), Batch.active != False).all() if bids else [])}
+    out = []
+    seen = set()                                  # collapse by NAME (a student shows one row per batch name)
+    # primary first so it survives the collapse
+    for e in sorted(enr, key=lambda e: 0 if e.is_primary else 1):
+        b = bmap.get(e.batch_id)
+        if not b:
+            continue
+        key = (b.name or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": e.batch_id, "name": b.name, "is_primary": bool(e.is_primary)})
+    return {"batches": out}
 
 
 @router.post("/students/{sid}/batches")
@@ -3275,6 +3409,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     #    so a re-upload never leaves two identical session cards behind.
     try:
         _consolidate_session_dupes(db)
+        _dedupe_student_enrollments(db)
     except Exception:
         pass
 
