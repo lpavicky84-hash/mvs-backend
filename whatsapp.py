@@ -53,6 +53,7 @@ _ENV = {
     "wa_lang":     "WA_LANG",
     "wa_link":     "WA_LINK",
     "wa_sender":   "WA_SENDER",
+    "wa_otp":      "WA_OTP",
 }
 
 
@@ -262,6 +263,11 @@ def _send_raw(phone, template, params, username=None, button_otp=None):
         return False, f"HTTP {e.code}: {eb[:280]}"
     except Exception as e:
         return False, f"Send failed: {str(e)[:200]}"
+
+
+def otp_template():
+    """OTP/forgot-password ka campaign/template naam \u2014 portal setting (wa_otp) > env (WA_OTP) > 'otp1'."""
+    return _val("wa_otp") or "otp1"
 
 
 def send(phone, text=None, name="", batch="", template=None, params=None, button_otp=None):

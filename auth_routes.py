@@ -218,8 +218,7 @@ def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
     ok, detail = False, "not attempted"
     try:
         import whatsapp as W
-        import os as _os
-        tmpl = _os.getenv("WA_OTP") or "otp1"
+        tmpl = W.otp_template()
         ok, detail = W.send(phone, template=tmpl, params=[otp], name="Student", button_otp=otp)
         try:
             print("[OTP] to %s | template=%s | ok=%s | detail=%s" % (phone, tmpl, ok, str(detail)[:400]))

@@ -14015,8 +14015,13 @@ async function openWhatsApp(){
       <button class="btn btn-primary btn-sm" onclick="waAnnounce()">${ic('send')} Send announcement</button>
       <div id="wa-an-out" style="margin-top:8px"></div></details>`:'';
 
-    const otpSec=st.configured?`<details class="wa-sec"><summary><b>OTP Test \u2014 forgot-password (otp1 template)</b></summary>
-      <p style="font-size:.78rem;color:var(--text-muted)">Apna phone daalke test karo \u2014 poora BSP response yahan dikhega (agar OTP na aaye to yahan se pata chalega kyun).</p>
+    const otpSec=st.configured?`<details class="wa-sec"><summary><b>OTP \u2014 forgot-password campaign</b></summary>
+      <p style="font-size:.78rem;color:var(--text-muted)">Combirds me OTP ke liye jo <b>campaign/template</b> banaya hai uska naam yahan set karo (e.g. <code>otp_new</code>). Copy-code button ka OTP param apne-aap sahi bhejta hai.</p>
+      <div class="form-group"><label>OTP campaign name</label><input class="form-control" id="wa-otp-tmpl" value="${esc(cf.wa_otp||'')}" placeholder="e.g. otp_new"></div>
+      <button class="btn btn-primary btn-sm" onclick="waSaveOtpTmpl()">${ic('check')} Save campaign name</button>
+      <div id="wa-otp-tmpl-out" style="margin-top:6px;font-size:.8rem"></div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:12px 0">
+      <p style="font-size:.78rem;color:var(--text-muted)">Test: apna phone daalke bhejo \u2014 poora BSP response + message_id yahan dikhega.</p>
       <div class="form-group"><label>Test phone (10-digit)</label><input class="form-control" id="wa-otp-phone" inputmode="numeric" placeholder="e.g. 9876543210"></div>
       <button class="btn btn-primary btn-sm" onclick="waTestOtp()">${ic('send')} Send Test OTP</button>
       <div id="wa-otp-out" style="margin-top:8px;font-size:.8rem"></div></details>`:'';
@@ -14024,6 +14029,13 @@ async function openWhatsApp(){
     body.innerHTML=cfgForm+welcomeSec+announceSec+otpSec;
     document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
   }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+}
+async function waSaveOtpTmpl(){
+  var v=((document.getElementById('wa-otp-tmpl')||{}).value||'').trim();
+  var out=document.getElementById('wa-otp-tmpl-out');
+  if(!v){ if(out) out.innerHTML='<span style="color:#c1443a">Campaign name daalein.</span>'; return; }
+  try{ await api('/api/admin/whatsapp/config','POST',{wa_otp:v}); if(out) out.innerHTML='<span style="color:#059669">\u2713 Saved \u2014 ab OTP is campaign se jaayega: <b>'+esc(v)+'</b></span>'; toast('OTP campaign set: '+v); }
+  catch(e){ if(out) out.innerHTML='<span style="color:#c1443a">'+esc((e&&e.message)||'Save failed')+'</span>'; }
 }
 async function waTestOtp(){
   var phone=((document.getElementById('wa-otp-phone')||{}).value||'').replace(/\D/g,'').slice(-10);
@@ -14038,7 +14050,7 @@ async function waTestOtp(){
       +'<div>Template: <b>'+esc(r.template||'')+'</b> \u00b7 Format: <b>'+esc(r.format||'')+'</b> \u00b7 Lang: '+esc(r.lang||'')+'</div>'
       +'<div>API URL set: '+(r.api_url_set?'yes':'<b style="color:#c1443a">NO</b>')+' \u00b7 API key set: '+(r.api_key_set?'yes':'<b style="color:#c1443a">NO</b>')+(r.sender?(' \u00b7 sender: '+esc(r.sender)):'')+'</div>'
       +'<div style="margin-top:6px;font-family:monospace;font-size:.72rem;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all">'+esc(r.detail||'')+'</div>'
-      +(r.ok?'<div style="margin-top:6px;color:var(--text-muted)">Accepted hai par WhatsApp na aaye \u2014 aksar template naam ("'+esc(r.template||'')+'") BSP me match nahi, ya number opted-in nahi. Detail check karo.</div>':'')
+      +(r.ok?'<div style="margin-top:6px;color:var(--text-muted)">Combirds ne accept kar liya + OTP button param bhej diya \u2014 message_id upar hai. Ye WhatsApp par <b>deliver ho jaana chahiye</b>. Agar us number par na dikhe to: (1) us number ka WhatsApp <b>active + opted-in</b> hai kya? (2) Combirds dashboard me is <b>message_id</b> ka delivery status (Sent/Delivered/Failed) dekho.</div>':'')
       +'</div>';
   }catch(e){ if(out) out.innerHTML='<span style="color:#c1443a">'+esc((e&&e.message)||'Test failed')+'</span>'; }
 }
