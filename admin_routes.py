@@ -3162,7 +3162,7 @@ def admin_timetable_chapters(subject: str = "", class_level: str = "", crash: in
         if subject:
             try:
                 from video_tasks import _chapters_for, crash_clean_chapters
-                titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "", "")
+                titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "pe", "")
                 for t in (titles or []):
                     syll.append(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
                 return {"chapters": crash_clean_chapters(syll)[:500]}
@@ -3321,6 +3321,44 @@ def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_
             added += 1
     db.commit()
     return {"ok": True, "added": added, "batches": len(_targets)}
+
+
+@router.post("/extra-class")
+def admin_extra_class(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ek extra class add kare — ek ya MULTIPLE batches me (batch_ids list). Har batch me
+    apni entry banti hai. Direct approved (koi approval nahi)."""
+    from models import TimetableEntry
+    subject = (payload.get("subject") or "").strip()
+    class_level = (payload.get("class_level") or payload.get("class_name") or "").strip()
+    chapter = (payload.get("chapter") or "").strip()
+    part = (payload.get("part") or "").strip()
+    date = (payload.get("date") or "").strip()
+    time = (payload.get("time") or "").strip()
+    youtube = (payload.get("youtube_link") or "").strip()
+    batch_ids = payload.get("batch_ids") or []
+    if not isinstance(batch_ids, list):
+        batch_ids = [batch_ids]
+    batch_ids = [int(b) for b in batch_ids if str(b).strip().isdigit()]
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject zaroori hai.")
+    if not batch_ids:
+        raise HTTPException(status_code=400, detail="Kam se kam ek batch chuno.")
+    edate = None
+    try:
+        from datetime import datetime as _dt
+        edate = _dt.strptime(date, "%Y-%m-%d").date()
+    except Exception:
+        edate = None
+    added = 0
+    for bid in batch_ids:
+        db.add(TimetableEntry(subject=subject, class_name=class_level, batch_id=bid,
+                              chapter=(chapter or ""), part=(part or None), entry_date=edate,
+                              day=(edate.strftime("%A") if edate else None),
+                              time_text=(time or None), entry_type="lecture", status="approved",
+                              youtube_link=(youtube or None)))
+        added += 1
+    db.commit()
+    return {"ok": True, "added": added}
 
 
 # =====================================================================

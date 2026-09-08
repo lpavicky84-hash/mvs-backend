@@ -1508,6 +1508,35 @@ function _ttbBatchField(batches){
   if(!batches||!batches.length) return '<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch"><option value="">No batch (global)</option></select></div>';
   return _multiBatchDD('Batch', batches);
 }
+async function openAdminExtraClass(){
+  var batches=[];
+  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  var batBoxes=batches.map(function(b){ return '<label class="ec-bchk"><input type="checkbox" value="'+b.id+'"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>'; }).join('')||'<span style="color:var(--text-muted)">No batches</span>';
+  if(!document.getElementById('ec-css')){ var st=document.createElement('style'); st.id='ec-css'; st.textContent='.ec-blist{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:11px;padding:6px}.ec-bchk{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.86rem}.ec-bchk:hover{background:rgba(184,148,31,.06)}.ec-bchk input{width:15px;height:15px}'; document.head.appendChild(st); }
+  showModal('Add Extra Class',
+    '<div class="alert alert-info" style="font-size:.82rem">Ek extra class add karo \u2014 ek ya multiple batches me ek saath. Directly live ho jaayegi.</div>'
+    +'<div class="ex-grid2"><div class="form-group"><label>Subject</label><input class="form-control" id="ec-sub" placeholder="e.g. Physics"></div>'
+    +'<div class="form-group"><label>Class</label><select class="form-control" id="ec-cls"><option value="">\u2014</option><option value="Class 10">Class 10</option><option value="Class 12">Class 12</option></select></div></div>'
+    +'<div class="form-group"><label>Chapter / Topic</label><input class="form-control" id="ec-chap" placeholder="e.g. Laws of Motion"></div>'
+    +'<div class="ex-grid2"><div class="form-group"><label>Date</label><input type="date" class="form-control" id="ec-date"></div>'
+    +'<div class="form-group"><label>Time</label><input class="form-control" id="ec-time" placeholder="e.g. 5:00 pm"></div></div>'
+    +'<div class="form-group"><label>YouTube link (optional)</label><input class="form-control" id="ec-yt" placeholder="https://youtube.com/..."></div>'
+    +'<div class="form-group"><label>Batches <span style="font-weight:600;font-size:.74rem;color:var(--text-muted)">(ek ya zyada chuno)</span></label><div class="ec-blist">'+batBoxes+'</div></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="ec-btn" onclick="submitAdminExtraClass()">'+ic('plus')+' Add Class</button>');
+}
+async function submitAdminExtraClass(){
+  var subject=(val('ec-sub')||'').trim();
+  var bids=[].slice.call(document.querySelectorAll('.ec-bchk input:checked')).map(function(c){return parseInt(c.value,10);});
+  if(!subject){ toast('Enter a subject.',true); return; }
+  if(!bids.length){ toast('Select at least one batch.',true); return; }
+  var btn=document.getElementById('ec-btn'); if(btn){ btn.disabled=true; btn.textContent='Adding\u2026'; }
+  try{
+    var res=await api('/api/admin/extra-class','POST',{subject:subject,class_level:val('ec-cls'),chapter:val('ec-chap'),date:val('ec-date'),time:val('ec-time'),youtube_link:val('ec-yt'),batch_ids:bids});
+    closeModal(); toast(((res&&res.added)||0)+' class(es) added.');
+    try{ _apiForget('timetable'); }catch(e){}
+    if(typeof loadATimetable==='function'){ try{ loadATimetable(); }catch(e){} }
+  }catch(e){ toast((e&&e.message)||'Could not add',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('plus')+' Add Class'; } }
+}
 async function openCrashCourse(){
   var batches=[];
   try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
@@ -3846,6 +3875,23 @@ async function loadTStudents(){
 
 let _ttTab='today';
 function ttSwitchTab(t){ _ttTab=t; loadTTimetable(); }
+function _crashAddDay(bid, subject, cls){
+  showModal('Add Day \u2014 '+esc(subject),
+    '<div class="alert alert-info" style="font-size:.82rem">Agar koi Day PDF se add nahi hui, yahan manually add karo. Chapter baad me set kar lena.</div>'
+    +'<div class="ex-grid2"><div class="form-group"><label>Day number</label><input type="number" class="form-control" id="cad-day" placeholder="e.g. 11"></div>'
+    +'<div class="form-group"><label>Date</label><input type="date" class="form-control" id="cad-date"></div></div>'
+    +'<div class="form-group"><label>Time</label><input class="form-control" id="cad-time" placeholder="e.g. 5:00 pm"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cad-btn" onclick="_crashAddDaySubmit('+bid+',\''+esc(subject).replace(/'/g,"\\'")+'\',\''+esc(cls).replace(/'/g,"\\'")+'\')">'+ic('plus')+' Add Day</button>');
+}
+async function _crashAddDaySubmit(bid, subject, cls){
+  var day=(val('cad-day')||'').trim(), date=(val('cad-date')||'').trim(), time=(val('cad-time')||'').trim();
+  if(!day){ toast('Enter the Day number.',true); return; }
+  var btn=document.getElementById('cad-btn'); if(btn){ btn.disabled=true; btn.textContent='Adding\u2026'; }
+  try{
+    await api('/api/teacher/crash-add-day','POST',{batch_id:bid,subject:subject,class_name:cls,day:parseInt(day,10),date:date,time:time});
+    closeModal(); toast('Day added.'); openTeacherCrash();
+  }catch(e){ toast((e&&e.message)||'Could not add',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('plus')+' Add Day'; } }
+}
 async function openTeacherCrash(){
   showModal('Crash Course \u2014 Chapters & YouTube','<div class="spinner" style="margin:26px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   var ents=[];
@@ -3873,7 +3919,7 @@ async function openTeacherCrash(){
         +'<input class="form-control tc-yt" data-eid="'+e.id+'" placeholder="YouTube link (optional)" value="'+yt+'">'
         +'<button class="btn btn-primary btn-sm" onclick="tcSaveDay('+e.id+')">'+ic('check')+' Save</button></div>';
     }).join('');
-    return '<div class="tc-group"><div class="tc-ghead">'+esc(g.subject)+' <span class="tc-gsub">'+esc(g.batch)+(g.cls?(' \u00b7 '+esc(g.cls)):'')+' \u00b7 '+g.rows.length+' days</span><span class="tc-prog" data-bid="'+(g.rows[0].batch_id||0)+'" data-sub="'+esc(g.subject).replace(/"/g,'&quot;')+'" data-cls="'+esc(g.cls).replace(/"/g,'&quot;')+'"></span></div>'+rows+'</div>';
+    return '<div class="tc-group"><div class="tc-ghead">'+esc(g.subject)+' <span class="tc-gsub">'+esc(g.batch)+(g.cls?(' \u00b7 '+esc(g.cls)):'')+' \u00b7 '+g.rows.length+' days</span><span class="tc-prog" data-bid="'+(g.rows[0].batch_id||0)+'" data-sub="'+esc(g.subject).replace(/"/g,'&quot;')+'" data-cls="'+esc(g.cls).replace(/"/g,'&quot;')+'"></span><button class="btn btn-ghost btn-sm" style="margin-left:6px" onclick="_crashAddDay('+(g.rows[0].batch_id||0)+',\''+esc(g.subject).replace(/'/g,"\\'")+'\',\''+esc(g.cls).replace(/'/g,"\\'")+'\')">'+ic('plus')+' Add Day</button></div>'+rows+'</div>';
   }).join('');
   if(!document.getElementById('tc-css')){ var st=document.createElement('style'); st.id='tc-css';
     st.textContent='.tc-group{margin-bottom:16px}.tc-ghead{font-weight:800;font-size:.98rem;margin:4px 0 8px}.tc-gsub{font-weight:600;font-size:.74rem;color:var(--text-muted)}'
@@ -14782,7 +14828,7 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-ghost btn-sm" onclick="openAdminExtraClass()">${ic('plus')} Extra Class</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
   _attMountBatchBar();
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }

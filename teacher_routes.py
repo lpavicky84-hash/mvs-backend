@@ -100,7 +100,7 @@ def teacher_tt_chapters(subject: str = "", class_level: str = "", crash: int = 0
     if subject:
         try:
             from video_tasks import _chapters_for
-            titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "", "")
+            titles, _src = _chapters_for(db, 0, subject, (class_level or ""), ("pe" if crash else ""), "")
             for t in (titles or []):
                 syll.append(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
         except Exception:
@@ -2811,7 +2811,7 @@ def teacher_crash_progress(batch: int = 0, subject: str = "", class_level: str =
     total_titles = []
     try:
         from video_tasks import _chapters_for, crash_clean_chapters
-        titles, _src = _chapters_for(db, 0, subject, class_level or "", "", "")
+        titles, _src = _chapters_for(db, 0, subject, class_level or "", "pe", "")
         raw = []
         for t in (titles or []):
             nm = t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t))
@@ -2855,6 +2855,42 @@ def teacher_crash_progress(batch: int = 0, subject: str = "", class_level: str =
     if total:
         done = min(done, total)
     return {"done": done, "total": total, "done_chapters": done_list, "total_chapters": total_titles}
+
+
+@router.post("/crash-add-day")
+def teacher_crash_add_day(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apne crash-course subject me ek naya Day add kare (agar PDF se parse na hui ho).
+    Sirf apne subject me, chune batch me. chapter khaali (baad me bhare), status approved."""
+    from models import TimetableEntry
+    tp = get_teacher_profile(current_user, db)
+    try:
+        batch_id = int(payload.get("batch_id") or 0)
+    except Exception:
+        batch_id = 0
+    subject = (payload.get("subject") or "").strip()
+    class_name = (payload.get("class_name") or "").strip()
+    try:
+        day = int(payload.get("day") or 0)
+    except Exception:
+        day = 0
+    date = (payload.get("date") or "").strip()
+    time = (payload.get("time") or "").strip()
+    if not (batch_id and subject and day):
+        raise HTTPException(status_code=400, detail="Batch, subject aur Day number zaroori hai.")
+    if subject not in (tp.subjects or []):
+        raise HTTPException(status_code=403, detail="Ye aapka subject nahi hai.")
+    edate = None
+    try:
+        edate = datetime.strptime(date, "%Y-%m-%d").date()
+    except Exception:
+        edate = None
+    e = TimetableEntry(teacher_id=tp.id, subject=subject, class_name=class_name, batch_id=batch_id,
+                       chapter="", part=("Day %s" % day), entry_date=edate,
+                       day=(edate.strftime("%A") if edate else None),
+                       time_text=(time or None), entry_type="lecture", status="approved")
+    db.add(e); db.commit()
+    _crash_propagate(db, e, ["chapter", "youtube_link"])
+    return {"ok": True, "id": e.id}
 
 
 def _maybe_warn_late(db, tp, entry):
