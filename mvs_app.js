@@ -1434,6 +1434,69 @@ function _ttbBatchField(batches){
   if(!batches||!batches.length) return '<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch"><option value="">No batch (global)</option></select></div>';
   return _multiBatchDD('Batch', batches);
 }
+async function openCrashCourse(){
+  var batches=[];
+  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  var batOpts='<option value="">Select batch\u2026</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('');
+  var yr=new Date().getFullYear();
+  if(!document.getElementById('cc-css')){ var st=document.createElement('style'); st.id='cc-css';
+    st.textContent='.cc-slist{max-height:290px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:6px;margin-top:6px}'
+      +'.cc-srow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;cursor:pointer;font-size:.85rem;flex-wrap:wrap}'
+      +'.cc-srow:hover{background:rgba(184,148,31,.06)}.cc-srow input{width:16px;height:16px}'
+      +'.cc-sname{font-weight:800;min-width:150px}.cc-scnt{font-size:.7rem;font-weight:800;background:rgba(184,148,31,.14);color:#9a7d1a;padding:2px 9px;border-radius:999px}'
+      +'.cc-smeta{font-size:.73rem;color:var(--text-muted)}';
+    document.head.appendChild(st); }
+  window._ccParsed=null;
+  showModal('Crash Course \u2014 Bulk Upload',
+    '<div class="alert alert-info" style="font-size:.82rem">Crash course PDF upload karo \u2014 system har subject ki Day 1\u2013Day N classes (date + time) khud nikaal lega. Batch chuno, PDF do, "Parse" dabao, subjects tick karke "Add to Timetable". Chapters teacher apne portal se bharega, YouTube link baad me lagta hai. <b>Sirf chune batch me jaata hai \u2014 baaki timetable ko chhuta nahi.</b></div>'
+    +'<div class="ex-grid2"><div class="form-group"><label>Batch</label><select class="form-control" id="cc-batch">'+batOpts+'</select></div>'
+    +'<div class="form-group"><label>Year</label><input type="number" class="form-control" id="cc-year" value="'+yr+'"></div></div>'
+    +'<div class="form-group"><label>Crash Course PDF</label><input type="file" class="form-control" id="cc-file" accept="application/pdf"></div>'
+    +'<div id="cc-parse-out"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-secondary" id="cc-parse-btn" onclick="crashParse()">'+ic('upload')+' Parse PDF</button><button class="btn btn-primary" id="cc-commit-btn" onclick="crashCommit()" disabled style="opacity:.5">'+ic('check')+' Add to Timetable</button>');
+}
+async function crashParse(){
+  var fi=document.getElementById('cc-file');
+  if(!fi||!fi.files.length){ toast('Please choose the crash course PDF.',true); return; }
+  if(!(document.getElementById('cc-batch')||{}).value){ toast('Select a batch first.',true); return; }
+  var btn=document.getElementById('cc-parse-btn'); if(btn){ btn.disabled=true; btn.textContent='Parsing\u2026'; }
+  try{
+    var fd=new FormData(); fd.append('file',fi.files[0]); fd.append('year',(document.getElementById('cc-year')||{}).value||'');
+    var r=await fetch(API+'/api/admin/crash-course/parse',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var j=await r.json().catch(function(){return {};}); throw new Error(j.detail||'Parse failed'); }
+    var d=await r.json(); window._ccParsed=d;
+    var subs=(d.subjects||[]);
+    var out=document.getElementById('cc-parse-out');
+    if(!subs.length){ out.innerHTML='<div class="alert alert-danger" style="margin-top:12px">Is PDF me koi class nahi mili \u2014 sahi crash course PDF check karo.</div>'; if(btn){ btn.disabled=false; btn.innerHTML=ic('upload')+' Parse PDF'; } return; }
+    var rows=subs.map(function(s,i){
+      var cs=s.classes||[]; var first=cs[0]||{};
+      var range=cs.length?('Day '+cs[0].day+'\u2013'+cs[cs.length-1].day):'';
+      return '<label class="cc-srow"><input type="checkbox" class="cc-schk" data-i="'+i+'" checked> '
+        +'<span class="cc-sname">'+esc(s.subject)+'</span>'
+        +'<span class="cc-scnt">'+cs.length+' classes</span>'
+        +'<span class="cc-smeta">'+range+(s.teacher?(' \u00b7 '+esc(s.teacher)):'')+(first.date?(' \u00b7 starts '+esc(first.date)+' '+esc(first.time||'')):'')+'</span></label>';
+    }).join('');
+    out.innerHTML='<div style="margin-top:14px;font-weight:800;font-size:.9rem">Detected: <b>'+esc(d.primary_stream||'')+'</b> \u00b7 '+esc(d.class_name||'')+' \u00b7 '+subs.length+' subjects</div>'
+      +'<div style="font-size:.75rem;color:var(--text-muted);margin:2px 0 4px">Jo subjects add karne hain tick rakho.</div><div class="cc-slist">'+rows+'</div>';
+    if(btn){ btn.disabled=false; btn.innerHTML=ic('upload')+' Re-parse'; }
+    var cb=document.getElementById('cc-commit-btn'); if(cb){ cb.disabled=false; cb.style.opacity='1'; }
+  }catch(e){ toast((e&&e.message)||'Parse failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('upload')+' Parse PDF'; } }
+}
+async function crashCommit(){
+  var d=window._ccParsed; if(!d){ toast('Parse the PDF first.',true); return; }
+  var bid=(document.getElementById('cc-batch')||{}).value||'';
+  if(!bid){ toast('Select a batch.',true); return; }
+  var picks=[].slice.call(document.querySelectorAll('.cc-schk:checked')).map(function(c){return (d.subjects||[])[parseInt(c.getAttribute('data-i'),10)];}).filter(Boolean);
+  if(!picks.length){ toast('Select at least one subject.',true); return; }
+  var cb=document.getElementById('cc-commit-btn'); if(cb){ cb.disabled=true; cb.textContent='Adding\u2026'; }
+  try{
+    var res=await api('/api/admin/crash-course/commit','POST',{batch_id:parseInt(bid,10),class_name:d.class_name||'',subjects:picks});
+    toast(((res&&res.added)||0)+' classes added to the timetable.');
+    closeModal();
+    try{ _apiForget('timetable'); }catch(e){}
+    if(typeof loadATimetable==='function'){ try{ loadATimetable(); }catch(e){} }
+  }catch(e){ toast((e&&e.message)||'Could not add',true); if(cb){ cb.disabled=false; cb.innerHTML=ic('check')+' Add to Timetable'; } }
+}
 async function openTTBuilder(){
   _ttbInjectCSS();
   window._ttbTeacher=false;
@@ -14480,7 +14543,7 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
   _attMountBatchBar();
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }

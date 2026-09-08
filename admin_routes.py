@@ -3284,6 +3284,209 @@ def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_
     return {"ok": True, "added": added, "batches": len(_targets)}
 
 
+# =====================================================================
+# CRASH COURSE — bulk timetable from a YouTube Crash Course PDF (isolated,
+# batch-scoped). Parser subject-wise Day-1..Day-N classes (date + time)
+# nikaalta hai; commit unhe crash batch ke TimetableEntry rows me daalta
+# hai (chapter khaali -> teacher baad me syllabus se bharega; youtube link
+# baad me lagta hai). Existing timetable system ko bilkul touch nahi karta.
+# =====================================================================
+_CC_MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+              "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12}
+_CC_STREAMS = [("science", "Science"), ("commerce", "Commerce"), ("arts", "Arts"),
+               ("class 10", "Class 10"), ("10th", "Class 10")]
+
+
+def _cc_pdate(s, year):
+    import re as _re
+    if not s:
+        return None
+    m = _re.match(r"\s*(\d{1,2})\s*(?:st|nd|rd|th)?\.?\s*([A-Za-z]+)", s.strip())
+    if not m:
+        return None
+    d = int(m.group(1))
+    mon = _CC_MONTHS.get(m.group(2).lower().rstrip(".")[:4]) or _CC_MONTHS.get(m.group(2).lower()[:3])
+    if not mon:
+        return None
+    try:
+        return datetime(year, mon, d).date()
+    except Exception:
+        return None
+
+
+def _cc_stream_of(header):
+    h = (header or "").lower()
+    for key, name in _CC_STREAMS:
+        if key in h:
+            return name
+    return None
+
+
+def _cc_subj_day(s):
+    import re as _re
+    if not s:
+        return None, 1
+    m = _re.search(r"\(\s*day[\s\-]*(\d+)\s*\)", s, _re.I)
+    day = int(m.group(1)) if m else 1
+    subj = _re.sub(r"\(\s*day[\s\-]*\d+\s*\)", "", s, flags=_re.I)
+    subj = _re.sub(r"[)\(]+", " ", subj)
+    subj = _re.sub(r"\s+", " ", subj).strip(" -")
+    return subj, day
+
+
+def _cc_parse_pdf(raw, year):
+    """Return (primary_stream, [ {subject, teacher, classes:[{day,date,time}]} ])."""
+    import io as _io
+    try:
+        import pdfplumber
+    except Exception:
+        raise HTTPException(status_code=500, detail="PDF parser (pdfplumber) not available on the server.")
+    rows = []
+    cur_date = None
+    cur_stream = None
+    primary = None
+    with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+        for page in pdf.pages:
+            for t in (page.extract_tables() or []):
+                for r in t:
+                    r = [(c or "").strip() for c in r]
+                    if len(r) < 4:
+                        continue
+                    dcell, tcell, scell, teacher = r[0], r[1], r[2], r[3]
+                    if dcell and not tcell and not scell:
+                        st = _cc_stream_of(dcell)
+                        if st:
+                            cur_stream = st
+                        if "time table" in dcell.lower() and "class 1" in dcell.lower():
+                            if st:
+                                primary = st
+                        cur_date = None
+                        continue
+                    if scell == "Subject" or tcell == "Time Slot":
+                        continue
+                    d = _cc_pdate(dcell, year)
+                    if d:
+                        cur_date = d
+                    if not scell or not tcell:
+                        continue
+                    subj, day = _cc_subj_day(scell)
+                    if not subj:
+                        continue
+                    rows.append({"date": (cur_date.isoformat() if cur_date else None),
+                                 "time": tcell, "subject": subj, "day": day,
+                                 "teacher": teacher, "stream": cur_stream})
+    if not primary:
+        from collections import Counter as _Ct
+        c = _Ct(x["stream"] for x in rows if x["stream"])
+        primary = c.most_common(1)[0][0] if c else None
+    rows = [x for x in rows if x["stream"] == primary]
+    bysub = {}
+    for x in rows:
+        bysub.setdefault(x["subject"], {"subject": x["subject"], "teacher": x.get("teacher", ""), "classes": []})
+        bysub[x["subject"]]["classes"].append({"day": x["day"], "date": x["date"], "time": x["time"]})
+    out = []
+    for sub in sorted(bysub):
+        cs = sorted(bysub[sub]["classes"], key=lambda z: z["day"])
+        # dedup by day (keep first)
+        seen = set(); ded = []
+        for c in cs:
+            if c["day"] in seen:
+                continue
+            seen.add(c["day"]); ded.append(c)
+        out.append({"subject": sub, "teacher": bysub[sub]["teacher"], "classes": ded})
+    return primary, out
+
+
+def _cc_resolve_teacher(db, name):
+    """'Vicky Sir' / 'Pooja Ma'am' -> teacher_id (first-name match). None if unsure."""
+    import re as _re
+    from models import TeacherProfile, User as _U
+    nm = _re.sub(r"\b(sir|ma'?am|maam|mam)\b", "", (name or ""), flags=_re.I).strip()
+    if not nm:
+        return None
+    first = nm.split()[0].lower()
+    try:
+        rows = db.query(TeacherProfile.id, _U.name).join(_U, _U.id == TeacherProfile.user_id).all()
+    except Exception:
+        return None
+    cand = [tid for tid, un in rows if (un or "").strip().lower().split()[:1] == [first]]
+    if len(cand) == 1:
+        return cand[0]
+    # exact full-name fallback
+    for tid, un in rows:
+        if (un or "").strip().lower() == nm.lower():
+            return tid
+    return None
+
+
+_CC_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+@router.post("/crash-course/parse")
+async def crash_course_parse(file: UploadFile = File(...), year: int = Form(0),
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Upload the Crash Course PDF -> subject-wise Day 1..N classes (date/time) preview."""
+    from datetime import datetime as _dt
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    yr = int(year) if year else _dt.now().year
+    primary, subjects = _cc_parse_pdf(raw, yr)
+    cls = "Class 10" if (primary == "Class 10") else "Class 12"
+    return {"primary_stream": primary or "", "class_name": cls, "year": yr, "subjects": subjects}
+
+
+@router.post("/crash-course/commit")
+def crash_course_commit(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Create crash-course timetable entries for the selected subjects in a batch.
+    Har subject ke liye pehle iske purane crash entries (part LIKE 'Day %') hata ke naye daalta hai
+    (re-upload = clean replace). Chapter khaali (teacher bharega), youtube link khaali."""
+    from models import TimetableEntry
+    from datetime import datetime as _dt2
+    try:
+        _ensure_tt_youtube_column(db)
+    except Exception:
+        pass
+    try:
+        batch_id = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        batch_id = None
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="Select a batch.")
+    class_name = (payload.get("class_name") or "").strip()
+    subjects = payload.get("subjects") or []
+    added = 0
+    for s in subjects:
+        subj = (s.get("subject") or "").strip()
+        if not subj:
+            continue
+        tid = _cc_resolve_teacher(db, s.get("teacher") or "")
+        # clean previous crash entries for this batch+subject
+        try:
+            db.query(TimetableEntry).filter(
+                TimetableEntry.batch_id == batch_id, TimetableEntry.subject == subj,
+                TimetableEntry.part.like("Day %")).delete(synchronize_session=False)
+        except Exception:
+            db.rollback()
+        for c in (s.get("classes") or []):
+            edate = None
+            try:
+                edate = _dt2.strptime((c.get("date") or "").strip(), "%Y-%m-%d").date()
+            except Exception:
+                edate = None
+            db.add(TimetableEntry(
+                teacher_id=tid, subject=subj, class_name=class_name, batch_id=batch_id,
+                chapter="", part=("Day %s" % c.get("day", 1)),
+                entry_date=edate, day=(_CC_WEEK[edate.weekday()] if edate else None),
+                time_text=((c.get("time") or "").strip() or None),
+                entry_type="lecture", status="approved", youtube_link=None))
+            added += 1
+    db.commit()
+    return {"ok": True, "added": added, "subjects": len(subjects)}
+
+
+
+
 @router.delete("/timetable-clear")
 def admin_clear_tt(class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Poora timetable ya ek class ka timetable delete. Frontend pe type-to-confirm hai."""
