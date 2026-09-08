@@ -3045,6 +3045,8 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_questions ADD COLUMN alt_image_b64 TEXT NULL"),
         ("ALTER TABLE exams ADD COLUMN class_name VARCHAR(50) NULL",
          "ALTER TABLE exams ADD COLUMN class_name TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN batch_id INTEGER NULL",
+         "ALTER TABLE exams ADD COLUMN batch_id INT NULL"),
     ]
     for group in stmts:
         for s in group:
@@ -3100,13 +3102,19 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
     _subj_in = payload.get("subject", "")
     if _SR is not None and _subj_in:
         _subj_in = _SR.canon_display(_subj_in, payload.get("class_name"))
+    _ex_bid = payload.get("batch_id")
+    try:
+        _ex_bid = int(_ex_bid) if _ex_bid not in (None, "", 0, "0") else None
+    except Exception:
+        _ex_bid = None
     ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
               subject=_subj_in, title=payload["title"],
               chapter=payload.get("chapter"), test_type=ttype,
               class_name=(payload.get("class_name") or "").strip(),
               medium=payload.get("medium", "English"),
               total_marks=total, duration_min=_parse_dur(payload.get("duration_min")),
-              scheduled_at=_exam_parse_dt(payload.get("scheduled_at")))
+              scheduled_at=_exam_parse_dt(payload.get("scheduled_at")),
+              batch_id=_ex_bid)
     db.add(ex); db.flush()
     for i, q in enumerate(qs, start=1):
         co = q.get("correct_option")

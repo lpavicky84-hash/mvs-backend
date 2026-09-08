@@ -821,6 +821,7 @@ class Exam(Base):
     duration_min= Column(Integer, default=60)
     scheduled_at= Column(DateTime, nullable=True)        # test goes live at this date/time
     is_active   = Column(Boolean, default=True)
+    batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy). ORM me na hone se _exam_batch_filter scoping OFF ho jaata tha.
     created_at  = Column(DateTime, default=func.now())
 
 class ExamQuestion(Base):
