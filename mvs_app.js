@@ -14731,14 +14731,27 @@ async function submitAdminEditTT(id){
 }
 // ===== ADMIN: BULLETPROOF TIMETABLE DELETION (subject / class / everything) =====
 function _ttdCount(scope,sub,cl){
+  if(scope==='batch'){
+    var bid=(document.getElementById('ttd-batch')||{}).value||'';
+    var bsub=(document.getElementById('ttd-bsub')||{}).value||'';
+    return _attEntries.filter(function(e){ if(String(e.batch_id||'')!==String(bid)) return false; if(bsub&&e.subject!==bsub) return false; return true; }).length;
+  }
   return _attEntries.filter(e=>{
     if(scope==='subject'&&e.subject!==sub) return false;
     if(cl==='10'||cl==='12'){ if(!((e.class_name||'').includes(cl))) return false; }
     return true;
   }).length;
 }
-function openTTDelete(){
+function ttdFillBatchSubs(){
+  var bid=(document.getElementById('ttd-batch')||{}).value||''; var sel=document.getElementById('ttd-bsub'); if(!sel) return;
+  var subs=[...new Set(_attEntries.filter(function(e){return String(e.batch_id||'')===String(bid);}).map(function(e){return e.subject;}).filter(Boolean))].sort();
+  sel.innerHTML='<option value="">All subjects</option>'+subs.map(function(s){ var n=_attEntries.filter(function(e){return String(e.batch_id||'')===String(bid)&&e.subject===s;}).length; return '<option value="'+esc(s).replace(/"/g,'&quot;')+'">'+esc(s)+' - '+n+' entries</option>'; }).join('');
+}
+async function openTTDelete(){
   if(!_attEntries.length){ toast('There are no timetable entries to delete.',true); return; }
+  if(!window._attBatchList){ try{ var _r=await api('/api/admin/batches'); window._attBatchList=((_r&&_r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){ window._attBatchList=[]; } }
+  var _bWithTT={}; _attEntries.forEach(function(e){ if(e.batch_id) _bWithTT[e.batch_id]=1; });
+  var batOpts=(window._attBatchList||[]).map(function(b){ var n=_attEntries.filter(function(e){return String(e.batch_id||'')===String(b.id);}).length; return '<option value="'+b.id+'">'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+' - '+n+' entries</option>'; }).join('');
   const subs=[...new Set(_attEntries.map(x=>x.subject).filter(Boolean))].sort();
   const subOpts=subs.map(s=>{
     const n=_attEntries.filter(e=>e.subject===s).length;
@@ -14747,7 +14760,8 @@ function openTTDelete(){
   }).join('');
   showModal('Delete Timetable',
  `<div class="alert alert-danger">This action is permanent and cannot be undone. Deleted entries cannot be recovered.</div>
-  <div class="form-group"><label>What do you want to delete</label><select class="form-control" id="ttd-scope" onchange="ttdRefresh()"><option value="subject">One subject's full timetable</option><option value="class">One class's full timetable</option><option value="all">Entire timetable (all subjects, all classes)</option></select></div>
+  <div class="form-group"><label>What do you want to delete</label><select class="form-control" id="ttd-scope" onchange="ttdRefresh()"><option value="subject">One subject's full timetable</option><option value="batch">One batch's timetable (crash course etc.)</option><option value="class">One class's full timetable</option><option value="all">Entire timetable (all subjects, all classes)</option></select></div>
+  <div class="form-group" id="ttd-batch-wrap" style="display:none"><label>Batch</label><select class="form-control" id="ttd-batch" onchange="ttdFillBatchSubs();ttdRefresh()">${batOpts||'<option value="">No batches</option>'}</select><label style="margin-top:10px">Subject in this batch</label><select class="form-control" id="ttd-bsub" onchange="ttdRefresh()"><option value="">All subjects</option></select></div>
   <div class="form-group" id="ttd-sub-wrap"><label>Subject</label><select class="form-control" id="ttd-sub" onchange="ttdRefresh()">${subOpts}</select></div>
   <div class="form-group" id="ttd-cls-wrap"><label>Class</label><select class="form-control" id="ttd-cls" onchange="ttdRefresh()"><option value="">All Classes</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
   <div class="alert alert-warning" id="ttd-impact"></div>
@@ -14759,11 +14773,14 @@ function ttdRefresh(){
   const scope=val('ttd-scope'), sub=val('ttd-sub');
   let cl=val('ttd-cls');
   document.getElementById('ttd-sub-wrap').style.display=scope==='subject'?'block':'none';
-  document.getElementById('ttd-cls-wrap').style.display=scope==='all'?'none':'block';
+  var bw=document.getElementById('ttd-batch-wrap'); if(bw) bw.style.display=scope==='batch'?'block':'none';
+  document.getElementById('ttd-cls-wrap').style.display=(scope==='all'||scope==='batch')?'none':'block';
   if(scope==='all') cl='';
+  if(scope==='batch'){ var bsel=document.getElementById('ttd-bsub'); if(bsel && !bsel.dataset.filled){ ttdFillBatchSubs(); bsel.dataset.filled='1'; } }
   const n=_ttdCount(scope,sub,cl);
   let what='';
   if(scope==='subject') what=sub+(cl?' (Class '+cl+')':'');
+  else if(scope==='batch'){ var bo=document.getElementById('ttd-batch'); var bn=bo&&bo.selectedOptions[0]?bo.selectedOptions[0].textContent.split(' - ')[0]:'this batch'; var bs=val('ttd-bsub'); what=(bs?bs+' in ':'')+bn; }
   else if(scope==='class') what=cl?('Class '+cl):'all classes';
   else what='the entire timetable';
   document.getElementById('ttd-impact').textContent='This will permanently delete '+n+' timetable entr'+(n===1?'y':'ies')+' for '+what+'.';
@@ -14777,6 +14794,7 @@ async function submitTTDelete(){
   try{
     let r;
     if(scope==='subject') r=await api('/api/admin/timetable-subject?subject='+encodeURIComponent(sub)+(cl?'&class_level='+cl:''),'DELETE');
+    else if(scope==='batch'){ var bid=val('ttd-batch'), bsub=val('ttd-bsub'); r=await api('/api/admin/timetable-batch?batch_id='+encodeURIComponent(bid)+(bsub?'&subject='+encodeURIComponent(bsub):''),'DELETE'); }
     else r=await api('/api/admin/timetable-clear'+(cl?'?class_level='+cl:''),'DELETE');
     closeModal(); toast((r.deleted||0)+' entries deleted.');
     _apiForget('timetable'); _attEntries=await api('/api/admin/timetable-all'); _attActiveSub=''; aRenderTT();
@@ -17995,8 +18013,9 @@ function buildTimeline(entries){
  list.forEach(e=>{
  if(e.type==='event'){ order.push({kind:'event',data:e}); }
  else{
- const ch=e.chapter||'(No chapter)';
- if(!(ch in chapIdx)){ chapIdx[ch]={kind:'chapter',chapter:ch,parts:[]}; order.push(chapIdx[ch]); }
+ const _crashE=/^day\s*\d+$/i.test((e.part||'').trim());
+ const ch=_crashE?((e.part||'').trim()):(e.chapter||'(No chapter)');
+ if(!(ch in chapIdx)){ chapIdx[ch]={kind:'chapter',chapter:ch,parts:[],crash:_crashE}; order.push(chapIdx[ch]); }
  chapIdx[ch].parts.push(e);
  }
  });
@@ -18423,9 +18442,22 @@ function renderStudentChapters(list, subject, opts){
   const chapters=[]; list.filter(it=>it.kind==='chapter'&&!_isNonBookChapter(it.chapter)).forEach(it=>{ const _n=(_expandMergedChapter(it.chapter)||[]).length||1; for(let _i=0;_i<_n;_i++) chapters.push(it); });
   const chDone=chapters.filter(c=>c.parts.every(_partDone)&&c.parts.length).length;
   let tp=0,dp=0; list.forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} });
-  const syl=tp?Math.round(dp/tp*100):0;
+  let syl=tp?Math.round(dp/tp*100):0;
   const tav=tmap.name?(tmap.url?`<span class="stt-tav" style="background-image:url(${tmap.url})"></span>`:`<span class="stt-tav">${esc(initials(tmap.name))}</span>`):'';
-  const summary=`<div class="card stt-summary"><div class="stt-sum-row"><div><div class="stt-sum-title">${esc(subject)}</div>${tmap.name?`<div class="stt-sum-teacher">${tav}${esc(tmap.name)}</div>`:''}</div><div class="stt-sum-right"><div class="stt-sum-big">${chDone}/${chapters.length}</div><div class="stt-sum-lbl">Chapters done</div></div></div><div class="stt-sbar"><div class="stt-sfill" style="width:${syl}%"></div></div><div class="stt-syl">${syl}% syllabus completed</div></div>`;
+  // ---- CRASH COURSE: progress = DISTINCT completed chapters / syllabus total (no double-count) ----
+  const _isCrash=list.some(it=>it.kind==='chapter'&&it.crash);
+  let _chDoneD=chDone, _chTotD=chapters.length, _totId='';
+  if(_isCrash){
+    const _done=new Set(); let _cls='';
+    list.forEach(it=>{ if(it.kind==='chapter'&&it.crash){ it.parts.forEach(p=>{ if(!_cls) _cls=(String(p.class_name||'').match(/\d+/)||[''])[0]; if(_partDone(p)) (p.chapter||'').split('|').forEach(cn=>{ cn=cn.trim(); if(cn) _done.add(cn.toLowerCase()); }); }); } });
+    _chDoneD=_done.size; _totId='crashtot-'+Math.random().toString(36).slice(2,8); _chTotD='<span id="'+_totId+'">…</span>';
+    // syllabus total async (admin/teacher). Update DOM + progress bar after render.
+    var _ep=(opts.onEditAny||opts.onReport)?'/api/admin/timetable-chapters':((opts.onLecture||opts.onComplete||opts.onEdit)?'/api/teacher/tt-chapters':'');
+    if(_ep){ (function(sub,cl,doneN,id,ep){ setTimeout(function(){ api(ep+'?subject='+encodeURIComponent(sub)+'&class_level='+encodeURIComponent(cl)).then(function(r){ var t=((r&&r.chapters)||[]).length; var sp=document.getElementById(id); if(sp&&t){ sp.textContent=t; var pc=t?Math.round(doneN/t*100):0; var card=sp.closest('.stt-summary'); if(card){ var f=card.querySelector('.stt-sfill'); if(f) f.style.width=pc+'%'; var sy=card.querySelector('.stt-syl'); if(sy) sy.textContent=pc+'% syllabus completed'; } } }).catch(function(){}); },30); })(subject,_cls,_chDoneD,_totId,_ep); }
+    else { _chTotD=String(Math.max(_done.size, new Set(list.filter(it=>it.crash).flatMap(it=>it.parts.flatMap(p=>(p.chapter||'').split('|').map(x=>x.trim().toLowerCase()).filter(Boolean)))).size)); }
+    syl=0; // crash bar syllabus-total aane par update hoti hai
+  }
+  const summary=`<div class="card stt-summary"><div class="stt-sum-row"><div><div class="stt-sum-title">${esc(subject)}</div>${tmap.name?`<div class="stt-sum-teacher">${tav}${esc(tmap.name)}</div>`:''}</div><div class="stt-sum-right"><div class="stt-sum-big">${_chDoneD}/${_chTotD}</div><div class="stt-sum-lbl">Chapters done</div></div></div><div class="stt-sbar"><div class="stt-sfill" style="width:${syl}%"></div></div><div class="stt-syl">${syl}% syllabus completed</div></div>`;
   const sts=list.map(it=> it.kind==='event'?_statusOf([it.data.date]):_statusOf(it.parts.map(p=>p.date)));
   // ONGOING = sirf EK chapter (jahan teacher abhi hai). Baaki overlapping chapters
   // "In Progress" dikhte hain — do jagah CURRENT wala confusion khatam.
@@ -18455,6 +18487,7 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
     return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card event ${isT?'test':''}${ongoing?' ongoing':''}"><div class="stl-chead"><div class="stl-cname">${esc(e.chapter)}</div><div class="stl-cmeta">${e.date?`<span class="stl-date">${fmtNice(e.date)}${e.day?' · '+esc(e.day):''}</span>`:''}<span class="stl-badge ${st}">${lbl}</span>${edel}</div></div></div></div>`;
   }
   const parts=item.parts, open=(st==='current'||ongoing), id='stl-'+Math.random().toString(36).slice(2,8);
+  const _crash=!!item.crash;
   const _hasAct=opts.onEdit||opts.onEditAny||opts.onDelete||opts.onComplete||opts.onLecture;
   const partsHtml=parts.map(p=>{ const pst=_partStatus(p); const plbl=pst==='done'?'Done':pst==='current'?'Live':'Soon';
     // student verification button: only when a teacher has linked a lecture (with a
@@ -18466,9 +18499,13 @@ function renderStudentNode(item, st, tmap, opts, ongoing){
       else{ verifyBtn=`<button class="btn btn-success btn-sm stl-act" onclick="markLectureDone(${p.lecture_id})">Mark Done</button>`; }
     }
     const acts=_hasAct?`${opts.onEditAny?`<button class="btn btn-ghost btn-sm stl-act" onclick="${opts.onEditAny}(${p.id})">${ic('edit')}</button>`:''}${opts.onEdit?`<button class="btn btn-ghost btn-sm stl-act" onclick="openEditTopic(${p.id},'${encodeURIComponent(p.part||'')}')">${ic('edit')}</button>`:''}${opts.onComplete&&!p.completed&&_classOver(p)?`<button class="btn btn-success btn-sm stl-act" onclick="${opts.onComplete}(${p.id})">Class Report</button>`:''}${opts.onDelete?`<button class="btn btn-danger btn-sm stl-act" onclick="${opts.onDelete}(${p.id})">${ic('trash')}</button>`:''}${opts.onReport?_crChipHTML(p):''}`:'';
-    return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${esc(p.part||'Full chapter')}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
-  const stlbl=st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING')));
-  return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span><span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span></div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
+    const _pnm=_crash ? (p.chapter?esc(p.chapter):'<span style="opacity:.55;font-style:italic">Chapters not marked yet</span>') : esc(p.part||'Full chapter');
+    return `<div class="stl-part"><span class="stl-pdot ${pst}">${pst==='done'?'✓':''}</span><div class="stl-pname">${_pnm}</div><div class="stl-pright"><div class="stl-ptime">${p.date?fmtNice(p.date)+(p.day?' · '+esc(p.day):''):''}${p.time?'<br>'+esc(p.time):''}</div><span class="stl-pbadge ${pst}">${plbl}</span>${acts}</div></div>`; }).join('');
+  const stlbl=_crash
+    ? (st==='done'?'DONE':(ongoing?'ONGOING':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING':'UPCOMING'))))
+    : (st==='done'?'DONE':(ongoing?'ONGOING CHAPTER':(st==='progress'?'IN PROGRESS':(st==='current'?'ONGOING CHAPTER':'UPCOMING'))));
+  const _cntBadge=_crash?'':`<span class="cnt-badge dark">${parts.length} part${parts.length>1?'s':''}</span>`;
+  return `<div class="stl-node ${st}${ongoing?' ongoing':''}">${dot}<div class="stl-card chapter ${open?'open':''}${ongoing?' ongoing':''}" id="${id}"><div class="stl-chead" onclick="document.getElementById('${id}').classList.toggle('open')"><div class="stl-cname"><span class="stl-arrow">${open?'▾':'›'}</span>${esc(item.chapter)}</div><div class="stl-cmeta"><span class="stl-badge ${ongoing?'ongoing':st}">${stlbl}</span>${_cntBadge}</div></div><div class="stl-parts">${partsHtml}</div></div></div>`;
 }
 // Premium: aaj wali day-card blink/glow karti hai + 'Today' chip blink — teeno panel
 // (teacher/student/admin) me, kyunki weekly view yahi shared function render karta hai.
