@@ -3767,10 +3767,15 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
                                StudentProfile.nios_ref.ilike(ql)))
     if subject:
         sub = subject.split("|")[0].strip()
-        try:
-            cols = cols.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
-        except Exception:
-            pass
+        if sub:
+            try:
+                # subjects coded ho sakte hain ("English 302") — wildcard search se match (exact json_contains fail hota tha)
+                cols = cols.filter(func.json_search(StudentProfile.subjects, "one", "%" + sub + "%").isnot(None))
+            except Exception:
+                try:
+                    cols = cols.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
+                except Exception:
+                    pass
     total = cols.count()
     rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
     students = []
@@ -3802,7 +3807,7 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     if hit and (_time.time() - hit[0] < 30):
         return hit[1]
     from models import StudentProfile
-    base = db.query(StudentProfile)
+    base = db.query(StudentProfile.id)   # id-only base -> count/subquery kabhi naye columns pe fail na ho
     if source: base = base.filter(StudentProfile.source == source)
     if session:
         if session == "__none__":
