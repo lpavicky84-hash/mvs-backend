@@ -29077,6 +29077,24 @@ function _mcCss(){
   if(document.getElementById('mc-css')) return;
   var s=document.createElement('style'); s.id='mc-css';
   s.textContent=[
+    '.amc-badge{background:#dc2626;color:#fff;font-size:.72rem;font-weight:800;padding:3px 11px;border-radius:999px}',
+    '.amc-tgrid{display:flex;flex-direction:column;gap:12px}',
+    '.amc-tcard{border:1px solid var(--border,#e5ddcb);border-radius:16px;background:var(--card,#fff);overflow:hidden;transition:.16s;box-shadow:0 1px 2px rgba(15,23,42,.04)}',
+    '.amc-tcard.has-pend{border-color:#e2b24d}',
+    '.amc-tcard.open{box-shadow:0 10px 28px rgba(15,23,42,.09)}',
+    '.amc-tc-head{display:flex;align-items:center;gap:14px;padding:15px 18px;cursor:pointer}',
+    '.amc-tc-head:hover{background:rgba(184,148,31,.05)}',
+    '.amc-tc-av{width:44px;height:44px;min-width:44px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem}',
+    '.amc-tc-name{font-weight:800;font-size:1rem;display:flex;align-items:center;gap:8px}',
+    '.amc-tc-dot{background:#dc2626;color:#fff;font-size:.64rem;font-weight:800;padding:1px 8px;border-radius:999px}',
+    '.amc-tc-stats{display:flex;gap:7px;flex-wrap:wrap;margin-top:5px}',
+    '.amc-stat{font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:999px;background:rgba(0,0,0,.05);color:var(--text-muted)}',
+    '.amc-stat.pend{background:rgba(217,119,6,.14);color:#b45309}',
+    '.amc-stat.appr{background:rgba(5,150,105,.14);color:#047857}',
+    '.amc-stat.rej{background:rgba(220,38,38,.13);color:#dc2626}',
+    '.amc-tc-caret{color:var(--text-muted);font-size:1rem}',
+    '.amc-tc-rows{padding:4px 14px 14px}',
+    '.amc-tc-rows .mc-row{margin-bottom:9px}',
     '.mc-row{display:flex;align-items:center;gap:14px;padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:var(--card);margin-bottom:11px;cursor:pointer;transition:.16s;box-shadow:0 1px 2px rgba(15,23,42,.04)}',
     '.mc-row:hover{border-color:#d9b978;transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.08)}',
     'body.dark .mc-row{background:var(--card);border-color:var(--border)}',
@@ -29254,7 +29272,7 @@ function initAdminMatCheck(){
     var anchor=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
       return (n.getAttribute('onclick')||'').indexOf("'categories'")>=0;})[0];
     var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('matcheck',this)");
-    d.innerHTML=(typeof ic==='function'?ic('check'):'')+'<span>Material Checker</span>';
+    d.innerHTML=(typeof ic==='function'?ic('check'):'')+'<span>Material Checker</span><span id="a-matcheck-badge" style="display:none;margin-left:auto;background:#dc2626;color:#fff;font-size:.68rem;font-weight:800;padding:1px 8px;border-radius:999px"></span>';
     if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
   }
   if(main && !document.getElementById('a-page-matcheck')){
@@ -29262,33 +29280,79 @@ function initAdminMatCheck(){
     pg.innerHTML='<div id="a-matcheck-content"><div class="spinner"></div></div>';
     main.appendChild(pg);
   }
+  try{ _amcRefreshBadge(); }catch(e){}
+}
+function _amcSetNavBadge(n){ var b=document.getElementById('a-matcheck-badge'); if(!b) return; if(n>0){ b.style.display='inline-block'; b.textContent=n>99?'99+':n; } else { b.style.display='none'; } }
+function _amcRefreshBadge(){
+  // silent: pending materials (new + resubmit + under-review + changes) ka count nav badge me
+  api('/api/admin/material-submissions?category_id=0&status=').then(function(r){
+    var subs=(r&&r.submissions)||[]; _amcSetNavBadge(subs.filter(function(x){return _amcIsPending(x.status);}).length);
+  }).catch(function(){});
 }
 window._amcFilter={category_id:0,status:''};
+window._amcExpanded=window._amcExpanded||{};
+function _amcIsPending(s){ return ['submitted','resubmitted','under_review','changes_required'].indexOf(s)>=0; }
+function amcToggleTeacher(key){ key=decodeURIComponent(key); window._amcExpanded[key]=!window._amcExpanded[key]; loadAMatCheck(); }
 function loadAMatCheck(){
   var el=document.getElementById('a-matcheck-content'); if(!el) return;
   _mcCss(); try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
   Promise.all([
     api('/api/admin/categories').catch(function(){return {categories:[]};}),
-    api('/api/admin/material-submissions?category_id='+(_amcFilter.category_id||0)+'&status='+(_amcFilter.status||''))
+    api('/api/admin/material-submissions?category_id='+(_amcFilter.category_id||0)+'&status=')
   ]).then(function(res){
     var cats=(res[0].categories||[]); var subs=(res[1].submissions||[]);
     var catOpts='<option value="0">All categories</option>'+cats.map(function(c){return '<option value="'+c.id+'"'+(_amcFilter.category_id==c.id?' selected':'')+'>'+esc(c.display_name)+'</option>';}).join('');
     var stList=[['','All statuses'],['submitted','Submitted'],['under_review','Under Review'],['changes_required','Changes Required'],['resubmitted','Resubmitted'],['approved','Approved'],['rejected','Rejected']];
     var stOpts=stList.map(function(x){return '<option value="'+x[0]+'"'+(_amcFilter.status===x[0]?' selected':'')+'>'+x[1]+'</option>';}).join('');
+    // ---- group by teacher
+    var byT={};
+    subs.forEach(function(m){ var k=(m.teacher||'Unknown').trim()||'Unknown'; (byT[k]=byT[k]||[]).push(m); });
+    var teachers=Object.keys(byT).sort(function(a,b){
+      var pa=byT[a].filter(function(x){return _amcIsPending(x.status);}).length;
+      var pb=byT[b].filter(function(x){return _amcIsPending(x.status);}).length;
+      return pb-pa || a.localeCompare(b);   // sabse zyada pending upar
+    });
+    var totPending=subs.filter(function(x){return _amcIsPending(x.status);}).length;
+    try{ _amcSetNavBadge(totPending); }catch(e){}
     var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'
-      +'<div style="font-weight:800;font-size:1.15rem">Material Checker</div>'
+      +'<div style="display:flex;align-items:center;gap:10px"><div style="font-weight:800;font-size:1.15rem">Material Checker</div>'
+      +(totPending?'<span class="amc-badge">'+totPending+' to check</span>':'')+'</div>'
       +'<div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="checkR2Health()" title="Test file storage (uploads/downloads)">'+(typeof ic==='function'?ic('shield'):'')+' Check Storage</button><select class="form-control" style="width:auto" onchange="amcSetCat(this.value)">'+catOpts+'</select>'
       +'<select class="form-control" style="width:auto" onchange="amcSetStatus(this.value)">'+stOpts+'</select></div></div>';
     if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions match this filter.</div>'; return; }
-    var rows=subs.map(function(m){
-      return '<div class="mc-row" onclick="amcOpenDetail('+m.id+')">'
-        +'<div class="mc-ic">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
-        +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+esc(m.title)+'</div>'
-        +'<div class="mc-meta">'+(m.teacher?'<span class="mc-chip">'+esc(m.teacher)+'</span>':'')+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span><span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
-        +_dueBadge(m.deadline)+(m.priority==='high'?'<span style="font-size:.66rem;font-weight:800;color:#dc2626">HIGH</span>':'')+_msPill(m.status)
-        +'<button class="btn btn-ghost btn-sm mc-del" title="Delete this submission" onclick="event.stopPropagation();amcDeleteSubmission('+m.id+',\''+esc((m.title||'').replace(/\x27/g,"")) +'\')">'+(typeof ic==='function'?ic('trash'):'Delete')+'</button></div>';
+    var cards=teachers.map(function(tk){
+      var list=byT[tk];
+      var pend=list.filter(function(x){return _amcIsPending(x.status);}).length;
+      var appr=list.filter(function(x){return x.status==='approved';}).length;
+      var rej =list.filter(function(x){return x.status==='rejected';}).length;
+      var open=!!window._amcExpanded[tk];
+      var ini=esc((tk||'?').trim().charAt(0).toUpperCase());
+      var stat='<span class="amc-stat total">'+list.length+' total</span>'
+        +(pend?'<span class="amc-stat pend">'+pend+' pending</span>':'')
+        +(appr?'<span class="amc-stat appr">'+appr+' approved</span>':'')
+        +(rej?'<span class="amc-stat rej">'+rej+' rejected</span>':'');
+      var rowsInner='';
+      if(open){
+        var vis=list.filter(function(m){ return !_amcFilter.status || m.status===_amcFilter.status; });
+        vis.sort(function(a,b){ return (b.id||0)-(a.id||0); });
+        rowsInner='<div class="amc-tc-rows">'+(vis.length?vis.map(function(m){
+          return '<div class="mc-row" onclick="amcOpenDetail('+m.id+')">'
+            +'<div class="mc-ic">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
+            +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+esc(m.title)+'</div>'
+            +'<div class="mc-meta">'+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span><span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
+            +_dueBadge(m.deadline)+(m.priority==='high'?'<span style="font-size:.66rem;font-weight:800;color:#dc2626">HIGH</span>':'')+_msPill(m.status)
+            +'<button class="btn btn-ghost btn-sm mc-del" title="Delete this submission" onclick="event.stopPropagation();amcDeleteSubmission('+m.id+',\''+esc((m.title||'').replace(/\x27/g,"")) +'\')">'+(typeof ic==='function'?ic('trash'):'Delete')+'</button></div>';
+        }).join(''):'<div class="tcd-empty" style="padding:14px">No materials in this status.</div>')+'</div>';
+      }
+      return '<div class="amc-tcard'+(open?' open':'')+(pend?' has-pend':'')+'">'
+        +'<div class="amc-tc-head" onclick="amcToggleTeacher(\''+encodeURIComponent(tk)+'\')">'
+        +'<div class="amc-tc-av">'+ini+'</div>'
+        +'<div style="flex:1;min-width:0"><div class="amc-tc-name">'+esc(tk)+(pend?'<span class="amc-tc-dot">'+pend+'</span>':'')+'</div>'
+        +'<div class="amc-tc-stats">'+stat+'</div></div>'
+        +'<span class="amc-tc-caret">'+(open?'\u25b4':'\u25be')+'</span></div>'
+        +rowsInner+'</div>';
     }).join('');
-    el.innerHTML=head+rows;
+    el.innerHTML=head+'<div class="amc-tgrid">'+cards+'</div>';
   }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load')+'</div>'; });
 }
 function amcSetCat(v){ _amcFilter.category_id=parseInt(v,10)||0; loadAMatCheck(); }
@@ -29387,6 +29451,10 @@ function _mcChatCss(){
     '.mc-b .mc-txt{white-space:normal}',
     '.mc-b .at{align-self:flex-end;font-size:.62rem;opacity:.6;margin-top:1px;display:flex;align-items:center;gap:3px}',
     '.mc-b .at .tick{letter-spacing:-2px;font-size:.72rem;opacity:.8}',
+    '.mc-b .at .tick.seen{color:#34b7f1;opacity:1}',
+    '.mc-seen{align-self:flex-end;font-size:.64rem;font-weight:700;color:#8a7d5c;margin:-2px 6px 2px 0;letter-spacing:.01em}',
+    '.mc-seen.on{color:#34b7f1}',
+    'body.dark .mc-seen.on{color:#53bdeb}',
     '.mc-img-wrap{position:relative;margin-top:4px;border-radius:8px;overflow:hidden;max-width:230px;background:rgba(0,0,0,.05)}',
     '.mc-img-wrap img{display:block;width:100%;min-height:60px;cursor:zoom-in}',
     '.mc-img-dl{position:absolute;top:6px;right:6px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}',
@@ -29438,24 +29506,31 @@ function _mcLoadChat(role, sid){
 function _mcRenderMsgs(role, msgs){
   var el=document.getElementById('mc-chat-msgs'); if(!el) return;
   if(!msgs.length){ el.innerHTML='<div style="color:#9c8f6e;font-size:.82rem;padding:6px">No messages yet. Start the conversation below.</div>'; return; }
+  var other=(role==='admin')?'teacher':'admin';
+  // Mera message "seen" tab jab DOOSNE ne padha: admin ka message -> read_by_teacher,
+  // teacher ka message -> read_by_admin. (Backend GET pe read mark + commit karta hai.)
+  var _seenOf=function(m){ return (role==='admin') ? !!m.read_by_teacher : !!m.read_by_admin; };
   var imgJobs=[];
-  el.innerHTML=msgs.map(function(m){
+  var lastMineIdx=-1; msgs.forEach(function(m,i){ if(m.sender_role===role) lastMineIdx=i; });
+  el.innerHTML=msgs.map(function(m,idx){
     var mine=(m.sender_role===role);
     var _dic=(typeof ic==='function'?ic('download'):'\u2913');
     var atts=(m.attachments||[]).map(function(a){
       var nm=esc((a.filename||(a.is_image?'image':'file')).replace(/'/g,''));
       if(a.is_image){ var id='mcimg-'+a.id; imgJobs.push([id, role, a.id]);
-        // tap the image -> open the full viewer (which has its own Download button).
-        // the small corner button downloads directly without opening the viewer.
         return '<div class="mc-img-wrap"><img loading="lazy" id="'+id+'" alt="'+esc(a.filename||'image')+'" onclick="_mcAttView(\''+id+'\',\''+nm+'\')">'
           +'<button class="mc-img-dl" title="Download" onclick="event.stopPropagation();_mcAttDownload(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic+'</button></div>';
       }
       return '<div class="mc-file" onclick="_mcAttDownload(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic
         +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.filename||'file')+'</span></div>';
     }).join('');
+    var seen=mine&&_seenOf(m);
+    var tick=mine?('<span class="tick'+(seen?' seen':'')+'">\u2713\u2713</span>'):'';
+    // last apne message ke neeche saaf status: "Seen by …" ya "Sent"
+    var statusLine=(mine&&idx===lastMineIdx)?('<div class="mc-seen'+(seen?' on':'')+'">'+(seen?('\u2713\u2713 Seen by '+other):'\u2713 Sent')+'</div>'):'';
     return '<div class="mc-b '+(mine?'me':'them')+'"><div class="who">'+esc(m.sender_role==='admin'?'Admin':'Teacher')+'</div>'
       +(m.message?'<div class="mc-txt">'+esc(m.message).replace(/\n/g,'<br>')+'</div>':'')+atts
-      +'<div class="at">'+esc(m.at)+(mine?' <span class="tick">\u2713\u2713</span>':'')+'</div></div>';
+      +'<div class="at">'+esc(m.at)+(mine?' '+tick:'')+'</div></div>'+statusLine;
   }).join('');
   el.scrollTop=el.scrollHeight;
   imgJobs.forEach(function(j){ _mcLoadImg(j[0], '/api/'+j[1]+'/material-attachments/'+j[2]+'/view'); });
