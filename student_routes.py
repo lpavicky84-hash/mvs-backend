@@ -1174,6 +1174,7 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "exam_stream": sp.exam_stream,
         "nios_ref": sp.nios_ref,
         "has_photo": bool(sp.photo_b64),
+        "source": (getattr(sp, "source", None) or "mvs_app"),
         "setup_done": bool(getattr(sp, "setup_done", False))
     }
 

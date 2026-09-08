@@ -15164,13 +15164,20 @@ async function openStudent(){
     window._sSubjects=p.subjects||[];
     applyBatchMode();
   }).catch(()=>{});
-  // Profile complete? Naya setup (password ke saath) zaroori — warna setup screen.
+  // Profile complete? MVS App students ko naya setup (password ke saath) zaroori.
+  // MVS PORTAL students bilkul pehle jaisa — auto-fetch, no setup, no password (koi change nahi).
   try{
  const p=await api('/api/student/profile');
- if(!p.setup_done || !p.class_level || !p.subjects || p.subjects.length===0 || !p.batch_name || !p.medium){
- _prefillSubjects=p.subjects||[];
- showSubjectScreen(p);
- return;
+ var _isPortal=(p.source==='mvs_portal');
+ if(_isPortal){
+   // portal students: sirf agar profile hi truly incomplete ho tabhi (aksar nahi hota)
+   if(!p.class_level || !p.subjects || p.subjects.length===0){ _prefillSubjects=p.subjects||[]; showSubjectScreen(p); return; }
+ } else {
+   if(!p.setup_done || !p.class_level || !p.subjects || p.subjects.length===0 || !p.batch_name || !p.medium){
+     _prefillSubjects=p.subjects||[];
+     showSubjectScreen(p);
+     return;
+   }
  }
   }catch(e){ /* if profile fails, continue to app */ }
   enterStudentApp();
