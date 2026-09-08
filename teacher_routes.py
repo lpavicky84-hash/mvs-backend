@@ -1215,6 +1215,12 @@ def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), c
         e.time_text = (payload.get("time") or "").strip() or None
     if "chapter" in payload and (payload.get("chapter") or "").strip():
         e.chapter = (payload.get("chapter") or "").strip()
+    if "youtube_link" in payload:
+        _yl = (payload.get("youtube_link") or "").strip()
+        try:
+            e.youtube_link = _yl or None
+        except Exception:
+            pass
     if "type" in payload and (payload.get("type") or "").strip() in ("chapter", "event"):
         e.entry_type = (payload.get("type") or "").strip()
     if "entry_date" in payload:

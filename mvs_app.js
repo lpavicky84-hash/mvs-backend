@@ -3708,6 +3708,65 @@ async function loadTStudents(){
 
 let _ttTab='today';
 function ttSwitchTab(t){ _ttTab=t; loadTTimetable(); }
+async function openTeacherCrash(){
+  showModal('Crash Course \u2014 Chapters & YouTube','<div class="spinner" style="margin:26px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  var ents=[];
+  try{ ents=await api('/api/teacher/my-timetable'); }catch(e){ document.getElementById('modal-body').innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load')+'</div>'; return; }
+  if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
+  var crash=(ents||[]).filter(function(e){ return /^day\s*\d+$/i.test((e.part||'').trim()); });
+  if(!crash.length){ document.getElementById('modal-body').innerHTML='<div class="ws-empty" style="padding:30px"><p>Koi crash-course class aapko assign nahi hui.</p><small>Admin ke crash course upload ke baad aapki Day-wise classes yahan aayengi.</small></div>'; return; }
+  // group by batch + subject + class
+  var groups={};
+  crash.forEach(function(e){
+    var bn=(function(){ var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(e.batch_id);})[0]; return b?b.name:'Batch'; })();
+    var key=(e.batch_id||0)+'||'+e.subject+'||'+(e.class_name||'');
+    (groups[key]=groups[key]||{batch:bn,subject:e.subject,cls:e.class_name||'',rows:[]}).rows.push(e);
+  });
+  window._tcGroups=groups;
+  var _dayN=function(p){ var m=/(\d+)/.exec(p||''); return m?parseInt(m[1],10):0; };
+  var html=Object.keys(groups).map(function(key,gi){
+    var g=groups[key]; g.rows.sort(function(a,b){ return _dayN(a.part)-_dayN(b.part); });
+    var rows=g.rows.map(function(e){
+      var yt=esc(e.youtube_link||'');
+      return '<div class="tc-drow" data-eid="'+e.id+'">'
+        +'<div class="tc-dbadge">'+esc(e.part||'')+'</div>'
+        +'<div class="tc-dmeta">'+esc(e.date||'')+(e.time?(' \u00b7 '+esc(e.time)):'')+'</div>'
+        +'<select class="form-control tc-ch" data-eid="'+e.id+'" data-cur="'+esc(e.chapter||'')+'"><option value="">'+(e.chapter?('\u2713 '+esc(e.chapter)):'Loading chapters\u2026')+'</option></select>'
+        +'<input class="form-control tc-yt" data-eid="'+e.id+'" placeholder="YouTube link (optional)" value="'+yt+'">'
+        +'<button class="btn btn-primary btn-sm" onclick="tcSaveDay('+e.id+')">'+ic('check')+' Save</button></div>';
+    }).join('');
+    return '<div class="tc-group"><div class="tc-ghead">'+esc(g.subject)+' <span class="tc-gsub">'+esc(g.batch)+(g.cls?(' \u00b7 '+esc(g.cls)):'')+' \u00b7 '+g.rows.length+' days</span></div>'+rows+'</div>';
+  }).join('');
+  if(!document.getElementById('tc-css')){ var st=document.createElement('style'); st.id='tc-css';
+    st.textContent='.tc-group{margin-bottom:16px}.tc-ghead{font-weight:800;font-size:.98rem;margin:4px 0 8px}.tc-gsub{font-weight:600;font-size:.74rem;color:var(--text-muted)}'
+      +'.tc-drow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border);border-radius:11px;margin-bottom:7px}'
+      +'.tc-dbadge{font-weight:800;font-size:.72rem;background:rgba(184,148,31,.15);color:#9a7d1a;padding:3px 10px;border-radius:999px;min-width:56px;text-align:center}'
+      +'.tc-dmeta{font-size:.74rem;color:var(--text-muted);min-width:120px}'
+      +'.tc-ch{flex:1;min-width:170px}.tc-yt{flex:1;min-width:170px}';
+    document.head.appendChild(st); }
+  document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Har Day ke liye chapter (syllabus se) chuno aur, agar wo class YouTube pe hai to link lagao. Save dabao.</div>'+html;
+  // load syllabus chapters per subject/class (once) and fill dropdowns
+  var done={};
+  Object.keys(groups).forEach(function(key){
+    var g=groups[key]; var ck=g.subject+'||'+g.cls; if(done[ck]) return; done[ck]=1;
+    var cl=(String(g.cls||'').match(/\d+/)||[''])[0];
+    api('/api/teacher/tt-chapters?subject='+encodeURIComponent(g.subject)+'&class_level='+encodeURIComponent(cl)).then(function(r){
+      var chs=(r&&r.chapters)||[];
+      document.querySelectorAll('.tc-ch').forEach(function(sel){
+        var eid=sel.getAttribute('data-eid'); var row=g.rows.filter(function(x){return String(x.id)===String(eid);})[0]; if(!row) return;
+        var cur=sel.getAttribute('data-cur')||'';
+        sel.innerHTML='<option value="">\u2014 Select chapter \u2014</option>'+chs.map(function(c){return '<option value="'+esc(c).replace(/"/g,'&quot;')+'"'+(c===cur?' selected':'')+'>'+esc(c)+'</option>';}).join('')+(cur&&chs.indexOf(cur)<0?('<option value="'+esc(cur).replace(/"/g,'&quot;')+'" selected>'+esc(cur)+'</option>'):'');
+      });
+    }).catch(function(){});
+  });
+}
+async function tcSaveDay(eid){
+  var sel=document.querySelector('.tc-ch[data-eid="'+eid+'"]'); var yt=document.querySelector('.tc-yt[data-eid="'+eid+'"]');
+  var chapter=(sel&&sel.value||'').trim(); var link=(yt&&yt.value||'').trim();
+  var body={youtube_link:link}; if(chapter) body.chapter=chapter;
+  try{ await api('/api/teacher/timetable-entry/'+eid,'PATCH',body); toast('Saved.'); }
+  catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
 async function loadTTimetable(){
   const el=document.getElementById('t-timetable-content');
   try{
@@ -3728,7 +3787,7 @@ async function loadTTimetable(){
         +_bList.map(function(b){return '<option value="'+b.id+'"'+(String(_ttBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('')
         +(_hasGlobal?'<option value="__none__"'+(_ttBatch==='__none__'?' selected':'')+'>No course (global)</option>':'')+'</select>';
     }
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${_batSelHtml}<button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${_batSelHtml}<button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-secondary btn-sm" onclick="openTeacherCrash()">${ic('play')} Crash Chapters</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||'';
     // apni photo har subject par timeline me dikhe
     try{
