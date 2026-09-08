@@ -12261,10 +12261,10 @@ function _selBatchChange(bid){
   // Purane batch ka RENDERED content invalid ho gaya -> use blank karo taaki navigate karne pe
   // "dusre batch ka jhalak" na dikhe (softSpin kept='1' ki wajah se purana content dikhaata tha).
   _sResetBatchPages();
-  // HARD-nuke (_apiForget) NAHI: cache batch-key wise hai. Sirf stale-mark (_apiBust) -> jis batch
-  // pe ja rahe hain agar pehle khola hai to uska data TURANT (0ms) cached milega (koi delay nahi),
-  // aur fresh bg me aa jaata hai. Yahi switch ko fast + delay-free banata hai.
-  try{ _apiBust(); }catch(e){}
+  // Batch switch pe batch-scoped data FRESH lao — purana (dusre batch ka) stale cache serve na ho.
+  // Sirf 'batch=' wale keys drop hote hain (dashboard/workspace/performance/timetable/materials...);
+  // non-batch data (profile etc.) cached hi rehta hai to switch fir bhi fast rehta hai.
+  try{ _apiForget('batch='); }catch(e){}
   // Sirf current page silently reload — poore app ka jerky fade nahi.
   try{ if(typeof _curLoader==='function'){ _curLoader(); } else if(typeof loadSDashboard==='function'){ loadSDashboard(); } }catch(e){}
   setTimeout(function(){ _batchWelcomePopup(); }, 400);

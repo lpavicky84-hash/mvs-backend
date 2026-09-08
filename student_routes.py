@@ -148,21 +148,34 @@ def _bids_standalone(db, bids):
     DPP/exam and NEVER inherits the shared global one. `standalone` column: True = own only,
     False = inherit global (legacy), NULL = auto (a 'Crash Course' is standalone by default; any
     other legacy batch inherits). An explicit True/False always wins over the name heuristic.
-    Empty standalone batch => empty (jab tak uska apna timetable/material upload/create na ho)."""
+    Robust: the name heuristic works even if the standalone column hasn't been added yet on this
+    DB (older deploy) — so a Crash Course is scoped correctly regardless of migration timing."""
     if not bids:
         return False
+    from models import Batch
+    # 1) explicit override column (guarded — column may be absent on an older DB)
+    explicit = {}
     try:
-        from models import Batch
-        for b in db.query(Batch).filter(Batch.id.in_(bids)).all():
-            s = getattr(b, "standalone", None)
-            if s is not None:
-                if bool(s):
-                    return True
-            elif "crash" in ((b.name or "").lower()):
-                return True
-        return False
+        for _bid, _sval in db.query(Batch.id, Batch.standalone).filter(Batch.id.in_(bids)).all():
+            explicit[_bid] = _sval
     except Exception:
-        return False
+        explicit = {}
+    # 2) names — ALWAYS available (id/name columns always exist)
+    names = {}
+    try:
+        for _bid, _nm in db.query(Batch.id, Batch.name).filter(Batch.id.in_(bids)).all():
+            names[_bid] = _nm or ""
+    except Exception:
+        names = {}
+    for _bid in bids:
+        _sv = explicit.get(_bid, None)
+        if _sv is not None:
+            if bool(_sv):
+                return True
+            continue   # explicit False -> this batch inherits global; skip the name heuristic
+        if "crash" in (names.get(_bid, "") or "").lower():
+            return True
+    return False
 
 
 def _tt_batch_filter(db, sp, only_batch_id=None):
