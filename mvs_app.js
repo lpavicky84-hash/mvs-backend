@@ -3947,6 +3947,8 @@ async function openUploadHub(prefill){
   const preLabel=prefill.typeLabel||Object.keys(UPLOAD_TYPES).find(k=>UPLOAD_TYPES[k].mt===prefill.type&&!UPLOAD_TYPES[k].cat)||'Class Notes';
   const typeOpts=Object.keys(UPLOAD_TYPES).map(t=>`<option ${t===preLabel?'selected':''}>${t}</option>`).join('');
   const subOpts=subs.map(s=>`<option ${prefill.subject===s?'selected':''}>${esc(s)}</option>`).join('');
+  const _uhBL=(window._mtBatchList||[]);
+  const _uhBatOpts=_uhBL.length?`<div style="max-width:280px"><label class="ex-lbl">Course / Batch</label><select class="form-control" id="uh-batch"><option value="">All courses (global)</option>${_uhBL.map(b=>`<option value="${b.id}"${String(window._mtBatch)===String(b.id)?' selected':''}>${esc(b.name)}</option>`).join('')}</select><div class="ex-hint" style="font-size:.72rem;color:var(--text-muted);margin-top:3px">Kisi ek course ke liye upload karo, ya "All courses" = sabhi ko dikhega.</div></div>`:'';
   showModal('Upload Material',
     `<div class="alert alert-info">One place for every upload. Students get a bell notification as soon as you publish.</div>
      <div class="ex-grid2">
@@ -3954,6 +3956,7 @@ async function openUploadHub(prefill){
        <div><label class="ex-lbl">Subject</label><select class="form-control" id="uh-sub" onchange="uhFillCh()">${subOpts}</select></div>
      </div>
      <div style="max-width:240px"><label class="ex-lbl">Class</label><select class="form-control" id="uh-cls"><option value="">Auto (from subject)</option><option value="10" ${prefill&&String(prefill.class_name||'').includes('10')?'selected':''}>Class 10</option><option value="12" ${prefill&&String(prefill.class_name||'').includes('12')?'selected':''}>Class 12</option></select></div>
+     ${_uhBatOpts}
      <div id="uh-cat-wrap" style="display:none"><label class="ex-lbl">Category</label><input class="form-control" id="uh-cat" placeholder="e.g. Formula Sheet / PYQ / Reference"></div>
      <div class="ex-grid2">
        <div><label class="ex-lbl">Chapter</label><input class="form-control" id="uh-ch" list="uh-ch-list" placeholder="Chapter (optional)" value="${esc(prefill.chapter||'')}"><datalist id="uh-ch-list"></datalist></div>
@@ -3994,6 +3997,7 @@ async function submitUploadHub(){
   fd.append('material_type',t.mt); fd.append('title',val('uh-title'));
   fd.append('category',t.mt==='other'?val('uh-cat'):'');
   const _uhClsV=val('uh-cls'); if(_uhClsV) fd.append('class_name','Class '+_uhClsV); // v123: blank -> backend subject ke official class se resolve karega
+  const _uhBat=(document.getElementById('uh-batch')||{}).value||''; if(_uhBat) fd.append('batch_id',_uhBat);
   if(t.mt==='test') fd.append('duration_min',val('uh-dur')||60);
   try{
     await new Promise((resolve,reject)=>{

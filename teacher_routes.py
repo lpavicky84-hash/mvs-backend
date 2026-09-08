@@ -1482,6 +1482,7 @@ async def upload_material(
     title: str = Form(""),
     category: str = Form(""),
     duration_min: int = Form(0),
+    batch_id: int = Form(0),               # batch-scoped upload (0 = global/all courses)
     db: Session = Depends(get_db),
     current_user=Depends(get_teacher)
 ):
@@ -1508,7 +1509,8 @@ async def upload_material(
         material_type=material_type.strip(), title=(title.strip() or file.filename),
         category=(category.strip() or None),
         filename=file.filename, content_b64=__import__("r2_storage").normalize(b64, "materials", (getattr(file, "content_type", None) or "application/pdf")),
-        duration_min=(duration_min or None)
+        duration_min=(duration_min or None),
+        batch_id=(batch_id or None)
     )
     db.add(m); db.commit(); db.refresh(m)
     # Notify students who have this subject
@@ -4182,7 +4184,27 @@ def _material_tree(db, subjects=None, only_batch=None):
         q = q.filter(Material.batch_id.is_(None))   # global/legacy only
     elif only_batch:
         from sqlalchemy import or_ as _or_mt
-        q = q.filter(_or_mt(Material.batch_id == only_batch, Material.batch_id.is_(None)))
+        # STRICT: standalone batch (Crash Course / explicitly standalone) -> ONLY apna material,
+        # global/legacy kabhi nahi. Legacy batch -> apna + global (backward compatible).
+        _standalone = False
+        try:
+            from models import Batch
+            _nm = db.query(Batch.name).filter(Batch.id == only_batch).scalar()
+            if _nm and "crash" in _nm.lower():
+                _standalone = True
+        except Exception:
+            pass
+        try:
+            from models import Batch
+            _sv = db.query(Batch.standalone).filter(Batch.id == only_batch).scalar()
+            if _sv is not None:
+                _standalone = bool(_sv)   # explicit toggle overrides the name heuristic
+        except Exception:
+            pass
+        if _standalone:
+            q = q.filter(Material.batch_id == only_batch)
+        else:
+            q = q.filter(_or_mt(Material.batch_id == only_batch, Material.batch_id.is_(None)))
     mats = q.order_by(Material.created_at.desc()).all()
     ids = [m.id for m in mats]
     views, downloads = {}, {}
