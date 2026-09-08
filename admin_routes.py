@@ -876,11 +876,16 @@ def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Dep
     user_map = {}
     for k, v in (payload.get("map") or {}).items():
         user_map[str(k or "").strip().lower()] = str(v or "").strip()
+    # Agar admin ne map bheja hai -> STRICT: sirf usi ke hisaab se enroll, baaki items skip.
+    # Map na ho -> crash default_map + fuzzy fallback (purana crash-only shortcut).
+    strict = bool(user_map)
 
     def _batch_for_item(item):
         it = str(item or "").strip().lower()
         if it in user_map:
-            return user_map[it]
+            return user_map[it] or None
+        if strict:
+            return None
         if it in default_map:
             return default_map[it]
         if "crash" in it:
@@ -913,7 +918,7 @@ def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Dep
     for (sid,) in db.query(StudentBatch.student_id).distinct().all():
         _has_sb.add(sid)
 
-    matched = 0; already = 0; unmatched = 0; no_batch = 0
+    matched = 0; already = 0; unmatched = 0; no_batch = 0; skipped = 0
     per = {}
     unmatched_list = []
     seen = set()
@@ -921,9 +926,12 @@ def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Dep
         phone = _ph(row.get("phone"))
         item = str(row.get("item") or "").strip()
         bname = _batch_for_item(item)
-        pkey = bname or ("(unmapped) " + item)
+        if not bname:
+            skipped += 1
+            continue
+        pkey = bname
         per.setdefault(pkey, {"matched": 0, "already": 0, "unmatched": 0})
-        b = batches.get(str(bname or "").strip().lower()) if bname else None
+        b = batches.get(str(bname).strip().lower())
         if not b:
             no_batch += 1
             per[pkey]["unmatched"] += 1
@@ -960,7 +968,8 @@ def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Dep
     if commit:
         db.commit()
     return {"total": len(purchases), "matched": matched, "already": already,
-            "unmatched": unmatched, "no_batch": no_batch, "committed": bool(commit),
+            "unmatched": unmatched, "no_batch": no_batch, "skipped": skipped,
+            "committed": bool(commit),
             "per_batch": per, "unmatched_list": unmatched_list[:1000]}
 
 

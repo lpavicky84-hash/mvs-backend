@@ -12312,7 +12312,7 @@ function _batchMgrBody(list,unlinked){
   var active=list.filter(function(b){return b.active!==false;});
   var inactive=list.filter(function(b){return b.active===false;});
   return '<div class="bc-top"><button class="btn btn-primary" onclick="openBatchAdd()">'+ic('plus')+' Add Batch</button>'
-    +'<button class="btn btn-secondary" onclick="openCrashImport()">'+ic('upload')+' Import Crash Purchases</button>'
+    +'<button class="btn btn-secondary" onclick="openCrashImport()">'+ic('upload')+' Import Purchases</button>'
     +(unlinked>0?'<span class="bc-unl">'+unlinked+' student'+(unlinked>1?'s':'')+' not yet linked \u2014 links automatically</span>':'<span class="bc-unl ok">\u2713 all students linked</span>')+'</div>'
     +(active.length?'<div class="vtc-cap">Active</div>':'')
     +'<div class="bc-grid">'+(active.map(_batchCard).join('')||'<div class="vtc-empty">No batches yet \u2014 tap \u201CAdd Batch\u201D</div>')+'</div>'
@@ -12330,11 +12330,22 @@ function _ciSplitCSV(text){
 }
 function _ciCol(hdr,names){ for(var j=0;j<names.length;j++){ var i=hdr.indexOf(names[j]); if(i>=0) return i; } return -1; }
 function openCrashImport(){
-  showModal('Import Crash Purchases',
-    '<div class="alert alert-info" style="font-size:.82rem">Purchase sheet (CSV) upload karo. Har buyer ko uske crash batch me <b>add-on</b> enroll kiya jaayega \u2014 unka <b>main batch bilkul nahi badlega</b>, crash content mil jaayega. Phone number se match hota hai.</div>'
+  showModal('Import Purchases \u2192 Batch',
+    '<div class="alert alert-info" style="font-size:.82rem">Koi bhi purchase sheet (CSV) upload karo \u2014 crash ya normal batch. Har item ko aap khud batch se map karoge (auto-match ho jaata hai). Buyers ko us batch me <b>add-on</b> enroll kiya jaayega \u2014 unka <b>main batch nahi badalta</b>. Phone number se match hota hai.</div>'
     +'<div class="form-group"><label>Purchase CSV file</label><input type="file" id="ci-file" accept=".csv,text/csv" class="form-control" onchange="_ciParse(this)"></div>'
     +'<div id="ci-out"></div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+function _ciToks(s){ return String(s||'').toLowerCase().replace(/\(|\)/g,' ').replace(/[^a-z0-9]+/g,' ').split(' ').filter(function(t){ return t && ['class','course','the','for','and','batch','crash'].indexOf(t)<0; }); }
+function _ciBestBatch(item, batches){
+  var toks=_ciToks(item), best='', bestScore=0;
+  batches.forEach(function(b){
+    var bt=_ciToks(b.name); if(!bt.length) return;
+    var inter=0; bt.forEach(function(t){ if(toks.indexOf(t)>=0) inter++; });
+    var score=inter/Math.max(bt.length,toks.length||1);
+    if(score>bestScore){ bestScore=score; best=b.name; }
+  });
+  return bestScore>=0.45?best:'';
 }
 async function _ciParse(inp){
   var f=inp.files&&inp.files[0]; if(!f) return;
@@ -12348,17 +12359,45 @@ async function _ciParse(inp){
   var ni=_ciCol(hdr,['name','student name','user name']);
   var ii=_ciCol(hdr,['item','course','product','item name']);
   if(pi<0||ii<0){ if(out) out.innerHTML='<div class="alert alert-error">CSV me "Phone No." aur "Item" columns nahi mile. Headers check karo.</div>'; return; }
-  var purchases=[];
+  var purchases=[], itemCounts={};
   for(var r=1;r<rows.length;r++){
     var row=rows[r]; if(!row||row.length<=Math.max(pi,ii)) continue;
     var ph=String(row[pi]||'').trim(), it=String(row[ii]||'').trim();
     if(!ph&&!it) continue;
     purchases.push({phone:ph, name:(ni>=0?String(row[ni]||'').trim():''), item:it});
+    if(it) itemCounts[it]=(itemCounts[it]||0)+1;
   }
   if(!purchases.length){ if(out) out.innerHTML='<div class="alert alert-error">Koi purchase row nahi mili.</div>'; return; }
   window._ciPurchases=purchases;
-  try{ var rep=await api('/api/admin/crash-import','POST',{purchases:purchases, commit:false}); _ciShowReport(rep,false); }
-  catch(e){ if(out) out.innerHTML='<div class="alert alert-error">'+esc((e&&e.message)||'Import failed')+'</div>'; }
+  window._ciItems=Object.keys(itemCounts).map(function(it){return {item:it,count:itemCounts[it]};}).sort(function(a,b){return b.count-a.count;});
+  var bl=[]; try{ var rr=await api('/api/admin/batches'); bl=((rr&&rr.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  window._ciBatches=bl;
+  _ciRenderMap();
+}
+function _ciRenderMap(){
+  var out=document.getElementById('ci-out'); if(!out) return;
+  var items=window._ciItems||[], batches=window._ciBatches||[];
+  if(!batches.length){ out.innerHTML='<div class="alert alert-error">Koi active batch nahi mila. Pehle batch banao.</div>'; return; }
+  var rows=items.map(function(it){
+    var best=_ciBestBatch(it.item,batches);
+    var opts='<option value="">\u2014 Skip (enroll nahi) \u2014</option>'+batches.map(function(b){return '<option value="'+esc(b.name)+'"'+(b.name===best?' selected':'')+'>'+esc(b.name)+'</option>';}).join('');
+    return '<tr><td style="padding:6px 8px 6px 0;vertical-align:top">'+esc(it.item)+'<div style="font-size:.72rem;color:var(--text-muted)">'+it.count+' purchase'+(it.count>1?'s':'')+'</div></td>'
+      +'<td style="padding:6px 0;vertical-align:top"><select class="form-control ci-map" data-item="'+esc(it.item.toLowerCase())+'" style="font-size:.8rem;min-width:210px">'+opts+'</select></td></tr>';
+  }).join('');
+  out.innerHTML='<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px">'
+    +'<div style="font-weight:800;margin-bottom:4px">Map each item \u2192 batch</div>'
+    +'<div style="font-size:.76rem;color:var(--text-muted);margin-bottom:8px">Auto-match ho gaya \u2014 galat ho to badal do. "Skip" wale items enroll nahi honge.</div>'
+    +'<table style="width:100%;font-size:.84rem;border-collapse:collapse"><tbody>'+rows+'</tbody></table>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="_ciPreview()">'+ic('eye')+' Preview enrollment</button></div>';
+}
+function _ciBuildMap(){
+  var map={}; document.querySelectorAll('.ci-map').forEach(function(s){ var it=s.getAttribute('data-item'); var v=s.value; if(it&&v) map[it]=v; }); return map;
+}
+async function _ciPreview(){
+  var out=document.getElementById('ci-out'); var btn=out&&out.querySelector('.btn-primary'); if(btn){ btn.disabled=true; btn.textContent='Checking\u2026'; }
+  window._ciMap=_ciBuildMap();
+  try{ var rep=await api('/api/admin/crash-import','POST',{purchases:window._ciPurchases||[], map:window._ciMap, commit:false}); _ciShowReport(rep,false); }
+  catch(e){ toast((e&&e.message)||'Preview failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('eye')+' Preview enrollment'; } }
 }
 function _ciShowReport(rep, done){
   var out=document.getElementById('ci-out'); if(!out) return;
@@ -12366,33 +12405,38 @@ function _ciShowReport(rep, done){
   var rowsH=Object.keys(per).map(function(k){ var p=per[k]; return '<tr><td style="padding:3px 0">'+esc(k)+'</td><td style="text-align:center;color:#059669;font-weight:700">'+p.matched+'</td><td style="text-align:center;color:var(--text-muted)">'+p.already+'</td><td style="text-align:center;color:#c1443a">'+p.unmatched+'</td></tr>'; }).join('');
   var h='<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px">'
     +'<div style="font-weight:800;margin-bottom:8px">'+(done?'\u2713 Enrolled':'Preview')+' \u2014 '+rep.total+' purchases</div>'
-    +'<table style="width:100%;font-size:.82rem;border-collapse:collapse"><thead><tr style="color:var(--text-muted);font-size:.72rem"><th style="text-align:left">Crash Batch</th><th>New</th><th>Already</th><th>No a/c</th></tr></thead><tbody>'+rowsH+'</tbody></table>'
+    +'<table style="width:100%;font-size:.82rem;border-collapse:collapse"><thead><tr style="color:var(--text-muted);font-size:.72rem"><th style="text-align:left">Batch</th><th>New</th><th>Already</th><th>No a/c</th></tr></thead><tbody>'+rowsH+'</tbody></table>'
     +'<div style="margin-top:10px;font-size:.82rem;line-height:1.7">'
     +'<b style="color:#059669">'+rep.matched+'</b> '+(done?'enrolled':'ready to enroll')+' \u00b7 '
     +'<b>'+rep.already+'</b> already enrolled \u00b7 '
     +'<b style="color:#c1443a">'+rep.unmatched+'</b> no portal account'
+    +(rep.skipped?(' \u00b7 <b>'+rep.skipped+'</b> skipped'):'')
     +(rep.no_batch?(' \u00b7 <b>'+rep.no_batch+'</b> batch not found'):'')+'</div>';
   if(rep.unmatched_list&&rep.unmatched_list.length){
     window._ciUnmatched=rep.unmatched_list;
     h+='<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="_ciDownloadUnmatched()">'+ic('download')+' Download '+rep.unmatched_list.length+' with no account</button>';
   }
-  if(!done){ h+='<button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="_ciCommit()">'+ic('check')+' Confirm & Enroll '+rep.matched+' students</button>'; }
+  if(!done){
+    h+='<div style="display:flex;gap:8px;margin-top:12px">'
+      +'<button class="btn btn-ghost" style="flex:0 0 auto" onclick="_ciRenderMap()">\u2190 Back</button>'
+      +'<button class="btn btn-primary" style="flex:1" onclick="_ciCommit()"'+(rep.matched?'':' disabled')+'>'+ic('check')+' Confirm & Enroll '+rep.matched+'</button></div>';
+  }
   h+='</div>';
   out.innerHTML=h;
 }
 async function _ciCommit(){
   var out=document.getElementById('ci-out'); var btn=out&&out.querySelector('.btn-primary'); if(btn){ btn.disabled=true; btn.textContent='Enrolling\u2026'; }
   try{
-    var rep=await api('/api/admin/crash-import','POST',{purchases:window._ciPurchases||[], commit:true});
-    _ciShowReport(rep,true); toast(rep.matched+' students enrolled in crash courses.');
+    var rep=await api('/api/admin/crash-import','POST',{purchases:window._ciPurchases||[], map:window._ciMap||{}, commit:true});
+    _ciShowReport(rep,true); toast(rep.matched+' students enrolled.');
     try{ _apiForget('batches'); if(typeof loadABatches==='function') loadABatches(); }catch(e){}
   }catch(e){ toast((e&&e.message)||'Enroll failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Confirm & Enroll'; } }
 }
 function _ciDownloadUnmatched(){
   var list=window._ciUnmatched||[]; if(!list.length) return;
-  var csv='Phone,Name,Crash Batch\n'+list.map(function(x){return '"'+(x.phone||'')+'","'+String(x.name||'').replace(/"/g,'""')+'","'+(x.batch||'')+'"';}).join('\n');
+  var csv='Phone,Name,Batch\n'+list.map(function(x){return '"'+(x.phone||'')+'","'+String(x.name||'').replace(/"/g,'""')+'","'+(x.batch||'')+'"';}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob);
-  var a=document.createElement('a'); a.href=url; a.download='crash_no_account.csv'; document.body.appendChild(a); a.click(); a.remove();
+  var a=document.createElement('a'); a.href=url; a.download='no_account.csv'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(url);},1500);
 }
 function openBatchAdd(){
