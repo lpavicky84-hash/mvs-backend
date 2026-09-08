@@ -6905,23 +6905,30 @@ async function loadATests(){
   const el=document.getElementById('a-tests-content'); if(!el)return;
   softSpin(el);
   try{
+    await _admLoadBatches();
     const rows=await api('/api/admin/exams');
     window._aTestsRows=rows||[];
     if(window._aTestSub===undefined) window._aTestSub='';   // pehle sirf cards; koi auto-select nahi
     if(window._aTestClass===undefined) window._aTestClass='all';
+    if(window._aTestBatch===undefined) window._aTestBatch='';
     _renderATests();
   }catch(e){
     el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>The Tests Tracker needs one small backend endpoint</b></p><small>Once <code>GET /api/admin/exams</code> is added, all tests with submission tracking appear here, subject-wise.<br>Ready-made code: <b>mvs_backend_exam_update.py</b> — paste it at the end of admin_routes.py and redeploy.</small></div></div></div>`;
   }
 }
 function aTestSubPick(s){ window._aTestSub=(window._aTestSub===s?'':s); _renderATests(); }
+function _testTrFiltered(){
+  const all=_admBatchFilter(window._aTestsRows||[], window._aTestBatch||'');
+  const cls=window._aTestClass||'all';
+  const cd=cn=>{ const m=String(cn||'').match(/(10|12)/); return m?m[1]:''; };
+  return cls==='all'?all:all.filter(e=>{ const d=cd(e.class_name); return d===''||d===cls; });
+}
+function aTestBatchPick(v){ window._aTestBatch=v; window._aTestSub=''; _renderATests(); }
 function _renderATests(){
   const el=document.getElementById('a-tests-content'); if(!el)return;
-  const allRows=window._aTestsRows||[];
   const cls=window._aTestClass||'all';
-  const _cd=cn=>{ const m=String(cn||'').match(/(10|12)/); return m?m[1]:''; };   // "Class 10" -> "10"
-  // class filter: "" (sabhi classes waala test) har filter me dikhta hai
-  const rows=cls==='all'?allRows:allRows.filter(e=>{ const d=_cd(e.class_name); return d===''||d===cls; });
+  // class + batch dono filter yahin — aTestSubPickIdx bhi wahi list use karta hai (consistent)
+  const rows=_testTrFiltered();
   const sel=window._aTestSub||'';
   const bySub={};
   rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
@@ -6936,7 +6943,7 @@ function _renderATests(){
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
   const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aTestClassPick('${v}')">${lbl}</button>`;
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
-    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}</div>`
+    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}${_admBatchDropdown(window._aTestBatch||'','aTestBatchPick')}</div>`
     +`<div class="tx-stats">`
     +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total tests</span></div>`
     +`<div class="tx-stat"><b>${st.s}</b><span>Submissions</span></div>`
@@ -6953,7 +6960,7 @@ function _renderATests(){
 }
 function aTestClassPick(c){ window._aTestClass=c; window._aTestSub=''; _renderATests(); }
 function aTestSubPickIdx(i){
-  const rows=window._aTestsRows||[];
+  const rows=_testTrFiltered();
   const subs=[...new Set(rows.map(e=>e.subject||'General'))].sort();
   aTestSubPick(subs[i]||'all');
 }
@@ -6977,22 +6984,57 @@ function initAdminDppTracker(){
     main.appendChild(pg);
   }
 }
+// ===== Shared admin batch filter (DPP Tracker + Tests Tracker) =====
+async function _admLoadBatches(){
+  if(window._admBatches) return window._admBatches;
+  try{ var r=await api('/api/admin/batches'); window._admBatches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }
+  catch(e){ window._admBatches=[]; }
+  return window._admBatches;
+}
+function _admBatchStandalone(bid){
+  var b=(window._admBatches||[]).filter(function(x){return String(x.id)===String(bid);})[0];
+  if(!b) return false;
+  if(b.standalone===true) return true;
+  if(b.standalone===false) return false;
+  return /crash/i.test(b.name||'');   // NULL/auto -> "Crash" naam wala batch standalone
+}
+function _admBatchFilter(rows, bid){
+  if(!bid) return rows;                                                  // '' = All batches
+  if(String(bid)==='-1') return rows.filter(function(e){ return !e.batch_id; });   // Global only
+  var strict=_admBatchStandalone(bid);
+  return rows.filter(function(e){
+    if(String(e.batch_id||'')===String(bid)) return true;               // is batch ka apna
+    return (!e.batch_id) && !strict;                                    // legacy -> global bhi; standalone -> nahi
+  });
+}
+function _admBatchDropdown(curVal, onchangeFn){
+  var list=window._admBatches||[];
+  if(!list.length) return '';
+  var opts='<option value="">All batches</option>'+list.map(function(b){
+    return '<option value="'+b.id+'"'+(String(curVal)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';
+  }).join('')+'<option value="-1"'+(String(curVal)==='-1'?' selected':'')+'>Global (no batch)</option>';
+  return '<span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:inline-flex;align-items:center;gap:5px">'+ic('folder')+' Batch</span>'
+    +'<select class="input" style="min-width:210px;font-weight:700;padding:7px 11px;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:10px;background:var(--card,#fff)" onchange="'+onchangeFn+'(this.value)">'+opts+'</select>';
+}
 async function loadADppTracker(){
   const el=document.getElementById('a-dpptracker-content'); if(!el) return;
   softSpin(el);
   try{
+    await _admLoadBatches();
     const d=await api('/api/admin/dpp-rankings');
     window._aDppTrRows=(d&&d.packs)||(Array.isArray(d)?d:[]);
     if(window._aDppTrSub===undefined) window._aDppTrSub='';
     if(window._aDppTrClass===undefined) window._aDppTrClass='all';
+    if(window._aDppTrBatch===undefined) window._aDppTrBatch='';
     _renderADppTracker();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 function _dppTrFiltered(){
-  const all=window._aDppTrRows||[]; const cls=window._aDppTrClass||'all';
+  const all=_admBatchFilter(window._aDppTrRows||[], window._aDppTrBatch||''); const cls=window._aDppTrClass||'all';
   const cd=cn=>{const m=String(cn||'').match(/(10|12)/);return m?m[1]:'';};
   return cls==='all'?all:all.filter(e=>{const dd=cd(e.class_name);return dd===''||dd===cls;});
 }
+function aDppTrBatchPick(v){ window._aDppTrBatch=v; window._aDppTrSub=''; _renderADppTracker(); }
 function aDppTrClassPick(c){ window._aDppTrClass=c; window._aDppTrSub=''; _renderADppTracker(); }
 function aDppTrSubPick(s){ window._aDppTrSub=(window._aDppTrSub===s?'':s); _renderADppTracker(); }
 function aDppTrSubPickIdx(i){ const subs=[...new Set(_dppTrFiltered().map(e=>e.subject||'General'))].sort(); aDppTrSubPick(subs[i]||'all'); }
@@ -7012,7 +7054,7 @@ function _renderADppTracker(){
   const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aDppTrClassPick('${v}')">${lbl}</button>`;
   const totS=_stat(rows);
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">DPP Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all DPPs · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadADppTracker()">${ic('refresh')} Refresh</button></div></div>`
-    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}</div>`
+    +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}${_admBatchDropdown(window._aDppTrBatch||'','aDppTrBatchPick')}</div>`
     +`<div class="tx-stats">`
     +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total DPPs</span></div>`
     +`<div class="tx-stat"><b>${st.s}</b><span>Submissions</span></div>`

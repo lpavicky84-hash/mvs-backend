@@ -7227,6 +7227,7 @@ def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
                     "class_name": getattr(e, "class_name", "") or "",
                     "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "questions": nq, "attempts": na, "graded": ng,
+                    "batch_id": getattr(e, "batch_id", None),
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
@@ -7310,6 +7311,7 @@ def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
                     "class_name": getattr(pk, "class_name", "") or "",
                     "medium": pk.medium or "", "source": pk.source or "",
                     "teacher": tname,
+                    "batch_id": getattr(pk, "batch_id", None),
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
                     "submitted": len(subs), "checked": checked,
                     "pending": len(subs) - checked,
