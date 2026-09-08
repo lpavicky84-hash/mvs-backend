@@ -3299,6 +3299,7 @@ async function openRequestClass(){
     });
   }catch(e){}
   if(subs.length===0){ try{ const p=await api('/api/teacher/profile'); subs=p.subjects||[]; }catch(e){} }
+  await _ensureTBatches();
   const today=new Date().toISOString().slice(0,10);
   showModal('Add Extra Class',
     `<div class="alert alert-info" style="font-size:.78rem">Missed class ya absent day ki compensation — extra class <b>alag slot / alag timing</b> is added. Other classes stay in place, <b>no auto-shifting</b> hoti.</div>
@@ -3314,6 +3315,7 @@ async function openRequestClass(){
        <div><label class="ex-lbl">Date</label><input type="date" class="form-control" id="rc-date" min="${today}" value="${today}"></div>
        <div><label class="ex-lbl">Time <span style="font-weight:600;color:var(--text-muted)">(regular slot se alag)</span></label><input type="time" class="form-control" id="rc-time" value="17:00"></div>
      </div>
+     <div style="margin-top:10px">${_multiBatchField('Batch / Course')}</div>
      <div id="rc-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="rc-btn" onclick="submitRequestClass()">Send for Approval</button>`);
   rcFillCls(); rcFillCh();
@@ -3352,7 +3354,7 @@ async function submitRequestClass(){
   if(sameTm){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">Is date/time pe aapki <b>${esc(sameTm.subject)}</b> class already exists (${esc(sameTm.time)}). Choose a different time for the extra class.</div>`; return; }
   const btn=document.getElementById('rc-btn'); btn.disabled=true; btn.textContent='Sending...';
   try{
-    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,class_name:(document.getElementById('rc-cls')||{}).value||''});
+    const r=await api('/api/teacher/extra-class','POST',{subject,topic,date,time,chapter,class_name:(document.getElementById('rc-cls')||{}).value||'',batch_ids:_multiBatchIds()});
     document.getElementById('rc-status').innerHTML=`<div class="alert alert-success">${esc(r.message)}</div>`;
     toast('Request sent to the admin.'); btn.textContent='Sent'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
   }catch(e){ document.getElementById('rc-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Send for Approval'; }
@@ -4302,7 +4304,7 @@ async function openMatAudience(mid,which){
 }
 
 async function openCopyToBatch(kind,id){
-  // kind: 'test' (Exam) | 'dpp' (DppPack). Ek batch ka banaya test/DPP doosre batch ke liye copy.
+  // kind: 'test' (Exam) | 'dpp' (DppPack). Ek batch ka banaya test/DPP ek YA ZYADA batch me copy.
   var item=(kind==='test'?(window._tExams||[]):(window._dppPacks||[])).filter(function(x){return x.id===id;})[0];
   if(!item){ toast('Item not found. Refresh and try again.',true); return; }
   var bl=[];
@@ -4311,31 +4313,32 @@ async function openCopyToBatch(kind,id){
   if(!bl.length){ toast('No batches found to copy into.',true); return; }
   var curBid=item.batch_id||0;
   var curName=(bl.filter(function(b){return String(b.id)===String(curBid);})[0]||{}).name||'';
-  var opts=bl.map(function(b){
+  var checks=bl.map(function(b){
     var isCur=(String(b.id)===String(curBid));
-    return '<option value="'+b.id+'"'+(isCur?' disabled':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+(isCur?' \u2014 current':'')+'</option>';
+    return '<label style="display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px;cursor:'+(isCur?'not-allowed;opacity:.45':'pointer')+'"><input type="checkbox" class="cpb-bchk" value="'+b.id+'"'+(isCur?' disabled':'')+' style="width:17px;height:17px"> <span style="font-weight:600">'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+(isCur?' \u2014 current':'')+'</span></label>';
   }).join('');
   var isTest=(kind==='test');
   var dateField=isTest
     ? '<div class="form-group"><label>New date &amp; time <span style="color:var(--text-muted);font-weight:400">(blank = abhi se available)</span></label><input type="datetime-local" class="form-control" id="cpb-date"></div>'
     : '<div class="alert alert-info" style="font-size:.8rem">DPP timetable ke chapter/part se dikhta hai \u2014 naye batch me wahi chapter jab schedule hoga tab apne-aap us date pe aa jaayega. Alag date set karne ki zaroorat nahi.</div>';
-  showModal('Copy to another batch',
-    '<div class="alert alert-info" style="font-size:.82rem">"<b>'+esc(item.title||'')+'</b>"'+(curName?(' \u2014 abhi <b>'+esc(curName)+'</b> me hai'):'')+'. Copy karne pe saara content (questions'+(isTest?'':'/PDF')+') huboohu naye batch me chala jaayega. Original waise ka waisa rahega.</div>'
-    +'<div class="form-group"><label>Target batch</label><select class="form-control" id="cpb-batch"><option value="">Select a batch\u2026</option>'+opts+'</select></div>'
+  showModal('Copy to other batches',
+    '<div class="alert alert-info" style="font-size:.82rem">"<b>'+esc(item.title||'')+'</b>"'+(curName?(' \u2014 abhi <b>'+esc(curName)+'</b> me hai'):'')+'. Copy karne pe saara content (questions'+(isTest?'':'/PDF')+') huboohu chune gaye batch(es) me chala jaayega, aur un batches ke students ko notification bhi jaata hai. Original waise ka waisa rahega.</div>'
+    +'<div class="form-group"><label>Target batches <span style="color:var(--text-muted);font-weight:400">(ek ya zyada select karo \u2014 Data Entry jaise common subject ke liye multiple)</span></label><div style="max-height:230px;overflow:auto;padding-right:2px">'+checks+'</div></div>'
     +'<div class="form-group"><label>Title <span style="color:var(--text-muted);font-weight:400">(optional)</span></label><input class="form-control" id="cpb-title" value="'+esc(item.title||'')+'"></div>'
     +dateField,
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cpb-btn" onclick="submitCopyToBatch(\''+kind+'\','+id+')">'+ic('copy')+' Copy</button>');
 }
 async function submitCopyToBatch(kind,id){
-  var bid=(document.getElementById('cpb-batch')||{}).value||'';
-  if(!bid){ toast('Please pick a target batch.',true); return; }
-  var payload={batch_id:parseInt(bid,10), title:((document.getElementById('cpb-title')||{}).value||'')};
+  var bids=[].slice.call(document.querySelectorAll('.cpb-bchk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
+  if(!bids.length){ toast('Please pick at least one target batch.',true); return; }
+  var payload={batch_ids:bids, title:((document.getElementById('cpb-title')||{}).value||'')};
   if(kind==='test'){ var dv=(document.getElementById('cpb-date')||{}).value||''; if(dv) payload.scheduled_at=dv; }
   var btn=document.getElementById('cpb-btn'); if(btn){ btn.disabled=true; btn.textContent='Copying\u2026'; }
   try{
     var ep=(kind==='test'?('/api/teacher/exam/'+id+'/copy'):('/api/teacher/dpp-pack/'+id+'/copy'));
-    await api(ep,'POST',payload);
-    toast('Copied to the batch.');
+    var res=await api(ep,'POST',payload);
+    var n=(res&&res.batches)||bids.length;
+    toast('Copied to '+n+' batch'+(n===1?'':'es')+'. Students notified.');
     closeModal();
     try{ _apiForget('exams'); _apiForget('dpp-packs'); }catch(e){}
     if(kind==='test') loadTTests(); else loadTDpp();
@@ -4348,6 +4351,7 @@ async function loadTDpp(){
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
     if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
+    if(window._tDppBatch===undefined) window._tDppBatch='';
     if(window._tDppSub===undefined) window._tDppSub='';   // pehle sirf cards; koi auto-select nahi
     _renderTDpp();
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -4387,7 +4391,7 @@ function _tDppCardHTML(pk){
 }
 function _renderTDpp(){
   const el=document.getElementById('t-dpp-content'); if(!el) return;
-  const packs=window._dppPacks||[];
+  const packs=_tBatchFilterRows(window._dppPacks||[], window._tDppBatch||'');
   const sel=window._tDppSub||'';
   const bySub={};
   packs.forEach(pk=>{ const s=pk.subject||'General'; (bySub[s]=bySub[s]||[]).push(pk); });
@@ -4402,8 +4406,9 @@ function _renderTDpp(){
     <button class="btn btn-primary btn-sm" onclick="openCreateDpp()">${ic('plus')} Create DPP</button>
     <button class="btn btn-ghost btn-sm" onclick="openUploadDpp()">${ic('upload')} Upload DPP</button>
   </div></div>`;
+  const batchBar=(window._ttBatchList&&window._ttBatchList.length)?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;align-items:center">${_tBatchDropdown(window._tDppBatch||'','tDppBatchPick')}</div>`:'';
   if(!packs.length){
-    el.innerHTML=header+`<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP yet</b></p><small>Use Create DPP (question editor) or Upload DPP (question + solution PDFs) — both are linked to the timetable chapter and part.</small></div></div>`;
+    el.innerHTML=header+batchBar+`<div class="card"><div class="card-body ws-empty"><div class="big">&#128221;</div><p><b>No DPP${window._tDppBatch?' for this batch':' yet'}</b></p><small>Use Create DPP (question editor) or Upload DPP (question + solution PDFs) — both are linked to the timetable chapter and part.</small></div></div>`;
     return;
   }
   const grid=`<div class="dps-grid" style="margin-bottom:16px">`
@@ -4413,7 +4418,7 @@ function _renderTDpp(){
   const body=(sel==='')
     ? `<div class="card"><div class="card-body ws-empty"><p style="margin:0;color:var(--text-muted)">Select a subject above to see its DPPs.</p></div></div>`
     : `<div style="font-size:.74rem;font-weight:800;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin:2px 0 10px">${sel==='all'?'All DPPs':esc(sel)+' \u00b7 '+list.length+' DPP'+(list.length===1?'':'s')}</div>`+(cards||'<div class="card"><div class="card-body ws-empty"><p>No DPP in this subject.</p></div></div>');
-  el.innerHTML=header+grid+body;
+  el.innerHTML=header+batchBar+grid+body;
 }
 async function dppDl(pid,kind){
   try{
@@ -4807,10 +4812,12 @@ async function openEditDpp(id){
     _ipart:'a', _tab:'en', qtype:'general' }));
   if(mapped.length){ _examQs=mapped; renderExamQs(); }
   const _ctw=document.getElementById('ex-cls-test-wrap'); if(_ctw) _ctw.style.display='none';
+  var _mbe=document.getElementById('mbf-wrap'); if(_mbe) _mbe.style.display='none';   // edit pe batch re-target nahi
 }
 // ---------- UPLOAD DPP (2 PDFs mandatory) ----------
 async function openUploadDpp(){
   await _dppTtData();
+  await _ensureTBatches();
   const subs=_dppAllSubjects();
   showModal('Upload DPP',
     `<div class="alert alert-info">Upload a ready-made DPP — <b>Questions PDF</b> aur <b>Solutions PDF</b> both are required. Students see the questions first; solutions appear after they submit.</div>
@@ -4821,6 +4828,7 @@ async function openUploadDpp(){
        <select class="form-control" id="ud-part" style="flex:1;min-width:140px"></select></div></div>
      <div class="form-group"><label>Title</label><input class="form-control" id="ud-title" placeholder="e.g. DPP — Tenses (Part 2)"></div>
      <div class="form-group"><label>Medium</label><select class="form-control" id="ud-medium"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div>
+     ${_multiBatchField()}
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
        <div class="form-group"><label>Questions PDF *</label><input type="file" class="form-control" id="ud-qpdf" accept="application/pdf"></div>
        <div class="form-group"><label>Solutions PDF *</label><input type="file" class="form-control" id="ud-spdf" accept="application/pdf"></div></div>`,
@@ -4857,6 +4865,7 @@ async function submitUploadDpp(){
   const fd=new FormData();
   fd.append('subject',val('ud-sub')); fd.append('class_name',val('ud-cls')); fd.append('chapter',val('ud-ch')); fd.append('part',val('ud-part'));
   fd.append('title',val('ud-title')); fd.append('medium',val('ud-medium'));
+  fd.append('batch_ids',_multiBatchIds().join(','));
   fd.append('q_pdf',qf[0]); fd.append('s_pdf',sf[0]);
   try{
     const r=await fetch(API+'/api/teacher/dpp-packs/upload',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
@@ -5160,12 +5169,56 @@ async function submitLecture(){
 }
 
 function _batName(bid){ if(!bid) return ''; var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0]; return b?b.name:''; }
+function _tBatchStandalone(bid){
+  var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0];
+  if(!b) return false;
+  if(b.standalone===true) return true;
+  if(b.standalone===false) return false;
+  return /crash/i.test(b.name||'');   // NULL/auto -> "Crash" naam wala standalone
+}
+function _tBatchFilterRows(rows,bid){
+  if(!bid) return rows;                                                   // '' = All batches
+  if(String(bid)==='-1') return rows.filter(function(e){ return !e.batch_id; });   // Global only
+  var strict=_tBatchStandalone(bid);
+  return rows.filter(function(e){
+    if(String(e.batch_id||'')===String(bid)) return true;                // is batch ka apna
+    return (!e.batch_id) && !strict;                                     // legacy -> global bhi; standalone -> nahi
+  });
+}
+function _tBatchDropdown(curVal,onchangeFn){
+  var list=window._ttBatchList||[]; if(!list.length) return '';
+  var opts='<option value="">All batches</option>'+list.map(function(b){
+    return '<option value="'+b.id+'"'+(String(curVal)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';
+  }).join('')+'<option value="-1"'+(String(curVal)==='-1'?' selected':'')+'>Global (no batch)</option>';
+  return '<span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:inline-flex;align-items:center;gap:5px">'+ic('folder')+' Batch</span>'
+    +'<select class="input" style="min-width:210px;font-weight:700;padding:7px 11px;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:10px;background:var(--card,#fff)" onchange="'+onchangeFn+'(this.value)">'+opts+'</select>';
+}
+function tTestBatchPick(v){ window._tTestBatch=v; window._tTestFilter='all'; loadTTests(); }
+function tDppBatchPick(v){ window._tDppBatch=v; window._tDppSub=''; _renderTDpp(); }
+async function _ensureTBatches(){
+  if(!window._ttBatchList){ try{ var r=await api('/api/teacher/tt-batches'); window._ttBatchList=(r&&r.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
+  return window._ttBatchList||[];
+}
+// Reusable multi-batch checkbox field for CREATE forms (test/DPP/upload/extra-class).
+// Kuch na chuno -> global (sabhi batches). Ek ya zyada chuno -> sirf unke liye.
+function _multiBatchField(label){
+  var list=window._ttBatchList||[]; if(!list.length) return '';
+  var rows=list.map(function(b){
+    return '<label style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:.82rem;font-weight:600"><input type="checkbox" class="mbf-chk" value="'+b.id+'" style="width:15px;height:15px"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>';
+  }).join('');
+  return '<div class="form-group" id="mbf-wrap"><label class="ex-lbl">'+(label||'Batch / Course')+' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(ek ya zyada \u2014 kuch na chuno to sabhi ko (global) dikhega)</span></label><div style="display:flex;gap:8px;flex-wrap:wrap;max-height:132px;overflow:auto;padding:2px">'+rows+'</div></div>';
+}
+function _multiBatchIds(){
+  return [].slice.call(document.querySelectorAll('.mbf-chk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
+}
 async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
-    const exams=await api('/api/teacher/exams');
-    window._tExams=exams;
+    const _allExams=await api('/api/teacher/exams');
+    window._tExams=_allExams;
     if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
+    if(window._tTestBatch===undefined) window._tTestBatch='';
+    const exams=_tBatchFilterRows(_allExams||[], window._tTestBatch||'');
     const F=window._tTestFilter||'all';
     const totAtt=exams.reduce((sum,e)=>sum+(e.attempts||0),0);
     const totGrd=exams.reduce((sum,e)=>sum+(e.graded||0),0);
@@ -5223,6 +5276,7 @@ async function loadTTests(){
       }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
     }
     el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button></div></div>`
+      +(window._ttBatchList&&window._ttBatchList.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center">${_tBatchDropdown(window._tTestBatch||'','tTestBatchPick')}</div>`:'')
       +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body;
       _ttCardLogo(el);
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -6245,10 +6299,12 @@ async function openCreateExam(type,editData){
   const note=type==='subjective'
     ?'<div class="alert alert-info">Students upload a photo of their handwritten answers. You grade each answer manually from Results — award marks + remarks per question (your model answers stay visible to you while checking). Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{2H2 + O2 -> 2H2O}$</code> &mdash; they render automatically.</div>'
     :'<div class="alert alert-info">Students select an option. Auto-graded instantly. Write maths like <code>$x^2$</code> and reactions like <code>$\\ce{...}$</code>.</div>';
+  await _ensureTBatches();
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
     (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
+    +(editData?'':_multiBatchField())
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
@@ -8462,6 +8518,7 @@ async function submitExam(){
     const payload={ subject:(val('ex-sub')||_em.subject||''), class_name:((val('ex-cls-sel')||_em.class_name)||''),
       chapter:((val('ex-ch-sel')!==undefined&&val('ex-ch-sel')!=='')?val('ex-ch-sel'):(val('ex-ch')||_em.chapter||'')), part:((val('ex-part-sel')||_em.part)||''),
       title, medium:_examMedium||_em.medium||'English', client_key:(window._dppCk||''),
+      batch_ids:(window._dppEditId?undefined:_multiBatchIds()),
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
         image:q.image_b64||null, alt_image:q.alt_image_b64||null, model_image:q.model_answer_image||null })) };
     const _dppEid=window._dppEditId;
@@ -8508,6 +8565,7 @@ async function submitExam(){
   });
   const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
   const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:(parseInt(val('ex-dur'))||0),scheduled_at:_sched||null,questions:questions};
+  if(!window._editExamId) body.batch_ids=_multiBatchIds();
   try{
     const _editId=window._editExamId;
     if(_editId){ await api('/api/teacher/exam/'+_editId,'PATCH',body); }

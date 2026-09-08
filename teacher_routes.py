@@ -79,6 +79,7 @@ def teacher_tt_batches(db: Session = Depends(get_db), current_user=Depends(get_t
                          "mode": getattr(b, "mode", "live") or "live",
                          "type": getattr(b, "type", "") or "",
                          "is_new": bool(getattr(b, "is_new", False)),
+                         "standalone": (None if getattr(b, "standalone", None) is None else bool(b.standalone)),
                          "banner": getattr(b, "banner_b64", "") or ""} for b in rows]}
 
 
@@ -1845,31 +1846,39 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
 
 @router.post("/dpp-pack/{pid}/copy")
 def copy_dpp_to_batch(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """DPP ko doosre batch ke liye COPY karo — questions/PDF same, bas naya batch (aur chaaho to
-    naya title/chapter/part). Original untouched. DPP timetable ke chapter/part se student ko dikhta
-    hai, isliye naye batch me wahi chapter jab schedule hoga tab apne-aap us date pe aa jaayega."""
+    """DPP ko EK YA ZYADA batch ke liye COPY karo — questions/PDF same, bas naya batch (aur chaaho to
+    naya title/chapter/part). Original untouched. Har target batch ke students ko notification jaata
+    hai (yehi pehle miss ho raha tha). Multi-batch: Data Entry jaise common subject ek hi baar sabko."""
     import copy as _copy
     from models import DppPack
     tp = get_teacher_profile(current_user, db)
     src = db.query(DppPack).filter(DppPack.id == pid, DppPack.teacher_id == tp.id).first()
     if not src:
         raise HTTPException(404, "DPP not found")
-    _bid = payload.get("batch_id")
-    try:
-        _bid = int(_bid) if _bid not in (None, "", 0, "0") else None
-    except Exception:
-        _bid = None
-    new_pk = DppPack(
-        teacher_id=tp.id, subject=src.subject, class_name=(src.class_name or ""),
-        chapter=(payload.get("chapter") if payload.get("chapter") is not None else src.chapter),
-        part=(payload.get("part") if payload.get("part") is not None else src.part),
-        title=((payload.get("title") or "").strip() or src.title),
-        medium=src.medium, source=src.source,
-        questions=_copy.deepcopy(src.questions) if src.questions else src.questions,
-        q_pdf=src.q_pdf, s_pdf=src.s_pdf,   # R2 references — delete DB-only hai, share safe
-        batch_id=_bid)
-    db.add(new_pk); db.commit()
-    return {"ok": True, "id": new_pk.id}
+    targets = _copy_target_batches(payload)
+    if not targets:
+        raise HTTPException(400, "Select at least one target batch")
+    _title = ((payload.get("title") or "").strip() or src.title)
+    _chapter = (payload.get("chapter") if payload.get("chapter") is not None else src.chapter)
+    _part = (payload.get("part") if payload.get("part") is not None else src.part)
+    made = []
+    for tb in targets:
+        new_pk = DppPack(
+            teacher_id=tp.id, subject=src.subject, class_name=(src.class_name or ""),
+            chapter=_chapter, part=_part, title=_title,
+            medium=src.medium, source=src.source,
+            questions=_copy.deepcopy(src.questions) if src.questions else src.questions,
+            q_pdf=src.q_pdf, s_pdf=src.s_pdf,   # R2 references — delete DB-only hai, share safe
+            batch_id=tb)
+        db.add(new_pk); db.flush()
+        made.append(new_pk.id)
+    db.commit()
+    for tb in targets:
+        try:
+            _notify_new_content(db, tb, src.subject, current_user.name, "dpp")
+        except Exception:
+            pass
+    return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
 
 
 
@@ -2067,26 +2076,36 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
                                 detail=f"Answer mandatory: Question {i} ka model answer bharo")
     if _SR is not None:
         subject = _SR.canon_display(subject, data.get("class_name"))
-    # Idempotency: network error ke baad retry pe DUPLICATE DPP na bane
-    # (same teacher + same title, 90 sec ke andar -> purana pack hi return)
+    _targets = _create_target_batches(data)   # multi-batch: har chune batch ke liye alag DPP
     ck = (data.get("client_key") or "").strip()
-    if ck:
+    made = []
+    for _tb in _targets:
+        # Idempotency (retry-safe) PER BATCH: same teacher+title+batch 90s ke andar -> purana reuse
+        dup = None
+        if ck:
+            try:
+                _q = db.query(DppPack).filter(DppPack.teacher_id == tp.id, DppPack.title == title,
+                                              DppPack.created_at >= datetime.utcnow() - timedelta(seconds=90))
+                _q = _q.filter(DppPack.batch_id.is_(None)) if _tb is None else _q.filter(DppPack.batch_id == _tb)
+                dup = _q.first()
+            except Exception:
+                db.rollback(); dup = None
+        if dup:
+            made.append((dup, _tb)); continue
+        pk = DppPack(teacher_id=tp.id, subject=subject, class_name=(data.get("class_name") or ""),
+                     chapter=chapter, part=part, title=title, medium=medium,
+                     source="created", questions=questions, batch_id=_tb)
+        # PDFs LAZY banenge (view/download pe on-demand) — create instant + crash-proof.
+        db.add(pk); db.flush()
+        made.append((pk, _tb))
+    db.commit()
+    for pk, _tb in made:
         try:
-            dup = (db.query(DppPack)
-                   .filter(DppPack.teacher_id == tp.id, DppPack.title == title,
-                           DppPack.created_at >= datetime.utcnow() - timedelta(seconds=90))
-                   .first())
-            if dup:
-                return {"ok": True, "pack": _dpp_pack_out(db, dup, False), "duplicate": True}
+            _notify_new_content(db, _tb, subject, current_user.name, "dpp")
         except Exception:
-            db.rollback()
-    pk = DppPack(teacher_id=tp.id, subject=subject, class_name=(data.get("class_name") or ""),
-                 chapter=chapter, part=part, title=title, medium=medium,
-                 source="created", questions=questions)
-    # PDFs LAZY banenge (view/download pe on-demand) — create instant + crash-proof.
-    # Bade images ke saath sync PDF build se server OOM/crash ho sakta tha.
-    db.add(pk); db.commit(); db.refresh(pk)
-    return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+            pass
+    first = made[0][0] if made else None
+    return {"ok": True, "pack": (_dpp_pack_out(db, first, False) if first else None), "batches": len(made)}
 
 
 @router.patch("/dpp-packs/{pack_id}")
@@ -2186,10 +2205,11 @@ def _dpp_shrink(db, pk, kind, blob):
 @router.post("/dpp-packs/upload")
 async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), part: str = Form(""),
                              title: str = Form(""), medium: str = Form("English"),
-                             class_name: str = Form(""),
+                             class_name: str = Form(""), batch_ids: str = Form(""),
                              q_pdf: UploadFile = File(...), s_pdf: UploadFile = File(...),
                              db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Ready-made DPP upload — questions PDF + solutions PDF dono MANDATORY."""
+    """Ready-made DPP upload — questions PDF + solutions PDF dono MANDATORY. batch_ids (comma-sep,
+    khaali = global) — multi-batch: har chune batch ke liye alag DPP (same PDF share, safe)."""
     from models import DppPack
     tp = get_teacher_profile(current_user, db)
     qd = await q_pdf.read(); sd = await s_pdf.read()
@@ -2198,13 +2218,25 @@ async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), 
     qd = _compress_pdf(qd); sd = _compress_pdf(sd)   # upload pe hi compress -> download fast
     if _SR is not None:
         subject = _SR.canon_display(subject.strip(), class_name)
-    pk = DppPack(teacher_id=tp.id, subject=subject.strip(), class_name=class_name.strip(),
-                 chapter=chapter.strip(), part=part.strip(),
-                 title=(title.strip() or "DPP - " + (part.strip() or chapter.strip() or subject.strip())),
-                 medium=medium, source="uploaded", questions=[],
-                 q_pdf=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-pdf", "q.pdf"), qd, "application/pdf"), s_pdf=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-pdf", "s.pdf"), sd, "application/pdf"))
-    db.add(pk); db.commit(); db.refresh(pk)
-    return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+    _qkey = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-pdf", "q.pdf"), qd, "application/pdf")
+    _skey = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-pdf", "s.pdf"), sd, "application/pdf")
+    _title = (title.strip() or "DPP - " + (part.strip() or chapter.strip() or subject.strip()))
+    made = []
+    for _tb in _batch_ids_from_str(batch_ids):
+        pk = DppPack(teacher_id=tp.id, subject=subject.strip(), class_name=class_name.strip(),
+                     chapter=chapter.strip(), part=part.strip(), title=_title,
+                     medium=medium, source="uploaded", questions=[],
+                     q_pdf=_qkey, s_pdf=_skey, batch_id=_tb)
+        db.add(pk); db.flush()
+        made.append((pk, _tb))
+    db.commit()
+    for pk, _tb in made:
+        try:
+            _notify_new_content(db, _tb, subject.strip(), current_user.name, "dpp")
+        except Exception:
+            pass
+    first = made[0][0] if made else None
+    return {"ok": True, "pack": (_dpp_pack_out(db, first, False) if first else None), "batches": len(made)}
 
 
 @router.get("/dpp-packs/{pack_id}/questions")
@@ -3112,6 +3144,92 @@ def _exam_parse_dt(v):
             continue
     return None
 
+
+def _copy_target_batches(payload):
+    """Copy-to-batch ke target batch ids. `batch_ids` (list) preferred (multi-batch copy — e.g.
+    Data Entry jaisa subject saare batches me), warna single `batch_id`. Sirf valid non-zero ids."""
+    out = []
+    _bids = payload.get("batch_ids")
+    if isinstance(_bids, list):
+        for x in _bids:
+            try:
+                v = int(x)
+            except Exception:
+                v = 0
+            if v and v not in out:
+                out.append(v)
+    if not out:
+        single = payload.get("batch_id")
+        try:
+            v = int(single) if single not in (None, "", 0, "0") else 0
+        except Exception:
+            v = 0
+        if v:
+            out = [v]
+    return out
+
+
+def _create_target_batches(payload):
+    """Naya content (test/DPP/extra-class) create ke target batch ids. batch_ids (list) -> [ids];
+    kuch na chuna ho -> [None] (global, backward compatible). Multi-batch create ke liye."""
+    out = _copy_target_batches(payload)
+    return out if out else [None]
+
+
+def _batch_ids_from_str(s):
+    """Comma-separated batch ids (multipart form field) -> [ids]; khaali -> [None] (global)."""
+    out = []
+    for part in (s or "").split(","):
+        part = (part or "").strip()
+        if not part:
+            continue
+        try:
+            v = int(part)
+        except Exception:
+            v = 0
+        if v and v not in out:
+            out.append(v)
+    return out or [None]
+
+
+def _notify_new_content(db, batch_id, subject, teacher_name, kind):
+    """kind: 'dpp' | 'test'. Target batch ke (batch_id None ho to sabhi) students ko jinke paas
+    ye subject hai, notification bhejo. Copy-to-batch AUR normal create dono isse use karte hain —
+    isiliye ab test create/copy pe bhi student ko bell notification milta hai."""
+    try:
+        from models import StudentProfile, StudentBatch
+        subj = (subject or "").strip()
+        if not subj:
+            return
+        nk = _subj_norm(subj)
+        label = "DPP" if kind == "dpp" else "Test"
+        ntype = "new_dpp" if kind == "dpp" else "new_test"
+        title = "\U0001F4DD New %s: %s" % (label, subj)
+        body = "%s ne %s ka naya %s diya hai. Dekho!" % (teacher_name or "Teacher", subj, label)
+        if batch_id:
+            ids = set()
+            try:
+                for (sid,) in db.query(StudentBatch.student_id).filter(StudentBatch.batch_id == batch_id).all():
+                    ids.add(sid)
+            except Exception:
+                pass
+            try:
+                for (sid,) in db.query(StudentProfile.id).filter(StudentProfile.batch_id == batch_id).all():
+                    ids.add(sid)
+            except Exception:
+                pass
+            if not ids:
+                return
+            sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).filter(StudentProfile.id.in_(list(ids))).all()
+        else:
+            sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+        for sp in sps:
+            if sp.user and sp.subjects and nk in {_subj_norm(x) for x in sp.subjects}:
+                notify(db, sp.user.id, title, body, ntype)
+        db.commit()
+    except Exception:
+        db.rollback()
+
 def _parse_dur(v):
     """Test duration ko normalize: 0 / blank / invalid -> None (no time limit);
     positive int -> wahi. None matlab student jab chahe kar sakta hai, koi countdown nahi."""
@@ -3134,38 +3252,47 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
     _subj_in = payload.get("subject", "")
     if _SR is not None and _subj_in:
         _subj_in = _SR.canon_display(_subj_in, payload.get("class_name"))
-    _ex_bid = payload.get("batch_id")
-    try:
-        _ex_bid = int(_ex_bid) if _ex_bid not in (None, "", 0, "0") else None
-    except Exception:
-        _ex_bid = None
-    ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
-              subject=_subj_in, title=payload["title"],
-              chapter=payload.get("chapter"), test_type=ttype,
-              class_name=(payload.get("class_name") or "").strip(),
-              medium=payload.get("medium", "English"),
-              total_marks=total, duration_min=_parse_dur(payload.get("duration_min")),
-              scheduled_at=_exam_parse_dt(payload.get("scheduled_at")),
-              batch_id=_ex_bid)
-    db.add(ex); db.flush()
-    for i, q in enumerate(qs, start=1):
-        co = q.get("correct_option")
-        opts_hi = q.get("options_hi") if ttype == "mcq" else None
-        db.add(ExamQuestion(exam_id=ex.id, q_no=i,
-               question_text=q.get("question_text", ""),
-               max_marks=int(q.get("max_marks", 1) or 1),
-               model_answer=q.get("model_answer"),
-               options=q.get("options") if ttype == "mcq" else None,
-               correct_option=(str(co) if co not in (None, "") else None),
-               image_b64=_r2img(q.get("image_b64")),
-               question_text_hi=(q.get("question_text_hi") or None),
-               model_answer_hi=(q.get("model_answer_hi") or None),
-               options_hi=(opts_hi if opts_hi else None),
-               model_answer_image=_r2img(q.get("model_answer_image")),
-               alt_image_b64=_r2img(q.get("alt_image_b64")),
-               explanation=(q.get("explanation") or None),
-               explanation_hi=(q.get("explanation_hi") or None)))
+    _targets = _create_target_batches(payload)   # multi-batch: har chune batch ke liye alag test
+    _cls_name = (payload.get("class_name") or "").strip()
+    _chapter = payload.get("chapter")
+    _medium = payload.get("medium", "English")
+    _dur = _parse_dur(payload.get("duration_min"))
+    _sched = _exam_parse_dt(payload.get("scheduled_at"))
+    ex = None
+    _made = []
+    for _tb in _targets:
+        ex = Exam(teacher_id=tp.id, teacher_name=current_user.name,
+                  subject=_subj_in, title=payload["title"],
+                  chapter=_chapter, test_type=ttype,
+                  class_name=_cls_name, medium=_medium,
+                  total_marks=total, duration_min=_dur,
+                  scheduled_at=_sched, batch_id=_tb)
+        db.add(ex); db.flush()
+        for i, q in enumerate(qs, start=1):
+            co = q.get("correct_option")
+            opts_hi = q.get("options_hi") if ttype == "mcq" else None
+            db.add(ExamQuestion(exam_id=ex.id, q_no=i,
+                   question_text=q.get("question_text", ""),
+                   max_marks=int(q.get("max_marks", 1) or 1),
+                   model_answer=q.get("model_answer"),
+                   options=q.get("options") if ttype == "mcq" else None,
+                   correct_option=(str(co) if co not in (None, "") else None),
+                   image_b64=_r2img(q.get("image_b64")),
+                   question_text_hi=(q.get("question_text_hi") or None),
+                   model_answer_hi=(q.get("model_answer_hi") or None),
+                   options_hi=(opts_hi if opts_hi else None),
+                   model_answer_image=_r2img(q.get("model_answer_image")),
+                   alt_image_b64=_r2img(q.get("alt_image_b64")),
+                   explanation=(q.get("explanation") or None),
+                   explanation_hi=(q.get("explanation_hi") or None)))
+        _made.append((ex.id, _tb))
     db.commit()
+    # Har target batch ke (ya global ho to sabhi) students ko notification.
+    for _eid, _tb in _made:
+        try:
+            _notify_new_content(db, _tb, _subj_in, current_user.name, "test")
+        except Exception:
+            pass
     # Bilingual Hindi is now filled on-demand by the portal (free). Paid Gemini
     # auto-translation is disabled to avoid API costs. (Function kept for manual use.)
     # Hindi/Bilingual test -> background me Hindi translate karo (subject-aware) taaki students ke
@@ -3346,42 +3473,46 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
 
 @router.post("/exam/{eid}/copy")
 def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Ek existing test ko doosre batch ke liye COPY karo — poore questions same, bas naya batch +
-    nayi date (aur chaaho to naya title). Original bilkul chhua nahi jaata. Isse teacher ek batch
-    ka banaya test crash-course/naye batch ke bachon ko nayi date pe de sakta hai — dubara banaye bina."""
+    """Ek existing test ko EK YA ZYADA batch ke liye COPY karo — poore questions same, bas naya batch +
+    nayi date (aur chaaho to naya title). Original bilkul chhua nahi jaata. Multi-batch: Data Entry
+    jaisa subject jo saare batches me hota hai, ek hi baar me sabhi ko diya ja sakta hai. Har target
+    batch ke students ko notification bhi jaata hai."""
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     src = db.query(Exam).filter(Exam.id == eid, Exam.teacher_id == tp.id, Exam.is_active == True).first()
     if not src:
         raise HTTPException(404, "Test not found")
-    _bid = payload.get("batch_id")
-    try:
-        _bid = int(_bid) if _bid not in (None, "", 0, "0") else None
-    except Exception:
-        _bid = None
-    new_ex = Exam(
-        teacher_id=tp.id, teacher_name=src.teacher_name,
-        subject=src.subject,
-        title=((payload.get("title") or "").strip() or src.title),
-        chapter=(payload.get("chapter") if payload.get("chapter") is not None else src.chapter),
-        test_type=src.test_type, class_name=(src.class_name or ""), medium=src.medium,
-        total_marks=src.total_marks, duration_min=src.duration_min,
-        scheduled_at=_exam_parse_dt(payload.get("scheduled_at")),   # nayi date/time (blank = abhi se available)
-        is_active=True, batch_id=_bid)
-    db.add(new_ex); db.flush()
-    # saare questions huboohu copy — image/model-answer/Hindi sab. (Images R2 references hain,
-    # delete soft hai, isliye same reference share karna safe hai — original kabhi nahi tootega.)
-    n = 0
-    for q in db.query(ExamQuestion).filter(ExamQuestion.exam_id == eid).order_by(ExamQuestion.q_no.asc(), ExamQuestion.id.asc()).all():
-        db.add(ExamQuestion(
-            exam_id=new_ex.id, q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
-            model_answer=q.model_answer, options=q.options, correct_option=q.correct_option,
-            image_b64=q.image_b64, question_text_hi=q.question_text_hi, model_answer_hi=q.model_answer_hi,
-            options_hi=q.options_hi, model_answer_image=q.model_answer_image, alt_image_b64=q.alt_image_b64,
-            explanation=q.explanation, explanation_hi=q.explanation_hi))
-        n += 1
+    targets = _copy_target_batches(payload)
+    if not targets:
+        raise HTTPException(400, "Select at least one target batch")
+    _sched = _exam_parse_dt(payload.get("scheduled_at"))
+    _title = ((payload.get("title") or "").strip() or src.title)
+    _chapter = (payload.get("chapter") if payload.get("chapter") is not None else src.chapter)
+    qsrc = db.query(ExamQuestion).filter(ExamQuestion.exam_id == eid).order_by(ExamQuestion.q_no.asc(), ExamQuestion.id.asc()).all()
+    made = []
+    for tb in targets:
+        new_ex = Exam(
+            teacher_id=tp.id, teacher_name=src.teacher_name,
+            subject=src.subject, title=_title, chapter=_chapter,
+            test_type=src.test_type, class_name=(src.class_name or ""), medium=src.medium,
+            total_marks=src.total_marks, duration_min=src.duration_min,
+            scheduled_at=_sched, is_active=True, batch_id=tb)
+        db.add(new_ex); db.flush()
+        for q in qsrc:
+            db.add(ExamQuestion(
+                exam_id=new_ex.id, q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
+                model_answer=q.model_answer, options=q.options, correct_option=q.correct_option,
+                image_b64=q.image_b64, question_text_hi=q.question_text_hi, model_answer_hi=q.model_answer_hi,
+                options_hi=q.options_hi, model_answer_image=q.model_answer_image, alt_image_b64=q.alt_image_b64,
+                explanation=q.explanation, explanation_hi=q.explanation_hi))
+        made.append(new_ex.id)
     db.commit()
-    return {"ok": True, "id": new_ex.id, "questions": n}
+    for tb in targets:
+        try:
+            _notify_new_content(db, tb, src.subject, current_user.name, "test")
+        except Exception:
+            pass
+    return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
 
 
 
@@ -4616,21 +4747,27 @@ def create_extra_class(payload: dict, db: Session = Depends(get_db), current_use
             detail=f"Is date/time pe aapki {clash.subject} class already hai "
                    f"({clash.time_text or ''}). Extra class ke liye alag timing choose karein.")
 
-    e = TimetableEntry(
-        teacher_id=tp.id, subject=subject,
-        class_name=payload.get("class_name", "Class 12"),
-        chapter=chapter, part=part, entry_date=nd, day=WEEK[nd.weekday()],
-        time_text=time_text or None, entry_type="chapter", status="pending",
-    )
-    db.add(e); db.flush()
+    e = None
+    _made_ids = []
+    for _tb in _create_target_batches(payload):
+        e = TimetableEntry(
+            teacher_id=tp.id, subject=subject,
+            class_name=payload.get("class_name", "Class 12"),
+            chapter=chapter, part=part, entry_date=nd, day=WEEK[nd.weekday()],
+            time_text=time_text or None, entry_type="chapter", status="pending",
+            batch_id=_tb,
+        )
+        db.add(e); db.flush()
+        _made_ids.append(e.id)
 
     for adm in db.query(User).filter(User.role == UserRole.admin).all():
         msg = (f"{current_user.name} requested an extra class for {subject} "
                f"({nd} {time_text}). Other classes will not shift — this will be a separate slot.")
         db.add(Notification(user_id=adm.id, title="New Extra Class Request",
                             message=msg, notif_type="class_request"))
-    db.commit(); db.refresh(e)
-    return {"id": e.id, "shift_count": 0,
+    db.commit()
+    return {"id": (_made_ids[0] if _made_ids else None), "ids": _made_ids, "shift_count": 0,
+            "batches": len(_made_ids),
             "message": "Request sent to the admin. Once approved, this extra class will be added at your chosen time — other classes stay as they are."}
 
 # =====================================================================
