@@ -207,26 +207,39 @@ def _ensure_batches_seed():
 _ensure_batches_seed()
 
 def _ensure_student_setup_cols():
-    """student_profiles me setup_done + forgot_pw columns (naya profile setup + forgot-password)."""
+    """student_profiles me setup_done + forgot_pw columns — BULLETPROOF (multiple strategies).
+    Ye columns na hone par har StudentProfile.count() (full-entity) fail ho jaati hai, isliye
+    yahan pakka create karte hain. Existing rows ko DEFAULT 0 milta hai."""
     try:
         from database import engine
         from sqlalchemy import text as _t
-        for _st in ("ALTER TABLE student_profiles ADD COLUMN setup_done TINYINT NULL",
-                    "ALTER TABLE student_profiles ADD COLUMN setup_done BOOLEAN NULL"):
-            try:
-                with engine.connect() as conn:
-                    conn.execute(_t(_st)); conn.commit(); break
-            except Exception:
-                pass
-        for _st in ("ALTER TABLE student_profiles ADD COLUMN forgot_pw TINYINT NULL",
-                    "ALTER TABLE student_profiles ADD COLUMN forgot_pw BOOLEAN NULL"):
-            try:
-                with engine.connect() as conn:
-                    conn.execute(_t(_st)); conn.commit(); break
-            except Exception:
-                pass
     except Exception:
-        pass
+        return
+    for st in ("ALTER TABLE student_profiles ADD COLUMN setup_done TINYINT(1) NULL DEFAULT 0",
+               "ALTER TABLE student_profiles ADD COLUMN forgot_pw TINYINT(1) NULL DEFAULT 0"):
+        done = False
+        # strategy 1: engine.begin() (transaction auto-commits)
+        try:
+            with engine.begin() as conn:
+                conn.execute(_t(st))
+            done = True
+        except Exception:
+            pass
+        # strategy 2: AUTOCOMMIT connection
+        if not done:
+            try:
+                with engine.connect() as conn:
+                    conn.execution_options(isolation_level="AUTOCOMMIT").execute(_t(st))
+                done = True
+            except Exception:
+                pass
+        # strategy 3: plain connect + commit (purana pattern)
+        if not done:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(st)); conn.commit()
+            except Exception:
+                pass
 
 
 _ensure_student_setup_cols()

@@ -32,6 +32,32 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
 
+def _sr_ensure_setup_cols():
+    """setup_done + forgot_pw columns pakka banao (admin_routes ke alawa yahan bhi — jo module
+    pehle import ho, wahi create kar dega; warna StudentProfile.count() fail hoti hai)."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+    except Exception:
+        return
+    for st in ("ALTER TABLE student_profiles ADD COLUMN setup_done TINYINT(1) NULL DEFAULT 0",
+               "ALTER TABLE student_profiles ADD COLUMN forgot_pw TINYINT(1) NULL DEFAULT 0"):
+        for _mk in ("begin", "auto"):
+            try:
+                if _mk == "begin":
+                    with engine.begin() as conn:
+                        conn.execute(_t(st))
+                else:
+                    with engine.connect() as conn:
+                        conn.execution_options(isolation_level="AUTOCOMMIT").execute(_t(st))
+                break
+            except Exception:
+                continue
+
+
+_sr_ensure_setup_cols()
+
+
 _BATCH_COLS_READY = False
 def _ensure_batch_cols(db=None):
     """Ensure the batch_id columns exist before a query uses them. Uses a SEPARATE DB session
