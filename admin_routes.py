@@ -3706,6 +3706,9 @@ def admin_clear_forgot(sid: int, db: Session = Depends(get_db), _=Depends(get_ad
         try: db.rollback()
         except Exception: pass
     return {"ok": True}
+
+
+@router.get("/students-paged")
 def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
                          medium: str = "", source: str = "", batch: str = "",
                          page: int = 1, page_size: int = 25,
