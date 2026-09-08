@@ -4249,13 +4249,11 @@ def _material_tree(db, subjects=None, only_batch=None):
         if not subjects:
             return []
         q = q.filter(Material.subject.in_(list(_subj_scope_for(db, Material, subjects))))
-    if only_batch == -1:
-        q = q.filter(Material.batch_id.is_(None))   # global/legacy only
-    elif only_batch:
-        from sqlalchemy import or_ as _or_mt
-        # STRICT: standalone batch (Crash Course / explicitly standalone) -> ONLY apna material,
-        # global/legacy kabhi nahi. Legacy batch -> apna + global (backward compatible).
-        _standalone = False
+    from sqlalchemy import or_ as _or_mt
+    # standalone (Crash Course / explicitly standalone) batch -> STRICT: sirf apna content, global kabhi nahi.
+    # Ye ek hi baar compute hota hai aur Material + DppPack dono pe lagta hai (dono strict rahein).
+    _standalone = False
+    if only_batch and only_batch != -1:
         try:
             from models import Batch
             _nm = db.query(Batch.name).filter(Batch.id == only_batch).scalar()
@@ -4270,8 +4268,11 @@ def _material_tree(db, subjects=None, only_batch=None):
                 _standalone = bool(_sv)   # explicit toggle overrides the name heuristic
         except Exception:
             pass
+    if only_batch == -1:
+        q = q.filter(Material.batch_id.is_(None))   # global/legacy only
+    elif only_batch:
         if _standalone:
-            q = q.filter(Material.batch_id == only_batch)
+            q = q.filter(Material.batch_id == only_batch)   # STRICT: sirf iss batch ka
         else:
             q = q.filter(_or_mt(Material.batch_id == only_batch, Material.batch_id.is_(None)))
     mats = q.order_by(Material.created_at.desc()).all()
@@ -4341,8 +4342,17 @@ def _material_tree(db, subjects=None, only_batch=None):
     # normal material tree waisa hi rehta hai.
     try:
         from models import DppPack
-        _dpacks = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.source.in_(["created", "uploaded"])).order_by(
-            DppPack.created_at.desc()).all()
+        _dq = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.source.in_(["created", "uploaded"]))
+        # SAME strict batch scoping as Material — warna crash-course/standalone batch me saare
+        # global DPP leak ho jaate the (yehi bug tha: notes hat gaye par DPP dikhte rahe).
+        if only_batch == -1:
+            _dq = _dq.filter(DppPack.batch_id.is_(None))
+        elif only_batch:
+            if _standalone:
+                _dq = _dq.filter(DppPack.batch_id == only_batch)
+            else:
+                _dq = _dq.filter(_or_mt(DppPack.batch_id == only_batch, DppPack.batch_id.is_(None)))
+        _dpacks = _dq.order_by(DppPack.created_at.desc()).all()
         if subjects is not None:
             _allowed = set()
             try:
