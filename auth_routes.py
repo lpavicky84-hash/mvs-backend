@@ -108,6 +108,51 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
 def get_me(current_user=Depends(get_current_user)):
     return current_user
 
+
+@router.post("/student-login", response_model=TokenResponse)
+def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
+    """Naya student login: PHONE + PASSWORD. Safe transition —
+    - setup_done=True (password set kar chuka): password verify hoga.
+    - setup_done=False (purana student, abhi password nahi): sirf phone se andar aa jaayega
+      (login ke baad forced setup screen milegi jahan password set karega). Isse koi lock nahi hota."""
+    from models import StudentProfile
+    phone = "".join(ch for ch in str(req.get("phone") or "") if ch.isdigit())[-10:]
+    password = (req.get("password") or "").strip()
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Sahi 10-digit phone number daalein.")
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if not sp or not sp.user:
+        raise HTTPException(status_code=404, detail="Is phone number par koi account nahi mila. Admin se contact karein.")
+    user = sp.user
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account inactive hai. Admin se contact karein.")
+    if getattr(sp, "setup_done", False):
+        if not password or not verify_password(password, user.password):
+            raise HTTPException(status_code=401, detail="Password galat hai. Bhool gaye ho to 'Forgot Password' dabao.")
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    try:
+        sp.active_session_token = token
+        db.commit()
+    except Exception:
+        db.rollback()
+    return TokenResponse(access_token=token, role=user.role, name=user.name, user_db_id=user.id)
+
+
+@router.post("/forgot-password")
+def public_forgot_password(req: dict, db: Session = Depends(get_db)):
+    """Login screen se (bina login) — phone daalke forgot-password request. Admin ke request
+    list me aa jaata hai; admin password copy karke WhatsApp pe bhej dega."""
+    from models import StudentProfile
+    phone = "".join(ch for ch in str(req.get("phone") or "") if ch.isdigit())[-10:]
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Sahi 10-digit phone number daalein.")
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Is phone par koi account nahi mila.")
+    sp.forgot_pw = True
+    db.commit()
+    return {"ok": True, "message": "Request bhej di gayi. Admin aapka password jald share karega."}
+
 @router.get("/generate-uid")
 def gen_uid(name: str, db: Session = Depends(get_db)):
     """Admin use — auto-generate user ID from name"""

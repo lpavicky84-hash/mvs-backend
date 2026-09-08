@@ -821,6 +821,7 @@ function goLogin(portal){
   if(portal==='student'){
  document.getElementById('login-student-phone').style.display='block';
  document.getElementById('sp-phone').value='';
+ try{ _injectStudentPwUI(); }catch(e){}
   } else {
  document.getElementById('login-standard').style.display='block';
  const t={teacher:' Teacher Login',admin:' Admin Login',production:' Production Login',editor:' Editor Login',youtuber:' Creator Login',graphics:' Graphics Login'};
@@ -885,21 +886,43 @@ window.addEventListener('DOMContentLoaded', function(){
   }catch(e){ try{ goLogin('student'); }catch(_){} }
 });
 
-// Student onboarding: fetch by phone
+// Student login: PHONE + PASSWORD (safe transition — jinhone abhi password set nahi kiya
+// wo sirf phone se andar aakar setup screen par password set karenge; jinke set hain unko
+// password mandatory). Purana lookup-auto-login hata diya.
+function _spTogglePw(){ var i=document.getElementById('sp-pass'); if(i) i.type=i.type==='password'?'text':'password'; }
+function _injectStudentPwUI(){
+  var host=document.getElementById('login-student-phone'); if(!host) return;
+  var phone=document.getElementById('sp-phone');
+  if(!document.getElementById('sp-pass')){
+    var wrap=document.createElement('div'); wrap.id='sp-pw-wrap';
+    wrap.innerHTML='<div style="position:relative;margin-top:10px"><input id="sp-pass" type="password" class="form-control" placeholder="Password" style="width:100%;padding-right:38px" onkeydown="if(event.key===\'Enter\')fetchStudent()"><button type="button" onclick="_spTogglePw()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px">'+(typeof ic==='function'?ic('eye'):'\uD83D\uDC41')+'</button></div>'
+      +'<div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="studentForgotPw()" style="color:var(--primary);font-size:.82rem;text-decoration:none">Forgot password?</a></div>'
+      +'<div style="font-size:.73rem;color:var(--text-muted);margin-top:8px;line-height:1.45">Pehli baar? Sirf phone daalke <b>Login</b> karo \u2014 andar apni profile + password set kar lena.</div>';
+    if(phone && phone.parentNode){ phone.parentNode.insertBefore(wrap, phone.nextSibling); } else host.appendChild(wrap);
+  } else { document.getElementById('sp-pass').value=''; }
+  var btn=document.getElementById('sp-fetch-btn'); if(btn) btn.textContent='Login';
+}
 async function fetchStudent(){
-  const phone=document.getElementById('sp-phone').value.trim();
-  if(!phone){ toast('Please enter a phone number.',true); return; }
-  const btn=document.getElementById('sp-fetch-btn'); btn.disabled=true; btn.textContent='Fetching your details\u2026';
+  var phone=((document.getElementById('sp-phone')||{}).value||'').trim();
+  var pass=((document.getElementById('sp-pass')||{}).value||'');
+  if(!phone){ toast('Please enter your phone number.',true); return; }
+  var btn=document.getElementById('sp-fetch-btn'); if(btn){ btn.disabled=true; btn.textContent='Logging in\u2026'; }
   try{
- const d=await api('/api/auth/lookup-by-phone?phone='+encodeURIComponent(phone));
- if(!d.found){ toast('No student found for this phone. Please contact the admin.',true); btn.disabled=false; btn.textContent='View My Details'; return; }
- document.getElementById('sc-congrats').textContent=' Congratulations, '+d.name+'!';
- document.getElementById('sc-uid').value=d.user_id;
- document.getElementById('sc-pass').value=d.password;
- document.getElementById('login-student-phone').style.display='none';
- document.getElementById('login-student-creds').style.display='block';
-  }catch(e){ toast(e.message,true); }
-  btn.disabled=false; btn.textContent='View My Details';
+    var data=await api('/api/auth/student-login','POST',{phone:phone,password:pass});
+    _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+    _freshSessionPhotos();
+    document.getElementById('login-screen').classList.remove('active');
+    openStudent();
+  }catch(e){
+    toast((e&&e.message)||'Login failed',true);
+    var pw=document.getElementById('sp-pass'); if(pw && /password/i.test((e&&e.message)||'')) pw.focus();
+  }finally{ if(btn){ btn.disabled=false; btn.textContent='Login'; } }
+}
+async function studentForgotPw(){
+  var phone=((document.getElementById('sp-phone')||{}).value||'').trim();
+  if(!phone){ toast('Pehle apna phone number daalein.',true); var p=document.getElementById('sp-phone'); if(p) p.focus(); return; }
+  try{ var r=await api('/api/auth/forgot-password','POST',{phone:phone}); toast((r&&r.message)||'Request bhej di gayi. Admin aapka password bhejega.'); }
+  catch(e){ toast((e&&e.message)||'Could not send request',true); }
 }
 async function studentDirectLogin(){
   const uid=document.getElementById('sc-uid').value;
@@ -15181,11 +15204,11 @@ async function showSubjectScreen(p){
   var sessOpts=sessList.map(function(s){return '<option value="'+s[0]+'"'+((p.exam_session||'')===s[0]?' selected':'')+'>'+s[1]+'</option>';}).join('');
   var medOpts=['','Hindi','English'].map(function(m){return '<option value="'+m+'"'+((p.medium||'')===m?' selected':'')+'>'+(m||'\u2014 Select medium \u2014')+'</option>';}).join('');
   var initials=(function(){ var t=(p.name||'S').trim().split(/\s+/); return ((t[0]||'S')[0]+((t[1]||'')[0]||'')).toUpperCase(); })();
-  var photoState=p.has_photo?'<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>':'<span class="su-photo-hint">Tap to set your photo</span>';
+  var photoState=p.has_photo?'<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>':'<span class="su-photo-hint blink">Tap to set your photo</span>';
   scr.innerHTML=
    '<div class="su-wrap"><div class="su-card">'
    +'<div class="su-head">'
-   +'<div class="su-avatar" id="su-avatar" onclick="document.getElementById(\'su-photo\').click()">'
+   +'<div class="su-avatar'+(p.has_photo?'':' needphoto')+'" id="su-avatar" onclick="document.getElementById(\'su-photo\').click()">'
    +'<span id="su-photo-ini">'+esc(initials)+'</span>'
    +'<span class="su-cam">'+ic('upload')+'</span></div>'
    +'<div style="flex:1;min-width:0"><h1 class="su-title">Setup Your Profile</h1>'
@@ -15201,7 +15224,7 @@ async function showSubjectScreen(p){
    +_suField('Medium','<select class="form-control su-in" id="su-medium">'+medOpts+'</select>')
    +'</div>'
    +'<div class="su-lbl">Subjects <span class="su-cnt" id="su-subcnt">0/7</span></div>'
-   +'<div id="su-subjects" class="su-subs"><div class="su-muted">Select your class to load subjects.</div></div>'
+   +'<div class="su-dd" id="su-subdd"><button type="button" class="su-in su-ddbtn" id="su-subbtn" onclick="_suToggleSubPanel(event)"><span id="su-sublabel" class="su-ddlabel">Select your class first</span><span class="su-ddcaret">\u25be</span></button><div class="su-ddpanel" id="su-subjects"><div class="su-muted">Select your class to load subjects.</div></div></div>'
    +'<div class="su-grid">'
    +_suField('NIOS Reference Number','<input class="form-control su-in" id="su-nios" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. B1126300356">')
    +_suField('Set Password','<div style="position:relative"><input class="form-control su-in" id="su-pass" type="password" placeholder="Choose a password"><button type="button" class="su-eye" onclick="_suTogglePass()">'+ic('eye')+'</button></div>')
@@ -15226,33 +15249,36 @@ async function _suPickPhoto(inp){
     if(!r.ok){ var j=await r.json().catch(function(){return {};}); throw new Error(j.detail||'Upload failed'); }
     window._setupHasPhoto=true;
     var url=URL.createObjectURL(up);
-    if(av){ av.innerHTML='<img src="'+url+'" alt=""><span class="su-cam">'+ic('upload')+'</span>'; }
+    if(av){ av.classList.remove('needphoto'); av.innerHTML='<img src="'+url+'" alt=""><span class="su-cam">'+ic('upload')+'</span>'; }
     if(st) st.innerHTML='<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>';
     var pf=document.querySelector('.su-fld[data-lbl="Photo"]'); if(pf) pf.classList.remove('bad');
   }catch(e){ if(st) st.innerHTML='<span class="su-photo-hint" style="color:#e88a86">Photo upload failed \u2014 tap to retry</span>'; toast((e&&e.message)||'Photo upload failed',true); }
 }
 async function _suClassChange(cls){
   window._suClass=cls;
-  var wrap=document.getElementById('su-subjects'); if(!wrap) return;
-  if(!cls){ wrap.innerHTML='<div class="su-muted">Select your class to load subjects.</div>'; return; }
+  var wrap=document.getElementById('su-subjects'); var lbl=document.getElementById('su-sublabel'); if(!wrap) return;
+  if(!cls){ wrap.innerHTML='<div class="su-muted">Select your class to load subjects.</div>'; if(lbl){ lbl.textContent='Select your class first'; lbl.classList.add('ph'); } return; }
   wrap.innerHTML='<div class="spinner" style="margin:14px auto"></div>';
   try{
     var subs=await api('/api/student/available-subjects?class_level='+cls);
     if(!subs.length){ wrap.innerHTML='<div class="su-muted">No subjects available \u2014 contact the admin.</div>'; return; }
     var pre=window._setupSubs||[];
     wrap.innerHTML=subs.map(function(s){ var on=pre.indexOf(s.name)>=0;
-      return '<label class="su-chip'+(on?' on':'')+'"><input type="checkbox" value="'+esc(s.name).replace(/"/g,'&quot;')+'"'+(on?' checked':'')+' onchange="_suToggleSub(this)"> '+esc(s.name)+(s.code?' <span class="su-code">'+esc(s.code)+'</span>':'')+'</label>';
+      return '<label class="su-ddopt'+(on?' on':'')+'"><input type="checkbox" value="'+esc(s.name).replace(/"/g,'&quot;')+'"'+(on?' checked':'')+' onchange="_suToggleSub(this)"><span class="su-ddname">'+esc(s.name)+'</span>'+(s.code?'<span class="su-code">'+esc(s.code)+'</span>':'')+'</label>';
     }).join('');
-    _suSubCount();
+    _suSubCount(); _suSubLabel();
   }catch(e){ wrap.innerHTML='<div class="su-muted">Error loading subjects.</div>'; }
 }
+function _suToggleSubPanel(ev){ if(ev){ ev.stopPropagation(); } var p=document.getElementById('su-subjects'); if(!p) return; var open=p.classList.contains('open'); document.querySelectorAll('.su-ddpanel.open').forEach(function(x){x.classList.remove('open');}); if(!open) p.classList.add('open'); }
+function _suSubLabel(){ var lbl=document.getElementById('su-sublabel'); if(!lbl) return; var arr=window._setupSubs||[]; if(!arr.length){ lbl.textContent='Select subjects'; lbl.classList.add('ph'); } else { lbl.classList.remove('ph'); lbl.textContent=arr.join(', '); } }
 function _suToggleSub(cb){
   var pre=window._setupSubs||[];
   if(cb.checked){ if(pre.length>=7){ cb.checked=false; toast('Maximum 7 subjects.',true); return; } if(pre.indexOf(cb.value)<0) pre.push(cb.value); }
   else { pre=pre.filter(function(x){return x!==cb.value;}); }
   window._setupSubs=pre;
-  cb.closest('.su-chip').classList.toggle('on',cb.checked);
-  _suSubCount();
+  var opt=cb.closest('.su-ddopt'); if(opt) opt.classList.toggle('on',cb.checked);
+  var dd=document.getElementById('su-subdd'); if(dd) dd.classList.remove('bad');
+  _suSubCount(); _suSubLabel();
 }
 function _suSubCount(){ var c=document.getElementById('su-subcnt'); if(c) c.textContent=(window._setupSubs||[]).length+'/7'; }
 async function submitSetupProfile(){
@@ -15276,7 +15302,7 @@ async function submitSetupProfile(){
   if(!photoOk) miss.push('Photo');
   var err=document.getElementById('su-err');
   if(miss.length){ if(err){ err.style.display='block'; err.innerHTML='Please fill: <b>'+miss.map(esc).join(', ')+'</b>'; } toast('Kuch fields baaki hain.',true);
-    if(!subs.length){ var sw=document.getElementById('su-subjects'); if(sw) sw.classList.add('bad'); } return; }
+    if(!subs.length){ var sw=document.getElementById('su-subdd'); if(sw) sw.classList.add('bad'); } return; }
   if(err) err.style.display='none';
   var btn=document.getElementById('su-save'); if(btn){ btn.disabled=true; btn.textContent='Saving\u2026'; }
   try{
@@ -15289,6 +15315,7 @@ async function submitSetupProfile(){
   }catch(e){ if(err){ err.style.display='block'; err.textContent=(e&&e.message)||'Could not save'; } toast((e&&e.message)||'Could not save',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Save & Continue'; } }
 }
 function _suInjectCss(){
+  if(!window._suOutBound){ window._suOutBound=1; document.addEventListener('click', function(ev){ if(ev.target.closest && ev.target.closest('#su-subdd')) return; document.querySelectorAll('.su-ddpanel.open').forEach(function(x){x.classList.remove('open');}); }); }
   if(document.getElementById('su-css')) return;
   var s=document.createElement('style'); s.id='su-css';
   s.textContent=[
@@ -15300,6 +15327,24 @@ function _suInjectCss(){
    '.su-avatar img{width:100%;height:100%;object-fit:cover}',
    '.su-cam{position:absolute;bottom:-2px;right:-2px;width:26px;height:26px;background:#c9a227;color:#1c1c16;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #1c1c16}',
    '.su-cam svg{width:13px;height:13px}',
+   '@keyframes suPhotoPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,162,39,.55);transform:scale(1)}50%{box-shadow:0 0 0 10px rgba(201,162,39,0);transform:scale(1.04)}}',
+   '.su-avatar.needphoto{animation:suPhotoPulse 1.4s ease-in-out infinite}',
+   '.su-avatar.needphoto .su-cam{animation:suPhotoPulse 1.4s ease-in-out infinite}',
+   '@keyframes suBlink{0%,100%{opacity:1}50%{opacity:.35}}',
+   '.su-photo-hint.blink{animation:suBlink 1s ease-in-out infinite}',
+   '.su-dd{position:relative}',
+   '.su-ddbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;width:100%}',
+   '.su-ddlabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.su-ddlabel.ph{color:rgba(255,255,255,.4)}',
+   '.su-ddcaret{opacity:.55;flex-shrink:0}',
+   '.su-dd.bad .su-ddbtn{border-color:#e0524d !important;background:#2e1d1b !important}',
+   '.su-ddpanel{display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:80;max-height:280px;overflow:auto;background:#20201a;border:1px solid rgba(255,255,255,.14);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.55);padding:6px}',
+   '.su-ddpanel.open{display:block}',
+   '.su-ddopt{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;color:rgba(255,255,255,.85);font-size:.88rem}',
+   '.su-ddopt:hover{background:rgba(255,255,255,.05)}',
+   '.su-ddopt.on{background:rgba(201,162,39,.16);color:#fff}',
+   '.su-ddopt input{width:16px;height:16px;accent-color:#c9a227;flex-shrink:0}',
+   '.su-ddname{flex:1}',
+   '.su-code{opacity:.45;font-size:.74rem}',
    '.su-title{color:#fff;font-size:1.55rem;font-weight:800;margin:0}',
    '.su-sub{color:rgba(255,255,255,.55);font-size:.84rem;margin:4px 0 0;line-height:1.4}',
    '.su-photo-ok{color:#7fdca0;font-size:.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;margin-top:5px}.su-photo-ok svg{width:12px;height:12px}',
