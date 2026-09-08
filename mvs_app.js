@@ -29081,6 +29081,11 @@ function _mcCss(){
     '.amc-tgrid{display:flex;flex-direction:column;gap:12px}',
     '.amc-tcard{border:1px solid var(--border,#e5ddcb);border-radius:16px;background:var(--card,#fff);overflow:hidden;transition:.16s;box-shadow:0 1px 2px rgba(15,23,42,.04)}',
     '.amc-tcard.has-pend{border-color:#e2b24d}',
+    '.amc-tcard.has-new{border-color:#dc2626}',
+    '.amc-new{display:inline-block;background:#dc2626;color:#fff;font-size:.6rem;font-weight:800;padding:1px 7px;border-radius:999px;letter-spacing:.04em;vertical-align:middle;animation:amcNewBlink 1.1s ease-in-out infinite}',
+    '@keyframes amcNewBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{opacity:.72;box-shadow:0 0 0 5px rgba(220,38,38,.04)}}',
+    '.amc-tc-rows.scroll{max-height:472px;overflow-y:auto;padding-right:8px}',
+    '.amc-new-row{border-color:#f0b6b0 !important;background:rgba(220,38,38,.03)}',
     '.amc-tcard.open{box-shadow:0 10px 28px rgba(15,23,42,.09)}',
     '.amc-tc-head{display:flex;align-items:center;gap:14px;padding:15px 18px;cursor:pointer}',
     '.amc-tc-head:hover{background:rgba(184,148,31,.05)}',
@@ -29292,6 +29297,10 @@ function _amcRefreshBadge(){
 window._amcFilter={category_id:0,status:''};
 window._amcExpanded=window._amcExpanded||{};
 function _amcIsPending(s){ return ['submitted','resubmitted','under_review','changes_required'].indexOf(s)>=0; }
+function _amcSeenSet(){ try{ return new Set(JSON.parse(localStorage.getItem('mvs_amc_seen')||'[]')); }catch(e){ return new Set(); } }
+function _amcMarkSeen(id,ver){ try{ var s=_amcSeenSet(); s.add(id+':'+(ver||1)); localStorage.setItem('mvs_amc_seen',JSON.stringify([].slice.call(s).slice(-3000))); }catch(e){} }
+// NEW = abhi submit/resubmit hua hai AUR admin ne is version ko abhi khola nahi (read pe hat jaata hai).
+function _amcIsNew(m){ if(['submitted','resubmitted'].indexOf(m.status)<0) return false; return !_amcSeenSet().has(m.id+':'+(m.current_version||1)); }
 function amcToggleTeacher(key){ key=decodeURIComponent(key); window._amcExpanded[key]=!window._amcExpanded[key]; loadAMatCheck(); }
 function loadAMatCheck(){
   var el=document.getElementById('a-matcheck-content'); if(!el) return;
@@ -29308,9 +29317,11 @@ function loadAMatCheck(){
     var byT={};
     subs.forEach(function(m){ var k=(m.teacher||'Unknown').trim()||'Unknown'; (byT[k]=byT[k]||[]).push(m); });
     var teachers=Object.keys(byT).sort(function(a,b){
+      var na=byT[a].some(_amcIsNew)?1:0, nb=byT[b].some(_amcIsNew)?1:0;
+      if(na!==nb) return nb-na;   // NEW waale teachers sabse upar
       var pa=byT[a].filter(function(x){return _amcIsPending(x.status);}).length;
       var pb=byT[b].filter(function(x){return _amcIsPending(x.status);}).length;
-      return pb-pa || a.localeCompare(b);   // sabse zyada pending upar
+      return pb-pa || a.localeCompare(b);
     });
     var totPending=subs.filter(function(x){return _amcIsPending(x.status);}).length;
     try{ _amcSetNavBadge(totPending); }catch(e){}
@@ -29327,6 +29338,7 @@ function loadAMatCheck(){
       var rej =list.filter(function(x){return x.status==='rejected';}).length;
       var open=!!window._amcExpanded[tk];
       var ini=esc((tk||'?').trim().charAt(0).toUpperCase());
+      var hasNew=list.some(_amcIsNew);
       var stat='<span class="amc-stat total">'+list.length+' total</span>'
         +(pend?'<span class="amc-stat pend">'+pend+' pending</span>':'')
         +(appr?'<span class="amc-stat appr">'+appr+' approved</span>':'')
@@ -29334,20 +29346,22 @@ function loadAMatCheck(){
       var rowsInner='';
       if(open){
         var vis=list.filter(function(m){ return !_amcFilter.status || m.status===_amcFilter.status; });
-        vis.sort(function(a,b){ return (b.id||0)-(a.id||0); });
-        rowsInner='<div class="amc-tc-rows">'+(vis.length?vis.map(function(m){
-          return '<div class="mc-row" onclick="amcOpenDetail('+m.id+')">'
+        vis.sort(function(a,b){ var na=_amcIsNew(a)?1:0, nb=_amcIsNew(b)?1:0; if(na!==nb) return nb-na; return (b.id||0)-(a.id||0); });   // NEW upar, phir latest
+        var scrollCls=vis.length>5?' scroll':'';   // 5 se zyada -> baaki scroll me
+        rowsInner='<div class="amc-tc-rows'+scrollCls+'">'+(vis.length?vis.map(function(m){
+          var isNew=_amcIsNew(m);
+          return '<div class="mc-row'+(isNew?' amc-new-row':'')+'" onclick="amcOpenDetail('+m.id+')">'
             +'<div class="mc-ic">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
-            +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+esc(m.title)+'</div>'
+            +'<div style="flex:1;min-width:0"><div class="mc-ttl">'+(isNew?'<span class="amc-new">NEW</span> ':'')+esc(m.title)+'</div>'
             +'<div class="mc-meta">'+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span><span class="mc-ver">v'+(m.current_version||1)+'</span></div></div>'
             +_dueBadge(m.deadline)+(m.priority==='high'?'<span style="font-size:.66rem;font-weight:800;color:#dc2626">HIGH</span>':'')+_msPill(m.status)
             +'<button class="btn btn-ghost btn-sm mc-del" title="Delete this submission" onclick="event.stopPropagation();amcDeleteSubmission('+m.id+',\''+esc((m.title||'').replace(/\x27/g,"")) +'\')">'+(typeof ic==='function'?ic('trash'):'Delete')+'</button></div>';
         }).join(''):'<div class="tcd-empty" style="padding:14px">No materials in this status.</div>')+'</div>';
       }
-      return '<div class="amc-tcard'+(open?' open':'')+(pend?' has-pend':'')+'">'
+      return '<div class="amc-tcard'+(open?' open':'')+(hasNew?' has-new':(pend?' has-pend':''))+'">'
         +'<div class="amc-tc-head" onclick="amcToggleTeacher(\''+encodeURIComponent(tk)+'\')">'
         +'<div class="amc-tc-av">'+ini+'</div>'
-        +'<div style="flex:1;min-width:0"><div class="amc-tc-name">'+esc(tk)+(pend?'<span class="amc-tc-dot">'+pend+'</span>':'')+'</div>'
+        +'<div style="flex:1;min-width:0"><div class="amc-tc-name">'+esc(tk)+(hasNew?'<span class="amc-new">NEW</span>':'')+(pend?'<span class="amc-tc-dot">'+pend+'</span>':'')+'</div>'
         +'<div class="amc-tc-stats">'+stat+'</div></div>'
         +'<span class="amc-tc-caret">'+(open?'\u25b4':'\u25be')+'</span></div>'
         +rowsInner+'</div>';
@@ -29389,6 +29403,7 @@ function amcOpenDetail(sid){
   showModal('Review', '<div class="spinner"></div>', '');
   api('/api/admin/material-submissions/'+sid).then(function(r){
     var m=r.submission; window._amcCur=m;
+    try{ _amcMarkSeen(m.id, m.current_version); loadAMatCheck(); }catch(e){}   // admin ne khol liya -> NEW hat jaaye
     var vers=(m.versions||[]).map(function(v){
       return '<div class="mc-v"><div class="mc-v-ic">'+(typeof ic==='function'?ic('clipboard'):'')+'</div><div style="flex:1;min-width:0"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
         +(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')
