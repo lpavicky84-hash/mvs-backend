@@ -4011,7 +4011,7 @@ async function loadTTimetable(){
 function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 let _ttClass='';
 let _ttBatch='';
-function tSetTTBatch(v){ _ttBatch=v; loadTTimetable(); }
+function tSetTTBatch(v){ _ttBatch=v; try{ _apiForget('my-timetable'); }catch(e){} loadTTimetable(); }
 function tFilteredTT(){
   return (_ttEntries||[]).filter(e=>{
     if(_ttBatch==='__none__'){ if(e.batch_id) return false; }

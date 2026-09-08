@@ -1757,7 +1757,17 @@ def my_timetable(db: Session = Depends(get_db), current_user=Depends(get_teacher
         TimetableEntry.subject, TimetableEntry.entry_date).all()
     _ck, _has = _teacher_classkeys(tp)
     if _has:
-        es = [e for e in es if (not str(e.class_name or '').strip()) or _tt_entry_key(e.subject, e.class_name) in _ck]
+        import re as _re
+        def _keep(e):
+            # teacher ko khud assign (crash upload etc.) ya crash Day entry -> hamesha (batch-scoped)
+            if getattr(e, "teacher_id", None) == tp.id:
+                return True
+            if e.part and _re.match(r"^day\s*\d+$", (e.part or "").strip(), _re.I):
+                return True
+            if not str(e.class_name or "").strip():
+                return True
+            return _tt_entry_key(e.subject, e.class_name) in _ck
+        es = [e for e in es if _keep(e)]
     return [_serialize_tt(e, scope.get(e.subject)) for e in es]
 
 # ===== TEACHER: TODAY'S CLASSES with material status =====
