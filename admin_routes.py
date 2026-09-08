@@ -973,6 +973,48 @@ def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Dep
             "per_batch": per, "unmatched_list": unmatched_list[:1000]}
 
 
+@router.get("/batch-addon-students")
+def batch_addon_students(batch_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Us batch ke ADD-ON students (jinke paas ye batch add-on hai par PRIMARY batch alag hai).
+    Primary-batch wale isme nahi aate. Har student ka naam, phone, aur primary batch bhi."""
+    from models import Batch, StudentProfile, StudentBatch, User
+    b = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    # is batch me enrolled student ids
+    enr_ids = [sid for (sid,) in db.query(StudentBatch.student_id)
+               .filter(StudentBatch.batch_id == batch_id).distinct().all()]
+    if not enr_ids:
+        return {"batch": b.name, "count": 0, "students": []}
+    # batch name lookup (primary batch name dikhane ke liye)
+    bname_by_id = {bb.id: bb.name for bb in db.query(Batch.id, Batch.name).all()} if False else {}
+    for bb in db.query(Batch).all():
+        bname_by_id[bb.id] = bb.name
+    # add-on students (primary alag) ki profiles
+    sps = [sp for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(enr_ids)).all()
+           if sp.batch_id != batch_id]
+    # names bulk (N+1 se bachne ke liye)
+    uids = [sp.user_id for sp in sps if sp.user_id]
+    name_by_uid = {}
+    if uids:
+        try:
+            for uid, nm in db.query(User.id, User.name).filter(User.id.in_(uids)).all():
+                name_by_uid[uid] = nm or ""
+        except Exception:
+            pass
+    out = []
+    for sp in sps:
+        prim_name = bname_by_id.get(sp.batch_id) or (sp.batch_name or "") or "\u2014"
+        out.append({
+            "id": sp.id, "name": name_by_uid.get(sp.user_id, "") or "", "phone": sp.phone or "",
+            "primary_batch": prim_name,
+            "class_level": sp.class_level or "",
+            "source": sp.source or "",
+        })
+    out.sort(key=lambda x: (x.get("primary_batch") or "", x.get("name") or ""))
+    return {"batch": b.name, "count": len(out), "students": out}
+
+
 @router.get("/batches")
 def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     """List all batches (active + inactive). Usage count now reads the linked batch_id
@@ -983,15 +1025,18 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
     by_id = {}          # batch_id -> DISTINCT student count (primary link + add-on enrollments)
     by_name = {}        # batch name -> student count (fallback, legacy fields, unlinked only)
+    addon_by_id = {}    # batch_id -> add-on count (enrolled but primary batch is different)
     unlinked = 0
     try:
         from collections import defaultdict as _dd
         _prim = _dd(set)   # batch_id -> set(student_id) : primary link
         _enr  = _dd(set)   # batch_id -> set(student_id) : add-on (student_batches, e.g. crash-course)
+        _prim_of = {}      # student_id -> primary batch_id
         for sid, bid in (db.query(StudentProfile.id, StudentProfile.batch_id)
                          .filter(StudentProfile.batch_id != None).all()):
             if bid is not None:
                 _prim[bid].add(sid)
+                _prim_of[sid] = bid
         try:
             from models import StudentBatch as _SB
             for sid, bid in db.query(_SB.student_id, _SB.batch_id).all():
@@ -1001,6 +1046,14 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
             pass
         for bid in set(list(_prim.keys()) + list(_enr.keys())):
             by_id[bid] = len(_prim.get(bid, set()) | _enr.get(bid, set()))
+        # ADD-ON count: batch me enrolled hai par uska PRIMARY batch alag hai (ya primary hai hi nahi)
+        addon_by_id = {}
+        for bid, sids in _enr.items():
+            c = 0
+            for sid in sids:
+                if _prim_of.get(sid) != bid:
+                    c += 1
+            addon_by_id[bid] = c
         # legacy fallback: only for students NOT yet linked (batch_id NULL)
         for name, cnt in (db.query(StudentProfile.batch, _bf.count(StudentProfile.id))
                           .filter(StudentProfile.batch_id == None)
@@ -1031,6 +1084,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "banner": getattr(b, "banner_b64", "") or "",
         "welcome_message": getattr(b, "welcome_message", "") or "",
         "usage": int(by_id.get(b.id, 0) or 0) + int(by_name.get(b.name, 0) or 0),
+        "addon": int(addon_by_id.get(b.id, 0) or 0),
     } for b in rows]}
 
 

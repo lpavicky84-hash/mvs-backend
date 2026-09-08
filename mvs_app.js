@@ -12296,7 +12296,7 @@ function _batchCard(b){
       : '<div class="bc-head" style="background:'+_batchGrad(b.name)+'"><div class="bc-badges">'+modeLbl+(b.is_new?'<span class="bc-new">NEW</span>':'')+'</div><div class="bc-htext"><div class="bc-hname">'+esc(b.name)+'</div>'+(b.session?'<div class="bc-hses">'+esc(b.session)+'</div>':'')+'</div></div>')
     +'<div class="bc-body">'
       +'<input class="bc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename">'
-      +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span></div>'
+      +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span>'+((b.addon||0)>0?'<span class="bc-chip" style="cursor:pointer;background:rgba(201,162,39,.18);color:#8a6d15;font-weight:700" onclick="openAddonStudents('+b.id+',\''+esc(String(b.name||'').replace(/'/g,''))+'\')" title="Students jinke paas ye batch add-on hai (primary batch alag)">'+b.addon+' add-on \u25b8</span>':'')+'</div>'
       +'<div class="bc-two"><select class="input" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
         +'<select class="input" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select></div>'
       +'<div class="bc-two"><label class="bc-f">Session<input class="input" placeholder="Oct 2026" value="'+esc(b.session||'')+'" onchange="batchSetSession('+b.id+',this.value)"></label>'
@@ -12329,6 +12329,32 @@ function _ciSplitCSV(text){
   return rows;
 }
 function _ciCol(hdr,names){ for(var j=0;j<names.length;j++){ var i=hdr.indexOf(names[j]); if(i>=0) return i; } return -1; }
+async function openAddonStudents(bid,name){
+  showModal('Add-on students \u2014 '+esc(name||''),'<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var r=await api('/api/admin/batch-addon-students?batch_id='+encodeURIComponent(bid));
+    var list=(r&&r.students)||[];
+    window._addonList=list; window._addonBatch=r.batch||name;
+    var body=document.getElementById('modal-body'); if(!body) return;
+    if(!list.length){ body.innerHTML='<div class="empty-state" style="padding:24px"><p>Koi add-on student nahi \u2014 sab ke primary batch yahi hai (ya koi enrolled nahi).</p></div>'; return; }
+    var rows=list.map(function(s,i){
+      return '<tr style="border-top:1px solid var(--border)"><td style="padding:7px 6px">'+(i+1)+'</td>'
+        +'<td style="padding:7px 6px"><b>'+esc(s.name||'\u2014')+'</b><div style="font-size:.72rem;color:var(--text-muted)">'+esc(s.phone||'')+(s.class_level?(' \u00b7 Class '+esc(s.class_level)):'')+'</div></td>'
+        +'<td style="padding:7px 6px;font-size:.8rem">'+esc(s.primary_batch||'\u2014')+'</td>'
+        +'<td style="padding:7px 6px"><span class="xm-chip">'+esc(s.source||'')+'</span></td></tr>';
+    }).join('');
+    body.innerHTML='<div class="alert alert-info" style="font-size:.82rem"><b>'+list.length+'</b> students ke paas <b>'+esc(r.batch||name)+'</b> <b>add-on</b> hai \u2014 inka primary batch alag hai (neeche dikhaya). Primary-batch wale isme nahi hain.</div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="_addonDownload()" style="margin-bottom:8px">'+ic('download')+' Download list</button>'
+      +'<div style="max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:.86rem"><thead><tr style="color:var(--text-muted);font-size:.72rem;text-align:left"><th style="padding:6px">#</th><th style="padding:6px">Student</th><th style="padding:6px">Primary batch</th><th style="padding:6px">Source</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }catch(e){ var body=document.getElementById('modal-body'); if(body) body.innerHTML='<div class="alert alert-error">'+esc((e&&e.message)||'Could not load')+'</div>'; }
+}
+function _addonDownload(){
+  var list=window._addonList||[]; if(!list.length) return;
+  var csv='Name,Phone,Primary Batch,Class,Source\n'+list.map(function(s){return '"'+String(s.name||'').replace(/"/g,'""')+'","'+(s.phone||'')+'","'+String(s.primary_batch||'').replace(/"/g,'""')+'","'+(s.class_level||'')+'","'+(s.source||'')+'"';}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download='addon_'+String(window._addonBatch||'batch').replace(/[^a-z0-9]+/gi,'_')+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},1500);
+}
 function openCrashImport(){
   showModal('Import Purchases \u2192 Batch',
     '<div class="alert alert-info" style="font-size:.82rem">Koi bhi purchase sheet (CSV) upload karo \u2014 crash ya normal batch. Har item ko aap khud batch se map karoge (auto-match ho jaata hai). Buyers ko us batch me <b>add-on</b> enroll kiya jaayega \u2014 unka <b>main batch nahi badalta</b>. Phone number se match hota hai.</div>'
