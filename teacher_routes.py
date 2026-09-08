@@ -1816,6 +1816,7 @@ def _dpp_pack_out(db, pk, with_counts=True):
     out = {"id": pk.id, "subject": pk.subject, "class_name": pk.class_name,
            "chapter": pk.chapter, "part": pk.part, "title": pk.title,
            "medium": pk.medium, "source": pk.source,
+           "batch_id": getattr(pk, "batch_id", None),
            "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None}
     if with_counts:
         from models import DppAnswer, DppEvent
@@ -1842,7 +1843,36 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
     return {"packs": [_dpp_pack_out(db, pk) for pk in packs]}
 
 
-# ===== DPP RANKING — sabse pehle submit karne wala rank #1 (teacher = full details) =====
+@router.post("/dpp-pack/{pid}/copy")
+def copy_dpp_to_batch(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """DPP ko doosre batch ke liye COPY karo — questions/PDF same, bas naya batch (aur chaaho to
+    naya title/chapter/part). Original untouched. DPP timetable ke chapter/part se student ko dikhta
+    hai, isliye naye batch me wahi chapter jab schedule hoga tab apne-aap us date pe aa jaayega."""
+    import copy as _copy
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    src = db.query(DppPack).filter(DppPack.id == pid, DppPack.teacher_id == tp.id).first()
+    if not src:
+        raise HTTPException(404, "DPP not found")
+    _bid = payload.get("batch_id")
+    try:
+        _bid = int(_bid) if _bid not in (None, "", 0, "0") else None
+    except Exception:
+        _bid = None
+    new_pk = DppPack(
+        teacher_id=tp.id, subject=src.subject, class_name=(src.class_name or ""),
+        chapter=(payload.get("chapter") if payload.get("chapter") is not None else src.chapter),
+        part=(payload.get("part") if payload.get("part") is not None else src.part),
+        title=((payload.get("title") or "").strip() or src.title),
+        medium=src.medium, source=src.source,
+        questions=_copy.deepcopy(src.questions) if src.questions else src.questions,
+        q_pdf=src.q_pdf, s_pdf=src.s_pdf,   # R2 references — delete DB-only hai, share safe
+        batch_id=_bid)
+    db.add(new_pk); db.commit()
+    return {"ok": True, "id": new_pk.id}
+
+
+
 @router.get("/dpp-packs/{pack_id}/ranking")
 def teacher_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppPack, DppAnswer, StudentProfile, User
@@ -3309,13 +3339,52 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
                     "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
+                    "batch_id": getattr(e, "batch_id", None),
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
 
 
-@router.get("/exam/{exam_id}/audience")
-def exam_audience(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Which students opened / downloaded this test."""
+@router.post("/exam/{eid}/copy")
+def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Ek existing test ko doosre batch ke liye COPY karo — poore questions same, bas naya batch +
+    nayi date (aur chaaho to naya title). Original bilkul chhua nahi jaata. Isse teacher ek batch
+    ka banaya test crash-course/naye batch ke bachon ko nayi date pe de sakta hai — dubara banaye bina."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    src = db.query(Exam).filter(Exam.id == eid, Exam.teacher_id == tp.id, Exam.is_active == True).first()
+    if not src:
+        raise HTTPException(404, "Test not found")
+    _bid = payload.get("batch_id")
+    try:
+        _bid = int(_bid) if _bid not in (None, "", 0, "0") else None
+    except Exception:
+        _bid = None
+    new_ex = Exam(
+        teacher_id=tp.id, teacher_name=src.teacher_name,
+        subject=src.subject,
+        title=((payload.get("title") or "").strip() or src.title),
+        chapter=(payload.get("chapter") if payload.get("chapter") is not None else src.chapter),
+        test_type=src.test_type, class_name=(src.class_name or ""), medium=src.medium,
+        total_marks=src.total_marks, duration_min=src.duration_min,
+        scheduled_at=_exam_parse_dt(payload.get("scheduled_at")),   # nayi date/time (blank = abhi se available)
+        is_active=True, batch_id=_bid)
+    db.add(new_ex); db.flush()
+    # saare questions huboohu copy — image/model-answer/Hindi sab. (Images R2 references hain,
+    # delete soft hai, isliye same reference share karna safe hai — original kabhi nahi tootega.)
+    n = 0
+    for q in db.query(ExamQuestion).filter(ExamQuestion.exam_id == eid).order_by(ExamQuestion.q_no.asc(), ExamQuestion.id.asc()).all():
+        db.add(ExamQuestion(
+            exam_id=new_ex.id, q_no=q.q_no, question_text=q.question_text, max_marks=q.max_marks,
+            model_answer=q.model_answer, options=q.options, correct_option=q.correct_option,
+            image_b64=q.image_b64, question_text_hi=q.question_text_hi, model_answer_hi=q.model_answer_hi,
+            options_hi=q.options_hi, model_answer_image=q.model_answer_image, alt_image_b64=q.alt_image_b64,
+            explanation=q.explanation, explanation_hi=q.explanation_hi))
+        n += 1
+    db.commit()
+    return {"ok": True, "id": new_ex.id, "questions": n}
+
+
+
     _ensure_exam_columns(db)
     from models import ExamView, StudentProfile
     tp = get_teacher_profile(current_user, db)

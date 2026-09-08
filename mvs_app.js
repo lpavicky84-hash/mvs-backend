@@ -4301,12 +4301,53 @@ async function openMatAudience(mid,which){
   }catch(e){ document.getElementById('ma-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 
+async function openCopyToBatch(kind,id){
+  // kind: 'test' (Exam) | 'dpp' (DppPack). Ek batch ka banaya test/DPP doosre batch ke liye copy.
+  var item=(kind==='test'?(window._tExams||[]):(window._dppPacks||[])).filter(function(x){return x.id===id;})[0];
+  if(!item){ toast('Item not found. Refresh and try again.',true); return; }
+  var bl=[];
+  try{ var r=await api('/api/teacher/tt-batches'); bl=(r&&r.batches)||[]; }catch(e){}
+  window._ttBatchList=bl;
+  if(!bl.length){ toast('No batches found to copy into.',true); return; }
+  var curBid=item.batch_id||0;
+  var curName=(bl.filter(function(b){return String(b.id)===String(curBid);})[0]||{}).name||'';
+  var opts=bl.map(function(b){
+    var isCur=(String(b.id)===String(curBid));
+    return '<option value="'+b.id+'"'+(isCur?' disabled':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+(isCur?' \u2014 current':'')+'</option>';
+  }).join('');
+  var isTest=(kind==='test');
+  var dateField=isTest
+    ? '<div class="form-group"><label>New date &amp; time <span style="color:var(--text-muted);font-weight:400">(blank = abhi se available)</span></label><input type="datetime-local" class="form-control" id="cpb-date"></div>'
+    : '<div class="alert alert-info" style="font-size:.8rem">DPP timetable ke chapter/part se dikhta hai \u2014 naye batch me wahi chapter jab schedule hoga tab apne-aap us date pe aa jaayega. Alag date set karne ki zaroorat nahi.</div>';
+  showModal('Copy to another batch',
+    '<div class="alert alert-info" style="font-size:.82rem">"<b>'+esc(item.title||'')+'</b>"'+(curName?(' \u2014 abhi <b>'+esc(curName)+'</b> me hai'):'')+'. Copy karne pe saara content (questions'+(isTest?'':'/PDF')+') huboohu naye batch me chala jaayega. Original waise ka waisa rahega.</div>'
+    +'<div class="form-group"><label>Target batch</label><select class="form-control" id="cpb-batch"><option value="">Select a batch\u2026</option>'+opts+'</select></div>'
+    +'<div class="form-group"><label>Title <span style="color:var(--text-muted);font-weight:400">(optional)</span></label><input class="form-control" id="cpb-title" value="'+esc(item.title||'')+'"></div>'
+    +dateField,
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cpb-btn" onclick="submitCopyToBatch(\''+kind+'\','+id+')">'+ic('copy')+' Copy</button>');
+}
+async function submitCopyToBatch(kind,id){
+  var bid=(document.getElementById('cpb-batch')||{}).value||'';
+  if(!bid){ toast('Please pick a target batch.',true); return; }
+  var payload={batch_id:parseInt(bid,10), title:((document.getElementById('cpb-title')||{}).value||'')};
+  if(kind==='test'){ var dv=(document.getElementById('cpb-date')||{}).value||''; if(dv) payload.scheduled_at=dv; }
+  var btn=document.getElementById('cpb-btn'); if(btn){ btn.disabled=true; btn.textContent='Copying\u2026'; }
+  try{
+    var ep=(kind==='test'?('/api/teacher/exam/'+id+'/copy'):('/api/teacher/dpp-pack/'+id+'/copy'));
+    await api(ep,'POST',payload);
+    toast('Copied to the batch.');
+    closeModal();
+    try{ _apiForget('exams'); _apiForget('dpp-packs'); }catch(e){}
+    if(kind==='test') loadTTests(); else loadTDpp();
+  }catch(e){ toast((e&&e.message)||'Could not copy',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('copy')+' Copy'; } }
+}
 async function loadTDpp(){
   const el=document.getElementById('t-dpp-content');
   softSpin(el);
   try{
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
+    if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
     if(window._tDppSub===undefined) window._tDppSub='';   // pehle sirf cards; koi auto-select nahi
     _renderTDpp();
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -4323,7 +4364,7 @@ function _tDppCardHTML(pk){
   <div style="display:flex;gap:13px;align-items:flex-start">
     ${window._myPhotoUrl?`<div class="dpp-ava" title="${esc(pk.subject)}" style="background-image:url('${window._myPhotoUrl}');background-size:cover;background-position:center"></div>`:`<div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>`}
     <div style="flex:1;min-width:0">
-      <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+      <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.batch_id&&_batName(pk.batch_id)?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(_batName(pk.batch_id))}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
       <div class="dpp-title">${esc(pk.title)}</div>
       <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
       <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${pk.submitted||0} submission${(pk.submitted||0)===1?'':'s'}</div>
@@ -4337,6 +4378,7 @@ function _tDppCardHTML(pk){
         <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
         <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
         ${pk.source==='created'?`<button class="btn btn-ghost btn-sm" onclick="openEditDpp(${pk.id})">${ic('edit')} Edit</button>`:''}
+        <button class="btn btn-ghost btn-sm" title="Isi DPP ko doosre batch (e.g. Crash Course) ke liye copy karo" onclick="openCopyToBatch('dpp',${pk.id})">${ic('copy')} Copy to batch</button>
         <button class="btn btn-danger btn-sm" onclick="dppDelete(${pk.id},'${esc(pk.title).replace(/'/g,'')}')">${ic('trash')} Delete</button>
       </div></div>
     </div>
@@ -5117,11 +5159,13 @@ async function submitLecture(){
   }catch(e){ toast(e.message,true); if(btn){ btn.disabled=false; btn.textContent='Publish Report'; } }
 }
 
+function _batName(bid){ if(!bid) return ''; var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0]; return b?b.name:''; }
 async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
     const exams=await api('/api/teacher/exams');
     window._tExams=exams;
+    if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
     const F=window._tTestFilter||'all';
     const totAtt=exams.reduce((sum,e)=>sum+(e.attempts||0),0);
     const totGrd=exams.reduce((sum,e)=>sum+(e.graded||0),0);
@@ -5158,6 +5202,7 @@ async function loadTTests(){
               <div class="tx-meta">
                 ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
                 ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:`<span class="tx-pill s">All Classes</span>`}
+                ${e.batch_id&&_batName(e.batch_id)?`<span class="tx-pill s" title="Batch" style="border-color:rgba(184,148,31,.5);color:#9a7d1a">${ic('folder')} ${esc(_batName(e.batch_id))}</span>`:''}
                 ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
                 <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} ${e.duration_min?('<b>'+e.duration_min+'</b> min'):'No time limit'}</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
               </div>
@@ -5168,6 +5213,7 @@ async function loadTTests(){
             <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
             <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
             <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
+            <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
             <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
