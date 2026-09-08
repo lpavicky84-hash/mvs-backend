@@ -10190,11 +10190,20 @@ function _vtThumbFile(file){
   };
   reader.readAsDataURL(file);
 }
+function _vtThumbUrl(t){
+  // Admin/teacher/production ke liye ek hi resolution — taaki jo thumbnail production pe dikhta
+  // hai wahi admin+teacher pe bhi dikhe. t.thumbnail STRING (final url) ya OBJECT {approved,url}
+  // dono ho sakta hai. Guard: graphics designer assigned hai par abhi approved nahi -> pending
+  // (WIP), tab na dikhao (production _finalThumb wala hi rule).
+  if(!t) return '';
+  try{ var g=t.graphics||{}; if((g.graphics_id||g.graphics_name)&&(g.status||'')!=='approved') return ''; }catch(e){}
+  var th=t.thumbnail;
+  if(typeof th==='string') return th||'';
+  if(th && typeof th==='object') return th.url||'';
+  return '';
+}
 function _vtThumb(t,who){
-  // Only the APPROVED graphics thumbnail is the real thumbnail. The teacher's uploaded
-  // reference (thumbnail_b64 / thumbnail_link) is a reference only — it must NEVER show as
-  // the card image, otherwise a pending reference looks like the final thumbnail.
-  const gth=(t.thumbnail && t.thumbnail.approved && t.thumbnail.url)?t.thumbnail.url:'';
+  const gth=_vtThumbUrl(t);
   const has=!!gth;
   const _is='width:100%;height:100%;object-fit:cover;display:block';
   const img=gth?`<img loading="lazy" src="${esc(gth)}" onerror="this.remove()" alt="" style="${_is}">`:'';
@@ -10205,7 +10214,7 @@ function _vtTypeBadge(t){ return t.video_type?`<span class="vt-type">${ic('play'
 function vtThumbOpen(id,who){
   const t=(((who==='a')?window._avtMap:window._tvtMap)||{})[id]; if(!t) return;
   const name=((t.title||'thumbnail').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'thumbnail');
-  const link=(t.thumbnail&&t.thumbnail.approved&&t.thumbnail.url)?t.thumbnail.url:'';
+  const link=_vtThumbUrl(t);
   if(!link){ toast('No thumbnail attached to this task'); return; }
   if(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(link)) openImageViewerSrc(link,name+'.jpg');
   else window.open(link,'_blank');
@@ -10978,7 +10987,7 @@ async function openVTEdit(id,ev){
         <input id="vt-e-thumb" type="file" accept="image/*" style="display:none" onchange="vtThumbPreview(this)">
         <div class="vt-hint">or paste a drive link below</div>
         <input id="vt-e-thumblink" class="input" style="margin-top:8px" placeholder="https://drive.google.com/..." value="${esc(t.thumbnail_link||'')}">
-        <div id="vt-thumb-prev" style="margin-top:8px">${(t.thumbnail&&t.thumbnail.approved&&t.thumbnail.url)?`<img loading="lazy" src="${esc(t.thumbnail.url)}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
+        <div id="vt-thumb-prev" style="margin-top:8px">${_vtThumbUrl(t)?`<img loading="lazy" src="${esc(_vtThumbUrl(t))}" style="max-height:90px;border-radius:10px;border:1px solid var(--border)">`:''}</div>
       </div>`}
       <div class="form-group" style="grid-column:1/-1"><label>Reference / Brief</label><textarea id="vt-e-ref" class="input" rows="2">${esc(t.reference||'')}</textarea></div>
       ${(t.proposal_refs&&t.proposal_refs.length)?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's reference thumbnails (from proposal)</label><div class="thumb-gal">${t.proposal_refs.map((u,i)=>`<div class="thumb-cell"><span class="thumb-n">Ref ${i+1}</span><img loading="lazy" src="${esc(u)}"><div class="thumb-vd"><button class="thumb-vd-btn" onclick="window.open('${esc(u).replace(/'/g,'')}','_blank','noopener')">\uD83D\uDC41 View</button><a class="thumb-vd-btn" href="${esc(u)}" download target="_blank" rel="noopener">\u2B07 Download</a></div></div>`).join('')}</div></div>`:''}
