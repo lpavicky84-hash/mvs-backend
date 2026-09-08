@@ -3010,6 +3010,23 @@ def admin_delete_tt_subject(subject: str, class_level: str = "", db: Session = D
     db.commit()
     return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
 
+
+@router.delete("/timetable-batch")
+def admin_delete_tt_batch(batch_id: int, subject: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek BATCH ka poora timetable delete (crash course samet). subject diya ho to sirf us batch
+    ka wo subject delete hota hai; warna us batch ke saare entries. Sirf batch-scoped entries pe
+    asar — global/doosre batch ka timetable safe rehta hai."""
+    from models import TimetableEntry
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="Batch is required")
+    q = db.query(TimetableEntry).filter(TimetableEntry.batch_id == batch_id)
+    subject = (subject or "").strip()
+    if subject:
+        q = q.filter(TimetableEntry.subject == subject)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} entries deleted"}
+
 # ===== ADMIN: CLEAR TIMETABLE (whole class or everything) =====
 @router.get("/timetable-pending")
 def admin_timetable_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -3344,15 +3361,21 @@ def _cc_subj_day(s):
 
 
 def _cc_parse_pdf(raw, year):
-    """Return (primary_stream, [ {subject, teacher, classes:[{day,date,time}]} ])."""
+    """Return (primary_stream, [ {subject, teacher, classes:[{day,date,time}]} ]).
+    Day-1 upar wale 'Youtube Crash Course Time Table' section me hota hai (har subject kisi
+    EK sub-section me). Class-12 batches (Science/Commerce/Arts) aapas me Day-1 share karte hain
+    (subject naam se match); Class-10 (UDAAN) alag. Day-2..N stream-specific detail section se."""
     import io as _io
     try:
         import pdfplumber
     except Exception:
         raise HTTPException(status_code=500, detail="PDF parser (pdfplumber) not available on the server.")
-    rows = []
+    CLASS12 = {"Science", "Commerce", "Arts"}
+    top = []      # Day-1 youtube classes (subject, day, date, time, teacher, stream=sub-section)
+    det = []      # stream-specific Day-2..N
     cur_date = None
     cur_stream = None
+    section = "top"
     primary = None
     with pdfplumber.open(_io.BytesIO(raw)) as pdf:
         for page in pdf.pages:
@@ -3363,12 +3386,15 @@ def _cc_parse_pdf(raw, year):
                         continue
                     dcell, tcell, scell, teacher = r[0], r[1], r[2], r[3]
                     if dcell and not tcell and not scell:
+                        low = dcell.lower()
                         st = _cc_stream_of(dcell)
-                        if st:
-                            cur_stream = st
-                        if "time table" in dcell.lower() and "class 1" in dcell.lower():
+                        if "time table" in low and "class 1" in low:
+                            section = "detail"
                             if st:
                                 primary = st
+                            cur_stream = st
+                        elif st:
+                            cur_stream = st
                         cur_date = None
                         continue
                     if scell == "Subject" or tcell == "Time Slot":
@@ -3381,28 +3407,49 @@ def _cc_parse_pdf(raw, year):
                     subj, day = _cc_subj_day(scell)
                     if not subj:
                         continue
-                    rows.append({"date": (cur_date.isoformat() if cur_date else None),
-                                 "time": tcell, "subject": subj, "day": day,
-                                 "teacher": teacher, "stream": cur_stream})
+                    row = {"subject": subj, "day": day,
+                           "date": (cur_date.isoformat() if cur_date else None),
+                           "time": tcell, "teacher": teacher, "stream": cur_stream}
+                    (top if section == "top" else det).append(row)
     if not primary:
         from collections import Counter as _Ct
-        c = _Ct(x["stream"] for x in rows if x["stream"])
+        c = _Ct(x["stream"] for x in det if x["stream"])
         primary = c.most_common(1)[0][0] if c else None
-    rows = [x for x in rows if x["stream"] == primary]
-    bysub = {}
-    for x in rows:
-        bysub.setdefault(x["subject"], {"subject": x["subject"], "teacher": x.get("teacher", ""), "classes": []})
-        bysub[x["subject"]]["classes"].append({"day": x["day"], "date": x["date"], "time": x["time"]})
+    level12 = primary in CLASS12
+    detp = [r for r in det if r["stream"] == primary]
+    det_subs = {}
+    for r in detp:
+        det_subs.setdefault(r["subject"], []).append(r)
+    primary_top = {r["subject"] for r in top if r["stream"] == primary}
+    all_subs = set(det_subs.keys()) | primary_top
+
+    def _find_top1(sub):
+        cands = [r for r in top
+                 if ((r["stream"] in CLASS12) if level12 else (r["stream"] == "Class 10"))
+                 and r["subject"].strip().lower() == sub.strip().lower()]
+        if not cands:
+            return None
+        for r in cands:
+            if r["stream"] == primary:
+                return r
+        return cands[0]
+
     out = []
-    for sub in sorted(bysub):
-        cs = sorted(bysub[sub]["classes"], key=lambda z: z["day"])
-        # dedup by day (keep first)
-        seen = set(); ded = []
-        for c in cs:
-            if c["day"] in seen:
-                continue
-            seen.add(c["day"]); ded.append(c)
-        out.append({"subject": sub, "teacher": bysub[sub]["teacher"], "classes": ded})
+    for sub in sorted(all_subs):
+        classes = {}
+        for r in det_subs.get(sub, []):
+            classes[r["day"]] = {"day": r["day"], "date": r["date"], "time": r["time"]}
+        teacher = (det_subs.get(sub) or [{}])[0].get("teacher", "")
+        if 1 not in classes:
+            t1 = _find_top1(sub)
+            if t1:
+                classes[1] = {"day": 1, "date": t1["date"], "time": t1["time"]}
+                if not teacher:
+                    teacher = t1.get("teacher", "")
+        if not classes:
+            continue
+        out.append({"subject": sub, "teacher": teacher,
+                    "classes": [classes[k] for k in sorted(classes)]})
     return primary, out
 
 

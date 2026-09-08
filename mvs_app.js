@@ -3757,7 +3757,7 @@ async function openTeacherCrash(){
       return '<div class="tc-drow" data-eid="'+e.id+'">'
         +'<div class="tc-dbadge">'+esc(e.part||'')+'</div>'
         +'<div class="tc-dmeta">'+esc(e.date||'')+(e.time?(' \u00b7 '+esc(e.time)):'')+'</div>'
-        +'<select class="form-control tc-ch" data-eid="'+e.id+'" data-cur="'+esc(e.chapter||'')+'"><option value="">'+(e.chapter?('\u2713 '+esc(e.chapter)):'Loading chapters\u2026')+'</option></select>'
+        +'<div class="tc-chwrap" data-eid="'+e.id+'" data-cur="'+esc(e.chapter||'').replace(/"/g,'&quot;')+'"><button type="button" class="form-control tc-chbtn" onclick="_tcTogglePanel(event,'+e.id+')"><span class="tc-chlabel" id="tc-chlabel-'+e.id+'">'+(e.chapter?esc(e.chapter):'Loading chapters\u2026')+'</span><span style="opacity:.55;flex-shrink:0">\u25be</span></button><div class="tc-chpanel" id="tc-chpanel-'+e.id+'"></div></div>'
         +'<input class="form-control tc-yt" data-eid="'+e.id+'" placeholder="YouTube link (optional)" value="'+yt+'">'
         +'<button class="btn btn-primary btn-sm" onclick="tcSaveDay('+e.id+')">'+ic('check')+' Save</button></div>';
     }).join('');
@@ -3768,7 +3768,14 @@ async function openTeacherCrash(){
       +'.tc-drow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border);border-radius:11px;margin-bottom:7px}'
       +'.tc-dbadge{font-weight:800;font-size:.72rem;background:rgba(184,148,31,.15);color:#9a7d1a;padding:3px 10px;border-radius:999px;min-width:56px;text-align:center}'
       +'.tc-dmeta{font-size:.74rem;color:var(--text-muted);min-width:120px}'
-      +'.tc-ch{flex:1;min-width:170px}.tc-yt{flex:1;min-width:170px}';
+      +'.tc-ch{flex:1;min-width:170px}.tc-yt{flex:1;min-width:170px}'
+      +'.tc-chwrap{position:relative;flex:1;min-width:190px}'
+      +'.tc-chbtn{width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;overflow:hidden}'
+      +'.tc-chlabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+      +'.tc-chpanel{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;max-height:240px;overflow:auto;background:var(--card,#fff);border:1px solid var(--border);border-radius:11px;box-shadow:0 12px 30px rgba(0,0,0,.16);padding:5px}'
+      +'.tc-chpanel.open{display:block}'
+      +'.tc-chopt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.85rem}'
+      +'.tc-chopt:hover{background:rgba(184,148,31,.08)}.tc-chopt input{width:15px;height:15px;flex-shrink:0}';
     document.head.appendChild(st); }
   document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Har Day ke liye chapter (syllabus se) chuno aur, agar wo class YouTube pe hai to link lagao. Save dabao. <b>Progress</b> upar dikhta hai \u2014 wo class report (Mark Done) ke time complete kiye chapters se banti hai (distinct, subject total tak).</div>'+html;
   if(!document.getElementById('tcprog-css')){ var pst=document.createElement('style'); pst.id='tcprog-css';
@@ -3787,19 +3794,27 @@ async function openTeacherCrash(){
     var cl=(String(g.cls||'').match(/\d+/)||[''])[0];
     api('/api/teacher/tt-chapters?subject='+encodeURIComponent(g.subject)+'&class_level='+encodeURIComponent(cl)).then(function(r){
       var chs=(r&&r.chapters)||[];
-      document.querySelectorAll('.tc-ch').forEach(function(sel){
-        var eid=sel.getAttribute('data-eid'); var row=g.rows.filter(function(x){return String(x.id)===String(eid);})[0]; if(!row) return;
-        var cur=sel.getAttribute('data-cur')||'';
-        sel.innerHTML='<option value="">\u2014 Select chapter \u2014</option>'+chs.map(function(c){return '<option value="'+esc(c).replace(/"/g,'&quot;')+'"'+(c===cur?' selected':'')+'>'+esc(c)+'</option>';}).join('')+(cur&&chs.indexOf(cur)<0?('<option value="'+esc(cur).replace(/"/g,'&quot;')+'" selected>'+esc(cur)+'</option>'):'');
+      document.querySelectorAll('.tc-chwrap').forEach(function(wrap){
+        var eid=wrap.getAttribute('data-eid'); var row=g.rows.filter(function(x){return String(x.id)===String(eid);})[0]; if(!row) return;
+        var cur=(wrap.getAttribute('data-cur')||'').split('|').map(function(x){return x.trim();}).filter(Boolean);
+        var panel=document.getElementById('tc-chpanel-'+eid); if(!panel) return;
+        var extra=cur.filter(function(c){return chs.indexOf(c)<0;});   // current chapter jo syllabus me nahi
+        var all=chs.concat(extra);
+        panel.innerHTML=all.length?all.map(function(c){var on=cur.indexOf(c)>=0;return '<label class="tc-chopt"><input type="checkbox" class="tc-chk" data-eid="'+eid+'" value="'+esc(c).replace(/"/g,'&quot;')+'"'+(on?' checked':'')+' onchange="_tcSyncLabel('+eid+')"> '+esc(c)+'</label>';}).join(''):'<div style="padding:8px;font-size:.8rem;color:var(--text-muted)">No syllabus chapters found. Syllabus Manager me add karo.</div>';
+        _tcSyncLabel(eid);
       });
     }).catch(function(){});
   });
 }
+function _tcTogglePanel(ev, eid){ if(ev){ ev.stopPropagation(); ev.preventDefault(); } var p=document.getElementById('tc-chpanel-'+eid); if(!p) return; var open=p.classList.contains('open'); document.querySelectorAll('.tc-chpanel.open').forEach(function(x){x.classList.remove('open');}); if(!open) p.classList.add('open'); }
+function _tcSyncLabel(eid){ var boxes=[].slice.call(document.querySelectorAll('.tc-chk[data-eid="'+eid+'"]:checked')).map(function(x){return x.value;}); var lbl=document.getElementById('tc-chlabel-'+eid); if(!lbl) return; if(!boxes.length){ lbl.textContent='\u2014 Select chapters \u2014'; lbl.style.opacity='.6'; } else { lbl.style.opacity='1'; lbl.textContent=boxes.length===1?boxes[0]:(boxes.length+' chapters selected'); } }
+if(!window._tcOutsideBound){ window._tcOutsideBound=1; document.addEventListener('click', function(ev){ if(ev.target.closest && ev.target.closest('.tc-chwrap')) return; document.querySelectorAll('.tc-chpanel.open').forEach(function(x){x.classList.remove('open');}); }); }
 async function tcSaveDay(eid){
-  var sel=document.querySelector('.tc-ch[data-eid="'+eid+'"]'); var yt=document.querySelector('.tc-yt[data-eid="'+eid+'"]');
-  var chapter=(sel&&sel.value||'').trim(); var link=(yt&&yt.value||'').trim();
+  var boxes=[].slice.call(document.querySelectorAll('.tc-chk[data-eid="'+eid+'"]:checked')).map(function(x){return x.value;});
+  var yt=document.querySelector('.tc-yt[data-eid="'+eid+'"]');
+  var chapter=boxes.join(' | '); var link=(yt&&yt.value||'').trim();
   var body={youtube_link:link}; if(chapter) body.chapter=chapter;
-  try{ await api('/api/teacher/timetable-entry/'+eid,'PATCH',body); toast('Saved.'); }
+  try{ await api('/api/teacher/timetable-entry/'+eid,'PATCH',body); toast(boxes.length>1?(boxes.length+' chapters saved.'):'Saved.'); }
   catch(e){ toast((e&&e.message)||'Could not save',true); }
 }
 async function loadTTimetable(){
