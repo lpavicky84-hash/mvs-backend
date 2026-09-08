@@ -3742,25 +3742,15 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
         cols = cols.filter(or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
                                User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
                                StudentProfile.nios_ref.ilike(ql)))
-    _sub = subject.split("|")[0].strip() if subject else ""
-    if _sub:
-        # Subjects coded ho sakte hain ("English 302") ya code-only — isliye subject match
-        # Python me canon karke (filter-counts jaisa) taaki har storage me sahi mile.
-        all_rows = cols.order_by(User.name).all()
-        _sl = _sub.lower()
-        def _has_subj(r):
+    if subject:
+        sub = subject.split("|")[0].strip()
+        if sub:
             try:
-                disp = _SR.canon_list(r.subjects or [], r.class_level) if _SR else (r.subjects or [])
+                cols = cols.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
             except Exception:
-                disp = r.subjects or []
-            return any(str(x).strip().lower() == _sl for x in (disp or []))
-        matched = [r for r in all_rows if _has_subj(r)]
-        total = len(matched)
-        _st = (page - 1) * page_size
-        rows = matched[_st:_st + page_size]
-    else:
-        total = cols.count()
-        rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
+                pass
+    total = cols.count()
+    rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
     students = []
     for r in rows:
         ssubs = r.subjects or []
@@ -3790,7 +3780,7 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     if hit and (_time.time() - hit[0] < 30):
         return hit[1]
     from models import StudentProfile
-    base = db.query(StudentProfile.id)   # id-only base -> count/subquery kabhi naye columns pe fail na ho
+    base = db.query(StudentProfile)
     if source: base = base.filter(StudentProfile.source == source)
     if session:
         if session == "__none__":

@@ -13579,8 +13579,9 @@ function _stuQP(){
     +'&page='+_stuPage+'&page_size='+_stuSize;
 }
 async function _stuReload(){
+  window._stuLastErr='';
   try{ const d=await api('/api/admin/students-paged?'+_stuQP()); _aStuPageRows=d.students||[]; _aStuTotal=d.total||0; }
-  catch(e){ _aStuPageRows=[]; _aStuTotal=0; }
+  catch(e){ _aStuPageRows=[]; _aStuTotal=0; window._stuLastErr=(e&&e.message)||String(e); try{ console.error('students-paged error:',e); }catch(_){} }
   _aStu=_aStuPageRows;  // current page — openStudentProfile jaise purane references isi par kaam karein
   aRenderStudents();
 }
@@ -14129,7 +14130,7 @@ function aRenderStudents(){
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
     return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
-  }).join(''):`<div class="empty-state"><p>No students match this view.</p></div>`;
+  }).join(''):`<div class="empty-state"><p>No students match this view.</p>${window._stuLastErr?`<p style="color:#c1443a;font-size:.82rem;margin-top:8px">⚠ ${esc(window._stuLastErr)}</p>`:''}</div>`;
   const ov=window._aPortalOv;
   const segB=(id,label,n)=>`<button class="seg-b ${_stuSrcFilter===id?'active':''}" onclick="aStuSrcFilter('${id}')">${label}<span class="seg-n">${n}</span></button>`;
   const srcChips=ov?`<div style="display:flex;gap:12px;flex-wrap:wrap;margin:0 4px 16px;align-items:center">
