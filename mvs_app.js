@@ -2465,7 +2465,7 @@ function openClassReport(id){
   if(_isCrashEntry(c)){
     var cl=(String(c.class_name||'').match(/\d+/)||[''])[0];
     var done=(c.chapter||'').split('|').map(function(x){return x.trim();}).filter(Boolean);
-    api('/api/teacher/tt-chapters?subject='+encodeURIComponent(c.subject||'')+'&class_level='+encodeURIComponent(cl)).then(function(r){
+    api('/api/teacher/tt-chapters?subject='+encodeURIComponent(c.subject||'')+'&class_level='+encodeURIComponent(cl)+'&crash=1').then(function(r){
       var chs=(r&&r.chapters)||[]; var el=document.getElementById('cr-chdone'); if(!el) return;
       if(!document.getElementById('crch-css')){ var st=document.createElement('style'); st.id='crch-css';
         st.textContent='.cr-chdone{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:11px;padding:6px;margin-top:4px}'
@@ -3792,7 +3792,7 @@ async function openTeacherCrash(){
   Object.keys(groups).forEach(function(key){
     var g=groups[key]; var ck=g.subject+'||'+g.cls; if(done[ck]) return; done[ck]=1;
     var cl=(String(g.cls||'').match(/\d+/)||[''])[0];
-    api('/api/teacher/tt-chapters?subject='+encodeURIComponent(g.subject)+'&class_level='+encodeURIComponent(cl)).then(function(r){
+    api('/api/teacher/tt-chapters?subject='+encodeURIComponent(g.subject)+'&class_level='+encodeURIComponent(cl)+'&crash=1').then(function(r){
       var chs=(r&&r.chapters)||[];
       document.querySelectorAll('.tc-chwrap').forEach(function(wrap){
         var eid=wrap.getAttribute('data-eid'); var row=g.rows.filter(function(x){return String(x.id)===String(eid);})[0]; if(!row) return;
@@ -18468,7 +18468,7 @@ function renderStudentChapters(list, subject, opts){
     _chDoneD=_done.size; _totId='crashtot-'+Math.random().toString(36).slice(2,8); _chTotD='<span id="'+_totId+'">…</span>';
     // syllabus total async (admin/teacher). Update DOM + progress bar after render.
     var _ep=(opts.onEditAny||opts.onReport)?'/api/admin/timetable-chapters':((opts.onLecture||opts.onComplete||opts.onEdit)?'/api/teacher/tt-chapters':'');
-    if(_ep){ (function(sub,cl,doneN,id,ep){ setTimeout(function(){ api(ep+'?subject='+encodeURIComponent(sub)+'&class_level='+encodeURIComponent(cl)).then(function(r){ var t=((r&&r.chapters)||[]).length; var sp=document.getElementById(id); if(sp&&t){ sp.textContent=t; var pc=t?Math.round(doneN/t*100):0; var card=sp.closest('.stt-summary'); if(card){ var f=card.querySelector('.stt-sfill'); if(f) f.style.width=pc+'%'; var sy=card.querySelector('.stt-syl'); if(sy) sy.textContent=pc+'% syllabus completed'; } } }).catch(function(){}); },30); })(subject,_cls,_chDoneD,_totId,_ep); }
+    if(_ep){ (function(sub,cl,doneN,id,ep){ setTimeout(function(){ api(ep+'?subject='+encodeURIComponent(sub)+'&class_level='+encodeURIComponent(cl)+'&crash=1').then(function(r){ var t=((r&&r.chapters)||[]).length; var sp=document.getElementById(id); if(sp&&t){ sp.textContent=t; var pc=t?Math.round(doneN/t*100):0; var card=sp.closest('.stt-summary'); if(card){ var f=card.querySelector('.stt-sfill'); if(f) f.style.width=pc+'%'; var sy=card.querySelector('.stt-syl'); if(sy) sy.textContent=pc+'% syllabus completed'; } } }).catch(function(){}); },30); })(subject,_cls,_chDoneD,_totId,_ep); }
     else { _chTotD=String(Math.max(_done.size, new Set(list.filter(it=>it.crash).flatMap(it=>it.parts.flatMap(p=>(p.chapter||'').split('|').map(x=>x.trim().toLowerCase()).filter(Boolean)))).size)); }
     syl=0; // crash bar syllabus-total aane par update hoti hai
   }

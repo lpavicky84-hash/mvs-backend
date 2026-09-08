@@ -305,6 +305,40 @@ def _teacher_subject_list(db, tp):
     return out
 
 
+import re as _crashre
+_CC_NONCHAP = _crashre.compile(r"\b(subjective test|objective test|test|tma|assignment|pyq|practical|project|viva)\b", _crashre.I)
+
+
+def crash_norm_key(t):
+    """Chapter naam ka normalized key — 'L-1. Basics of Computer' aur 'Chapter 1 - Basics
+    of Computer' dono ka same key (duplicate merge ke liye)."""
+    s = (t or "").lower()
+    s = _crashre.sub(r"^\s*l[-\s]*\d+[\.\s):-]*", "", s)
+    s = _crashre.sub(r"^\s*chapter\s*\d+\s*[-\u2013:.\s]*", "", s)
+    s = _crashre.sub(r"^\s*unit\s*\d+\s*[-\u2013:.\s]*", "", s)
+    s = _crashre.sub(r"^\s*t[-\s]*\d+[\.\s):-]*", "", s)
+    s = _crashre.sub(r"\b(of|the|and|to|a|an|introduction|for|in)\b", " ", s)
+    s = _crashre.sub(r"[^a-z0-9]", "", s)
+    return s
+
+
+def crash_clean_chapters(titles):
+    """Crash course chapter list saaf — tests/assignments hatao, duplicate chapters
+    (L-1 vs Chapter 1, same naam) merge karo. Pehla occurrence rakhta hai."""
+    out = []
+    seen = set()
+    for t in (titles or []):
+        t = (t or "").strip()
+        if not t or _CC_NONCHAP.search(t):
+            continue
+        k = crash_norm_key(t)
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        out.append(t)
+    return out
+
+
 def _chapters_for(db, tid, name, cls, scope="", group=""):
     """([chapter titles], source). Syllabus manager (admin overrides included)
     -> timetable topics -> [] (baad me auto-sync). Display naam is function ka

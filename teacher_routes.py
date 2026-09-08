@@ -85,9 +85,10 @@ def teacher_tt_batches(db: Session = Depends(get_db), current_user=Depends(get_t
 
 
 @router.get("/tt-chapters")
-def teacher_tt_chapters(subject: str = "", class_level: str = "",
+def teacher_tt_chapters(subject: str = "", class_level: str = "", crash: int = 0,
                         db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Chapter suggestions (distinct, split on ' + ')."""
+    """Chapter suggestions (distinct, split on ' + '). crash=1 -> saaf list (tests hatao,
+    duplicate chapters merge) — crash course chapter picker + progress ke liye."""
     from models import TimetableEntry
     subject = (subject or "").strip()
     out, seen = [], set()
@@ -95,14 +96,24 @@ def teacher_tt_chapters(subject: str = "", class_level: str = "",
         p = (p or "").strip()
         if p and p.lower() not in seen:
             seen.add(p.lower()); out.append(p)
+    syll = []
     if subject:
         try:
             from video_tasks import _chapters_for
             titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "", "")
             for t in (titles or []):
-                _add(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
+                syll.append(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
         except Exception:
             pass
+    if crash:
+        try:
+            from video_tasks import crash_clean_chapters
+            return {"chapters": crash_clean_chapters(syll)[:500]}
+        except Exception:
+            return {"chapters": [x for x in syll if x][:500]}
+    for t in syll:
+        _add(t)
+    if subject:
         try:
             for r in (db.query(TimetableEntry.chapter)
                       .filter(TimetableEntry.subject == subject,
@@ -1200,6 +1211,37 @@ def teacher_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), c
     return {"added": added, "subjects": subjects_found}
 
 # ===== TEACHER: EDIT TIMETABLE ENTRY TOPIC/PART =====
+def _crash_propagate(db, e, fields):
+    """Crash entry (part='Day N') ke diye hue fields ko same subject + same Day + same class
+    ke doosre crash batches me copy karo. Isse Class-12 ke shared subjects (Data Entry, English,
+    Home Science) ka chapter/youtube/completion EK BAAR set karo -> sabhi Class-12 crash batches
+    me chala jaata hai. class_name match hone se Class-10 alag rehta hai."""
+    import re as _re
+    try:
+        if not e or not e.part or not _re.match(r"^day\s*\d+$", (e.part or "").strip(), _re.I):
+            return
+        from models import TimetableEntry
+        sibs = db.query(TimetableEntry).filter(
+            TimetableEntry.subject == e.subject,
+            TimetableEntry.part == e.part,
+            TimetableEntry.class_name == e.class_name,
+            TimetableEntry.id != e.id).all()
+        n = 0
+        for s in sibs:
+            if not (s.part and _re.match(r"^day\s*\d+$", (s.part or "").strip(), _re.I)):
+                continue
+            for f in fields:
+                setattr(s, f, getattr(e, f))
+            n += 1
+        if n:
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 @router.patch("/timetable-entry/{entry_id}")
 def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
@@ -1235,6 +1277,7 @@ def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), c
         else:
             e.entry_date = None
     db.commit()
+    _crash_propagate(db, e, ["chapter", "youtube_link"])   # Class-12 shared crash subjects
     # ---- activity log: timing change / date change / edit ----
     _new_time = e.time_text or ""
     _new_date = e.entry_date.strftime("%d %b") if e.entry_date else ""
@@ -2750,6 +2793,7 @@ def teacher_complete_class(entry_id: int, payload: dict, background_tasks: Backg
     e.dpp_given = bool(payload.get("dpp_given"))
     e.remarks = (payload.get("remarks") or "").strip() or None
     db.commit()
+    _crash_propagate(db, e, ["chapter", "topic_covered", "completed", "completed_at"])   # shared crash completion
     _maybe_warn_late(db, tp, e)
     if background_tasks is not None:
         background_tasks.add_task(_notify_class_done, e.subject, e.chapter or "",
@@ -2766,39 +2810,48 @@ def teacher_crash_progress(batch: int = 0, subject: str = "", class_level: str =
     from models import TimetableEntry
     total_titles = []
     try:
-        from video_tasks import _chapters_for
+        from video_tasks import _chapters_for, crash_clean_chapters
         titles, _src = _chapters_for(db, 0, subject, class_level or "", "", "")
+        raw = []
         for t in (titles or []):
             nm = t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t))
             nm = (nm or "").strip()
             if nm:
-                total_titles.append(nm)
+                raw.append(nm)
+        total_titles = crash_clean_chapters(raw)   # tests hatao + duplicate merge
     except Exception:
         total_titles = []
-    total = len(total_titles)
+    try:
+        from video_tasks import crash_norm_key
+    except Exception:
+        def crash_norm_key(x):
+            return (x or "").strip().lower()
+    total_keys = {}
+    for t in total_titles:
+        k = crash_norm_key(t)
+        if k and k not in total_keys:
+            total_keys[k] = t
+    total = len(total_keys)
     q = db.query(TimetableEntry).filter(TimetableEntry.subject == subject,
                                         TimetableEntry.part.like("Day %"),
                                         TimetableEntry.completed == True)
     if batch:
         q = q.filter(TimetableEntry.batch_id == batch)
-    done_set = set()
+    done_keys = set()
     for e in q.all():
         for ch in (e.chapter or "").split("|"):
             ch = ch.strip()
             if ch:
-                done_set.add(ch)
-    if total_titles:
-        _norm = {t.strip().lower(): t for t in total_titles}
-        matched = {_norm[c.lower()] for c in done_set if c.lower() in _norm}
-        if matched:
-            done_list = sorted(matched)
-            done = len(done_list)
-        else:
-            done_list = sorted(done_set)
-            done = min(len(done_set), total)
+                k = crash_norm_key(ch)
+                if k:
+                    done_keys.add(k)
+    if total_keys:
+        matched = done_keys & set(total_keys.keys())
+        done_list = sorted(total_keys[k] for k in matched)
+        done = len(matched)
     else:
-        done_list = sorted(done_set)
-        done = len(done_set)
+        done_list = []
+        done = len(done_keys)
     if total:
         done = min(done, total)
     return {"done": done, "total": total, "done_chapters": done_list, "total_chapters": total_titles}

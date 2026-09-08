@@ -3145,10 +3145,11 @@ def admin_set_batch_subjects(payload: dict = Body(...), db: Session = Depends(ge
 
 
 @router.get("/timetable-chapters")
-def admin_timetable_chapters(subject: str = "", class_level: str = "",
+def admin_timetable_chapters(subject: str = "", class_level: str = "", crash: int = 0,
                              db: Session = Depends(get_db), _=Depends(get_admin)):
     """Chapter suggestions for the timetable builder — distinct chapters already used for this
-    subject (split on the ' + ' merge separator). Admin can also type a brand-new one."""
+    subject (split on the ' + ' merge separator). Admin can also type a brand-new one.
+    crash=1 -> saaf list (tests hatao + duplicate merge) crash-course count ke liye."""
     from models import TimetableEntry
     subject = (subject or "").strip()
     out, seen = [], set()
@@ -3156,6 +3157,18 @@ def admin_timetable_chapters(subject: str = "", class_level: str = "",
         p = (p or "").strip()
         if p and p.lower() not in seen:
             seen.add(p.lower()); out.append(p)
+    if crash:
+        syll = []
+        if subject:
+            try:
+                from video_tasks import _chapters_for, crash_clean_chapters
+                titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "", "")
+                for t in (titles or []):
+                    syll.append(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
+                return {"chapters": crash_clean_chapters(syll)[:500]}
+            except Exception:
+                return {"chapters": [x for x in syll if x][:500]}
+        return {"chapters": []}
     if subject:
         # 1) Syllabus Manager chapters (the full, authoritative list for this subject+class)
         try:
