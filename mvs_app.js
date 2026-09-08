@@ -901,11 +901,6 @@ function _injectStudentPwUI(){
       +'<div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="studentForgotPw()" style="color:#b8941f;font-size:.85rem;font-weight:600;text-decoration:none">Forgot password?</a></div>';
     if(phone && phone.parentNode){ phone.parentNode.insertBefore(wrap, phone.nextSibling); } else host.appendChild(wrap);
   } else { var pp=document.getElementById('sp-pass'); if(pp) pp.value=''; document.getElementById('sp-pw-block').style.display='none'; }
-  if(!document.getElementById('sp-hint')){
-    var h=document.createElement('div'); h.id='sp-hint'; h.style.cssText='font-size:.82rem;color:#8a8060;margin-top:12px;line-height:1.5';
-    h.textContent='First time here? Just enter your phone number and tap Continue — you can set up your profile and password inside.';
-    var pb=document.getElementById('sp-pw-block'); if(pb&&pb.parentNode){ pb.parentNode.insertBefore(h, pb.nextSibling); } else host.appendChild(h);
-  } else { document.getElementById('sp-hint').style.display='block'; }
   window._slStep='phone';
   var btn=document.getElementById('sp-fetch-btn'); if(btn){ btn.textContent='Continue'; btn.onclick=studentLoginNext; btn.disabled=false; }
 }
