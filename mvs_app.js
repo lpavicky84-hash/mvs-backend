@@ -3989,6 +3989,13 @@ async function loadTTimetable(){
     var _bIds={}; (_ttEntries||[]).forEach(function(e){ if(e.batch_id) _bIds[e.batch_id]=1; });
     var _bList=(window._ttBatchList||[]).filter(function(b){ return _bIds[b.id]; });
     var _hasGlobal=(_ttEntries||[]).some(function(e){ return !e.batch_id; });
+    // batch select karte hi us batch ki class auto-pick (single-class batch -> wahi class niche select)
+    if(_ttBatch && _ttBatch!=='__none__' && !_ttClass){
+      var _bc={};
+      (_ttEntries||[]).forEach(function(e){ if(String(e.batch_id||'')===String(_ttBatch)){ var c=String(e.class_name||''); if(/(^|[^0-9])10([^0-9]|$)/.test(c)) _bc['10']=1; else if(/12/.test(c)) _bc['12']=1; } });
+      var _bck=Object.keys(_bc);
+      if(_bck.length===1) _ttClass=_bck[0];
+    }
     var _batSelHtml='';
     if(_bList.length+(_hasGlobal?1:0)>1){
       _batSelHtml='<select class="input tt-batsel" onchange="tSetTTBatch(this.value)" style="max-width:230px;font-weight:700"><option value="">All courses</option>'
@@ -4011,7 +4018,7 @@ async function loadTTimetable(){
 function tSetSubj(s){ _ttActiveSub=decodeURIComponent(s); renderStudentTimetable(tFilteredTT(),'t-tline-wrap',{tipTeacherMap:window._ttTeacherMap||{},onEdit:true,onDelete:'deleteTTEntry',onClassFilter:'tClassFilter',activeClass:_ttClass,onLecture:true,onComplete:'openClassReport',emptyMsg:'No entries.',onTab:'tSetSubj',activeSubject:_ttActiveSub,tipTeacher:{url:window._myPhotoUrl||null,name:NAME},heading:'',scopeLabel:'Your subjects'}); }
 let _ttClass='';
 let _ttBatch='';
-function tSetTTBatch(v){ _ttBatch=v; try{ _apiForget('my-timetable'); }catch(e){} loadTTimetable(); }
+function tSetTTBatch(v){ _ttBatch=v; _ttClass=''; _ttActiveSub=''; try{ _apiForget('my-timetable'); }catch(e){} loadTTimetable(); }
 function tFilteredTT(){
   return (_ttEntries||[]).filter(e=>{
     if(_ttBatch==='__none__'){ if(e.batch_id) return false; }
@@ -18645,7 +18652,21 @@ function renderStudentTimetable(entries, containerId, opts={}){
   window._ttLast={entries:entries, containerId:containerId, opts:opts};
   const el=document.getElementById(containerId);
   entries=_classSplit(entries||[],opts);
-  if(!entries||entries.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>${opts.emptyMsg||'No timetable for your subjects yet.'}</p></div></div></div>`; return; }
+  if(!entries||entries.length===0){
+    var _emClsBar='';
+    if(opts.onClassFilter){
+      var _ecv=opts.activeClass||'';
+      _emClsBar='<div class="fbar" style="margin-bottom:12px"><div class="fbar-l">'+ic('grid')+'<span>Class</span></div>'
+        +'<select class="fbar-sel" style="flex:0 1 170px" onchange="'+opts.onClassFilter+'(this.value)">'
+        +'<option value=""'+(!_ecv?' selected':'')+'>Select Class</option>'
+        +'<option value="10"'+(_ecv==='10'?' selected':'')+'>Class 10</option>'
+        +'<option value="12"'+(_ecv==='12'?' selected':'')+'>Class 12</option>'
+        +'<option value="all"'+(_ecv==='all'?' selected':'')+'>All Classes</option>'
+        +'</select></div>';
+    }
+    el.innerHTML='<div class="card"><div class="card-body">'+_emClsBar+'<div class="empty-state"><div class="empty-icon"></div><p>'+(opts.emptyMsg||'No timetable for your subjects yet.')+'</p></div></div></div>';
+    return;
+  }
   const tl=buildTimeline(entries);
   const subjects=Object.keys(tl);
   const _casc=!!opts.onClassFilter;   // admin/teacher: class -> subject cascade dropdowns
