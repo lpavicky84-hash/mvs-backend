@@ -220,7 +220,7 @@ def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
         import whatsapp as W
         import os as _os
         tmpl = _os.getenv("WA_OTP") or "otp1"
-        ok, detail = W.send(phone, template=tmpl, params=[otp], name="Student")
+        ok, detail = W.send(phone, template=tmpl, params=[otp], name="Student", button_otp=otp)
         try:
             print("[OTP] to %s | template=%s | ok=%s | detail=%s" % (phone, tmpl, ok, str(detail)[:400]))
         except Exception:

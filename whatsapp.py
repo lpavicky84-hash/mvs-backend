@@ -194,8 +194,10 @@ def _post(url, headers, payload, timeout=15):
         return r.status, body
 
 
-def _send_raw(phone, template, params, username=None):
-    """Ek number pe template message bhejo. -> (ok, detail)."""
+def _send_raw(phone, template, params, username=None, button_otp=None):
+    """Ek number pe template message bhejo. -> (ok, detail).
+    button_otp diya ho (OTP/copy-code button wale auth template) to Combirds ke
+    'buttons' array format me wo value bhi bhejte hain — warna Meta delivery fail kar deta hai."""
     c = cfg()
     if not (c["api_url"] and c["api_key"] and template):
         return False, "WhatsApp not configured (api_url / api_key / template missing)"
@@ -232,11 +234,15 @@ def _send_raw(phone, template, params, username=None):
             "userName": uname,
             "templateParams": [str(x) for x in (params or [])],
         }
-        # Authentication template (copy-code button) ke liye OTP ko button param me bhi bhejo —
-        # kai BSP body {{1}} se button auto-fill nahi karte, isliye explicitly dete hain.
-        if params:
-            payload["templateButtonParams"] = [str(params[0])]
-            payload["buttonValues"] = {"0": str(params[0])}
+        # Authentication / copy-code button wale template (e.g. OTP) ke liye Combirds ka
+        # 'buttons' array — OTP button param yahan jaata hai. Bina iske Meta delivery FAIL karta hai.
+        if button_otp is not None and str(button_otp) != "":
+            payload["buttons"] = [{
+                "type": "button",
+                "sub_type": "url",
+                "index": 0,
+                "parameters": [{"type": "text", "text": str(button_otp)}],
+            }]
         if c["sender"]:
             payload["source"] = c["sender"]
 
@@ -258,12 +264,13 @@ def _send_raw(phone, template, params, username=None):
         return False, f"Send failed: {str(e)[:200]}"
 
 
-def send(phone, text=None, name="", batch="", template=None, params=None):
-    """admin_routes yahi call karta hai (welcome). template/params na ho to welcome."""
+def send(phone, text=None, name="", batch="", template=None, params=None, button_otp=None):
+    """admin_routes yahi call karta hai (welcome). template/params na ho to welcome.
+    button_otp -> OTP/copy-code button wale auth template ke liye button value."""
     c = cfg()
     tmpl = template or c["campaign"]
     prm = params if params is not None else build_params(name, batch, phone)
-    return _send_raw(phone, tmpl, prm, username=(name or ""))
+    return _send_raw(phone, tmpl, prm, username=(name or ""), button_otp=button_otp)
 
 
 def send_announce(phone, name, message):

@@ -3944,7 +3944,7 @@ def admin_test_otp(payload: dict = Body(...), db: Session = Depends(get_db), _=D
             c = W.cfg()
         except Exception as e:
             c = {"cfg_error": str(e)}
-        ok, detail = W.send(phone, template=tmpl, params=["123456"], name="Student")
+        ok, detail = W.send(phone, template=tmpl, params=["123456"], name="Student", button_otp="123456")
     except Exception as e:
         ok, detail = False, str(e)
     return {"ok": bool(ok), "detail": str(detail)[:900], "template": tmpl,
