@@ -4651,23 +4651,68 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
 
 @router.delete("/student/{sid}")
 def delete_student(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
-    from models import StudentProfile
-    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    # v: model-driven purge — bulk "delete all students" ki tarah HAR child table
+    # khud saaf karo. Pehle wali hardcoded list (doubts/dpp/test/materials/notif) me
+    # chapter_plans, student_batches, dpp_answers/events/chunks, app_reviews,
+    # complaints/feedback miss the -> MySQL FK error 1451 -> delete fail. Ab jo bhi
+    # table student_id / user_id se juda ho wo automatically purge hota hai, aur aage
+    # naya child table jude to bhi ye kabhi nahi phasega.
+    import models as M
+    from models import StudentProfile as _SP, User as _U
+
+    sp = db.query(_SP).filter(_SP.id == sid).first()
     if not sp:
         raise HTTPException(status_code=404, detail="Student not found")
     uid = sp.user_id
-    stmts = [
-        ("DELETE FROM doubts WHERE student_id=:s", {"s": sid}),
-        ("DELETE FROM dpp_submissions WHERE student_id=:s", {"s": sid}),
-        ("DELETE FROM test_submissions WHERE student_id=:s", {"s": sid}),
-        ("DELETE FROM materials WHERE student_id=:s", {"s": sid}),
-        ("DELETE FROM notifications WHERE user_id=:u", {"u": uid}),
-        ("DELETE FROM student_profiles WHERE id=:s", {"s": sid}),
-        ("DELETE FROM users WHERE id=:u", {"u": uid}),
-    ]
-    for sql, p in stmts:
-        db.execute(_sqltext(sql), p)
+
+    errors = []
+
+    def wipe(fn, label):
+        # savepoint: ek table fail ho to sirf wahi rollback ho, baaki chalte rahein
+        try:
+            with db.begin_nested():
+                fn()
+        except Exception as e:
+            errors.append("%s: %s" % (label, type(e).__name__))
+
+    # 1) Complaint grandchildren (messages/attachments/events) — ye student_id se
+    #    nahi, complaints.id se jude hain, isliye complaints delete karne se pehle
+    #    inhe is student ke complaints ke against saaf karo.
+    for tbl in ("complaint_attachments", "complaint_messages", "complaint_events"):
+        wipe(lambda t=tbl: db.execute(_sqltext(
+            "DELETE FROM %s WHERE complaint_id IN "
+            "(SELECT id FROM complaints WHERE student_id=:s)" % t), {"s": sid}),
+            tbl)
+
+    # 2) Har mapped table jisme student_id ya user_id column hai — isi student ke rows.
+    for mp in list(M.Base.registry.mappers):
+        cls = mp.class_
+        name = cls.__name__
+        if name in ("StudentProfile", "User"):
+            continue   # inhe end me alag se delete karenge (sahi order ke liye)
+        cols = {c.key for c in mp.columns}
+        if "student_id" in cols:
+            wipe(lambda c=cls: db.query(c).filter(c.student_id == sid)
+                 .delete(synchronize_session=False), name)
+        elif "user_id" in cols:
+            # sirf is student ke user_id wale rows (teachers/dusre users touch nahi honge)
+            wipe(lambda c=cls: db.query(c).filter(c.user_id == uid)
+                 .delete(synchronize_session=False), name)
+
+    # 3) Ab parent rows.
+    wipe(lambda: db.query(_SP).filter(_SP.id == sid)
+         .delete(synchronize_session=False), "StudentProfile")
+    wipe(lambda: db.query(_U).filter(_U.id == uid)
+         .delete(synchronize_session=False), "User")
     db.commit()
+
+    # Confirm: student row waqai gaya?
+    still = db.query(_SP).filter(_SP.id == sid).first()
+    if still:
+        raise HTTPException(
+            status_code=500,
+            detail="Delete incomplete — kuch juda hua data saaf nahi hua. Issues: "
+                   + (", ".join(sorted(set(errors))[:6]) or "unknown"))
     return {"message": "Student deleted"}
 
 # ===== ADMIN: SEND NOTIFICATION TO A SINGLE TEACHER =====
