@@ -1432,10 +1432,7 @@ function _ttbInjectCSS(){
 }
 function _ttbBatchField(batches){
   if(!batches||!batches.length) return '<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch"><option value="">No batch (global)</option></select></div>';
-  var rows=batches.map(function(b){
-    return '<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:.82rem;font-weight:600"><input type="checkbox" class="ttb-bchk" value="'+b.id+'" style="width:15px;height:15px"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>';
-  }).join('');
-  return '<div class="form-group" style="flex:1;min-width:240px"><label>Batch <span style="color:var(--text-muted);font-weight:400">(ek ya zyada \u2014 kuch na chuno to global)</span></label><div style="display:flex;gap:7px;flex-wrap:wrap;max-height:110px;overflow:auto;padding:2px">'+rows+'</div></div>';
+  return _multiBatchDD('Batch', batches);
 }
 async function openTTBuilder(){
   _ttbInjectCSS();
@@ -1517,7 +1514,7 @@ function ttbChKey(e,i){ if(e.key==='Enter'){ e.preventDefault(); var v=(e.target
 function ttbDelChip(i,ci){ if(_ttbRows[i]&&_ttbRows[i].chapters) _ttbRows[i].chapters.splice(ci,1); _ttbRender(); }
 function _ttbDay(dstr){ try{ var d=new Date(dstr+'T00:00:00'); return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; }catch(e){ return ''; } }
 async function ttbCreate(){
-  var _bids=[].slice.call(document.querySelectorAll('.ttb-bchk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
+  var _bids=[].slice.call(document.querySelectorAll('.mbf-chk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
   var batch_id=(document.getElementById('ttb-batch')||{}).value||'';   // fallback (no-batches case)
   var subject=(document.getElementById('ttb-subject')||{}).value||'';
   var cl=String((document.getElementById('ttb-class')||{}).value||'12').replace(/\D/g,'')||'12';
@@ -5208,14 +5205,38 @@ async function _ensureTBatches(){
   if(!window._ttBatchList){ try{ var r=await api('/api/teacher/tt-batches'); window._ttBatchList=(r&&r.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
   return window._ttBatchList||[];
 }
-// Reusable multi-batch checkbox field for CREATE forms (test/DPP/upload/extra-class).
-// Kuch na chuno -> global (sabhi batches). Ek ya zyada chuno -> sirf unke liye.
-function _multiBatchField(label){
-  var list=window._ttBatchList||[]; if(!list.length) return '';
-  var rows=list.map(function(b){
-    return '<label style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:.82rem;font-weight:600"><input type="checkbox" class="mbf-chk" value="'+b.id+'" style="width:15px;height:15px"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>';
+// Reusable multi-batch checkbox field for CREATE forms (test/DPP/upload/extra-class/timetable).
+// Compact DROPDOWN: button pe selection summary, click pe checkbox panel. Kuch na chuno -> global.
+function _mbdCSS(){
+  if(document.getElementById('mbd-css')) return;
+  var s=document.createElement('style'); s.id='mbd-css';
+  s.textContent='.mbd-box{position:relative}'
+    +'.mbd-btn{width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 13px;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:10px;background:var(--card,#fff);font-weight:600;cursor:pointer;font-size:.9rem;color:var(--text)}'
+    +'.mbd-panel{display:none;position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:60;background:var(--card,#fff);border:1px solid var(--border,rgba(184,148,31,.3));border-radius:11px;box-shadow:0 10px 30px rgba(0,0,0,.16);max-height:240px;overflow:auto;padding:4px}'
+    +'.mbd-panel.on{display:block}'
+    +'.mbd-row{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;cursor:pointer;font-size:.86rem;font-weight:600}'
+    +'.mbd-row:hover{background:rgba(184,148,31,.08)}.mbd-row input{width:15px;height:15px}'
+    +'.mbd-car{color:var(--text-muted)}';
+  document.head.appendChild(s);
+}
+function _multiBatchDD(label, list){
+  list=list||window._ttBatchList||[]; if(!list.length) return '';
+  window._mbdList=list; _mbdCSS();
+  var chk=list.map(function(b){
+    return '<label class="mbd-row"><input type="checkbox" class="mbf-chk" value="'+b.id+'" onchange="_mbdSync()"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>';
   }).join('');
-  return '<div class="form-group" id="mbf-wrap"><label class="ex-lbl">'+(label||'Batch / Course')+' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(ek ya zyada \u2014 kuch na chuno to sabhi ko (global) dikhega)</span></label><div style="display:flex;gap:8px;flex-wrap:wrap;max-height:132px;overflow:auto;padding:2px">'+rows+'</div></div>';
+  return '<div class="form-group" id="mbf-wrap"><label class="ex-lbl">'+(label||'Batch / Course')+' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(ek ya zyada \u2014 kuch na chuno to global)</span></label>'
+    +'<div class="mbd-box"><button type="button" class="mbd-btn" id="mbf-btn" onclick="_mbdToggle(event)"><span id="mbf-lbl">All batches (global)</span><span class="mbd-car">\u25be</span></button>'
+    +'<div class="mbd-panel" id="mbf-panel">'+chk+'</div></div></div>';
+}
+function _mbdToggle(e){ if(e){e.stopPropagation();} var p=document.getElementById('mbf-panel'); if(p) p.classList.toggle('on');
+  if(!window._mbdDocBound){ window._mbdDocBound=true; document.addEventListener('click',function(ev){ var box=document.querySelector('.mbd-box'); var pan=document.getElementById('mbf-panel'); if(pan&&box&&!box.contains(ev.target)) pan.classList.remove('on'); }); } }
+function _mbdSync(){ var lbl=document.getElementById('mbf-lbl'); if(!lbl) return; var ids=_multiBatchIds(); var list=window._mbdList||window._ttBatchList||[];
+  if(!ids.length){ lbl.textContent='All batches (global)'; return; }
+  if(ids.length===1){ var b=list.filter(function(x){return String(x.id)===String(ids[0]);})[0]; lbl.textContent=b?b.name:'1 batch'; return; }
+  lbl.textContent=ids.length+' batches selected'; }
+function _multiBatchField(label){
+  return _multiBatchDD(label);
 }
 function _multiBatchIds(){
   return [].slice.call(document.querySelectorAll('.mbf-chk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
