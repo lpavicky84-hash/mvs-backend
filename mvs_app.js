@@ -9625,13 +9625,13 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       const th=t.thumbnail;
-      // "Thumbnail pending" SIRF tab jab graphics designer assigned hai par abhi approve nahi hua
-      // AUR koi thumbnail url abhi available nahi. Admin ne khud thumbnail daal di ho to pending
-      // NAHI dikhega (wo header image me dikhegi). Isse "pending" ka galat message hat gaya.
-      var _thGfxPending=false; try{ var _tg=t.graphics||{}; _thGfxPending=!!((_tg.graphics_id||_tg.graphics_name)&&(_tg.status||'')!=='approved'); }catch(e){}
-      const thumbBox=(_thGfxPending && !_vtThumbUrl(t))?`
-        <div class="vt-thumb-status pending${(th&&th.overdue)?' overdue':''}">
-          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${(th&&th.designer)?` — ${esc(th.designer)} is designing it`:''}</div>${(th&&th.deadline)?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
+      // "Thumbnail pending" SIRF tab jab graphics ka thumbnail object hai jo abhi approve nahi hua
+      // AUR koi displayable url nahi. Admin ne khud thumbnail daali ho to wo header image me dikhegi,
+      // pending message NAHI aayega.
+      var _thObj=(th&&typeof th==='object')?th:null;
+      const thumbBox=(_thObj && !_thObj.approved && !_vtThumbUrl(t))?`
+        <div class="vt-thumb-status pending${_thObj.overdue?' overdue':''}">
+          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${_thObj.designer?` — ${esc(_thObj.designer)} is designing it`:''}</div>${_thObj.deadline?`<div class="vts-sub">Expected by <b>${esc(_thObj.deadline)}</b>${_thObj.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
         </div>`:'';
       return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
@@ -10193,20 +10193,19 @@ function _vtThumbFile(file){
   reader.readAsDataURL(file);
 }
 function _vtThumbUrl(t){
-  // Admin/teacher/production ke liye ek hi resolution — taaki jo thumbnail production pe dikhta
-  // hai wahi admin+teacher pe bhi dikhe. User ka rule: admin-uploaded/assigned thumbnail = approved,
-  // sabko dikhe. Sirf tab chhupao jab GRAPHICS designer assigned hai par abhi approve nahi hua (WIP).
+  // Ek hi resolution admin/teacher/production ke liye. Rule:
+  //  - t.thumbnail OBJECT (graphics/serialized) -> sirf approved hone pe dikhao (pending WIP nahi).
+  //    Admin ne khud upload ki thumbnail backend ab {approved:true,url} bhejta hai -> wo dikh jaati hai.
+  //  - t.thumbnail STRING -> final url (production shape).
+  //  - warna task-level fields (thumbnail_link / thumbnail_b64) — admin/teacher upload, graphics ke bina.
   if(!t) return '';
-  try{ var g=t.graphics||{}; if((g.graphics_id||g.graphics_name)&&(g.status||'')!=='approved') return ''; }catch(e){}
   var th=t.thumbnail;
-  if(typeof th==='string') return th||'';
   if(th && typeof th==='object'){
-    // koi bhi url-jaisa field — approved flag pe depend nahi (admin upload = approved treat karo)
-    var u=th.url||th.link||th.thumbnail_url||th.image||th.src||th.href||'';
-    if(u) return u;
+    if(th.approved===false || th.pending===true) return '';   // graphics abhi pending -> approve ke baad hi
+    return th.url||th.link||th.thumbnail_url||th.image||th.src||'';
   }
-  // task-level fallbacks (kuch endpoints thumbnail seedha task pe bhejte hain)
-  return t.thumbnail_url||t.thumbnail_link||(typeof t.thumb==='string'?t.thumb:'')||'';
+  if(typeof th==='string' && th) return th;
+  return t.thumbnail_link||t.thumbnail_b64||t.thumbnail_url||(typeof t.thumb==='string'?t.thumb:'')||'';
 }
 function _vtThumb(t,who){
   const gth=_vtThumbUrl(t);

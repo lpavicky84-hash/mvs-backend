@@ -1564,6 +1564,18 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
                 }
     except Exception:
         pass
+    # Admin/teacher ne KHUD thumbnail upload ki ho (graphics flow ke bina) -> approved dikhao,
+    # taaki admin + teacher cards pe wo waise hi dikhe jaise production pe (jahan thumbnail_b64/
+    # thumbnail_link seedha use hota hai). Graphics ka thumbnail object pehle se set ho (assigned/
+    # pending/approved) to OVERRIDE nahi karte -> uska apna approval flow chalta rehta hai.
+    if not out.get("thumbnail"):
+        _adm_thumb = (t.thumbnail_b64 or t.thumbnail_link or "")
+        if _adm_thumb:
+            out["thumbnail"] = {
+                "status": "approved", "designer": "", "deadline": "",
+                "seconds_left": None, "overdue": False,
+                "url": _adm_thumb, "approved": True, "pending": False,
+            }
     return out
 
 
