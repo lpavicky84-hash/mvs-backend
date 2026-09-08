@@ -3716,55 +3716,63 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
     from sqlalchemy import or_
     import json as _json
     page = max(1, int(page or 1)); page_size = min(200, max(5, int(page_size or 25)))
-    cols = db.query(
-        StudentProfile.id, User.name, StudentProfile.phone, StudentProfile.class_level,
-        StudentProfile.subjects, StudentProfile.batch_name, StudentProfile.medium,
-        StudentProfile.email, StudentProfile.class_name, StudentProfile.nios_ref,
-        StudentProfile.exam_session, StudentProfile.exam_stream, StudentProfile.goal,
-        StudentProfile.goal_custom, StudentProfile.last_seen, StudentProfile.is_verified,
-        User.user_id, StudentProfile.source, (StudentProfile.photo_b64.isnot(None)).label("hp")
-    ).join(User, StudentProfile.user_id == User.id)
-    if source: cols = cols.filter(StudentProfile.source == source)
-    if cls: cols = cols.filter(StudentProfile.class_level == str(cls))
+    from sqlalchemy.orm import joinedload
+    qy = db.query(StudentProfile).options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
+    if source: qy = qy.filter(StudentProfile.source == source)
+    if cls: qy = qy.filter(StudentProfile.class_level == str(cls))
     if session:
         if session == "__none__":
-            cols = cols.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
+            qy = qy.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
         else:
-            cols = cols.filter(StudentProfile.exam_session == session)
-    if medium: cols = cols.filter(StudentProfile.medium == medium)
+            qy = qy.filter(StudentProfile.exam_session == session)
+    if medium: qy = qy.filter(StudentProfile.medium == medium)
     if batch:
         if batch == "__none__":
-            cols = cols.filter(or_(StudentProfile.batch_name.is_(None), StudentProfile.batch_name == ""))
+            qy = qy.filter(or_(StudentProfile.batch_name.is_(None), StudentProfile.batch_name == ""))
         else:
-            cols = cols.filter(StudentProfile.batch_name == batch)
+            qy = qy.filter(StudentProfile.batch_name == batch)
     if q:
         ql = "%" + q.strip() + "%"
-        cols = cols.filter(or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
-                               User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
-                               StudentProfile.nios_ref.ilike(ql)))
+        qy = qy.join(User, StudentProfile.user_id == User.id).filter(
+            or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
+                User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
+                StudentProfile.nios_ref.ilike(ql)))
     if subject:
         sub = subject.split("|")[0].strip()
         if sub:
             try:
-                cols = cols.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
+                qy = qy.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
             except Exception:
                 pass
-    total = cols.count()
-    rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
+    total = qy.count()
+    rows = qy.order_by(StudentProfile.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    _pids = [sp.id for sp in rows]
+    _photo_set = set()
+    if _pids:
+        try:
+            _photo_set = {r[0] for r in db.query(StudentProfile.id).filter(
+                StudentProfile.id.in_(_pids), StudentProfile.photo_b64.isnot(None))}
+        except Exception:
+            _photo_set = set()
     students = []
-    for r in rows:
-        ssubs = r.subjects or []
-        disp = _SR.canon_list(ssubs, r.class_level) if _SR else ssubs
-        students.append({"id": r.id, "profile_id": r.id, "name": r.name or "", "phone": r.phone,
-                         "class": r.class_level, "class_level": r.class_level,
-                         "subjects": disp, "all_subjects": disp, "has_photo": bool(r.hp),
-                         "batch": r.batch_name, "batch_name": r.batch_name, "medium": r.medium,
-                         "email": r.email, "class_name": r.class_name, "nios_ref": r.nios_ref,
-                         "exam_session": r.exam_session, "exam_stream": r.exam_stream,
-                         "source": r.source or "mvs_app",
-                         "goal": (r.goal_custom if r.goal == "other" else r.goal),
-                         "last_seen": r.last_seen.strftime("%d %b %Y, %I:%M %p") if r.last_seen else None,
-                         "is_verified": bool(r.is_verified), "user_id": r.user_id})
+    for sp in rows:
+        try:
+            ssubs = sp.subjects or []
+            disp = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
+            students.append({"id": sp.id, "profile_id": sp.id,
+                             "name": (sp.user.name if sp.user else "") or "", "phone": sp.phone,
+                             "class": sp.class_level, "class_level": sp.class_level,
+                             "subjects": disp, "all_subjects": disp, "has_photo": (sp.id in _photo_set),
+                             "batch": sp.batch_name, "batch_name": sp.batch_name, "medium": sp.medium,
+                             "email": sp.email, "class_name": sp.class_name, "nios_ref": sp.nios_ref,
+                             "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+                             "source": sp.source or "mvs_app",
+                             "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
+                             "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
+                             "is_verified": bool(sp.is_verified),
+                             "user_id": (sp.user.user_id if sp.user else None)})
+        except Exception:
+            continue
     return {"students": students, "total": total, "page": page, "page_size": page_size}
 
 
