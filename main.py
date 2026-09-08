@@ -47,6 +47,9 @@ for _boot_try in range(3):
 # ===== LIGHTWEIGHT MIGRATIONS (add new columns to existing tables) =====
 def ensure_columns():
     stmts = [
+        # crash-course multi-chapter (" | " join) VARCHAR(200) me fit nahi hota -> TEXT
+        "ALTER TABLE timetable_entries MODIFY COLUMN chapter TEXT",
+        "ALTER TABLE timetable_entries MODIFY COLUMN topic_covered TEXT",
         "ALTER TABLE student_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE teacher_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE teacher_profiles ADD COLUMN payout_passcode VARCHAR(255)",
