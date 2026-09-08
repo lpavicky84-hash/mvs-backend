@@ -32,40 +32,47 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
 
-# ---- Onboarding flags (setup_done / forgot_pw) — student_profiles ke ALTER se bachne ke liye
-# alag table 'student_flags' me. create_all isko auto-banata hai (koi ALTER lock nahi).
-def _sf_row(db, sid, create=False):
-    from models import StudentFlags
+# ---- Onboarding flags in a SEPARATE table via RAW SQL (Base/ORM/create_all se bahar — taaki
+# StudentProfile queries kabhi na tooten aur create_all crash na ho). Table guarded-create.
+from sqlalchemy import text as _sqltext
+
+def _sf_ensure(db):
     try:
-        f = db.query(StudentFlags).filter(StudentFlags.student_id == sid).first()
-        if not f and create:
-            f = StudentFlags(student_id=sid, setup_done=False, forgot_pw=False)
-            db.add(f)
-        return f
+        db.execute(_sqltext("CREATE TABLE IF NOT EXISTS student_flags ("
+                            "student_id INT NOT NULL PRIMARY KEY, "
+                            "setup_done TINYINT DEFAULT 0, forgot_pw TINYINT DEFAULT 0)"))
+        db.commit()
     except Exception:
-        return None
+        try: db.rollback()
+        except Exception: pass
 
 
 def _sf_setup_done(db, sid):
-    f = _sf_row(db, sid)
-    return bool(f and f.setup_done)
+    try:
+        r = db.execute(_sqltext("SELECT setup_done FROM student_flags WHERE student_id=:i"), {"i": sid}).first()
+        return bool(r and r[0])
+    except Exception:
+        return False
 
 
 def _sf_set(db, sid, setup_done=None, forgot_pw=None):
     try:
-        f = _sf_row(db, sid, create=True)
-        if f is None:
-            return
-        if setup_done is not None:
-            f.setup_done = bool(setup_done)
-        if forgot_pw is not None:
-            f.forgot_pw = bool(forgot_pw)
+        _sf_ensure(db)
+        r = db.execute(_sqltext("SELECT setup_done, forgot_pw FROM student_flags WHERE student_id=:i"), {"i": sid}).first()
+        cur_s = bool(r[0]) if r else False
+        cur_f = bool(r[1]) if r else False
+        new_s = cur_s if setup_done is None else bool(setup_done)
+        new_f = cur_f if forgot_pw is None else bool(forgot_pw)
+        if r:
+            db.execute(_sqltext("UPDATE student_flags SET setup_done=:s, forgot_pw=:f WHERE student_id=:i"),
+                       {"s": 1 if new_s else 0, "f": 1 if new_f else 0, "i": sid})
+        else:
+            db.execute(_sqltext("INSERT INTO student_flags (student_id, setup_done, forgot_pw) VALUES (:i,:s,:f)"),
+                       {"i": sid, "s": 1 if new_s else 0, "f": 1 if new_f else 0})
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
+        try: db.rollback()
+        except Exception: pass
 
 
 _BATCH_COLS_READY = False

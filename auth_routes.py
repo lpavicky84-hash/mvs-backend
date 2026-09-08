@@ -120,11 +120,11 @@ def student_precheck(req: dict, db: Session = Depends(get_db)):
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if not sp or not sp.user:
         return {"found": False}
-    from models import StudentFlags as _SF
+    from sqlalchemy import text as _t
     _sd = False
     try:
-        _f = db.query(_SF).filter(_SF.student_id == sp.id).first()
-        _sd = bool(_f and _f.setup_done)
+        _r = db.execute(_t("SELECT setup_done FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
+        _sd = bool(_r and _r[0])
     except Exception:
         _sd = False
     return {"found": True, "needs_password": _sd, "name": sp.user.name}
@@ -147,11 +147,11 @@ def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     user = sp.user
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive hai. Admin se contact karein.")
-    from models import StudentFlags as _SF
+    from sqlalchemy import text as _t
     _sd = False
     try:
-        _f = db.query(_SF).filter(_SF.student_id == sp.id).first()
-        _sd = bool(_f and _f.setup_done)
+        _r = db.execute(_t("SELECT setup_done FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
+        _sd = bool(_r and _r[0])
     except Exception:
         _sd = False
     if _sd:
@@ -177,16 +177,18 @@ def public_forgot_password(req: dict, db: Session = Depends(get_db)):
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if not sp:
         raise HTTPException(status_code=404, detail="Is phone par koi account nahi mila.")
-    from models import StudentFlags as _SF
+    from sqlalchemy import text as _t
     try:
-        _f = db.query(_SF).filter(_SF.student_id == sp.id).first()
-        if not _f:
-            _f = _SF(student_id=sp.id, setup_done=False, forgot_pw=True); db.add(_f)
+        db.execute(_t("CREATE TABLE IF NOT EXISTS student_flags (student_id INT NOT NULL PRIMARY KEY, setup_done TINYINT DEFAULT 0, forgot_pw TINYINT DEFAULT 0)"))
+        _r = db.execute(_t("SELECT student_id FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
+        if _r:
+            db.execute(_t("UPDATE student_flags SET forgot_pw=1 WHERE student_id=:i"), {"i": sp.id})
         else:
-            _f.forgot_pw = True
+            db.execute(_t("INSERT INTO student_flags (student_id, setup_done, forgot_pw) VALUES (:i,0,1)"), {"i": sp.id})
         db.commit()
     except Exception:
-        db.rollback()
+        try: db.rollback()
+        except Exception: pass
     return {"ok": True, "message": "Request bhej di gayi. Admin aapka password jald share karega."}
 
 @router.get("/generate-uid")

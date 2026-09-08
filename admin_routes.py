@@ -3632,11 +3632,11 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
             _uid_map[_pid] = _ucode
     except Exception:
         _uid_map = {}
-    # onboarding flags alag table se (bulk)
+    # onboarding flags alag table se (raw SQL, bulk)
     _flag_map = {}
     try:
-        from models import StudentFlags as _SF
-        for _fid, _sd, _fp in db.query(_SF.student_id, _SF.setup_done, _SF.forgot_pw):
+        from sqlalchemy import text as _t
+        for _fid, _sd, _fp in db.execute(_t("SELECT student_id, setup_done, forgot_pw FROM student_flags")):
             _flag_map[_fid] = (bool(_sd), bool(_fp))
     except Exception:
         _flag_map = {}
@@ -3679,8 +3679,12 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
 @router.get("/forgot-password-requests")
 def admin_forgot_requests(db: Session = Depends(get_db), _=Depends(get_admin)):
     """Students who requested forgot-password — name + phone + password (copy to WhatsApp)."""
-    from models import StudentProfile, StudentFlags
-    ids = [r[0] for r in db.query(StudentFlags.student_id).filter(StudentFlags.forgot_pw == True).all()]
+    from models import StudentProfile
+    from sqlalchemy import text as _t
+    try:
+        ids = [r[0] for r in db.execute(_t("SELECT student_id FROM student_flags WHERE forgot_pw=1"))]
+    except Exception:
+        ids = []
     out = []
     if ids:
         for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(ids)).all():
@@ -3694,14 +3698,13 @@ def admin_forgot_requests(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.post("/forgot-password-requests/{sid}/clear")
 def admin_clear_forgot(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Admin ne password bhej diya — request hata do."""
-    from models import StudentFlags
+    from sqlalchemy import text as _t
     try:
-        f = db.query(StudentFlags).filter(StudentFlags.student_id == sid).first()
-        if f:
-            f.forgot_pw = False
-            db.commit()
+        db.execute(_t("UPDATE student_flags SET forgot_pw=0 WHERE student_id=:i"), {"i": sid})
+        db.commit()
     except Exception:
-        db.rollback()
+        try: db.rollback()
+        except Exception: pass
     return {"ok": True}
 def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
                          medium: str = "", source: str = "", batch: str = "",
@@ -3739,19 +3742,25 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
         cols = cols.filter(or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
                                User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
                                StudentProfile.nios_ref.ilike(ql)))
-    if subject:
-        sub = subject.split("|")[0].strip()
-        if sub:
+    _sub = subject.split("|")[0].strip() if subject else ""
+    if _sub:
+        # Subjects coded ho sakte hain ("English 302") ya code-only — isliye subject match
+        # Python me canon karke (filter-counts jaisa) taaki har storage me sahi mile.
+        all_rows = cols.order_by(User.name).all()
+        _sl = _sub.lower()
+        def _has_subj(r):
             try:
-                # subjects coded ho sakte hain ("English 302") — wildcard search se match (exact json_contains fail hota tha)
-                cols = cols.filter(func.json_search(StudentProfile.subjects, "one", "%" + sub + "%").isnot(None))
+                disp = _SR.canon_list(r.subjects or [], r.class_level) if _SR else (r.subjects or [])
             except Exception:
-                try:
-                    cols = cols.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
-                except Exception:
-                    pass
-    total = cols.count()
-    rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
+                disp = r.subjects or []
+            return any(str(x).strip().lower() == _sl for x in (disp or []))
+        matched = [r for r in all_rows if _has_subj(r)]
+        total = len(matched)
+        _st = (page - 1) * page_size
+        rows = matched[_st:_st + page_size]
+    else:
+        total = cols.count()
+        rows = cols.order_by(User.name).offset((page - 1) * page_size).limit(page_size).all()
     students = []
     for r in rows:
         ssubs = r.subjects or []
