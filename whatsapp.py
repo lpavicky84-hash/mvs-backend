@@ -194,7 +194,7 @@ def _post(url, headers, payload, timeout=15):
         return r.status, body
 
 
-def _send_raw(phone, template, params):
+def _send_raw(phone, template, params, username=None):
     """Ek number pe template message bhejo. -> (ok, detail)."""
     c = cfg()
     if not (c["api_url"] and c["api_key"] and template):
@@ -203,6 +203,8 @@ def _send_raw(phone, template, params):
     p10 = _phone_intl(phone, plus=False)
     if not p10:
         return False, "Invalid phone"
+    # userName = contact ka naam (OTP/param NAHI). Fallback: pehla param, phir "Student".
+    uname = (str(username).strip() if username else "") or (str(params[0]) if params else "") or "Student"
 
     if fmt == "meta":
         # Meta Cloud API / most BSP passthrough style
@@ -227,9 +229,14 @@ def _send_raw(phone, template, params):
             "apiKey": c["api_key"],
             "campaignName": template,
             "destination": p10,
-            "userName": (params[0] if params else "Student"),
+            "userName": uname,
             "templateParams": [str(x) for x in (params or [])],
         }
+        # Authentication template (copy-code button) ke liye OTP ko button param me bhi bhejo —
+        # kai BSP body {{1}} se button auto-fill nahi karte, isliye explicitly dete hain.
+        if params:
+            payload["templateButtonParams"] = [str(params[0])]
+            payload["buttonValues"] = {"0": str(params[0])}
         if c["sender"]:
             payload["source"] = c["sender"]
 
@@ -256,7 +263,7 @@ def send(phone, text=None, name="", batch="", template=None, params=None):
     c = cfg()
     tmpl = template or c["campaign"]
     prm = params if params is not None else build_params(name, batch, phone)
-    return _send_raw(phone, tmpl, prm)
+    return _send_raw(phone, tmpl, prm, username=(name or ""))
 
 
 def send_announce(phone, name, message):
