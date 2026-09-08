@@ -233,6 +233,8 @@ class StudentProfile(Base):
     class_name   = Column(String(20))   # e.g. "12A"
     is_verified  = Column(Boolean, default=False)
     plain_password = Column(String(255), nullable=True)  # for phone-lookup onboarding
+    setup_done   = Column(Boolean, nullable=True)        # naya profile setup (password ke saath) ho gaya
+    forgot_pw    = Column(Boolean, nullable=True)        # student ne forgot-password request kiya
     class_level  = Column(String(5), nullable=True)      # "10" or "12"
     exam_session = Column(String(30), nullable=True)     # syllabus tracker: chosen exam session
     study_target = Column(String(10), nullable=True)     # syllabus tracker: pass | high

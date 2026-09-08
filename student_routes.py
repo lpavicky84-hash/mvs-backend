@@ -1147,7 +1147,8 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "exam_session_label": _session_label(db, sp.exam_session),
         "exam_stream": sp.exam_stream,
         "nios_ref": sp.nios_ref,
-        "has_photo": bool(sp.photo_b64)
+        "has_photo": bool(sp.photo_b64),
+        "setup_done": bool(getattr(sp, "setup_done", False))
     }
 
 @router.post("/update-profile")
@@ -1281,8 +1282,25 @@ STUDENT_BATCHES = {
 
 @router.get("/batches")
 def student_batches(db: Session = Depends(get_db), current_user=Depends(get_student)):
-    """Batch list for the onboarding screen — restricted to the student's admission class when known."""
+    """Batch list for the onboarding screen — restricted to the student's admission class when known.
+    Includes the hardcoded batches PLUS any active Batch entities (crash courses etc.)."""
     items = [{"name": n, "class_level": c[0]} for n, c in STUDENT_BATCHES.items()]
+    seen = {b["name"] for b in items}
+    # active Batch entities (crash courses, new batches) — class from name heuristic
+    try:
+        from models import Batch
+        for b in db.query(Batch).all():
+            nm = (b.name or "").strip()
+            if not nm or nm in seen:
+                continue
+            if getattr(b, "active", True) is False:
+                continue
+            low = nm.lower()
+            cl = "10" if ("10" in low or "udaan" in low or "aarambh" in low or "jeet" in low) else "12"
+            items.append({"name": nm, "class_level": cl})
+            seen.add(nm)
+    except Exception:
+        pass
     try:
         sp = get_student_profile(current_user, db)
         cls = (sp.class_level or "").strip()
@@ -1328,6 +1346,122 @@ def set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depe
     db.commit()
     return {"message": "Profile saved successfully!", "subjects": subjects,
             "class_level": class_level, "medium": sp.medium, "batch_name": sp.batch_name}
+
+
+def _valid_setup_batch(db, batch_name):
+    """batch_name valid hai? (hardcoded list ya active Batch entity) -> (ok, class_level)."""
+    if batch_name in STUDENT_BATCHES:
+        return True, STUDENT_BATCHES[batch_name][0]
+    try:
+        from models import Batch
+        b = db.query(Batch).filter(Batch.name == batch_name).first()
+        if b and getattr(b, "active", True) is not False:
+            low = (batch_name or "").lower()
+            cl = "10" if ("10" in low or "udaan" in low or "aarambh" in low or "jeet" in low) else "12"
+            return True, cl
+    except Exception:
+        pass
+    return False, ""
+
+
+@router.post("/setup-profile")
+def setup_profile(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Naya premium profile setup (ek page): name, class, exam session, batch, medium, subjects,
+    NIOS ref aur PASSWORD. Password set hone par login (hashed) + admin-copy (plain) dono store.
+    setup_done=True -> forced re-onboarding rukta hai. Login flow ko haath nahi lagata."""
+    from security import hash_password
+    sp = get_student_profile(current_user, db)
+    name = (payload.get("name") or "").strip()
+    exam_session = (payload.get("exam_session") or "").strip()
+    batch_name = (payload.get("batch_name") or "").strip()
+    medium = (payload.get("medium") or "").strip()
+    subjects = payload.get("subjects") or []
+    nios_ref = (payload.get("nios_ref") or "").strip()
+    password = (payload.get("password") or "").strip()
+    photo_b64 = payload.get("photo_b64")
+    ok_batch, batch_class = _valid_setup_batch(db, batch_name)
+    # ---- validation: sab mandatory, jo blank ho wo detail me batao
+    missing = []
+    if not name:
+        missing.append("Name")
+    if not ok_batch:
+        missing.append("Batch")
+    if medium not in ("Hindi", "English"):
+        missing.append("Medium")
+    if not subjects:
+        missing.append("Subjects")
+    if not exam_session:
+        missing.append("Exam Session")
+    if not nios_ref:
+        missing.append("NIOS Reference Number")
+    if len(password) < 4:
+        missing.append("Password (min 4 chars)")
+    if not (photo_b64 or sp.photo_b64):
+        missing.append("Profile Photo")
+    if missing:
+        raise HTTPException(status_code=400, detail="Please fill: " + ", ".join(missing))
+    # bulletproof class match (jaise set-subjects)
+    admission_class = (sp.class_level or "").strip()
+    if admission_class in ("10", "12") and batch_class in ("10", "12") and batch_class != admission_class:
+        raise HTTPException(status_code=400,
+            detail=f"Your admission is for Class {admission_class}. Please choose a Class {admission_class} batch.")
+    class_level = batch_class if batch_class in ("10", "12") else (admission_class or "12")
+    if len(subjects) > 7:
+        raise HTTPException(status_code=400, detail="Maximum 7 subjects are allowed.")
+    # ---- save
+    if name and sp.user:
+        sp.user.name = name
+    sp.class_level = class_level
+    sp.subjects = subjects
+    sp.medium = medium
+    sp.batch_name = batch_name
+    sp.exam_session = exam_session
+    sp.nios_ref = nios_ref
+    if photo_b64:
+        sp.photo_b64 = photo_b64
+    if sp.user:
+        sp.user.password = hash_password(password)   # login (secure)
+    sp.plain_password = password                     # admin copy (send if forgotten)
+    sp.setup_done = True
+    sp.forgot_pw = False
+    try:
+        from models import Batch
+        b = db.query(Batch).filter(Batch.name == batch_name).first()
+        if b:
+            sp.batch_id = b.id
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "message": "Profile setup complete."}
+
+
+@router.get("/setup-status")
+def setup_status(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Frontend ko batata hai profile setup (password ke saath) ho chuka hai ya nahi + prefill data."""
+    sp = get_student_profile(current_user, db)
+    return {
+        "setup_done": bool(getattr(sp, "setup_done", False)),
+        "name": (sp.user.name if sp.user else "") or "",
+        "phone": sp.phone or "",
+        "class_level": sp.class_level or "",
+        "batch_name": sp.batch_name or "",
+        "medium": sp.medium or "",
+        "subjects": sp.subjects or [],
+        "exam_session": sp.exam_session or "",
+        "nios_ref": sp.nios_ref or "",
+        "has_photo": bool(getattr(sp, "photo_b64", None)),
+    }
+
+
+@router.post("/forgot-password")
+def student_forgot_password(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student forgot-password request — admin ke request list me aa jaata hai (name + phone +
+    password copy karke WhatsApp pe bhej dega)."""
+    sp = get_student_profile(current_user, db)
+    sp.forgot_pw = True
+    db.commit()
+    return {"ok": True, "message": "Request sent. Admin will share your password shortly."}
+
 
 # ===== TIMETABLE PLAN (chapter-wise, subject filtered) =====
 @router.get("/my-subjects-mode")

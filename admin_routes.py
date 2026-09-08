@@ -206,6 +206,31 @@ def _ensure_batches_seed():
 
 _ensure_batches_seed()
 
+def _ensure_student_setup_cols():
+    """student_profiles me setup_done + forgot_pw columns (naya profile setup + forgot-password)."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+        for _st in ("ALTER TABLE student_profiles ADD COLUMN setup_done TINYINT NULL",
+                    "ALTER TABLE student_profiles ADD COLUMN setup_done BOOLEAN NULL"):
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(_st)); conn.commit(); break
+            except Exception:
+                pass
+        for _st in ("ALTER TABLE student_profiles ADD COLUMN forgot_pw TINYINT NULL",
+                    "ALTER TABLE student_profiles ADD COLUMN forgot_pw BOOLEAN NULL"):
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(_st)); conn.commit(); break
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+_ensure_student_setup_cols()
+
 def _ensure_batch_link():
     """Add student_profiles.batch_id (if missing) and backfill it from existing batch/batch_name.
     Import-time, idempotent, bounded. Additive — the old fields stay authoritative for now."""
@@ -3660,12 +3685,37 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
                     "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
                     "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
                     "is_verified": bool(sp.is_verified),
+                    "password": (sp.plain_password or ""),
+                    "setup_done": bool(getattr(sp, "setup_done", False)),
+                    "forgot_pw": bool(getattr(sp, "forgot_pw", False)),
                     "user_id": _uid_map.get(sp.id)})
     out.sort(key=lambda x: x["name"].lower())
     return {"total": len(out), "students": out}
 
 
-@router.get("/students-paged")
+@router.get("/forgot-password-requests")
+def admin_forgot_requests(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Students who requested forgot-password — name + phone + password (copy to WhatsApp)."""
+    from models import StudentProfile, User as _U
+    rows = (db.query(StudentProfile).filter(StudentProfile.forgot_pw == True).all())
+    out = []
+    for sp in rows:
+        out.append({"id": sp.id, "name": (sp.user.name if sp.user else ""), "phone": sp.phone or "",
+                    "batch": sp.batch_name or "", "class": sp.class_level or "",
+                    "password": (sp.plain_password or ""), "user_id": (sp.user.user_id if sp.user else "")})
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return {"total": len(out), "requests": out}
+
+
+@router.post("/forgot-password-requests/{sid}/clear")
+def admin_clear_forgot(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ne password bhej diya — request hata do."""
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if sp:
+        sp.forgot_pw = False
+        db.commit()
+    return {"ok": True}
 def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
                          medium: str = "", source: str = "", batch: str = "",
                          page: int = 1, page_size: int = 25,

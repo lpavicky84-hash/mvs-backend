@@ -3657,7 +3657,7 @@ async function openStudentsListModal(role,subject,cls,code){
        <select class="form-control" id="slist-med" style="flex:0 0 130px" onchange="_slistMed=this.value;renderSlist()"><option value="">All Mediums</option><option>Hindi</option><option>English</option></select>
      </div>
      <div class="slist-hint">Tap any student to see complete details.</div><div id="slist-wrap"><div class="spinner"></div></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    `<button class="btn btn-ghost" onclick="openForgotRequests()">${typeof ic==='function'?ic('copy'):''} Forgot PW Requests</button><button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   await fetchSlist();
 }
 let _slistData=[];
@@ -3678,6 +3678,32 @@ async function fetchSlist(){
   }
   catch(e){ document.getElementById('slist-wrap').innerHTML=errHtml(e); }
 }
+function _copyPw(btn, pw){
+  try{ navigator.clipboard.writeText(pw); }catch(e){ try{ var t=document.createElement('textarea'); t.value=pw; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }catch(_e){} }
+  if(btn){ var o=btn.innerHTML; btn.innerHTML=(typeof ic==='function'?ic('check'):'')+' Copied'; setTimeout(function(){ btn.innerHTML=o; },1400); }
+  toast('Password copied \u2014 WhatsApp pe bhej do.');
+}
+async function openForgotRequests(){
+  showModal('Forgot Password Requests','<div class="spinner" style="margin:24px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var r=await api('/api/admin/forgot-password-requests'); var reqs=(r&&r.requests)||[];
+    if(!reqs.length){ document.getElementById('modal-body').innerHTML='<div class="ws-empty" style="padding:30px"><p>Koi forgot-password request nahi hai.</p></div>'; return; }
+    var rows=reqs.map(function(x){
+      return '<div class="fpr-row"><div style="flex:1;min-width:0"><div style="font-weight:800">'+esc(x.name||'Student')+'</div>'
+        +'<div style="font-size:.78rem;color:var(--text-muted)">'+esc(x.phone||'')+(x.batch?(' \u00b7 '+esc(x.batch)):'')+(x.class?(' \u00b7 Class '+esc(x.class)):'')+'</div></div>'
+        +'<button class="btn btn-ghost btn-sm" onclick="_copyPw(this,\''+esc(String(x.password||'')).replace(/'/g,"\\'")+'\')">'+ic('copy')+' Password</button>'
+        +(x.phone?'<a class="btn btn-ghost btn-sm" href="https://wa.me/91'+encodeURIComponent(String(x.phone).replace(/\D/g,'').slice(-10))+'?text='+encodeURIComponent('Aapka MVS app password: '+(x.password||''))+'" target="_blank" rel="noopener">WhatsApp</a>':'')
+        +'<button class="btn btn-danger btn-sm" onclick="_clearForgot('+x.id+',this)" title="Password bhej diya \u2014 request hata do">'+ic('check')+' Done</button></div>';
+    }).join('');
+    if(!document.getElementById('fpr-css')){ var st=document.createElement('style'); st.id='fpr-css'; st.textContent='.fpr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px}'; document.head.appendChild(st); }
+    document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Student ne password bhoolne ki request bheji hai. Password copy karke ya WhatsApp se bhej do, phir "Done" dabao.</div>'+rows;
+  }catch(e){ document.getElementById('modal-body').innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load')+'</div>'; }
+}
+async function _clearForgot(sid,btn){
+  if(btn){ btn.disabled=true; }
+  try{ await api('/api/admin/forgot-password-requests/'+sid+'/clear','POST',{}); if(btn){ var row=btn.closest('.fpr-row'); if(row) row.remove(); } toast('Request cleared.'); }
+  catch(e){ toast((e&&e.message)||'Could not clear',true); if(btn) btn.disabled=false; }
+}
 function _slistDetail(i){
   const s=_slistData[i]; if(!s) return;
   const subs=(s.all_subjects||s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
@@ -3685,7 +3711,7 @@ function _slistDetail(i){
   const av=s.has_photo?`<div class="sdet-av" id="sdet-av"></div>`:`<div class="sdet-av">${esc(initials(s.name||'S'))}</div>`;
   showModal('Student Details',
     `<div class="sdet-head">${av}<div><div class="sdet-name">${esc(s.name||'Student')}</div><div class="sdet-meta">${s.class?'Class '+esc(s.class):''}${s.batch?' · '+esc(s.batch):''}</div></div></div>
-     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}</div>
+     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}${(_slistRole==='admin')?`<div class="sdet-row"><span>Profile Setup</span><b style="color:${s.setup_done?'#059669':'#d97706'}">${s.setup_done?'Done':'Pending'}</b></div>`:''}${(_slistRole==='admin'&&s.password)?`<div class="sdet-row"><span>Password</span><span style="display:flex;align-items:center;gap:8px"><b style="letter-spacing:3px;font-family:monospace">\u2022\u2022\u2022\u2022\u2022\u2022</b><button class="btn btn-ghost btn-sm" onclick="_copyPw(this,'${esc(String(s.password)).replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">${ic('copy')} Copy</button></span></div>`:''}</div>
      <div class="sdet-subs"><div class="sdet-subs-lbl">SUBJECTS</div><div class="slist-chips">${subs||'<span style="color:var(--text-muted);font-size:.8rem">—</span>'}</div></div>`,
     `<button class="btn btn-ghost" onclick="openStudentsListModal(_slistRole,_slistSubject,_slistCls,_slistCode)">&larr; Back to List</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>`);
   if(s.has_photo){ const pb=_slistRole==='teacher'?'/api/teacher/student/':'/api/admin/student/';
@@ -15086,10 +15112,10 @@ async function openStudent(){
     window._sSubjects=p.subjects||[];
     applyBatchMode();
   }).catch(()=>{});
-  // Profile complete? (subjects + batch + medium sab chahiye)
+  // Profile complete? Naya setup (password ke saath) zaroori — warna setup screen.
   try{
  const p=await api('/api/student/profile');
- if(!p.class_level || !p.subjects || p.subjects.length===0 || !p.batch_name || !p.medium || !STUDENT_BATCHES.some(b=>b.name===p.batch_name)){
+ if(!p.setup_done || !p.class_level || !p.subjects || p.subjects.length===0 || !p.batch_name || !p.medium){
  _prefillSubjects=p.subjects||[];
  showSubjectScreen(p);
  return;
@@ -15140,15 +15166,168 @@ function startStudentPreload(){
 async function loadStudentLiveBanner(){
   try{ if(sMode()==='live'){ const ents=await api('/api/student/timetable-plan'+_bq()); startLiveCountdown(ents); } }catch(e){}
 }
-function showSubjectScreen(p){
-  selectedClass=null; selectedSubjects=[]; selectedBatch=null; selectedMedium=null;
-  document.getElementById('subject-screen').style.display='flex';
-  document.getElementById('subject-list-wrap').style.display='none';
-  document.getElementById('medium-wrap').style.display='none';
-  document.getElementById('batch-grid').innerHTML=STUDENT_BATCHES.map(b=>
-    `<button class="btn btn-ghost batch-opt" data-b="${esc(b.name)}" style="justify-content:space-between;font-size:.82rem;padding:10px 12px" onclick="selectBatch('${esc(b.name)}')">${esc(b.name)}<span style="font-size:.66rem;opacity:.75;background:rgba(255,255,255,.14);padding:2px 7px;border-radius:99px">Class ${b.cls}</span></button>`).join('');
-  // prefill (existing students): medium pre-select if already saved
-  if(p&&p.medium) selectMedium(p.medium);
+async function showSubjectScreen(p){
+  p=p||{};
+  var scr=document.getElementById('subject-screen'); if(!scr) return;
+  scr.style.display='flex';
+  window._setupPhoto=null; window._setupSubs=(p.subjects||[]).slice(); window._setupHasPhoto=!!p.has_photo;
+  _suInjectCss();
+  var batches=[]; try{ batches=await api('/api/student/batches'); }catch(e){ batches=[]; }
+  var curBatch=p.batch_name||'';
+  if(curBatch && !batches.some(function(b){return b.name===curBatch;})) batches.unshift({name:curBatch,class_level:(p.class_level||'12')});
+  var batOpts='<option value="">\u2014 Select your batch \u2014</option>'+batches.map(function(b){return '<option value="'+esc(b.name).replace(/"/g,'&quot;')+'"'+(b.name===curBatch?' selected':'')+'>'+esc(b.name)+' \u00b7 Class '+esc(b.class_level||'')+'</option>';}).join('');
+  var clsOpts=['','10','12'].map(function(c){return '<option value="'+c+'"'+((p.class_level||'')===c?' selected':'')+'>'+(c?('Class '+c):'\u2014 Select class \u2014')+'</option>';}).join('');
+  var sessList=[['','\u2014 Select exam session \u2014'],['oct2026','October 2026'],['apr2027','April 2027']];
+  var sessOpts=sessList.map(function(s){return '<option value="'+s[0]+'"'+((p.exam_session||'')===s[0]?' selected':'')+'>'+s[1]+'</option>';}).join('');
+  var medOpts=['','Hindi','English'].map(function(m){return '<option value="'+m+'"'+((p.medium||'')===m?' selected':'')+'>'+(m||'\u2014 Select medium \u2014')+'</option>';}).join('');
+  var initials=(function(){ var t=(p.name||'S').trim().split(/\s+/); return ((t[0]||'S')[0]+((t[1]||'')[0]||'')).toUpperCase(); })();
+  var photoState=p.has_photo?'<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>':'<span class="su-photo-hint">Tap to set your photo</span>';
+  scr.innerHTML=
+   '<div class="su-wrap"><div class="su-card">'
+   +'<div class="su-head">'
+   +'<div class="su-avatar" id="su-avatar" onclick="document.getElementById(\'su-photo\').click()">'
+   +'<span id="su-photo-ini">'+esc(initials)+'</span>'
+   +'<span class="su-cam">'+ic('upload')+'</span></div>'
+   +'<div style="flex:1;min-width:0"><h1 class="su-title">Setup Your Profile</h1>'
+   +'<p class="su-sub">Sabhi details bharo \u2014 aapka timetable, study material aur login inhi pe based hai.</p>'
+   +'<div id="su-photo-state">'+photoState+'</div></div></div>'
+   +'<input type="file" id="su-photo" accept="image/*" style="display:none" onchange="_suPickPhoto(this)">'
+   +'<div class="su-grid">'
+   +_suField('Name','<input class="form-control su-in" id="su-name" value="'+esc(p.name||'')+'" placeholder="Your full name">')
+   +_suField('Phone','<input class="form-control su-in" id="su-phone" value="'+esc(p.phone||'')+'" readonly style="opacity:.7">')
+   +_suField('Class','<select class="form-control su-in" id="su-class" onchange="_suClassChange(this.value)">'+clsOpts+'</select>')
+   +_suField('Exam Session','<select class="form-control su-in" id="su-session">'+sessOpts+'</select>')
+   +_suField('Batch','<select class="form-control su-in" id="su-batch">'+batOpts+'</select>')
+   +_suField('Medium','<select class="form-control su-in" id="su-medium">'+medOpts+'</select>')
+   +'</div>'
+   +'<div class="su-lbl">Subjects <span class="su-cnt" id="su-subcnt">0/7</span></div>'
+   +'<div id="su-subjects" class="su-subs"><div class="su-muted">Select your class to load subjects.</div></div>'
+   +'<div class="su-grid">'
+   +_suField('NIOS Reference Number','<input class="form-control su-in" id="su-nios" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. B1126300356">')
+   +_suField('Set Password','<div style="position:relative"><input class="form-control su-in" id="su-pass" type="password" placeholder="Choose a password"><button type="button" class="su-eye" onclick="_suTogglePass()">'+ic('eye')+'</button></div>')
+   +'</div>'
+   +'<div id="su-err" class="su-err" style="display:none"></div>'
+   +'<button class="su-save" id="su-save" onclick="submitSetupProfile()">'+ic('check')+' Save &amp; Continue</button>'
+   +'<div class="su-logout" onclick="goHome()">\u2190 Logout</div>'
+   +'</div></div>';
+  if(p.class_level){ _suClassChange(p.class_level); }
+}
+function _suField(label,inner){ return '<div class="su-fld" data-lbl="'+esc(label)+'"><label class="su-flbl">'+esc(label)+'</label>'+inner+'</div>'; }
+function _suTogglePass(){ var i=document.getElementById('su-pass'); if(i) i.type=i.type==='password'?'text':'password'; }
+async function _suPickPhoto(inp){
+  var f=inp.files&&inp.files[0]; if(!f) return;
+  var av=document.getElementById('su-avatar');
+  var st=document.getElementById('su-photo-state'); if(st) st.innerHTML='<span class="su-photo-hint">Uploading photo\u2026</span>';
+  try{
+    var up=f;
+    if(up.size>MAXB||(up.type&&up.type.startsWith('image/'))){ try{ var rc=await smartCompress(up,function(){}); if(rc&&rc.ok) up=rc.file; }catch(e){} }
+    var fd=new FormData(); fd.append('file',up,up.name||'photo.jpg');
+    var r=await fetch(API+'/api/student/photo',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var j=await r.json().catch(function(){return {};}); throw new Error(j.detail||'Upload failed'); }
+    window._setupHasPhoto=true;
+    var url=URL.createObjectURL(up);
+    if(av){ av.innerHTML='<img src="'+url+'" alt=""><span class="su-cam">'+ic('upload')+'</span>'; }
+    if(st) st.innerHTML='<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>';
+    var pf=document.querySelector('.su-fld[data-lbl="Photo"]'); if(pf) pf.classList.remove('bad');
+  }catch(e){ if(st) st.innerHTML='<span class="su-photo-hint" style="color:#e88a86">Photo upload failed \u2014 tap to retry</span>'; toast((e&&e.message)||'Photo upload failed',true); }
+}
+async function _suClassChange(cls){
+  window._suClass=cls;
+  var wrap=document.getElementById('su-subjects'); if(!wrap) return;
+  if(!cls){ wrap.innerHTML='<div class="su-muted">Select your class to load subjects.</div>'; return; }
+  wrap.innerHTML='<div class="spinner" style="margin:14px auto"></div>';
+  try{
+    var subs=await api('/api/student/available-subjects?class_level='+cls);
+    if(!subs.length){ wrap.innerHTML='<div class="su-muted">No subjects available \u2014 contact the admin.</div>'; return; }
+    var pre=window._setupSubs||[];
+    wrap.innerHTML=subs.map(function(s){ var on=pre.indexOf(s.name)>=0;
+      return '<label class="su-chip'+(on?' on':'')+'"><input type="checkbox" value="'+esc(s.name).replace(/"/g,'&quot;')+'"'+(on?' checked':'')+' onchange="_suToggleSub(this)"> '+esc(s.name)+(s.code?' <span class="su-code">'+esc(s.code)+'</span>':'')+'</label>';
+    }).join('');
+    _suSubCount();
+  }catch(e){ wrap.innerHTML='<div class="su-muted">Error loading subjects.</div>'; }
+}
+function _suToggleSub(cb){
+  var pre=window._setupSubs||[];
+  if(cb.checked){ if(pre.length>=7){ cb.checked=false; toast('Maximum 7 subjects.',true); return; } if(pre.indexOf(cb.value)<0) pre.push(cb.value); }
+  else { pre=pre.filter(function(x){return x!==cb.value;}); }
+  window._setupSubs=pre;
+  cb.closest('.su-chip').classList.toggle('on',cb.checked);
+  _suSubCount();
+}
+function _suSubCount(){ var c=document.getElementById('su-subcnt'); if(c) c.textContent=(window._setupSubs||[]).length+'/7'; }
+async function submitSetupProfile(){
+  var name=(val('su-name')||'').trim(), phone=(val('su-phone')||'').trim();
+  var cls=val('su-class'), sess=val('su-session'), batch=val('su-batch'), med=val('su-medium');
+  var nios=(val('su-nios')||'').trim(), pass=(val('su-pass')||'').trim();
+  var subs=window._setupSubs||[];
+  // clear old marks
+  document.querySelectorAll('.su-fld.bad').forEach(function(x){x.classList.remove('bad');});
+  var miss=[];
+  var mark=function(lbl){ var f=document.querySelector('.su-fld[data-lbl="'+lbl+'"]'); if(f) f.classList.add('bad'); miss.push(lbl); };
+  if(!name) mark('Name');
+  if(!cls) mark('Class');
+  if(!sess) mark('Exam Session');
+  if(!batch) mark('Batch');
+  if(!med) mark('Medium');
+  if(!nios) mark('NIOS Reference Number');
+  if(pass.length<4) mark('Set Password');
+  var photoOk=window._setupHasPhoto;
+  if(!subs.length) miss.push('Subjects');
+  if(!photoOk) miss.push('Photo');
+  var err=document.getElementById('su-err');
+  if(miss.length){ if(err){ err.style.display='block'; err.innerHTML='Please fill: <b>'+miss.map(esc).join(', ')+'</b>'; } toast('Kuch fields baaki hain.',true);
+    if(!subs.length){ var sw=document.getElementById('su-subjects'); if(sw) sw.classList.add('bad'); } return; }
+  if(err) err.style.display='none';
+  var btn=document.getElementById('su-save'); if(btn){ btn.disabled=true; btn.textContent='Saving\u2026'; }
+  try{
+    var body={name:name,class_level:cls,exam_session:sess,batch_name:batch,medium:med,subjects:subs,nios_ref:nios,password:pass};
+    await api('/api/student/setup-profile','POST',body);
+    NAME=name;
+    toast('Profile set! Welcome, '+name+'.');
+    document.getElementById('subject-screen').style.display='none';
+    enterStudentApp();
+  }catch(e){ if(err){ err.style.display='block'; err.textContent=(e&&e.message)||'Could not save'; } toast((e&&e.message)||'Could not save',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Save & Continue'; } }
+}
+function _suInjectCss(){
+  if(document.getElementById('su-css')) return;
+  var s=document.createElement('style'); s.id='su-css';
+  s.textContent=[
+   '#subject-screen{background:radial-gradient(1200px 600px at 50% -10%,#2a2410,#14140e 60%);overflow:auto;padding:24px 14px}',
+   '.su-wrap{width:100%;max-width:720px;margin:auto}',
+   '.su-card{background:#1c1c16;border:1px solid rgba(255,255,255,.08);border-radius:22px;padding:26px 26px 30px;box-shadow:0 30px 80px rgba(0,0,0,.5)}',
+   '.su-head{display:flex;gap:16px;align-items:center;margin-bottom:22px}',
+   '.su-avatar{position:relative;width:72px;height:72px;min-width:72px;border-radius:50%;background:linear-gradient(135deg,#c9a227,#8a6d15);display:flex;align-items:center;justify-content:center;color:#1c1c16;font-weight:800;font-size:1.5rem;cursor:pointer;overflow:hidden;border:2px solid rgba(255,255,255,.15)}',
+   '.su-avatar img{width:100%;height:100%;object-fit:cover}',
+   '.su-cam{position:absolute;bottom:-2px;right:-2px;width:26px;height:26px;background:#c9a227;color:#1c1c16;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #1c1c16}',
+   '.su-cam svg{width:13px;height:13px}',
+   '.su-title{color:#fff;font-size:1.55rem;font-weight:800;margin:0}',
+   '.su-sub{color:rgba(255,255,255,.55);font-size:.84rem;margin:4px 0 0;line-height:1.4}',
+   '.su-photo-ok{color:#7fdca0;font-size:.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px;margin-top:5px}.su-photo-ok svg{width:12px;height:12px}',
+   '.su-photo-hint{color:#e0b84d;font-size:.74rem;font-weight:700;margin-top:5px;display:inline-block}',
+   '.su-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px 15px;margin-bottom:6px}',
+   '@media(max-width:540px){.su-grid{grid-template-columns:1fr}}',
+   '.su-fld{display:flex;flex-direction:column;gap:5px}',
+   '.su-flbl{color:rgba(255,255,255,.6);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em}',
+   '.su-in{background:#26261e !important;border:1px solid rgba(255,255,255,.12) !important;color:#fff !important;border-radius:12px !important;padding:12px 13px !important;font-size:.9rem !important;width:100%}',
+   '.su-in:focus{border-color:#c9a227 !important;outline:none}',
+   '.su-fld.bad .su-in{border-color:#e0524d !important;background:#2e1d1b !important}',
+   '.su-fld.bad .su-flbl{color:#e88a86}',
+   '.su-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:rgba(255,255,255,.5);cursor:pointer;padding:4px}.su-eye svg{width:16px;height:16px}',
+   '.su-lbl{color:rgba(255,255,255,.6);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px;display:flex;align-items:center;gap:8px}',
+   '.su-cnt{background:rgba(201,162,39,.2);color:#e0b84d;font-size:.68rem;padding:2px 9px;border-radius:99px}',
+   '.su-subs{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:14px;background:#181812}',
+   '.su-subs.bad{border-color:#e0524d}',
+   '.su-chip{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:10px;background:#26261e;color:rgba(255,255,255,.85);font-size:.84rem;cursor:pointer;border:1px solid transparent}',
+   '.su-chip.on{background:rgba(201,162,39,.18);border-color:#c9a227;color:#fff}',
+   '.su-chip input{width:15px;height:15px;accent-color:#c9a227}',
+   '.su-code{opacity:.5;font-size:.72rem}',
+   '.su-muted{color:rgba(255,255,255,.4);font-size:.82rem;padding:6px}',
+   '.su-err{background:rgba(224,82,77,.14);color:#f0a6a2;border:1px solid rgba(224,82,77,.4);border-radius:12px;padding:11px 14px;font-size:.84rem;margin:14px 0 0}',
+   '.su-save{width:100%;margin-top:18px;background:linear-gradient(135deg,#e0b84d,#c9a227);color:#1a1a12;border:none;border-radius:14px;padding:15px;font-size:1rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}',
+   '.su-save:hover{filter:brightness(1.05)}.su-save:disabled{opacity:.6}.su-save svg{width:18px;height:18px}',
+   '.su-logout{text-align:center;color:rgba(255,255,255,.45);font-size:.85rem;margin-top:14px;cursor:pointer}'
+  ].join('');
+  document.head.appendChild(s);
 }
 async function selectClass(cls){
   selectedClass=cls; selectedSubjects=[];
