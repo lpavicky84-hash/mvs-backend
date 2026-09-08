@@ -32,30 +32,40 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
 
-def _sr_ensure_setup_cols():
-    """setup_done + forgot_pw columns pakka banao (admin_routes ke alawa yahan bhi — jo module
-    pehle import ho, wahi create kar dega; warna StudentProfile.count() fail hoti hai)."""
+# ---- Onboarding flags (setup_done / forgot_pw) — student_profiles ke ALTER se bachne ke liye
+# alag table 'student_flags' me. create_all isko auto-banata hai (koi ALTER lock nahi).
+def _sf_row(db, sid, create=False):
+    from models import StudentFlags
     try:
-        from database import engine
-        from sqlalchemy import text as _t
+        f = db.query(StudentFlags).filter(StudentFlags.student_id == sid).first()
+        if not f and create:
+            f = StudentFlags(student_id=sid, setup_done=False, forgot_pw=False)
+            db.add(f)
+        return f
     except Exception:
-        return
-    for st in ("ALTER TABLE student_profiles ADD COLUMN setup_done TINYINT(1) NULL DEFAULT 0",
-               "ALTER TABLE student_profiles ADD COLUMN forgot_pw TINYINT(1) NULL DEFAULT 0"):
-        for _mk in ("begin", "auto"):
-            try:
-                if _mk == "begin":
-                    with engine.begin() as conn:
-                        conn.execute(_t(st))
-                else:
-                    with engine.connect() as conn:
-                        conn.execution_options(isolation_level="AUTOCOMMIT").execute(_t(st))
-                break
-            except Exception:
-                continue
+        return None
 
 
-_sr_ensure_setup_cols()
+def _sf_setup_done(db, sid):
+    f = _sf_row(db, sid)
+    return bool(f and f.setup_done)
+
+
+def _sf_set(db, sid, setup_done=None, forgot_pw=None):
+    try:
+        f = _sf_row(db, sid, create=True)
+        if f is None:
+            return
+        if setup_done is not None:
+            f.setup_done = bool(setup_done)
+        if forgot_pw is not None:
+            f.forgot_pw = bool(forgot_pw)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 _BATCH_COLS_READY = False
@@ -1175,7 +1185,7 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "nios_ref": sp.nios_ref,
         "has_photo": bool(sp.photo_b64),
         "source": (getattr(sp, "source", None) or "mvs_app"),
-        "setup_done": bool(getattr(sp, "setup_done", False))
+        "setup_done": _sf_setup_done(db, sp.id)
     }
 
 @router.post("/update-profile")
@@ -1449,8 +1459,7 @@ def setup_profile(payload: dict = Body(...), db: Session = Depends(get_db), curr
     if sp.user:
         sp.user.password = hash_password(password)   # login (secure)
     sp.plain_password = password                     # admin copy (send if forgotten)
-    sp.setup_done = True
-    sp.forgot_pw = False
+    _sf_set(db, sp.id, setup_done=True, forgot_pw=False)
     try:
         from models import Batch
         b = db.query(Batch).filter(Batch.name == batch_name).first()
@@ -1467,7 +1476,7 @@ def setup_status(db: Session = Depends(get_db), current_user=Depends(get_student
     """Frontend ko batata hai profile setup (password ke saath) ho chuka hai ya nahi + prefill data."""
     sp = get_student_profile(current_user, db)
     return {
-        "setup_done": bool(getattr(sp, "setup_done", False)),
+        "setup_done": _sf_setup_done(db, sp.id),
         "name": (sp.user.name if sp.user else "") or "",
         "phone": sp.phone or "",
         "class_level": sp.class_level or "",
@@ -1485,8 +1494,7 @@ def student_forgot_password(db: Session = Depends(get_db), current_user=Depends(
     """Student forgot-password request — admin ke request list me aa jaata hai (name + phone +
     password copy karke WhatsApp pe bhej dega)."""
     sp = get_student_profile(current_user, db)
-    sp.forgot_pw = True
-    db.commit()
+    _sf_set(db, sp.id, forgot_pw=True)
     return {"ok": True, "message": "Request sent. Admin will share your password shortly."}
 
 

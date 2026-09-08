@@ -120,8 +120,14 @@ def student_precheck(req: dict, db: Session = Depends(get_db)):
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if not sp or not sp.user:
         return {"found": False}
-    return {"found": True, "needs_password": bool(getattr(sp, "setup_done", False)),
-            "name": sp.user.name}
+    from models import StudentFlags as _SF
+    _sd = False
+    try:
+        _f = db.query(_SF).filter(_SF.student_id == sp.id).first()
+        _sd = bool(_f and _f.setup_done)
+    except Exception:
+        _sd = False
+    return {"found": True, "needs_password": _sd, "name": sp.user.name}
 
 
 @router.post("/student-login", response_model=TokenResponse)
@@ -141,7 +147,14 @@ def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     user = sp.user
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive hai. Admin se contact karein.")
-    if getattr(sp, "setup_done", False):
+    from models import StudentFlags as _SF
+    _sd = False
+    try:
+        _f = db.query(_SF).filter(_SF.student_id == sp.id).first()
+        _sd = bool(_f and _f.setup_done)
+    except Exception:
+        _sd = False
+    if _sd:
         if not password or not verify_password(password, user.password):
             raise HTTPException(status_code=401, detail="Password galat hai. Bhool gaye ho to 'Forgot Password' dabao.")
     token = create_access_token({"sub": str(user.id), "role": user.role})
@@ -164,8 +177,16 @@ def public_forgot_password(req: dict, db: Session = Depends(get_db)):
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if not sp:
         raise HTTPException(status_code=404, detail="Is phone par koi account nahi mila.")
-    sp.forgot_pw = True
-    db.commit()
+    from models import StudentFlags as _SF
+    try:
+        _f = db.query(_SF).filter(_SF.student_id == sp.id).first()
+        if not _f:
+            _f = _SF(student_id=sp.id, setup_done=False, forgot_pw=True); db.add(_f)
+        else:
+            _f.forgot_pw = True
+        db.commit()
+    except Exception:
+        db.rollback()
     return {"ok": True, "message": "Request bhej di gayi. Admin aapka password jald share karega."}
 
 @router.get("/generate-uid")
