@@ -886,43 +886,77 @@ window.addEventListener('DOMContentLoaded', function(){
   }catch(e){ try{ goLogin('student'); }catch(_){} }
 });
 
-// Student login: PHONE + PASSWORD (safe transition — jinhone abhi password set nahi kiya
-// wo sirf phone se andar aakar setup screen par password set karenge; jinke set hain unko
-// password mandatory). Purana lookup-auto-login hata diya.
+// Student login — TWO STEP (secure, no pre-shown password):
+//  Step 1: phone number only -> precheck. First-time student -> straight to profile setup.
+//  Step 2: only if the student has already set a password -> ask for it.
 function _spTogglePw(){ var i=document.getElementById('sp-pass'); if(i) i.type=i.type==='password'?'text':'password'; }
 function _injectStudentPwUI(){
   var host=document.getElementById('login-student-phone'); if(!host) return;
   var phone=document.getElementById('sp-phone');
-  if(!document.getElementById('sp-pass')){
-    var wrap=document.createElement('div'); wrap.id='sp-pw-wrap';
-    wrap.innerHTML='<div style="position:relative;margin-top:10px"><input id="sp-pass" type="password" class="form-control" placeholder="Password" style="width:100%;padding-right:38px" onkeydown="if(event.key===\'Enter\')fetchStudent()"><button type="button" onclick="_spTogglePw()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px">'+(typeof ic==='function'?ic('eye'):'\uD83D\uDC41')+'</button></div>'
-      +'<div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="studentForgotPw()" style="color:var(--primary);font-size:.82rem;text-decoration:none">Forgot password?</a></div>'
-      +'<div style="font-size:.73rem;color:var(--text-muted);margin-top:8px;line-height:1.45">Pehli baar? Sirf phone daalke <b>Login</b> karo \u2014 andar apni profile + password set kar lena.</div>';
+  if(phone){ phone.value=''; phone.setAttribute('autocomplete','off'); phone.setAttribute('inputmode','numeric'); phone.setAttribute('placeholder','Enter your 10-digit phone number'); phone.oninput=_slPhoneEdit; phone.onkeydown=function(e){ if(e.key==='Enter') studentLoginNext(); }; }
+  if(!document.getElementById('sp-pw-block')){
+    var wrap=document.createElement('div'); wrap.id='sp-pw-block'; wrap.style.display='none'; wrap.style.marginTop='12px';
+    wrap.innerHTML='<label style="display:block;font-weight:700;font-size:.9rem;margin-bottom:6px;color:#3a3320">Password</label>'
+      +'<div style="position:relative"><input id="sp-pass" type="password" class="form-control" autocomplete="new-password" placeholder="Enter your password" style="width:100%;padding-right:40px" onkeydown="if(event.key===\'Enter\')studentLoginNext()"><button type="button" onclick="_spTogglePw()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#9a8c66;cursor:pointer;padding:4px">'+(typeof ic==='function'?ic('eye'):'')+'</button></div>'
+      +'<div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="studentForgotPw()" style="color:#b8941f;font-size:.85rem;font-weight:600;text-decoration:none">Forgot password?</a></div>';
     if(phone && phone.parentNode){ phone.parentNode.insertBefore(wrap, phone.nextSibling); } else host.appendChild(wrap);
-  } else { document.getElementById('sp-pass').value=''; }
-  var btn=document.getElementById('sp-fetch-btn'); if(btn) btn.textContent='Login';
+  } else { var pp=document.getElementById('sp-pass'); if(pp) pp.value=''; document.getElementById('sp-pw-block').style.display='none'; }
+  if(!document.getElementById('sp-hint')){
+    var h=document.createElement('div'); h.id='sp-hint'; h.style.cssText='font-size:.82rem;color:#8a8060;margin-top:12px;line-height:1.5';
+    h.textContent='First time here? Just enter your phone number and tap Continue — you can set up your profile and password inside.';
+    var pb=document.getElementById('sp-pw-block'); if(pb&&pb.parentNode){ pb.parentNode.insertBefore(h, pb.nextSibling); } else host.appendChild(h);
+  } else { document.getElementById('sp-hint').style.display='block'; }
+  window._slStep='phone';
+  var btn=document.getElementById('sp-fetch-btn'); if(btn){ btn.textContent='Continue'; btn.onclick=studentLoginNext; btn.disabled=false; }
 }
-async function fetchStudent(){
-  var phone=((document.getElementById('sp-phone')||{}).value||'').trim();
-  var pass=((document.getElementById('sp-pass')||{}).value||'');
-  if(!phone){ toast('Please enter your phone number.',true); return; }
-  var btn=document.getElementById('sp-fetch-btn'); if(btn){ btn.disabled=true; btn.textContent='Logging in\u2026'; }
+function _slPhoneEdit(){
+  if(window._slStep==='password'){
+    window._slStep='phone';
+    var pb=document.getElementById('sp-pw-block'); if(pb) pb.style.display='none';
+    var h=document.getElementById('sp-hint'); if(h) h.style.display='block';
+    var btn=document.getElementById('sp-fetch-btn'); if(btn) btn.textContent='Continue';
+  }
+}
+function _slFinishLogin(data){
+  _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
+  _freshSessionPhotos();
+  document.getElementById('login-screen').classList.remove('active');
+  openStudent();
+}
+async function studentLoginNext(){
+  var phone=(((document.getElementById('sp-phone')||{}).value)||'').replace(/\D/g,'').slice(-10);
+  if(phone.length!==10){ toast('Please enter your 10-digit phone number.',true); return; }
+  var btn=document.getElementById('sp-fetch-btn');
+  if(window._slStep==='password'){
+    var pass=(((document.getElementById('sp-pass')||{}).value)||'');
+    if(!pass){ toast('Please enter your password.',true); return; }
+    if(btn){ btn.disabled=true; btn.textContent='Logging in\u2026'; }
+    try{ var data=await api('/api/auth/student-login','POST',{phone:phone,password:pass}); _slFinishLogin(data); }
+    catch(e){ toast((e&&e.message)||'Incorrect password.',true); var pw=document.getElementById('sp-pass'); if(pw) pw.focus(); if(btn){ btn.disabled=false; btn.textContent='Login'; } }
+    return;
+  }
+  if(btn){ btn.disabled=true; btn.textContent='Please wait\u2026'; }
   try{
-    var data=await api('/api/auth/student-login','POST',{phone:phone,password:pass});
-    _apiBust(); TOKEN=data.access_token; ROLE=data.role; NAME=data.name;
-    _freshSessionPhotos();
-    document.getElementById('login-screen').classList.remove('active');
-    openStudent();
-  }catch(e){
-    toast((e&&e.message)||'Login failed',true);
-    var pw=document.getElementById('sp-pass'); if(pw && /password/i.test((e&&e.message)||'')) pw.focus();
-  }finally{ if(btn){ btn.disabled=false; btn.textContent='Login'; } }
+    var r=await api('/api/auth/student-precheck','POST',{phone:phone});
+    if(!r||!r.found){ toast('No account found for this phone number. Please contact the admin.',true); if(btn){ btn.disabled=false; btn.textContent='Continue'; } return; }
+    if(r.needs_password){
+      window._slStep='password';
+      var pb=document.getElementById('sp-pw-block'); if(pb) pb.style.display='block';
+      var h=document.getElementById('sp-hint'); if(h) h.style.display='none';
+      if(btn){ btn.disabled=false; btn.textContent='Login'; }
+      var pp=document.getElementById('sp-pass'); if(pp){ pp.value=''; setTimeout(function(){ pp.focus(); },50); }
+    } else {
+      var data2=await api('/api/auth/student-login','POST',{phone:phone,password:''});
+      _slFinishLogin(data2);
+    }
+  }catch(e){ toast((e&&e.message)||'Could not continue. Please try again.',true); if(btn){ btn.disabled=false; btn.textContent='Continue'; } }
 }
+function fetchStudent(){ return studentLoginNext(); }
 async function studentForgotPw(){
-  var phone=((document.getElementById('sp-phone')||{}).value||'').trim();
-  if(!phone){ toast('Pehle apna phone number daalein.',true); var p=document.getElementById('sp-phone'); if(p) p.focus(); return; }
-  try{ var r=await api('/api/auth/forgot-password','POST',{phone:phone}); toast((r&&r.message)||'Request bhej di gayi. Admin aapka password bhejega.'); }
-  catch(e){ toast((e&&e.message)||'Could not send request',true); }
+  var phone=(((document.getElementById('sp-phone')||{}).value)||'').replace(/\D/g,'').slice(-10);
+  if(phone.length!==10){ toast('Please enter your phone number first.',true); var p=document.getElementById('sp-phone'); if(p) p.focus(); return; }
+  try{ var r=await api('/api/auth/forgot-password','POST',{phone:phone}); toast((r&&r.message)||'Request sent. The admin will share your password shortly.'); }
+  catch(e){ toast((e&&e.message)||'Could not send the request.',true); }
 }
 async function studentDirectLogin(){
   const uid=document.getElementById('sc-uid').value;
@@ -15240,19 +15274,33 @@ function _suTogglePass(){ var i=document.getElementById('su-pass'); if(i) i.type
 async function _suPickPhoto(inp){
   var f=inp.files&&inp.files[0]; if(!f) return;
   var av=document.getElementById('su-avatar');
-  var st=document.getElementById('su-photo-state'); if(st) st.innerHTML='<span class="su-photo-hint">Uploading photo\u2026</span>';
+  var st=document.getElementById('su-photo-state'); if(st) st.innerHTML='<span class="su-photo-hint">Processing photo\u2026</span>';
+  window._setupPhotoUploaded=false; window._setupPhotoB64=null; window._setupHasPhoto=false;
+  var up=f, url=null;
   try{
-    var up=f;
     if(up.size>MAXB||(up.type&&up.type.startsWith('image/'))){ try{ var rc=await smartCompress(up,function(){}); if(rc&&rc.ok) up=rc.file; }catch(e){} }
-    var fd=new FormData(); fd.append('file',up,up.name||'photo.jpg');
-    var r=await fetch(API+'/api/student/photo',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
-    if(!r.ok){ var j=await r.json().catch(function(){return {};}); throw new Error(j.detail||'Upload failed'); }
-    window._setupHasPhoto=true;
-    var url=URL.createObjectURL(up);
-    if(av){ av.classList.remove('needphoto'); av.innerHTML='<img src="'+url+'" alt=""><span class="su-cam">'+ic('upload')+'</span>'; }
-    if(st) st.innerHTML='<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>';
-    var pf=document.querySelector('.su-fld[data-lbl="Photo"]'); if(pf) pf.classList.remove('bad');
-  }catch(e){ if(st) st.innerHTML='<span class="su-photo-hint" style="color:#e88a86">Photo upload failed \u2014 tap to retry</span>'; toast((e&&e.message)||'Photo upload failed',true); }
+    try{ url=URL.createObjectURL(up); }catch(e){}
+    // BULLETPROOF: photo ka base64 hamesha pehle capture karo — R2 upload fail ho bhi jaye
+    // to setup-profile ke saath base64 chala jaayega, student kabhi stuck nahi hoga.
+    try{ var d=await _fileB64(up); window._setupPhotoB64=(d&&d.indexOf(',')>=0)?d.split(',')[1]:d; }catch(e){}
+  }catch(e){}
+  if(!window._setupPhotoB64 && !url){ if(st) st.innerHTML='<span class="su-photo-hint" style="color:#e88a86">Could not read photo \u2014 tap to retry</span>'; return; }
+  // preview + mark set turant (photo local me capture ho gaya)
+  window._setupHasPhoto=true;
+  if(av){ av.classList.remove('needphoto'); av.innerHTML='<img src="'+(url||'')+'" alt=""><span class="su-cam">'+ic('upload')+'</span>'; }
+  var pf=document.querySelector('.su-fld[data-lbl="Photo"]'); if(pf) pf.classList.remove('bad');
+  if(st) st.innerHTML='<span class="su-photo-hint">Uploading\u2026</span>';
+  // R2 upload — 2 attempts. Success -> base64 bhejne ki zaroorat nahi. Fail -> base64 fallback.
+  var okUp=false;
+  for(var i=0;i<2 && !okUp;i++){
+    try{ var fd=new FormData(); fd.append('file',up,up.name||'photo.jpg');
+      var r=await fetch(API+'/api/student/photo',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+      if(r.ok) okUp=true;
+    }catch(e){}
+  }
+  if(okUp){ window._setupPhotoUploaded=true; window._setupPhotoB64=null; if(st) st.innerHTML='<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>'; }
+  else if(window._setupPhotoB64){ if(st) st.innerHTML='<span class="su-photo-ok">'+ic('check')+' Photo ready \u2014 saved with your profile</span>'; }
+  else { window._setupHasPhoto=false; if(st) st.innerHTML='<span class="su-photo-hint" style="color:#e88a86">Photo failed \u2014 tap to retry</span>'; }
 }
 async function _suClassChange(cls){
   window._suClass=cls;
@@ -15307,6 +15355,7 @@ async function submitSetupProfile(){
   var btn=document.getElementById('su-save'); if(btn){ btn.disabled=true; btn.textContent='Saving\u2026'; }
   try{
     var body={name:name,class_level:cls,exam_session:sess,batch_name:batch,medium:med,subjects:subs,nios_ref:nios,password:pass};
+    if(!window._setupPhotoUploaded && window._setupPhotoB64){ body.photo_b64=window._setupPhotoB64; }   // R2 fail -> base64 fallback
     await api('/api/student/setup-profile','POST',body);
     NAME=name;
     toast('Profile set! Welcome, '+name+'.');

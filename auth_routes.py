@@ -109,6 +109,21 @@ def get_me(current_user=Depends(get_current_user)):
     return current_user
 
 
+@router.post("/student-precheck")
+def student_precheck(req: dict, db: Session = Depends(get_db)):
+    """Login step 1: phone se check karo account hai ya nahi, aur password chahiye ya nahi
+    (setup_done). Frontend isi se decide karta hai — 1st time -> seedha setup, warna password."""
+    from models import StudentProfile
+    phone = "".join(ch for ch in str(req.get("phone") or "") if ch.isdigit())[-10:]
+    if len(phone) != 10:
+        return {"found": False}
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if not sp or not sp.user:
+        return {"found": False}
+    return {"found": True, "needs_password": bool(getattr(sp, "setup_done", False)),
+            "name": sp.user.name}
+
+
 @router.post("/student-login", response_model=TokenResponse)
 def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     """Naya student login: PHONE + PASSWORD. Safe transition —
