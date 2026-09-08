@@ -9625,11 +9625,13 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       const rejNote='';
       const propNote=(t.proposal_ok==='pending')?`<span class="vt-pill proposal">Pending Approval</span>`:'';
       const th=t.thumbnail;
-      // Approved thumbnail ab card ke header image me dikhta hai (image jaisa) — alag "View thumbnail"
-      // block sirf pending ke liye rakho taaki teacher ko pata rahe thumbnail aa raha hai.
-      const thumbBox=(th && !th.approved)?`
-        <div class="vt-thumb-status pending${th.overdue?' overdue':''}">
-          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${th.designer?` — ${esc(th.designer)} is designing it`:''}</div>${th.deadline?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
+      // "Thumbnail pending" SIRF tab jab graphics designer assigned hai par abhi approve nahi hua
+      // AUR koi thumbnail url abhi available nahi. Admin ne khud thumbnail daal di ho to pending
+      // NAHI dikhega (wo header image me dikhegi). Isse "pending" ka galat message hat gaya.
+      var _thGfxPending=false; try{ var _tg=t.graphics||{}; _thGfxPending=!!((_tg.graphics_id||_tg.graphics_name)&&(_tg.status||'')!=='approved'); }catch(e){}
+      const thumbBox=(_thGfxPending && !_vtThumbUrl(t))?`
+        <div class="vt-thumb-status pending${(th&&th.overdue)?' overdue':''}">
+          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${(th&&th.designer)?` — ${esc(th.designer)} is designing it`:''}</div>${(th&&th.deadline)?`<div class="vts-sub">Expected by <b>${esc(th.deadline)}</b>${th.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
         </div>`:'';
       return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
@@ -10192,15 +10194,19 @@ function _vtThumbFile(file){
 }
 function _vtThumbUrl(t){
   // Admin/teacher/production ke liye ek hi resolution — taaki jo thumbnail production pe dikhta
-  // hai wahi admin+teacher pe bhi dikhe. t.thumbnail STRING (final url) ya OBJECT {approved,url}
-  // dono ho sakta hai. Guard: graphics designer assigned hai par abhi approved nahi -> pending
-  // (WIP), tab na dikhao (production _finalThumb wala hi rule).
+  // hai wahi admin+teacher pe bhi dikhe. User ka rule: admin-uploaded/assigned thumbnail = approved,
+  // sabko dikhe. Sirf tab chhupao jab GRAPHICS designer assigned hai par abhi approve nahi hua (WIP).
   if(!t) return '';
   try{ var g=t.graphics||{}; if((g.graphics_id||g.graphics_name)&&(g.status||'')!=='approved') return ''; }catch(e){}
   var th=t.thumbnail;
   if(typeof th==='string') return th||'';
-  if(th && typeof th==='object') return th.url||'';
-  return '';
+  if(th && typeof th==='object'){
+    // koi bhi url-jaisa field — approved flag pe depend nahi (admin upload = approved treat karo)
+    var u=th.url||th.link||th.thumbnail_url||th.image||th.src||th.href||'';
+    if(u) return u;
+  }
+  // task-level fallbacks (kuch endpoints thumbnail seedha task pe bhejte hain)
+  return t.thumbnail_url||t.thumbnail_link||(typeof t.thumb==='string'?t.thumb:'')||'';
 }
 function _vtThumb(t,who){
   const gth=_vtThumbUrl(t);
