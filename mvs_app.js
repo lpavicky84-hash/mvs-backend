@@ -12312,10 +12312,88 @@ function _batchMgrBody(list,unlinked){
   var active=list.filter(function(b){return b.active!==false;});
   var inactive=list.filter(function(b){return b.active===false;});
   return '<div class="bc-top"><button class="btn btn-primary" onclick="openBatchAdd()">'+ic('plus')+' Add Batch</button>'
+    +'<button class="btn btn-secondary" onclick="openCrashImport()">'+ic('upload')+' Import Crash Purchases</button>'
     +(unlinked>0?'<span class="bc-unl">'+unlinked+' student'+(unlinked>1?'s':'')+' not yet linked \u2014 links automatically</span>':'<span class="bc-unl ok">\u2713 all students linked</span>')+'</div>'
     +(active.length?'<div class="vtc-cap">Active</div>':'')
     +'<div class="bc-grid">'+(active.map(_batchCard).join('')||'<div class="vtc-empty">No batches yet \u2014 tap \u201CAdd Batch\u201D</div>')+'</div>'
     +(inactive.length?'<div class="vtc-cap">Archived</div><div class="bc-grid">'+inactive.map(_batchCard).join('')+'</div>':'');
+}
+function _ciSplitCSV(text){
+  var rows=[], row=[], cur='', q=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; }
+    else { if(c==='"') q=true; else if(c===','){ row.push(cur); cur=''; } else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; } else if(c==='\r'){} else cur+=c; }
+  }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); }
+  return rows;
+}
+function _ciCol(hdr,names){ for(var j=0;j<names.length;j++){ var i=hdr.indexOf(names[j]); if(i>=0) return i; } return -1; }
+function openCrashImport(){
+  showModal('Import Crash Purchases',
+    '<div class="alert alert-info" style="font-size:.82rem">Purchase sheet (CSV) upload karo. Har buyer ko uske crash batch me <b>add-on</b> enroll kiya jaayega \u2014 unka <b>main batch bilkul nahi badlega</b>, crash content mil jaayega. Phone number se match hota hai.</div>'
+    +'<div class="form-group"><label>Purchase CSV file</label><input type="file" id="ci-file" accept=".csv,text/csv" class="form-control" onchange="_ciParse(this)"></div>'
+    +'<div id="ci-out"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function _ciParse(inp){
+  var f=inp.files&&inp.files[0]; if(!f) return;
+  var out=document.getElementById('ci-out'); if(out) out.innerHTML='<div class="spinner"></div>';
+  var text=''; try{ text=await f.text(); }catch(e){ if(out) out.innerHTML='<div class="alert alert-error">Could not read file.</div>'; return; }
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  var rows=_ciSplitCSV(text);
+  if(!rows.length){ if(out) out.innerHTML='<div class="alert alert-error">Empty CSV.</div>'; return; }
+  var hdr=rows[0].map(function(x){return String(x||'').trim().toLowerCase();});
+  var pi=_ciCol(hdr,['phone no.','phone','phone number','mobile','contact']);
+  var ni=_ciCol(hdr,['name','student name','user name']);
+  var ii=_ciCol(hdr,['item','course','product','item name']);
+  if(pi<0||ii<0){ if(out) out.innerHTML='<div class="alert alert-error">CSV me "Phone No." aur "Item" columns nahi mile. Headers check karo.</div>'; return; }
+  var purchases=[];
+  for(var r=1;r<rows.length;r++){
+    var row=rows[r]; if(!row||row.length<=Math.max(pi,ii)) continue;
+    var ph=String(row[pi]||'').trim(), it=String(row[ii]||'').trim();
+    if(!ph&&!it) continue;
+    purchases.push({phone:ph, name:(ni>=0?String(row[ni]||'').trim():''), item:it});
+  }
+  if(!purchases.length){ if(out) out.innerHTML='<div class="alert alert-error">Koi purchase row nahi mili.</div>'; return; }
+  window._ciPurchases=purchases;
+  try{ var rep=await api('/api/admin/crash-import','POST',{purchases:purchases, commit:false}); _ciShowReport(rep,false); }
+  catch(e){ if(out) out.innerHTML='<div class="alert alert-error">'+esc((e&&e.message)||'Import failed')+'</div>'; }
+}
+function _ciShowReport(rep, done){
+  var out=document.getElementById('ci-out'); if(!out) return;
+  var per=rep.per_batch||{};
+  var rowsH=Object.keys(per).map(function(k){ var p=per[k]; return '<tr><td style="padding:3px 0">'+esc(k)+'</td><td style="text-align:center;color:#059669;font-weight:700">'+p.matched+'</td><td style="text-align:center;color:var(--text-muted)">'+p.already+'</td><td style="text-align:center;color:#c1443a">'+p.unmatched+'</td></tr>'; }).join('');
+  var h='<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px">'
+    +'<div style="font-weight:800;margin-bottom:8px">'+(done?'\u2713 Enrolled':'Preview')+' \u2014 '+rep.total+' purchases</div>'
+    +'<table style="width:100%;font-size:.82rem;border-collapse:collapse"><thead><tr style="color:var(--text-muted);font-size:.72rem"><th style="text-align:left">Crash Batch</th><th>New</th><th>Already</th><th>No a/c</th></tr></thead><tbody>'+rowsH+'</tbody></table>'
+    +'<div style="margin-top:10px;font-size:.82rem;line-height:1.7">'
+    +'<b style="color:#059669">'+rep.matched+'</b> '+(done?'enrolled':'ready to enroll')+' \u00b7 '
+    +'<b>'+rep.already+'</b> already enrolled \u00b7 '
+    +'<b style="color:#c1443a">'+rep.unmatched+'</b> no portal account'
+    +(rep.no_batch?(' \u00b7 <b>'+rep.no_batch+'</b> batch not found'):'')+'</div>';
+  if(rep.unmatched_list&&rep.unmatched_list.length){
+    window._ciUnmatched=rep.unmatched_list;
+    h+='<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="_ciDownloadUnmatched()">'+ic('download')+' Download '+rep.unmatched_list.length+' with no account</button>';
+  }
+  if(!done){ h+='<button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="_ciCommit()">'+ic('check')+' Confirm & Enroll '+rep.matched+' students</button>'; }
+  h+='</div>';
+  out.innerHTML=h;
+}
+async function _ciCommit(){
+  var out=document.getElementById('ci-out'); var btn=out&&out.querySelector('.btn-primary'); if(btn){ btn.disabled=true; btn.textContent='Enrolling\u2026'; }
+  try{
+    var rep=await api('/api/admin/crash-import','POST',{purchases:window._ciPurchases||[], commit:true});
+    _ciShowReport(rep,true); toast(rep.matched+' students enrolled in crash courses.');
+    try{ _apiForget('batches'); if(typeof loadABatches==='function') loadABatches(); }catch(e){}
+  }catch(e){ toast((e&&e.message)||'Enroll failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Confirm & Enroll'; } }
+}
+function _ciDownloadUnmatched(){
+  var list=window._ciUnmatched||[]; if(!list.length) return;
+  var csv='Phone,Name,Crash Batch\n'+list.map(function(x){return '"'+(x.phone||'')+'","'+String(x.name||'').replace(/"/g,'""')+'","'+(x.batch||'')+'"';}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download='crash_no_account.csv'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(url);},1500);
 }
 function openBatchAdd(){
   _bmInjectCSS();
@@ -15359,7 +15437,7 @@ async function showSubjectScreen(p){
    +'<span id="su-photo-ini">'+esc(initials)+'</span>'
    +'<span class="su-cam">'+ic('upload')+'</span></div>'
    +'<div style="flex:1;min-width:0"><h1 class="su-title">Setup Your Profile</h1>'
-   +'<p class="su-sub">Sabhi details bharo \u2014 aapka timetable, study material aur login inhi pe based hai.</p>'
+   +'<p class="su-sub">Please complete your details \u2014 your timetable, study material and login all depend on this information.</p>'
    +'<div id="su-photo-state">'+photoState+'</div></div></div>'
    +'<input type="file" id="su-photo" accept="image/*" style="display:none" onchange="_suPickPhoto(this)">'
    +'<div class="su-grid">'
@@ -15462,7 +15540,7 @@ async function submitSetupProfile(){
   if(!subs.length) miss.push('Subjects');
   if(!photoOk) miss.push('Photo');
   var err=document.getElementById('su-err');
-  if(miss.length){ if(err){ err.style.display='block'; err.innerHTML='Please fill: <b>'+miss.map(esc).join(', ')+'</b>'; } toast('Kuch fields baaki hain.',true);
+  if(miss.length){ if(err){ err.style.display='block'; err.innerHTML='Please complete: <b>'+miss.map(esc).join(', ')+'</b>'; } toast('Some required fields are missing.',true);
     if(!subs.length){ var sw=document.getElementById('su-subdd'); if(sw) sw.classList.add('bad'); } return; }
   if(err) err.style.display='none';
   var btn=document.getElementById('su-save'); if(btn){ btn.disabled=true; btn.textContent='Saving\u2026'; }

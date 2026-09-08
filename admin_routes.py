@@ -857,6 +857,113 @@ def admin_quick_search(q: str = "", db: Session = Depends(get_db), _=Depends(get
     return {"results": out[:15]}
 
 
+@router.post("/crash-import")
+def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Purchase CSV se crash-course buyers ko unke crash batch me ADD-ON enroll karo
+    (student_batches me row — main batch bilkul nahi badalta). Phone se match.
+    payload: {purchases:[{phone,name,item}], map:{item_lower->batch_name}(optional), commit:bool}.
+    commit=False -> sirf preview (kuch save nahi hota)."""
+    from models import Batch, StudentProfile, StudentBatch
+    import re as _re
+    purchases = payload.get("purchases") or []
+    commit = payload.get("commit", True)
+    default_map = {
+        "lakshya (science) crash course class 12th": "Lakshya Science Crash Course",
+        "udaan crash course class 10th": "UDAAN Class 10th Crash Course",
+        "lakshya (arts) crash course class 12th": "Lakshya Arts Crash Course",
+        "lakshya (commerce) crash course class 12th": "Lakshya Commerce Crash Course",
+    }
+    user_map = {}
+    for k, v in (payload.get("map") or {}).items():
+        user_map[str(k or "").strip().lower()] = str(v or "").strip()
+
+    def _batch_for_item(item):
+        it = str(item or "").strip().lower()
+        if it in user_map:
+            return user_map[it]
+        if it in default_map:
+            return default_map[it]
+        if "crash" in it:
+            if "udaan" in it or "class 10" in it or "10th" in it:
+                return "UDAAN Class 10th Crash Course"
+            if "science" in it:
+                return "Lakshya Science Crash Course"
+            if "art" in it:
+                return "Lakshya Arts Crash Course"
+            if "commerce" in it:
+                return "Lakshya Commerce Crash Course"
+        return None
+
+    batches = {}
+    for b in db.query(Batch).all():
+        batches[str(b.name or "").strip().lower()] = b
+
+    def _ph(s):
+        d = _re.sub(r"\D", "", str(s or ""))
+        return d[-10:] if len(d) >= 10 else d
+
+    stu_by_phone = {}
+    for sid, sph, sbid in db.query(StudentProfile.id, StudentProfile.phone, StudentProfile.batch_id).all():
+        p = _ph(sph)
+        if p:
+            stu_by_phone[p] = (sid, sbid)
+
+    # jis student ka pehle se koi StudentBatch row hai — us set me primary auto-ensure ho chuka
+    _has_sb = set()
+    for (sid,) in db.query(StudentBatch.student_id).distinct().all():
+        _has_sb.add(sid)
+
+    matched = 0; already = 0; unmatched = 0; no_batch = 0
+    per = {}
+    unmatched_list = []
+    seen = set()
+    for row in purchases:
+        phone = _ph(row.get("phone"))
+        item = str(row.get("item") or "").strip()
+        bname = _batch_for_item(item)
+        pkey = bname or ("(unmapped) " + item)
+        per.setdefault(pkey, {"matched": 0, "already": 0, "unmatched": 0})
+        b = batches.get(str(bname or "").strip().lower()) if bname else None
+        if not b:
+            no_batch += 1
+            per[pkey]["unmatched"] += 1
+            continue
+        rec = stu_by_phone.get(phone)
+        if not rec:
+            unmatched += 1
+            per[pkey]["unmatched"] += 1
+            if phone:
+                unmatched_list.append({"phone": phone, "name": str(row.get("name") or ""), "batch": bname})
+            continue
+        sid, sbid = rec
+        k = (sid, b.id)
+        if k in seen:
+            continue
+        seen.add(k)
+        exists = db.query(StudentBatch.id).filter(
+            StudentBatch.student_id == sid, StudentBatch.batch_id == b.id).first()
+        if exists:
+            already += 1
+            per[pkey]["already"] += 1
+            continue
+        if commit:
+            # main batch content na chhoote: agar student ka abhi tak koi StudentBatch row nahi,
+            # to uska primary batch pehle enroll karo (is_primary=True), phir crash add-on.
+            if sid not in _has_sb and sbid:
+                if not db.query(StudentBatch.id).filter(
+                        StudentBatch.student_id == sid, StudentBatch.batch_id == sbid).first():
+                    db.add(StudentBatch(student_id=sid, batch_id=sbid, is_primary=True))
+                _has_sb.add(sid)
+            db.add(StudentBatch(student_id=sid, batch_id=b.id, is_primary=False))
+        matched += 1
+        per[pkey]["matched"] += 1
+    if commit:
+        db.commit()
+    return {"total": len(purchases), "matched": matched, "already": already,
+            "unmatched": unmatched, "no_batch": no_batch, "committed": bool(commit),
+            "per_batch": per, "unmatched_list": unmatched_list[:1000]}
+
+
 @router.get("/batches")
 def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     """List all batches (active + inactive). Usage count now reads the linked batch_id
@@ -865,14 +972,26 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import Batch, StudentProfile
     from sqlalchemy import func as _bf
     rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
-    by_id = {}          # batch_id -> student count (primary, from the entity link)
+    by_id = {}          # batch_id -> DISTINCT student count (primary link + add-on enrollments)
     by_name = {}        # batch name -> student count (fallback, legacy fields, unlinked only)
     unlinked = 0
     try:
-        for bid, cnt in (db.query(StudentProfile.batch_id, _bf.count(StudentProfile.id))
-                         .filter(StudentProfile.batch_id != None)
-                         .group_by(StudentProfile.batch_id).all()):
-            by_id[bid] = int(cnt)
+        from collections import defaultdict as _dd
+        _prim = _dd(set)   # batch_id -> set(student_id) : primary link
+        _enr  = _dd(set)   # batch_id -> set(student_id) : add-on (student_batches, e.g. crash-course)
+        for sid, bid in (db.query(StudentProfile.id, StudentProfile.batch_id)
+                         .filter(StudentProfile.batch_id != None).all()):
+            if bid is not None:
+                _prim[bid].add(sid)
+        try:
+            from models import StudentBatch as _SB
+            for sid, bid in db.query(_SB.student_id, _SB.batch_id).all():
+                if bid is not None and sid is not None:
+                    _enr[bid].add(sid)
+        except Exception:
+            pass
+        for bid in set(list(_prim.keys()) + list(_enr.keys())):
+            by_id[bid] = len(_prim.get(bid, set()) | _enr.get(bid, set()))
         # legacy fallback: only for students NOT yet linked (batch_id NULL)
         for name, cnt in (db.query(StudentProfile.batch, _bf.count(StudentProfile.id))
                           .filter(StudentProfile.batch_id == None)
