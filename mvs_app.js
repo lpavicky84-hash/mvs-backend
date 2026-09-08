@@ -1430,6 +1430,13 @@ function _ttbInjectCSS(){
   ].join('');
   document.head.appendChild(s);
 }
+function _ttbBatchField(batches){
+  if(!batches||!batches.length) return '<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch"><option value="">No batch (global)</option></select></div>';
+  var rows=batches.map(function(b){
+    return '<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:.82rem;font-weight:600"><input type="checkbox" class="ttb-bchk" value="'+b.id+'" style="width:15px;height:15px"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>';
+  }).join('');
+  return '<div class="form-group" style="flex:1;min-width:240px"><label>Batch <span style="color:var(--text-muted);font-weight:400">(ek ya zyada \u2014 kuch na chuno to global)</span></label><div style="display:flex;gap:7px;flex-wrap:wrap;max-height:110px;overflow:auto;padding:2px">'+rows+'</div></div>';
+}
 async function openTTBuilder(){
   _ttbInjectCSS();
   window._ttbTeacher=false;
@@ -1440,7 +1447,7 @@ async function openTTBuilder(){
   showModal('Create Timetable',
     '<p class="vtc-help">Pick the <b>batch</b> + <b>subject</b>, then add classes. Type a chapter and press Enter \u2014 add multiple to <b>merge</b> them (e.g. crash course). Scoped to the batch, so it never clashes with another batch\u2019s timetable.</p>'
     +'<div class="ttb-top">'
-    +'<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch">'+batOpts+'</select></div>'
+    +_ttbBatchField(batches)
     +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
     +'<div class="form-group"><label>Subject</label><select class="input" id="ttb-subject" onchange="_ttbLoadChapters()"></select></div>'
     +'</div><datalist id="ttb-ch-dl"></datalist>'
@@ -1510,7 +1517,8 @@ function ttbChKey(e,i){ if(e.key==='Enter'){ e.preventDefault(); var v=(e.target
 function ttbDelChip(i,ci){ if(_ttbRows[i]&&_ttbRows[i].chapters) _ttbRows[i].chapters.splice(ci,1); _ttbRender(); }
 function _ttbDay(dstr){ try{ var d=new Date(dstr+'T00:00:00'); return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; }catch(e){ return ''; } }
 async function ttbCreate(){
-  var batch_id=(document.getElementById('ttb-batch')||{}).value||'';
+  var _bids=[].slice.call(document.querySelectorAll('.ttb-bchk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
+  var batch_id=(document.getElementById('ttb-batch')||{}).value||'';   // fallback (no-batches case)
   var subject=(document.getElementById('ttb-subject')||{}).value||'';
   var cl=String((document.getElementById('ttb-class')||{}).value||'12').replace(/\D/g,'')||'12';
   if(!subject){ toast('Pick a subject'); return; }
@@ -1518,7 +1526,8 @@ async function ttbCreate(){
     .map(function(r){ return {date:r.date,time:r.time,chapters:r.chapters,type:r.type,day:_ttbDay(r.date),youtube:(r.youtube||'')}; });
   if(!entries.length){ toast('Add at least one class'); return; }
   var ep=window._ttbTeacher?'/api/teacher/tt-create':'/api/admin/timetable-create';
-  try{ var d=await api(ep,'POST',{batch_id:batch_id,subject:subject,class_name:'Class '+cl,entries:entries});
+  var _pl={subject:subject,class_name:'Class '+cl,entries:entries}; if(_bids.length) _pl.batch_ids=_bids; else if(batch_id) _pl.batch_id=batch_id;
+  try{ var d=await api(ep,'POST',_pl);
     if(window._ttbTeacher){ toast((d.added||0)+' classes submitted for admin approval.'); closeModal(); openTTBuilderT(); }
     else { toast((d.added||0)+' class'+((d.added||0)!==1?'es':'')+' added to the timetable.'); closeModal(); }
   }catch(e){ toast((e&&e.message)||'Could not create',true); }
@@ -1536,7 +1545,7 @@ async function openTTBuilderT(){
   showModal('Create Timetable',
     '<p class="vtc-help">Pick a <b>batch</b> and <b>subject</b>, then add each class below.</p>'
     +'<div class="ttb-top">'
-    +'<div class="form-group"><label>Batch</label><select class="input" id="ttb-batch">'+batOpts+'</select></div>'
+    +_ttbBatchField(batches)
     +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
     +'<div class="form-group"><label>Subject</label><select class="input" id="ttb-subject" onchange="_ttbLoadChapters()"></select></div>'
     +'</div><datalist id="ttb-ch-dl"></datalist>'
@@ -4812,7 +4821,7 @@ async function openEditDpp(id){
     _ipart:'a', _tab:'en', qtype:'general' }));
   if(mapped.length){ _examQs=mapped; renderExamQs(); }
   const _ctw=document.getElementById('ex-cls-test-wrap'); if(_ctw) _ctw.style.display='none';
-  var _mbe=document.getElementById('mbf-wrap'); if(_mbe) _mbe.style.display='none';   // edit pe batch re-target nahi
+  var _mbs=document.getElementById('mbf-sel'); if(_mbs && d.batch_id!=null) _mbs.value=String(d.batch_id);   // DPP ka current batch pre-select
 }
 // ---------- UPLOAD DPP (2 PDFs mandatory) ----------
 async function openUploadDpp(){
@@ -5211,6 +5220,15 @@ function _multiBatchField(label){
 function _multiBatchIds(){
   return [].slice.call(document.querySelectorAll('.mbf-chk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
 }
+// Single-batch dropdown for EDIT (re-target the one item). Pre-selected to current batch.
+function _singleBatchField(curBid){
+  var list=window._ttBatchList||[]; if(!list.length) return '';
+  var opts='<option value="">All batches (global)</option>'+list.map(function(b){
+    return '<option value="'+b.id+'"'+(String(curBid||'')===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';
+  }).join('');
+  return '<div class="form-group"><label class="ex-lbl">Batch / Course <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(is item ko is batch me move/keep karo)</span></label><select class="form-control" id="mbf-sel">'+opts+'</select></div>';
+}
+function _singleBatchId(){ var s=document.getElementById('mbf-sel'); if(!s) return undefined; var v=s.value; return v?parseInt(v,10):null; }
 async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
@@ -6304,12 +6322,16 @@ async function openCreateExam(type,editData){
     (editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
-    +(editData?'':_multiBatchField())
+    +`<div id="mbf-slot"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
     +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  (function(){ var slot=document.getElementById('mbf-slot'); if(!slot) return;
+    var _isEdit=!!editData||!!window._dppEditId;
+    slot.innerHTML=_isEdit?_singleBatchField(editData&&editData.ex?editData.ex.batch_id:null):_multiBatchField();
+  })();
   // Class select (test targeting): subject ki classes timetable + assignment se
   const _subEl=document.getElementById('ex-sub');
   if(_subEl) _subEl.addEventListener('change',()=>_examFillTestCls(true));
@@ -8519,6 +8541,7 @@ async function submitExam(){
       chapter:((val('ex-ch-sel')!==undefined&&val('ex-ch-sel')!=='')?val('ex-ch-sel'):(val('ex-ch')||_em.chapter||'')), part:((val('ex-part-sel')||_em.part)||''),
       title, medium:_examMedium||_em.medium||'English', client_key:(window._dppCk||''),
       batch_ids:(window._dppEditId?undefined:_multiBatchIds()),
+      batch_id:(window._dppEditId?_singleBatchId():undefined),
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
         image:q.image_b64||null, alt_image:q.alt_image_b64||null, model_image:q.model_answer_image||null })) };
     const _dppEid=window._dppEditId;
@@ -8566,6 +8589,7 @@ async function submitExam(){
   const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
   const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:(parseInt(val('ex-dur'))||0),scheduled_at:_sched||null,questions:questions};
   if(!window._editExamId) body.batch_ids=_multiBatchIds();
+  else { var _sb=_singleBatchId(); if(_sb!==undefined) body.batch_id=_sb; }
   try{
     const _editId=window._editExamId;
     if(_editId){ await api('/api/teacher/exam/'+_editId,'PATCH',body); }

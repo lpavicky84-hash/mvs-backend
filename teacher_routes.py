@@ -129,12 +129,9 @@ def teacher_tt_create(payload: dict = Body(...), db: Session = Depends(get_db), 
     subject = (payload.get("subject") or "").strip()
     if not subject:
         raise HTTPException(status_code=400, detail="Subject is required")
-    try:
-        batch_id = int(payload.get("batch_id")) if payload.get("batch_id") else None
-    except Exception:
-        batch_id = None
+    _targets = _create_target_batches(payload)   # multi-batch: har chune batch ke liye same pending timetable
     entries = payload.get("entries") or []
-    added = 0
+    _clean = []
     for e in entries:
         edate = None
         try:
@@ -148,13 +145,16 @@ def teacher_tt_create(payload: dict = Body(...), db: Session = Depends(get_db), 
         chapter = " + ".join(chapters) if chapters else (e.get("chapter") or "").strip()
         if not chapter and not edate and not (e.get("time") or "").strip():
             continue
-        db.add(TimetableEntry(
-            teacher_id=tp.id, subject=subject, class_name=class_name, batch_id=batch_id,
-            chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
-            day=(e.get("day") or None), time_text=(e.get("time") or None),
-            entry_type=(e.get("type") or "lecture"), status="pending",
-            youtube_link=((e.get("youtube") or "").strip() or None)))
-        added += 1
+        _clean.append(dict(chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
+                           day=(e.get("day") or None), time_text=(e.get("time") or None),
+                           entry_type=(e.get("type") or "lecture"),
+                           youtube_link=((e.get("youtube") or "").strip() or None)))
+    added = 0
+    for _bid in _targets:
+        for c in _clean:
+            db.add(TimetableEntry(teacher_id=tp.id, subject=subject, class_name=class_name,
+                                  batch_id=_bid, status="pending", **c))
+            added += 1
     db.commit()
     return {"ok": True, "added": added, "pending": True}
 
@@ -2144,6 +2144,12 @@ def teacher_dpp_update(pack_id: int, data: dict = Body(...), db: Session = Depen
         pk.title = (data.get("title") or "").strip()
     if (data.get("medium") or "").strip():
         pk.medium = (data.get("medium") or "").strip()
+    if "batch_id" in data:                                     # edit pe batch re-target
+        _bv = data.get("batch_id")
+        try:
+            pk.batch_id = int(_bv) if _bv not in (None, "", 0, "0") else None
+        except Exception:
+            pk.batch_id = None
     pk.questions = questions
     # Stored PDFs are stale after an edit — clear so they rebuild lazily on next view/download.
     for _attr in ("q_pdf", "s_pdf", "q_pdf_hi", "s_pdf_hi"):
@@ -2263,6 +2269,7 @@ def teacher_dpp_questions(pack_id: int, db: Session = Depends(get_db), current_u
     return {"id": pk.id, "title": pk.title, "subject": pk.subject, "chapter": pk.chapter,
             "part": pk.part, "medium": pk.medium, "source": pk.source, "teacher": tname,
             "teacher_id": tp.id, "has_teacher_photo": tph,
+            "batch_id": getattr(pk, "batch_id", None),
             "class_name": pk.class_name, "has_solution": bool(pk.s_pdf) or any(
                 (q.get("model") or q.get("model_image")) for q in (pk.questions or [])),
             "questions": qs}
@@ -6922,6 +6929,12 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
         ex.duration_min = _parse_dur(payload.get("duration_min"))
     if "scheduled_at" in payload:
         ex.scheduled_at = _exam_parse_dt(payload.get("scheduled_at"))
+    if "batch_id" in payload:                                   # edit pe batch re-target
+        _bv = payload.get("batch_id")
+        try:
+            ex.batch_id = int(_bv) if _bv not in (None, "", 0, "0") else None
+        except Exception:
+            ex.batch_id = None
     qs = payload.get("questions")
     if isinstance(qs, list) and qs:
         ttype = ex.test_type or "subjective"

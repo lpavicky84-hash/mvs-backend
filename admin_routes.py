@@ -3234,16 +3234,29 @@ def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_
     subject = (payload.get("subject") or "").strip()
     if not subject:
         raise HTTPException(status_code=400, detail="Subject is required")
-    try:
-        batch_id = int(payload.get("batch_id")) if payload.get("batch_id") else None
-    except Exception:
-        batch_id = None
+    # multi-batch: batch_ids (list) -> har chune batch ke liye same timetable; khaali -> [None] (global)
+    _targets = []
+    _bids = payload.get("batch_ids")
+    if isinstance(_bids, list):
+        for x in _bids:
+            try:
+                v = int(x)
+            except Exception:
+                v = 0
+            if v and v not in _targets:
+                _targets.append(v)
+    if not _targets:
+        try:
+            _v = int(payload.get("batch_id")) if payload.get("batch_id") else 0
+        except Exception:
+            _v = 0
+        _targets = [_v] if _v else [None]
     try:
         teacher_id = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
     except Exception:
         teacher_id = None
     entries = payload.get("entries") or []
-    added = 0
+    _clean = []
     for e in entries:
         edate = None
         try:
@@ -3257,15 +3270,18 @@ def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_
         chapter = " + ".join(chapters) if chapters else (e.get("chapter") or "").strip()
         if not chapter and not edate and not (e.get("time") or "").strip():
             continue  # skip empty rows
-        db.add(TimetableEntry(
-            teacher_id=teacher_id, subject=subject, class_name=class_name, batch_id=batch_id,
-            chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
-            day=(e.get("day") or None), time_text=(e.get("time") or None),
-            entry_type=(e.get("type") or "lecture"),
-            youtube_link=((e.get("youtube") or "").strip() or None)))
-        added += 1
+        _clean.append(dict(chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
+                           day=(e.get("day") or None), time_text=(e.get("time") or None),
+                           entry_type=(e.get("type") or "lecture"),
+                           youtube_link=((e.get("youtube") or "").strip() or None)))
+    added = 0
+    for _bid in _targets:
+        for c in _clean:
+            db.add(TimetableEntry(teacher_id=teacher_id, subject=subject, class_name=class_name,
+                                  batch_id=_bid, **c))
+            added += 1
     db.commit()
-    return {"ok": True, "added": added}
+    return {"ok": True, "added": added, "batches": len(_targets)}
 
 
 @router.delete("/timetable-clear")
