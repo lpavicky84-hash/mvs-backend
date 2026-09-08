@@ -3708,6 +3708,23 @@ def admin_clear_forgot(sid: int, db: Session = Depends(get_db), _=Depends(get_ad
     return {"ok": True}
 
 
+@router.post("/student/{sid}/reset-password")
+def admin_reset_password(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin student ka password reset kare — naya random password set karke wapas deta hai
+    (admin copy karke student ko de sakta hai). Login (hashed) + admin-copy (plain) dono update."""
+    from models import StudentProfile
+    from security import hash_password
+    import random
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp or not sp.user:
+        raise HTTPException(status_code=404, detail="Student not found")
+    new_pw = "MVS" + "".join(random.choice("0123456789") for _ in range(5))
+    sp.user.password = hash_password(new_pw)
+    sp.plain_password = new_pw
+    db.commit()
+    return {"ok": True, "password": new_pw}
+
+
 @router.get("/students-paged")
 def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
                          medium: str = "", source: str = "", batch: str = "",

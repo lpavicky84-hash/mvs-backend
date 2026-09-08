@@ -950,8 +950,30 @@ function fetchStudent(){ return studentLoginNext(); }
 async function studentForgotPw(){
   var phone=(((document.getElementById('sp-phone')||{}).value)||'').replace(/\D/g,'').slice(-10);
   if(phone.length!==10){ toast('Please enter your phone number first.',true); var p=document.getElementById('sp-phone'); if(p) p.focus(); return; }
-  try{ var r=await api('/api/auth/forgot-password','POST',{phone:phone}); toast((r&&r.message)||'Request sent. The admin will share your password shortly.'); }
-  catch(e){ toast((e&&e.message)||'Could not send the request.',true); }
+  showModal('Reset Password','<div style="text-align:center;padding:24px"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-muted)">Sending OTP to your WhatsApp\u2026</div></div>','');
+  try{
+    await api('/api/auth/forgot-send-otp','POST',{phone:phone});
+    _otpModal(phone);
+  }catch(e){ closeModal(); toast((e&&e.message)||'Could not send OTP',true); }
+}
+function _otpModal(phone){
+  showModal('Reset Password',
+    '<div class="alert alert-info" style="font-size:.84rem">A 6-digit OTP has been sent to your WhatsApp (valid 5 minutes). Enter the OTP and your new password.</div>'
+    +'<div class="form-group"><label>OTP</label><input class="form-control" id="fp-otp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP" autocomplete="off"></div>'
+    +'<div class="form-group"><label>New Password</label><div style="position:relative"><input class="form-control" id="fp-newpw" type="password" placeholder="Choose a new password" style="padding-right:38px" autocomplete="new-password"><button type="button" onclick="var i=document.getElementById(\'fp-newpw\');if(i)i.type=i.type===\'password\'?\'text\':\'password\'" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9a8c66;padding:4px">'+(typeof ic==='function'?ic('eye'):'')+'</button></div></div>'
+    +'<div style="text-align:center;margin-top:2px"><a href="javascript:void(0)" onclick="studentForgotPw()" style="color:#b8941f;font-size:.82rem;text-decoration:none">Resend OTP</a></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="fp-btn" onclick="_otpVerify(\''+phone+'\')">Reset Password</button>');
+}
+async function _otpVerify(phone){
+  var otp=(((document.getElementById('fp-otp')||{}).value)||'').trim();
+  var pw=(((document.getElementById('fp-newpw')||{}).value)||'').trim();
+  if(otp.length<4){ toast('Enter the OTP from WhatsApp.',true); return; }
+  if(pw.length<4){ toast('New password must be at least 4 characters.',true); return; }
+  var btn=document.getElementById('fp-btn'); if(btn){ btn.disabled=true; btn.textContent='Verifying\u2026'; }
+  try{
+    await api('/api/auth/forgot-verify-otp','POST',{phone:phone,otp:otp,new_password:pw});
+    closeModal(); toast('Password reset! Now log in with your new password.');
+  }catch(e){ toast((e&&e.message)||'Could not reset',true); if(btn){ btn.disabled=false; btn.textContent='Reset Password'; } }
 }
 async function studentDirectLogin(){
   const uid=document.getElementById('sc-uid').value;
@@ -3709,7 +3731,7 @@ async function openStudentsListModal(role,subject,cls,code){
        <select class="form-control" id="slist-med" style="flex:0 0 130px" onchange="_slistMed=this.value;renderSlist()"><option value="">All Mediums</option><option>Hindi</option><option>English</option></select>
      </div>
      <div class="slist-hint">Tap any student to see complete details.</div><div id="slist-wrap"><div class="spinner"></div></div>`,
-    `<button class="btn btn-ghost" onclick="openForgotRequests()">${typeof ic==='function'?ic('copy'):''} Forgot PW Requests</button><button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   await fetchSlist();
 }
 let _slistData=[];
@@ -3756,6 +3778,18 @@ async function _clearForgot(sid,btn){
   try{ await api('/api/admin/forgot-password-requests/'+sid+'/clear','POST',{}); if(btn){ var row=btn.closest('.fpr-row'); if(row) row.remove(); } toast('Request cleared.'); }
   catch(e){ toast((e&&e.message)||'Could not clear',true); if(btn) btn.disabled=false; }
 }
+async function _adminResetPw(sid, name){
+  if(!confirm('Reset password for '+(name||'this student')+'? A new password will be generated — the old one stops working.')) return;
+  try{
+    var r=await api('/api/admin/student/'+sid+'/reset-password','POST',{});
+    var pw=(r&&r.password)||'';
+    showModal('Password Reset',
+      '<div class="alert alert-info" style="font-size:.86rem">New password for <b>'+esc(name||'')+'</b>:</div>'
+      +'<div style="display:flex;align-items:center;gap:12px;justify-content:center;padding:14px"><b style="font-family:monospace;font-size:1.3rem;letter-spacing:2px">'+esc(pw)+'</b><button class="btn btn-ghost btn-sm" onclick="_copyPw(this,\''+esc(pw).replace(/'/g,"\\'")+'\')">'+ic('copy')+' Copy</button></div>'
+      +'<div style="font-size:.82rem;color:var(--text-muted);text-align:center">Ye password student ko de dein \u2014 wo isse login karega. (Student khud bhi Forgot Password se OTP ke through reset kar sakta hai.)</div>',
+      '<button class="btn btn-primary" onclick="closeModal()">Done</button>');
+  }catch(e){ toast((e&&e.message)||'Could not reset',true); }
+}
 function _slistDetail(i){
   const s=_slistData[i]; if(!s) return;
   const subs=(s.all_subjects||s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
@@ -3763,7 +3797,7 @@ function _slistDetail(i){
   const av=s.has_photo?`<div class="sdet-av" id="sdet-av"></div>`:`<div class="sdet-av">${esc(initials(s.name||'S'))}</div>`;
   showModal('Student Details',
     `<div class="sdet-head">${av}<div><div class="sdet-name">${esc(s.name||'Student')}</div><div class="sdet-meta">${s.class?'Class '+esc(s.class):''}${s.batch?' · '+esc(s.batch):''}</div></div></div>
-     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}${(_slistRole==='admin')?`<div class="sdet-row"><span>Profile Setup</span><b style="color:${s.setup_done?'#059669':'#d97706'}">${s.setup_done?'Done':'Pending'}</b></div>`:''}${(_slistRole==='admin'&&s.password)?`<div class="sdet-row"><span>Password</span><span style="display:flex;align-items:center;gap:8px"><b style="letter-spacing:3px;font-family:monospace">\u2022\u2022\u2022\u2022\u2022\u2022</b><button class="btn btn-ghost btn-sm" onclick="_copyPw(this,'${esc(String(s.password)).replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">${ic('copy')} Copy</button></span></div>`:''}</div>
+     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}${(_slistRole==='admin')?`<div class="sdet-row"><span>Profile Setup</span><b style="color:${s.setup_done?'#059669':'#d97706'}">${s.setup_done?'Done':'Pending'}</b></div>`:''}${(_slistRole==='admin'&&s.password)?`<div class="sdet-row"><span>Password</span><span style="display:flex;align-items:center;gap:8px"><b style="letter-spacing:3px;font-family:monospace">\u2022\u2022\u2022\u2022\u2022\u2022</b><button class="btn btn-ghost btn-sm" onclick="_copyPw(this,'${esc(String(s.password)).replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">${ic('copy')} Copy</button><button class="btn btn-ghost btn-sm" style="color:#d97706" onclick="_adminResetPw(${s.id},'${esc((s.name||'').replace(/'/g,''))}')">${typeof ic==='function'?ic('shield'):''} Reset</button></span></div>`:''}</div>
      <div class="sdet-subs"><div class="sdet-subs-lbl">SUBJECTS</div><div class="slist-chips">${subs||'<span style="color:var(--text-muted);font-size:.8rem">—</span>'}</div></div>`,
     `<button class="btn btn-ghost" onclick="openStudentsListModal(_slistRole,_slistSubject,_slistCls,_slistCode)">&larr; Back to List</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>`);
   if(s.has_photo){ const pb=_slistRole==='teacher'?'/api/teacher/student/':'/api/admin/student/';

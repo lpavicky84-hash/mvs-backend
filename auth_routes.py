@@ -166,30 +166,102 @@ def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     return TokenResponse(access_token=token, role=user.role, name=user.name, user_db_id=user.id)
 
 
-@router.post("/forgot-password")
-def public_forgot_password(req: dict, db: Session = Depends(get_db)):
-    """Login screen se (bina login) — phone daalke forgot-password request. Admin ke request
-    list me aa jaata hai; admin password copy karke WhatsApp pe bhej dega."""
+def _otp_ensure(db):
+    """student_flags me otp columns (raw SQL, guarded)."""
+    from sqlalchemy import text as _t
+    try:
+        db.execute(_t("CREATE TABLE IF NOT EXISTS student_flags (student_id INT NOT NULL PRIMARY KEY, "
+                      "setup_done TINYINT DEFAULT 0, forgot_pw TINYINT DEFAULT 0, otp_code VARCHAR(10), otp_exp BIGINT)"))
+        db.commit()
+    except Exception:
+        try: db.rollback()
+        except Exception: pass
+    for _st in ("ALTER TABLE student_flags ADD COLUMN otp_code VARCHAR(10)",
+                "ALTER TABLE student_flags ADD COLUMN otp_exp BIGINT"):
+        try:
+            db.execute(_t(_st)); db.commit()
+        except Exception:
+            try: db.rollback()
+            except Exception: pass
+
+
+@router.post("/forgot-send-otp")
+def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
+    """Login screen se — phone daalke OTP seedha student ke WhatsApp par (approved 'otp1' template).
+    Koi admin request nahi. OTP 6-digit, 5 min valid."""
     from models import StudentProfile
+    from sqlalchemy import text as _t
+    import random, time
     phone = "".join(ch for ch in str(req.get("phone") or "") if ch.isdigit())[-10:]
     if len(phone) != 10:
         raise HTTPException(status_code=400, detail="Sahi 10-digit phone number daalein.")
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if not sp:
-        raise HTTPException(status_code=404, detail="Is phone par koi account nahi mila.")
-    from sqlalchemy import text as _t
+        raise HTTPException(status_code=404, detail="Is phone par koi account nahi mila. Admin se contact karein.")
+    _otp_ensure(db)
+    otp = str(random.randint(100000, 999999))
+    exp = int(time.time()) + 300
     try:
-        db.execute(_t("CREATE TABLE IF NOT EXISTS student_flags (student_id INT NOT NULL PRIMARY KEY, setup_done TINYINT DEFAULT 0, forgot_pw TINYINT DEFAULT 0)"))
         _r = db.execute(_t("SELECT student_id FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
         if _r:
-            db.execute(_t("UPDATE student_flags SET forgot_pw=1 WHERE student_id=:i"), {"i": sp.id})
+            db.execute(_t("UPDATE student_flags SET otp_code=:c, otp_exp=:e WHERE student_id=:i"),
+                       {"c": otp, "e": exp, "i": sp.id})
         else:
-            db.execute(_t("INSERT INTO student_flags (student_id, setup_done, forgot_pw) VALUES (:i,0,1)"), {"i": sp.id})
+            db.execute(_t("INSERT INTO student_flags (student_id, setup_done, forgot_pw, otp_code, otp_exp) VALUES (:i,0,0,:c,:e)"),
+                       {"i": sp.id, "c": otp, "e": exp})
         db.commit()
     except Exception:
         try: db.rollback()
         except Exception: pass
-    return {"ok": True, "message": "Request bhej di gayi. Admin aapka password jald share karega."}
+        raise HTTPException(status_code=500, detail="OTP save nahi ho paya. Dobara koshish karein.")
+    # WhatsApp par bhejo (approved otp1 template — {{1}} = OTP)
+    try:
+        import whatsapp as W
+        import os as _os
+        tmpl = _os.getenv("WA_OTP") or "otp1"
+        ok, detail = W.send(phone, template=tmpl, params=[otp])
+    except Exception as e:
+        ok, detail = False, str(e)
+    if not ok:
+        raise HTTPException(status_code=502, detail="OTP WhatsApp par bhejne me dikkat: " + str(detail)[:140])
+    return {"ok": True, "message": "OTP aapke WhatsApp par bhej diya gaya hai (5 minute valid)."}
+
+
+@router.post("/forgot-verify-otp")
+def forgot_verify_otp(req: dict, db: Session = Depends(get_db)):
+    """OTP + naya password verify karke reset. Sahi OTP par password badal jaata hai."""
+    from models import StudentProfile
+    from sqlalchemy import text as _t
+    from security import hash_password
+    import time
+    phone = "".join(ch for ch in str(req.get("phone") or "") if ch.isdigit())[-10:]
+    otp = (req.get("otp") or "").strip()
+    new_pw = (req.get("new_password") or "").strip()
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Sahi phone number daalein.")
+    if len(new_pw) < 4:
+        raise HTTPException(status_code=400, detail="Naya password kam se kam 4 characters ka ho.")
+    sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+    if not sp or not sp.user:
+        raise HTTPException(status_code=404, detail="Account nahi mila.")
+    try:
+        r = db.execute(_t("SELECT otp_code, otp_exp FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
+    except Exception:
+        r = None
+    if not r or not r[0]:
+        raise HTTPException(status_code=400, detail="OTP nahi mila — dobara 'Send OTP' dabayein.")
+    if str(r[0]) != otp:
+        raise HTTPException(status_code=400, detail="OTP galat hai.")
+    if int(r[1] or 0) < int(time.time()):
+        raise HTTPException(status_code=400, detail="OTP expire ho gaya — dobara bhejein.")
+    sp.user.password = hash_password(new_pw)
+    sp.plain_password = new_pw
+    try:
+        db.execute(_t("UPDATE student_flags SET otp_code=NULL, otp_exp=NULL, setup_done=1 WHERE student_id=:i"), {"i": sp.id})
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "message": "Password reset ho gaya. Ab naye password se login karein."}
 
 @router.get("/generate-uid")
 def gen_uid(name: str, db: Session = Depends(get_db)):
