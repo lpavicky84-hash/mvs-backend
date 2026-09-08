@@ -1443,8 +1443,8 @@ async function openTTBuilder(){
   var batOpts='<option value="">No batch (global)</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>';}).join('');
   showModal('Create Timetable',
     '<p class="vtc-help">Pick the <b>batch</b> + <b>subject</b>, then add classes. Type a chapter and press Enter \u2014 add multiple to <b>merge</b> them (e.g. crash course). Scoped to the batch, so it never clashes with another batch\u2019s timetable.</p>'
-    +'<div class="ttb-top">'
     +_ttbBatchField(batches)
+    +'<div class="ttb-top">'
     +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
     +'<div class="form-group"><label>Subject</label><select class="input" id="ttb-subject" onchange="_ttbLoadChapters()"></select></div>'
     +'</div><datalist id="ttb-ch-dl"></datalist>'
@@ -1541,8 +1541,8 @@ async function openTTBuilderT(){
   var pendHtml=pending.length?('<div class="vtc-cap" style="margin-top:14px">Awaiting admin approval</div>'+pending.map(function(g){return '<div class="ttb-pend"><div><b>'+esc(g.subject)+'</b> \u00b7 '+esc(g.batch)+' \u00b7 '+esc(g.class_name||'')+' <span class="ttb-pill">'+g.count+' classes</span></div><button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="ttbTeacherDelPending(\''+esc((g.subject||'').replace(/'/g,''))+'\',\''+esc((g.class_name||'').replace(/'/g,''))+'\','+(g.batch_id||0)+')">'+ic('trash')+' Withdraw</button></div>';}).join('')):'';
   showModal('Create Timetable',
     '<p class="vtc-help">Pick a <b>batch</b> and <b>subject</b>, then add each class below.</p>'
-    +'<div class="ttb-top">'
     +_ttbBatchField(batches)
+    +'<div class="ttb-top">'
     +'<div class="form-group"><label>Class</label>'+classSelect('ttb-class')+'</div>'
     +'<div class="form-group"><label>Subject</label><select class="input" id="ttb-subject" onchange="_ttbLoadChapters()"></select></div>'
     +'</div><datalist id="ttb-ch-dl"></datalist>'
