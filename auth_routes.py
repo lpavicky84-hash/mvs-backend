@@ -215,11 +215,16 @@ def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
         except Exception: pass
         raise HTTPException(status_code=500, detail="OTP save nahi ho paya. Dobara koshish karein.")
     # WhatsApp par bhejo (approved otp1 template — {{1}} = OTP)
+    ok, detail = False, "not attempted"
     try:
         import whatsapp as W
         import os as _os
         tmpl = _os.getenv("WA_OTP") or "otp1"
-        ok, detail = W.send(phone, template=tmpl, params=[otp])
+        ok, detail = W.send(phone, template=tmpl, params=[otp], name="Student")
+        try:
+            print("[OTP] to %s | template=%s | ok=%s | detail=%s" % (phone, tmpl, ok, str(detail)[:400]))
+        except Exception:
+            pass
     except Exception as e:
         ok, detail = False, str(e)
     if not ok:

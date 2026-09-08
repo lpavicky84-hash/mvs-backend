@@ -13860,9 +13860,32 @@ async function openWhatsApp(){
       <button class="btn btn-primary btn-sm" onclick="waAnnounce()">${ic('send')} Send announcement</button>
       <div id="wa-an-out" style="margin-top:8px"></div></details>`:'';
 
-    body.innerHTML=cfgForm+welcomeSec+announceSec;
+    const otpSec=st.configured?`<details class="wa-sec"><summary><b>OTP Test \u2014 forgot-password (otp1 template)</b></summary>
+      <p style="font-size:.78rem;color:var(--text-muted)">Apna phone daalke test karo \u2014 poora BSP response yahan dikhega (agar OTP na aaye to yahan se pata chalega kyun).</p>
+      <div class="form-group"><label>Test phone (10-digit)</label><input class="form-control" id="wa-otp-phone" inputmode="numeric" placeholder="e.g. 9876543210"></div>
+      <button class="btn btn-primary btn-sm" onclick="waTestOtp()">${ic('send')} Send Test OTP</button>
+      <div id="wa-otp-out" style="margin-top:8px;font-size:.8rem"></div></details>`:'';
+
+    body.innerHTML=cfgForm+welcomeSec+announceSec+otpSec;
     document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
   }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
+}
+async function waTestOtp(){
+  var phone=((document.getElementById('wa-otp-phone')||{}).value||'').replace(/\D/g,'').slice(-10);
+  var out=document.getElementById('wa-otp-out');
+  if(phone.length!==10){ if(out) out.innerHTML='<span style="color:#c1443a">Enter a valid 10-digit phone.</span>'; return; }
+  if(out) out.innerHTML='<div class="spinner" style="margin:6px"></div>';
+  try{
+    var r=await api('/api/admin/test-otp','POST',{phone:phone});
+    var color=r.ok?'#059669':'#c1443a';
+    if(out) out.innerHTML='<div style="border:1px solid var(--border);border-radius:10px;padding:10px;line-height:1.6">'
+      +'<div style="font-weight:800;color:'+color+'">'+(r.ok?'\u2713 BSP accepted (ok=true)':'\u2717 Failed (ok=false)')+'</div>'
+      +'<div>Template: <b>'+esc(r.template||'')+'</b> \u00b7 Format: <b>'+esc(r.format||'')+'</b> \u00b7 Lang: '+esc(r.lang||'')+'</div>'
+      +'<div>API URL set: '+(r.api_url_set?'yes':'<b style="color:#c1443a">NO</b>')+' \u00b7 API key set: '+(r.api_key_set?'yes':'<b style="color:#c1443a">NO</b>')+(r.sender?(' \u00b7 sender: '+esc(r.sender)):'')+'</div>'
+      +'<div style="margin-top:6px;font-family:monospace;font-size:.72rem;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all">'+esc(r.detail||'')+'</div>'
+      +(r.ok?'<div style="margin-top:6px;color:var(--text-muted)">Accepted hai par WhatsApp na aaye \u2014 aksar template naam ("'+esc(r.template||'')+'") BSP me match nahi, ya number opted-in nahi. Detail check karo.</div>':'')
+      +'</div>';
+  }catch(e){ if(out) out.innerHTML='<span style="color:#c1443a">'+esc((e&&e.message)||'Test failed')+'</span>'; }
 }
 async function sendStudentWhatsApp(sid,name,btn){
   if(btn){ btn.disabled=true; btn.dataset._t=btn.innerHTML; btn.innerHTML='Sending…'; }

@@ -3746,8 +3746,33 @@ def admin_clear_forgot(sid: int, db: Session = Depends(get_db), _=Depends(get_ad
     return {"ok": True}
 
 
+@router.post("/test-otp")
+def admin_test_otp(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """OTP WhatsApp send test — poora BSP response + config wapas (diagnose ke liye)."""
+    import os as _os
+    phone = "".join(ch for ch in str(payload.get("phone") or "") if ch.isdigit())[-10:]
+    if len(phone) != 10:
+        return {"ok": False, "detail": "Sahi 10-digit phone daalein."}
+    tmpl = _os.getenv("WA_OTP") or "otp1"
+    c = {}
+    ok, detail = False, "not attempted"
+    try:
+        import whatsapp as W
+        try:
+            c = W.cfg()
+        except Exception as e:
+            c = {"cfg_error": str(e)}
+        ok, detail = W.send(phone, template=tmpl, params=["123456"], name="Student")
+    except Exception as e:
+        ok, detail = False, str(e)
+    return {"ok": bool(ok), "detail": str(detail)[:900], "template": tmpl,
+            "format": c.get("format"), "api_url_set": bool(c.get("api_url")),
+            "api_key_set": bool(c.get("api_key")), "lang": c.get("lang"),
+            "sender": c.get("sender") or "", "welcome_template": c.get("campaign") or ""}
+
+
 @router.post("/student/{sid}/reset-password")
-def admin_reset_password(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+def admin_student_reset_password(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Admin student ka password reset kare — naya random password set karke wapas deta hai
     (admin copy karke student ko de sakta hai). Login (hashed) + admin-copy (plain) dono update."""
     from models import StudentProfile
