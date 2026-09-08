@@ -65,6 +65,12 @@ def _ensure_batch_cols(db=None):
                     _d.execute(_t(_st)); _d.commit(); break
                 except Exception:
                     _d.rollback()
+            for _st in ("ALTER TABLE batches ADD COLUMN report_mode VARCHAR(20) NULL",
+                        "ALTER TABLE batches ADD COLUMN report_mode VARCHAR(20)"):
+                try:
+                    _d.execute(_t(_st)); _d.commit(); break
+                except Exception:
+                    _d.rollback()
             for _tbl in ("materials", "dpp_packs", "exams"):
                 _d.execute(_t("SELECT batch_id FROM %s LIMIT 1" % _tbl))
             _d.commit()
@@ -100,6 +106,12 @@ def _ensure_batch_columns_startup():
             for _st in ("ALTER TABLE batches ADD COLUMN standalone TINYINT NULL",
                         "ALTER TABLE batches ADD COLUMN standalone BOOLEAN NULL",
                         "ALTER TABLE batches ADD COLUMN standalone TINYINT"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+            for _st in ("ALTER TABLE batches ADD COLUMN report_mode VARCHAR(20) NULL",
+                        "ALTER TABLE batches ADD COLUMN report_mode VARCHAR(20)"):
                 try:
                     _db.execute(_t(_st)); _db.commit(); break
                 except Exception:

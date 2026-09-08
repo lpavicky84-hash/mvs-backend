@@ -2455,12 +2455,36 @@ function openClassReport(id){
      <div id="cr-delay" class="cr-delay"></div>
      <label class="ex-lbl">Remarks (optional)</label>
      <textarea class="form-control" id="cr-remarks" rows="2" placeholder="Anything the admin should know">${esc(c.remarks||'')}</textarea>
+     ${_isCrashEntry(c)?`<div class="cr-sec">Chapters completed in this class <span class="cr-sec-sub">syllabus se \u2014 jitne chapters aaj poore hue wahi tick karo (adhoore mat karo)</span></div><div id="cr-chdone" class="cr-chdone"><div class="spinner" style="margin:10px"></div></div>`:''}
 
      <div class="cr-sec">2. Lecture Report <span class="cr-sec-sub">students see this in their Lectures feed</span></div>
      <div><label class="ex-lbl">Class Notes <span class="req">*</span></label><div class="dz" id="dz-lec-pdf" onclick="document.getElementById('lec-pdf').click()"><span class="dz-ic">${ic('upload')}</span><span class="dz-t" id="lec-pdf-name">Drag &amp; drop the class notes PDF here</span><span class="dz-s">or click to browse \u00b7 PDF only \u2014 large files auto-compress</span></div><input type="file" id="lec-pdf" accept="application/pdf" style="display:none" onchange="_lecPickFile(this,'pdf')"></div>
      <div id="cr-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-success" id="cr-btn" onclick="submitClassReport(${id})">Submit &amp; Mark Done</button>`);
   crDelayHint(); _dzInit('lec-pdf');
+  if(_isCrashEntry(c)){
+    var cl=(String(c.class_name||'').match(/\d+/)||[''])[0];
+    var done=(c.chapter||'').split('|').map(function(x){return x.trim();}).filter(Boolean);
+    api('/api/teacher/tt-chapters?subject='+encodeURIComponent(c.subject||'')+'&class_level='+encodeURIComponent(cl)).then(function(r){
+      var chs=(r&&r.chapters)||[]; var el=document.getElementById('cr-chdone'); if(!el) return;
+      if(!document.getElementById('crch-css')){ var st=document.createElement('style'); st.id='crch-css';
+        st.textContent='.cr-chdone{display:flex;flex-direction:column;gap:2px;max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:11px;padding:6px;margin-top:4px}'
+          +'.cr-chk{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:.85rem}.cr-chk:hover{background:rgba(184,148,31,.07)}.cr-chk input{width:15px;height:15px}';
+        document.head.appendChild(st); }
+      el.innerHTML=chs.length?chs.map(function(ch){ var on=done.indexOf(ch)>=0; return '<label class="cr-chk"><input type="checkbox" class="cr-chdone-chk" value="'+esc(ch).replace(/"/g,'&quot;')+'"'+(on?' checked':'')+'> '+esc(ch)+'</label>'; }).join('')
+        :'<div style="font-size:.8rem;color:var(--text-muted);padding:8px">Syllabus me chapters nahi mile \u2014 Syllabus Manager me add karo, ya "Topic Covered" me likho.</div>';
+    }).catch(function(){ var el=document.getElementById('cr-chdone'); if(el) el.innerHTML='<div style="font-size:.8rem;color:#c1443a;padding:8px">Could not load chapters.</div>'; });
+  }
+}
+function _isCrashEntry(c){
+  // Crash report system SIRF un batches ke liye jinka report_mode = 'crash' (backend flag).
+  // Regular batches ka purana class report bilkul waisa hi rehta hai.
+  if(!c) return false;
+  var bid=c.batch_id||0; if(!bid) return false;
+  var list=window._ttBatchList||window._attBatchList||window._admBatches||[];
+  var b=list.filter(function(x){return String(x.id)===String(bid);})[0];
+  if(b && b.report_mode) return b.report_mode==='crash';
+  return false;
 }
 function crDelayHint(){
   const box=document.getElementById('cr-delay'); if(!box) return;
@@ -2483,7 +2507,9 @@ async function submitClassReport(id){
   const btn=document.getElementById('cr-btn'); btn.disabled=true; btn.textContent='Submitting...';
   try{
     // 1) class report -> marks the class Done (delay is derived from these times)
-    await api('/api/teacher/class/'+id+'/complete','POST',{topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:false,remarks:val('cr-remarks')});
+    var _crPl={topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:false,remarks:val('cr-remarks')};
+    if(_isCrashEntry(c)){ var _ch=[].slice.call(document.querySelectorAll('.cr-chdone-chk:checked')).map(function(x){return x.value;}); if(_ch.length) _crPl.chapters_done=_ch; }
+    await api('/api/teacher/class/'+id+'/complete','POST',_crPl);
     // 2) lecture report -> summary + class notes, auto-linked to this class
     let pdf_b64=null;
     if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
@@ -3735,7 +3761,7 @@ async function openTeacherCrash(){
         +'<input class="form-control tc-yt" data-eid="'+e.id+'" placeholder="YouTube link (optional)" value="'+yt+'">'
         +'<button class="btn btn-primary btn-sm" onclick="tcSaveDay('+e.id+')">'+ic('check')+' Save</button></div>';
     }).join('');
-    return '<div class="tc-group"><div class="tc-ghead">'+esc(g.subject)+' <span class="tc-gsub">'+esc(g.batch)+(g.cls?(' \u00b7 '+esc(g.cls)):'')+' \u00b7 '+g.rows.length+' days</span></div>'+rows+'</div>';
+    return '<div class="tc-group"><div class="tc-ghead">'+esc(g.subject)+' <span class="tc-gsub">'+esc(g.batch)+(g.cls?(' \u00b7 '+esc(g.cls)):'')+' \u00b7 '+g.rows.length+' days</span><span class="tc-prog" data-bid="'+(g.rows[0].batch_id||0)+'" data-sub="'+esc(g.subject).replace(/"/g,'&quot;')+'" data-cls="'+esc(g.cls).replace(/"/g,'&quot;')+'"></span></div>'+rows+'</div>';
   }).join('');
   if(!document.getElementById('tc-css')){ var st=document.createElement('style'); st.id='tc-css';
     st.textContent='.tc-group{margin-bottom:16px}.tc-ghead{font-weight:800;font-size:.98rem;margin:4px 0 8px}.tc-gsub{font-weight:600;font-size:.74rem;color:var(--text-muted)}'
@@ -3744,7 +3770,16 @@ async function openTeacherCrash(){
       +'.tc-dmeta{font-size:.74rem;color:var(--text-muted);min-width:120px}'
       +'.tc-ch{flex:1;min-width:170px}.tc-yt{flex:1;min-width:170px}';
     document.head.appendChild(st); }
-  document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Har Day ke liye chapter (syllabus se) chuno aur, agar wo class YouTube pe hai to link lagao. Save dabao.</div>'+html;
+  document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Har Day ke liye chapter (syllabus se) chuno aur, agar wo class YouTube pe hai to link lagao. Save dabao. <b>Progress</b> upar dikhta hai \u2014 wo class report (Mark Done) ke time complete kiye chapters se banti hai (distinct, subject total tak).</div>'+html;
+  if(!document.getElementById('tcprog-css')){ var pst=document.createElement('style'); pst.id='tcprog-css';
+    pst.textContent='.tc-prog{margin-left:auto;font-size:.72rem;font-weight:800;background:rgba(5,150,105,.14);color:#047857;padding:2px 10px;border-radius:999px}.tc-ghead{display:flex;align-items:center;gap:8px}';
+    document.head.appendChild(pst); }
+  document.querySelectorAll('.tc-prog').forEach(function(sp){
+    var bid=sp.getAttribute('data-bid'), sub=sp.getAttribute('data-sub'), cl=(String(sp.getAttribute('data-cls')||'').match(/\d+/)||[''])[0];
+    api('/api/teacher/crash-progress?batch='+bid+'&subject='+encodeURIComponent(sub)+'&class_level='+encodeURIComponent(cl)).then(function(r){
+      if(r){ sp.textContent=(r.done||0)+' / '+(r.total||0)+' chapters done'; }
+    }).catch(function(){});
+  });
   // load syllabus chapters per subject/class (once) and fill dropdowns
   var done={};
   Object.keys(groups).forEach(function(key){
@@ -14516,8 +14551,12 @@ async function _attMountBatchBar(){
         var _saBtn=_sa
           ? '<button class="btn btn-ghost btn-sm" style="border-color:var(--primary);color:var(--primary)" onclick="_attSetStandalone('+window._attBatch+',false)" title="Yeh batch abhi SIRF apna timetable dikhata hai. Global (shared) timetable inherit karne ke liye click karo.">'+ic('shield')+' Standalone \u2713</button>'
           : '<button class="btn btn-ghost btn-sm" onclick="_attSetStandalone('+window._attBatch+',true)" title="Yeh batch abhi global (shared) timetable inherit kar raha hai. Sirf apna timetable dikhane ke liye click karo.">'+ic('shield')+' Make standalone</button>';
+        var _rm=_attBatchReportMode(window._attBatch);
+        var _rmBtn=(_rm==='crash')
+          ? '<button class="btn btn-ghost btn-sm" style="border-color:#7c3aed;color:#7c3aed" onclick="_attSetReportMode('+window._attBatch+',\'regular\')" title="Is batch ke class reports CRASH-COURSE system use karte hain (Day-wise chapters complete). Regular report pe wapas laane ke liye click karo.">'+ic('play')+' Report: Crash \u2713</button>'
+          : '<button class="btn btn-ghost btn-sm" onclick="_attSetReportMode('+window._attBatch+',\'crash\')" title="Is batch ko CRASH-COURSE report system do (teacher class report me completed chapters chunta hai, distinct progress banti hai).">'+ic('play')+' Report: Regular</button>';
         return '<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button>'
-          +_saBtn
+          +_saBtn+_rmBtn
           +'<button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>';
       })():'')
       +'</div>';
@@ -14538,6 +14577,19 @@ async function _attSetBatch(v){
   window._attBatch=v; window._attBatchSubs=null;
   if(v && v!=='global' && v!==''){ try{ var m=await api('/api/admin/batch-subjects?batch_id='+v); window._attBatchSubs=(m&&m.subjects)||[]; }catch(e){} }
   try{ aRenderTT(); }catch(e){}
+  setTimeout(_attMountBatchBar,10);
+}
+function _attBatchReportMode(bid){
+  var b=(window._attBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0];
+  if(!b) return 'regular';
+  return b.report_mode || 'regular';
+}
+async function _attSetReportMode(bid,mode){
+  try{ await api('/api/admin/batches/'+bid,'POST',{report_mode:mode}); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); return; }
+  (window._attBatchList||[]).forEach(function(b){ if(String(b.id)===String(bid)) b.report_mode=mode; });
+  try{ _apiForget('batches'); _apiForget('tt-batches'); }catch(e){}
+  toast(mode==='crash'?'Ab is batch me CRASH-COURSE report system hai.':'Ab is batch me REGULAR report system hai.');
   setTimeout(_attMountBatchBar,10);
 }
 async function _attSetStandalone(bid,val){

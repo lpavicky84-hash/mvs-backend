@@ -119,6 +119,10 @@ class Batch(Base):
     # None = auto (naam me "Crash" ho to standalone, warna legacy batch global inherit karta hai),
     # True = sirf apna (khaali to khaali), False = purana behaviour (global inherit). New batches -> True.
     standalone   = Column(Boolean, nullable=True)
+    # report_mode: is batch ke class reports kaunsa system use karein.
+    # "regular" = purana normal class report; "crash" = crash-course report (Day-wise chapters
+    # completed multi-select se progress). None/khaali = auto (naam me "Crash" ho to crash).
+    report_mode  = Column(String(20), nullable=True)
     sort         = Column(Integer, default=0)                    # display order
     banner_b64   = Column(Text, nullable=True)                   # welcome banner image (base64 / drive url)
     welcome_message = Column(String(1000), default="")           # congrats message shown 1st time student opens the batch

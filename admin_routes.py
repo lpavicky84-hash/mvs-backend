@@ -898,6 +898,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "description": b.description or "", "status": b.status or "live",
         "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
         "standalone": (None if getattr(b, "standalone", None) is None else bool(b.standalone)),
+        "report_mode": ((getattr(b, "report_mode", None) or "").strip().lower() or "regular"),
         "has_banner": bool(getattr(b, "banner_b64", None)),
         "banner": getattr(b, "banner_b64", "") or "",
         "welcome_message": getattr(b, "welcome_message", "") or "",
@@ -937,6 +938,11 @@ def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=
         b.standalone = (True if payload.get("standalone") is None else bool(payload.get("standalone")))
     except Exception:
         b.standalone = True
+    try:
+        _rm = (payload.get("report_mode") or "").strip().lower()
+        b.report_mode = _rm if _rm in ("regular", "crash") else "regular"
+    except Exception:
+        b.report_mode = "regular"
     db.add(b)
     db.commit()
     return {"ok": True, "id": b.id, "code": b.code}
@@ -961,6 +967,9 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
     if "standalone" in payload:
         _sv = payload.get("standalone")
         b.standalone = (None if _sv is None else bool(_sv))   # None=auto, True=own only, False=inherit global
+    if "report_mode" in payload:
+        _rm = (payload.get("report_mode") or "").strip().lower()
+        b.report_mode = (_rm if _rm in ("regular", "crash") else None)
     for _df in ("start_date", "end_date"):
         if payload.get(_df) is not None:
             _dv = (payload.get(_df) or "").strip()

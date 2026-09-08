@@ -80,6 +80,7 @@ def teacher_tt_batches(db: Session = Depends(get_db), current_user=Depends(get_t
                          "type": getattr(b, "type", "") or "",
                          "is_new": bool(getattr(b, "is_new", False)),
                          "standalone": (None if getattr(b, "standalone", None) is None else bool(b.standalone)),
+                         "report_mode": ((getattr(b, "report_mode", None) or "").strip().lower() or "regular"),
                          "banner": getattr(b, "banner_b64", "") or ""} for b in rows]}
 
 
@@ -2732,6 +2733,17 @@ def teacher_complete_class(entry_id: int, payload: dict, background_tasks: Backg
     e.completed = True
     e.completed_at = datetime.now()
     e.topic_covered = (payload.get("topic_covered") or e.chapter or "").strip() or None
+    # Crash course: is class me complete hue chapters (multi-select). Distinct progress isse banti hai.
+    _cd = payload.get("chapters_done")
+    if isinstance(_cd, list):
+        _clean = []
+        for x in _cd:
+            x = str(x).strip()
+            if x and x not in _clean:
+                _clean.append(x)
+        if _clean:
+            e.chapter = " | ".join(_clean)
+            e.topic_covered = " | ".join(_clean)
     e.start_time = (payload.get("start_time") or "").strip() or None
     e.end_time = (payload.get("end_time") or "").strip() or None
     e.homework = (payload.get("homework") or "").strip() or None
@@ -2746,7 +2758,50 @@ def teacher_complete_class(entry_id: int, payload: dict, background_tasks: Backg
     return {"message": "Class marked as completed."}
 
 
-_LATE_WARN_THRESHOLD = 2      # more than this many late starts in a month -> remind
+@router.get("/crash-progress")
+def teacher_crash_progress(batch: int = 0, subject: str = "", class_level: str = "",
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Crash course progress for a subject in a batch = DISTINCT completed chapters / syllabus total.
+    No double-count (union of distinct chapter names), capped at the subject's total chapters."""
+    from models import TimetableEntry
+    total_titles = []
+    try:
+        from video_tasks import _chapters_for
+        titles, _src = _chapters_for(db, 0, subject, class_level or "", "", "")
+        for t in (titles or []):
+            nm = t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t))
+            nm = (nm or "").strip()
+            if nm:
+                total_titles.append(nm)
+    except Exception:
+        total_titles = []
+    total = len(total_titles)
+    q = db.query(TimetableEntry).filter(TimetableEntry.subject == subject,
+                                        TimetableEntry.part.like("Day %"),
+                                        TimetableEntry.completed == True)
+    if batch:
+        q = q.filter(TimetableEntry.batch_id == batch)
+    done_set = set()
+    for e in q.all():
+        for ch in (e.chapter or "").split("|"):
+            ch = ch.strip()
+            if ch:
+                done_set.add(ch)
+    if total_titles:
+        _norm = {t.strip().lower(): t for t in total_titles}
+        matched = {_norm[c.lower()] for c in done_set if c.lower() in _norm}
+        if matched:
+            done_list = sorted(matched)
+            done = len(done_list)
+        else:
+            done_list = sorted(done_set)
+            done = min(len(done_set), total)
+    else:
+        done_list = sorted(done_set)
+        done = len(done_set)
+    if total:
+        done = min(done, total)
+    return {"done": done, "total": total, "done_chapters": done_list, "total_chapters": total_titles}
 
 
 def _maybe_warn_late(db, tp, entry):
