@@ -791,10 +791,10 @@ def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get
     if d.student and d.student.user:
         notify(db, d.student.user.id, "🔀 Your Doubt Has Been Reassigned",
                f"Your {d.subject or ''} doubt is now with {target_name} — you will get the answer from them.", "doubt")
-    # naye owner ko notify
+    # naye owner ko notify — Doubts section wale admins ko (full + sub-admins jinhe 'doubts' allowed)
     if to_admin:
-        from models import User
-        for au in db.query(User).filter(User.is_active == True, User.role == "admin").all():
+        from admin_routes import admins_for_section as _afs
+        for au in _afs(db, "doubts"):
             notify(db, au.id, "📥 Doubt Assigned to Admin",
                    f"{current_user.name} assigned a {d.subject or ''} doubt by "
                    f"{d.student.user.name if d.student and d.student.user else 'a student'} to MVS Foundation. "
@@ -2781,7 +2781,12 @@ def teacher_complete_class(entry_id: int, payload: dict, background_tasks: Backg
     from models import TimetableEntry
     tp = get_teacher_profile(current_user, db)
     e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
-    if not e or e.subject not in (tp.subjects or []):
+    # Guard: subject match YA teacher is entry ka owner ho (delete_tt_entry jaisa hi scope).
+    # Crash-course ki class teacher khud add karta hai (teacher_id=tp.id) — uska subject
+    # kabhi tp.subjects se exact match na kare (e.g. "Maths" vs "Mathematics", ya subjects
+    # baad me badle) to bhi apni class ki report submit kar sake. Pehle sirf subject check
+    # tha, isliye owned crash class pe "Class not found" aa raha tha.
+    if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
         raise HTTPException(status_code=404, detail="Class not found")
     e.completed = True
     e.completed_at = datetime.now()
