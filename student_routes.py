@@ -233,18 +233,38 @@ def _bids_standalone(db, bids):
     return False
 
 
+def _bids_inherit_global(db, bids):
+    """True agar koi bhi selected batch EXPLICITLY global-inherit pe set hai (standalone=False).
+    Aise legacy batches (Oct 2026 / April 2027) ko HAMESHA global (batch_id NULL) + apna content
+    dono dikhna chahiye — chahe unka apna content ho ya na ho. Ye 'has_own' short-circuit ko
+    bypass karta hai, taaki inka purana shared content kabhi gayab na ho."""
+    if not bids:
+        return False
+    from models import Batch
+    try:
+        for (_sv,) in db.query(Batch.standalone).filter(Batch.id.in_(bids)).all():
+            if _sv is False:
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def _tt_batch_filter(db, sp, only_batch_id=None):
     """A TimetableEntry filter scoped to the student's batch. If the batch has a subject mapping,
     show its batch-specific entries PLUS global entries of the subjects it offers (shared subjects).
     Otherwise: batch-specific if any exist, else legacy global. Backward compatible."""
     from models import TimetableEntry, BatchSubject
-    from sqlalchemy import and_ as _and
+    from sqlalchemy import and_ as _and, or_ as _or
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return TimetableEntry.batch_id.is_(None)
     # Standalone batch (naya/crash-course) -> SIRF apna timetable, global kabhi nahi (khaali to khaali).
     if _bids_standalone(db, bids):
         return TimetableEntry.batch_id.in_(bids)
+    # Explicit inherit-global batch (Oct 2026 / April 2027) -> global + apna dono, hamesha.
+    if _bids_inherit_global(db, bids):
+        return _or(TimetableEntry.batch_id.is_(None), TimetableEntry.batch_id.in_(bids))
     # If the batch has ANY timetable of its own, show ONLY that batch's timetable — never pull
     # the global/legacy timetable of the subjects it merely offers. So a Crash Course that has
     # only a Physics timetable shows ONLY Physics, not the old global Biology/Chem/etc.
@@ -294,6 +314,8 @@ def _exam_batch_filter(db, sp, only_batch_id=None):
         return Exam.batch_id.is_(None)
     if _bids_standalone(db, bids):
         return Exam.batch_id.in_(bids)
+    if _bids_inherit_global(db, bids):
+        return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(bids))
     has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
                or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
                or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None
@@ -316,6 +338,8 @@ def _dpp_batch_filter(db, sp, only_batch_id=None):
         return DppPack.batch_id.is_(None)
     if _bids_standalone(db, bids):
         return DppPack.batch_id.in_(bids)
+    if _bids_inherit_global(db, bids):
+        return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(bids))
     has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
                or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
                or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None)
@@ -339,6 +363,8 @@ def _mat_batch_filter(db, sp, only_batch_id=None):
         return Material.batch_id.is_(None)
     if _bids_standalone(db, bids):
         return Material.batch_id.in_(bids)
+    if _bids_inherit_global(db, bids):
+        return _or(Material.batch_id.is_(None), Material.batch_id.in_(bids))
     has_own_tt = db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
     has_own_mat = db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
     if has_own_tt or has_own_mat:
@@ -1255,8 +1281,8 @@ def student_request_subject_change(payload: dict = Body(...), db: Session = Depe
            % (current_user.name or "A student", (sp.phone or "no phone"),
               (" · Class " + sp.class_level) if sp.class_level else "",
               cur, req, ("\nNote: " + note) if note else ""))
-    admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
-    for a in admins:
+    from admin_routes import admins_for_section as _afs
+    for a in _afs(db, "requests"):
         db.add(Notification(user_id=a.id, title="\U0001f4da " + title, message=msg,
                             notif_type="subject_request"))
     db.commit()
@@ -1287,7 +1313,8 @@ def student_request_batch_change(payload: dict = Body(...), db: Session = Depend
            % (current_user.name or "A student", (sp.phone or "no phone"),
               (" \u00b7 Class " + sp.class_level) if sp.class_level else "",
               cur, (bn or "\u2014"), ("\nNote: " + note) if note else ""))
-    for a in db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all():
+    from admin_routes import admins_for_section as _afs
+    for a in _afs(db, "requests"):
         db.add(Notification(user_id=a.id, title="\U0001f501 Batch change request", message=msg,
                             notif_type="batch_request"))
     db.commit()

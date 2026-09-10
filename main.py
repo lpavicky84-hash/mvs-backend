@@ -340,6 +340,63 @@ def ensure_data_migrations():
         except Exception: pass
 ensure_data_migrations()
 
+
+def heal_legacy_batch_inherit():
+    """EMERGENCY ONE-TIME FIX (batch_standalone_heal_v1).
+    Kuch legacy batches (jaise Lakshya Science 'October 2026' / 'April 2027') galti se
+    STANDALONE ho gaye the — naye batches default standalone=True bante hain. Standalone
+    batch SIRF apna content dikhata hai aur shared GLOBAL content (batch_id=NULL) inherit
+    nahi karta. In legacy batches ka apna koi content nahi (sara content global hai),
+    isliye students ko DPP / class notes / timetable KUCH nahi dikh raha tha (panic).
+
+    Fix: har NON-crash batch jo standalone=True hai PAR jiska apna koi content (timetable/
+    material/DPP/exam) nahi, use standalone=False (global-inherit) kar do -> purana shared
+    content wapas dikhne lage. Crash courses (naam me 'crash') aur jinke paas apna content
+    hai — unhe bilkul haath nahi lagate. app_settings flag se ye SIRF EK BAAR chalta hai,
+    taaki baad me banaye gaye standalone batches par dobara na chale."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        from models import (Batch, AppSetting, TimetableEntry, Material,
+                            DppPack, Exam)
+        FLAG = "batch_standalone_heal_v1"
+        if db.query(AppSetting).filter(AppSetting.key == FLAG).first():
+            return  # pehle chal chuka -> dobara nahi
+
+        def _has_own(bid):
+            for _model in (TimetableEntry, Material, DppPack, Exam):
+                try:
+                    if db.query(_model.id).filter(_model.batch_id == bid).first() is not None:
+                        return True
+                except Exception:
+                    pass
+            return False
+
+        fixed = []
+        for b in db.query(Batch).all():
+            if "crash" in (b.name or "").lower():
+                continue                      # crash course -> jaan-boojh ke standalone
+            if b.standalone is not True:
+                continue                      # sirf woh jo EXPLICITLY standalone ho gaye
+            if _has_own(b.id):
+                continue                      # sach me apna content hai -> chhod do
+            b.standalone = False              # global-inherit ON -> purana content wapas
+            fixed.append((b.id, (b.name or "")[:40]))
+
+        db.add(AppSetting(key=FLAG, value=str(len(fixed))))
+        db.commit()
+        if fixed:
+            try: print("batch-heal: global-inherit restored on batches:", fixed)
+            except Exception: pass
+    except Exception as _e:
+        try: db.rollback()
+        except Exception: pass
+        try: print("heal_legacy_batch_inherit skipped:", str(_e)[:160])
+        except Exception: pass
+    finally:
+        db.close()
+heal_legacy_batch_inherit()
+
 # ===== AUTO R2 MIGRATION — background me khud chale (Start dabane ki zaroorat nahi) =====
 def _auto_migrate_loop():
     import time
