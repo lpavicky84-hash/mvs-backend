@@ -1789,9 +1789,22 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
         es = [e for e in es if (not str(e.class_name or '').strip()) or _tt_entry_key(e.subject, e.class_name) in _ck]
     mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(list(_subj_scope_for(db, Material, subs)))).all()
     out = []
+    _seen = set()
+    # duplicate collapse me pending (incomplete) copy ko prefer karo — taaki teacher ko
+    # "Submit Report" / "Upload Notes" ka action mile (complete karte hi baaki bhi mark honge).
+    es = sorted(es, key=lambda x: 1 if getattr(x, "completed", False) else 0)
     for e in es:
         notes = any(m.chapter == e.chapter and _subj_eq(m.subject, e.subject) and m.material_type == "notes" for m in mats)
         dpp = any(m.chapter == e.chapter and _subj_eq(m.subject, e.subject) and m.material_type == "dpp" for m in mats)
+        # De-dupe: ek hi lecture jo alag-alag batch me copy ho (ya galti se do baar bane) —
+        # teacher ko ek hi card dikhe. Same subject+class+part(Day N)+date+time = wahi class.
+        # Complete karne pe _crash_propagate baaki batches me bhi mark kar deta hai.
+        _k = ((e.subject or "").strip().lower(), (e.class_name or "").strip().lower(),
+              (e.part or "").strip().lower(), str(e.entry_date or ""),
+              (e.time_text or "").strip().lower())
+        if _k in _seen:
+            continue
+        _seen.add(_k)
         d = _serialize_tt(e, scope.get(e.subject)); d["notes"] = notes; d["dpp"] = dpp
         out.append(d)
     out.sort(key=lambda x: x.get("time") or "")
