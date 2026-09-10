@@ -679,6 +679,35 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str, link=Non
                      link=link, image_url=image_url)
     db.add(n)
 
+
+def admins_for_section(db, section: str):
+    """Us section ke notifications kis-kis admin ko jaane chahiye:
+    - full-access admins (allowed_sections = None) — inhe sab kuch milta hai
+    - restricted sub-admins jinke allowed_sections me ye section hai
+    Aliases bhi honour hote hain (jaise 'urgent' == 'vtasks'). Isse jise jo section
+    diya hai usi ke notifications us tak pahunchte hain, doosron ko spam nahi."""
+    acceptable = ADMIN_SECTION_ALIASES.get(section, {section}) if section else set()
+    out = []
+    for u in db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all():
+        secs = getattr(u, "allowed_sections", None)
+        if secs is None:
+            out.append(u)                       # full access -> sab kuch
+        elif section and not acceptable.isdisjoint(set(secs or [])):
+            out.append(u)                       # is section ka access hai
+    return out
+
+
+def notify_section_admins(db, section, title, message, notif_type, link=None):
+    """Section-specific admin notification: sirf un admins ko jinhe ye section allowed hai
+    (full admins + us section wale sub-admins). Sub-admin ko bhi uske section ka
+    notification pakka milega."""
+    try:
+        for u in admins_for_section(db, section):
+            notify(db, u.id, title, message, notif_type, link=link)
+    except Exception:
+        # notification best-effort hai — kabhi fail ho to asli action ko na rokein
+        pass
+
 # ===== DASHBOARD =====
 @router.get("/dashboard", response_model=AdminDashboard)
 def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):

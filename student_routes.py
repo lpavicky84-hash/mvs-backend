@@ -1281,8 +1281,13 @@ def student_request_subject_change(payload: dict = Body(...), db: Session = Depe
            % (current_user.name or "A student", (sp.phone or "no phone"),
               (" · Class " + sp.class_level) if sp.class_level else "",
               cur, req, ("\nNote: " + note) if note else ""))
-    from admin_routes import admins_for_section as _afs
-    for a in _afs(db, "requests"):
+    try:
+        from admin_routes import admins_for_section as _afs
+        _adm = _afs(db, "requests")
+    except Exception:
+        from models import User, UserRole
+        _adm = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for a in _adm:
         db.add(Notification(user_id=a.id, title="\U0001f4da " + title, message=msg,
                             notif_type="subject_request"))
     db.commit()
@@ -1313,8 +1318,12 @@ def student_request_batch_change(payload: dict = Body(...), db: Session = Depend
            % (current_user.name or "A student", (sp.phone or "no phone"),
               (" \u00b7 Class " + sp.class_level) if sp.class_level else "",
               cur, (bn or "\u2014"), ("\nNote: " + note) if note else ""))
-    from admin_routes import admins_for_section as _afs
-    for a in _afs(db, "requests"):
+    try:
+        from admin_routes import admins_for_section as _afs
+        _adm = _afs(db, "requests")
+    except Exception:
+        _adm = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
+    for a in _adm:
         db.add(Notification(user_id=a.id, title="\U0001f501 Batch change request", message=msg,
                             notif_type="batch_request"))
     db.commit()

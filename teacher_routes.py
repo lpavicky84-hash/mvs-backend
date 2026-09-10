@@ -791,10 +791,16 @@ def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get
     if d.student and d.student.user:
         notify(db, d.student.user.id, "🔀 Your Doubt Has Been Reassigned",
                f"Your {d.subject or ''} doubt is now with {target_name} — you will get the answer from them.", "doubt")
-    # naye owner ko notify — Doubts section wale admins ko (full + sub-admins jinhe 'doubts' allowed)
+    # naye owner ko notify — Doubts section wale admins ko (full + sub-admins jinhe 'doubts' allowed).
+    # Defensive: agar admin_routes purana ho (helper na ho) to crash na ho — sabhi admins ko bhej do.
     if to_admin:
-        from admin_routes import admins_for_section as _afs
-        for au in _afs(db, "doubts"):
+        from models import User
+        try:
+            from admin_routes import admins_for_section as _afs
+            _adm = _afs(db, "doubts")
+        except Exception:
+            _adm = db.query(User).filter(User.is_active == True, User.role == "admin").all()
+        for au in _adm:
             notify(db, au.id, "📥 Doubt Assigned to Admin",
                    f"{current_user.name} assigned a {d.subject or ''} doubt by "
                    f"{d.student.user.name if d.student and d.student.user else 'a student'} to MVS Foundation. "

@@ -199,11 +199,18 @@ def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
     if not sp:
         raise HTTPException(status_code=404, detail="Is phone par koi account nahi mila. Admin se contact karein.")
     _otp_ensure(db)
+    now = int(time.time())
     otp = str(random.randint(100000, 999999))
-    exp = int(time.time()) + 300
+    exp = now + 300
     try:
-        _r = db.execute(_t("SELECT student_id FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
-        if _r:
+        _r = db.execute(_t("SELECT otp_code, otp_exp FROM student_flags WHERE student_id=:i"), {"i": sp.id}).first()
+        # Agar pichhla OTP abhi-abhi (90s ke andar) bana tha aur valid hai -> WAHI dobara bhejo,
+        # naya generate mat karo. Isse: (1) student ne 2-3 baar "Send OTP" dabaya to sabhi
+        # messages me EK HI code jaata hai (confusion nahi), (2) Meta ko kam naye auth-messages
+        # jaate hain -> number ki quality rating girti nahi -> delivery behtar hoti hai.
+        if _r and _r[0] and int(_r[1] or 0) - now > 210:
+            otp = str(_r[0]); exp = int(_r[1])
+        elif _r:
             db.execute(_t("UPDATE student_flags SET otp_code=:c, otp_exp=:e WHERE student_id=:i"),
                        {"c": otp, "e": exp, "i": sp.id})
         else:
@@ -214,12 +221,12 @@ def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
         try: db.rollback()
         except Exception: pass
         raise HTTPException(status_code=500, detail="OTP save nahi ho paya. Dobara koshish karein.")
-    # WhatsApp par bhejo (approved otp1 template — {{1}} = OTP)
+    # WhatsApp par bhejo (approved OTP template — {{1}} = OTP, button me bhi OTP)
     ok, detail = False, "not attempted"
     try:
         import whatsapp as W
         tmpl = W.otp_template()
-        ok, detail = W.send(phone, template=tmpl, params=[otp], name="Student", button_otp=otp)
+        ok, detail = W.send(phone, template=tmpl, params=[otp], name=((sp.user.name if sp.user else None) or "Student"), button_otp=otp)
         try:
             print("[OTP] to %s | template=%s | ok=%s | detail=%s" % (phone, tmpl, ok, str(detail)[:400]))
         except Exception:
@@ -227,8 +234,8 @@ def forgot_send_otp(req: dict, db: Session = Depends(get_db)):
     except Exception as e:
         ok, detail = False, str(e)
     if not ok:
-        raise HTTPException(status_code=502, detail="OTP WhatsApp par bhejne me dikkat: " + str(detail)[:140])
-    return {"ok": True, "message": "OTP aapke WhatsApp par bhej diya gaya hai (5 minute valid)."}
+        raise HTTPException(status_code=502, detail="OTP abhi WhatsApp par bhej nahi paaye. Thodi der me dobara koshish karein, ya apne teacher/admin se sampark karein.")
+    return {"ok": True, "message": "OTP aapke WhatsApp par bhej diya gaya hai (5 minute valid). WhatsApp par MVS Foundation se aaya message dekhein — 1-2 minute me na mile to ek baar dobara 'Send OTP' dabayein."}
 
 
 @router.post("/forgot-verify-otp")
