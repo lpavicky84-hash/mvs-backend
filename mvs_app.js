@@ -1124,7 +1124,12 @@ const NOTIF_GO={
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
     reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
     video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
-    doubt:'doubts',new_doubt:'doubts',doubt_resolved:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard'}
+    doubt:'doubts',new_doubt:'doubts',doubt_resolved:'doubts',teacher_message:'reports',payout:'payouts',attendance:'attendance',warning:'dashboard',
+    // Material Checker / Leads & Support / Student Requests — inke bina click dashboard pe atak jaata tha
+    material_submit:'matcheck',material_resubmit:'matcheck',material_checked:'matcheck',
+    complaint_new:'complaints',complaint_update:'complaints',complaint_reply:'complaints',complaint:'complaints',
+    feedback_new:'feedback',feedback:'feedback',
+    subject_request:'requests',batch_request:'requests',student_request:'requests'}
 };
 /* Fallback: agar exact type map me na ho, to type ke keywords se sahi section dhoondo —
    isse har notification click sahi jagah le jaata hai (dashboard pe atak nahi jaata). */
@@ -2611,14 +2616,19 @@ async function submitClassReport(id){
   try{
     // 1) class report -> marks the class Done (delay is derived from these times)
     var _crPl={topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:false,remarks:val('cr-remarks')};
-    if(_isCrashEntry(c)){ var _ch=[].slice.call(document.querySelectorAll('.cr-chdone-chk:checked')).map(function(x){return x.value;}); if(_ch.length) _crPl.chapters_done=_ch; }
+    var _selChaps=[];
+    if(_isCrashEntry(c)){ _selChaps=[].slice.call(document.querySelectorAll('.cr-chdone-chk:checked')).map(function(x){return x.value;}); if(_selChaps.length) _crPl.chapters_done=_selChaps; }
     await api('/api/teacher/class/'+id+'/complete','POST',_crPl);
     // 2) lecture report -> summary + class notes, auto-linked to this class
+    // Notes ka naam/chapter: crash class me jo chapters TICK kiye SIRF wahi (untick kiye hue nahi).
+    // Pehle c.chapter (dono original chapters) use hota tha, isliye untick karne ke baad bhi
+    // notes par dono naam aate the.
+    var _chapForNotes = (_isCrashEntry(c) && _selChaps.length) ? _selChaps.join(' | ') : (c.chapter||'');
     let pdf_b64=null;
     if(_lecFiles.pdf) pdf_b64=await _fileB64(_lecFiles.pdf);
     await _xhrJson('/api/teacher/lecture',{
-      subject:c.subject, chapter:c.chapter||null, part:c.part||null,
-      title:(c.chapter||'Lecture')+(c.part?(' \u2013 '+c.part):''),
+      subject:c.subject, chapter:_chapForNotes||null, part:c.part||null,
+      title:(_chapForNotes||'Lecture')+(c.part?(' \u2013 '+c.part):''),
       lecture_date:c.date||null, timetable_entry_id:id,
       homework:val('cr-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
@@ -3444,6 +3454,8 @@ async function loadTeacherToday(wrapId){
   try{
  const cls=await api('/api/teacher/today-classes');
  window._tClasses=cls; // v123: Submit Report modal (openClassReport) isi list se class prefill karta hai
+ // Batch list (report_mode) load karo taaki dashboard ki Submit Report par bhi crash chapters aayein.
+ if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(_e){ window._ttBatchList=[]; } }
  if(cls.length===0){ wrap.innerHTML='<div class="empty-state"><div class="empty-icon"></div><p>No classes today.</p></div>'; return; }
  const now=istNow();
  wrap.innerHTML=cls.map(e=>{
@@ -3464,8 +3476,13 @@ async function loadTeacherToday(wrapId){
  // v168: Submit Report ab SIRF class ka time nikalne ke BAAD dikhta hai (over=true).
  // Class se pehle (Upcoming) report ka button nahi aayega — sirf "Upcoming" chip.
  let _b='';
- if(!e.completed && (over || !dt)) _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
- if(!e.notes && (over || !dt)) _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
+ // Class abhi complete nahi hui -> SIRF "Submit Report" (report modal me hi notes + chapters aa jaate hain).
+ // Report ho chuki par notes pending -> tabhi "Upload Notes" (warna teacher notes add nahi kar payega).
+ if(!e.completed && (over || !dt)){
+   _b+=`<button class="btn btn-success btn-sm" onclick="openClassReport(${e.id})"> Submit Report</button>`;
+ } else if(e.completed && !e.notes && (over || !dt)){
+   _b+=`<button class="btn btn-primary btn-sm" onclick="openUploadHub({type:'notes',chapter:decodeURIComponent('${ch}'),subject:decodeURIComponent('${sub}'),class_name:decodeURIComponent('${cln}')})"> Upload Notes</button>`;
+ }
  if(over){
  _b+=`<span class="tstatus" style="background:rgba(245,158,11,.15);color:var(--warning)">${!e.completed?'Report Pending':'Material Pending'}</span>`;
  } else {
@@ -20106,8 +20123,12 @@ function _updateSecBadge(sec){
   if(!sec) return;
   var total=0;
   (sec._items||[]).forEach(function(it){
-    var b=it.querySelector('.badge');
-    if(b && b.style && b.style.display && b.style.display!=='none'){
+    // .badge class + inline id-badges (Material Checker=a-matcheck-badge, Complaints,
+    // Feedback, Student Requests) + production ps-badge — sabko rollup me count karo.
+    var b=it.querySelector('.badge, .ps-badge, [id$="-badge"], [data-nav-badge]');
+    // visible = jab tak explicitly display:none na ho. Kuch badges display:'' (khaali)
+    // se dikhaye jaate hain (doubts/complaints/feedback) — unhe bhi count karo.
+    if(b && (!b.style || b.style.display!=='none')){
       var n=parseInt((b.textContent||'').replace(/[^0-9]/g,''),10);
       if(!isNaN(n)) total+=n;
     }
