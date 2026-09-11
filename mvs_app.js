@@ -478,7 +478,7 @@ function _swrRerender(){
     try{ if(typeof _curLoader==='function') _curLoader(); }catch(e){}
   }, 140);
 }
-function _apiBust(){ for(const k in _apiCache){ if(_apiCache[k]) _apiCache[k].t=0; } }  // delete nahi — stale mark (SWR: turant stale + bg refresh)
+function _apiBust(){ for(const k in _apiCache){ if(_apiCache[k]){ _apiCache[k].t=0; _apiCache[k]._force=1; } } }  // stale mark + _force: mutation ke baad agla read FRESH aaye (purana stale na de), warna resolve/update ke baad list purani dikhti thi
 // Hard-drop cache entries whose key contains `match` (or all if empty). Use right after a
 // mutation so the very next load fetches FRESH data instead of serving stale cache — the
 // action's result then shows immediately (no waiting for the background refresh).
@@ -649,7 +649,9 @@ async function _apiCore(path, method='GET', body=null) {
   const _ck=method+' '+path;
   if(method==='GET'&&!_API_NOCACHE.test(path)){
     const hit=_apiCache[_ck];
-    if(hit){
+    // _force = kisi mutation (resolve/update/delete) ne isko bust kiya -> purana mat do,
+    // neeche se FRESH fetch karo (fresh response cache ko _force ke bina dobara set kar dega).
+    if(hit && !hit._force){
       // stale ho to bhi TURANT cached do (0ms) — stale hone par background me refresh + re-render
       if((Date.now()-hit.t)>=_API_TTL && !hit._bg){ hit._bg=1; _apiRefreshBg(path,_ck).finally(()=>{ if(_apiCache[_ck]) _apiCache[_ck]._bg=0; }); }
       return hit.d;
