@@ -9248,7 +9248,35 @@ function dbtRespHTML(r){
     : (r.role==='teacher'&&r.author_tid
       ? `<div class="dbt-resp-ava dbt-resp-photo" id="dbtrava-${r.id}" data-tid="${r.author_tid}">${ini}</div>`
       : `<div class="dbt-resp-ava">${ini}</div>`);
-  return `<div class="dbt-resp ${cls}">${ava}<div class="dbt-resp-b"><div class="dbt-resp-h"><span class="dbt-resp-n">${esc(r.author_name||tag)}</span><span class="dbt-resp-tag">${tag}</span>${r.mine?'<span style="font-size:.62rem;color:var(--text-muted);font-weight:700">(You)</span>':''}</div><div class="dbt-resp-t">${_doubtFmt(r.body||'')}</div>${when?`<div class="dbt-resp-w">${when}</div>`:''}</div></div>`;
+  const att=r.has_attach?`<div class="dbt-resp-media" style="margin-top:6px">${doubtRespAttachHtml(window._dbtRole||'teacher',r.id,r.attach_mime||'image/jpeg','attachment')}</div>`:'';
+  return `<div class="dbt-resp ${cls}">${ava}<div class="dbt-resp-b"><div class="dbt-resp-h"><span class="dbt-resp-n">${esc(r.author_name||tag)}</span><span class="dbt-resp-tag">${tag}</span>${r.mine?'<span style="font-size:.62rem;color:var(--text-muted);font-weight:700">(You)</span>':''}</div><div class="dbt-resp-t">${_doubtFmt(r.body||'')}</div>${att}${when?`<div class="dbt-resp-w">${when}</div>`:''}</div></div>`;
+}
+// thread reply ka attachment (image thumbnail ya file button) — auth ke saath load hota hai
+function doubtRespAttachHtml(role,rid,mime,name){
+  const url='/api/'+role+'/doubt-response/'+rid+'/attach';
+  if((mime||'image/jpeg').startsWith('image/')){
+    return `<img loading="lazy" class="doubt-thumb" data-url="${url}" data-name="${esc(name||'')}" alt="attachment" onclick="openImageViewer(this)">`;
+  }
+  return `<button class="btn btn-ghost btn-sm" onclick="viewRespFile('${role}',${rid},'${esc(mime||'')}')">${ic('folder')} ${esc(name||'Attachment')}</button>`;
+}
+function viewRespFile(role,rid,mime){
+  fetch(API+'/api/'+role+'/doubt-response/'+rid+'/attach',{headers:{Authorization:'Bearer '+TOKEN}}).then(r=>{ if(!r.ok) throw 0; return r.blob(); }).then(b=>{ const u=URL.createObjectURL(b); window.open(u,'_blank'); }).catch(()=>toast('Could not open the attachment.',true));
+}
+// Thread reply composer se bhejo — text + (multiple images ek image me stitched).
+async function dbtComposerReply(role,id,key){
+  const st=_cmpState[key]||{};
+  const body=(document.getElementById('cmpt-'+key)||{}).value?.trim()||'';
+  if(!body&&!st.file){ toast('Reply likhein ya image lagayein.',true); return; }
+  const btn=document.getElementById('cmps-'+key); const lbl=btn?btn.textContent:'Send';
+  if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{
+    const payload={body};
+    if(st.file){ payload.attach_b64=await blobToB64(st.file); payload.attach_mime=st.file.type||'image/jpeg'; payload.attach_name=st.file.name||'image.jpg'; }
+    await api('/api/'+role+'/doubts/'+id+'/respond','POST',payload);
+    toast('Reply added.');
+    _apiForget('doubt');
+    if(role==='teacher') loadTDoubts(); else if(role==='student') loadSDoubts(); else loadADoubts();
+  }catch(e){ if(btn){ btn.disabled=false; btn.textContent=lbl; } toast(e.message,true); }
 }
 // v112: thread avatars me teacher photos load karo (viewer role ke hisaab se endpoint)
 function _dbtLoadAvas(role){
@@ -9285,8 +9313,7 @@ function dbtThreadHTML(d){
   return `<div class="dbt-thread">${rs.map(dbtRespHTML).join('')}</div>`;
 }
 function dbtReplyRow(role,id,ph){
-  const iid='dbtr-'+role+'-'+id;
-  return `<div class="dbt-replyrow"><input class="form-control" id="${iid}" placeholder="${ph||'Write a reply...'}" onkeydown="if(event.key==='Enter')dbtRespond('${role}',${id},'${iid}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('${role}',${id},'${iid}')">Send</button></div>`;
+  return composerHTML('dbtr-'+role+'-'+id, ph||'Write a reply\u2026', "dbtComposerReply('"+role+"',"+id+",'dbtr-"+role+"-"+id+"')", 'Send');
 }
 // ===== PREMIUM DOUBT CHAT (WhatsApp-style) + DOUBT RATE-LIMIT POPUP =====
 function _ensureDoubtChatCss(){
@@ -9502,6 +9529,7 @@ function tAssignRow(d){
 }
 
 async function loadTDoubts(){
+  window._dbtRole='teacher';
   const el=document.getElementById('t-doubts-content');
   try{
  const doubts=await api('/api/teacher/doubts');
@@ -14619,6 +14647,7 @@ function adPickSub(sub){ _adSub=sub?decodeURIComponent(sub):''; _aDoubtFilter='a
   catch(e){ toast(e.message||'Delete failed',true); }
 }
 async function loadADoubts(){
+  window._dbtRole='admin';
   const el=document.getElementById('a-doubts-content');
   try{
     const [all,ov]=await Promise.all([api('/api/admin/doubts'),api('/api/admin/doubts-overview')]);
@@ -14769,7 +14798,7 @@ function aRenderDoubts(){
       ? `<div class="bubble bubble-a"><div class="who">${esc(d.assigned_to_admin?'MVS Foundation (Official)':(d.teacher_name+' (Teacher)'))}</div>${esc(d.answer||'')}${avoice}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution \u2197</a>`:''}</div>`
       : `<div class="bubble-pending">${d.assigned_to_admin?'Awaiting an official reply from MVS Foundation...':'Awaiting teacher\'s reply...'}</div>`;
     const reassignNote=d.assigned_by_name?`<div style="margin-top:3px;font-size:.72rem;color:#4f46e5;font-weight:700">Reassigned by ${esc(d.assigned_by_name)} \u2192 now with ${esc(owner)}</div>`:'';
-    const adminReply=`<div style="display:flex;align-items:center;gap:9px;margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.1),rgba(201,162,39,.03));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:9px 12px"><div class="mvs-logo" style="width:30px;height:30px;font-size:.8rem">M</div><input class="form-control" style="flex:1;min-width:0" id="dbtr-admin-${d.id}" placeholder="Reply as MVS Foundation${d.status==='resolved'?'':''} — posting on a pending doubt resolves it" onkeydown="if(event.key==='Enter')dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')"><button class="btn btn-primary btn-sm" onclick="dbtRespond('admin',${d.id},'dbtr-admin-${d.id}')">Post</button></div>`;
+    const adminReply=`<div style="margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div class="mvs-logo" style="width:26px;height:26px;font-size:.72rem">M</div><span style="font-size:.74rem;font-weight:700;color:#8a6f16">Reply as MVS Foundation \u00b7 image bhi laga sakte hain \u2014 pending doubt par post karne se resolve ho jaata hai</span></div>${composerHTML('dbtr-admin-'+d.id,'Write a reply\u2026 or paste image(s)',"dbtComposerReply('admin',"+d.id+",'dbtr-admin-"+d.id+"')",'Post')}</div>`;
     return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b onclick="openDoubtChat('admin',${d.student_id||0},'${encodeURIComponent(d.student_name||'Student')}')" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px" title="Open full chat with this student">${esc(d.student_name)}</b><button style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0 4px;vertical-align:middle;opacity:.7" title="Student details" onclick="aDoubtStudent(${d.id})">${ic('user')}</button>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
@@ -14777,6 +14806,7 @@ function aRenderDoubts(){
     <div class="dfilter">${fbtn('all','All ('+total+')')}${fbtn('pending','Pending ('+pending+')')}${fbtn('resolved','Resolved ('+resolved+')')}</div>
     <div class="hide-scroll doubt-drill">${cards}</div>`;
   list.forEach(d=>{ if(d.has_image&&(d.attach_mime||'image/jpeg').startsWith('image/')) loadImgInto2('adimg-'+d.id,'/api/admin/doubt/'+d.id+'/image'); });
+  try{ loadDoubtThumbs(el); }catch(e){}   // thread reply attachments (doubt-thumb) auth ke saath load
   _dbtLoadAvas('admin');   // v112 — thread me teacher photos
 }
 function loadImgInto2(elId,url){
@@ -18214,6 +18244,7 @@ async function _solPdf(id,med){
 
 
 async function loadSDoubts(){
+  window._dbtRole='student';
   const el=document.getElementById('s-doubts-content');
   softSpin(el);
   try{

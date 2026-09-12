@@ -4855,6 +4855,8 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
             rmap.setdefault(r.doubt_id, []).append({
                 "id": r.id, "role": r.role, "author_name": r.author_name,
                 "body": r.body, "mine": (r.role == "admin"),
+                "has_attach": bool(getattr(r, "attach_key", None)),
+                "attach_mime": getattr(r, "attach_mime", None),
                 "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                 "created_at": ist_iso(r.created_at)})
     out = []
@@ -4897,6 +4899,8 @@ def _admin_doubt_resps(db, did):
               .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": (r.role == "admin"),
+                    "has_attach": bool(getattr(r, "attach_key", None)),
+                    "attach_mime": getattr(r, "attach_mime", None),
                     "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                     "created_at": ist_iso(r.created_at)})
     return out
@@ -4917,9 +4921,18 @@ def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
     if not d:
         raise HTTPException(status_code=404, detail="Doubt not found")
     body = (payload.get("body") or "").strip()
-    if not body:
+    _ak = _am = _an = None
+    if payload.get("attach_b64"):
+        _am = payload.get("attach_mime") or "image/jpeg"
+        try:
+            _ak = __import__("r2_storage").normalize(payload["attach_b64"], "doubt-resp", _am)
+            _an = (payload.get("attach_name") or "attachment")[:250]
+        except Exception:
+            _ak = _am = _an = None
+    if not body and not _ak:
         raise HTTPException(status_code=400, detail="Response text is required")
-    db.add(DoubtResponse(doubt_id=d.id, role="admin", author_name="MVS Foundation", body=body))
+    db.add(DoubtResponse(doubt_id=d.id, role="admin", author_name="MVS Foundation", body=body,
+                         attach_key=_ak, attach_mime=_am, attach_name=_an))
     was_pending = (d.status.value if hasattr(d.status, "value") else d.status) != "resolved"
     if was_pending:
         if not d.answer:
@@ -4977,6 +4990,14 @@ def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_adm
     if not d or not d.audio_b64:
         raise HTTPException(status_code=404, detail="Not found")
     return __import__("r2_storage").file_response(d.audio_b64, "audio/webm")
+
+@router.get("/doubt-response/{rid}/attach")
+def admin_doubt_resp_attach(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import DoubtResponse
+    r = db.query(DoubtResponse).get(rid)
+    if not r or not getattr(r, "attach_key", None):
+        raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").file_response(r.attach_key, r.attach_mime or "image/jpeg", (r.attach_name or "attachment").replace(chr(34), ""), False)
 
 @router.get("/doubt/{did}/answer-file")
 def admin_doubt_answer_file(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):

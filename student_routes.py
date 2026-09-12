@@ -1040,7 +1040,19 @@ def student_doubt_answer_voice(did: int, db: Session = Depends(get_db), current_
 def student_doubt_answer_file(did: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     d = _own_doubt(did, db, current_user)
     return _doubt_media(d.answer_attach_b64, d.answer_attach_mime, d.answer_attach_name)
-    return doubt
+
+@router.get("/doubt-response/{rid}/attach")
+def student_doubt_resp_attach(rid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import DoubtResponse, Doubt as _D
+    sp = get_student_profile(current_user, db)
+    r = db.query(DoubtResponse).get(rid)
+    if not r or not getattr(r, "attach_key", None):
+        raise HTTPException(status_code=404, detail="Not found")
+    # sirf apne doubt ka attachment
+    d = db.query(_D).filter(_D.id == r.doubt_id, _D.student_id == sp.id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    return _doubt_media(r.attach_key, r.attach_mime or "image/jpeg", r.attach_name or "attachment")
 
 @router.get("/doubts")
 def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -1065,6 +1077,8 @@ def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
                       .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
                 resps.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                               "body": r.body, "mine": (r.role == "student"),
+                              "has_attach": bool(getattr(r, "attach_key", None)),
+                              "attach_mime": getattr(r, "attach_mime", None),
                               "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                               "created_at": ist_iso(r.created_at)})
         except Exception:
@@ -1093,9 +1107,18 @@ def student_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
     if not d:
         raise HTTPException(status_code=404, detail="Doubt not found")
     body = (payload.get("body") or "").strip()
-    if not body:
+    _ak = _am = _an = None
+    if payload.get("attach_b64"):
+        _am = payload.get("attach_mime") or "image/jpeg"
+        try:
+            _ak = __import__("r2_storage").normalize(payload["attach_b64"], "doubt-resp", _am)
+            _an = (payload.get("attach_name") or "attachment")[:250]
+        except Exception:
+            _ak = _am = _an = None
+    if not body and not _ak:
         raise HTTPException(status_code=400, detail="Response text is required")
-    db.add(DoubtResponse(doubt_id=d.id, role="student", author_name=current_user.name, body=body))
+    db.add(DoubtResponse(doubt_id=d.id, role="student", author_name=current_user.name, body=body,
+                         attach_key=_ak, attach_mime=_am, attach_name=_an))
     # owner ko notify — admin ke paas ho to sabhi admins, warna current teacher
     if getattr(d, "assigned_to_admin", False):
         for au in db.query(User).filter(User.is_active == True, User.role == "admin").all():

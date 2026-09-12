@@ -47,6 +47,10 @@ for _boot_try in range(3):
 # ===== LIGHTWEIGHT MIGRATIONS (add new columns to existing tables) =====
 def ensure_columns():
     stmts = [
+        # doubt thread replies me optional image/file attachment (admin/teacher/student)
+        "ALTER TABLE doubt_responses ADD COLUMN attach_key TEXT",
+        "ALTER TABLE doubt_responses ADD COLUMN attach_mime VARCHAR(100)",
+        "ALTER TABLE doubt_responses ADD COLUMN attach_name VARCHAR(255)",
         # crash-course multi-chapter (" | " join) VARCHAR(200) me fit nahi hota -> TEXT
         "ALTER TABLE timetable_entries MODIFY COLUMN chapter TEXT",
         "ALTER TABLE timetable_entries MODIFY COLUMN topic_covered TEXT",

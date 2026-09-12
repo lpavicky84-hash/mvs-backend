@@ -448,6 +448,9 @@ class DoubtResponse(Base):
     author_name = Column(String(160))
     author_teacher_id = Column(Integer, nullable=True)  # role=teacher ho to
     body        = Column(Text)
+    attach_key  = Column(Text, nullable=True)          # optional attached image/file (R2 key or base64)
+    attach_mime = Column(String(100), nullable=True)
+    attach_name = Column(String(255), nullable=True)
     created_at  = Column(DateTime, default=func.now())
 
 # =============================================

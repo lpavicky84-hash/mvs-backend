@@ -521,6 +521,20 @@ def get_tests(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     return db.query(Test).filter(Test.teacher_id == tp.id).all()
 
 # ===== DOUBTS =====
+def _doubt_resp_attach(payload):
+    """Thread reply ka optional attachment. Frontend multiple images ko EK image me stitch
+    karke 'attach_b64' me bhejta hai. R2 me store karke (key, mime, name) return karta hai."""
+    b64 = payload.get("attach_b64")
+    if not b64:
+        return (None, None, None)
+    mime = payload.get("attach_mime") or "image/jpeg"
+    try:
+        key = __import__("r2_storage").normalize(b64, "doubt-resp", mime)
+    except Exception:
+        return (None, None, None)
+    return (key, mime, (payload.get("attach_name") or "attachment")[:250])
+
+
 def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
     """v93: doubt thread responses (oldest first) — mine flag viewer ke hisaab se."""
     from models import DoubtResponse
@@ -530,6 +544,8 @@ def _doubt_resp_json(db, did, my_role, my_teacher_id=None):
         mine = (r.role == my_role) and (my_role != "teacher" or (my_teacher_id is not None and r.author_teacher_id == my_teacher_id))
         out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                     "body": r.body, "mine": bool(mine),
+                    "has_attach": bool(getattr(r, "attach_key", None)),
+                    "attach_mime": getattr(r, "attach_mime", None),
                     "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                     "created_at": ist_iso(r.created_at)})
     return out
@@ -635,6 +651,8 @@ def get_doubts(
             mine = (r.role == "teacher") and (r.author_teacher_id == tp.id)
             o.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                       "body": r.body, "mine": bool(mine),
+                      "has_attach": bool(getattr(r, "attach_key", None)),
+                      "attach_mime": getattr(r, "attach_mime", None),
                       "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                       "created_at": ist_iso(r.created_at)})
         return o
@@ -671,13 +689,15 @@ def teacher_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
     if not d:
         raise HTTPException(status_code=404, detail="Doubt not found")
     body = (payload.get("body") or "").strip()
-    if not body:
+    _att = _doubt_resp_attach(payload)
+    if not body and not _att[0]:
         raise HTTPException(status_code=400, detail="Response text is required")
     db.add(DoubtResponse(doubt_id=d.id, role="teacher", author_name=current_user.name,
-                         author_teacher_id=tp.id, body=body))
+                         author_teacher_id=tp.id, body=body,
+                         attach_key=_att[0], attach_mime=_att[1], attach_name=_att[2]))
     if d.student and d.student.user:
         notify(db, d.student.user.id, "💬 New Reply on Your Doubt",
-               f"{current_user.name} added a reply on your {d.subject or ''} doubt: {body[:120]}", "doubt")
+               f"{current_user.name} added a reply on your {d.subject or ''} doubt: {(body or 'sent an image')[:120]}", "doubt")
     db.commit()
     return {"message": "Reply added", "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)}
 
@@ -832,6 +852,14 @@ def teacher_doubt_image(did: int, db: Session = Depends(get_db), current_user=De
 def teacher_doubt_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     d = _t_own_doubt(did, db, current_user)
     return _t_doubt_media(d.audio_b64, "audio/webm", "voice.webm")
+
+@router.get("/doubt-response/{rid}/attach")
+def teacher_doubt_resp_attach(rid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import DoubtResponse
+    r = db.query(DoubtResponse).get(rid)
+    if not r or not getattr(r, "attach_key", None):
+        raise HTTPException(status_code=404, detail="Not found")
+    return _t_doubt_media(r.attach_key, r.attach_mime or "image/jpeg", r.attach_name or "attachment")
 
 @router.get("/doubt/{did}/answer-voice")
 def teacher_doubt_answer_voice(did: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
