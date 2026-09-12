@@ -30028,7 +30028,28 @@ function _mcCss(){
     '.mc-ver{font-family:ui-monospace,monospace;font-size:.72rem;color:#8a7d5c}',
     '.mc-v{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px}',
     '.mc-due{font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:999px}',
-    '.mc-due.ok{background:rgba(5,150,105,.14);color:#059669}.mc-due.soon{background:rgba(217,119,6,.16);color:#d97706}.mc-due.over{background:rgba(220,38,38,.15);color:#dc2626}'
+    '.mc-due.ok{background:rgba(5,150,105,.14);color:#059669}.mc-due.soon{background:rgba(217,119,6,.16);color:#d97706}.mc-due.over{background:rgba(220,38,38,.15);color:#dc2626}',
+    // ---- header toolbar (premium + mobile responsive) ----
+    '.amc-topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px}',
+    '.amc-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+    '.amc-tools{display:flex;gap:8px;align-items:center}',
+    '.amc-tools .amc-sel{width:auto;border-radius:10px}',
+    '.amc-storage-btn{white-space:nowrap;border-radius:10px}',
+    '.mc-v-acts{display:flex;gap:6px;flex-shrink:0}',
+    '@media (max-width:640px){',
+    '  .amc-topbar{gap:12px}',
+    '  .amc-tools{width:100%;flex-wrap:wrap;gap:8px}',
+    '  .amc-tools .amc-sel{flex:1 1 42%;min-width:0;width:auto}',
+    '  .amc-storage-btn{flex:1 1 100%;justify-content:center;order:-1}',
+    '  .amc-tc-head{padding:13px 14px;gap:11px}',
+    '  .amc-tc-av{width:40px;height:40px;min-width:40px;font-size:.95rem}',
+    '  .mc-row{padding:13px 14px;gap:11px}',
+    '  .mc-ic{width:38px;height:38px}',
+    '  .mc-rev-head{padding:12px 13px;gap:11px}',
+    '  .mc-v{flex-wrap:wrap;gap:9px 10px}',
+    '  .mc-v-acts{width:100%;justify-content:flex-end}',
+    '  .mc-v-acts .btn{flex:1 1 auto}',
+    '}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -30114,7 +30135,8 @@ function mcOpenDetail(sid){
       return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
         +(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')
         +'<div style="font-size:.7rem;color:#8a7d5c">'+esc(v.created_at)+'</div></div>'
-        +'<button class="btn btn-ghost btn-sm" onclick="catDownloadVersion(\'teacher\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">Download</button></div>';
+        +'<div class="mc-v-acts"><button class="btn btn-ghost btn-sm" onclick="catViewVersion(\'teacher\','+v.id+')">'+(typeof ic==='function'?ic('eye'):'')+' View</button>'
+        +'<button class="btn btn-ghost btn-sm" onclick="catDownloadVersion(\'teacher\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">Download</button></div></div>';
     }).join('');
     var canResub=(m.status!=='approved'&&m.status!=='rejected');
     var body='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><div><div style="font-weight:800;font-size:1.05rem">'+esc(m.title)+'</div>'
@@ -30165,6 +30187,20 @@ async function catDownloadVersion(role, vid, name){
     catch(e2){ toast('Could not download',true); }
   }
 }
+// PDF ko browser me INLINE kholo (download nahi) — auth ke saath fetch -> blob -> naya tab
+async function _openAuthedInline(url){
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail'); var blob=await r.blob(); if(!blob||!blob.size) throw new Error('empty');
+    var u=URL.createObjectURL(blob); var w=window.open(u,'_blank','noopener');
+    if(!w) toast('Popup block ho gaya — allow karke dobara View dabayein.',true);
+    setTimeout(function(){URL.revokeObjectURL(u);},60000);
+  }catch(e){
+    try{ window.open(url+'?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }
+    catch(e2){ toast('Could not open the file',true); }
+  }
+}
+function catViewVersion(role, vid){ _openAuthedInline(API+'/api/'+role+'/material-versions/'+vid+'/view'); }
 
 /* ============================================================
    PHASE 12A — Material Checker (admin side)
@@ -30224,11 +30260,11 @@ function loadAMatCheck(){
     });
     var totPending=subs.filter(function(x){return _amcIsPending(x.status);}).length;
     try{ _amcSetNavBadge(totPending); }catch(e){}
-    var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px">'
-      +'<div style="display:flex;align-items:center;gap:10px"><div style="font-weight:800;font-size:1.15rem">Material Checker</div>'
+    var head='<div class="amc-topbar">'
+      +'<div class="amc-title"><div style="font-weight:800;font-size:1.15rem">Material Checker</div>'
       +(totPending?'<span class="amc-badge">'+totPending+' to check</span>':'')+'</div>'
-      +'<div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="checkR2Health()" title="Test file storage (uploads/downloads)">'+(typeof ic==='function'?ic('shield'):'')+' Check Storage</button><select class="form-control" style="width:auto" onchange="amcSetCat(this.value)">'+catOpts+'</select>'
-      +'<select class="form-control" style="width:auto" onchange="amcSetStatus(this.value)">'+stOpts+'</select></div></div>';
+      +'<div class="amc-tools"><button class="btn btn-ghost btn-sm amc-storage-btn" onclick="checkR2Health()" title="Test file storage (uploads/downloads)">'+(typeof ic==='function'?ic('shield'):'')+' Check Storage</button><select class="form-control amc-sel" onchange="amcSetCat(this.value)">'+catOpts+'</select>'
+      +'<select class="form-control amc-sel" onchange="amcSetStatus(this.value)">'+stOpts+'</select></div></div>';
     if(!subs.length){ el.innerHTML=head+'<div class="tcd-empty">No submissions match this filter.</div>'; return; }
     var cards=teachers.map(function(tk){
       var list=byT[tk];
@@ -30307,7 +30343,8 @@ function amcOpenDetail(sid){
       return '<div class="mc-v"><div class="mc-v-ic">'+(typeof ic==='function'?ic('clipboard'):'')+'</div><div style="flex:1;min-width:0"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+' · '+_fmtSize(v.file_size)+'</span>'
         +(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')
         +'<div style="font-size:.7rem;color:#8a7d5c;margin-top:2px">'+esc(v.created_at)+'</div></div>'
-        +'<button class="btn btn-primary btn-sm" onclick="catDownloadVersion(\'admin\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">'+(typeof ic==='function'?ic('download'):'')+' Download</button></div>';
+        +'<div class="mc-v-acts"><button class="btn btn-ghost btn-sm" onclick="catViewVersion(\'admin\','+v.id+')">'+(typeof ic==='function'?ic('eye'):'')+' View</button>'
+        +'<button class="btn btn-primary btn-sm" onclick="catDownloadVersion(\'admin\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">'+(typeof ic==='function'?ic('download'):'')+' Download</button></div></div>';
     }).join('');
     var dl=m.deadline?m.deadline.replace(' ','T').slice(0,16):'';
     var body='<div class="mc-rev-head"><div class="mc-ic" style="width:48px;height:48px">'+(typeof ic==='function'?ic('folder'):'')+'</div>'

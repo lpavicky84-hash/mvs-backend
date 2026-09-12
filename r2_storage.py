@@ -131,22 +131,19 @@ def store_file_value(key, raw, content_type="application/octet-stream"):
 
 
 def file_response(value, media_type="application/octet-stream", filename=None, download=True):
-    """DB field ka value -> file response. R2 URL ho to redirect (free egress),
-    warna base64 decode karke serve (Content-Disposition ke saath)."""
-    from fastapi import HTTPException
+    """DB field ka value -> file response. http URL / R2 key / base64 — sabko
+    bulletproof resolve karke serve. (Pehle bare key ko base64 samajh ke corrupt kar deta tha.)"""
+    from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
-    if isinstance(value, str) and value.startswith("http"):
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url=value, status_code=302)
-    import base64 as _b64
-    from fastapi import Response
-    v = value.split(",")[-1] if isinstance(value, str) else value
+    data = _resolve_bytes(value)
+    if data is None:
+        raise HTTPException(status_code=502, detail="File storage se retrieve nahi ho pa raha.")
     headers = {}
     if filename:
         disp = "attachment" if download else "inline"
         headers["Content-Disposition"] = '%s; filename="%s"' % (disp, filename)
-    return Response(content=_b64.b64decode(v), media_type=media_type, headers=headers)
+    return Response(content=data, media_type=media_type, headers=headers)
 
 
 def _fetch_r2_bytes(url):
@@ -190,6 +187,74 @@ def _looks_like_error(data):
     return False
 
 
+def _resolve_bytes(value):
+    """Stored value (http URL / R2 KEY / base64) -> raw file bytes. Bulletproof.
+    Pehle 'encrypted'/corrupt is wajah se hota tha ki ek bare R2 key (jaise UUID) ko
+    base64 samajh ke decode kar deta tha -> garbage PDF. Ab key ho to R2 se seedha fetch."""
+    if not value:
+        return None
+    v = value if isinstance(value, str) else str(value)
+    import base64 as _b64
+
+    def _valid(b):
+        if not b or len(b) < 8:
+            return False
+        return (b[:4] == b"%PDF" or b[:3] == b"\xff\xd8\xff" or b[:8].startswith(b"\x89PNG")
+                or (b[:4] == b"RIFF" and b"WEBP" in b[:16]) or b[:6] in (b"GIF87a", b"GIF89a")
+                or b[:2] == b"PK" or b[:4] == b"\x25\x21\x50\x53")
+
+    # 1) full http(s) URL -> authenticated R2 GET, phir public fetch
+    if v.startswith("http"):
+        d = _fetch_r2_bytes(v)
+        if d and not _looks_like_error(d):
+            return d
+        try:
+            import urllib.request
+            req = urllib.request.Request(v, headers={"User-Agent": "Mozilla/5.0", "Accept": "*/*"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                if getattr(r, "status", 200) in (200, 206):
+                    d2 = r.read()
+                    if d2 and not _looks_like_error(d2):
+                        return d2
+        except Exception:
+            pass
+        return None
+
+    # 2) base64? decode aur magic-bytes se validate
+    dec = None
+    try:
+        s = v.split(",")[-1]
+        s = "".join(s.split())
+        s += "=" * (-len(s) % 4)
+        dec = _b64.b64decode(s)
+    except Exception:
+        dec = None
+    if _valid(dec):
+        return dec
+
+    # 3) bare R2 KEY / relative path -> authenticated GET
+    try:
+        cli = _client()
+        c = _cfg()
+        if cli:
+            key = v.strip().lstrip("/")
+            pub = (c.get("public_url") or "").rstrip("/")
+            if pub and key.startswith(pub.split("://")[-1]):
+                key = key.split("/", 1)[-1] if "/" in key else key
+            bkt = str(c.get("bucket") or "")
+            if bkt and key.startswith(bkt + "/"):
+                key = key[len(bkt) + 1:]
+            obj = cli.get_object(Bucket=c["bucket"], Key=key)
+            d3 = obj["Body"].read()
+            if d3 and not _looks_like_error(d3):
+                return d3
+    except Exception:
+        pass
+
+    # 4) last resort: jo bhi base64 decode hua (bhale magic match na kiya)
+    return dec
+
+
 def proxy_response(value, media_type="application/octet-stream", filename=None, download=True, sniff=False):
     """Inline viewer / same-origin ke liye: R2 URL ho to server-side fetch karke bytes
     STREAM karo (cross-origin fetch/CORS ki dikkat nahi aayegi, aur URL pe b64decode crash
@@ -199,38 +264,10 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
-    if isinstance(value, str) and value.startswith("http"):
-        data = None
-        # 1) Authenticated S3 GET (bucket public na ho tab bhi chalega) — sabse reliable
-        d1 = _fetch_r2_bytes(value)
-        if d1 and not _looks_like_error(d1):
-            data = d1
-        if data is None:
-            # 2) Public URL se seedha fetch (agar bucket public hai)
-            try:
-                import urllib.request
-                req = urllib.request.Request(value, headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-                    "Accept": "*/*",
-                })
-                with urllib.request.urlopen(req, timeout=25) as r:
-                    if getattr(r, "status", 200) in (200, 206):
-                        d2 = r.read()
-                        if d2 and not _looks_like_error(d2):
-                            data = d2
-            except Exception:
-                pass
-        if data is None:
-            # dono fail — corrupt file serve karne se behtar clear error
-            raise HTTPException(status_code=502,
-                                detail="File storage se abhi retrieve nahi ho pa raha (R2 read permission ya bucket check karein).")
-    else:
-        import base64 as _b64
-        v = value.split(",")[-1] if isinstance(value, str) else value
-        try:
-            data = _b64.b64decode(v)
-        except Exception:
-            raise HTTPException(status_code=400, detail="File could not be read")
+    data = _resolve_bytes(value)
+    if data is None:
+        raise HTTPException(status_code=502,
+                            detail="File storage se abhi retrieve nahi ho pa raha (R2 read permission ya bucket check karein).")
     # magic bytes se ASAL type pakdo (galat label theek karne ke liye)
     if sniff and data:
         if data[:4] == b"%PDF": media_type = "application/pdf"

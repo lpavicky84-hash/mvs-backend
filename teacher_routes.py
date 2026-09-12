@@ -1654,7 +1654,15 @@ def teacher_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     from models import Material
     m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
     if not m: raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), True)
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), True, sniff=True)
+
+@router.get("/material/{mid}/view")
+def teacher_material_view(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    # inline view (download nahi) — teacher class material ko browser me hi kholein
+    from models import Material
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
+    if not m: raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), False, sniff=True)
 
 @router.delete("/material/{mid}")
 def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):

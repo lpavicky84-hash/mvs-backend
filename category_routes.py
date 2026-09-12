@@ -773,6 +773,27 @@ def _sub_dict(db, m, with_versions=False, teacher_name=None):
     return d
 
 
+def _mc_auto_under_review(db, m, admin_user=None):
+    """Admin ne 'submitted'/'resubmitted' material ko VIEW ya DOWNLOAD kiya -> status
+    apne aap 'under_review' + teacher ko notification. changes_required/approved/rejected
+    ko haath nahi lagate (woh admin manually set karta hai)."""
+    try:
+        if m and (m.status or "") in ("submitted", "resubmitted"):
+            m.status = "under_review"
+            try:
+                _log_event(db, m.category_id, m.teacher_id, m.id,
+                           getattr(admin_user, "id", None), "admin", "under_review", None)
+            except Exception:
+                pass
+            _mc_notify_teacher(db, m, "under_review", "")
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 def _mc_notify_teacher(db, m, decision, remarks=""):
     """Status change (approve/changes/reject/review) pe teacher ko notification."""
     try:
@@ -794,14 +815,13 @@ def _mc_notify_teacher(db, m, decision, remarks=""):
 
 
 def _mc_notify_admins(db, m, teacher_name="", action="submitted"):
-    """Teacher submit/resubmit pe sabhi admins ko notification."""
+    """Teacher submit/resubmit pe Material Checker section wale admins ko notification
+    (full admins + jin sub-admins ko 'matcheck' section allowed hai — jaise Zoya)."""
     try:
-        from admin_routes import notify
-        from models import User
+        from admin_routes import notify_section_admins
         title = "\U0001F4C4 Material Submitted for Checking" if action == "submitted" else "\U0001F504 Material Resubmitted"
         msg = '%s submitted "%s" for checking.' % (teacher_name or "A teacher", m.title)
-        for au in db.query(User).filter(User.role == "admin", User.is_active == True).all():
-            notify(db, au.id, title, msg, "material_submit")
+        notify_section_admins(db, "matcheck", title, msg, "material_submit")
     except Exception:
         pass
 
@@ -1040,7 +1060,7 @@ def admin_review_submission(sid: int, payload: dict = Body(...),
 
 
 # ---- version download (both roles, authorized) ----
-def _download_version(db, vid, is_admin, user):
+def _download_version(db, vid, is_admin, user, inline=False):
     from category_models import MaterialVersion, MaterialSubmission
     v = db.query(MaterialVersion).filter(MaterialVersion.id == vid).first()
     if not v:
@@ -1052,19 +1072,32 @@ def _download_version(db, vid, is_admin, user):
         tid = CS.teacher_id_for_user(db, user)
         if not tid or m.teacher_id != tid:
             raise HTTPException(status_code=403, detail="Not your submission.")
+    else:
+        # Admin ne kholte/download karte hi -> auto Under Review + teacher notify
+        _mc_auto_under_review(db, m, user)
     r2 = __import__("r2_storage")
     return r2.proxy_response(v.file_url, v.mime or "application/octet-stream",
-                             _hsafe(v.filename or "file"), True, sniff=True)
+                             _hsafe(v.filename or "file"), (not inline), sniff=True)
 
 
 @router.get("/api/admin/material-versions/{vid}/download")
-def admin_download_version(vid: int, db: Session = Depends(get_db), _=Depends(admin_guard)):
-    return _download_version(db, vid, True, None)
+def admin_download_version(vid: int, db: Session = Depends(get_db), me=Depends(admin_guard)):
+    return _download_version(db, vid, True, me)
+
+
+@router.get("/api/admin/material-versions/{vid}/view")
+def admin_view_version(vid: int, db: Session = Depends(get_db), me=Depends(admin_guard)):
+    return _download_version(db, vid, True, me, inline=True)
 
 
 @router.get("/api/teacher/material-versions/{vid}/download")
 def teacher_download_version(vid: int, db: Session = Depends(get_db), me=Depends(get_teacher)):
     return _download_version(db, vid, False, me)
+
+
+@router.get("/api/teacher/material-versions/{vid}/view")
+def teacher_view_version(vid: int, db: Session = Depends(get_db), me=Depends(get_teacher)):
+    return _download_version(db, vid, False, me, inline=True)
 
 
 # ===========================================================================
