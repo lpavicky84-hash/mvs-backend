@@ -4805,6 +4805,38 @@ def teacher_materials_tree(batch: int = 0, db: Session = Depends(get_db), curren
 def teacher_material_audience(mid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     return _material_audience(db, mid)
 
+
+def _exam_audience(db, exam_id):
+    """Kis student ne test open kiya (view) / paper download kiya — engagement popup ke liye.
+    Material audience jaisa hi shape return karta hai taaki frontend _paintAudience chal jaaye."""
+    from models import Exam, ExamView, StudentProfile
+    e = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not e:
+        raise HTTPException(404, "Test not found")
+    rows = db.query(ExamView).filter(ExamView.exam_id == exam_id).all()
+    sids = list({r.student_id for r in rows})
+    smap = {}
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
+            smap[sp.id] = (sp.user.name if sp.user else ("Student #%d" % sp.id))
+    seen, viewers, downloaders = {}, [], []
+    for r in rows:
+        nm = smap.get(r.student_id, "Student")
+        key = (r.student_id, r.action)
+        if key in seen:
+            continue
+        seen[key] = True
+        entry = {"student_id": r.student_id, "name": nm, "at": str(r.created_at)[:16]}
+        (downloaders if r.action == "download" else viewers).append(entry)
+    return {"material": {"id": e.id, "title": (e.title or "Test"), "type": "test",
+                         "subject": e.subject, "chapter": None, "part": None},
+            "viewers": viewers, "downloaders": downloaders}
+
+
+@router.get("/exam/{eid}/audience")
+def teacher_exam_audience(eid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return _exam_audience(db, eid)
+
 # ==================================================================
 #  SMART EXTRA CLASS — auto-shift ke saath
 #  Teacher extra class daalta hai -> uske baad ki us subject ki saari
