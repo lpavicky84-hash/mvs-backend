@@ -3952,7 +3952,19 @@ async function openTeacherCrash(){
       +'.tc-chpanel{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;max-height:240px;overflow:auto;background:var(--card,#fff);border:1px solid var(--border);border-radius:11px;box-shadow:0 12px 30px rgba(0,0,0,.16);padding:5px}'
       +'.tc-chpanel.open{display:block}'
       +'.tc-chopt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.85rem}'
-      +'.tc-chopt:hover{background:rgba(184,148,31,.08)}.tc-chopt input{width:15px;height:15px;flex-shrink:0}';
+      +'.tc-chopt:hover{background:rgba(184,148,31,.08)}.tc-chopt input{width:15px;height:15px;flex-shrink:0}'
+      +'@media (max-width:600px){'
+      +'.tc-group .tc-ghead{flex-wrap:wrap;row-gap:2px}'
+      +'.tc-group .tc-gsub{flex:1 1 100%;order:2;margin:1px 0 4px}'
+      +'.tc-group .tc-prog{order:3;margin-left:0}'
+      +'.tc-group .tc-ghead>button{order:4;margin-left:auto!important}'
+      +'.tc-group .tc-drow{padding:11px 12px;gap:8px}'
+      +'.tc-group .tc-dbadge{min-width:0}'
+      +'.tc-group .tc-dmeta{min-width:0;flex:1 1 auto;text-align:right}'
+      +'.tc-group .tc-chwrap{flex:1 1 100%;min-width:0}'
+      +'.tc-group .tc-yt{flex:1 1 auto;min-width:0}'
+      +'.tc-group .tc-drow>.btn{flex-shrink:0}'
+      +'}';
     document.head.appendChild(st); }
   document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Har Day ke liye chapter (syllabus se) chuno aur, agar wo class YouTube pe hai to link lagao. Save dabao. <b>Progress</b> upar dikhta hai \u2014 wo class report (Mark Done) ke time complete kiye chapters se banti hai (distinct, subject total tak).</div>'+html;
   if(!document.getElementById('tcprog-css')){ var pst=document.createElement('style'); pst.id='tcprog-css';
