@@ -3932,43 +3932,42 @@ async function openTeacherCrash(){
     var rows=g.rows.map(function(e){
       var yt=esc(e.youtube_link||'');
       return '<div class="tc-drow" data-eid="'+e.id+'">'
-        +'<div class="tc-dbadge">'+esc(e.part||'')+'</div>'
-        +'<div class="tc-dmeta">'+esc(e.date||'')+(e.time?(' \u00b7 '+esc(e.time)):'')+'</div>'
+        +'<div class="tc-drow-top"><span class="tc-dbadge">'+esc(e.part||'')+'</span>'
+        +'<span class="tc-dmeta">'+esc(e.date||'')+(e.time?(' \u00b7 '+esc(e.time)):'')+'</span></div>'
         +'<div class="tc-chwrap" data-eid="'+e.id+'" data-cur="'+esc(e.chapter||'').replace(/"/g,'&quot;')+'"><button type="button" class="form-control tc-chbtn" onclick="_tcTogglePanel(event,'+e.id+')"><span class="tc-chlabel" id="tc-chlabel-'+e.id+'">'+(e.chapter?esc(e.chapter):'Loading chapters\u2026')+'</span><span style="opacity:.55;flex-shrink:0">\u25be</span></button><div class="tc-chpanel" id="tc-chpanel-'+e.id+'"></div></div>'
-        +'<input class="form-control tc-yt" data-eid="'+e.id+'" placeholder="YouTube link (optional)" value="'+yt+'">'
-        +'<button class="btn btn-primary btn-sm" onclick="tcSaveDay('+e.id+')">'+ic('check')+' Save</button></div>';
+        +'<div class="tc-drow-bot"><input class="form-control tc-yt" data-eid="'+e.id+'" placeholder="YouTube link (optional)" value="'+yt+'">'
+        +'<button class="btn btn-primary btn-sm tc-save" onclick="tcSaveDay('+e.id+')">'+ic('check')+' Save</button></div>'
+        +'</div>';
     }).join('');
     return '<div class="tc-group"><div class="tc-ghead">'+esc(g.subject)+' <span class="tc-gsub">'+esc(g.batch)+(g.cls?(' \u00b7 '+esc(g.cls)):'')+' \u00b7 '+g.rows.length+' days</span><span class="tc-prog" data-bid="'+(g.rows[0].batch_id||0)+'" data-sub="'+esc(g.subject).replace(/"/g,'&quot;')+'" data-cls="'+esc(g.cls).replace(/"/g,'&quot;')+'"></span><button class="btn btn-ghost btn-sm" style="margin-left:6px" onclick="_crashAddDay('+(g.rows[0].batch_id||0)+',\''+esc(g.subject).replace(/'/g,"\\'")+'\',\''+esc(g.cls).replace(/'/g,"\\'")+'\')">'+ic('plus')+' Add Day</button></div>'+rows+'</div>';
   }).join('');
   if(!document.getElementById('tc-css')){ var st=document.createElement('style'); st.id='tc-css';
-    st.textContent='.tc-group{margin-bottom:16px}.tc-ghead{font-weight:800;font-size:.98rem;margin:4px 0 8px}.tc-gsub{font-weight:600;font-size:.74rem;color:var(--text-muted)}'
-      +'.tc-drow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border);border-radius:11px;margin-bottom:7px}'
-      +'.tc-dbadge{font-weight:800;font-size:.72rem;background:rgba(184,148,31,.15);color:#9a7d1a;padding:3px 10px;border-radius:999px;min-width:56px;text-align:center}'
-      +'.tc-dmeta{font-size:.74rem;color:var(--text-muted);min-width:120px}'
-      +'.tc-ch{flex:1;min-width:170px}.tc-yt{flex:1;min-width:170px}'
-      +'.tc-chwrap{position:relative;flex:1;min-width:190px}'
-      +'.tc-chbtn{width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;overflow:hidden}'
-      +'.tc-chlabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-      +'.tc-chpanel{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;max-height:240px;overflow:auto;background:var(--card,#fff);border:1px solid var(--border);border-radius:11px;box-shadow:0 12px 30px rgba(0,0,0,.16);padding:5px}'
+    st.textContent='.tc-group{margin-bottom:22px}.tc-ghead{font-weight:800;font-size:1rem;margin:6px 0 12px;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;line-height:1.35}.tc-gsub{font-weight:600;font-size:.75rem;color:var(--text-muted)}'
+      +'.tc-drow{display:flex;flex-direction:column;gap:10px;padding:14px 15px;border:1px solid var(--border);border-radius:16px;margin-bottom:11px;background:var(--card,#fff);box-shadow:0 1px 3px rgba(0,0,0,.05)}'
+      +'.tc-drow-top{display:flex;align-items:center;justify-content:space-between;gap:8px}'
+      +'.tc-dbadge{font-weight:800;font-size:.72rem;letter-spacing:.02em;background:linear-gradient(135deg,rgba(184,148,31,.2),rgba(184,148,31,.1));color:#8a6f16;padding:5px 13px;border-radius:999px}'
+      +'.tc-dmeta{font-size:.76rem;font-weight:600;color:var(--text-muted)}'
+      +'.tc-chwrap{position:relative}'
+      +'.tc-chbtn{width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;overflow:hidden;border-radius:11px}'
+      +'.tc-chlabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}'
+      +'.tc-chpanel{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;max-height:240px;overflow:auto;background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.16);padding:5px}'
       +'.tc-chpanel.open{display:block}'
-      +'.tc-chopt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.85rem}'
+      +'.tc-chopt{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;cursor:pointer;font-size:.85rem}'
       +'.tc-chopt:hover{background:rgba(184,148,31,.08)}.tc-chopt input{width:15px;height:15px;flex-shrink:0}'
+      +'.tc-drow-bot{display:flex;gap:9px;align-items:center}'
+      +'.tc-yt{flex:1;min-width:0;border-radius:11px}'
+      +'.tc-drow-bot .tc-save{flex-shrink:0;border-radius:11px;font-weight:700;padding:10px 18px;box-shadow:0 2px 8px rgba(184,148,31,.28);white-space:nowrap}'
+      +'.tc-ghead>button{border-radius:11px;font-weight:700;border:1.5px solid var(--border);padding:8px 15px}'
       +'@media (max-width:600px){'
-      +'.tc-group .tc-ghead{flex-wrap:wrap;row-gap:2px}'
-      +'.tc-group .tc-gsub{flex:1 1 100%;order:2;margin:1px 0 4px}'
+      +'.tc-group .tc-gsub{flex:1 1 100%;order:2;margin:1px 0 2px}'
       +'.tc-group .tc-prog{order:3;margin-left:0}'
       +'.tc-group .tc-ghead>button{order:4;margin-left:auto!important}'
-      +'.tc-group .tc-drow{padding:11px 12px;gap:8px}'
-      +'.tc-group .tc-dbadge{min-width:0}'
-      +'.tc-group .tc-dmeta{min-width:0;flex:1 1 auto;text-align:right}'
-      +'.tc-group .tc-chwrap{flex:1 1 100%;min-width:0}'
-      +'.tc-group .tc-yt{flex:1 1 auto;min-width:0}'
-      +'.tc-group .tc-drow>.btn{flex-shrink:0}'
+      +'.tc-group .tc-dmeta{text-align:right}'
       +'}';
     document.head.appendChild(st); }
   document.getElementById('modal-body').innerHTML='<div class="alert alert-info" style="font-size:.82rem">Har Day ke liye chapter (syllabus se) chuno aur, agar wo class YouTube pe hai to link lagao. Save dabao. <b>Progress</b> upar dikhta hai \u2014 wo class report (Mark Done) ke time complete kiye chapters se banti hai (distinct, subject total tak).</div>'+html;
   if(!document.getElementById('tcprog-css')){ var pst=document.createElement('style'); pst.id='tcprog-css';
-    pst.textContent='.tc-prog{margin-left:auto;font-size:.72rem;font-weight:800;background:rgba(5,150,105,.14);color:#047857;padding:2px 10px;border-radius:999px}.tc-ghead{display:flex;align-items:center;gap:8px}';
+    pst.textContent='.tc-prog{margin-left:auto;font-size:.72rem;font-weight:800;background:rgba(5,150,105,.14);color:#047857;padding:3px 11px;border-radius:999px;white-space:nowrap}';
     document.head.appendChild(pst); }
   document.querySelectorAll('.tc-prog').forEach(function(sp){
     var bid=sp.getAttribute('data-bid'), sub=sp.getAttribute('data-sub'), cl=(String(sp.getAttribute('data-cls')||'').match(/\d+/)||[''])[0];

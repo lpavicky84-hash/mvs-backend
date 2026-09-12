@@ -4339,6 +4339,7 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
     from models import Material
     # batch-scope the class material to the same batch as its timetable class (NULL = global)
     _mat_batch_id = None
+    _te2 = None
     try:
         if payload.get("timetable_entry_id"):
             from models import TimetableEntry as _TTE2
@@ -4347,17 +4348,42 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
                 _mat_batch_id = getattr(_te2, "batch_id", None)
     except Exception:
         _mat_batch_id = None
+    # Crash-course shared subjects (jaise Data Entry) Class-12 ke Science/Commerce/Arts — sab
+    # ALAG crash batches hain. Report EK baar submit hoti hai (ek batch me), par notes SABHI
+    # sibling Class-12 crash batches me dikhne chahiye. Yahan un sibling batch_ids ko nikaalo:
+    # same subject + same Day + same class_name -> Class-12 ke sabhi streams; class_name match
+    # hone se Class-10 (Udaan) apne-aap ALAG rehta hai (uske liye teacher alag report karega).
+    _extra_batch_ids = []
+    try:
+        import re as _re_sib
+        if _te2 is not None and _te2.part and _re_sib.match(r"^day\s*\d+$", (_te2.part or "").strip(), _re_sib.I):
+            from models import TimetableEntry as _TTE3
+            _sibs = db.query(_TTE3).filter(
+                _TTE3.subject == _te2.subject,
+                _TTE3.part == _te2.part,
+                _TTE3.class_name == _te2.class_name,
+                _TTE3.id != _te2.id).all()
+            _seen_b = set([_mat_batch_id])
+            for _s in _sibs:
+                _bid = getattr(_s, "batch_id", None)
+                if _bid is not None and _bid not in _seen_b and _re_sib.match(r"^day\s*\d+$", (_s.part or "").strip(), _re_sib.I):
+                    _seen_b.add(_bid); _extra_batch_ids.append(_bid)
+    except Exception:
+        _extra_batch_ids = []
     def _mk(kind, b64, fname):
         if not b64:
             return
         stored = __import__("r2_storage").normalize(b64, "materials", "application/pdf")
-        db.add(Material(
-            teacher_id=tp.id, teacher_name=(current_user.name or ""),
-            subject=subject, class_name=(_eff_cls or None),
-            chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
-            material_type=kind, title=(lec.title or subject),
-            batch_id=_mat_batch_id,
-            filename=(fname or ("%s.pdf" % kind)), content_b64=stored))
+        # primary batch + sabhi sibling Class-12 crash batches — har ek me ek Material row
+        # (stored content ek hi hai, sirf alag batch_id se link). Class-10 isme nahi aata.
+        for _bid in ([_mat_batch_id] + _extra_batch_ids):
+            db.add(Material(
+                teacher_id=tp.id, teacher_name=(current_user.name or ""),
+                subject=subject, class_name=(_eff_cls or None),
+                chapter=(payload.get("chapter") or None), part=(payload.get("part") or None),
+                material_type=kind, title=(lec.title or subject),
+                batch_id=_bid,
+                filename=(fname or ("%s.pdf" % kind)), content_b64=stored))
     _mk("notes", payload.get("pdf_b64"), payload.get("pdf_filename"))
     _mk("dpp", payload.get("dpp_b64"), payload.get("dpp_filename"))
     db.flush()
