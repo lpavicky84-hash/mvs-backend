@@ -2019,7 +2019,7 @@ const _CAMSVG='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" strok
 const _CLIPSVG='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 const _cmpState={}; let _cmpFocus=null;
 function composerHTML(key,placeholder,onsend,sendLabel){
-  _cmpState[key]={file:null,voice:null};
+  _cmpState[key]={file:null,voice:null,imgs:[],_fromImgs:false};
   return `<div class="cmp" id="cmp-${key}" ondragover="event.preventDefault();this.classList.add('dragging')" ondragleave="this.classList.remove('dragging')" ondrop="cmpDrop('${key}',event)">
     <div class="cmp-chips" id="cmpc-${key}"></div>
     <textarea class="cmp-ta" id="cmpt-${key}" rows="2" placeholder="${placeholder}" onfocus="_cmpFocus='${key}'" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,170)+'px'"></textarea>
@@ -2036,15 +2036,15 @@ function composerHTML(key,placeholder,onsend,sendLabel){
       <button type="button" class="cmp-ib" id="cmpv-${key}" title="Record voice note" onclick="cmpVoice('${key}')">${_MICSVG}</button>
       <button type="button" class="btn btn-primary btn-sm" id="cmps-${key}" style="min-height:38px" onclick="${onsend}">${sendLabel||'Send'}</button>
     </div>
-    <input type="file" id="cmpf-${key}" style="display:none" accept="image/*,application/pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ppt,.pptx" onchange="cmpFileSel('${key}')">
+    <input type="file" id="cmpf-${key}" style="display:none" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.ppt,.pptx" onchange="cmpFileSel('${key}')">
     <input type="file" id="cmpcam-${key}" style="display:none" accept="image/*" capture="environment" onchange="cmpFileSel('${key}',1)">
   </div>`;
 }
 async function cmpDrop(key,e){
   e.preventDefault(); e.currentTarget.classList.remove('dragging');
   const dt=e.dataTransfer;
-  const f=dt&&dt.files&&dt.files[0];
-  if(f&&f.size>0){ if(await cmpSetFile(key,f)) toast('File added: '+f.name); return; }
+  const dfiles=(dt&&dt.files)?Array.from(dt.files).filter(function(f){return f&&f.size>0;}):[];
+  if(dfiles.length){ let n=0; for(const f of dfiles){ if(await cmpSetFile(key,f)) n++; } if(n){ cmpChips(key); toast(n>1?(n+' files added'):('File added: '+dfiles[0].name)); } return; }
   // webpage se drag: sirf URL milta hai — image ko khud fetch karne ki koshish
   let uri=''; try{ uri=dt.getData('text/uri-list')||dt.getData('text/plain')||''; }catch(err){}
   uri=(uri.split('\n')[0]||'').trim();
@@ -2068,25 +2068,70 @@ document.addEventListener('click',()=>document.querySelectorAll('.cmp-menu.open'
 function cmpPick(key,cam){ document.getElementById((cam?'cmpcam-':'cmpf-')+key).click(); }
 async function cmpFileSel(key,cam){
   const inp=document.getElementById((cam?'cmpcam-':'cmpf-')+key);
-  if(inp.files&&inp.files.length){ await cmpSetFile(key,inp.files[0]); inp.value=''; }
+  if(inp.files&&inp.files.length){ for(const f of Array.from(inp.files)){ await cmpSetFile(key,f); } inp.value=''; }
 }
 async function cmpSetFile(key,f){
   if(!f||f.size===0){ toast('This file is empty or could not be read. Please save it to your device first, then upload.',true); return false; }
+  if(!_cmpState[key]) _cmpState[key]={file:null,voice:null,imgs:[],_fromImgs:false};
+  const st=_cmpState[key]; if(!st.imgs) st.imgs=[];
+  // IMAGES: multiple allowed — sab jama karo, send pe ek image me combine ho jaate hain.
+  if((f.type||'').startsWith('image/')){
+    if(st.imgs.length>=8){ toast('Aap ek baar me zyada se zyada 8 images laga sakte hain.',true); return false; }
+    st.imgs.push(f); await _cmpRestitch(key); return true;
+  }
+  // NON-IMAGE (pdf/doc): single file — purana behaviour.
   if(f.size>MAXB){
     toast('Large file \u2014 compressing automatically\u2026');
     try{ const r=await smartCompress(f,m=>toast(m)); f=(r&&r.ok&&r.file)?r.file:null; }catch(e){ f=null; }
     if(!f){ toast('The file is still too large after compression. Please try a smaller file.',true); return false; }
     toast('Compressed. File added.');
   }
-  if(!_cmpState[key]) _cmpState[key]={file:null,voice:null};
-  _cmpState[key].file=f; cmpChips(key); return true;
+  st.imgs=[]; st._fromImgs=false; st.file=f; cmpChips(key); return true;
 }
+// Multiple images ko ek vertical image me jodo (white background, gap ke saath). 1 image ho to
+// wahi (bas size theek), 0 ho to file null. .file yahi set hota hai — send sites use isi ko karte
+// hain, isliye backend ko badalne ki zaroorat nahi.
+async function _cmpStitchImages(files){
+  const load=function(f){ return new Promise(function(res,rej){ var im=new Image(); var u=URL.createObjectURL(f); im.onload=function(){ try{URL.revokeObjectURL(u);}catch(e){} res(im); }; im.onerror=function(){ try{URL.revokeObjectURL(u);}catch(e){} rej(new Error('img')); }; im.src=u; }); };
+  var imgs=await Promise.all(files.map(load));
+  var MAXW=1240, gap=16;
+  var W=Math.min(MAXW, Math.max.apply(null, imgs.map(function(i){return i.naturalWidth||i.width||MAXW;}))||MAXW);
+  var scaled=imgs.map(function(i){ var w=i.naturalWidth||i.width, h=i.naturalHeight||i.height; var s=W/w; return {img:i,h:Math.round(h*s)}; });
+  var totalH=scaled.reduce(function(a,s){return a+s.h;},0)+gap*(scaled.length-1);
+  var c=document.createElement('canvas'); c.width=W; c.height=totalH;
+  var ctx=c.getContext('2d'); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,totalH);
+  var y=0; scaled.forEach(function(s){ ctx.drawImage(s.img,0,y,W,s.h); y+=s.h+gap; });
+  var blob=await new Promise(function(res){ c.toBlob(res,'image/jpeg',0.85); });
+  return new File([blob],'doubt_'+Date.now()+'.jpg',{type:'image/jpeg'});
+}
+async function _cmpRestitch(key){
+  const st=_cmpState[key]; if(!st) return;
+  var imgs=st.imgs||[];
+  if(imgs.length===0){ if(st._fromImgs){ st.file=null; st._fromImgs=false; } cmpChips(key); return; }
+  if(imgs.length===1){
+    var f=imgs[0];
+    if(f.size>MAXB){ try{ var r=await smartCompress(f,function(){}); if(r&&r.ok&&r.file) f=r.file; }catch(e){} }
+    st.file=f; st._fromImgs=true; cmpChips(key); return;
+  }
+  try{
+    var comp=await _cmpStitchImages(imgs);
+    if(comp.size>MAXB){ try{ var r2=await smartCompress(comp,function(){}); if(r2&&r2.ok&&r2.file) comp=r2.file; }catch(e){} }
+    st.file=comp; st._fromImgs=true;
+  }catch(e){ st.file=imgs[0]; st._fromImgs=true; }
+  cmpChips(key);
+}
+function _cmpRemoveImg(key,idx){ const st=_cmpState[key]; if(!st||!st.imgs) return; st.imgs.splice(idx,1); _cmpRestitch(key); }
 function cmpChips(key){
   const st=_cmpState[key]; const c=document.getElementById('cmpc-'+key); if(!c) return;
   let h='';
-  if(st.file) h+=`<span class="cmp-chip">${_CLIPSVG} <span style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(st.file.name)}</span> <span style="color:var(--text-muted);font-weight:600">${(st.file.size/1024/1024).toFixed(1)}MB</span><button class="x" onclick="_cmpState['${key}'].file=null;cmpChips('${key}')">\u2715</button></span>`;
+  (st.imgs||[]).forEach(function(im,idx){
+    if(!im._url){ try{ im._url=URL.createObjectURL(im); }catch(e){ im._url=''; } }
+    h+=`<span class="cmp-chip cmp-imgchip"><img src="${im._url}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:7px;vertical-align:middle;margin-right:3px"><button class="x" onclick="_cmpRemoveImg('${key}',${idx})">\u2715</button></span>`;
+  });
+  if(st.file && !st._fromImgs) h+=`<span class="cmp-chip">${_CLIPSVG} <span style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(st.file.name)}</span> <span style="color:var(--text-muted);font-weight:600">${(st.file.size/1024/1024).toFixed(1)}MB</span><button class="x" onclick="_cmpState['${key}'].file=null;_cmpState['${key}']._fromImgs=false;cmpChips('${key}')">\u2715</button></span>`;
   if(st.voice) h+=`<span class="cmp-chip"><audio controls src="${URL.createObjectURL(st.voice)}"></audio><button class="x" onclick="_cmpState['${key}'].voice=null;cmpChips('${key}')">\u2715</button></span>`;
   if(st.recTimer!=null) h+=`<span class="cmp-chip"><span class="cmp-timer">\u25cf REC ${st.recSec||0}s \u2014 tap mic to stop</span></span>`;
+  if((st.imgs||[]).length>1) h+=`<span class="cmp-chip" style="background:rgba(184,148,31,.12);color:#8a6f16;font-weight:700;font-size:.72rem">${(st.imgs||[]).length} images \u2014 ek saath bhej di jaayengi</span>`;
   c.innerHTML=h;
 }
 async function cmpVoice(key){
@@ -18245,14 +18290,17 @@ function sdoBindPaste(){
   if(window._sdoPasteBound) return; window._sdoPasteBound=true;
   window.addEventListener('paste',e=>{
     const key=_activeComposerKey(); if(!key) return;
-    let f=null;
+    let files=[];
     const items=e.clipboardData&&e.clipboardData.items;
-    if(items){ for(const it of items){ if(it.kind==='file'){ f=it.getAsFile(); if(f) break; } } }
-    if(!f&&e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length) f=e.clipboardData.files[0];
-    if(!f) return;
-    cmpSetFile(key,new File([f], (f.name&&f.name!=='image.png')?f.name:('pasted_'+Date.now()+'.png'),{type:f.type})).then(ok=>{ if(ok) cmpChips(key); });
-    toast('File pasted from clipboard.');
+    if(items){ for(const it of items){ if(it.kind==='file'){ const gf=it.getAsFile(); if(gf) files.push(gf); } } }
+    if(!files.length&&e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length) files=Array.from(e.clipboardData.files);
+    if(!files.length) return;
     e.preventDefault();
+    (async function(){
+      let added=0;
+      for(const f of files){ const nf=new File([f], (f.name&&f.name!=='image.png')?f.name:('pasted_'+Date.now()+'_'+added+'.png'),{type:f.type}); if(await cmpSetFile(key,nf)) added++; }
+      if(added){ cmpChips(key); toast(added>1?(added+' images pasted'):'File pasted from clipboard.'); }
+    })();
   },true);
 }
 sdoBindPaste(); // load par hi bind — teacher composers ke liye bhi
