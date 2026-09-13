@@ -14691,16 +14691,81 @@ function aStuSearch(q,inp){
 }
 function aStuSize(n){ _stuSize=parseInt(n); _stuPage=1; _stuReload(); }
 function aStuPage(p){ _stuPage=p; _stuReload(); }
+function _spCss(){
+  if(document.getElementById('sp-css')) return;
+  var s=document.createElement('style'); s.id='sp-css';
+  s.textContent=[
+    '.sp-head{display:flex;align-items:center;gap:14px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--border,#e8e0cf)}',
+    '.sp-photo{width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#8a6d1a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.3rem;flex:none;overflow:hidden;background-size:cover;background-position:center}',
+    '.sp-photo img{width:100%;height:100%;object-fit:cover}',
+    '.sp-name{margin:0;font-size:1.25rem;font-weight:800}',
+    '.sp-sub{font-size:.82rem;color:var(--text-muted,#8a7f66);margin-top:3px}',
+    '.sp-cred{background:linear-gradient(135deg,rgba(184,148,31,.09),rgba(184,148,31,.02));border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin-bottom:16px}',
+    '.sp-cred-h{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a6d1a;margin-bottom:10px}',
+    '.sp-cred-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(138,109,26,.18)}',
+    '.sp-cred-row:last-of-type{border-bottom:none}',
+    '.sp-cred-k{font-size:.8rem;font-weight:700;color:var(--text-muted,#8a7f66);width:82px;flex:none}',
+    '.sp-cred-v{flex:1;min-width:0;font-weight:800;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.02em}',
+    '.sp-dots{letter-spacing:3px}',
+    '.sp-icobtn{border:1px solid var(--border,#e8e0cf);background:var(--card,#fffdf7);border-radius:9px;width:36px;height:34px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none;color:#6b5d3a}',
+    '.sp-icobtn:hover{background:rgba(184,148,31,.1)}',
+    '.sp-cred-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}',
+    '.sp-cred-actions .btn{border-radius:10px;font-weight:700}',
+    '.sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
+    '.sp-cell{background:var(--card,#fffdf7);border:1px solid var(--border,#e8e0cf);border-radius:12px;padding:11px 13px;min-width:0}',
+    '.sp-k{font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted,#8a7f66)}',
+    '.sp-v{font-weight:700;font-size:.92rem;margin-top:3px;overflow-wrap:anywhere}',
+    '.sp-chip{font-size:.74rem;background:rgba(184,148,31,.12);color:#8a6d1a;padding:3px 11px;border-radius:999px;font-weight:700}',
+    '@media (max-width:560px){ .sp-grid{grid-template-columns:1fr} .sp-cred-k{width:70px} .sp-cred-actions .btn{flex:1 1 100%} }'
+  ].join('');
+  document.head.appendChild(s);
+}
 function openStudentProfile(sid){
   const s=_aStu.find(x=>x.profile_id===sid); if(!s) return;
-  const subs=(s.subjects||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
-  const rows=[['User ID',s.user_id],['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch||'—'],['Class',s.class_level?('Class '+s.class_level):'—']];
+  _spCss();
+  const subs=(s.subjects||[]).map(x=>`<span class="sp-chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
+  const info=[['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch||'—'],['Class',s.class_level?('Class '+s.class_level):'—'],['Medium',s.medium||'—'],['Exam Session',s.exam_session||'—']];
+  const editData=JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   showModal('Student Profile',
-    `<div class="prof-head" style="padding-bottom:16px;margin-bottom:16px"><div class="prof-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div><div class="prof-id"><h2 style="font-size:1.2rem">${esc(s.name)}</h2><span class="chip" style="margin-top:6px">${esc(s.batch||'Student')}</span></div></div>
-     <div class="prof-grid">${rows.map(([k,v])=>`<div class="prof-cell"><div class="prof-k">${k}</div><div class="prof-v">${esc(v)}</div></div>`).join('')}</div>
-     <div class="prof-cell" style="margin-top:14px"><div class="prof-k">Subjects</div><div class="slist-chips" style="margin-top:6px">${subs}</div></div>`,
-    `<button class="btn btn-ghost" onclick="sendStudentWhatsApp(${sid},'${esc((s.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} WhatsApp</button><button class="btn btn-secondary" onclick="openStudentBatches(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('folder')} Batches</button><button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,"&quot;").replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button>`);
+    `<div class="sp-head"><div class="sp-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div>`
+    +`<div style="flex:1;min-width:0"><h2 class="sp-name">${esc(s.name)}</h2><div class="sp-sub">${esc(s.user_id||'')}${s.batch?(' · '+esc(s.batch)):''}</div></div></div>`
+    +`<div class="sp-cred"><div class="sp-cred-h">Login Credentials</div>`
+      +`<div class="sp-cred-row"><span class="sp-cred-k">Student ID</span><span class="sp-cred-v" id="sp-uid-${sid}">${esc(s.user_id||'—')}</span><button class="sp-icobtn" title="Copy" onclick="_spCopy('${esc((s.user_id||'').replace(/'/g,''))}',this)">${ic('copy')}</button></div>`
+      +`<div class="sp-cred-row"><span class="sp-cred-k">Password</span><span class="sp-cred-v" id="sp-pw-${sid}"><span class="sp-dots">••••••••</span></span><button class="sp-icobtn" title="Show / hide" onclick="_spReveal(${sid})">${ic('eye')}</button><button class="sp-icobtn" title="Copy" onclick="_spCopyPw(${sid},this)">${ic('copy')}</button></div>`
+      +`<div class="sp-cred-actions"><button class="btn btn-ghost btn-sm" onclick="sendStudentWhatsApp(${sid},'${esc((s.name||'').replace(/'/g,''))}',this)">${ic('megaphone')} Resend on WhatsApp</button><button class="btn btn-ghost btn-sm" style="color:#d97706;border-color:#e6c07a" onclick="_spReset(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('refresh')} Reset password</button></div>`
+      +`<div id="sp-cred-note" style="font-size:.73rem;color:var(--text-muted);margin-top:8px"></div></div>`
+    +`<div class="sp-grid">${info.map(([k,v])=>`<div class="sp-cell"><div class="sp-k">${k}</div><div class="sp-v">${esc(v)}</div></div>`).join('')}</div>`
+    +`<div class="sp-cell" style="margin-top:12px"><div class="sp-k">Subjects</div><div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">${subs}</div></div>`,
+    `<button class="btn btn-secondary" onclick="openStudentBatches(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('folder')} Batches</button><button class="btn btn-danger" onclick="closeModal();deleteStudent(${sid},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')} Delete</button><button class="btn btn-primary" onclick='closeModal();openEditStudent(${sid},${editData})'>${ic('edit')} Edit</button>`);
   if(s.has_photo) loadImgInto('spp-'+sid,'/api/admin/student/'+sid+'/photo');
+  _spLoadCreds(sid);
+}
+async function _spLoadCreds(sid){
+  try{
+    const d=await api('/api/admin/credentials?role=student&profile_id='+sid);
+    window['_spPw'+sid]=d.password||null;
+    const note=document.getElementById('sp-cred-note');
+    if(d.user_id){ var u=document.getElementById('sp-uid-'+sid); if(u) u.textContent=d.user_id; }
+    if(!d.password && note){ note.textContent='No stored password for this account. Use "Reset password" to set a new one.'; }
+  }catch(e){}
+}
+function _spReveal(sid){
+  var el=document.getElementById('sp-pw-'+sid); if(!el) return;
+  var pw=window['_spPw'+sid];
+  if(el._shown){ el.innerHTML='<span class="sp-dots">••••••••</span>'; el._shown=false; return; }
+  el.textContent = pw || '(not available — reset to set)'; el._shown=true;
+}
+function _spCopyPw(sid,btn){ var pw=window['_spPw'+sid]; if(!pw){ toast('No stored password — reset to set one.',true); return; } _spCopy(pw,btn); }
+function _spCopy(text,btn){ if(!text){ toast('Nothing to copy',true); return; } try{ navigator.clipboard.writeText(text).then(function(){ toast('Copied'); },function(){ toast('Copy failed',true); }); }catch(e){ try{ var t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast('Copied'); }catch(e2){ toast('Copy failed',true); } } }
+async function _spReset(sid,name){
+  if(!confirm('Reset password for '+name+'?\nA new password will be generated and the old one will stop working.')) return;
+  try{
+    const d=await api('/api/admin/student/'+sid+'/reset-password','POST',{});
+    window['_spPw'+sid]=d.password;
+    var el=document.getElementById('sp-pw-'+sid); if(el){ el.textContent=d.password; el._shown=true; }
+    var note=document.getElementById('sp-cred-note'); if(note) note.innerHTML='New password: <b>'+esc(d.password)+'</b> — share it with the student, or tap "Resend on WhatsApp".';
+    toast('Password reset ✅');
+  }catch(e){ toast((e&&e.message)||'Failed',true); }
 }
 async function openAddStudent(){
   await ensureSubjects();
