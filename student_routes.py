@@ -1012,7 +1012,7 @@ async def ask_doubt(
     return {"id": doubt.id, "message": "Doubt sent!" + (f" Teacher: {tp.user.name}" if tp and tp.user else "")}
 
 def _doubt_media(b64, mime, name):
-    return __import__("r2_storage").file_response(b64, mime or "application/octet-stream", (name or "file").replace(chr(34), ""), False)
+    return __import__("r2_storage").proxy_response(b64, mime or "application/octet-stream", (name or "file").replace(chr(34), ""), False, sniff=True)
 
 def _own_doubt(did, db, current_user):
     sp = get_student_profile(current_user, db)

@@ -275,6 +275,11 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
         elif data[:8].startswith(b"\x89PNG"): media_type = "image/png"
         elif data[:4] == b"RIFF" and b"WEBP" in data[:16]: media_type = "image/webp"
         elif data[:6] in (b"GIF87a", b"GIF89a"): media_type = "image/gif"
+        # ---- audio (voice notes): iOS mp4/aac vs webm/ogg/mp3 auto-detect ----
+        elif data[4:8] == b"ftyp": media_type = "audio/mp4"
+        elif data[:4] == b"\x1a\x45\xdf\xa3": media_type = "audio/webm"
+        elif data[:4] == b"OggS": media_type = "audio/ogg"
+        elif data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"): media_type = "audio/mpeg"
     headers = {}
     if filename:
         disp = "attachment" if download else "inline"

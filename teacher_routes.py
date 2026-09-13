@@ -834,7 +834,7 @@ def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get
     return {"message": f"Doubt assigned to {target_name}", "assigned_to": target_name}
 
 def _t_doubt_media(b64, mime, name):
-    return __import__("r2_storage").file_response(b64, mime or "application/octet-stream", (name or "file").replace(chr(34), ""), False)
+    return __import__("r2_storage").proxy_response(b64, mime or "application/octet-stream", (name or "file").replace(chr(34), ""), False, sniff=True)
 
 def _t_own_doubt(did, db, current_user):
     tp = get_teacher_profile(current_user, db)

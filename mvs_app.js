@@ -1998,14 +1998,14 @@ async function voiceToggle(key){
   if(_vRec){ toast('Another recording is in progress.',true); return; }
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    const chunks=[]; const mr=new MediaRecorder(stream);
+    const chunks=[]; const mr=_newRec(stream);
     _vRec=mr; _vKey=key;
     const btn=document.getElementById('vcb-'+key); btn.classList.add('rec'); btn.innerHTML='&#9632; Stop Recording';
     const st=document.getElementById('vcs-'+key); let sec=0; const tmr=setInterval(()=>{ sec++; if(st) st.textContent=sec+'s'; },1000);
     mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
     mr.onstop=()=>{
       clearInterval(tmr); stream.getTracks().forEach(t=>t.stop()); _vRec=null; _vKey=null;
-      _vBlobs[key]=new Blob(chunks,{type:'audio/webm'});
+      _vBlobs[key]=_recBlob(mr,chunks);
       const url=URL.createObjectURL(_vBlobs[key]);
       document.getElementById('vcw-'+key).innerHTML=`<audio controls src="${url}"></audio><button type="button" class="vc-btn" onclick="voiceRemove('${key}')">${ic('trash')} Remove</button>`;
     };
@@ -2140,18 +2140,32 @@ async function cmpVoice(key){
   if(_vRec){ toast('Another recording is in progress.',true); return; }
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    const chunks=[]; const mr=new MediaRecorder(stream); _vRec=mr; _vKey=key;
+    const chunks=[]; const mr=_newRec(stream); _vRec=mr; _vKey=key;
     document.getElementById('cmpv-'+key).classList.add('rec');
     st.recSec=0; st.recTimer=setInterval(()=>{ st.recSec++; cmpChips(key); },1000); cmpChips(key);
     mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
     mr.onstop=()=>{
       clearInterval(st.recTimer); st.recTimer=null; stream.getTracks().forEach(t=>t.stop()); _vRec=null; _vKey=null;
       const btn=document.getElementById('cmpv-'+key); if(btn) btn.classList.remove('rec');
-      st.voice=new Blob(chunks,{type:'audio/webm'}); cmpChips(key);
+      st.voice=_recBlob(mr,chunks); cmpChips(key);
     };
     mr.start();
   }catch(e){ toast('Microphone access denied. Please allow the mic permission.',true); }
 }
+// iOS Safari webm record NAHI karta (mp4/aac record karta hai). Isliye supported mime chuno
+// aur blob ko recorder ke ASAL mimeType se label karo — warna playback "Error" deta tha.
+function _recMime(){
+  try{ if(window.MediaRecorder && MediaRecorder.isTypeSupported){
+    if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+    if(MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+    if(MediaRecorder.isTypeSupported('audio/mp4;codecs=mp4a.40.2')) return 'audio/mp4;codecs=mp4a.40.2';
+    if(MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
+    if(MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) return 'audio/ogg;codecs=opus';
+  }}catch(e){}
+  return '';
+}
+function _newRec(stream){ var m=_recMime(); try{ return m?new MediaRecorder(stream,{mimeType:m}):new MediaRecorder(stream); }catch(e){ try{ return new MediaRecorder(stream); }catch(e2){ return new MediaRecorder(stream); } } }
+function _recBlob(mr,chunks){ var t=(mr&&mr.mimeType)||_recMime()||'audio/webm'; return new Blob(chunks,{type:(t.split(';')[0]||'audio/webm')}); }
 function blobToB64(blob){
   return new Promise((res,rej)=>{
     const r=new FileReader();

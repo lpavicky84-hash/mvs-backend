@@ -4989,7 +4989,7 @@ def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_adm
     d = db.query(Doubt).filter(Doubt.id == did).first()
     if not d or not d.audio_b64:
         raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").file_response(d.audio_b64, "audio/webm")
+    return __import__("r2_storage").proxy_response(d.audio_b64, "audio/webm", "voice.webm", False, sniff=True)
 
 @router.get("/doubt-response/{rid}/attach")
 def admin_doubt_resp_attach(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -5017,7 +5017,7 @@ def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(
     d = db.query(Doubt).filter(Doubt.id == did).first()
     if not d or not d.answer_audio_b64:
         raise HTTPException(status_code=404, detail="Not found")
-    return __import__("r2_storage").file_response(d.answer_audio_b64, "audio/webm")
+    return __import__("r2_storage").proxy_response(d.answer_audio_b64, "audio/webm", "answer.webm", False, sniff=True)
 
 @router.get("/doubt/{did}/student")
 def admin_doubt_student(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
