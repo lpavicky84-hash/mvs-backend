@@ -14716,6 +14716,7 @@ function _spCss(){
     '.sp-k{font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted,#8a7f66)}',
     '.sp-v{font-weight:700;font-size:.92rem;margin-top:3px;overflow-wrap:anywhere}',
     '.sp-chip{font-size:.74rem;background:rgba(184,148,31,.12);color:#8a6d1a;padding:3px 11px;border-radius:999px;font-weight:700}',
+    '.sp-eye2{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9a8c66;padding:4px;display:flex}',
     '@media (max-width:560px){ .sp-grid{grid-template-columns:1fr} .sp-cred-k{width:70px} .sp-cred-actions .btn{flex:1 1 100%} }'
   ].join('');
   document.head.appendChild(s);
@@ -14757,15 +14758,35 @@ function _spReveal(sid){
 }
 function _spCopyPw(sid,btn){ var pw=window['_spPw'+sid]; if(!pw){ toast('No stored password — reset to set one.',true); return; } _spCopy(pw,btn); }
 function _spCopy(text,btn){ if(!text){ toast('Nothing to copy',true); return; } try{ navigator.clipboard.writeText(text).then(function(){ toast('Copied'); },function(){ toast('Copy failed',true); }); }catch(e){ try{ var t=document.createElement('textarea'); t.value=text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast('Copied'); }catch(e2){ toast('Copy failed',true); } } }
-async function _spReset(sid,name){
-  if(!confirm('Reset password for '+name+'?\nA new password will be generated and the old one will stop working.')) return;
+function _spReset(sid,name){
+  _spCss();
+  showModal('Change Password',
+    `<div style="font-size:.84rem;color:var(--text-muted);margin-bottom:14px">Set a new login password for <b>${esc(name)}</b>. The old password will stop working.</div>`
+    +`<div class="form-group"><label class="form-label">New Password <span style="color:#dc2626">*</span></label><div style="position:relative"><input class="form-control" id="sp-np" type="password" placeholder="Enter new password (min 6 characters)" style="padding-right:42px" autocomplete="new-password"><button type="button" class="sp-eye2" onclick="_spTogglePw('sp-np')">${ic('eye')}</button></div></div>`
+    +`<div class="form-group"><label class="form-label">Confirm Password <span style="color:#dc2626">*</span></label><div style="position:relative"><input class="form-control" id="sp-cp" type="password" placeholder="Re-enter password" style="padding-right:42px" autocomplete="new-password"><button type="button" class="sp-eye2" onclick="_spTogglePw('sp-cp')">${ic('eye')}</button></div></div>`
+    +`<div id="sp-pw-msg" style="font-size:.79rem;margin-top:2px"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sp-pw-save" onclick="_spSavePassword(${sid},'${esc((name||'').replace(/'/g,''))}')">Save changes</button>`);
+}
+function _spTogglePw(id){ var i=document.getElementById(id); if(i) i.type=(i.type==='password'?'text':'password'); }
+async function _spSavePassword(sid,name){
+  var np=(document.getElementById('sp-np')||{}).value||''; var cp=(document.getElementById('sp-cp')||{}).value||'';
+  var msg=document.getElementById('sp-pw-msg');
+  function _err(t){ if(msg){ msg.style.color='#dc2626'; msg.textContent=t; } }
+  if(np.length<6){ _err('Password must be at least 6 characters.'); return; }
+  if(np!==cp){ _err('Passwords do not match.'); return; }
+  var btn=document.getElementById('sp-pw-save'); if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
   try{
-    const d=await api('/api/admin/student/'+sid+'/reset-password','POST',{});
-    window['_spPw'+sid]=d.password;
-    var el=document.getElementById('sp-pw-'+sid); if(el){ el.textContent=d.password; el._shown=true; }
-    var note=document.getElementById('sp-cred-note'); if(note) note.innerHTML='New password: <b>'+esc(d.password)+'</b> — share it with the student, or tap "Resend on WhatsApp".';
-    toast('Password reset ✅');
-  }catch(e){ toast((e&&e.message)||'Failed',true); }
+    var d=await api('/api/admin/reset-password','POST',{role:'student',profile_id:sid,password:np});
+    window['_spPw'+sid]=d.password||np;
+    toast('Password changed \u2705');
+    var uid=esc((d.user_id||'').replace(/'/g,'')); var pw=esc((d.password||np).replace(/'/g,''));
+    showModal('Password Changed',
+      `<div class="sp-cred" style="margin:0"><div class="sp-cred-h">New Login Password</div>`
+      +`<div class="sp-cred-row"><span class="sp-cred-k">Student ID</span><span class="sp-cred-v">${esc(d.user_id||'')}</span><button class="sp-icobtn" onclick="_spCopy('${uid}',this)">${ic('copy')}</button></div>`
+      +`<div class="sp-cred-row"><span class="sp-cred-k">Password</span><span class="sp-cred-v">${esc(d.password||np)}</span><button class="sp-icobtn" onclick="_spCopy('${pw}',this)">${ic('copy')}</button></div></div>`
+      +`<div style="font-size:.79rem;color:var(--text-muted);margin-top:12px">The old password no longer works. Share the new one with the student, or use "Resend on WhatsApp" from their profile.</div>`,
+      `<button class="btn btn-primary" onclick="closeModal()">Done</button>`);
+  }catch(e){ _err((e&&e.message)||'Failed'); if(btn){ btn.disabled=false; btn.textContent='Save changes'; } }
 }
 async function openAddStudent(){
   await ensureSubjects();
