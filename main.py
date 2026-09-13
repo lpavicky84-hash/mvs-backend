@@ -148,6 +148,7 @@ def ensure_columns():
         "ALTER TABLE student_profiles ADD COLUMN source VARCHAR(20) DEFAULT 'mvs_app'",
         "ALTER TABLE student_profiles ADD COLUMN welcome_sent_at DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN login_reminder_at DATETIME",
+        "ALTER TABLE student_profiles ADD COLUMN created_at DATETIME",
         "ALTER TABLE timetable_entries ADD COLUMN shift_plan TEXT",
         # ===== NIOS Syllabus Tracker =====
         "ALTER TABLE student_profiles ADD COLUMN exam_session VARCHAR(30)",
@@ -487,14 +488,15 @@ def _login_reminder_loop():
             enabled = (enr.value if enr else "1") not in ("0", "false", "off", "")
             if hours > 0 and enabled and W.is_configured():
                 cutoff = _dt.now() - _td(hours=hours)
+                # Jo student ne EK BAAR bhi login nahi kiya (portal ho ya app), welcome bheja ho
+                # ya na ho — join hue X ghante ho gaye to reminder. Purane students ka created_at
+                # NULL ho sakta hai -> unhe turant eligible maano.
                 students = (db.query(_SP).filter(
                     _SP.phone.isnot(None),
-                    _SP.welcome_sent_at.isnot(None),
-                    _SP.welcome_sent_at < cutoff,
                     _SP.last_seen.is_(None),
                     _SP.active_session_token.is_(None),
                     _SP.login_reminder_at.is_(None),
-                    ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+                    ((_SP.created_at.is_(None)) | (_SP.created_at < cutoff)))
                     .order_by(_SP.id).limit(40).all())   # per cycle chhota batch (rate-limit safe)
                 for sp in students:
                     try:

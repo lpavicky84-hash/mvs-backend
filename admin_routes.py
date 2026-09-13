@@ -6212,8 +6212,7 @@ def whatsapp_login_pending(batch: str = "", db: Session = Depends(get_db), _=Dep
     base = db.query(_SP).filter(
         _SP.phone.isnot(None),
         _SP.last_seen.is_(None),
-        _SP.active_session_token.is_(None),
-        ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+        _SP.active_session_token.is_(None))
     total = base.count()
     # per-batch counts
     bc = {}
@@ -6248,8 +6247,7 @@ def whatsapp_send_login_reminder(payload: dict, db: Session = Depends(get_db), _
     base = db.query(_SP).filter(
         _SP.phone.isnot(None),
         _SP.last_seen.is_(None),
-        _SP.active_session_token.is_(None),
-        ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+        _SP.active_session_token.is_(None))
     if payload.get("all_pending"):
         b = (payload.get("batch") or "").strip()
         if b:
