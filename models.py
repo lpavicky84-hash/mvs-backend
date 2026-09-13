@@ -245,6 +245,7 @@ class StudentProfile(Base):
     active_session_token = Column(String(255), nullable=True)  # Single session
     last_seen    = Column(DateTime, nullable=True)
     session_start= Column(DateTime, nullable=True)
+    login_reminder_at = Column(DateTime, nullable=True)   # auto WhatsApp login-reminder bheja gaya?
 
     user              = relationship("User", back_populates="student_profile")
     test_submissions  = relationship("TestSubmission", back_populates="student")

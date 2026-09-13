@@ -14131,7 +14131,11 @@ async function openWhatsApp(){
       <button class="btn btn-primary btn-sm" onclick="waTestOtp()">${ic('send')} Send Test OTP</button>
       <div id="wa-otp-out" style="margin-top:8px;font-size:.8rem"></div></details>`:'';
 
-    body.innerHTML=cfgForm+welcomeSec+announceSec+otpSec;
+    const loginRemSec=st.configured?('<details class="wa-sec"><summary><b>Login Reminders \u2014 students who never logged in</b> <span id="wa-lr-count" class="xm-chip" style="background:rgba(220,38,38,.12);color:#dc2626">\u2026</span></summary>'
+      +'<p style="font-size:.78rem;color:var(--text-muted)">Send a WhatsApp login message to students who have <b>never logged in even once</b>. Do it manually (all / by batch / selected), or set it to go out <b>automatically</b> after a fixed number of hours.</p>'
+      +'<div id="wa-lr-body"><div class="spinner"></div></div></details>'):'';
+    body.innerHTML=cfgForm+welcomeSec+loginRemSec+announceSec+otpSec;
+    if(st.configured){ try{ _waLoadLoginRem(); }catch(e){} }
     document.getElementById('modal-footer').innerHTML=`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
   }catch(e){ document.getElementById('modal-body').innerHTML=errHtml(e); }
 }
@@ -14166,6 +14170,87 @@ async function sendStudentWhatsApp(sid,name,btn){
     if(r&&r.sent>0){ toast('WhatsApp sent to '+(name||'student')+'.'); if(btn){ btn.innerHTML='Sent'; btn.classList.add('btn-success'); } }
     else{ const err=(r&&r.errors&&r.errors[0]&&r.errors[0].error)||'Could not send. Check WhatsApp settings.'; toast(err,true); if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset._t; } }
   }catch(e){ toast(e.message||'Could not send',true); if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset._t; } }
+}
+/* ===================== WhatsApp LOGIN REMINDERS (never-logged-in students) ===================== */
+async function _waLoadLoginRem(){
+  var body=document.getElementById('wa-lr-body'); if(!body) return;
+  try{
+    var res=await Promise.all([api('/api/admin/whatsapp/login-pending'), api('/api/admin/whatsapp/login-reminder-config').catch(function(){return {hours:0,enabled:true};})]);
+    var d=res[0]||{}, cfg=res[1]||{};
+    window._waLR=d;
+    var cnt=document.getElementById('wa-lr-count'); if(cnt) cnt.textContent=(d.total||0)+' pending';
+    var batchOpts='<option value="">All batches ('+(d.total||0)+')</option>'+((d.per_batch||[]).map(function(b){ return '<option value="'+esc(b.batch==='—'?'':b.batch)+'">'+esc(b.batch)+' ('+b.count+')</option>'; }).join(''));
+    body.innerHTML=''
+      +'<div style="background:rgba(184,148,31,.06);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">'
+        +'<div style="font-weight:800;font-size:.9rem;margin-bottom:8px">\u2699\ufe0f Automatic reminder</div>'
+        +'<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:8px">Set the hours. Once a student has been sent the welcome and still hasn\'t logged in after this many hours, they get a reminder automatically (once).</div>'
+        +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">'
+          +'<div class="form-group" style="margin:0"><label class="form-label">Hours after welcome</label><input id="wa-lr-hours" type="number" min="0" class="form-control" style="max-width:130px" value="'+(cfg.hours||0)+'" placeholder="e.g. 24"></div>'
+          +'<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;margin-bottom:8px"><input type="checkbox" id="wa-lr-enabled" '+(cfg.enabled?'checked':'')+'> Enabled</label>'
+          +'<button class="btn btn-primary btn-sm" style="margin-bottom:4px" onclick="_waSaveLoginRemCfg()">Save auto setting</button>'
+        +'</div><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">0 hours = automatic reminders OFF.</div>'
+      +'</div>'
+      +'<div style="font-weight:800;font-size:.9rem;margin-bottom:8px">\ud83d\udce9 Send now (manual)</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:8px">'
+        +'<div class="form-group" style="margin:0;flex:1;min-width:200px"><label class="form-label">Batch</label><select id="wa-lr-batch" class="form-control">'+batchOpts+'</select></div>'
+        +'<button class="btn btn-success" style="margin-bottom:4px" id="wa-lr-send" onclick="_waSendLoginReminders()">'+(typeof ic==='function'?ic('megaphone'):'')+' Send to all in selection</button>'
+      +'</div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="_waSelectLoginStudents()">Or pick students manually \u25b8</button>'
+      +'<div id="wa-lr-out" style="margin-top:10px"></div>';
+  }catch(e){ body.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">'+esc((e&&e.message)||'Could not load')+'</div>'; }
+}
+async function _waSaveLoginRemCfg(){
+  var hours=parseInt((document.getElementById('wa-lr-hours')||{}).value||'0',10)||0;
+  var enabled=!!(document.getElementById('wa-lr-enabled')||{}).checked;
+  try{ await api('/api/admin/whatsapp/login-reminder-config','POST',{hours:hours,enabled:enabled}); toast('Auto reminder saved: '+(enabled&&hours>0?(hours+'h'):'OFF')); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+async function _waSendLoginReminders(){
+  var batch=(document.getElementById('wa-lr-batch')||{}).value||'';
+  if(!confirm('Send WhatsApp login reminder to all not-logged-in students'+(batch?(' in '+batch):'')+'?')) return;
+  var btn=document.getElementById('wa-lr-send'); var out=document.getElementById('wa-lr-out');
+  if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  var afterId=0, sent=0, failed=0, total=null, loops=0;
+  try{
+    while(loops<400){
+      loops++;
+      var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{all_pending:true,batch:batch,after_id:afterId,limit:50});
+      sent+=(r.sent||0); failed+=(r.failed||0); if(total===null&&r.total!=null) total=r.total;
+      if(out) out.innerHTML='<div class="alert alert-info" style="font-size:.82rem">Sent '+sent+(total!=null?(' / '+total):'')+' \u00b7 '+failed+' failed\u2026</div>';
+      if(!r.has_more) break; afterId=r.last_id||afterId;
+    }
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem">Done \u2705 '+sent+' reminder(s) sent, '+failed+' failed.</div>';
+    _waLoadLoginRem();
+  }catch(e){ if(out) out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">'+esc((e&&e.message)||'Failed')+'</div>'; }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Send to all in selection'; } }
+}
+async function _waSelectLoginStudents(){
+  var batch=(document.getElementById('wa-lr-batch')||{}).value||'';
+  var d=window._waLR||{}; var list=(d.students||[]).filter(function(s){ return !batch || s.batch===batch; });
+  if(!list.length){ toast('No pending students'+(batch?(' in '+batch):'')+'.'); return; }
+  var rows=list.map(function(s){ return '<label style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:.84rem"><input type="checkbox" class="wa-lr-chk" value="'+s.profile_id+'" checked> <span style="flex:1">'+esc(s.name)+' <span style="color:var(--text-muted)">\u00b7 '+esc(s.phone||'')+(s.batch?(' \u00b7 '+esc(s.batch)):'')+'</span>'+(s.reminded?' <span class="xm-chip" style="background:rgba(5,150,105,.14);color:#059669;font-size:.6rem">reminded</span>':'')+'</span></label>'; }).join('');
+  showModal('Pick students ('+list.length+')',
+    '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.wa-lr-chk\').forEach(function(c){c.checked=true})">Select all</button><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.wa-lr-chk\').forEach(function(c){c.checked=false})">Clear</button></div>'
+    +'<div style="max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:10px">'+rows+'</div><div id="wa-lr-sel-out" style="margin-top:8px"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="wa-lr-sel-send" onclick="_waSendSelectedLogin()">Send to selected</button>');
+}
+async function _waSendSelectedLogin(){
+  var ids=[].slice.call(document.querySelectorAll('.wa-lr-chk:checked')).map(function(c){return parseInt(c.value,10);});
+  if(!ids.length){ toast('Select at least one student',true); return; }
+  var btn=document.getElementById('wa-lr-sel-send'); var out=document.getElementById('wa-lr-sel-out');
+  if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  var sent=0, failed=0;
+  try{
+    for(var i=0;i<ids.length;i+=50){
+      var chunk=ids.slice(i,i+50);
+      var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{profile_ids:chunk,limit:50});
+      sent+=(r.sent||0); failed+=(r.failed||0);
+      if(out) out.innerHTML='<div class="alert alert-info" style="font-size:.82rem">Sent '+sent+' / '+ids.length+'\u2026</div>';
+    }
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem">Done \u2705 '+sent+' sent, '+failed+' failed.</div>';
+    setTimeout(function(){ closeModal(); if(document.getElementById('wa-lr-body')) _waLoadLoginRem(); }, 1200);
+  }catch(e){ if(out) out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">'+esc((e&&e.message)||'Failed')+'</div>'; }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Send to selected'; } }
 }
 async function openWhatsAppPending(){
   showModal('Pending WhatsApp',`<div class="spinner"></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);

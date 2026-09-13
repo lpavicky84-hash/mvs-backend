@@ -6204,6 +6204,117 @@ def whatsapp_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
              "phone": x.phone, "batch": x.batch_name or ""} for x in rows]
 
 
+@router.get("/whatsapp/login-pending")
+def whatsapp_login_pending(batch: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Students jinhone abhi tak EK BAAR bhi login nahi kiya (never active).
+    Signal: last_seen IS NULL AND active_session_token IS NULL. Batch-wise counts bhi."""
+    from models import StudentProfile as _SP
+    base = db.query(_SP).filter(
+        _SP.phone.isnot(None),
+        _SP.last_seen.is_(None),
+        _SP.active_session_token.is_(None),
+        ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+    total = base.count()
+    # per-batch counts
+    bc = {}
+    for x in base.all():
+        b = (x.batch_name or "—")
+        bc[b] = bc.get(b, 0) + 1
+    per_batch = sorted([{"batch": k, "count": v} for k, v in bc.items()], key=lambda z: -z["count"])
+    q = base
+    if (batch or "").strip():
+        q = q.filter(_SP.batch_name == batch.strip())
+    rows = q.order_by(_SP.id.desc()).limit(1000).all()
+    return {"total": total, "per_batch": per_batch,
+            "students": [{"profile_id": x.id, "name": (x.user.name if x.user else "Student"),
+                          "phone": x.phone, "batch": x.batch_name or "",
+                          "reminded": bool(x.login_reminder_at)} for x in rows]}
+
+
+@router.post("/whatsapp/send-login-reminder")
+def whatsapp_send_login_reminder(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Never-logged-in students ko WhatsApp login-reminder. payload:
+       {"profile_ids":[..]}  ya  {"all_pending": true, "batch": ""}  (+ after_id, limit paging)."""
+    import whatsapp as W
+    from datetime import datetime as _dt
+    from models import StudentProfile as _SP
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp is not configured. Missing on Railway: " + ", ".join(W.missing()))
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 50)
+    total = None
+    base = db.query(_SP).filter(
+        _SP.phone.isnot(None),
+        _SP.last_seen.is_(None),
+        _SP.active_session_token.is_(None),
+        ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+    if payload.get("all_pending"):
+        b = (payload.get("batch") or "").strip()
+        if b:
+            base = base.filter(_SP.batch_name == b)
+        if after_id == 0:
+            total = base.count()
+        students = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    else:
+        ids = payload.get("profile_ids") or []
+        if not ids:
+            raise HTTPException(status_code=400, detail="No students selected")
+        students = base.filter(_SP.id.in_(ids)).order_by(_SP.id).limit(limit).all()
+    sent, failed, last_id = 0, [], after_id
+    for sp in students:
+        last_id = sp.id
+        name = sp.user.name if sp.user else "Student"
+        try:
+            msg = W.build_message(name, sp.batch_name or "", sp.phone)
+            ok, detail = W.send(sp.phone, text=msg, name=name, batch=sp.batch_name or "")
+        except Exception as e:
+            ok, detail = False, str(e)
+        if ok:
+            sp.login_reminder_at = _dt.now()
+            sent += 1
+        else:
+            failed.append({"name": name, "phone": sp.phone, "error": str(detail)[:120]})
+    db.commit()
+    return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "last_id": last_id, "has_more": len(students) == limit, "total": total,
+            "message": "%d reminder(s) sent, %d failed." % (sent, len(failed))}
+
+
+@router.get("/whatsapp/login-reminder-config")
+def get_login_reminder_config(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppSetting
+    h = db.query(AppSetting).filter(AppSetting.key == "login_reminder_hours").first()
+    e = db.query(AppSetting).filter(AppSetting.key == "login_reminder_enabled").first()
+    try:
+        hours = int((h.value if h else "0") or "0")
+    except Exception:
+        hours = 0
+    enabled = (e.value if e else "1") not in ("0", "false", "off", "")
+    return {"hours": hours, "enabled": bool(enabled)}
+
+
+@router.post("/whatsapp/login-reminder-config")
+def set_login_reminder_config(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Auto login-reminder ka fixed hours + on/off. payload: {"hours": 24, "enabled": true}."""
+    from models import AppSetting
+    payload = payload or {}
+    try:
+        hours = max(0, int(payload.get("hours") or 0))
+    except Exception:
+        hours = 0
+    enabled = "1" if payload.get("enabled", True) else "0"
+    for key, val in (("login_reminder_hours", str(hours)), ("login_reminder_enabled", enabled)):
+        r = db.query(AppSetting).filter(AppSetting.key == key).first()
+        if r:
+            r.value = val
+        else:
+            db.add(AppSetting(key=key, value=val))
+    db.commit()
+    return {"ok": True, "hours": hours, "enabled": payload.get("enabled", True)}
+
+
 @router.post("/whatsapp/send-welcome")
 def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Welcome message bhejo. payload:

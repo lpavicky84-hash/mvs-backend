@@ -147,6 +147,7 @@ def ensure_columns():
         "ALTER TABLE doubts ADD COLUMN answer_attach_name VARCHAR(255)",
         "ALTER TABLE student_profiles ADD COLUMN source VARCHAR(20) DEFAULT 'mvs_app'",
         "ALTER TABLE student_profiles ADD COLUMN welcome_sent_at DATETIME",
+        "ALTER TABLE student_profiles ADD COLUMN login_reminder_at DATETIME",
         "ALTER TABLE timetable_entries ADD COLUMN shift_plan TEXT",
         # ===== NIOS Syllabus Tracker =====
         "ALTER TABLE student_profiles ADD COLUMN exam_session VARCHAR(30)",
@@ -459,6 +460,71 @@ def _start_auto_migrate():
         pass
 
 _start_auto_migrate()
+
+
+# ===== AUTO WHATSAPP LOGIN-REMINDER — pending (never-logged-in) students ko X ghante baad =====
+def _login_reminder_loop():
+    """Backend me set kiye 'login_reminder_hours' ke hisaab se: jinhe welcome bheje hue X ghante
+    ho gaye PAR abhi tak ek baar bhi login nahi kiya, unko apne-aap WhatsApp login-reminder.
+    Ek student ko sirf EK baar auto-remind (login_reminder_at set). Hours=0 -> band."""
+    import time
+    from datetime import datetime as _dt, timedelta as _td
+    from database import SessionLocal
+    time.sleep(40)  # boot hone do
+    while True:
+        slept = 1800  # default 30 min
+        db = SessionLocal()
+        try:
+            from models import AppSetting, StudentProfile as _SP
+            import whatsapp as W
+            row = db.query(AppSetting).filter(AppSetting.key == "login_reminder_hours").first()
+            hours = 0
+            try:
+                hours = int((row.value if row else "0") or "0")
+            except Exception:
+                hours = 0
+            enr = db.query(AppSetting).filter(AppSetting.key == "login_reminder_enabled").first()
+            enabled = (enr.value if enr else "1") not in ("0", "false", "off", "")
+            if hours > 0 and enabled and W.is_configured():
+                cutoff = _dt.now() - _td(hours=hours)
+                students = (db.query(_SP).filter(
+                    _SP.phone.isnot(None),
+                    _SP.welcome_sent_at.isnot(None),
+                    _SP.welcome_sent_at < cutoff,
+                    _SP.last_seen.is_(None),
+                    _SP.active_session_token.is_(None),
+                    _SP.login_reminder_at.is_(None),
+                    ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+                    .order_by(_SP.id).limit(40).all())   # per cycle chhota batch (rate-limit safe)
+                for sp in students:
+                    try:
+                        name = sp.user.name if sp.user else "Student"
+                        msg = W.build_message(name, sp.batch_name or "", sp.phone)
+                        ok, _d = W.send(sp.phone, text=msg, name=name, batch=sp.batch_name or "")
+                        if ok:
+                            sp.login_reminder_at = _dt.now()
+                            db.commit()
+                        time.sleep(1)
+                    except Exception:
+                        try: db.rollback()
+                        except Exception: pass
+                if students:
+                    slept = 60  # aur pending ho to jaldi agla batch
+        except Exception:
+            try: db.rollback()
+            except Exception: pass
+        finally:
+            db.close()
+        time.sleep(slept)
+
+def _start_login_reminder():
+    import threading
+    try:
+        threading.Thread(target=_login_reminder_loop, daemon=True).start()
+    except Exception:
+        pass
+
+_start_login_reminder()
 
 # ===== SEED AVAILABLE SUBJECTS (NIOS lists) — only if table empty =====
 def seed_subjects():
