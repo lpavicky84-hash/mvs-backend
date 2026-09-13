@@ -67,8 +67,12 @@ def _notify(db, user_id, title, msg, ntype="homework"):
         from admin_routes import notify
         if user_id:
             notify(db, user_id, title, msg, ntype)
+            db.commit()   # notify ADD karta hai, khud commit nahi — warna notification lost ho jaata tha
     except Exception:
-        pass
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def _student_user_id(db, m):
@@ -252,7 +256,7 @@ async def student_create_homework(subject: str = Form(...), title: str = Form(..
     sp = _sp(db, current_user)
     tp = _teacher_for_subject(db, subject)
     if not tp:
-        raise HTTPException(status_code=400, detail="Is subject ke liye koi teacher assign nahi hai. Admin se sampark karein.")
+        raise HTTPException(status_code=400, detail="No teacher is assigned for this subject. Please contact the admin.")
     m = HomeworkSubmission(student_id=sp.id, teacher_id=tp.id, subject=subject,
                            title=(title or "Homework").strip()[:200],
                            description=(description or "").strip() or None,
@@ -375,7 +379,7 @@ async def student_send_msg(hid: int, message: str = Form(""),
     sp = _sp(db, current_user)
     m = _student_owns(db, hid, sp)
     if not m.chat_allowed:
-        raise HTTPException(status_code=403, detail="Teacher ne abhi reply allow nahi kiya. Aap wait karein.")
+        raise HTTPException(status_code=403, detail="Your teacher hasn't enabled replies yet. Please wait.")
     if not (message or "").strip() and not files:
         raise HTTPException(status_code=400, detail="Empty message.")
     msg = await _post_msg(db, m, "student", current_user.id, message, files)

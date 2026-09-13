@@ -5020,7 +5020,7 @@ async function dppBrowserPdf(pid,kind,med){
         +_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — is site ke liye popups allow karein, phir Download dobara dabayein.',true); return; }
+    if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
     w.document.write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
     w.document.close();
   }catch(e){ toast('Print view khul nahi paya — popups allow karke dobara Download dabayein.',true); }
@@ -5479,7 +5479,7 @@ async function examPdfPremium(id,mode,medium){
         +_pdfQHTML(qMain,q.image_b64,q.alt_image_b64,'q-t')+h+'</div>';
     }).join('');
     const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — is site ke liye popups allow karein, phir Download dobara dabayein.',true); return; }
+    if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
     w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo));
     w.document.close();
   }catch(e){ toast(e.message,true); }
@@ -9268,7 +9268,7 @@ function viewRespFile(role,rid,mime){
 async function dbtComposerReply(role,id,key){
   const st=_cmpState[key]||{};
   const body=(document.getElementById('cmpt-'+key)||{}).value?.trim()||'';
-  if(!body&&!st.file){ toast('Reply likhein ya image lagayein.',true); return; }
+  if(!body&&!st.file){ toast('Type a reply or attach an image.',true); return; }
   const btn=document.getElementById('cmps-'+key); const lbl=btn?btn.textContent:'Send';
   if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
   try{
@@ -14800,7 +14800,7 @@ function aRenderDoubts(){
       ? `<div class="bubble bubble-a"><div class="who">${esc(d.assigned_to_admin?'MVS Foundation (Official)':(d.teacher_name+' (Teacher)'))}</div>${esc(d.answer||'')}${avoice}${d.answer_image_link?`<a href="${esc(d.answer_image_link)}" target="_blank" style="color:var(--primary);display:block;margin-top:6px">View attached solution \u2197</a>`:''}</div>`
       : `<div class="bubble-pending">${d.assigned_to_admin?'Awaiting an official reply from MVS Foundation...':'Awaiting teacher\'s reply...'}</div>`;
     const reassignNote=d.assigned_by_name?`<div style="margin-top:3px;font-size:.72rem;color:#4f46e5;font-weight:700">Reassigned by ${esc(d.assigned_by_name)} \u2192 now with ${esc(owner)}</div>`:'';
-    const adminReply=`<div style="margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div class="mvs-logo" style="width:26px;height:26px;font-size:.72rem">M</div><span style="font-size:.74rem;font-weight:700;color:#8a6f16">Reply as MVS Foundation \u00b7 image bhi laga sakte hain \u2014 pending doubt par post karne se resolve ho jaata hai</span></div>${composerHTML('dbtr-admin-'+d.id,'Write a reply\u2026 or paste image(s)',"dbtComposerReply('admin',"+d.id+",'dbtr-admin-"+d.id+"')",'Post')}</div>`;
+    const adminReply=`<div style="margin-top:12px;background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02));border:1px solid rgba(201,162,39,.4);border-radius:12px;padding:10px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div class="mvs-logo" style="width:26px;height:26px;font-size:.72rem">M</div><span style="font-size:.74rem;font-weight:700;color:#8a6f16">Reply as MVS Foundation \u00b7 you can attach images \u2014 posting on a pending doubt resolves it</span></div>${composerHTML('dbtr-admin-'+d.id,'Write a reply\u2026 or paste image(s)',"dbtComposerReply('admin',"+d.id+",'dbtr-admin-"+d.id+"')",'Post')}</div>`;
     return `<div class="dcard"${d.assigned_to_admin?' style="border-color:rgba(201,162,39,.6);box-shadow:0 0 0 3px rgba(201,162,39,.12)"':''}><div class="dcard-head"><div class="dcard-who"><b onclick="openDoubtChat('admin',${d.student_id||0},'${encodeURIComponent(d.student_name||'Student')}')" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px" title="Open full chat with this student">${esc(d.student_name)}</b><button style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0 4px;vertical-align:middle;opacity:.7" title="Student details" onclick="aDoubtStudent(${d.id})">${ic('user')}</button>${d.student_phone?' \u00b7 '+esc(d.student_phone):''} asked <b>${esc(d.teacher_name)}</b><div style="margin-top:3px">${esc(d.subject||'')}${d.topic?' \u00b7 '+esc(d.topic):''} \u00b7 ${esc(when)}</div>${reassignNote}</div><div style="display:flex;align-items:center;gap:8px">${d.assigned_to_admin?'<span class="tag" style="background:linear-gradient(135deg,#c9a227,#a8841a);color:#241a05">With MVS Foundation</span>':''}${d.needs_attention&&d.status==='resolved'?'<span class="tag tag-pending">New Follow-up</span>':('<span class="tag '+(d.status==='resolved'?'tag-done':'tag-pending')+'">'+(d.status==='resolved'?'Resolved':'Pending')+'</span>')}<button class="btn btn-danger btn-sm" title="Delete this doubt (removed from student and teacher portals)" onclick="aDelDoubt(${d.id})">${ic('trash')}</button></div></div>
       <div class="chat-thread"><div class="bubble bubble-q"><div class="who">${esc(d.student_name)} (Student)</div>${esc(d.question||'')}${qvoice}${qfile}${qimg}</div>${ans}</div>${dbtThreadHTML(d)}${adminReply}</div>`;
   }).join(''):`<div class="empty-state"><p>No doubts in this view.</p></div>`;
@@ -30367,7 +30367,7 @@ function amcOpenDetail(sid){
       +'<div style="font-weight:700;font-size:.86rem;margin:12px 0 8px">Submitted file</div>'+vers
       +'<div class="mc-opts-wrap"><button type="button" class="mc-opts-tog" onclick="_mcToggleOpts(this)">'+(typeof ic==='function'?ic('clock'):'')+' Set deadline & priority (optional)<span class="mc-opts-caret">\u25be</span></button>'
       +'<div class="mc-opts" style="display:none">'
-      +'<textarea id="amc-remarks" class="form-control" rows="2" placeholder="Quick remarks (optional — ya neeche chat mein detail bhejein)"></textarea>'
+      +'<textarea id="amc-remarks" class="form-control" rows="2" placeholder="Quick remarks (optional — or send details in the chat below)"></textarea>'
       +'<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap"><div style="flex:1;min-width:150px"><label class="form-label">Deadline</label><input id="amc-deadline" type="datetime-local" class="form-control" value="'+dl+'"></div>'
       +'<div style="flex:1;min-width:120px"><label class="form-label">Priority</label><select id="amc-priority" class="form-control"><option value="low"'+(m.priority==='low'?' selected':'')+'>Low</option><option value="normal"'+(m.priority==='normal'?' selected':'')+'>Normal</option><option value="high"'+(m.priority==='high'?' selected':'')+'>High</option></select></div></div></div></div>';
     var footer='<div class="mc-foot"><button class="btn btn-ghost" onclick="closeModal()">Close</button>'
@@ -30389,7 +30389,7 @@ async function amcReview(sid, decision){
       // status set ho gaya — modal khula rakho, status pill update karo, aur conversation
       // pe le jao taaki admin reason likh ke bhej de
       try{ var pill=document.getElementById('amc-status-pill'); if(pill&&typeof _msPill==='function') pill.innerHTML=_msPill(decision); }catch(e){}
-      toast(decision==='rejected'?'Rejected — reason chat mein likh ke bhejein.':'Changes Required — kya change karna hai chat mein likhein.');
+      toast(decision==='rejected'?'Rejected — please type the reason in the chat.':'Changes Required — please type what to change in the chat.');
       var host=document.getElementById('mc-chat-host');
       if(host){ try{ host.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} }
       var inp=document.getElementById('mc-input'); if(inp){ setTimeout(function(){ try{ inp.focus(); }catch(e){} },350); }
@@ -30449,6 +30449,8 @@ function _mcChatCss(){
     '.mc-chip{position:relative;border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:.74rem;display:flex;align-items:center;gap:6px}',
     '.mc-chip img{width:34px;height:34px;object-fit:cover;border-radius:5px}',
     '.mc-chip .x{cursor:pointer;font-weight:800;color:#c1443a}',
+    '.mc-comp textarea,.mc-comp input[type=text],.mc-comp .form-control{font-family:inherit !important;font-size:.92rem;border-radius:12px}',
+    '.mc-comp .btn{border-radius:10px;font-weight:700}',
     '.mc-chat-hdr{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:14px 14px 0 0;background:linear-gradient(135deg,#128c7e,#075e54);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12)}',
     'body.dark .mc-chat-hdr{background:linear-gradient(135deg,#1f2c33,#0b141a)}',
     '.mc-chat-av{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex:none;overflow:hidden;background-size:cover;background-position:center;border:2px solid rgba(255,255,255,.45)}',
@@ -30483,7 +30485,7 @@ function _mcLoadChat(role, sid){
   _mcChatCss();
   var host=document.getElementById('mc-chat-host'); if(!host) return;
   host.innerHTML=_mcChatHostHtml(role, sid);
-  window._mcChatPend=[]; window._mcChatCtx={role:role,sid:sid}; window._mcLastSig='';
+  window._mcChatPend=[]; window._mcChatCtx={role:role,sid:sid}; window._mcLastSig=null;
   if(window._mcPollTimer){ clearInterval(window._mcPollTimer); window._mcPollTimer=null; }
   var comp=document.getElementById('mc-comp'), input=document.getElementById('mc-input');
   if(input){ input.addEventListener('paste', function(e){
@@ -30616,6 +30618,19 @@ function _hwCss(){
     '.hw-empty{text-align:center;padding:42px 16px;color:var(--text-muted,#8a7f66)}',
     '.hw-foot{display:flex;gap:9px;flex-wrap:wrap;width:100%}',
     '.hw-foot .btn{border-radius:10px;font-weight:700}',
+    '.hw-2col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}',
+    '.hw-panel{border:1px solid var(--border,#e8e0cf);border-radius:16px;padding:18px;background:var(--card,#fffdf7)}',
+    '.hw-ph{margin:0 0 14px;font-size:1.05rem;font-weight:800}',
+    '.hw-tbox{display:flex;align-items:center;gap:11px;padding:10px 12px;border:1px solid var(--border,#e8e0cf);border-radius:12px;background:rgba(184,148,31,.06);margin-bottom:12px}',
+    '.hw-tav{width:44px;height:44px;border-radius:50%;background:var(--primary,#b8941f);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;overflow:hidden;flex:none}',
+    '.hw-tav img{width:100%;height:100%;object-fit:cover}',
+    '.hw-tname{font-weight:800;font-size:.95rem}',
+    '.hw-tsub{font-size:.74rem;color:var(--text-muted,#8a7f66)}',
+    '.hw-send-btn{width:100%;border-radius:12px;font-weight:800;padding:12px}',
+    '.hw-list-scroll{max-height:min(72vh,720px);overflow:auto;padding-right:3px}',
+    '.hw-new{font-size:.58rem;font-weight:900;letter-spacing:.05em;padding:2px 8px;border-radius:999px;color:#fff;background:linear-gradient(135deg,#fb7185,#e11d48);animation:hwNewPulse 1.1s ease-in-out infinite}',
+    '@keyframes hwNewPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(225,29,72,.5)}50%{transform:scale(1.08);box-shadow:0 0 0 5px rgba(225,29,72,0)}}',
+    '@media (max-width:820px){ .hw-2col{grid-template-columns:1fr} }',
     '@media (max-width:640px){ .hw-foot .btn{flex:1 1 46%;min-width:0} .hw-stats{grid-template-columns:repeat(2,1fr)} }'
   ].join('');
   document.head.appendChild(s);
@@ -30638,7 +30653,7 @@ function _hwLoadChat(role, hid){
   try{ _mcChatCss(); }catch(e){}
   var host=document.getElementById('mc-chat-host'); if(!host) return;
   host.innerHTML=_hwChatHostHtml(role);
-  window._hwPend=[]; window._hwCtx={role:role,hid:hid}; window._hwSig='';
+  window._hwPend=[]; window._hwCtx={role:role,hid:hid}; window._hwSig=null;
   if(window._hwTimer){ clearInterval(window._hwTimer); window._hwTimer=null; }
   var comp=document.getElementById('hwc-comp'), input=document.getElementById('hwc-input');
   if(input){ input.addEventListener('paste',function(e){ var items=((e.clipboardData||{}).items)||[]; var got=false; for(var i=0;i<items.length;i++){ if((items[i].type||'').indexOf('image')===0){ var f=items[i].getAsFile(); if(f){ _hwAddPend(f); got=true; } } } if(got) e.preventDefault(); });
@@ -30672,7 +30687,7 @@ function _hwUpdateStatus(role,st){
 }
 function _hwRenderMsgs(role, msgs){
   var el=document.getElementById('hw-msgs'); if(!el) return;
-  if(!msgs.length){ el.innerHTML='<div style="color:#9c8f6e;font-size:.82rem;padding:6px">No messages yet.</div>'; return; }
+  if(!msgs.length){ el.innerHTML=''; return; }
   var other=(role==='teacher')?'student':'teacher';
   var _seen=function(m){ return (role==='teacher') ? !!m.read_by_student : !!m.read_by_teacher; };
   var imgJobs=[]; var lastMine=-1; msgs.forEach(function(m,i){ if(m.sender_role===role) lastMine=i; });
@@ -30741,41 +30756,50 @@ function initStudentHomework(){
 async function loadSHomework(){
   var el=document.getElementById('s-hw-content'); if(!el) return;
   _hwCss(); try{ softSpin(el); }catch(e){}
-  try{
-    var d=await api('/api/student/homework'); var list=(d&&d.homework)||[];
-    var cards=list.length?list.map(function(m){
-      var pend=(m.status==='submitted'||m.status==='resubmitted')?'<span class="hw-pill under_review hw-pend">Checking Pending</span>':_hwPill(m.status);
-      return '<div class="hw-card"><div class="hw-card-top" onclick="sHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+pend+'</div>'
-        +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span>'+(m.teacher_name?'<span>\u2192 '+esc(m.teacher_name)+'</span>':'')+'<span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
-    }).join(''):'<div class="hw-empty"><p>Abhi tak koi homework nahi bheja.<br>Neeche se apne subject teacher ko notes/homework check ke liye bhejein.</p></div>';
-    el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Check</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Apne notes/homework subject teacher ko check ke liye bhejein.</p></div>'
-      +'<button class="btn btn-primary" onclick="sHwNew()">'+(typeof ic==='function'?ic('plus'):'')+' Send for check</button></div><div id="s-hw-list">'+cards+'</div></div>';
-  }catch(e){ el.innerHTML=(typeof errHtml==='function'?errHtml(e):'<div class="alert alert-danger">'+esc((e&&e.message)||'Error')+'</div>'); }
+  var teachers=[];
+  try{ var td=await api('/api/student/hw/teachers'); teachers=(td&&td.subjects)||[]; }catch(e){}
+  var opts='<option value="">— Select Subject —</option>'+teachers.map(function(t){ return '<option value="'+esc(t.subject)+'" data-t="'+esc(t.teacher_name||'')+'" data-tid="'+(t.teacher_id||'')+'" data-has="'+(t.has_teacher?1:0)+'">'+esc(t.subject)+'</option>'; }).join('');
+  var list=[];
+  try{ var d=await api('/api/student/homework'); list=(d&&d.homework)||[]; }catch(e){}
+  var cards=list.length?('<div class="hw-list-scroll">'+list.map(_sHwCard).join('')+'</div>'):'<div class="hw-empty"><p>No homework sent yet.<br>Use the form to send your notes/homework to your subject teacher.</p></div>';
+  el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Check</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Send your notes/homework to your subject teacher for checking.</p></div></div>'
+    +'<div class="hw-2col"><div class="hw-panel"><h3 class="hw-ph">Send Homework for Check</h3>'
+      +'<div class="form-group"><label class="form-label">Subject</label><select id="hw-subj" class="form-control" onchange="_hwSubjChange()">'+opts+'</select></div>'
+      +'<div id="hw-teacher-box" class="hw-tbox" style="display:none"></div>'
+      +'<div class="form-group"><label class="form-label">Title</label><input id="hw-title" class="form-control" placeholder="e.g. Ch-3 Assignment"></div>'
+      +'<div class="form-group"><label class="form-label">Note (optional)</label><textarea id="hw-desc" class="form-control" rows="2" placeholder="Anything to tell your teacher?"></textarea></div>'
+      +'<div class="form-group"><label class="form-label">File (PDF / Image / PPT)</label><input id="hw-file" type="file" class="form-control" accept="image/*,application/pdf,.ppt,.pptx,.doc,.docx"></div>'
+      +'<button class="btn btn-primary hw-send-btn" id="hw-send-btn" onclick="sHwSubmit()">'+(typeof ic==='function'?ic('check'):'')+' Send for Check</button></div>'
+    +'<div class="hw-panel"><h3 class="hw-ph">My Homework</h3>'+cards+'</div></div></div>';
 }
-async function sHwNew(){
-  _hwCss(); var teachers=[];
-  try{ var d=await api('/api/student/hw/teachers'); teachers=(d&&d.subjects)||[]; }catch(e){}
-  var opts=teachers.map(function(t){ return '<option value="'+esc(t.subject)+'" data-t="'+esc(t.teacher_name||'')+'" data-has="'+(t.has_teacher?1:0)+'">'+esc(t.subject)+'</option>'; }).join('');
-  var body='<div class="form-group"><label class="form-label">Subject</label><select id="hw-subj" class="form-control" onchange="_hwSubjChange()">'+opts+'</select></div>'
-    +'<div class="form-group"><label class="form-label">Teacher</label><input id="hw-teacher" class="form-control" readonly value=""></div>'
-    +'<div class="form-group"><label class="form-label">Title</label><input id="hw-title" class="form-control" placeholder="e.g. Ch-3 Assignment"></div>'
-    +'<div class="form-group"><label class="form-label">Note (optional)</label><textarea id="hw-desc" class="form-control" rows="2" placeholder="Sir ko kuch batana ho to..."></textarea></div>'
-    +'<div class="form-group"><label class="form-label">File (PDF / Image / PPT)</label><input id="hw-file" type="file" class="form-control" accept="image/*,application/pdf,.ppt,.pptx,.doc,.docx"></div>';
-  showModal('Send homework for check', body, '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="hw-send-btn" onclick="sHwSubmit()">Send</button>');
-  setTimeout(_hwSubjChange, 60);
+function _sHwCard(m){
+  var pend=(m.status==='submitted'||m.status==='resubmitted')?'<span class="hw-pill under_review hw-pend">Checking Pending</span>':_hwPill(m.status);
+  return '<div class="hw-card"><div class="hw-card-top" onclick="sHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+pend+'</div>'
+    +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span>'+(m.teacher_name?'<span>\u2192 '+esc(m.teacher_name)+'</span>':'')+'<span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
 }
-function _hwSubjChange(){ var sel=document.getElementById('hw-subj'); if(!sel) return; var o=sel.options[sel.selectedIndex]; var t=o?o.getAttribute('data-t'):''; var has=o?o.getAttribute('data-has'):'0'; var ti=document.getElementById('hw-teacher'); if(ti) ti.value=(has==='1'&&t)?t:'(No teacher assigned for this subject)'; }
+function _hwSubjChange(){
+  var sel=document.getElementById('hw-subj'); if(!sel) return;
+  var o=sel.options[sel.selectedIndex]; var t=o?o.getAttribute('data-t'):''; var tid=o?o.getAttribute('data-tid'):''; var has=o?o.getAttribute('data-has'):'0';
+  var box=document.getElementById('hw-teacher-box'); if(!box) return;
+  if(!sel.value){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='flex';
+  if(has==='1'&&t){
+    box.innerHTML='<div class="hw-tav" id="hw-tav">'+esc((t.trim().charAt(0)||'?').toUpperCase())+'</div><div><div class="hw-tname">'+esc(t)+'</div><div class="hw-tsub">Your '+esc(sel.value)+' teacher</div></div>';
+    if(tid){ fetch(API+'/api/student/teacher/'+tid+'/photo',{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){return r.ok?r.blob():null;}).then(function(b){ if(b&&b.size){ var av=document.getElementById('hw-tav'); if(av) av.innerHTML='<img src="'+URL.createObjectURL(b)+'" alt="">'; } }).catch(function(){}); }
+  } else { box.innerHTML='<div class="hw-tav" style="background:#fde2e2;color:#c1443a">!</div><div><div class="hw-tname">No teacher assigned</div><div class="hw-tsub">Please contact admin for this subject</div></div>'; }
+}
 async function sHwSubmit(){
   var subj=(document.getElementById('hw-subj')||{}).value||''; var title=(document.getElementById('hw-title')||{}).value||'';
   var desc=(document.getElementById('hw-desc')||{}).value||''; var f=(document.getElementById('hw-file')||{}).files;
-  if(!subj){ toast('Subject chunein',true); return; } if(!(title||'').trim()){ toast('Title likhein',true); return; } if(!f||!f.length){ toast('File choose karein',true); return; }
+  if(!subj){ toast('Please choose a subject',true); return; } if(!(title||'').trim()){ toast('Please enter a title',true); return; } if(!f||!f.length){ toast('Please choose a file',true); return; }
   var btn=document.getElementById('hw-send-btn'); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
   try{ var fd=new FormData(); fd.append('subject',subj); fd.append('title',title); fd.append('description',desc); fd.append('file',f[0],f[0].name);
     var r=await fetch(API+'/api/student/homework',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
     if(!r.ok){ var e=null; try{e=await r.json();}catch(x){} throw new Error((e&&e.detail)||'Failed'); }
-    closeModal(); toast('Homework bhej diya \u2705'); loadSHomework();
-  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Send';} toast(e.message||'Failed',true); }
+    toast('Homework sent \u2705'); loadSHomework();
+  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Send for Check';} toast(e.message||'Failed',true); }
 }
+function sHwNew(){ /* deprecated: form ab inline hai */ loadSHomework(); }
 async function sHwOpen(hid){
   _hwCss(); showModal('Homework', '<div id="hw-detail"><div class="spinner"></div></div>', '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
@@ -30827,13 +30851,14 @@ async function loadTHomework(){
     var d=await api('/api/teacher/homework'+(_tHwFilter?('?status='+_tHwFilter):'')); var list=(d&&d.homework)||[]; var c=(d&&d.counts)||{};
     var stat=function(key,lbl,n){ return '<div class="hw-stat'+(_tHwFilter===key?' on':'')+'" onclick="_tHwSetFilter(\''+key+'\')"><div class="n">'+(n||0)+'</div><div class="l">'+lbl+'</div></div>'; };
     var stats='<div class="hw-stats">'+stat('','Total',c.total)+stat('pending','Pending',c.pending)+stat('under_review','Under Review',c.under_review)+stat('changes_required','Changes',c.changes_required)+stat('checking_done','Done',c.checking_done)+'</div>';
-    var cards=list.length?list.map(function(m){
-      var blink=(m.status==='submitted'||m.status==='resubmitted')?' hw-pend':'';
+    var cards=list.length?('<div class="hw-list-scroll">'+list.map(function(m){
+      var isnew=(m.status==='submitted'||m.status==='resubmitted');
+      var blink=isnew?' hw-pend':'';
       var slbl={submitted:'Pending',resubmitted:'Pending',under_review:'Under Review',changes_required:'Changes',checking_done:'Done'}[m.status]||m.status;
-      return '<div class="hw-card"><div class="hw-card-top" onclick="tHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+'<span class="hw-pill '+m.status+blink+'">'+slbl+'</span></div>'
-        +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span class="hw-stud" onclick="tHwStudent('+m.student_id+')">'+esc(m.student_name||'Student')+'</span><span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
-    }).join(''):'<div class="hw-empty"><p>'+(_tHwFilter?'Is filter me kuch nahi.':'Abhi koi homework nahi aaya.')+'</p></div>';
-    el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Checker</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Students ne check ke liye jo notes/homework bheje.</p></div></div>'+stats+'<div>'+cards+'</div></div>';
+      return '<div class="hw-card"><div class="hw-card-top" onclick="tHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(isnew?'<span class="hw-new">NEW</span>':'')+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+'<span class="hw-pill '+m.status+blink+'">'+slbl+'</span></div>'
+        +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span class="hw-stud" onclick="event.stopPropagation();tHwStudent('+m.student_id+')">'+esc(m.student_name||'Student')+'</span><span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
+    }).join('')+'</div>'):'<div class="hw-empty"><p>'+(_tHwFilter?'Nothing in this filter.':'No homework yet.')+'</p></div>';
+    el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Checker</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Homework students have sent you to check.</p></div></div>'+stats+'<div>'+cards+'</div></div>';
   }catch(e){ el.innerHTML=(typeof errHtml==='function'?errHtml(e):esc((e&&e.message)||'Error')); }
 }
 function _tHwSetFilter(f){ _tHwFilter=(_tHwFilter===f)?'':f; loadTHomework(); }
@@ -30846,7 +30871,7 @@ async function tHwOpen(hid){
   try{
     var d=await api('/api/teacher/homework/'+hid); var m=d.submission;
     var vers=(m.versions||[]).map(function(v){ return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+'</span>'+(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')+'</div><div class="mc-v-acts"><button class="btn btn-ghost btn-sm" onclick="_hwViewVersion(\'teacher\','+v.id+')">'+(typeof ic==='function'?ic('eye'):'')+' View</button><button class="btn btn-primary btn-sm" onclick="_hwDlVersion(\'teacher\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">'+(typeof ic==='function'?ic('download'):'')+' Download</button></div></div>'; }).join('');
-    var toggle='<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;margin:12px 0;cursor:pointer"><input type="checkbox" id="hw-chat-allow" '+(m.chat_allowed?'checked':'')+' onchange="tHwToggleChat('+hid+',this.checked)"> Student ko chat reply allow karein</label>';
+    var toggle='<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;margin:12px 0;cursor:pointer"><input type="checkbox" id="hw-chat-allow" '+(m.chat_allowed?'checked':'')+' onchange="tHwToggleChat('+hid+',this.checked)"> Allow student to reply in chat</label>';
     document.getElementById('hw-detail').innerHTML='<div class="mc-rev-head"><div style="flex:1;min-width:0"><div style="font-weight:800;font-size:1.1rem">'+esc(m.title)+'</div><div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span class="hw-stud" onclick="tHwStudent('+m.student_id+')">'+esc(m.student_name||'Student')+'</span></div></div><span id="hw-status-pill">'+_hwPill(m.status)+'</span></div>'
       +(m.description?'<div style="font-size:.85rem;margin:8px 0">'+esc(m.description)+'</div>':'')
       +'<div style="font-weight:700;font-size:.85rem;margin:12px 0 8px">Submitted file(s)</div>'+vers+toggle
@@ -30862,13 +30887,13 @@ async function tHwReview(hid, decision){
     var pill=document.getElementById('hw-status-pill'); if(pill) pill.innerHTML=_hwPill(decision);
     window._hwSig=''; if(typeof _hwPollTick==='function') _hwPollTick();
     if(decision==='changes_required'){
-      if(!rmk){ toast('Changes Required \u2014 reason chat me likhein.'); var host=document.getElementById('mc-chat-host'); if(host){try{host.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}} if(inp) setTimeout(function(){try{inp.focus();}catch(e){}},350); }
-      else toast('Changes Required bhej diya.');
+      if(!rmk){ toast('Changes Required \u2014 please type the reason in the chat.'); var host=document.getElementById('mc-chat-host'); if(host){try{host.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}} if(inp) setTimeout(function(){try{inp.focus();}catch(e){}},350); }
+      else toast('Changes Required sent.');
     } else { toast('Checking Done \uD83C\uDF89'); }
     loadTHomework();
   }catch(e){ toast(e.message||'Failed',true); }
 }
-function tHwToggleChat(hid, allow){ api('/api/teacher/homework/'+hid+'/toggle-chat','POST',{allow:allow}).then(function(){ toast(allow?'Chat allowed for student':'Chat disabled'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }
+function tHwToggleChat(hid, allow){ api('/api/teacher/homework/'+hid+'/toggle-chat','POST',{allow:allow}).then(function(){ toast(allow?'Chat enabled for student':'Chat disabled'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }
 async function tHwStudent(sid){
   _hwCss(); showModal('Student', '<div id="hw-stud-body"><div class="spinner"></div></div>', '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
