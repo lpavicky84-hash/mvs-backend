@@ -2402,6 +2402,7 @@ function enterTeacherApp(){
   _applyTStudentAccess();
   try{ initTeacherCategories(); }catch(e){}
   try{ initTeacherMyBatches(); }catch(e){}
+  try{ initTeacherHomework(); }catch(e){}
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#teacher-app .nav-item').classList.add('active');
   tPage('dashboard',null);
@@ -2487,7 +2488,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
@@ -2515,6 +2516,7 @@ function _tLoadPage(page){
   else if(page==='mysubjects') loadTMySubjects();
   else if(page==='subjectmaterials') loadTSubjectMaterials();
   else if(page==='matchecker') loadTMatChecker();
+  else if(page==='homework') loadTHomework();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -15584,6 +15586,7 @@ function enterStudentApp(){
   document.querySelector('#student-app .nav-item').classList.add('active');
   try{ initStudentSupport(); }catch(e){}
   try{ initStudentMyBatches(); }catch(e){}
+  try{ initStudentHomework(); }catch(e){}
   sPage('dashboard',null);
   notifPopupOnOpen('student');
   loadStudentLiveBanner();
@@ -15871,7 +15874,7 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check'};
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page]||page;
   stopCountdown();
@@ -15883,6 +15886,7 @@ function _sLoadPage(page){
   else if(page==='timetable') loadSTimetable();
   else if(page==='materials') loadSMaterials();
   else if(page==='mybatches') loadSMyBatches();
+  else if(page==='homework') loadSHomework();
   else if(page==='teachers') loadSTeachers();
   else if(page==='dpp') loadSDpp();
   else if(page==='tests') loadSTests();
@@ -30036,8 +30040,15 @@ function _mcCss(){
     '.amc-tools .amc-sel{width:auto;border-radius:10px}',
     '.amc-storage-btn{white-space:nowrap;border-radius:10px}',
     '.mc-v-acts{display:flex;gap:6px;flex-shrink:0}',
+    '.mc-opts-wrap{border-top:1px solid var(--border,#e5ddcb);margin-top:14px;padding-top:12px}',
+    '.mc-opts-tog{width:100%;text-align:left;display:flex;align-items:center;gap:8px;background:var(--hover,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:11px;padding:10px 13px;font-weight:700;font-size:.82rem;color:#7a6a3f;cursor:pointer}',
+    '.mc-opts-caret{margin-left:auto}',
+    '.mc-opts{margin-top:10px}',
+    '.mc-foot{display:flex;gap:9px;flex-wrap:wrap;width:100%}',
+    '.mc-foot .btn{border-radius:10px;font-weight:700}',
     '@media (max-width:640px){',
     '  .amc-topbar{gap:12px}',
+    '  .mc-foot .btn{flex:1 1 46%;min-width:0}',
     '  .amc-tools{width:100%;flex-wrap:wrap;gap:8px}',
     '  .amc-tools .amc-sel{flex:1 1 42%;min-width:0;width:auto}',
     '  .amc-storage-btn{flex:1 1 100%;justify-content:center;order:-1}',
@@ -30349,19 +30360,20 @@ function amcOpenDetail(sid){
     var dl=m.deadline?m.deadline.replace(' ','T').slice(0,16):'';
     var body='<div class="mc-rev-head"><div class="mc-ic" style="width:48px;height:48px">'+(typeof ic==='function'?ic('folder'):'')+'</div>'
       +'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:1.15rem">'+esc(m.title)+'</div>'
-      +'<div class="mc-meta" style="margin-top:4px">'+(m.teacher?'<span class="mc-chip">'+esc(m.teacher)+'</span>':'')+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span></div></div>'+_msPill(m.status)+'</div>'
+      +'<div class="mc-meta" style="margin-top:4px">'+(m.teacher?'<span class="mc-chip">'+esc(m.teacher)+'</span>':'')+(m.subject?'<span class="mc-chip">'+esc(m.subject)+'</span>':'')+'<span class="mc-chip">'+esc(_matTypeLabel(m.material_type))+'</span></div></div>'
+      +'<span id="amc-status-pill">'+_msPill(m.status)+'</span></div>'
       +(m.description?'<div style="font-size:.85rem;margin:6px 0 10px">'+esc(m.description)+'</div>':'')
       +(m.reference?'<div style="font-size:.8rem;margin-bottom:10px">Reference: <a href="'+esc(m.reference)+'" target="_blank" rel="noopener" style="color:#2563eb">'+esc(m.reference)+'</a></div>':'')
-      +'<div style="font-weight:700;font-size:.86rem;margin:10px 0 8px">Version history</div>'+vers
-      +'<div style="border-top:1px solid var(--border,#e5ddcb);margin-top:12px;padding-top:12px"><div style="font-weight:700;font-size:.86rem;margin-bottom:8px">Review</div>'
-      +'<textarea id="amc-remarks" class="form-control" rows="2" placeholder="Remarks to the teacher (optional)"></textarea>'
-      +'<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap"><div style="flex:1"><label class="form-label">Deadline</label><input id="amc-deadline" type="datetime-local" class="form-control" value="'+dl+'"></div>'
-      +'<div style="width:130px"><label class="form-label">Priority</label><select id="amc-priority" class="form-control"><option value="low"'+(m.priority==='low'?' selected':'')+'>Low</option><option value="normal"'+(m.priority==='normal'?' selected':'')+'>Normal</option><option value="high"'+(m.priority==='high'?' selected':'')+'>High</option></select></div></div></div>';
-    var footer='<button class="btn btn-ghost" onclick="closeModal()">Close</button>'
-      +'<button class="btn btn-ghost" style="color:#7c3aed" onclick="amcReview('+sid+',\'under_review\')">Under Review</button>'
-      +'<button class="btn btn-ghost" style="color:#d97706" onclick="amcReview('+sid+',\'changes_required\')">Changes Required</button>'
+      +'<div style="font-weight:700;font-size:.86rem;margin:12px 0 8px">Submitted file</div>'+vers
+      +'<div class="mc-opts-wrap"><button type="button" class="mc-opts-tog" onclick="_mcToggleOpts(this)">'+(typeof ic==='function'?ic('clock'):'')+' Set deadline & priority (optional)<span class="mc-opts-caret">\u25be</span></button>'
+      +'<div class="mc-opts" style="display:none">'
+      +'<textarea id="amc-remarks" class="form-control" rows="2" placeholder="Quick remarks (optional — ya neeche chat mein detail bhejein)"></textarea>'
+      +'<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap"><div style="flex:1;min-width:150px"><label class="form-label">Deadline</label><input id="amc-deadline" type="datetime-local" class="form-control" value="'+dl+'"></div>'
+      +'<div style="flex:1;min-width:120px"><label class="form-label">Priority</label><select id="amc-priority" class="form-control"><option value="low"'+(m.priority==='low'?' selected':'')+'>Low</option><option value="normal"'+(m.priority==='normal'?' selected':'')+'>Normal</option><option value="high"'+(m.priority==='high'?' selected':'')+'>High</option></select></div></div></div></div>';
+    var footer='<div class="mc-foot"><button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+      +'<button class="btn btn-ghost" style="color:#d97706;border-color:#e6c07a" onclick="amcReview('+sid+',\'changes_required\')">Changes Required</button>'
       +'<button class="btn btn-danger" onclick="amcReview('+sid+',\'rejected\')">Reject</button>'
-      +'<button class="btn btn-primary" onclick="amcReview('+sid+',\'approved\')">Approve</button>';
+      +'<button class="btn btn-primary" onclick="amcReview('+sid+',\'approved\')">Approve</button></div>';
     showModal('Review · v'+(m.current_version||1), body, footer);
     document.getElementById('modal-body').insertAdjacentHTML('beforeend','<div id="mc-chat-host" style="margin-top:16px;border-top:1px solid var(--border,#e5ddcb);padding-top:14px"></div>');
     _mcLoadChat('admin', sid);
@@ -30373,8 +30385,24 @@ async function amcReview(sid, decision){
     deadline:(document.getElementById('amc-deadline')||{}).value||'',
     priority:(document.getElementById('amc-priority')||{}).value||'normal'};
   try{ await api('/api/admin/material-submissions/'+sid+'/review','POST',payload);
-    closeModal(); toast('Review saved'); loadAMatCheck();
+    if(decision==='changes_required'||decision==='rejected'){
+      // status set ho gaya — modal khula rakho, status pill update karo, aur conversation
+      // pe le jao taaki admin reason likh ke bhej de
+      try{ var pill=document.getElementById('amc-status-pill'); if(pill&&typeof _msPill==='function') pill.innerHTML=_msPill(decision); }catch(e){}
+      toast(decision==='rejected'?'Rejected — reason chat mein likh ke bhejein.':'Changes Required — kya change karna hai chat mein likhein.');
+      var host=document.getElementById('mc-chat-host');
+      if(host){ try{ host.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} }
+      var inp=document.getElementById('mc-input'); if(inp){ setTimeout(function(){ try{ inp.focus(); }catch(e){} },350); }
+      loadAMatCheck();   // background list refresh
+    } else {
+      closeModal(); toast(decision==='approved'?'Approved \uD83C\uDF89':'Review saved'); loadAMatCheck();
+    }
   }catch(e){ toast((e&&e.message)||'Could not save',true); }
+}
+function _mcToggleOpts(btn){
+  var d=btn.parentNode.querySelector('.mc-opts'); if(!d) return;
+  var open=d.style.display!=='none'; d.style.display=open?'none':'block';
+  var c=btn.querySelector('.mc-opts-caret'); if(c) c.textContent=open?'\u25be':'\u25b4';
 }
 
 /* ============================================================
@@ -30420,12 +30448,28 @@ function _mcChatCss(){
     '.mc-pend{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px}',
     '.mc-chip{position:relative;border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:.74rem;display:flex;align-items:center;gap:6px}',
     '.mc-chip img{width:34px;height:34px;object-fit:cover;border-radius:5px}',
-    '.mc-chip .x{cursor:pointer;font-weight:800;color:#c1443a}'
+    '.mc-chip .x{cursor:pointer;font-weight:800;color:#c1443a}',
+    '.mc-chat-hdr{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:14px 14px 0 0;background:linear-gradient(135deg,#128c7e,#075e54);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12)}',
+    'body.dark .mc-chat-hdr{background:linear-gradient(135deg,#1f2c33,#0b141a)}',
+    '.mc-chat-av{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex:none;overflow:hidden;background-size:cover;background-position:center;border:2px solid rgba(255,255,255,.45)}',
+    '.mc-chat-av img{width:100%;height:100%;object-fit:cover}',
+    '.mc-chat-nm{font-weight:800;font-size:1rem;line-height:1.2}',
+    '.mc-chat-sub{font-size:.72rem;opacity:.94;margin-top:2px;min-height:14px}',
+    '.mc-online{color:#b6f5d8;font-weight:700}',
+    '.mc-typing{color:#eafff4;font-weight:700}',
+    '.mc-typing .dot{animation:mcTypeBlink 1.2s infinite}',
+    '.mc-typing .dot:nth-child(2){animation-delay:.2s}.mc-typing .dot:nth-child(3){animation-delay:.4s}',
+    '@keyframes mcTypeBlink{0%,60%,100%{opacity:.3}30%{opacity:1}}',
+    '.mc-chat-msgs{border-radius:0 0 14px 14px !important}'
   ].join('');
   document.head.appendChild(s);
 }
 function _mcChatHostHtml(role, sid){
-  return '<div style="font-weight:700;font-size:.86rem;margin:6px 0 8px">Conversation</div>'
+  var otherLabel=(role==='admin')?'Teacher':'MVS Foundation';
+  var ini=(role==='admin')?'T':'M';
+  return '<div class="mc-chat-hdr"><div class="mc-chat-av" id="mc-chat-av">'+ini+'</div>'
+    +'<div style="flex:1;min-width:0"><div class="mc-chat-nm" id="mc-chat-nm">'+esc(otherLabel)+'</div>'
+    +'<div class="mc-chat-sub" id="mc-chat-status">\u00a0</div></div></div>'
     +'<div id="mc-chat-msgs" class="mc-chat-msgs"><div class="spinner"></div></div>'
     +'<div class="mc-comp" id="mc-comp">'
       +'<div id="mc-pend" class="mc-pend"></div>'
@@ -30439,20 +30483,55 @@ function _mcLoadChat(role, sid){
   _mcChatCss();
   var host=document.getElementById('mc-chat-host'); if(!host) return;
   host.innerHTML=_mcChatHostHtml(role, sid);
-  window._mcChatPend=[];
+  window._mcChatPend=[]; window._mcChatCtx={role:role,sid:sid}; window._mcLastSig='';
+  if(window._mcPollTimer){ clearInterval(window._mcPollTimer); window._mcPollTimer=null; }
   var comp=document.getElementById('mc-comp'), input=document.getElementById('mc-input');
   if(input){ input.addEventListener('paste', function(e){
     var items=((e.clipboardData||{}).items)||[]; var got=false;
     for(var i=0;i<items.length;i++){ if((items[i].type||'').indexOf('image')===0){ var f=items[i].getAsFile(); if(f){ _mcAddPend(f); got=true; } } }
     if(got) e.preventDefault();
-  }); }
+  });
+    input.addEventListener('input', function(){ _mcTypingPing(role, sid); });
+  }
   if(comp){
     comp.addEventListener('dragover', function(e){ e.preventDefault(); comp.classList.add('drag'); });
     comp.addEventListener('dragleave', function(){ comp.classList.remove('drag'); });
     comp.addEventListener('drop', function(e){ e.preventDefault(); comp.classList.remove('drag'); var fs=((e.dataTransfer||{}).files)||[]; for(var i=0;i<fs.length;i++) _mcAddPend(fs[i]); });
   }
-  api('/api/'+role+'/material-submissions/'+sid+'/messages').then(function(r){ _mcRenderMsgs(role,(r&&r.messages)||[]); })
-    .catch(function(e){ var el=document.getElementById('mc-chat-msgs'); if(el) el.innerHTML='<div style="color:#c1443a;font-size:.82rem">'+esc((e&&e.message)||'Could not load chat')+'</div>'; });
+  _mcPollTick();
+  window._mcPollTimer=setInterval(_mcPollTick, 3000);
+}
+function _mcPollTick(){
+  var ctx=window._mcChatCtx; if(!ctx) return;
+  if(!document.getElementById('mc-chat-msgs')){ if(window._mcPollTimer){ clearInterval(window._mcPollTimer); window._mcPollTimer=null; } return; }
+  api('/api/'+ctx.role+'/material-submissions/'+ctx.sid+'/messages').then(function(r){
+    var msgs=(r&&r.messages)||[];
+    // signature: sirf tab re-render jab kuch badla (flicker/scroll-jump se bachao)
+    var sig=msgs.map(function(m){ return m.id+':'+(m.read_by_teacher?1:0)+(m.read_by_admin?1:0)+':'+((m.attachments||[]).length); }).join(',');
+    if(sig!==window._mcLastSig){ window._mcLastSig=sig; _mcRenderMsgs(ctx.role, msgs); }
+    _mcUpdateStatus(ctx.role, (r&&r.status)||{});
+  }).catch(function(e){ var el=document.getElementById('mc-chat-msgs'); if(el && el.querySelector('.spinner')) el.innerHTML='<div style="color:#c1443a;font-size:.82rem">'+esc((e&&e.message)||'Could not load chat')+'</div>'; });
+}
+var _mcTypingLast=0;
+function _mcTypingPing(role, sid){
+  var now=Date.now(); if(now-_mcTypingLast<2500) return; _mcTypingLast=now;
+  try{ fetch(API+'/api/'+role+'/material-submissions/'+sid+'/typing',{method:'POST',headers:{Authorization:'Bearer '+TOKEN}}).catch(function(){}); }catch(e){}
+}
+function _mcUpdateStatus(role, st){
+  var av=document.getElementById('mc-chat-av'), nm=document.getElementById('mc-chat-nm'), sub=document.getElementById('mc-chat-status');
+  if(nm && st.other_name){ nm.textContent=st.other_name; }
+  if(av && st.other_name && !av._photo){ av.textContent=(st.other_name.trim().charAt(0)||'?').toUpperCase(); }
+  // admin view: teacher ki photo (agar hai) avatar me
+  if(av && !av._photo && role==='admin' && st.other_tid){
+    av._photo=1;
+    fetch(API+'/api/admin/teacher/'+st.other_tid,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){ return r.ok?r.blob():null; }).then(function(b){ if(b&&b.size){ var u=URL.createObjectURL(b); av.innerHTML='<img src="'+u+'" alt="">'; } }).catch(function(){});
+  }
+  if(sub){
+    if(st.other_typing){ sub.innerHTML='<span class="mc-typing">typing<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span>'; }
+    else if(st.other_online){ sub.innerHTML='<span class="mc-online">\u25cf online</span>'; }
+    else if(st.other_last_seen){ sub.textContent='last seen '+st.other_last_seen; }
+    else{ sub.innerHTML='\u00a0'; }
+  }
 }
 function _mcRenderMsgs(role, msgs){
   var el=document.getElementById('mc-chat-msgs'); if(!el) return;
@@ -30463,6 +30542,7 @@ function _mcRenderMsgs(role, msgs){
   var _seenOf=function(m){ return (role==='admin') ? !!m.read_by_teacher : !!m.read_by_admin; };
   var imgJobs=[];
   var lastMineIdx=-1; msgs.forEach(function(m,i){ if(m.sender_role===role) lastMineIdx=i; });
+  var _nb=(el.scrollHeight-el.scrollTop-el.clientHeight)<90;   // user bottom ke paas hai?
   el.innerHTML=msgs.map(function(m,idx){
     var mine=(m.sender_role===role);
     var _dic=(typeof ic==='function'?ic('download'):'\u2913');
@@ -30483,7 +30563,7 @@ function _mcRenderMsgs(role, msgs){
       +(m.message?'<div class="mc-txt">'+esc(m.message).replace(/\n/g,'<br>')+'</div>':'')+atts
       +'<div class="at">'+esc(m.at)+(mine?' '+tick:'')+'</div></div>'+statusLine;
   }).join('');
-  el.scrollTop=el.scrollHeight;
+  if(_nb) el.scrollTop=el.scrollHeight;
   imgJobs.forEach(function(j){ _mcLoadImg(j[0], '/api/'+j[1]+'/material-attachments/'+j[2]+'/view'); });
 }
 async function _mcLoadImg(imgId, url){
@@ -30505,6 +30585,301 @@ function _mcRenderPend(){
   }).join('');
 }
 function _mcRemovePend(i){ (window._mcChatPend||[]).splice(i,1); _mcRenderPend(); }
+
+/* ===================== HOMEWORK CHECKER (student <-> teacher) ===================== */
+function _hwCss(){
+  if(document.getElementById('hw-css')) return; try{ _mcChatCss(); }catch(e){}
+  var s=document.createElement('style'); s.id='hw-css';
+  s.textContent=[
+    '.hw-wrap{max-width:900px;margin:0 auto}',
+    '.hw-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px}',
+    '.hw-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}',
+    '.hw-stat{border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:13px 14px;background:var(--card,#fffdf7);cursor:pointer;transition:transform .1s,box-shadow .1s;text-align:center}',
+    '.hw-stat:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.08)}',
+    '.hw-stat.on{border-color:var(--primary,#b8941f);box-shadow:0 0 0 2px var(--primary,#b8941f) inset}',
+    '.hw-stat .n{font-size:1.5rem;font-weight:800;line-height:1}',
+    '.hw-stat .l{font-size:.72rem;color:var(--text-muted,#8a7f66);margin-top:3px;font-weight:700}',
+    '.hw-card{border:1px solid var(--border,#e8e0cf);border-radius:15px;padding:14px 15px;background:var(--card,#fffdf7);margin-bottom:11px;transition:transform .1s,box-shadow .1s}',
+    '.hw-card:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.07)}',
+    '.hw-card-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer}',
+    '.hw-title{font-weight:800;font-size:1rem;flex:1;min-width:0}',
+    '.hw-sub{font-size:.78rem;color:var(--text-muted,#8a7f66);margin-top:5px;display:flex;gap:9px;flex-wrap:wrap;align-items:center}',
+    '.hw-pill{font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:999px;white-space:nowrap;cursor:pointer}',
+    '.hw-pill.submitted,.hw-pill.resubmitted{background:rgba(37,99,235,.14);color:#2563eb}',
+    '.hw-pill.under_review{background:rgba(124,58,237,.15);color:#7c3aed}',
+    '.hw-pill.changes_required{background:rgba(217,119,6,.16);color:#d97706}',
+    '.hw-pill.checking_done{background:rgba(5,150,105,.15);color:#059669}',
+    '@keyframes hwBlink{0%,100%{opacity:1}50%{opacity:.35}}.hw-pend{animation:hwBlink 1s ease-in-out infinite}',
+    '.hw-unread{background:#dc2626;color:#fff;font-size:.66rem;font-weight:800;border-radius:999px;padding:1px 7px}',
+    '.hw-chip{font-size:.72rem;background:rgba(184,148,31,.13);color:#8a6d1a;padding:2px 9px;border-radius:999px;font-weight:700}',
+    '.hw-stud{cursor:pointer;color:#2563eb;font-weight:700}',
+    '.hw-empty{text-align:center;padding:42px 16px;color:var(--text-muted,#8a7f66)}',
+    '.hw-foot{display:flex;gap:9px;flex-wrap:wrap;width:100%}',
+    '.hw-foot .btn{border-radius:10px;font-weight:700}',
+    '@media (max-width:640px){ .hw-foot .btn{flex:1 1 46%;min-width:0} .hw-stats{grid-template-columns:repeat(2,1fr)} }'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _hwPill(st){ var lbl={submitted:'Submitted',resubmitted:'Resubmitted',under_review:'Under Review',changes_required:'Changes Required',checking_done:'Checking Done'}[st]||st; return '<span class="hw-pill '+st+'">'+lbl+'</span>'; }
+
+/* ---------- shared homework chat (parallel to material chat, homework endpoints) ---------- */
+function _hwChatHostHtml(role){
+  var lbl=(role==='teacher')?'Student':'Teacher';
+  return '<div class="mc-chat-hdr"><div class="mc-chat-av" id="hw-av">'+((role==='teacher')?'S':'T')+'</div>'
+    +'<div style="flex:1;min-width:0"><div class="mc-chat-nm" id="hw-nm">'+esc(lbl)+'</div><div class="mc-chat-sub" id="hw-status">\u00a0</div></div></div>'
+    +'<div id="hw-msgs" class="mc-chat-msgs"><div class="spinner"></div></div>'
+    +'<div class="mc-comp" id="hwc-comp"><div id="hwc-pend" class="mc-pend"></div>'
+    +'<textarea id="hwc-input" class="form-control" rows="2" placeholder="Write a message\u2026 (paste or drop an image)"></textarea>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'
+    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">Attach<input id="hwc-file" type="file" multiple accept="image/*,application/pdf" style="display:none" onchange="_hwPickFiles(this.files)"></label>'
+    +'<button class="btn btn-primary btn-sm" id="hwc-send" onclick="hwChatSend()">Send</button></div></div>';
+}
+function _hwLoadChat(role, hid){
+  try{ _mcChatCss(); }catch(e){}
+  var host=document.getElementById('mc-chat-host'); if(!host) return;
+  host.innerHTML=_hwChatHostHtml(role);
+  window._hwPend=[]; window._hwCtx={role:role,hid:hid}; window._hwSig='';
+  if(window._hwTimer){ clearInterval(window._hwTimer); window._hwTimer=null; }
+  var comp=document.getElementById('hwc-comp'), input=document.getElementById('hwc-input');
+  if(input){ input.addEventListener('paste',function(e){ var items=((e.clipboardData||{}).items)||[]; var got=false; for(var i=0;i<items.length;i++){ if((items[i].type||'').indexOf('image')===0){ var f=items[i].getAsFile(); if(f){ _hwAddPend(f); got=true; } } } if(got) e.preventDefault(); });
+    input.addEventListener('input', function(){ _hwTypingPing(); }); }
+  if(comp){ comp.addEventListener('dragover',function(e){e.preventDefault();comp.classList.add('drag');}); comp.addEventListener('dragleave',function(){comp.classList.remove('drag');}); comp.addEventListener('drop',function(e){e.preventDefault();comp.classList.remove('drag');var fs=((e.dataTransfer||{}).files)||[];for(var i=0;i<fs.length;i++)_hwAddPend(fs[i]);}); }
+  _hwPollTick(); window._hwTimer=setInterval(_hwPollTick,3000);
+}
+function _hwPollTick(){
+  var ctx=window._hwCtx; if(!ctx) return;
+  if(!document.getElementById('hw-msgs')){ if(window._hwTimer){ clearInterval(window._hwTimer); window._hwTimer=null; } return; }
+  api('/api/'+ctx.role+'/homework/'+ctx.hid+'/messages').then(function(r){
+    var msgs=(r&&r.messages)||[];
+    var sig=msgs.map(function(m){return m.id+':'+(m.read_by_student?1:0)+(m.read_by_teacher?1:0)+':'+((m.attachments||[]).length);}).join(',');
+    if(sig!==window._hwSig){ window._hwSig=sig; _hwRenderMsgs(ctx.role,msgs); }
+    _hwUpdateStatus(ctx.role,(r&&r.status)||{});
+  }).catch(function(){});
+}
+var _hwTypeLast=0;
+function _hwTypingPing(){ var ctx=window._hwCtx; if(!ctx) return; var now=Date.now(); if(now-_hwTypeLast<2500) return; _hwTypeLast=now; try{ fetch(API+'/api/'+ctx.role+'/homework/'+ctx.hid+'/typing',{method:'POST',headers:{Authorization:'Bearer '+TOKEN}}).catch(function(){}); }catch(e){} }
+function _hwUpdateStatus(role,st){
+  var av=document.getElementById('hw-av'), nm=document.getElementById('hw-nm'), sub=document.getElementById('hw-status');
+  if(nm && st.other_name) nm.textContent=st.other_name;
+  if(av && st.other_name && !av._p) av.textContent=(st.other_name.trim().charAt(0)||'?').toUpperCase();
+  if(av && !av._p && role==='student' && st.other_tid){ av._p=1; fetch(API+'/api/student/teacher/'+st.other_tid+'/photo',{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){return r.ok?r.blob():null;}).then(function(b){ if(b&&b.size){ av.innerHTML='<img src="'+URL.createObjectURL(b)+'" alt="">'; } }).catch(function(){}); }
+  if(sub){
+    if(st.other_typing){ sub.innerHTML='<span class="mc-typing">typing<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span>'; }
+    else if(st.other_online){ sub.innerHTML='<span class="mc-online">\u25cf online</span>'; }
+    else if(st.other_last_seen){ sub.textContent='last seen '+st.other_last_seen; }
+    else sub.innerHTML='\u00a0';
+  }
+}
+function _hwRenderMsgs(role, msgs){
+  var el=document.getElementById('hw-msgs'); if(!el) return;
+  if(!msgs.length){ el.innerHTML='<div style="color:#9c8f6e;font-size:.82rem;padding:6px">No messages yet.</div>'; return; }
+  var other=(role==='teacher')?'student':'teacher';
+  var _seen=function(m){ return (role==='teacher') ? !!m.read_by_student : !!m.read_by_teacher; };
+  var imgJobs=[]; var lastMine=-1; msgs.forEach(function(m,i){ if(m.sender_role===role) lastMine=i; });
+  var _nb=(el.scrollHeight-el.scrollTop-el.clientHeight)<90;
+  el.innerHTML=msgs.map(function(m,idx){
+    var mine=(m.sender_role===role); var _dic=(typeof ic==='function'?ic('download'):'\u2913');
+    var atts=(m.attachments||[]).map(function(a){ var nm=esc((a.filename||'file').replace(/'/g,''));
+      if(a.is_image){ var id='hwimg-'+a.id; imgJobs.push([id,role,a.id]); return '<div class="mc-img-wrap"><img loading="lazy" id="'+id+'" alt="img" onclick="_hwAttView(\''+id+'\',\''+nm+'\')"><button class="mc-img-dl" onclick="event.stopPropagation();_hwAttDl(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic+'</button></div>'; }
+      return '<div class="mc-file" onclick="_hwAttDl(\''+role+'\','+a.id+',\''+nm+'\')">'+_dic+'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.filename||'file')+'</span></div>';
+    }).join('');
+    var seen=mine&&_seen(m); var tick=mine?('<span class="tick'+(seen?' seen':'')+'">\u2713\u2713</span>'):'';
+    var status=(mine&&idx===lastMine)?('<div class="mc-seen'+(seen?' on':'')+'">'+(seen?('\u2713\u2713 Seen'):'\u2713 Sent')+'</div>'):'';
+    return '<div class="mc-b '+(mine?'me':'them')+'"><div class="who">'+esc(m.sender_role==='teacher'?'Teacher':'Student')+'</div>'
+      +(m.message?'<div class="mc-txt">'+esc(m.message).replace(/\n/g,'<br>')+'</div>':'')+atts
+      +'<div class="at">'+esc(m.at)+(mine?' '+tick:'')+'</div></div>'+status;
+  }).join('');
+  if(_nb) el.scrollTop=el.scrollHeight;
+  imgJobs.forEach(function(j){ _hwLoadImg(j[0],'/api/'+j[1]+'/homework-attachments/'+j[2]+'/view'); });
+}
+async function _hwLoadImg(id,url){ try{ var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return; var u=URL.createObjectURL(await r.blob()); var im=document.getElementById(id); if(im) im.src=u; }catch(e){} }
+function _hwAttView(id,nm){ var im=document.getElementById(id); if(im&&im.src) window.open(im.src,'_blank'); }
+function _hwAttDl(role,aid,nm){ _openAuthedInline(API+'/api/'+role+'/homework-attachments/'+aid+'/download'); }
+function _hwPickFiles(files){ for(var i=0;i<files.length;i++) _hwAddPend(files[i]); }
+function _hwAddPend(f){ if(!f) return; window._hwPend=window._hwPend||[]; var e={file:f,url:''}; if((f.type||'').indexOf('image')===0) e.url=URL.createObjectURL(f); window._hwPend.push(e); _hwRenderPend(); }
+function _hwRenderPend(){ var el=document.getElementById('hwc-pend'); if(!el) return; el.innerHTML=(window._hwPend||[]).map(function(p,i){ return '<span class="mc-chip">'+(p.url?'<img src="'+p.url+'">':'\uD83D\uDCCE ')+esc(p.file.name||'file')+' <span class="x" onclick="_hwRemovePend('+i+')">\u00d7</span></span>'; }).join(''); }
+function _hwRemovePend(i){ (window._hwPend||[]).splice(i,1); _hwRenderPend(); }
+async function hwChatSend(){
+  var ctx=window._hwCtx; if(!ctx) return;
+  var input=document.getElementById('hwc-input'); var txt=(input&&input.value||'').trim(); var pend=window._hwPend||[];
+  if(!txt && !pend.length){ toast('Type a message or attach a file',true); return; }
+  var btn=document.getElementById('hwc-send'); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{
+    var fd=new FormData(); fd.append('message',txt); pend.forEach(function(p){ fd.append('files',p.file,p.file.name||'file'); });
+    var r=await fetch(API+'/api/'+ctx.role+'/homework/'+ctx.hid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
+    if(input) input.value=''; window._hwPend=[]; _hwRenderPend(); window._hwSig=''; _hwPollTick();
+  }catch(e){ toast(e.message||'Could not send',true); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Send'; } }
+}
+function _hwViewVersion(role,vid){ _openAuthedInline(API+'/api/'+role+'/homework-versions/'+vid+'/view'); }
+async function _hwDlVersion(role,vid,name){
+  var url=API+'/api/'+role+'/homework-versions/'+vid+'/download';
+  try{ var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) throw 0; var b=await r.blob(); if(!b||!b.size) throw 0; var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download=name||'file'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000); }
+  catch(e){ try{ window.open(url+'?t='+encodeURIComponent(TOKEN),'_blank'); }catch(e2){ toast('Could not download',true); } }
+}
+
+/* ---------------------------- STUDENT UI ---------------------------- */
+function initStudentHomework(){
+  var app=document.getElementById('student-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="\'homework\'"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'doubts'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"sPage('homework',this)");
+    d.innerHTML=(typeof ic==='function'?ic('check'):'')+'<span>Homework Check</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('s-page-homework')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='s-page-homework';
+    pg.innerHTML='<div id="s-hw-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+async function loadSHomework(){
+  var el=document.getElementById('s-hw-content'); if(!el) return;
+  _hwCss(); try{ softSpin(el); }catch(e){}
+  try{
+    var d=await api('/api/student/homework'); var list=(d&&d.homework)||[];
+    var cards=list.length?list.map(function(m){
+      var pend=(m.status==='submitted'||m.status==='resubmitted')?'<span class="hw-pill under_review hw-pend">Checking Pending</span>':_hwPill(m.status);
+      return '<div class="hw-card"><div class="hw-card-top" onclick="sHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+pend+'</div>'
+        +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span>'+(m.teacher_name?'<span>\u2192 '+esc(m.teacher_name)+'</span>':'')+'<span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
+    }).join(''):'<div class="hw-empty"><p>Abhi tak koi homework nahi bheja.<br>Neeche se apne subject teacher ko notes/homework check ke liye bhejein.</p></div>';
+    el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Check</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Apne notes/homework subject teacher ko check ke liye bhejein.</p></div>'
+      +'<button class="btn btn-primary" onclick="sHwNew()">'+(typeof ic==='function'?ic('plus'):'')+' Send for check</button></div><div id="s-hw-list">'+cards+'</div></div>';
+  }catch(e){ el.innerHTML=(typeof errHtml==='function'?errHtml(e):'<div class="alert alert-danger">'+esc((e&&e.message)||'Error')+'</div>'); }
+}
+async function sHwNew(){
+  _hwCss(); var teachers=[];
+  try{ var d=await api('/api/student/hw/teachers'); teachers=(d&&d.subjects)||[]; }catch(e){}
+  var opts=teachers.map(function(t){ return '<option value="'+esc(t.subject)+'" data-t="'+esc(t.teacher_name||'')+'" data-has="'+(t.has_teacher?1:0)+'">'+esc(t.subject)+'</option>'; }).join('');
+  var body='<div class="form-group"><label class="form-label">Subject</label><select id="hw-subj" class="form-control" onchange="_hwSubjChange()">'+opts+'</select></div>'
+    +'<div class="form-group"><label class="form-label">Teacher</label><input id="hw-teacher" class="form-control" readonly value=""></div>'
+    +'<div class="form-group"><label class="form-label">Title</label><input id="hw-title" class="form-control" placeholder="e.g. Ch-3 Assignment"></div>'
+    +'<div class="form-group"><label class="form-label">Note (optional)</label><textarea id="hw-desc" class="form-control" rows="2" placeholder="Sir ko kuch batana ho to..."></textarea></div>'
+    +'<div class="form-group"><label class="form-label">File (PDF / Image / PPT)</label><input id="hw-file" type="file" class="form-control" accept="image/*,application/pdf,.ppt,.pptx,.doc,.docx"></div>';
+  showModal('Send homework for check', body, '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="hw-send-btn" onclick="sHwSubmit()">Send</button>');
+  setTimeout(_hwSubjChange, 60);
+}
+function _hwSubjChange(){ var sel=document.getElementById('hw-subj'); if(!sel) return; var o=sel.options[sel.selectedIndex]; var t=o?o.getAttribute('data-t'):''; var has=o?o.getAttribute('data-has'):'0'; var ti=document.getElementById('hw-teacher'); if(ti) ti.value=(has==='1'&&t)?t:'(No teacher assigned for this subject)'; }
+async function sHwSubmit(){
+  var subj=(document.getElementById('hw-subj')||{}).value||''; var title=(document.getElementById('hw-title')||{}).value||'';
+  var desc=(document.getElementById('hw-desc')||{}).value||''; var f=(document.getElementById('hw-file')||{}).files;
+  if(!subj){ toast('Subject chunein',true); return; } if(!(title||'').trim()){ toast('Title likhein',true); return; } if(!f||!f.length){ toast('File choose karein',true); return; }
+  var btn=document.getElementById('hw-send-btn'); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
+  try{ var fd=new FormData(); fd.append('subject',subj); fd.append('title',title); fd.append('description',desc); fd.append('file',f[0],f[0].name);
+    var r=await fetch(API+'/api/student/homework',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var e=null; try{e=await r.json();}catch(x){} throw new Error((e&&e.detail)||'Failed'); }
+    closeModal(); toast('Homework bhej diya \u2705'); loadSHomework();
+  }catch(e){ if(btn){btn.disabled=false;btn.textContent='Send';} toast(e.message||'Failed',true); }
+}
+async function sHwOpen(hid){
+  _hwCss(); showModal('Homework', '<div id="hw-detail"><div class="spinner"></div></div>', '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var d=await api('/api/student/homework/'+hid); var m=d.submission;
+    var vers=(m.versions||[]).map(function(v){ return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+'</span>'+(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">Teacher: '+esc(v.remarks)+'</div>':'')+'</div><div class="mc-v-acts"><button class="btn btn-ghost btn-sm" onclick="_hwViewVersion(\'student\','+v.id+')">'+(typeof ic==='function'?ic('eye'):'')+' View</button><button class="btn btn-ghost btn-sm" onclick="_hwDlVersion(\'student\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">Download</button></div></div>'; }).join('');
+    var resub=(m.status==='changes_required')?'<div style="margin:12px 0"><button class="btn btn-primary" onclick="sHwResubmit('+hid+')">'+(typeof ic==='function'?ic('upload'):'')+' Resubmit</button></div>':'';
+    document.getElementById('hw-detail').innerHTML='<div class="mc-rev-head"><div style="flex:1;min-width:0"><div style="font-weight:800;font-size:1.1rem">'+esc(m.title)+'</div><div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span>'+(m.teacher_name?'<span>\u2192 '+esc(m.teacher_name)+'</span>':'')+'</div></div>'+_hwPill(m.status)+'</div>'
+      +(m.description?'<div style="font-size:.85rem;margin:8px 0">'+esc(m.description)+'</div>':'')
+      +'<div style="font-weight:700;font-size:.85rem;margin:12px 0 8px">Files</div>'+vers+resub
+      +'<div id="mc-chat-host" style="margin-top:14px"></div>';
+    _hwLoadChat('student', hid);
+  }catch(e){ document.getElementById('hw-detail').innerHTML=(typeof errHtml==='function'?errHtml(e):esc((e&&e.message)||'Error')); }
+}
+function sHwResubmit(hid){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,application/pdf,.ppt,.pptx,.doc,.docx';
+  inp.onchange=async function(){ if(!inp.files||!inp.files.length) return; toast('Uploading...');
+    try{ var fd=new FormData(); fd.append('file',inp.files[0],inp.files[0].name);
+      var r=await fetch(API+'/api/student/homework/'+hid+'/resubmit',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+      if(!r.ok){ var e=null; try{e=await r.json();}catch(x){} throw new Error((e&&e.detail)||'Failed'); }
+      toast('Resubmitted \u2705'); closeModal(); loadSHomework();
+    }catch(e){ toast(e.message||'Failed',true); } };
+  inp.click();
+}
+
+/* ---------------------------- TEACHER UI ---------------------------- */
+function initTeacherHomework(){
+  var app=document.getElementById('teacher-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="\'homework\'"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'doubts'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"tPage('homework',this)");
+    d.innerHTML=(typeof ic==='function'?ic('check'):'')+'<span>Homework Checker</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('t-page-homework')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='t-page-homework';
+    pg.innerHTML='<div id="t-hw-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+var _tHwFilter='';
+async function loadTHomework(){
+  var el=document.getElementById('t-hw-content'); if(!el) return;
+  _hwCss(); try{ softSpin(el); }catch(e){}
+  try{
+    var d=await api('/api/teacher/homework'+(_tHwFilter?('?status='+_tHwFilter):'')); var list=(d&&d.homework)||[]; var c=(d&&d.counts)||{};
+    var stat=function(key,lbl,n){ return '<div class="hw-stat'+(_tHwFilter===key?' on':'')+'" onclick="_tHwSetFilter(\''+key+'\')"><div class="n">'+(n||0)+'</div><div class="l">'+lbl+'</div></div>'; };
+    var stats='<div class="hw-stats">'+stat('','Total',c.total)+stat('pending','Pending',c.pending)+stat('under_review','Under Review',c.under_review)+stat('changes_required','Changes',c.changes_required)+stat('checking_done','Done',c.checking_done)+'</div>';
+    var cards=list.length?list.map(function(m){
+      var blink=(m.status==='submitted'||m.status==='resubmitted')?' hw-pend':'';
+      var slbl={submitted:'Pending',resubmitted:'Pending',under_review:'Under Review',changes_required:'Changes',checking_done:'Done'}[m.status]||m.status;
+      return '<div class="hw-card"><div class="hw-card-top" onclick="tHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+'<span class="hw-pill '+m.status+blink+'">'+slbl+'</span></div>'
+        +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span class="hw-stud" onclick="tHwStudent('+m.student_id+')">'+esc(m.student_name||'Student')+'</span><span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
+    }).join(''):'<div class="hw-empty"><p>'+(_tHwFilter?'Is filter me kuch nahi.':'Abhi koi homework nahi aaya.')+'</p></div>';
+    el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Checker</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Students ne check ke liye jo notes/homework bheje.</p></div></div>'+stats+'<div>'+cards+'</div></div>';
+  }catch(e){ el.innerHTML=(typeof errHtml==='function'?errHtml(e):esc((e&&e.message)||'Error')); }
+}
+function _tHwSetFilter(f){ _tHwFilter=(_tHwFilter===f)?'':f; loadTHomework(); }
+async function tHwOpen(hid){
+  _hwCss();
+  var footer='<div class="hw-foot"><button class="btn btn-ghost" onclick="closeModal()">Close</button>'
+    +'<button class="btn btn-ghost" style="color:#d97706;border-color:#e6c07a" onclick="tHwReview('+hid+',\'changes_required\')">Changes Required</button>'
+    +'<button class="btn btn-primary" onclick="tHwReview('+hid+',\'checking_done\')">Checking Done</button></div>';
+  showModal('Review Homework', '<div id="hw-detail"><div class="spinner"></div></div>', footer);
+  try{
+    var d=await api('/api/teacher/homework/'+hid); var m=d.submission;
+    var vers=(m.versions||[]).map(function(v){ return '<div class="mc-v"><div style="flex:1"><b>Version '+v.version_no+'</b> <span class="mc-ver">'+esc(v.filename)+'</span>'+(v.remarks?'<div style="font-size:.78rem;color:#8a7d5c;margin-top:3px">'+esc(v.remarks)+'</div>':'')+'</div><div class="mc-v-acts"><button class="btn btn-ghost btn-sm" onclick="_hwViewVersion(\'teacher\','+v.id+')">'+(typeof ic==='function'?ic('eye'):'')+' View</button><button class="btn btn-primary btn-sm" onclick="_hwDlVersion(\'teacher\','+v.id+',\''+esc((v.filename||'file').replace(/'/g,''))+'\')">'+(typeof ic==='function'?ic('download'):'')+' Download</button></div></div>'; }).join('');
+    var toggle='<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;margin:12px 0;cursor:pointer"><input type="checkbox" id="hw-chat-allow" '+(m.chat_allowed?'checked':'')+' onchange="tHwToggleChat('+hid+',this.checked)"> Student ko chat reply allow karein</label>';
+    document.getElementById('hw-detail').innerHTML='<div class="mc-rev-head"><div style="flex:1;min-width:0"><div style="font-weight:800;font-size:1.1rem">'+esc(m.title)+'</div><div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span class="hw-stud" onclick="tHwStudent('+m.student_id+')">'+esc(m.student_name||'Student')+'</span></div></div><span id="hw-status-pill">'+_hwPill(m.status)+'</span></div>'
+      +(m.description?'<div style="font-size:.85rem;margin:8px 0">'+esc(m.description)+'</div>':'')
+      +'<div style="font-weight:700;font-size:.85rem;margin:12px 0 8px">Submitted file(s)</div>'+vers+toggle
+      +'<div id="mc-chat-host" style="margin-top:8px"></div>';
+    _hwLoadChat('teacher', hid);
+  }catch(e){ document.getElementById('hw-detail').innerHTML=(typeof errHtml==='function'?errHtml(e):esc((e&&e.message)||'Error')); }
+}
+async function tHwReview(hid, decision){
+  var inp=document.getElementById('hwc-input'); var rmk=(inp&&inp.value||'').trim();
+  try{
+    await api('/api/teacher/homework/'+hid+'/review','POST',{decision:decision,remarks:rmk});
+    if(inp && rmk) inp.value='';
+    var pill=document.getElementById('hw-status-pill'); if(pill) pill.innerHTML=_hwPill(decision);
+    window._hwSig=''; if(typeof _hwPollTick==='function') _hwPollTick();
+    if(decision==='changes_required'){
+      if(!rmk){ toast('Changes Required \u2014 reason chat me likhein.'); var host=document.getElementById('mc-chat-host'); if(host){try{host.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}} if(inp) setTimeout(function(){try{inp.focus();}catch(e){}},350); }
+      else toast('Changes Required bhej diya.');
+    } else { toast('Checking Done \uD83C\uDF89'); }
+    loadTHomework();
+  }catch(e){ toast(e.message||'Failed',true); }
+}
+function tHwToggleChat(hid, allow){ api('/api/teacher/homework/'+hid+'/toggle-chat','POST',{allow:allow}).then(function(){ toast(allow?'Chat allowed for student':'Chat disabled'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }
+async function tHwStudent(sid){
+  _hwCss(); showModal('Student', '<div id="hw-stud-body"><div class="spinner"></div></div>', '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var d=await api('/api/teacher/homework-student/'+sid); var s=d.student; var c=d.counts||{};
+    var rows=(d.homework||[]).map(function(m){ return '<div class="hw-card"><div class="hw-card-top" onclick="tHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+_hwPill(m.status)+'</div><div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>'; }).join('')||'<div class="hw-empty">No homework.</div>';
+    document.getElementById('hw-stud-body').innerHTML='<div style="font-weight:800;font-size:1.15rem">'+esc(s.name)+'</div>'
+      +'<div class="hw-sub" style="margin:4px 0 12px">'+(s.class_name?'<span class="hw-chip">'+esc(s.class_name)+'</span>':'')+(s.batch_name?'<span>'+esc(s.batch_name)+'</span>':'')+(s.phone?'<span>'+esc(s.phone)+'</span>':'')+'</div>'
+      +'<div class="hw-stats"><div class="hw-stat"><div class="n">'+(c.total||0)+'</div><div class="l">Total</div></div><div class="hw-stat"><div class="n">'+(c.pending||0)+'</div><div class="l">Pending</div></div><div class="hw-stat"><div class="n">'+(c.checking_done||0)+'</div><div class="l">Done</div></div></div>'
+      +'<div style="font-weight:700;font-size:.85rem;margin:6px 0 8px">Homework history</div>'+rows;
+  }catch(e){ document.getElementById('hw-stud-body').innerHTML=(typeof errHtml==='function'?errHtml(e):esc((e&&e.message)||'Error')); }
+}
 async function mcChatSend(role, sid){
   var input=document.getElementById('mc-input'); var txt=(input&&input.value||'').trim();
   var pend=window._mcChatPend||[];
@@ -30516,7 +30891,7 @@ async function mcChatSend(role, sid){
     var r=await fetch(API+'/api/'+role+'/material-submissions/'+sid+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
     if(!r.ok){ var d=null; try{d=await r.json();}catch(e){} throw new Error((d&&d.detail)||'Send failed'); }
     if(input) input.value=''; window._mcChatPend=[]; _mcRenderPend();
-    api('/api/'+role+'/material-submissions/'+sid+'/messages').then(function(rr){ _mcRenderMsgs(role,(rr&&rr.messages)||[]); });
+    window._mcLastSig=''; _mcPollTick();
   }catch(e){ toast(e.message||'Could not send',true); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='Send'; } }
 }

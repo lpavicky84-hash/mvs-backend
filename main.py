@@ -23,6 +23,8 @@ import youtuber_routes
 import graphics_routes
 import translation_routes
 import category_routes  # category workspace API (Phase 4)
+import homework_models  # Homework Checker tables (register before create_all)
+import homework_routes  # Homework Checker (student <-> teacher)
 
 load_dotenv()
 
@@ -662,6 +664,7 @@ app.include_router(youtuber_routes.router)
 app.include_router(graphics_routes.router)
 app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
+app.include_router(homework_routes.router)
 app.include_router(support_routes.router)
 
 # ===== ROOT =====

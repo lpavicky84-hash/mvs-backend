@@ -83,6 +83,17 @@ def _admin_user_ids(db):
     return [u.id for u in db.query(User.id).filter(User.role == UserRole.admin).all()]
 
 
+def _admin_ids_for_section(db, section):
+    """Full admins + jin sub-admins ko ye section allowed hai — unhi ke ids.
+    admin_routes ka section-aware helper use karta hai; kabhi fail ho to safe
+    fallback = sabhi admins (koi notification miss na ho)."""
+    try:
+        from admin_routes import admins_for_section
+        return [u.id for u in admins_for_section(db, section)]
+    except Exception:
+        return _admin_user_ids(db)
+
+
 def _log(db, complaint_id, actor_id, actor_role, action, detail=None):
     try:
         db.add(SM.ComplaintEvent(complaint_id=complaint_id, actor_user_id=actor_id,
@@ -288,7 +299,7 @@ async def student_create_complaint(
     await _save_attachments(db, c.id, msg.id, me.id, images, voice)
     _log(db, c.id, me.id, "student", "created", title[:120])
     link = "/support/complaint/%d" % c.id
-    for aid in _admin_user_ids(db):
+    for aid in _admin_ids_for_section(db, "complaints"):
         _notify(db, aid, "New complaint", "%s: %s" % (c.complaint_number, title[:80]),
                 "complaint_new", link)
     db.commit()
@@ -341,7 +352,7 @@ async def student_reply(cid: int, message: str = Form(""),
     c.read_by_admin = False
     c.updated_at = ist_now()
     link = "/support/complaint/%d" % c.id
-    for aid in _admin_user_ids(db):
+    for aid in _admin_ids_for_section(db, "complaints"):
         _notify(db, aid, "Complaint update", "%s: student replied" % c.complaint_number,
                 "complaint_reply", link)
     db.commit()
@@ -373,7 +384,7 @@ def student_feedback(payload: dict = Body(...), db: Session = Depends(get_db),
                      review=(str(payload.get("review") or "").strip() or None),
                      status="active", read_by_admin=False)
     db.add(fb)
-    for aid in _admin_user_ids(db):
+    for aid in _admin_ids_for_section(db, "feedback"):
         _notify(db, aid, "New feedback", "%d★ from a student" % rating, "feedback_new",
                 "/support/feedback")
     db.commit()

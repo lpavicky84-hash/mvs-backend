@@ -580,6 +580,67 @@ def _get_submission_for(db, sid, is_admin, user):
     return m
 
 
+# ---- WhatsApp-style chat: typing (in-memory, ephemeral) + presence ----
+_MC_TYPING = {}   # {submission_id: {"teacher": ts, "admin": ts}}
+
+
+def _mc_set_typing(sid, role):
+    import time as _t
+    try:
+        d = _MC_TYPING.setdefault(int(sid), {})
+        d[role] = _t.time()
+        if len(_MC_TYPING) > 800:
+            cut = _t.time() - 30
+            for k in list(_MC_TYPING.keys()):
+                vals = _MC_TYPING.get(k) or {}
+                if not vals or all((v or 0) < cut for v in vals.values()):
+                    _MC_TYPING.pop(k, None)
+    except Exception:
+        pass
+
+
+def _mc_is_typing(sid, role):
+    import time as _t
+    try:
+        d = _MC_TYPING.get(int(sid)) or {}
+        return (_t.time() - (d.get(role) or 0)) < 6
+    except Exception:
+        return False
+
+
+def _mc_chat_status(db, m, my_role):
+    """Doosre party ka naam, online/last-seen, typing — chat header ke liye."""
+    from datetime import datetime as _dt
+    from models import UserSession, TeacherProfile, User, UserRole
+    other_role = "teacher" if my_role == "admin" else "admin"
+    other_tid = None
+    uids = []
+    if other_role == "teacher":
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == m.teacher_id).first()
+        other_tid = tp.id if tp else None
+        name = (tp.user.name if (tp and tp.user) else "Teacher")
+        if tp and tp.user_id:
+            uids = [tp.user_id]
+    else:
+        name = "MVS Foundation"
+        try:
+            uids = [u.id for u in db.query(User.id).filter(User.role == UserRole.admin, User.is_active == True).all()]
+        except Exception:
+            uids = []
+    last = None
+    if uids:
+        try:
+            s = db.query(UserSession).filter(UserSession.user_id.in_(uids)).order_by(UserSession.last_seen.desc()).first()
+            last = s.last_seen if s else None
+        except Exception:
+            last = None
+    online = bool(last and (_dt.now() - last).total_seconds() < 50)
+    return {"other_name": name, "other_role": other_role, "other_tid": other_tid,
+            "other_online": online,
+            "other_last_seen": (last.strftime("%d %b, %I:%M %p") if last else None),
+            "other_typing": _mc_is_typing(m.id, other_role)}
+
+
 async def _post_message(db, m, sender_role, sender_id, message, files):
     from category_models import MaterialMessage, MaterialAttachment
     msg = MaterialMessage(submission_id=m.id, sender_user_id=sender_id,
@@ -621,7 +682,14 @@ def teacher_list_messages(sid: int, db: Session = Depends(get_db), me=Depends(ge
             changed = True
     if changed:
         db.commit()
-    return {"messages": [_msg_dict(db, x) for x in msgs]}
+    return {"messages": [_msg_dict(db, x) for x in msgs], "status": _mc_chat_status(db, m, "teacher")}
+
+
+@router.post("/api/teacher/material-submissions/{sid}/typing")
+def teacher_typing(sid: int, db: Session = Depends(get_db), me=Depends(get_teacher)):
+    _get_submission_for(db, sid, False, me)
+    _mc_set_typing(sid, "teacher")
+    return {"ok": True}
 
 
 @router.post("/api/teacher/material-submissions/{sid}/messages")
@@ -638,7 +706,7 @@ async def teacher_post_message(sid: int, message: str = Form(""),
 @router.get("/api/admin/material-submissions/{sid}/messages")
 def admin_list_messages(sid: int, db: Session = Depends(get_db), _=Depends(admin_guard)):
     from category_models import MaterialMessage
-    _get_submission_for(db, sid, True, None)
+    m = _get_submission_for(db, sid, True, None)
     msgs = db.query(MaterialMessage).filter(MaterialMessage.submission_id == sid) \
         .order_by(MaterialMessage.created_at).all()
     changed = False
@@ -648,7 +716,14 @@ def admin_list_messages(sid: int, db: Session = Depends(get_db), _=Depends(admin
             changed = True
     if changed:
         db.commit()
-    return {"messages": [_msg_dict(db, x) for x in msgs]}
+    return {"messages": [_msg_dict(db, x) for x in msgs], "status": _mc_chat_status(db, m, "admin")}
+
+
+@router.post("/api/admin/material-submissions/{sid}/typing")
+def admin_typing(sid: int, db: Session = Depends(get_db), _=Depends(admin_guard)):
+    _get_submission_for(db, sid, True, None)
+    _mc_set_typing(sid, "admin")
+    return {"ok": True}
 
 
 @router.get("/api/admin/r2-health")
@@ -802,11 +877,14 @@ def _mc_notify_teacher(db, m, decision, remarks=""):
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == m.teacher_id).first()
         if not (tp and tp.user_id):
             return
-        lbl = {"approved": "\u2705 Material Approved",
+        lbl = {"approved": "\U0001F389 Material Approved!",
                "changes_required": "\u270F\uFE0F Changes Required on your Material",
                "rejected": "\u274C Material Rejected",
                "under_review": "\U0001F440 Material Under Review"}.get(decision, "Material Update")
-        msg = 'Your submission "%s" is now %s.' % (m.title, decision.replace("_", " "))
+        if decision == "approved":
+            msg = 'Congratulations! \U0001F389 Your submission "%s" has been approved. Great work!' % m.title
+        else:
+            msg = 'Your submission "%s" is now %s.' % (m.title, decision.replace("_", " "))
         if remarks:
             msg += " Remarks: " + remarks
         notify(db, tp.user_id, lbl, msg, "material_review")
