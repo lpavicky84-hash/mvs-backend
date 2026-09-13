@@ -2199,10 +2199,23 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
                     "medium": e.medium, "questions": nq, "teacher_name": e.teacher_name,
                     "teacher_id": e.teacher_id,
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
+                    "is_pdf": (e.test_type == "pdf"),
+                    "answers_unlock_at": (_pdf_unlock_iso(e) if e.test_type == "pdf" else None),
                     "status": att.status if att else "not_attempted",
                     "graded": int(graded_map.get(e.id, 0)),
                     "awarded": att.total_awarded if att else None})
     return out
+
+
+def _pdf_unlock_iso(e):
+    from datetime import timedelta
+    base = getattr(e, "scheduled_at", None) or getattr(e, "created_at", None)
+    if not base:
+        return None
+    try:
+        return (base + timedelta(minutes=(e.duration_min or 0))).isoformat()
+    except Exception:
+        return None
 
 def _log_exam_action(db, exam_id, student_id, action):
     """Record a student's engagement with a test (once per student per action)."""
@@ -2828,6 +2841,28 @@ def _exam_ranking_rows(db, exam_id):
                      "chapter": exam.chapter, "total_marks": exam.total_marks,
                      "test_type": exam.test_type},
             "graded": len(rows), "rows": rows}
+
+@router.get("/exam/{exam_id}/pdf")
+def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Mission 75 PDF test: question paper hamesha; answer paper sirf time khatam hone par."""
+    from models import Exam
+    from datetime import datetime, timedelta
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id).filter(_exam_batch_filter(db, sp)).first()
+    if not ex or ex.test_type != "pdf":
+        raise HTTPException(status_code=404, detail="Not found")
+    if kind == "a":
+        base = getattr(ex, "scheduled_at", None) or getattr(ex, "created_at", None)
+        unlock = (base + timedelta(minutes=(ex.duration_min or 0))) if base else None
+        if unlock and datetime.now() < unlock:
+            raise HTTPException(status_code=403, detail="Answers unlock at " + unlock.strftime("%d %b, %I:%M %p"))
+        if not ex.s_pdf:
+            raise HTTPException(status_code=404, detail="Answers not available")
+        return __import__("r2_storage").proxy_response(ex.s_pdf, "application/pdf", "answers.pdf", False, sniff=True)
+    if not ex.q_pdf:
+        raise HTTPException(status_code=404, detail="Question paper not available")
+    return __import__("r2_storage").proxy_response(ex.q_pdf, "application/pdf", "questions.pdf", False, sniff=True)
+
 
 @router.get("/exam/{exam_id}/ranking")
 def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):

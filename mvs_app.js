@@ -5307,6 +5307,62 @@ async function submitUploadDpp(){
     closeModal(); toast('DPP uploaded — students ko dikhega.'); loadTDpp();
   }catch(e){ toast(e.message,true); }
 }
+async function openUploadMission75Pdf(){
+  await _dppTtData(); await _ensureTBatches();
+  const subs=_dppAllSubjects();
+  showModal('Upload Mission 75 PDF',
+    `<div class="alert alert-info">Upload a ready-made Mission 75 test — <b>Question PDF</b> and <b>Answer PDF</b> are both required. Students see the question paper first; the answer paper unlocks automatically when the time ends.</div>
+     <div class="form-group"><label>Subject</label><select class="form-control" id="m75-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Class</label><select class="form-control" id="m75-cls"></select></div><div class="form-group"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="m75-dur" placeholder="e.g. 60"></div></div>
+     <div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="m75-ch" placeholder="e.g. Laws of Motion"></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Medium</label><select class="form-control" id="m75-medium"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="m75-sched"></div></div>
+     <div class="form-group"><label>Title</label><input class="form-control" id="m75-title" placeholder="e.g. Mission 75 — Laws of Motion"></div>
+     ${_multiBatchField()}
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Question PDF *</label><input type="file" class="form-control" id="m75-qpdf" accept="application/pdf"></div><div class="form-group"><label>Answer PDF *</label><input type="file" class="form-control" id="m75-spdf" accept="application/pdf"></div></div>
+     <div class="ex-prog" id="m75-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="m75-plabel">Uploading\u2026</span><span class="ex-prog-pct" id="m75-ppct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="m75-pfill"></div></div></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="m75-btn" onclick="submitUploadMission75Pdf()">Create Test</button>`);
+  const fill=()=>{ const sub=val('m75-sub'); const cls=_dppClsOptions(sub); const cs=document.getElementById('m75-cls'); if(cs){ cs.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option>${esc(c)}</option>`).join(''); if(cls.length===1)cs.value=cls[0]; } };
+  const se=document.getElementById('m75-sub'); if(se) se.addEventListener('change',fill); fill();
+}
+async function submitUploadMission75Pdf(){
+  const qf=(document.getElementById('m75-qpdf')||{}).files||[]; const sf=(document.getElementById('m75-spdf')||{}).files||[];
+  const title=(val('m75-title')||'').trim();
+  if(!qf.length||!sf.length){ toast('Please upload both the Question PDF and the Answer PDF.',true); return; }
+  if(!title){ toast('Please enter a title.',true); var t=document.getElementById('m75-title'); if(t)t.focus(); return; }
+  const fd=new FormData();
+  fd.append('subject',val('m75-sub')||''); fd.append('class_name',val('m75-cls')||''); fd.append('chapter',val('m75-ch')||'');
+  fd.append('title',title); fd.append('medium',val('m75-medium')||'English');
+  fd.append('duration_min',val('m75-dur')||'0'); fd.append('scheduled_at',val('m75-sched')||'');
+  fd.append('batch_ids',_multiBatchIds().join(','));
+  fd.append('q_pdf',qf[0]); fd.append('s_pdf',sf[0]);
+  const btn=document.getElementById('m75-btn'); if(btn){btn.disabled=true;btn.textContent='Uploading...';}
+  const prog=document.getElementById('m75-prog'); if(prog)prog.classList.add('show');
+  const pf=document.getElementById('m75-pfill'),pp=document.getElementById('m75-ppct'),pl=document.getElementById('m75-plabel');
+  function _p(pct,lbl){ if(pf)pf.style.width=pct+'%'; if(pp)pp.textContent=pct+'%'; if(pl&&lbl)pl.textContent=lbl; }
+  try{
+    await new Promise(function(res,rej){
+      var xhr=new XMLHttpRequest(); xhr.open('POST',API+'/api/teacher/exam-pdf/upload');
+      xhr.setRequestHeader('Authorization','Bearer '+TOKEN);
+      if(xhr.upload) xhr.upload.onprogress=function(ev){ if(ev.lengthComputable) _p(Math.min(95,Math.round(ev.loaded/ev.total*100)),'Uploading PDFs\u2026'); };
+      xhr.onload=function(){ if(xhr.status>=200&&xhr.status<300){ res(); } else { var d=null; try{d=JSON.parse(xhr.responseText);}catch(x){} rej(new Error((d&&d.detail)||('HTTP '+xhr.status))); } };
+      xhr.onerror=function(){ rej(new Error('Network error')); };
+      xhr.send(fd);
+    });
+    _p(100,'Done'); toast('Mission 75 PDF test created \u2705');
+    setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },800);
+  }catch(e){ toast((e&&e.message)||'Upload failed',true); if(btn){btn.disabled=false;btn.textContent='Create Test';} if(prog)prog.classList.remove('show'); }
+}
+async function _m75View(eid, role, kind){
+  var url=(role==='teacher'?(API+'/api/teacher/mission75-pdf/'+eid+'/file'):(API+'/api/student/exam/'+eid+'/pdf'))+'?kind='+kind;
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(r.status===403){ var d=await r.json().catch(function(){return {};}); toast((d&&d.detail)||'Answers are locked for now.',true); return; }
+    if(!r.ok) throw 0;
+    var b=await r.blob(); if(!b||!b.size) throw 0;
+    var u=URL.createObjectURL(b); var w=window.open(u,'_blank'); if(!w) toast('Please allow popups to view the PDF.',true);
+    setTimeout(function(){ URL.revokeObjectURL(u); },60000);
+  }catch(e){ toast('Could not open the PDF',true); }
+}
 function _dppFilter(mode){
   document.querySelectorAll('#t-dpp-list .dp-row').forEach(r=>{
     const p=+r.dataset.pending, c=+r.dataset.checked;
@@ -5736,13 +5792,13 @@ async function loadTTests(){
             <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
-            <button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
-            <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>
+            ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'teacher','q')">${ic('eye')} Question PDF</button><button class="btn btn-primary btn-sm" onclick="_m75View(${e.id},'teacher','a')">${ic('eye')} Answer PDF</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
+            <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>`}
           </div>
         </div></div>`;
       }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
     }
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button></div></div>`
+    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button><button class="btn btn-ghost btn-sm" onclick="openUploadMission75Pdf()">${ic('upload')} Upload Mission 75 PDF</button></div></div>`
       +(window._ttBatchList&&window._ttBatchList.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center">${_tBatchDropdown(window._tTestBatch||'','tTestBatchPick')}</div>`:'')
       +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body;
       _ttCardLogo(el);
@@ -6773,6 +6829,7 @@ async function openCreateExam(type,editData){
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div id="mbf-slot"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
+    +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. Every question is imported at once. The test uses the Subject, Class, Medium, Title, Chapter, Batch, Duration and Schedule set above.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Import &amp; Create Test</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
     +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
@@ -6826,6 +6883,106 @@ function _examFillTestCls(auto){
   else if(auto&&cls.length>1) csel.value=cls[0];
 }
 function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,alt_image_b64:null,_ipart:'a',_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,alt_image_b64:null,_ipart:'a',model_answer_image:null,qtype:'general',_tab:'en'}); renderExamQs(); }
+
+/* ===================== MCQ BULK UPLOAD (Excel) ===================== */
+function _mcqBulkCss(){
+  if(document.getElementById('mcq-bulk-css')) return;
+  var s=document.createElement('style'); s.id='mcq-bulk-css';
+  s.textContent=[
+    '.ex-bulk{border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(37,99,235,.01))}',
+    '.ex-bulk-h{font-weight:800;font-size:.95rem;margin-bottom:5px}',
+    '.ex-bulk-p{font-size:.78rem;color:var(--text-muted,#8a7f66);margin-bottom:11px;line-height:1.5}',
+    '.ex-bulk-row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}',
+    '.ex-bulk-row .btn{border-radius:10px;font-weight:700}',
+    '@media (max-width:560px){ .ex-bulk-row .btn,.ex-bulk-row label{flex:1 1 100%;justify-content:center;text-align:center} }'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _mcqBulkTemplate(){
+  try{
+    var head=['Q.No','Question (English)','Question (Hindi)','Option A (English)','Option A (Hindi)','Option B (English)','Option B (Hindi)','Option C (English)','Option C (Hindi)','Option D (English)','Option D (Hindi)','Correct Answer','Marks'];
+    var r1=['1','Which of these is a vector quantity?','','Speed','','Velocity','','Mass','','Distance','','B','1'];
+    var r2=['2','SI unit of force is?','','Joule','','Newton','','Watt','','Pascal','','B','1'];
+    var ws=XLSX.utils.aoa_to_sheet([head,r1,r2]);
+    ws['!cols']=head.map(function(h){return {wch:Math.max(13,h.length+1)};});
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'MCQ Questions');
+    XLSX.writeFile(wb,'MVS_MCQ_Bulk_Template.xlsx');
+    toast('Template downloaded');
+  }catch(e){ toast('Could not generate template',true); }
+}
+function _mcqParseRows(rows){
+  var ok=[], bad=[]; var LI={A:0,B:1,C:2,D:3,'1':0,'2':1,'3':2,'4':3};
+  (rows||[]).forEach(function(row,idx){
+    var rn=idx+2;
+    var qEn=_pickCol(row,['Question (English)','Question English','Question','Q']);
+    var qHi=_pickCol(row,['Question (Hindi)','Question Hindi','Hindi Question']);
+    var oa=_pickCol(row,['Option A (English)','Option A','A']);
+    var ob=_pickCol(row,['Option B (English)','Option B','B']);
+    var oc=_pickCol(row,['Option C (English)','Option C','C']);
+    var od=_pickCol(row,['Option D (English)','Option D','D']);
+    var oah=_pickCol(row,['Option A (Hindi)']); var obh=_pickCol(row,['Option B (Hindi)']);
+    var och=_pickCol(row,['Option C (Hindi)']); var odh=_pickCol(row,['Option D (Hindi)']);
+    var corr=(_pickCol(row,['Correct Answer','Correct Option','Correct','Answer'])||'').trim().toUpperCase().charAt(0);
+    var marks=parseInt(_pickCol(row,['Marks','Mark']),10)||1;
+    if(!qEn){ if(oa||ob||oc||od||qHi) bad.push({row:rn,reason:'missing question'}); return; }
+    var opts=[oa,ob,oc,od];
+    if(opts.some(function(o){return !o;})){ bad.push({row:rn,reason:'all 4 options required'}); return; }
+    if(!(corr in LI)){ bad.push({row:rn,reason:'Correct Answer must be A / B / C / D'}); return; }
+    var optsHi=[oah,obh,och,odh];
+    var hasHi=!!qHi && optsHi.every(function(o){return !!o;});
+    ok.push({question_text:qEn,max_marks:marks,options:opts,correct_option:opts[LI[corr]],
+             question_text_hi:(qHi||null),options_hi:(hasHi?optsHi:null),
+             explanation:null,explanation_hi:null});
+  });
+  return {ok:ok,bad:bad};
+}
+async function _mcqBulkPick(){
+  _mcqBulkCss();
+  var fi=document.getElementById('ex-bulk-file'); var out=document.getElementById('ex-bulk-out'); var imp=document.getElementById('ex-bulk-import');
+  if(!fi.files.length){ if(out)out.innerHTML=''; if(imp)imp.style.display='none'; return; }
+  try{
+    var data=await fi.files[0].arrayBuffer(); var wb=XLSX.read(data,{type:'array'});
+    var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    var parsed=_mcqParseRows(rows); window._mcqBulk=parsed.ok;
+    if(!parsed.ok.length){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question, all 4 options and a Correct Answer (A/B/C/D).</div>'; if(imp)imp.style.display='none'; return; }
+    var hi=parsed.ok.filter(function(q){return q.question_text_hi;}).length;
+    var badHtml=parsed.bad.length?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'.</div>'+badHtml;
+    if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Import & Create Test'; }
+  }catch(e){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">File read error: '+esc(e.message)+'</div>'; if(imp)imp.style.display='none'; }
+}
+function _mcqXhrPost(url,bodyObj,onprog){
+  return new Promise(function(res,rej){
+    var xhr=new XMLHttpRequest(); xhr.open('POST',API+url);
+    xhr.setRequestHeader('Authorization','Bearer '+TOKEN); xhr.setRequestHeader('Content-Type','application/json');
+    if(xhr.upload) xhr.upload.onprogress=function(e){ if(e.lengthComputable&&onprog) onprog(Math.round(e.loaded/e.total*100)); };
+    xhr.onload=function(){ if(xhr.status>=200&&xhr.status<300){ try{res(JSON.parse(xhr.responseText||'{}'));}catch(x){res({});} } else { var d=null; try{d=JSON.parse(xhr.responseText);}catch(x){} rej(new Error((d&&d.detail)||('HTTP '+xhr.status))); } };
+    xhr.onerror=function(){ rej(new Error('Network error')); };
+    xhr.send(JSON.stringify(bodyObj));
+  });
+}
+async function _mcqBulkImport(){
+  var qs=window._mcqBulk||[]; if(!qs.length){ toast('No questions to import',true); return; }
+  var title=(val('ex-title')||'').trim(); if(!title){ toast('Please enter a Test Title above first.',true); var t=document.getElementById('ex-title'); if(t)t.focus(); return; }
+  var hasHi=qs.some(function(q){return q.question_text_hi;});
+  var medium=hasHi?'Bilingual':(val('ex-medium')||'English');
+  var _sched=(val('ex-sched')||'').trim(); var _chRaw=(val('ex-ch')||'').trim();
+  var body={subject:(val('ex-sub')||''), class_name:(val('ex-cls-test')||''), title:title,
+    chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw), test_type:'mcq', medium:medium,
+    duration_min:(parseInt(val('ex-dur'))||0), scheduled_at:(_sched||null), questions:qs, batch_ids:_multiBatchIds()};
+  var imp=document.getElementById('ex-bulk-import'); if(imp){ imp.disabled=true; imp.textContent='Importing...'; }
+  var prog=document.getElementById('ex-prog'); var pl=document.getElementById('ex-prog-label'), pp=document.getElementById('ex-prog-pct'), pf=document.getElementById('ex-prog-fill');
+  if(prog) prog.classList.add('show');
+  function _p(pct,lbl){ if(pf)pf.style.width=pct+'%'; if(pp)pp.textContent=pct+'%'; if(pl&&lbl)pl.textContent=lbl; }
+  _p(5,'Preparing '+qs.length+' questions\u2026');
+  try{
+    var r=await _mcqXhrPost('/api/teacher/exam',body,function(pct){ _p(Math.max(10,Math.min(90,pct)),'Uploading '+qs.length+' questions\u2026'); });
+    _p(100,'Done \u2014 '+(r.questions||qs.length)+' questions imported');
+    toast('Test created with '+(r.questions||qs.length)+' questions \u2705');
+    _clearQDraft&&_clearQDraft(); _examQs=[];
+    setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },900);
+  }catch(e){ toast((e&&e.message)||'Import failed',true); if(imp){ imp.disabled=false; imp.textContent='Import & Create Test'; } if(prog)prog.classList.remove('show'); }
+}
 function setExamTab(i,tab){ _examQs[i]._tab=tab; renderExamQs(); }
 function examMediumChange(){ _examMedium=val('ex-medium')||'English'; renderExamQs(); }
 function _setExamAnsImg(i,d){ _examQs[i].model_answer_image=d; renderExamQs(); }
@@ -17854,12 +18011,21 @@ function examCardHTML(e){
   if(!stPill){
     stPill=_future?`<span class="tx-pill tx-up">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
-  const action = e.status==='graded'
+  let action;
+  if(e.is_pdf){
+    var _unlock=e.answers_unlock_at?new Date(e.answers_unlock_at):null;
+    var _ansReady=(!_unlock)||(new Date()>=_unlock);
+    action=`<button class="btn btn-primary btn-sm" onclick="_m75View(${e.id},'student','q')">${ic('book')} View Question Paper</button>`
+      +(_ansReady?`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'student','a')">${ic('eye')} View Answers</button>`
+        :(_unlock?`<span class="tx-cdchip">Answers unlock <b data-cd="${_unlock.getTime()}">\u2026</b></span>`:''));
+  } else {
+  action = e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result${_got!=null?' \u00b7 '+_got+'/'+e.total_marks:''}</button>`
     : (e.status==='grading'||e.status==='marking')
     ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
     : (_exp?`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">${ic('book')} View Paper</button>`
     : (_future?`<span class="tx-cdchip">Starts in <b data-cd="${_sch.getTime()}">\u2026</b></span>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`));
+  }
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       <span class="tx-tile ${isM?'o':'v'} tx-tlogo" data-tid="${e.teacher_id||''}">${esc(txInit(e.subject||'GEN'))}</span>

@@ -3535,6 +3535,71 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
             "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None}
 
 
+def _exam_answers_unlock_at(ex):
+    """PDF Mission 75: answers kab unlock — (schedule ya create) + duration."""
+    from datetime import timedelta
+    base = getattr(ex, "scheduled_at", None) or getattr(ex, "created_at", None)
+    if not base:
+        return None
+    return base + timedelta(minutes=(ex.duration_min or 0))
+
+
+@router.post("/exam-pdf/upload")
+async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""),
+                                  class_name: str = Form(""), chapter: str = Form(""),
+                                  medium: str = Form("English"), batch_ids: str = Form(""),
+                                  duration_min: str = Form("60"), scheduled_at: str = Form(""),
+                                  q_pdf: UploadFile = File(...), s_pdf: UploadFile = File(...),
+                                  db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Mission 75 PDF test: Question PDF + Answer PDF. Students see the question first; the
+    answer paper unlocks when the time ends. Multi-batch (comma-sep; empty = global)."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    qd = await q_pdf.read(); sd = await s_pdf.read()
+    if not qd or not sd:
+        raise HTTPException(status_code=400, detail="Both the Question PDF and the Answer PDF are required.")
+    try:
+        qd = _compress_pdf(qd); sd = _compress_pdf(sd)
+    except Exception:
+        pass
+    if _SR is not None and subject:
+        subject = _SR.canon_display(subject.strip(), class_name)
+    R2 = __import__("r2_storage")
+    qkey = R2.store_file_value(R2.new_key("exam-pdf", "q.pdf"), qd, "application/pdf")
+    skey = R2.store_file_value(R2.new_key("exam-pdf", "s.pdf"), sd, "application/pdf")
+    _title = (title.strip() or ("Mission 75 - " + (chapter.strip() or (subject or "").strip())))
+    _dur = _parse_dur(duration_min)
+    _sched = _exam_parse_dt(scheduled_at) if (scheduled_at or "").strip() else None
+    made = []
+    for _tb in _batch_ids_from_str(batch_ids):
+        ex = Exam(teacher_id=tp.id, teacher_name=current_user.name, subject=(subject or "").strip(),
+                  title=_title, chapter=((chapter or "").strip() or None), test_type="pdf",
+                  class_name=(class_name or "").strip(), medium=medium, total_marks=0,
+                  duration_min=_dur, scheduled_at=_sched, batch_id=_tb, q_pdf=qkey, s_pdf=skey)
+        db.add(ex); db.flush(); made.append((ex.id, _tb))
+    db.commit()
+    for _eid, _tb in made:
+        try:
+            _notify_new_content(db, _tb, (subject or "").strip(), current_user.name, "test")
+        except Exception:
+            pass
+    return {"ok": True, "id": (made[0][0] if made else None), "batches": len(made)}
+
+
+@router.get("/mission75-pdf/{eid}/file")
+def teacher_mission75_pdf_file(eid: int, kind: str = "q", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from models import Exam
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == eid, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Not found")
+    ref = ex.s_pdf if kind == "a" else ex.q_pdf
+    if not ref:
+        raise HTTPException(status_code=404, detail="No PDF")
+    return __import__("r2_storage").proxy_response(ref, "application/pdf",
+                        ("answers.pdf" if kind == "a" else "questions.pdf"), False, sniff=True)
+
+
 def _ensure_exam_hindi(db, ex, qs):
     """On-demand: exam ke missing Hindi fields (question/answer/options) bhar do — subject-aware
     (Gemini) + wapas cache. Pehli Hindi request par translate, uske baad free + instant.
@@ -3690,6 +3755,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "class_name": getattr(e, "class_name", "") or "",
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
+                    "is_pdf": (e.test_type == "pdf"),
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
                     "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,

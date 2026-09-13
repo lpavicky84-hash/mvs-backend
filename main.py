@@ -149,6 +149,8 @@ def ensure_columns():
         "ALTER TABLE student_profiles ADD COLUMN welcome_sent_at DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN login_reminder_at DATETIME",
         "ALTER TABLE student_profiles ADD COLUMN created_at DATETIME",
+        "ALTER TABLE exams ADD COLUMN q_pdf LONGTEXT",
+        "ALTER TABLE exams ADD COLUMN s_pdf LONGTEXT",
         # ---- PERFORMANCE INDEXES (data badhne par queries fast rahein; dobara run par duplicate ignore) ----
         "CREATE INDEX ix_notif_user_read ON notifications (user_id, is_read)",
         "CREATE INDEX ix_notif_user_id2 ON notifications (user_id, id)",

@@ -831,6 +831,8 @@ class Exam(Base):
     scheduled_at= Column(DateTime, nullable=True)        # test goes live at this date/time
     is_active   = Column(Boolean, default=True)
     batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy). ORM me na hone se _exam_batch_filter scoping OFF ho jaata tha.
+    q_pdf       = Column(_BIGTEXT, nullable=True)   # Mission 75 PDF mode — question paper (R2 ref/base64)
+    s_pdf       = Column(_BIGTEXT, nullable=True)   # answer/solution paper (students ko time khatam hone par)
     created_at  = Column(DateTime, default=func.now())
 
 class ExamQuestion(Base):
