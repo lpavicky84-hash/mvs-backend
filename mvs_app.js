@@ -14174,36 +14174,90 @@ async function sendStudentWhatsApp(sid,name,btn){
 /* ===================== WhatsApp LOGIN REMINDERS (never-logged-in students) ===================== */
 async function _waLoadLoginRem(){
   var body=document.getElementById('wa-lr-body'); if(!body) return;
+  _waLrCss();
   try{
     var res=await Promise.all([api('/api/admin/whatsapp/login-pending'), api('/api/admin/whatsapp/login-reminder-config').catch(function(){return {hours:0,enabled:true};})]);
     var d=res[0]||{}, cfg=res[1]||{};
     window._waLR=d;
     var cnt=document.getElementById('wa-lr-count'); if(cnt) cnt.textContent=(d.total||0)+' pending';
-    var batchOpts='<option value="">All batches ('+(d.total||0)+')</option>'+((d.per_batch||[]).map(function(b){ return '<option value="'+esc(b.batch==='—'?'':b.batch)+'">'+esc(b.batch)+' ('+b.count+')</option>'; }).join(''));
+    var batchOpts='<option value="">All batches ('+(d.total||0)+')</option>'+((d.per_batch||[]).map(function(b){ return '<option value="'+esc(b.batch==='\u2014'?'':b.batch)+'">'+esc(b.batch)+' ('+b.count+')</option>'; }).join(''));
+    var autoOn=(cfg.enabled && (cfg.hours||0)>0);
     body.innerHTML=''
-      +'<div style="background:rgba(184,148,31,.06);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">'
-        +'<div style="font-weight:800;font-size:.9rem;margin-bottom:8px">\u2699\ufe0f Automatic reminder</div>'
-        +'<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:8px">Set the hours. Once a student has been sent the welcome and still hasn\'t logged in after this many hours, they get a reminder automatically (once).</div>'
-        +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">'
-          +'<div class="form-group" style="margin:0"><label class="form-label">Hours after welcome</label><input id="wa-lr-hours" type="number" min="0" class="form-control" style="max-width:130px" value="'+(cfg.hours||0)+'" placeholder="e.g. 24"></div>'
-          +'<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;margin-bottom:8px"><input type="checkbox" id="wa-lr-enabled" '+(cfg.enabled?'checked':'')+'> Enabled</label>'
-          +'<button class="btn btn-primary btn-sm" style="margin-bottom:4px" onclick="_waSaveLoginRemCfg()">Save auto setting</button>'
-        +'</div><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">0 hours = automatic reminders OFF.</div>'
+      +'<div class="wa-lr-auto"><div class="wa-lr-auto-h"><b>Automatic reminder</b><span class="wa-lr-state '+(autoOn?'on':'off')+'" id="wa-lr-state">'+(autoOn?'Active':'Paused')+'</span></div>'
+        +'<p>Once a student has been in the system for the set hours and still hasn\'t logged in even once (Portal or App), they get a login reminder automatically \u2014 once.</p>'
+        +'<div class="wa-lr-row">'
+          +'<div class="wa-lr-fld"><label>Hours after joining</label><input id="wa-lr-hours" type="number" min="0" class="form-control" value="'+(cfg.hours||0)+'" placeholder="e.g. 24"></div>'
+          +'<label class="wa-lr-toggle"><input type="checkbox" id="wa-lr-enabled" '+(cfg.enabled?'checked':'')+' onchange="_waLrToggleLbl()"><span class="wa-lr-sw"></span><span class="wa-lr-tlbl" id="wa-lr-tlbl">'+(cfg.enabled?'Enabled':'Paused')+'</span></label>'
+          +'<button class="btn btn-primary wa-lr-save" onclick="_waSaveLoginRemCfg()">Save</button>'
+        +'</div><div class="wa-lr-hint">Set <b>0 hours</b> or toggle to <b>Paused</b> anytime to stop automatic messages.</div>'
       +'</div>'
-      +'<div style="font-weight:800;font-size:.9rem;margin-bottom:8px">\ud83d\udce9 Send now (manual)</div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:8px">'
-        +'<div class="form-group" style="margin:0;flex:1;min-width:200px"><label class="form-label">Batch</label><select id="wa-lr-batch" class="form-control">'+batchOpts+'</select></div>'
-        +'<button class="btn btn-success" style="margin-bottom:4px" id="wa-lr-send" onclick="_waSendLoginReminders()">'+(typeof ic==='function'?ic('megaphone'):'')+' Send to all in selection</button>'
-      +'</div>'
-      +'<button class="btn btn-ghost btn-sm" onclick="_waSelectLoginStudents()">Or pick students manually \u25b8</button>'
-      +'<div id="wa-lr-out" style="margin-top:10px"></div>';
+      +'<div class="wa-lr-sh">Send now (manual)</div>'
+      +'<div class="wa-lr-send-row"><div class="wa-lr-fld" style="flex:1;min-width:190px"><label>Batch</label><select id="wa-lr-batch" class="form-control">'+batchOpts+'</select></div>'
+        +'<button class="btn btn-success wa-lr-sendbtn" id="wa-lr-send" onclick="_waSendLoginReminders()">Send to selection</button></div>'
+      +'<button class="btn btn-ghost btn-sm wa-lr-pick" onclick="_waSelectLoginStudents()">Or pick students manually \u25b8</button>'
+      +'<div id="wa-lr-out" style="margin-top:12px"></div>';
   }catch(e){ body.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">'+esc((e&&e.message)||'Could not load')+'</div>'; }
+}
+function _waLrToggleLbl(){ var c=document.getElementById('wa-lr-enabled'), t=document.getElementById('wa-lr-tlbl'); if(c&&t) t.textContent=c.checked?'Enabled':'Paused'; }
+function _waLrCss(){
+  if(document.getElementById('wa-lr-css')) return;
+  var s=document.createElement('style'); s.id='wa-lr-css';
+  s.textContent=[
+    '.wa-lr-auto{background:linear-gradient(135deg,rgba(184,148,31,.08),rgba(184,148,31,.02));border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:15px;margin-bottom:16px}',
+    '.wa-lr-auto-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:.98rem}',
+    '.wa-lr-state{font-size:.66rem;font-weight:800;padding:3px 11px;border-radius:999px;letter-spacing:.03em}',
+    '.wa-lr-state.on{background:rgba(5,150,105,.15);color:#059669}.wa-lr-state.off{background:rgba(148,140,120,.18);color:#8a7f66}',
+    '.wa-lr-auto p{font-size:.79rem;color:var(--text-muted,#8a7f66);margin:0 0 13px;line-height:1.5}',
+    '.wa-lr-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}',
+    '.wa-lr-fld{display:flex;flex-direction:column;gap:5px}',
+    '.wa-lr-fld label{font-size:.73rem;font-weight:700;color:var(--text-muted,#8a7f66)}',
+    '.wa-lr-fld input,.wa-lr-fld select{border-radius:10px}',
+    '#wa-lr-hours{width:130px}',
+    '.wa-lr-toggle{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding-bottom:4px;white-space:nowrap}',
+    '.wa-lr-toggle input{display:none}',
+    '.wa-lr-sw{width:48px;height:27px;border-radius:999px;background:#cfc7b3;position:relative;transition:.2s;flex:none}',
+    '.wa-lr-sw::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}',
+    '.wa-lr-toggle input:checked + .wa-lr-sw{background:#059669}',
+    '.wa-lr-toggle input:checked + .wa-lr-sw::after{left:24px}',
+    '.wa-lr-tlbl{font-size:.86rem;font-weight:800;min-width:58px}',
+    '.wa-lr-save{border-radius:10px;font-weight:700;white-space:nowrap;padding:10px 20px}',
+    '.wa-lr-hint{font-size:.72rem;color:var(--text-muted,#8a7f66);margin-top:10px}',
+    '.wa-lr-sh{font-weight:800;font-size:.92rem;margin-bottom:10px}',
+    '.wa-lr-send-row{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-end;margin-bottom:9px}',
+    '.wa-lr-sendbtn{border-radius:10px;font-weight:700;white-space:nowrap;padding:11px 18px}',
+    '.wa-lr-pick{border-radius:10px;font-weight:700}',
+    '.wa-lr-prog{border:1px solid var(--border,#e8e0cf);border-radius:12px;padding:13px 14px;background:var(--card,#fffdf7)}',
+    '.wa-lr-bar{height:13px;border-radius:999px;background:rgba(0,0,0,.08);overflow:hidden}',
+    '.wa-lr-bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,#059669,#34d399);transition:width .35s ease;border-radius:999px}',
+    '.wa-lr-pct{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;font-weight:800;margin-top:8px}',
+    '.wa-lr-pct .big{font-size:1.05rem;color:#059669}',
+    '.wa-lr-sub{font-size:.74rem;color:var(--text-muted,#8a7f66);margin-top:3px}',
+    '@media (max-width:600px){',
+    '  .wa-lr-row{gap:12px}',
+    '  .wa-lr-fld{flex:1 1 100%}#wa-lr-hours{width:100%}',
+    '  .wa-lr-toggle{flex:1 1 auto}',
+    '  .wa-lr-save{flex:1 1 100%}',
+    '  .wa-lr-send-row .wa-lr-fld{flex:1 1 100%}',
+    '  .wa-lr-sendbtn{flex:1 1 100%}',
+    '}'
+  ].join('');
+  document.head.appendChild(s);
 }
 async function _waSaveLoginRemCfg(){
   var hours=parseInt((document.getElementById('wa-lr-hours')||{}).value||'0',10)||0;
   var enabled=!!(document.getElementById('wa-lr-enabled')||{}).checked;
-  try{ await api('/api/admin/whatsapp/login-reminder-config','POST',{hours:hours,enabled:enabled}); toast('Auto reminder saved: '+(enabled&&hours>0?(hours+'h'):'OFF')); }
-  catch(e){ toast((e&&e.message)||'Failed',true); }
+  try{
+    await api('/api/admin/whatsapp/login-reminder-config','POST',{hours:hours,enabled:enabled});
+    var st=document.getElementById('wa-lr-state'); var on=(enabled&&hours>0);
+    if(st){ st.textContent=on?'Active':'Paused'; st.className='wa-lr-state '+(on?'on':'off'); }
+    toast(on?('Auto reminder active: '+hours+'h'):'Auto reminder paused');
+  }catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+function _waProgHtml(done,total,sent,failed,label){
+  var pct=(total&&total>0)?Math.min(100,Math.round((done/total)*100)):(label==='Done'?100:0);
+  return '<div class="wa-lr-prog"><div class="wa-lr-bar"><i style="width:'+pct+'%"></i></div>'
+    +'<div class="wa-lr-pct"><span>'+(label||'Sending')+' \u00b7 '+done+(total!=null?(' / '+total):'')+'</span><span class="big">'+pct+'%</span></div>'
+    +'<div class="wa-lr-sub">'+sent+' sent \u00b7 '+failed+' failed</div></div>';
 }
 async function _waSendLoginReminders(){
   var batch=(document.getElementById('wa-lr-batch')||{}).value||'';
@@ -14212,23 +14266,22 @@ async function _waSendLoginReminders(){
   if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
   var afterId=0, sent=0, failed=0, total=null, loops=0;
   try{
-    while(loops<400){
-      loops++;
+    while(loops<600){ loops++;
       var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{all_pending:true,batch:batch,after_id:afterId,limit:50});
       sent+=(r.sent||0); failed+=(r.failed||0); if(total===null&&r.total!=null) total=r.total;
-      if(out) out.innerHTML='<div class="alert alert-info" style="font-size:.82rem">Sent '+sent+(total!=null?(' / '+total):'')+' \u00b7 '+failed+' failed\u2026</div>';
+      if(out) out.innerHTML=_waProgHtml(sent+failed,total,sent,failed,'Sending');
       if(!r.has_more) break; afterId=r.last_id||afterId;
     }
-    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem">Done \u2705 '+sent+' reminder(s) sent, '+failed+' failed.</div>';
-    _waLoadLoginRem();
+    if(out) out.innerHTML=_waProgHtml(sent+failed,(total!=null?total:(sent+failed)),sent,failed,'Done');
+    toast('Done \u2705 '+sent+' sent, '+failed+' failed');
   }catch(e){ if(out) out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">'+esc((e&&e.message)||'Failed')+'</div>'; }
-  finally{ if(btn){ btn.disabled=false; btn.textContent='Send to all in selection'; } }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='Send to selection'; } }
 }
 async function _waSelectLoginStudents(){
   var batch=(document.getElementById('wa-lr-batch')||{}).value||'';
   var d=window._waLR||{}; var list=(d.students||[]).filter(function(s){ return !batch || s.batch===batch; });
   if(!list.length){ toast('No pending students'+(batch?(' in '+batch):'')+'.'); return; }
-  var rows=list.map(function(s){ return '<label style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:.84rem"><input type="checkbox" class="wa-lr-chk" value="'+s.profile_id+'" checked> <span style="flex:1">'+esc(s.name)+' <span style="color:var(--text-muted)">\u00b7 '+esc(s.phone||'')+(s.batch?(' \u00b7 '+esc(s.batch)):'')+'</span>'+(s.reminded?' <span class="xm-chip" style="background:rgba(5,150,105,.14);color:#059669;font-size:.6rem">reminded</span>':'')+'</span></label>'; }).join('');
+  var rows=list.map(function(s){ return '<label style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-bottom:1px solid var(--border);font-size:.84rem"><input type="checkbox" class="wa-lr-chk" value="'+s.profile_id+'" checked> <span style="flex:1">'+esc(s.name)+' <span style="color:var(--text-muted)">\u00b7 '+esc(s.phone||'')+(s.batch?(' \u00b7 '+esc(s.batch)):'')+'</span>'+(s.reminded?' <span class="xm-chip" style="background:rgba(5,150,105,.14);color:#059669;font-size:.6rem">reminded</span>':'')+'</span></label>'; }).join('');
   showModal('Pick students ('+list.length+')',
     '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.wa-lr-chk\').forEach(function(c){c.checked=true})">Select all</button><button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll(\'.wa-lr-chk\').forEach(function(c){c.checked=false})">Clear</button></div>'
     +'<div style="max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:10px">'+rows+'</div><div id="wa-lr-sel-out" style="margin-top:8px"></div>',
@@ -14239,16 +14292,16 @@ async function _waSendSelectedLogin(){
   if(!ids.length){ toast('Select at least one student',true); return; }
   var btn=document.getElementById('wa-lr-sel-send'); var out=document.getElementById('wa-lr-sel-out');
   if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
-  var sent=0, failed=0;
+  var sent=0, failed=0, tot=ids.length;
   try{
     for(var i=0;i<ids.length;i+=50){
       var chunk=ids.slice(i,i+50);
       var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{profile_ids:chunk,limit:50});
       sent+=(r.sent||0); failed+=(r.failed||0);
-      if(out) out.innerHTML='<div class="alert alert-info" style="font-size:.82rem">Sent '+sent+' / '+ids.length+'\u2026</div>';
+      if(out) out.innerHTML=_waProgHtml(sent+failed,tot,sent,failed,'Sending');
     }
-    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem">Done \u2705 '+sent+' sent, '+failed+' failed.</div>';
-    setTimeout(function(){ closeModal(); if(document.getElementById('wa-lr-body')) _waLoadLoginRem(); }, 1200);
+    if(out) out.innerHTML=_waProgHtml(sent+failed,tot,sent,failed,'Done');
+    toast('Done \u2705 '+sent+' sent, '+failed+' failed');
   }catch(e){ if(out) out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">'+esc((e&&e.message)||'Failed')+'</div>'; }
   finally{ if(btn){ btn.disabled=false; btn.textContent='Send to selected'; } }
 }
