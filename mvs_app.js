@@ -2344,33 +2344,49 @@ function _dlName(name, mime){
 async function _smartDownload(url, name){
   var tok=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
   // BULLETPROOF: bytes ko auth-header se fetch karo (viewer isi se render karta hai -> hamesha
-  // VALID), fir sahi extension ke saath download. Isse WebView me bhi "invalid format" nahi aata.
+  // VALID), fir platform ke hisaab se sahi tarike se save/open. Android WebView me blob: URL
+  // download manager tak nahi pahunchta (corrupt file) -> isliye DATA URL (self-contained).
   try{
     var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('http '+r.status);
     var b=await r.blob(); if(!b||!b.size) throw new Error('empty');
     var dn=_dlName(name, b.type||'');
-    var u=URL.createObjectURL(b);
     var _isIOS=/iP(hone|ad|od)/.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&(navigator.maxTouchPoints||0)>1);
     if(_isIOS){
-      var w=window.open(u,'_blank');
-      if(!w){ var a0=document.createElement('a'); a0.href=u; a0.download=dn; a0.rel='noopener'; document.body.appendChild(a0); a0.click(); a0.remove(); }
-      setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 60000);
+      var u0=URL.createObjectURL(b); var w=window.open(u0,'_blank');
+      if(!w){ var a0=document.createElement('a'); a0.href=u0; a0.download=dn; a0.rel='noopener'; document.body.appendChild(a0); a0.click(); a0.remove(); }
+      setTimeout(function(){ try{ URL.revokeObjectURL(u0); }catch(e){} }, 60000);
       try{ if(typeof toast==='function') toast('Opened \u2014 tap Share to Save to Files or Print.'); }catch(e){}
       return;
     }
+    if(typeof _isWebView==='function' && _isWebView()){
+      // Android in-app WebView -> DATA URL se download (blob: yaha corrupt aata tha)
+      var okDU=await new Promise(function(res){
+        try{
+          var rd=new FileReader();
+          rd.onload=function(){ try{ var a=document.createElement('a'); a.href=rd.result; a.download=dn; document.body.appendChild(a); a.click(); a.remove(); res(true); }catch(e){ res(false); } };
+          rd.onerror=function(){ res(false); };
+          rd.readAsDataURL(b);
+        }catch(e){ res(false); }
+      });
+      if(okDU){ try{ if(typeof toast==='function') toast('Downloaded \u2014 check your Files/Downloads.'); }catch(e){} return; }
+      // data URL fail -> hidden iframe (server attachment) fallback
+      try{ var f=document.getElementById('_dlframe'); if(f) f.remove(); f=document.createElement('iframe'); f.id='_dlframe'; f.style.display='none'; f.src=tok; document.body.appendChild(f); setTimeout(function(){ try{ f.remove(); }catch(x){} },120000); }
+      catch(e2){ try{ window.location.href=tok; }catch(e3){} }
+      return;
+    }
+    // Desktop / laptop / PC -> normal blob download
+    var u=URL.createObjectURL(b);
     var a=document.createElement('a'); a.href=u; a.download=dn; a.rel='noopener';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 10000);
     try{ if(typeof toast==='function') toast('Downloaded \u2014 check your Downloads.'); }catch(e){}
     return;
   }catch(e){
-    // Fallback (agar fetch/blob-download WebView me block ho): authed URL hidden iframe se
-    // download manager ko de do; warna naya tab / navigate.
     try{
-      var f=document.getElementById('_dlframe'); if(f) f.remove();
-      f=document.createElement('iframe'); f.id='_dlframe'; f.style.display='none'; f.src=tok;
-      document.body.appendChild(f); setTimeout(function(){ try{ f.remove(); }catch(x){} }, 120000);
+      var f2=document.getElementById('_dlframe'); if(f2) f2.remove();
+      f2=document.createElement('iframe'); f2.id='_dlframe'; f2.style.display='none'; f2.src=tok;
+      document.body.appendChild(f2); setTimeout(function(){ try{ f2.remove(); }catch(x){} }, 120000);
       try{ if(typeof toast==='function') toast('Downloading\u2026'); }catch(x){}
     }catch(e2){ try{ window.open(tok,'_blank'); }catch(e3){ try{ window.location.href=tok; }catch(e4){} } }
   }
