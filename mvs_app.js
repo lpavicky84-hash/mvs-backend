@@ -5849,7 +5849,7 @@ async function loadTTests(){
             <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
-            ${e.is_pdf?`<button class="btn btn-primary btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
+            ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>`}
           </div>
         </div></div>`;
@@ -9323,8 +9323,10 @@ async function loadAnsImg(attId,imgId){
     const ct=(r.headers.get('content-type')||'').toLowerCase();
     const b=await r.blob(); const u=URL.createObjectURL(b);
     if(ct.indexOf('pdf')>=0){
-      if(wrap) wrap.innerHTML='<iframe class="gm-pdf" src="'+u+'" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:10px"></iframe>'
-        +'<div style="margin-top:8px"><a class="btn btn-ghost btn-sm" href="'+u+'" target="_blank" rel="noopener">Open the answer sheet in a new tab</a></div>';
+      if(wrap){ wrap.innerHTML='<div id="'+imgId+'-pdf"></div>';
+        try{ _pdfView(document.getElementById(imgId+'-pdf'), u, {title:'Answer Sheet', downloadName:'answer-sheet.pdf', src:u}); }
+        catch(e){ wrap.innerHTML='<iframe class="gm-pdf" src="'+u+'" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:10px"></iframe>'; }
+      }
       return;
     }
     if(el){ el.src=u; el.style.display='block'; }
@@ -9338,7 +9340,7 @@ function gradeManual(attId,examId){
   const att=(d.attempts||[]).find(a=>a.attempt_id===attId)||{};
   const qs=d.questions||[];
   const isSubj=(d.exam.test_type||'')!=='mcq';
-  const ansBlock=isSubj?`<div class="gm-ans" id="gm-ans-img-wrap"><div class="gm-ans-lbl">Student's handwritten answer sheet</div><img loading="lazy" id="gm-ans-img" class="gm-ans-img" style="display:none"></div>`:'';
+  const ansBlock=isSubj?`<div class="gm-ans"><div class="gm-ans-lbl" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">Student's answer sheet<span style="display:flex;gap:8px"><button type="button" class="btn btn-ghost btn-sm" onclick="viewStudentAnswer(${attId},'student')">${ic('eye')} View</button><button type="button" class="btn btn-ghost btn-sm" onclick="downloadStudentAnswer(${attId},'student')">${ic('download')} Download</button></span></div><div id="gm-ans-img-wrap"><img loading="lazy" id="gm-ans-img" class="gm-ans-img" style="display:none"></div></div>`:'';
   // pehle diye hue marks/remark wapas bhar do - warna edit karte waqt sab 0 dikhta tha
   const saved={}; (att.results||[]).forEach(r=>{ saved[r.q_no]=r; });
   const rows=qs.map(q=>{
