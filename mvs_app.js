@@ -2269,6 +2269,32 @@ function closeDocViewer(){
   document.body.style.overflow=''; document.removeEventListener('keydown', _dvEsc);
   try{ if(window._dvUrl){ URL.revokeObjectURL(window._dvUrl); window._dvUrl=null; } }catch(e){}
 }
+/* 3rd-party app (Android WebView) me blob PDF iframe render nahi hota + blob download block —
+   isliye WebView detect karke pdf.js (canvas) se view aur token-URL se download. */
+function _isWebView(){
+  try{ var ua=(navigator.userAgent||'');
+    if(/;\s*wv\)/.test(ua)) return true;                       // Android WebView
+    if(/\b(median|gonative|webintoapp|appx|smartwebview|twa|wv)\b/i.test(ua)) return true;
+    if(/Android/.test(ua) && !/Chrome\/[.0-9]+ (Mobile )?Safari/.test(ua)) return true;
+    return false;
+  }catch(e){ return false; }
+}
+async function _smartDownload(url, name){
+  var tok=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+  if(_isWebView()){
+    // Restrictive in-app WebViews block blob downloads & <a download>. Open the authed
+    // URL in a new context (system browser / new tab) — view + download work there.
+    try{ var w=window.open(tok,'_blank'); if(!w){ var a=document.createElement('a'); a.href=tok; a.target='_blank'; a.rel='noopener'; a.setAttribute('download', name||''); document.body.appendChild(a); a.click(); a.remove(); } }
+    catch(e){ try{ window.location.href=tok; }catch(e2){} }
+    try{ if(typeof toast==='function') toast('Opening the file\u2026 use your browser to save it.'); }catch(e){}
+    return;
+  }
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw 0; var b=await r.blob(); if(!b||!b.size) throw 0;
+    var u=URL.createObjectURL(b); var a2=document.createElement('a'); a2.href=u; a2.download=name||'file.pdf'; document.body.appendChild(a2); a2.click(); a2.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000);
+  }catch(e){ try{ window.open(tok,'_blank','noopener'); }catch(e2){ try{ if(typeof toast==='function') toast('Download error',true); }catch(e3){} } }
+}
 async function openDocViewer(url, name, opts){
   opts=opts||{};
   _docViewerCss();
@@ -2292,8 +2318,10 @@ async function openDocViewer(url, name, opts){
   if(opts.stream){
     var su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
     var body=document.getElementById('dv-body');
-    if(body) body.innerHTML='<iframe class="dv-frame" src="'+su+'" title="'+esc(name||'document')+'"></iframe>';
-    var dl=document.getElementById('dv-dl'); if(dl){ dl.href='#'; dl.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _dvLazyDownload(url, name); }; }
+    if(body){ body.innerHTML='<div id="dv-pdf" style="height:100%"></div>';
+      try{ _pdfView(document.getElementById('dv-pdf'), su, {title:name||'Document', downloadName:name||'document.pdf', src:su}); }
+      catch(_e){ body.innerHTML='<iframe class="dv-frame" src="'+su+'" title="'+esc(name||'document')+'"></iframe>'; } }
+    var dl=document.getElementById('dv-dl'); if(dl){ dl.href='#'; dl.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name); }; }
     var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(su,'_blank'); }catch(e){} }; }
     return;
   }
@@ -2311,9 +2339,13 @@ async function openDocViewer(url, name, opts){
     var body2=document.getElementById('dv-body');
     if(body2){
       if(isImg) body2.innerHTML='<img loading="lazy" class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
+      else if(isPdf){ body2.innerHTML='<div id="dv-pdf" style="height:100%"></div>';
+        var _su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+        try{ _pdfView(document.getElementById('dv-pdf'), blob, {title:name||'Document', downloadName:name||'document.pdf', src:_su}); }
+        catch(_e){ body2.innerHTML='<iframe class="dv-frame" src="'+_su+'" title="'+esc(name||'document')+'"></iframe>'; } }
       else body2.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
     }
-    var dl2=document.getElementById('dv-dl'); if(dl2){ dl2.href=u; dl2.setAttribute('download', name||'document'); }
+    var dl2=document.getElementById('dv-dl'); if(dl2){ dl2.href='#'; dl2.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name||'document'); }; }
     var op2=document.getElementById('dv-open'); if(op2){ op2.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
   }catch(e){
     var tokUrl=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
