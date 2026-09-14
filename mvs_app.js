@@ -2588,19 +2588,10 @@ function _tLoadPage(page){
 
 // ===== TEACHER STUDY MATERIAL =====
 let _matEntries=[], _matActiveSub='';
-async function downloadMaterial(role,id,name){
-  try{
-    const r=await fetch(API+'/api/'+role+'/material/'+id+'/download',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('Download fail');
-    const blob=await r.blob();
-    if(!blob||!blob.size) throw new Error('empty');
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=name||'file.pdf'; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
-  }catch(e){
-    // fallback: naye tab me kholo (?t= se auth)
-    try{ window.open(API+'/api/'+role+'/material/'+id+'/download?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }catch(e2){ toast('Download error',true); }
-  }
+function downloadMaterial(role,id,name){
+  // Bulletproof: _smartDownload auth-header se bytes leta hai (valid) + sahi extension +
+  // iOS/WebView handling. Pehle purana window.open(?t=) fallback WebView me invalid file deta tha.
+  return _smartDownload(API+'/api/'+role+'/material/'+id+'/download', name||'file.pdf');
 }
 function complianceCard(comp){
   const s=comp.score, col=comp.band==='green'?'#059669':comp.band==='yellow'?'#d97706':'#dc2626';
@@ -17040,9 +17031,9 @@ function openSubjectMaterials(encSub){
   // ek baar CSS inject — card rows (table nahi, isliye phone par overflow/side-scroll nahi)
   if(!document.getElementById('mat-item-css')){
     var mst=document.createElement('style'); mst.id='mat-item-css';
-    mst.textContent='.mat-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)}'
+    mst.textContent='.mat-item{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 12px;padding:11px 14px;border-bottom:1px solid var(--border)}'
       +'.mat-item:last-child{border-bottom:none}'
-      +'.mat-item-info{flex:1;min-width:0}'
+      +'.mat-item-info{flex:1 1 240px;min-width:0}'
       +'.mat-item-title{font-weight:700;font-size:.9rem;word-break:break-word;line-height:1.35}'
       +'.mat-item-sub{font-size:.72rem;color:var(--text-muted);margin-top:2px;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
       +'.mat-open{flex:none;white-space:nowrap;padding:7px 15px}'
