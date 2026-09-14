@@ -2591,9 +2591,16 @@ function _tLoadPage(page){
 
 // ===== TEACHER STUDY MATERIAL =====
 let _matEntries=[], _matActiveSub='';
-function downloadMaterial(role,id,name){
-  // Bulletproof: _smartDownload auth-header se bytes leta hai (valid) + sahi extension +
-  // iOS/WebView handling. Pehle purana window.open(?t=) fallback WebView me invalid file deta tha.
+async function downloadMaterial(role,id,name){
+  // App ke WebView me app.mvsfoundation.in par download navigate karne se SPA (592KB HTML)
+  // mil jaata tha -> corrupt. Saari files R2 (public: mvsdatabase.com) par hain, to WebView me
+  // DIRECT R2 URL (external domain) se download karo -> app intercept nahi karta, valid file.
+  if(role==='student' && typeof _isWebView==='function' && _isWebView()){
+    try{
+      var d=await api('/api/student/material/'+id+'/dl-url');
+      if(d && d.url){ try{ window.open(d.url,'_blank'); }catch(e){ try{ window.location.href=d.url; }catch(e2){} } return; }
+    }catch(e){}
+  }
   return _smartDownload(API+'/api/'+role+'/material/'+id+'/download', name||'file.pdf');
 }
 function complianceCard(comp){

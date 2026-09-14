@@ -1756,6 +1756,22 @@ def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_
                     "filename": m.filename, "date": str(m.created_at)[:10]})
     return out
 
+@router.get("/material/{mid}/dl-url")
+def student_material_dl_url(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Material ka DIRECT R2 public URL (agar content_b64 http URL hai). App ke WebView me
+    same-origin download par SPA (index.html) mil jaata tha — external R2 domain se direct
+    download us problem ko bypass karta hai. content_b64 poora load na ho isliye sirf prefix."""
+    from models import Material
+    from sqlalchemy import func
+    row = db.query(Material.id, Material.filename,
+                   func.left(Material.content_b64, 600).label("head")).filter(Material.id == mid).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    head = (row.head or "")
+    url = head.strip() if head.strip().lower().startswith("http") else None
+    return {"url": url, "filename": _hsafe(row.filename or "file.pdf")}
+
+
 @router.get("/material/{mid}/download")
 def student_download(mid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     import base64
