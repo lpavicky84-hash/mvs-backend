@@ -5314,6 +5314,7 @@ async function openUploadMission75Pdf(){
     `<div class="alert alert-info">Upload a ready-made Mission 75 test — <b>Question PDF</b> and <b>Answer PDF</b> are both required. Students see the question paper first; the answer paper unlocks automatically when the time ends.</div>
      <div class="form-group"><label>Subject</label><select class="form-control" id="m75-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Class</label><select class="form-control" id="m75-cls"></select></div><div class="form-group"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="m75-dur" placeholder="e.g. 60"></div></div>
+     <div class="form-group"><label>Total Marks</label><input type="number" min="1" class="form-control" id="m75-marks" placeholder="e.g. 100" value="100"></div>
      <div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="m75-ch" placeholder="e.g. Laws of Motion"></div>
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Medium</label><select class="form-control" id="m75-medium"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="m75-sched"></div></div>
      <div class="form-group"><label>Title</label><input class="form-control" id="m75-title" placeholder="e.g. Mission 75 — Laws of Motion"></div>
@@ -5332,7 +5333,7 @@ async function submitUploadMission75Pdf(){
   const fd=new FormData();
   fd.append('subject',val('m75-sub')||''); fd.append('class_name',val('m75-cls')||''); fd.append('chapter',val('m75-ch')||'');
   fd.append('title',title); fd.append('medium',val('m75-medium')||'English');
-  fd.append('duration_min',val('m75-dur')||'0'); fd.append('scheduled_at',val('m75-sched')||'');
+  fd.append('duration_min',val('m75-dur')||'0'); fd.append('scheduled_at',val('m75-sched')||''); fd.append('marks',val('m75-marks')||'100');
   fd.append('batch_ids',_multiBatchIds().join(','));
   fd.append('q_pdf',qf[0]); fd.append('s_pdf',sf[0]);
   const btn=document.getElementById('m75-btn'); if(btn){btn.disabled=true;btn.textContent='Uploading...';}
@@ -18011,20 +18012,16 @@ function examCardHTML(e){
   if(!stPill){
     stPill=_future?`<span class="tx-pill tx-up">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
-  let action;
-  if(e.is_pdf){
-    var _unlock=e.answers_unlock_at?new Date(e.answers_unlock_at):null;
-    var _ansReady=(!_unlock)||(new Date()>=_unlock);
-    action=`<button class="btn btn-primary btn-sm" onclick="_m75View(${e.id},'student','q')">${ic('book')} View Question Paper</button>`
-      +(_ansReady?`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'student','a')">${ic('eye')} View Answers</button>`
-        :(_unlock?`<span class="tx-cdchip">Answers unlock <b data-cd="${_unlock.getTime()}">\u2026</b></span>`:''));
-  } else {
-  action = e.status==='graded'
+  let action = e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result${_got!=null?' \u00b7 '+_got+'/'+e.total_marks:''}</button>`
     : (e.status==='grading'||e.status==='marking')
     ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
     : (_exp?`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">${ic('book')} View Paper</button>`
     : (_future?`<span class="tx-cdchip">Starts in <b data-cd="${_sch.getTime()}">\u2026</b></span>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`));
+  if(e.is_pdf){
+    var _unlockA=e.answers_unlock_at?new Date(e.answers_unlock_at):null;
+    var _ansReady=(!_unlockA)||(new Date()>=_unlockA);
+    if(_ansReady) action=`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'student','a')">${ic('eye')} View Solution</button>`+action;
   }
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -18324,7 +18321,7 @@ async function _plRender(id){
   const medToggle=biling?`<select class="pl-msel" title="Language / माध्यम" onchange="_plSetMed(this.value,${id})"><option value="en"${_plMed==='en'?' selected':''}>English</option><option value="hi"${_plMed==='hi'?' selected':''}>हिंदी</option><option value="hg"${_plMed==='hg'?' selected':''}>Hinglish</option></select>`:'';
   const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
-  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:linear-gradient(135deg,rgba(184,148,31,.08),rgba(184,148,31,.02))"><div style="font-weight:800;font-size:.95rem;margin-bottom:4px">${ic('book')} Question Paper</div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Open the question paper, solve it on paper, then upload a clear photo (or PDF) of your answer sheet below.</div><button type="button" class="btn btn-primary btn-sm" onclick="_m75View(${id},'student','q')">${ic('eye')} View / Download Question Paper</button></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
   renderMath(el); _plPal(); _plTimerStart(ex); _txLoadLogos(el);
 }
 function _plPal(){

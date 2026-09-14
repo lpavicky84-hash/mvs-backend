@@ -3549,10 +3549,12 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
                                   class_name: str = Form(""), chapter: str = Form(""),
                                   medium: str = Form("English"), batch_ids: str = Form(""),
                                   duration_min: str = Form("60"), scheduled_at: str = Form(""),
+                                  marks: str = Form("100"),
                                   q_pdf: UploadFile = File(...), s_pdf: UploadFile = File(...),
                                   db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Mission 75 PDF test: Question PDF + Answer PDF. Students see the question first; the
-    answer paper unlocks when the time ends. Multi-batch (comma-sep; empty = global)."""
+    """Mission 75 PDF test: Question PDF + Answer(solution) PDF. Ye ek NORMAL subjective test
+    banta hai (student ko 'Start Test', question PDF, apni answer-sheet upload, teacher grades).
+    Solution PDF student ko time khatam hone par milta hai. Multi-batch."""
     _ensure_exam_columns(db)
     tp = get_teacher_profile(current_user, db)
     qd = await q_pdf.read(); sd = await s_pdf.read()
@@ -3570,13 +3572,20 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
     _title = (title.strip() or ("Mission 75 - " + (chapter.strip() or (subject or "").strip())))
     _dur = _parse_dur(duration_min)
     _sched = _exam_parse_dt(scheduled_at) if (scheduled_at or "").strip() else None
+    try:
+        _marks = max(1, int(float(marks or "100")))
+    except Exception:
+        _marks = 100
     made = []
     for _tb in _batch_ids_from_str(batch_ids):
         ex = Exam(teacher_id=tp.id, teacher_name=current_user.name, subject=(subject or "").strip(),
-                  title=_title, chapter=((chapter or "").strip() or None), test_type="pdf",
-                  class_name=(class_name or "").strip(), medium=medium, total_marks=0,
+                  title=_title, chapter=((chapter or "").strip() or None), test_type="subjective",
+                  class_name=(class_name or "").strip(), medium=medium, total_marks=_marks,
                   duration_min=_dur, scheduled_at=_sched, batch_id=_tb, q_pdf=qkey, s_pdf=skey)
-        db.add(ex); db.flush(); made.append((ex.id, _tb))
+        db.add(ex); db.flush()
+        db.add(ExamQuestion(exam_id=ex.id, q_no=1, max_marks=_marks,
+               question_text="Attempt the full question paper attached above, then upload a clear photo (or PDF) of your complete answer sheet."))
+        made.append((ex.id, _tb))
     db.commit()
     for _eid, _tb in made:
         try:
@@ -3755,7 +3764,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "class_name": getattr(e, "class_name", "") or "",
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
-                    "is_pdf": (e.test_type == "pdf"),
+                    "is_pdf": bool(getattr(e, "q_pdf", None)),
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
                     "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,

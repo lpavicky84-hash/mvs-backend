@@ -2199,8 +2199,8 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
                     "medium": e.medium, "questions": nq, "teacher_name": e.teacher_name,
                     "teacher_id": e.teacher_id,
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
-                    "is_pdf": (e.test_type == "pdf"),
-                    "answers_unlock_at": (_pdf_unlock_iso(e) if e.test_type == "pdf" else None),
+                    "is_pdf": bool(getattr(e, "q_pdf", None)),
+                    "answers_unlock_at": (_pdf_unlock_iso(e) if getattr(e, "q_pdf", None) else None),
                     "status": att.status if att else "not_attempted",
                     "graded": int(graded_map.get(e.id, 0)),
                     "awarded": att.total_awarded if att else None})
@@ -2301,6 +2301,8 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
             "test_type": ex.test_type, "medium": ex.medium, "duration_min": ex.duration_min, "total_marks": ex.total_marks,
             "teacher_name": ex.teacher_name, "teacher_id": ex.teacher_id, "questions": questions,
             "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None,
+            "has_qpdf": bool(getattr(ex, "q_pdf", None)),
+            "answers_unlock_at": (_pdf_unlock_iso(ex) if getattr(ex, "q_pdf", None) else None),
             "expired": _exp,
             "already_submitted": bool(att and att.status == "graded")}
 
@@ -2849,7 +2851,7 @@ def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db
     from datetime import datetime, timedelta
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id).filter(_exam_batch_filter(db, sp)).first()
-    if not ex or ex.test_type != "pdf":
+    if not ex or not ex.q_pdf:
         raise HTTPException(status_code=404, detail="Not found")
     if kind == "a":
         base = getattr(ex, "scheduled_at", None) or getattr(ex, "created_at", None)
