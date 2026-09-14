@@ -450,8 +450,8 @@ def ext_materials(refresh: int = 0, db: Session = Depends(get_db),
 
 
 @router.get("/material/{mid}/file")
-def ext_material_file(mid: str, current_user=Depends(get_current_user)):
-    """Stream one material file from the Student Portal to the browser."""
+def ext_material_file(mid: str, dl: int = 0, current_user=Depends(get_current_user)):
+    """Stream one material file from the Student Portal to the browser. dl=1 -> force download."""
     url, key = _cfg()
     if not url or not key:
         raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
@@ -459,8 +459,10 @@ def ext_material_file(mid: str, current_user=Depends(get_current_user)):
     now = time.time()
     c = _file_cache.get(mid)
     if c and (now - c["ts"]) < FILE_CACHE_SECONDS:
+        _disp = ('attachment; filename="material_%s.pdf"' % mid) if dl else c["disp"]
         return Response(content=c["bytes"], media_type=c["ctype"],
-                        headers={"Content-Disposition": c["disp"]})
+                        headers={"Content-Disposition": _disp,
+                                 "Content-Length": str(len(c["bytes"]))})
 
     try:
         r = httpx.get(f"{url}/api/integration/material/{mid}/file",
@@ -479,8 +481,11 @@ def ext_material_file(mid: str, current_user=Depends(get_current_user)):
         _file_cache.pop(oldest, None)
     _file_cache[mid] = {"bytes": r.content, "ctype": ctype, "disp": disp, "ts": now}
 
+    if dl:
+        disp = 'attachment; filename="material_%s.pdf"' % mid
     return Response(content=r.content, media_type=ctype,
-                    headers={"Content-Disposition": disp})
+                    headers={"Content-Disposition": disp,
+                             "Content-Length": str(len(r.content))})
 
 
 @router.get("/student-check")
