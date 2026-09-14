@@ -18406,46 +18406,78 @@ async function _plSubmit(id){
     body={mcq_answers:ans};
   } else {
     if(!window._examFile){ toast('Please upload your handwritten answer sheet',true); return; }
-    if(window._examFile.size>MAXB){
-      toast('Large file \u2014 compressing automatically\u2026');
-      try{ const _r=await smartCompress(window._examFile,m=>toast(m)); if(_r&&_r.ok&&_r.file) window._examFile=_r.file; }catch(e){}
-      if(window._examFile.size>MAXB){ toast('The file is still too large after compression. Please upload a smaller scan or photo.',true); return; }
+    // Compress before upload (PDF/image) so submission never fails on size — with progress.
+    if(window._examFile.size > 2*1024*1024){
+      _plProgUI(id,'Compressing your answer sheet\u2026',8);
+      try{ const _r=await smartCompress(window._examFile, m=>_plProgLabel(m||'Compressing\u2026')); if(_r&&_r.ok&&_r.file) window._examFile=_r.file; }catch(e){}
+      if(window._examFile.size>MAXB){ _plProgHide(); toast('The file is still too large after compression. Please upload a smaller scan or photo.',true); return; }
     }
+    _plProgLabel('Preparing upload\u2026'); _plProgSet(12);
     const b64=await _fileB64(window._examFile);
     body={answer_image_b64:b64, mime_type:window._examFile.type||'image/jpeg'};
   }
   body.attempted=attempted; body.skipped=skipped;
   return _plSubmitSend(id, body);
 }
+/* ---- submit progress UI (in the tests panel) ---- */
+function _plProgUI(id,label,pct){
+  const el=document.getElementById('s-tests-content'); if(!el) return;
+  el.innerHTML='<div style="max-width:460px;margin:60px auto;text-align:center;padding:0 16px">'
+    +'<div style="font-weight:800;font-size:1.05rem;margin-bottom:6px">Submitting your test</div>'
+    +'<div id="pl-prog-label" style="font-size:.84rem;color:var(--text-muted,#8a7f66);margin-bottom:14px">'+esc(label||'Uploading\u2026')+'</div>'
+    +'<div style="height:14px;border-radius:999px;background:rgba(0,0,0,.08);overflow:hidden"><div id="pl-prog-fill" style="height:100%;width:'+(pct||5)+'%;background:linear-gradient(90deg,#b8941f,#e0c063);transition:width .3s;border-radius:999px"></div></div>'
+    +'<div id="pl-prog-pct" style="font-size:.82rem;font-weight:800;margin-top:8px">'+(pct||5)+'%</div>'
+    +'<div style="font-size:.74rem;color:var(--text-muted,#8a7f66);margin-top:6px">Please keep this screen open \u2014 your answers are safe.</div></div>';
+}
+function _plProgSet(pct){ const f=document.getElementById('pl-prog-fill'), p=document.getElementById('pl-prog-pct'); if(f)f.style.width=pct+'%'; if(p)p.textContent=Math.round(pct)+'%'; }
+function _plProgLabel(t){ const l=document.getElementById('pl-prog-label'); if(l)l.textContent=t; }
+function _plProgHide(){ /* replaced by success/failure UI */ }
+function _plXhrSubmit(id, body, onprog){
+  return new Promise(function(res,rej){
+    var xhr=new XMLHttpRequest(); xhr.open('POST',API+'/api/student/exam/'+id+'/submit');
+    xhr.setRequestHeader('Authorization','Bearer '+TOKEN); xhr.setRequestHeader('Content-Type','application/json');
+    xhr.timeout=180000;
+    if(xhr.upload) xhr.upload.onprogress=function(e){ if(e.lengthComputable&&onprog) onprog(Math.round(e.loaded/e.total*100)); };
+    xhr.onload=function(){ if(xhr.status>=200&&xhr.status<300){ try{res(JSON.parse(xhr.responseText||'{}'));}catch(x){res({});} } else { var d=null; try{d=JSON.parse(xhr.responseText);}catch(x){} rej(new Error((d&&d.detail)||('HTTP '+xhr.status))); } };
+    xhr.onerror=function(){ rej(new Error('Network error')); };
+    xhr.ontimeout=function(){ rej(new Error('Timed out')); };
+    xhr.send(JSON.stringify(body));
+  });
+}
 async function _plSubmitSend(id, body){
   const ex=window._curExam;
   window._plRetryBody=body; window._plRetryId=id;   // keep answers safe for a retry
-  const el=document.getElementById('s-tests-content'); softSpin(el);
-  try{
-    const r=await api('/api/student/exam/'+id+'/submit','POST',body);
-    if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
-    window._plRetryBody=null; window._examPlayerOpen=false;
-    let attM=0,skM=0;
-    ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; });
-    const attempted=body.attempted||[], skipped=body.skipped||[];
-    const allDone=skipped.length===0;
-    const tName=ex.teacher_name||'your teacher';
-    el.innerHTML=`<div class="pl-thanks">
-      <div class="pl-thanks-ic">${ic('check')}</div>
-      <div class="pl-thanks-msg">Thank you!</div>
-      <div class="pl-thanks-note">Your answer sheet has been sent to <b>${esc(tName)}</b>.${allDone?' <b>Excellent</b> — you attempted every question!':''} Your result will be available soon — you can keep checking the <b>Result Status</b> tab.</div>
-      <div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div></div>
-      <div class="tx-pill a" style="margin-top:14px">CHECKING SOON</div>
-      <button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
-  }catch(e){
-    // Submit failed (network hiccup / server waking). DO NOT restart the test — that used to
-    // wipe every answer and start from Q1. Keep the captured answers and re-send the SAME
-    // submission on Retry.
-    el.innerHTML=errHtml(e)+`<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+  const el=document.getElementById('s-tests-content');
+  if(!document.getElementById('pl-prog-fill')) _plProgUI(id,'Uploading your answer sheet\u2026',15);
+  const delays=[0,4000,9000,16000];
+  let lastErr=null, r=null;
+  for(let a=0;a<delays.length;a++){
+    if(delays[a]){ _plProgLabel('Server is waking up \u2014 retrying in '+(delays[a]/1000)+'s (your answers are safe)\u2026'); await new Promise(x=>setTimeout(x,delays[a])); }
+    try{ r=await _plXhrSubmit(id, body, pct=>_plProgSet(Math.max(15,Math.min(96,pct)))); lastErr=null; break; }
+    catch(e){ lastErr=e; r=null; }
+  }
+  if(lastErr||!r){
+    el.innerHTML=errHtml(lastErr||new Error('Submit failed'))+`<div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-primary btn-sm" onclick="_plRetrySubmit()">Retry Submit</button>
       <button class="btn btn-ghost btn-sm" onclick="openExamPlayer(${id})">Reopen Test</button></div>
       <div style="text-align:center;color:var(--muted);font-size:.82rem;margin-top:8px">Your answers are safe \u2014 just tap <b>Retry Submit</b>.</div>`;
+    return;
   }
+  _plProgSet(100);
+  if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
+  window._plRetryBody=null; window._examPlayerOpen=false;
+  let attM=0,skM=0;
+  ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; });
+  const attempted=body.attempted||[], skipped=body.skipped||[];
+  const allDone=skipped.length===0;
+  const tName=ex.teacher_name||'your teacher';
+  el.innerHTML=`<div class="pl-thanks">
+    <div class="pl-thanks-ic">${ic('check')}</div>
+    <div class="pl-thanks-msg">Thank you!</div>
+    <div class="pl-thanks-note">Your answer sheet has been sent to <b>${esc(tName)}</b>.${allDone?' <b>Excellent</b> \u2014 you attempted every question!':''} Your result will be available soon \u2014 you can keep checking the <b>Result Status</b> tab.</div>
+    <div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div></div>
+    <div class="tx-pill a" style="margin-top:14px">CHECKING SOON</div>
+    <button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
 }
 window._plRetrySubmit=function(){ if(window._plRetryBody!=null && window._plRetryId!=null) _plSubmitSend(window._plRetryId, window._plRetryBody); };
 function _examPickFile(inp){ const f=inp.files[0]; window._examFile=f; const n=document.getElementById('pl-file-name'); if(n) n.textContent=f?('Selected: '+f.name):''; }
@@ -21537,14 +21569,26 @@ function _cmdKey(e){
   else if(e.key==='Escape'){ e.preventDefault(); closeCmdPalette(); }
 }
 function _cmdMountFab(){
-  if(!TOKEN){ var ex=document.getElementById('cmd-fab'); if(ex) ex.remove(); return; }
+  var ex=document.getElementById('cmd-fab'); if(ex) ex.remove();   // purana corner button hata do
+  if(!TOKEN) return;
   _cmdInjectCSS();
-  if(document.getElementById('cmd-fab')) return;
-  var b=document.createElement('button'); b.id='cmd-fab'; b.type='button';
-  b.title='Quick jump (Ctrl/Cmd + K)';
-  b.innerHTML='\uD83D\uDD0D <span class="kbd">Search</span>';
-  b.addEventListener('click', openCmdPalette);
-  document.body.appendChild(b);
+  if(!document.getElementById('cmd-hdr-css')){ var _st=document.createElement('style'); _st.id='cmd-hdr-css'; _st.textContent='.cmd-hdr-btn{cursor:pointer;display:inline-flex;align-items:center;justify-content:center}.cmd-hdr-btn svg{display:block}'; document.head.appendChild(_st); }
+  var svg='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
+  document.querySelectorAll('.topbar-actions').forEach(function(bar){
+    if(bar.querySelector('.cmd-hdr-btn')) return;
+    var btn=document.createElement('div'); btn.className='icon-btn cmd-hdr-btn';
+    btn.title='Search / quick jump (Ctrl/Cmd + K)'; btn.setAttribute('role','button'); btn.setAttribute('aria-label','Search');
+    btn.innerHTML=svg; btn.addEventListener('click', openCmdPalette);
+    var bell=bar.querySelector('.bell-wrap');
+    if(bell) bar.insertBefore(btn, bell); else bar.insertBefore(btn, bar.firstChild);
+  });
+  document.querySelectorAll('.ph-theme').forEach(function(themeBtn){
+    var wrap=themeBtn.parentNode; if(!wrap || wrap.querySelector('.cmd-hdr-btn')) return;
+    var btn=document.createElement('button'); btn.type='button'; btn.className='ph-bell cmd-hdr-btn';
+    btn.title='Search'; btn.setAttribute('aria-label','Search'); btn.innerHTML=svg;
+    btn.addEventListener('click', openCmdPalette);
+    wrap.insertBefore(btn, themeBtn);
+  });
 }
 document.addEventListener('keydown', function(e){
   if((e.ctrlKey||e.metaKey) && (e.key==='k'||e.key==='K')){
