@@ -282,6 +282,13 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
         elif data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"): media_type = "audio/mpeg"
     headers = {}
     if filename:
+        _tail = filename.rsplit("/", 1)[-1]
+        if "." not in _tail:
+            _ext = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png",
+                    "image/webp": "webp", "image/gif": "gif", "audio/mp4": "m4a",
+                    "audio/webm": "webm", "audio/ogg": "ogg", "audio/mpeg": "mp3"}.get(media_type)
+            if _ext:
+                filename = filename + "." + _ext
         disp = "attachment" if download else "inline"
         headers["Content-Disposition"] = '%s; filename="%s"' % (disp, filename)
     return Response(content=data, media_type=media_type, headers=headers)

@@ -4342,37 +4342,14 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
         db.commit()
     if not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet uploaded")
-    # R2 URL ho to redirect (naye uploads normalize se URL hote hain; migration ke baad
-    # purane bhi URL) — warna neeche base64 decode toot jaata.
-    if str(att.answer_image_b64).startswith("http"):
-        # migration ne sabko .jpg/image/jpeg bana diya tha, chahe student ne PDF upload kiya ho —
-        # isi wajah se PDF sheets "damaged/broken" aati thi. sniff=True -> file ke ASAL magic
-        # bytes se sahi content-type (PDF/JPEG/PNG) se serve karo (same-origin stream, no CORS).
-        return __import__("r2_storage").file_response(att.answer_image_b64, "application/octet-stream", None, False)
-    # Students upload a photo OR a PDF. Pehle hamesha image/jpeg bheja jaata tha
-    # aur decode fail hone par unhandled 500 aata tha - browser use CORS ke bina
-    # block kar deta tha, isliye portal par "Failed to fetch" dikhta tha.
-    raw = att.answer_image_b64 or ""
-    mime = "image/jpeg"
-    if raw.startswith("data:") and "," in raw:
-        header, raw = raw.split(",", 1)
-        try:
-            mime = header.split(":", 1)[1].split(";", 1)[0] or "image/jpeg"
-        except Exception:
-            mime = "image/jpeg"
-    raw = "".join(raw.split())          # stray whitespace/newlines hatao
-    raw += "=" * (-len(raw) % 4)        # padding theek karo
+    safe = "".join(c for c in (att.student_name or "student") if c.isalnum() or c in " -_").strip() or "student"
+    # ASAL magic-bytes se sahi content-type (PDF/JPEG/PNG). Pehle sab kuch image/jpeg ya
+    # octet-stream jaata tha -> PDF sheets view pe blank + download pe corrupt aati thi.
     try:
-        data = base64.b64decode(raw)
+        return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg",
+                                                       "answer-" + safe, False, sniff=True)
     except Exception:
         raise HTTPException(400, "The uploaded answer sheet could not be read. Ask the student to upload it again.")
-    if not data:
-        raise HTTPException(404, "No answer sheet uploaded")
-    ext = "pdf" if "pdf" in mime else ("png" if "png" in mime else "jpg")
-    safe = "".join(c for c in (att.student_name or "student") if c.isalnum() or c in " -_").strip() or "student"
-    return Response(content=data, media_type=mime,
-                    headers={"Content-Disposition": 'inline; filename="answer-%s.%s"' % (safe, ext),
-                             "Content-Length": str(len(data))})
 
 @router.post("/attempt/{attempt_id}/grade-manual")
 def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
