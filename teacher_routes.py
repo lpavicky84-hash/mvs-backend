@@ -3619,7 +3619,7 @@ async def teacher_exam_pdf_edit(eid: int, subject: str = Form(""), title: str = 
                                 medium: str = Form("English"), batch_id: str = Form(""),
                                 duration_min: str = Form("60"), scheduled_at: str = Form(""),
                                 marks: str = Form("100"), total_questions: str = Form("0"),
-                                q_pdf: UploadFile = File(None), s_pdf: UploadFile = File(None),
+                                q_pdf: Optional[UploadFile] = File(None), s_pdf: Optional[UploadFile] = File(None),
                                 db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Edit a Mission 75 PDF test — details/marks/total-questions/batch, and optionally replace
     the Question/Answer PDFs (leave a file empty to keep the existing one)."""

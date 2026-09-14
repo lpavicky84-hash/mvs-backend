@@ -5367,6 +5367,7 @@ async function openEditMission75Pdf(id, ex){
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Medium</label><select class="form-control" id="m75e-medium"><option ${ex.medium==='English'?'selected':''}>English</option><option ${ex.medium==='Hindi'?'selected':''}>Hindi</option><option ${ex.medium==='Bilingual'?'selected':''}>Bilingual</option></select></div><div class="form-group"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="m75e-sched" value="${_schedLocal}"></div></div>
      <div class="form-group"><label>Title</label><input class="form-control" id="m75e-title" value="${esc(ex.title||'')}"></div>
      ${_singleBatchField(ex.batch_id)}
+     <div style="background:rgba(184,148,31,.06);border:1px solid var(--border,#e8e0cf);border-radius:12px;padding:11px 13px;margin-bottom:10px;font-size:.82rem"><b>Current files:</b> <a href="#" onclick="_m75View(${id},'teacher','q');return false" style="color:#2563eb;font-weight:700">View Question PDF</a> &nbsp;·&nbsp; <a href="#" onclick="_m75View(${id},'teacher','a');return false" style="color:#2563eb;font-weight:700">View Answer PDF</a><div style="color:var(--text-muted);margin-top:4px">These stay as-is. Only choose a file below if you want to replace one.</div></div>
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Replace Question PDF (optional)</label><input type="file" class="form-control" id="m75e-qpdf" accept="application/pdf"></div><div class="form-group"><label>Replace Answer PDF (optional)</label><input type="file" class="form-control" id="m75e-spdf" accept="application/pdf"></div></div>
      <div class="ex-prog" id="m75e-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="m75e-plabel">Saving\u2026</span><span class="ex-prog-pct" id="m75e-ppct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="m75e-pfill"></div></div></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="m75e-btn" onclick="submitEditMission75Pdf(${id})">Save Changes</button>`);
@@ -5403,14 +5404,21 @@ async function submitEditMission75Pdf(id){
 }
 async function _m75View(eid, role, kind){
   var url=(role==='teacher'?(API+'/api/teacher/mission75-pdf/'+eid+'/file'):(API+'/api/student/exam/'+eid+'/pdf'))+'?kind='+kind;
-  try{
-    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
-    if(r.status===403){ var d=await r.json().catch(function(){return {};}); toast((d&&d.detail)||'Answers are locked for now.',true); return; }
-    if(!r.ok) throw 0;
-    var b=await r.blob(); if(!b||!b.size) throw 0;
-    var u=URL.createObjectURL(b); var w=window.open(u,'_blank'); if(!w) toast('Please allow popups to view the PDF.',true);
-    setTimeout(function(){ URL.revokeObjectURL(u); },60000);
-  }catch(e){ toast('Could not open the PDF',true); }
+  var title=(kind==='a'?'Answer / Solution':'Question Paper');
+  // student solution time-gated ho to pehle check (warna premium viewer generic error dikhata)
+  if(role==='student' && kind==='a'){
+    try{ var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}, method:'HEAD'}); if(r.status===403){ toast('Answers are locked for now.',true); return; } }catch(e){}
+  }
+  try{ pdfViewerModal(url, title, title+'.pdf'); }
+  catch(e){ toast('Could not open the PDF',true); }
+}
+function _m75ViewMenu(eid){
+  showModal('View PDF',
+    `<div style="display:flex;flex-direction:column;gap:11px">
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="closeModal();_m75View(${eid},'teacher','q')">${ic('book')} View Question Paper</button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="closeModal();_m75View(${eid},'teacher','a')">${ic('eye')} View Answer / Solution</button>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 function _dppFilter(mode){
   document.querySelectorAll('#t-dpp-list .dp-row').forEach(r=>{
@@ -5841,7 +5849,7 @@ async function loadTTests(){
             <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
-            ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'teacher','q')">${ic('eye')} Question PDF</button><button class="btn btn-primary btn-sm" onclick="_m75View(${e.id},'teacher','a')">${ic('eye')} Answer PDF</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
+            ${e.is_pdf?`<button class="btn btn-primary btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>`}
           </div>
         </div></div>`;
