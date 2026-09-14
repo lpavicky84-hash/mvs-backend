@@ -2279,6 +2279,62 @@ function _isWebView(){
     return false;
   }catch(e){ return false; }
 }
+async function openDocViewer(url, name, opts){
+  opts=opts||{};
+  _docViewerCss();
+  var old=document.getElementById('docviewer'); if(old) old.remove();
+  var _dic=(typeof ic==='function'?ic('download'):'\u2913');
+  var ov=document.createElement('div'); ov.id='docviewer'; ov.className='docviewer';
+  ov.innerHTML='<div class="dv-bar"><span class="dv-name">'+esc(name||'Document')+'</span>'
+    +'<span class="dv-acts">'
+      +'<a class="dv-btn" id="dv-dl" href="#">'+_dic+'<span class="dv-lbl">Download</span></a>'
+      +'<button class="dv-btn" id="dv-open" type="button"><span class="dv-lbl">Open</span>\u2197</button>'
+      +'<button class="dv-btn" type="button" onclick="closeDocViewer()">\u2715<span class="dv-lbl"> Close</span></button>'
+    +'</span></div>'
+    +'<div class="dv-body" id="dv-body"><div class="dv-load"><div class="spinner"></div><div>Loading\u2026</div></div></div>';
+  document.body.appendChild(ov);
+  document.body.style.overflow='hidden';
+  ov.addEventListener('click', function(e){ if(e.target===ov) closeDocViewer(); });
+  document.addEventListener('keydown', _dvEsc);
+  if(opts.stream){
+    var su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+    var body=document.getElementById('dv-body');
+    if(body){ body.innerHTML='<div id="dv-pdf" style="height:100%"></div>';
+      try{ _pdfView(document.getElementById('dv-pdf'), su, {title:name||'Document', downloadName:name||'document.pdf', src:su}); }
+      catch(_e){ body.innerHTML='<iframe class="dv-frame" src="'+su+'" title="'+esc(name||'document')+'"></iframe>'; } }
+    var dl=document.getElementById('dv-dl'); if(dl){ dl.href='#'; dl.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name); }; }
+    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(su,'_blank'); }catch(e){} }; }
+    return;
+  }
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('fail');
+    var ct=(r.headers.get('content-type')||'').toLowerCase();
+    var raw=await r.blob();
+    if(!raw||!raw.size) throw new Error('empty');
+    var nm=(name||'').toLowerCase();
+    var isImg=ct.indexOf('image')>=0 || /\.(png|jpe?g|webp|gif|bmp)$/.test(nm);
+    var isPdf=ct.indexOf('pdf')>=0 || /\.pdf$/.test(nm);
+    var blob=isPdf?new Blob([raw],{type:'application/pdf'}):raw;
+    var u=URL.createObjectURL(blob); window._dvUrl=u;
+    var body2=document.getElementById('dv-body');
+    if(body2){
+      if(isImg) body2.innerHTML='<img loading="lazy" class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
+      else if(isPdf){ body2.innerHTML='<div id="dv-pdf" style="height:100%"></div>';
+        var _su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+        try{ _pdfView(document.getElementById('dv-pdf'), blob, {title:name||'Document', downloadName:name||'document.pdf', src:_su}); }
+        catch(_e){ body2.innerHTML='<iframe class="dv-frame" src="'+_su+'" title="'+esc(name||'document')+'"></iframe>'; } }
+      else body2.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
+    }
+    var dl2=document.getElementById('dv-dl'); if(dl2){ dl2.href='#'; dl2.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name||'document'); }; }
+    var op2=document.getElementById('dv-open'); if(op2){ op2.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
+  }catch(e){
+    var tokUrl=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
+    var body3=document.getElementById('dv-body'); if(body3) body3.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
+    var dl3=document.getElementById('dv-dl'); if(dl3){ dl3.href='#'; dl3.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name||'document'); }; }
+    var op3=document.getElementById('dv-open'); if(op3){ op3.onclick=function(){ try{ window.open(tokUrl,'_blank'); }catch(e){} }; }
+  }
+}
 function _dlName(name, mime){
   name=(name||'file').replace(/[\\/:*?"<>|]/g,'_').trim()||'file';
   var ext={'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[(mime||'').toLowerCase().split(';')[0]];
@@ -2295,6 +2351,14 @@ async function _smartDownload(url, name){
     var b=await r.blob(); if(!b||!b.size) throw new Error('empty');
     var dn=_dlName(name, b.type||'');
     var u=URL.createObjectURL(b);
+    var _isIOS=/iP(hone|ad|od)/.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&(navigator.maxTouchPoints||0)>1);
+    if(_isIOS){
+      var w=window.open(u,'_blank');
+      if(!w){ var a0=document.createElement('a'); a0.href=u; a0.download=dn; a0.rel='noopener'; document.body.appendChild(a0); a0.click(); a0.remove(); }
+      setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 60000);
+      try{ if(typeof toast==='function') toast('Opened \u2014 tap Share to Save to Files or Print.'); }catch(e){}
+      return;
+    }
     var a=document.createElement('a'); a.href=u; a.download=dn; a.rel='noopener';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 10000);
@@ -2322,7 +2386,7 @@ async function _dvLazyDownload(url, name){
 }
 // view helpers — mirror each download function's endpoint, but open the viewer instead
 function viewMaterial(role,id,name){ openDocViewer(API+'/api/'+role+'/material/'+id+'/download', name||'material.pdf'); }
-function viewExtMaterial(id,link,name){ if(link){ try{ window.open(link,'_blank'); }catch(e){} return; } openDocViewer(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name||'material.pdf'); }
+function viewExtMaterial(id,link,name){ openDocViewer(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name||'material.pdf'); }
 function viewStudentAnswer(attId,name){ openDocViewer(API+'/api/teacher/attempt/'+attId+'/answer', 'answer-'+(name||'student')); }
 function viewDppAns(aid,name){ openDocViewer(API+'/api/teacher/dpp-answers/'+aid+'/file?inline=1', name||'dpp-answer.pdf', {stream:true}); }
 function viewMyAnswer(id){ openDocViewer(API+'/api/student/exam/'+id+'/answer', 'my-answer-sheet'); }
@@ -15399,16 +15463,8 @@ async function _extRefresh(){
   _extRender();
 }
 async function openExtMaterial(id,link,fname){
-  if(link){ window.open(link,'_blank'); return; }
-  toast('Downloading...');
-  try{
-    const r=await fetch(API+'/api/ext/material/'+encodeURIComponent(id)+'/file',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('fail');
-    const blob=await r.blob(); const url=URL.createObjectURL(blob);
-    let name=fname||'material'; if(!/\.[a-z0-9]{2,5}$/i.test(name)) name+='.pdf';
-    const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),1500);
-  }catch(e){ toast('Download failed. Try Refresh.',true); }
+  var name=fname||'material'; if(!/\.[a-z0-9]{2,5}$/i.test(name)) name+='.pdf';
+  return _smartDownload(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name);
 }
 async function loadAQBank(){ loadExtMaterials('a-qbank-content'); }
 async function loadSQBank(){ loadExtMaterials('s-qbank-content'); }
