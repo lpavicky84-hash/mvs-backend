@@ -17373,20 +17373,22 @@ async function _pvwRenderAll(container){
   const load=container.querySelector('.pvw-load');
   const curPage=st.page||1;
   if(!document.getElementById('pvw-fit-css')){ var _fs=document.createElement('style'); _fs.id='pvw-fit-css'; _fs.textContent='.pvw-pages{width:100%;max-width:100%;padding:0} .pvw-page{width:100%;margin:0 auto 6px} .pvw-stage{width:100%;display:flex;justify-content:center;min-height:0} .pvw-page canvas{box-shadow:0 1px 5px rgba(0,0,0,.12);border-radius:2px}'; document.head.appendChild(_fs); }
-  const dpr=Math.min(window.devicePixelRatio||1.5, 2.5);
+  const dpr=Math.min(window.devicePixelRatio||1.5, 2);
   for(let i=1;i<=st.total;i++){
     const page=await st.pdf.getPage(i);
     const base=page.getViewport({scale:1});
     const availW=(body.clientWidth||body.offsetWidth||container.clientWidth||360);
     const fit=(st.zoom===0);
-    const cssW=fit? Math.max(280,(availW-14)) : Math.round(base.width*ZS[st.zoom-1]);   // fit-to-width, mobile-safe
-    const vp=page.getViewport({scale:(Math.min(cssW,1500)/base.width)*dpr});             // sharp render, DPR-aware
+    // Fit = container width bhar do, par bade screen (laptop/PC/TV) par readable max 980px tak
+    // (center me), warna page bahut badi dikh rahi thi. Mobile par poori width.
+    const dispW=fit? Math.min(Math.max(300,(availW-14)), 980) : Math.round(base.width*ZS[st.zoom-1]);
+    const vp=page.getViewport({scale:(dispW/base.width)*dpr});
     const pd=document.createElement('div'); pd.className='pvw-page'; pd.dataset.pg=i;
     pd.innerHTML=`<div class="pvw-stage"><canvas></canvas>${crop?'<div class="crop-sel"></div>':''}</div>`;
     wrap.appendChild(pd);
     const cv=pd.querySelector('canvas');
     cv.width=vp.width; cv.height=vp.height;
-    if(fit){ cv.style.width='100%'; cv.style.maxWidth='100%'; } else { cv.style.width=cssW+'px'; }
+    if(fit){ cv.style.width='100%'; cv.style.maxWidth='980px'; } else { cv.style.width=dispW+'px'; }
     cv.style.height='auto'; cv.style.display='block';
     if(load) load.textContent=`Rendering page ${i} / ${st.total}…`;
     await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
