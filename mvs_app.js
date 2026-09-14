@@ -2282,11 +2282,18 @@ function _isWebView(){
 async function _smartDownload(url, name){
   var tok=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
   if(_isWebView()){
-    // Restrictive in-app WebViews block blob downloads & <a download>. Open the authed
-    // URL in a new context (system browser / new tab) — view + download work there.
-    try{ var w=window.open(tok,'_blank'); if(!w){ var a=document.createElement('a'); a.href=tok; a.target='_blank'; a.rel='noopener'; a.setAttribute('download', name||''); document.body.appendChild(a); a.click(); a.remove(); } }
-    catch(e){ try{ window.location.href=tok; }catch(e2){} }
-    try{ if(typeof toast==='function') toast('Opening the file\u2026 use your browser to save it.'); }catch(e){}
+    // In-app WebViews me window.open aksar PDF ko inline/partial le leta tha ("invalid format").
+    // Hidden iframe attachment URL par point kare -> WebView ka download manager FULL file
+    // uthata hai (sahi format se), bina page navigate kiye. Ye sab material ke liye bulletproof.
+    try{
+      var f=document.getElementById('_dlframe'); if(f) f.remove();
+      f=document.createElement('iframe'); f.id='_dlframe'; f.style.display='none'; f.src=tok;
+      document.body.appendChild(f); setTimeout(function(){ try{ f.remove(); }catch(e){} }, 120000);
+    }catch(e){
+      try{ var a=document.createElement('a'); a.href=tok; a.setAttribute('download', name||''); document.body.appendChild(a); a.click(); a.remove(); }
+      catch(e2){ try{ window.location.href=tok; }catch(e3){} }
+    }
+    try{ if(typeof toast==='function') toast('Downloading\u2026 check your Downloads.'); }catch(e){}
     return;
   }
   try{
@@ -17368,7 +17375,7 @@ async function _pvwRenderAll(container){
   const crop=!!st.opts.cropPid;
   const load=container.querySelector('.pvw-load');
   const curPage=st.page||1;
-  if(!document.getElementById('pvw-fit-css')){ var _fs=document.createElement('style'); _fs.id='pvw-fit-css'; _fs.textContent='.pvw-pages{width:100%;max-width:100%} .pvw-page{width:100%} .pvw-stage{width:100%;display:flex;justify-content:center}'; document.head.appendChild(_fs); }
+  if(!document.getElementById('pvw-fit-css')){ var _fs=document.createElement('style'); _fs.id='pvw-fit-css'; _fs.textContent='.pvw-pages{width:100%;max-width:100%;padding:0} .pvw-page{width:100%;margin:0 auto 6px} .pvw-stage{width:100%;display:flex;justify-content:center;min-height:0} .pvw-page canvas{box-shadow:0 1px 5px rgba(0,0,0,.12);border-radius:2px}'; document.head.appendChild(_fs); }
   const dpr=Math.min(window.devicePixelRatio||1.5, 2.5);
   for(let i=1;i<=st.total;i++){
     const page=await st.pdf.getPage(i);
