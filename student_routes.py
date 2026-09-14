@@ -2208,12 +2208,12 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
 
 
 def _pdf_unlock_iso(e):
+    """Schedule set hai to (schedule + duration) — warna None (solution submit ke baad khulta hai)."""
     from datetime import timedelta
-    base = getattr(e, "scheduled_at", None) or getattr(e, "created_at", None)
-    if not base:
+    if not getattr(e, "scheduled_at", None):
         return None
     try:
-        return (base + timedelta(minutes=(e.duration_min or 0))).isoformat()
+        return (e.scheduled_at + timedelta(minutes=(e.duration_min or 0))).isoformat()
     except Exception:
         return None
 
@@ -2854,10 +2854,16 @@ def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db
     if not ex or not ex.q_pdf:
         raise HTTPException(status_code=404, detail="Not found")
     if kind == "a":
-        base = getattr(ex, "scheduled_at", None) or getattr(ex, "created_at", None)
-        unlock = (base + timedelta(minutes=(ex.duration_min or 0))) if base else None
-        if unlock and datetime.now() < unlock:
-            raise HTTPException(status_code=403, detail="Answers unlock at " + unlock.strftime("%d %b, %I:%M %p"))
+        if getattr(ex, "scheduled_at", None):
+            unlock = ex.scheduled_at + timedelta(minutes=(ex.duration_min or 0))
+            if datetime.now() < unlock:
+                raise HTTPException(status_code=403, detail="Answers unlock at " + unlock.strftime("%d %b, %I:%M %p"))
+        else:
+            from models import ExamAttempt
+            att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id,
+                                               ExamAttempt.student_id == sp.id).first()
+            if not (att and (att.status or "") not in ("", "not_attempted")):
+                raise HTTPException(status_code=403, detail="Answers unlock after you submit the test.")
         if not ex.s_pdf:
             raise HTTPException(status_code=404, detail="Answers not available")
         return __import__("r2_storage").proxy_response(ex.s_pdf, "application/pdf", "answers.pdf", False, sniff=True)
