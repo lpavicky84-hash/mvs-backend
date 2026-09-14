@@ -2302,6 +2302,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
             "teacher_name": ex.teacher_name, "teacher_id": ex.teacher_id, "questions": questions,
             "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None,
             "has_qpdf": bool(getattr(ex, "q_pdf", None)),
+            "q_count": int(getattr(ex, "q_count", 0) or 0),
             "answers_unlock_at": (_pdf_unlock_iso(ex) if getattr(ex, "q_pdf", None) else None),
             "expired": _exp,
             "already_submitted": bool(att and att.status == "graded")}

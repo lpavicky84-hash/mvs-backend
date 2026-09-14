@@ -5314,7 +5314,7 @@ async function openUploadMission75Pdf(){
     `<div class="alert alert-info">Upload a ready-made Mission 75 test — <b>Question PDF</b> and <b>Answer PDF</b> are both required. Students see the question paper first; the answer paper unlocks automatically when the time ends.</div>
      <div class="form-group"><label>Subject</label><select class="form-control" id="m75-sub">${subs.map(x=>`<option>${esc(x)}</option>`).join('')||'<option>General</option>'}</select></div>
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Class</label><select class="form-control" id="m75-cls"></select></div><div class="form-group"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="m75-dur" placeholder="e.g. 60"></div></div>
-     <div class="form-group"><label>Total Marks</label><input type="number" min="1" class="form-control" id="m75-marks" placeholder="e.g. 100" value="100"></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Total Marks</label><input type="number" min="1" class="form-control" id="m75-marks" placeholder="e.g. 100" value="100"></div><div class="form-group"><label>Total Questions</label><input type="number" min="0" class="form-control" id="m75-qcount" placeholder="e.g. 43"></div></div>
      <div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="m75-ch" placeholder="e.g. Laws of Motion"></div>
      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Medium</label><select class="form-control" id="m75-medium"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="m75-sched"></div></div>
      <div class="form-group"><label>Title</label><input class="form-control" id="m75-title" placeholder="e.g. Mission 75 — Laws of Motion"></div>
@@ -5333,7 +5333,7 @@ async function submitUploadMission75Pdf(){
   const fd=new FormData();
   fd.append('subject',val('m75-sub')||''); fd.append('class_name',val('m75-cls')||''); fd.append('chapter',val('m75-ch')||'');
   fd.append('title',title); fd.append('medium',val('m75-medium')||'English');
-  fd.append('duration_min',val('m75-dur')||'0'); fd.append('scheduled_at',val('m75-sched')||''); fd.append('marks',val('m75-marks')||'100');
+  fd.append('duration_min',val('m75-dur')||'0'); fd.append('scheduled_at',val('m75-sched')||''); fd.append('marks',val('m75-marks')||'100'); fd.append('total_questions',val('m75-qcount')||'0');
   fd.append('batch_ids',_multiBatchIds().join(','));
   fd.append('q_pdf',qf[0]); fd.append('s_pdf',sf[0]);
   const btn=document.getElementById('m75-btn'); if(btn){btn.disabled=true;btn.textContent='Uploading...';}
@@ -17280,7 +17280,8 @@ async function _pvwRenderAll(container){
   for(let i=1;i<=st.total;i++){
     const page=await st.pdf.getPage(i);
     const base=page.getViewport({scale:1});
-    const cssScale=(st.zoom===0)?Math.max(0.4,((body.clientWidth||600)-46)/base.width):ZS[st.zoom-1];  // padding ka margin
+    const availW=(body.clientWidth||body.offsetWidth||container.clientWidth||Math.min(760,((window.innerWidth||760)-24)));
+    const cssScale=(st.zoom===0)?Math.max(0.45,(availW-24)/base.width):ZS[st.zoom-1];  // fit-to-width, mobile-safe
     const vp=page.getViewport({scale:cssScale*2});
     const pd=document.createElement('div'); pd.className='pvw-page'; pd.dataset.pg=i;
     pd.innerHTML=`<div class="pvw-stage"><canvas></canvas>${crop?'<div class="crop-sel"></div>':''}</div>`;
@@ -18332,6 +18333,12 @@ async function _m75EmbedQ(id){
   try{
     var url=API+'/api/student/exam/'+id+'/pdf?kind=q';
     await _pdfView(host, url, {title:'Question Paper', downloadName:'Question Paper.pdf', src:url});
+    // Layout settle hone ke baad ek re-fit (mobile pe pehli render kabhi galat width par squeeze ho jaati thi)
+    setTimeout(function(){ var h=document.getElementById('pl-qpdf-frame'); if(h&&h._pvw&&h._pvw.pdf&&h._pvw.zoom===0){ try{ _pvwRenderAll(h); }catch(e){} } }, 320);
+    if(window._m75Resize){ window.removeEventListener('resize', window._m75Resize); window.removeEventListener('orientationchange', window._m75Resize); }
+    window._m75Resize=function(){ var h=document.getElementById('pl-qpdf-frame'); if(h && h._pvw && h._pvw.pdf){ if(h._pvw.zoom===0){ clearTimeout(window._m75RT); window._m75RT=setTimeout(function(){ try{ _pvwRenderAll(h); }catch(e){} },250); } } else { window.removeEventListener('resize', window._m75Resize); window.removeEventListener('orientationchange', window._m75Resize); window._m75Resize=null; } };
+    window.addEventListener('resize', window._m75Resize);
+    window.addEventListener('orientationchange', window._m75Resize);
   }catch(e){
     host.innerHTML='<div style="padding:22px;text-align:center;color:var(--text-muted)"><p style="margin:0 0 10px">Preview isn\'t available here.</p><button class="btn btn-primary btn-sm" onclick="_m75View('+id+',\'student\',\'q\')">Open Question Paper</button></div>';
   }
@@ -18363,6 +18370,7 @@ function _plTimerStart(ex){
 /* ---- review & submit (attempted / not-answered marking) ---- */
 function _plReview(id){
   const ex=window._curExam;
+  if(ex.has_qpdf) return _plReviewPdf(id);
   const isM=ex.test_type==='mcq';
   _plRev={};
   ex.questions.forEach(q=>{
@@ -18396,10 +18404,33 @@ function _plRvSum(){
   const el=document.getElementById('pl-rv-sum');
   if(el)el.innerHTML=`<div><b>${att}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${sk}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div>`;
 }
+function _plReviewPdf(id){
+  const ex=window._curExam; const N=ex.q_count||0;
+  const el=document.getElementById('s-tests-content');
+  el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="_plRender(${id})">${ic('back')} Back to questions</button><div class="pl-title">Review & Submit</div></div>
+  <div class="card"><div class="card-body">
+    <div class="pl-rv-t">How many questions did you attempt?</div>
+    <div class="pl-rv-s">${N?('This paper has <b>'+N+'</b> questions. '):''}Enter how many you actually attempted so your teacher gets an accurate report.</div>
+    <div style="display:flex;align-items:center;gap:12px;margin:16px 0;flex-wrap:wrap">
+      <label style="font-weight:800">Attempted</label>
+      <input id="pl-pdf-att" type="number" min="0" ${N?('max="'+N+'"'):''} class="form-control" style="width:130px" placeholder="e.g. 40" value="${N||''}">
+      ${N?('<span style="color:var(--text-muted);font-weight:600">out of '+N+'</span>'):''}
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="_plSubmit(${id})">Confirm & Submit Test</button>
+  </div></div>`;
+}
 async function _plSubmit(id){
   const ex=window._curExam; let body={};
-  const attempted=[], skipped=[];
-  ex.questions.forEach(q=>{ (_plRev[q.q_no]?attempted:skipped).push(q.q_no); });
+  let attempted=[], skipped=[];
+  if(ex.has_qpdf){
+    const N=ex.q_count||0;
+    let k=parseInt((document.getElementById('pl-pdf-att')||{}).value,10); if(isNaN(k)||k<0) k=0;
+    if(N && k>N) k=N;
+    const tot=N||k;
+    for(let i=1;i<=tot;i++){ (i<=k?attempted:skipped).push(i); }
+  } else {
+    ex.questions.forEach(q=>{ (_plRev[q.q_no]?attempted:skipped).push(q.q_no); });
+  }
   if(ex.test_type==='mcq'){
     const ans={};
     for(const q of ex.questions){ const sel=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); const v=(sel?sel.value:_plAns[q.q_no]); if(v!=null&&v!=='')ans[q.q_no]=v; }
@@ -18467,15 +18498,18 @@ async function _plSubmitSend(id, body){
   if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
   window._plRetryBody=null; window._examPlayerOpen=false;
   let attM=0,skM=0;
-  ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; });
+  if(!ex.has_qpdf){ ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; }); }
   const attempted=body.attempted||[], skipped=body.skipped||[];
   const allDone=skipped.length===0;
   const tName=ex.teacher_name||'your teacher';
+  const statsHtml=ex.has_qpdf
+    ? `<div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${ex.q_count||(attempted.length+skipped.length)}</b><span>Total questions</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${ex.total_marks||0}</b><span>Total marks</span></div></div>`
+    : `<div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div></div>`;
   el.innerHTML=`<div class="pl-thanks">
     <div class="pl-thanks-ic">${ic('check')}</div>
     <div class="pl-thanks-msg">Thank you!</div>
     <div class="pl-thanks-note">Your answer sheet has been sent to <b>${esc(tName)}</b>.${allDone?' <b>Excellent</b> \u2014 you attempted every question!':''} Your result will be available soon \u2014 you can keep checking the <b>Result Status</b> tab.</div>
-    <div class="pl-tstats"><div><b>${attempted.length}</b><span>Attempted</span></div><div><b>${attM}</b><span>Attempt marks</span></div><div><b>${skipped.length}</b><span>Not answered</span></div><div><b>${skM}</b><span>Skipped marks</span></div></div>
+    ${statsHtml}
     <div class="tx-pill a" style="margin-top:14px">CHECKING SOON</div>
     <button class="btn btn-primary" onclick="${r.status==='graded'?('openExamResult('+id+')'):'loadSTests()'}" style="margin-top:16px">${r.status==='graded'?'View Result':'Back to Tests'}</button></div>`;
 }

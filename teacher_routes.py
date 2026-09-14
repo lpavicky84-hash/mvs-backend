@@ -3549,7 +3549,7 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
                                   class_name: str = Form(""), chapter: str = Form(""),
                                   medium: str = Form("English"), batch_ids: str = Form(""),
                                   duration_min: str = Form("60"), scheduled_at: str = Form(""),
-                                  marks: str = Form("100"),
+                                  marks: str = Form("100"), total_questions: str = Form("0"),
                                   q_pdf: UploadFile = File(...), s_pdf: UploadFile = File(...),
                                   db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Mission 75 PDF test: Question PDF + Answer(solution) PDF. Ye ek NORMAL subjective test
@@ -3576,12 +3576,16 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
         _marks = max(1, int(float(marks or "100")))
     except Exception:
         _marks = 100
+    try:
+        _qc = max(0, int(float(total_questions or "0")))
+    except Exception:
+        _qc = 0
     made = []
     for _tb in _batch_ids_from_str(batch_ids):
         ex = Exam(teacher_id=tp.id, teacher_name=current_user.name, subject=(subject or "").strip(),
                   title=_title, chapter=((chapter or "").strip() or None), test_type="subjective",
                   class_name=(class_name or "").strip(), medium=medium, total_marks=_marks,
-                  duration_min=_dur, scheduled_at=_sched, batch_id=_tb, q_pdf=qkey, s_pdf=skey)
+                  duration_min=_dur, scheduled_at=_sched, batch_id=_tb, q_pdf=qkey, s_pdf=skey, q_count=_qc)
         db.add(ex); db.flush()
         db.add(ExamQuestion(exam_id=ex.id, q_no=1, max_marks=_marks,
                question_text="Attempt the full question paper attached above, then upload a clear photo (or PDF) of your complete answer sheet."))
