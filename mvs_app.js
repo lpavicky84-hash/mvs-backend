@@ -2342,28 +2342,23 @@ function _dlName(name, mime){
   return name;
 }
 async function _smartDownload(url, name){
-  var tok=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-  var dlUrl=tok+'&dl=1';   // server ko batao: attachment (force download)
+  // ROOT CAUSE: is app ke WebView me app.mvsfoundation.in par NAVIGATE karne se PDF ki jagah
+  // SPA ka index.html (~592KB) mil jaata tha -> "invalid/corrupt". Isliye kabhi navigate/iframe
+  // se same-origin download NAHI. Hamesha bytes ko FETCH (auth-header, viewer isi se render hota
+  // -> valid) karke blob/data-url se save karo.
   var _isIOS=/iP(hone|ad|od)/.test(navigator.userAgent||'')||(navigator.platform==='MacIntel'&&(navigator.maxTouchPoints||0)>1);
   var _wv=(typeof _isWebView==='function' && _isWebView());
-  // ===== Android in-app WebView =====
-  // blob: URL download manager tak nahi pahunchta, data: URL bade file par truncate ho jaata
-  // (592 KB corrupt). Isliye SEEDHA server download-URL do -> Android download manager poori
-  // file stream karta hai (attachment) + notification aata hai. Bulletproof for large PDFs.
-  if(_wv && !_isIOS){
-    try{
-      var a=document.createElement('a'); a.href=dlUrl; a.download=(name||'file'); a.rel='noopener';
-      document.body.appendChild(a); a.click(); a.remove();
-    }catch(e){ try{ window.location.href=dlUrl; }catch(e2){} }
-    try{ if(typeof toast==='function') toast('Download started \u2014 dekhein notification / Downloads.'); }catch(e){}
-    return;
-  }
-  // ===== iOS + Desktop: bytes fetch karke (valid) save/open =====
   try{
     var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('http '+r.status);
     var b=await r.blob(); if(!b||!b.size) throw new Error('empty');
-    var dn=_dlName(name, b.type||'');
+    // valid PDF/image check — 592KB HTML kabhi save na ho
+    var head=new Uint8Array(await b.slice(0,5).arrayBuffer());
+    var isPdf=(head[0]===0x25&&head[1]===0x50&&head[2]===0x44&&head[3]===0x46); // %PDF
+    var isImg=(head[0]===0xFF&&head[1]===0xD8)||(head[0]===0x89&&head[1]===0x50);
+    var isHtml=(head[0]===0x3C)|| (b.type&&b.type.indexOf('html')>=0); // '<'
+    if(isHtml && !isPdf && !isImg){ throw new Error('got-html'); }
+    var dn=_dlName(name, (isPdf?'application/pdf':(b.type||'')));
     var u=URL.createObjectURL(b);
     if(_isIOS){
       var w=window.open(u,'_blank');
@@ -2372,15 +2367,15 @@ async function _smartDownload(url, name){
       try{ if(typeof toast==='function') toast('Opened \u2014 tap Share to Save to Files or Print.'); }catch(e){}
       return;
     }
+    // Android WebView + Desktop: blob URL se download (navigate NAHI)
     var a=document.createElement('a'); a.href=u; a.download=dn; a.rel='noopener';
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 10000);
+    setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 15000);
     try{ if(typeof toast==='function') toast('Downloaded \u2014 check your Downloads.'); }catch(e){}
     return;
   }catch(e){
-    // last resort: server download-URL par bhej do
-    try{ var a2=document.createElement('a'); a2.href=dlUrl; a2.download=(name||'file'); document.body.appendChild(a2); a2.click(); a2.remove(); }
-    catch(e2){ try{ window.open(dlUrl,'_blank'); }catch(e3){ try{ window.location.href=dlUrl; }catch(e4){} } }
+    var msg=(e&&e.message==='got-html')?'Download blocked by the app. Please open in Chrome browser to download.':'Could not download. Please try again or open in Chrome.';
+    try{ if(typeof toast==='function') toast(msg,true); }catch(x){}
   }
 }
 async function _dvLazyDownload(url, name){
@@ -15462,6 +15457,9 @@ async function _extRefresh(){
   _extRender();
 }
 async function openExtMaterial(id,link,fname){
+  // Study Material files EXTERNAL (files.mediamvs.com) hote hain — direct link se download
+  // sahi hota hai (app WebView external URL ko intercept nahi karta). Link na ho to fetch-based.
+  if(link){ try{ window.open(link,'_blank'); }catch(e){ try{ window.location.href=link; }catch(e2){} } return; }
   var name=fname||'material'; if(!/\.[a-z0-9]{2,5}$/i.test(name)) name+='.pdf';
   return _smartDownload(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name);
 }
