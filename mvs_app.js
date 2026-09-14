@@ -832,7 +832,7 @@ function goLogin(portal){
   }
   _premiumLogin(portal);
 }
-function logout(){ goHome(); }
+function logout(){ try{ window._ttSelfPhoto=null; window._tphotoCache={}; window._selfPhotoCache={}; window._m75Resize=null; }catch(e){} goHome(); }
 // ===== SESSION PERSIST — refresh karne par logout na ho, wahi page par wapas aao =====
 // v171: session ab PORTAL-WISE store hoti hai (mvs_sess_admin / _teacher / _student).
 // Isse ek hi browser me admin aur student dono alag-alag rah sakte hain, aur student
@@ -5353,6 +5353,54 @@ async function submitUploadMission75Pdf(){
     setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },800);
   }catch(e){ toast((e&&e.message)||'Upload failed',true); if(btn){btn.disabled=false;btn.textContent='Create Test';} if(prog)prog.classList.remove('show'); }
 }
+async function openEditMission75Pdf(id, ex){
+  await _dppTtData(); await _ensureTBatches();
+  const subs=_dppAllSubjects();
+  const _subOpts=(subs.length?subs:[ex.subject||'General']).map(x=>`<option ${x===ex.subject?'selected':''}>${esc(x)}</option>`).join('');
+  let _schedLocal=''; try{ if(ex.scheduled_at) _schedLocal=spSchedLocal(new Date(ex.scheduled_at)); }catch(e){}
+  showModal('Edit Mission 75 PDF',
+    `<div class="alert alert-info">Edit the details below. Leave a PDF empty to keep the current one, or choose a new file to replace it.</div>
+     <div class="form-group"><label>Subject</label><select class="form-control" id="m75e-sub">${_subOpts}</select></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Class</label><select class="form-control" id="m75e-cls"></select></div><div class="form-group"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="m75e-dur" value="${ex.duration_min||''}"></div></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Total Marks</label><input type="number" min="1" class="form-control" id="m75e-marks" value="${ex.total_marks||100}"></div><div class="form-group"><label>Total Questions</label><input type="number" min="0" class="form-control" id="m75e-qcount" value="${ex.q_count||''}" placeholder="e.g. 43"></div></div>
+     <div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="m75e-ch" value="${esc((typeof spCleanCh==='function'?spCleanCh(ex.chapter||''):(ex.chapter||'')))}"></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Medium</label><select class="form-control" id="m75e-medium"><option ${ex.medium==='English'?'selected':''}>English</option><option ${ex.medium==='Hindi'?'selected':''}>Hindi</option><option ${ex.medium==='Bilingual'?'selected':''}>Bilingual</option></select></div><div class="form-group"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="m75e-sched" value="${_schedLocal}"></div></div>
+     <div class="form-group"><label>Title</label><input class="form-control" id="m75e-title" value="${esc(ex.title||'')}"></div>
+     ${_singleBatchField(ex.batch_id)}
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="form-group"><label>Replace Question PDF (optional)</label><input type="file" class="form-control" id="m75e-qpdf" accept="application/pdf"></div><div class="form-group"><label>Replace Answer PDF (optional)</label><input type="file" class="form-control" id="m75e-spdf" accept="application/pdf"></div></div>
+     <div class="ex-prog" id="m75e-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="m75e-plabel">Saving\u2026</span><span class="ex-prog-pct" id="m75e-ppct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="m75e-pfill"></div></div></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="m75e-btn" onclick="submitEditMission75Pdf(${id})">Save Changes</button>`);
+  const fill=()=>{ const sub=val('m75e-sub'); const cls=_dppClsOptions(sub); const cs=document.getElementById('m75e-cls'); if(cs){ cs.innerHTML='<option value="">All Classes</option>'+cls.map(c=>`<option ${c===ex.class_name?'selected':''}>${esc(c)}</option>`).join(''); if(ex.class_name && cls.includes(ex.class_name)) cs.value=ex.class_name; else if(cls.length===1) cs.value=cls[0]; } };
+  const se=document.getElementById('m75e-sub'); if(se) se.addEventListener('change',fill); fill();
+}
+async function submitEditMission75Pdf(id){
+  const title=(val('m75e-title')||'').trim(); if(!title){ toast('Please enter a title.',true); return; }
+  const fd=new FormData();
+  fd.append('subject',val('m75e-sub')||''); fd.append('class_name',val('m75e-cls')||''); fd.append('chapter',val('m75e-ch')||'');
+  fd.append('title',title); fd.append('medium',val('m75e-medium')||'English');
+  fd.append('duration_min',val('m75e-dur')||'0'); fd.append('scheduled_at',val('m75e-sched')||'');
+  fd.append('marks',val('m75e-marks')||'100'); fd.append('total_questions',val('m75e-qcount')||'0');
+  var _sb=(typeof _singleBatchId==='function')?_singleBatchId():undefined;
+  fd.append('batch_id',(_sb!==undefined&&_sb!==null)?String(_sb):'');
+  const qf=(document.getElementById('m75e-qpdf')||{}).files||[]; const sf=(document.getElementById('m75e-spdf')||{}).files||[];
+  if(qf.length) fd.append('q_pdf',qf[0]); if(sf.length) fd.append('s_pdf',sf[0]);
+  const btn=document.getElementById('m75e-btn'); if(btn){btn.disabled=true;btn.textContent='Saving...';}
+  const prog=document.getElementById('m75e-prog'); if(prog)prog.classList.add('show');
+  const pf=document.getElementById('m75e-pfill'),pp=document.getElementById('m75e-ppct');
+  function _p(pct){ if(pf)pf.style.width=pct+'%'; if(pp)pp.textContent=pct+'%'; }
+  try{
+    await new Promise(function(res,rej){
+      var xhr=new XMLHttpRequest(); xhr.open('PATCH',API+'/api/teacher/exam-pdf/'+id);
+      xhr.setRequestHeader('Authorization','Bearer '+TOKEN);
+      if(xhr.upload) xhr.upload.onprogress=function(ev){ if(ev.lengthComputable) _p(Math.min(95,Math.round(ev.loaded/ev.total*100))); };
+      xhr.onload=function(){ if(xhr.status>=200&&xhr.status<300){res();} else { var d=null; try{d=JSON.parse(xhr.responseText);}catch(x){} rej(new Error((d&&d.detail)||('HTTP '+xhr.status))); } };
+      xhr.onerror=function(){ rej(new Error('Network error')); };
+      xhr.send(fd);
+    });
+    _p(100); toast('Test updated \u2705');
+    setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },700);
+  }catch(e){ toast((e&&e.message)||'Update failed',true); if(btn){btn.disabled=false;btn.textContent='Save Changes';} if(prog)prog.classList.remove('show'); }
+}
 async function _m75View(eid, role, kind){
   var url=(role==='teacher'?(API+'/api/teacher/mission75-pdf/'+eid+'/file'):(API+'/api/student/exam/'+eid+'/pdf'))+'?kind='+kind;
   try{
@@ -7556,6 +7604,7 @@ async function examEditTest(id){
     toast('Loading test\u2026');
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     const ex=d.exam||{};
+    if(ex.is_pdf){ return openEditMission75Pdf(id, ex); }
     await openCreateExam(ex.test_type==='mcq'?'mcq':'subjective',{id:id,ex:ex,questions:d.questions||[],attempts:(d.attempts||[]).length});
   }catch(e){ toast(e.message,true); }
 }

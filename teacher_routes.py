@@ -3613,6 +3613,67 @@ def teacher_mission75_pdf_file(eid: int, kind: str = "q", db: Session = Depends(
                         ("answers.pdf" if kind == "a" else "questions.pdf"), False, sniff=True)
 
 
+@router.patch("/exam-pdf/{eid}")
+async def teacher_exam_pdf_edit(eid: int, subject: str = Form(""), title: str = Form(""),
+                                class_name: str = Form(""), chapter: str = Form(""),
+                                medium: str = Form("English"), batch_id: str = Form(""),
+                                duration_min: str = Form("60"), scheduled_at: str = Form(""),
+                                marks: str = Form("100"), total_questions: str = Form("0"),
+                                q_pdf: UploadFile = File(None), s_pdf: UploadFile = File(None),
+                                db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Edit a Mission 75 PDF test — details/marks/total-questions/batch, and optionally replace
+    the Question/Answer PDFs (leave a file empty to keep the existing one)."""
+    from models import Exam, ExamQuestion
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == eid, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Not found")
+    if (subject or "").strip():
+        ex.subject = (_SR.canon_display(subject.strip(), class_name) if _SR is not None else subject.strip())
+    if (title or "").strip():
+        ex.title = title.strip()
+    ex.class_name = (class_name or "").strip()
+    ex.chapter = ((chapter or "").strip() or None)
+    ex.medium = medium or ex.medium
+    ex.duration_min = _parse_dur(duration_min)
+    ex.scheduled_at = _exam_parse_dt(scheduled_at) if (scheduled_at or "").strip() else None
+    try:
+        ex.total_marks = max(1, int(float(marks or "100")))
+    except Exception:
+        pass
+    try:
+        ex.q_count = max(0, int(float(total_questions or "0")))
+    except Exception:
+        pass
+    try:
+        _b = int(batch_id) if (batch_id not in ("", None, "0")) else 0
+        ex.batch_id = (_b or None)
+    except Exception:
+        pass
+    R2 = __import__("r2_storage")
+    if q_pdf is not None:
+        qd = await q_pdf.read()
+        if qd:
+            try:
+                qd = _compress_pdf(qd)
+            except Exception:
+                pass
+            ex.q_pdf = R2.store_file_value(R2.new_key("exam-pdf", "q.pdf"), qd, "application/pdf")
+    if s_pdf is not None:
+        sd = await s_pdf.read()
+        if sd:
+            try:
+                sd = _compress_pdf(sd)
+            except Exception:
+                pass
+            ex.s_pdf = R2.store_file_value(R2.new_key("exam-pdf", "s.pdf"), sd, "application/pdf")
+    q = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).order_by(ExamQuestion.q_no).first()
+    if q:
+        q.max_marks = ex.total_marks
+    db.commit()
+    return {"ok": True, "id": ex.id}
+
+
 def _ensure_exam_hindi(db, ex, qs):
     """On-demand: exam ke missing Hindi fields (question/answer/options) bhar do — subject-aware
     (Gemini) + wapas cache. Pehli Hindi request par translate, uske baad free + instant.
@@ -3928,6 +3989,10 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
     return {"exam": {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks,
                      "test_type": ex.test_type, "subject": ex.subject, "chapter": ex.chapter,
                      "medium": ex.medium, "duration_min": ex.duration_min,
+                     "class_name": getattr(ex, "class_name", "") or "",
+                     "batch_id": getattr(ex, "batch_id", None),
+                     "is_pdf": bool(getattr(ex, "q_pdf", None)),
+                     "q_count": int(getattr(ex, "q_count", 0) or 0),
                      "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None},
             "questions": questions, "attempts": out}
 
