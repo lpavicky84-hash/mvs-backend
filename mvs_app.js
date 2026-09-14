@@ -2279,86 +2279,36 @@ function _isWebView(){
     return false;
   }catch(e){ return false; }
 }
+function _dlName(name, mime){
+  name=(name||'file').replace(/[\\/:*?"<>|]/g,'_').trim()||'file';
+  var ext={'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[(mime||'').toLowerCase().split(';')[0]];
+  if(ext){ name=name.replace(/\.(jpe?g|png|pdf|webp|gif)$/i,'')+'.'+ext; }
+  return name;
+}
 async function _smartDownload(url, name){
   var tok=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-  if(_isWebView()){
-    // In-app WebViews me window.open aksar PDF ko inline/partial le leta tha ("invalid format").
-    // Hidden iframe attachment URL par point kare -> WebView ka download manager FULL file
-    // uthata hai (sahi format se), bina page navigate kiye. Ye sab material ke liye bulletproof.
+  // BULLETPROOF: bytes ko auth-header se fetch karo (viewer isi se render karta hai -> hamesha
+  // VALID), fir sahi extension ke saath download. Isse WebView me bhi "invalid format" nahi aata.
+  try{
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('http '+r.status);
+    var b=await r.blob(); if(!b||!b.size) throw new Error('empty');
+    var dn=_dlName(name, b.type||'');
+    var u=URL.createObjectURL(b);
+    var a=document.createElement('a'); a.href=u; a.download=dn; a.rel='noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} }, 10000);
+    try{ if(typeof toast==='function') toast('Downloaded \u2014 check your Downloads.'); }catch(e){}
+    return;
+  }catch(e){
+    // Fallback (agar fetch/blob-download WebView me block ho): authed URL hidden iframe se
+    // download manager ko de do; warna naya tab / navigate.
     try{
       var f=document.getElementById('_dlframe'); if(f) f.remove();
       f=document.createElement('iframe'); f.id='_dlframe'; f.style.display='none'; f.src=tok;
-      document.body.appendChild(f); setTimeout(function(){ try{ f.remove(); }catch(e){} }, 120000);
-    }catch(e){
-      try{ var a=document.createElement('a'); a.href=tok; a.setAttribute('download', name||''); document.body.appendChild(a); a.click(); a.remove(); }
-      catch(e2){ try{ window.location.href=tok; }catch(e3){} }
-    }
-    try{ if(typeof toast==='function') toast('Downloading\u2026 check your Downloads.'); }catch(e){}
-    return;
-  }
-  try{
-    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw 0; var b=await r.blob(); if(!b||!b.size) throw 0;
-    var u=URL.createObjectURL(b); var a2=document.createElement('a'); a2.href=u; a2.download=name||'file.pdf'; document.body.appendChild(a2); a2.click(); a2.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000);
-  }catch(e){ try{ window.open(tok,'_blank','noopener'); }catch(e2){ try{ if(typeof toast==='function') toast('Download error',true); }catch(e3){} } }
-}
-async function openDocViewer(url, name, opts){
-  opts=opts||{};
-  _docViewerCss();
-  var old=document.getElementById('docviewer'); if(old) old.remove();
-  var _dic=(typeof ic==='function'?ic('download'):'\u2913');
-  var ov=document.createElement('div'); ov.id='docviewer'; ov.className='docviewer';
-  ov.innerHTML='<div class="dv-bar"><span class="dv-name">'+esc(name||'Document')+'</span>'
-    +'<span class="dv-acts">'
-      +'<a class="dv-btn" id="dv-dl" href="#">'+_dic+'<span class="dv-lbl">Download</span></a>'
-      +'<button class="dv-btn" id="dv-open" type="button"><span class="dv-lbl">Open</span>\u2197</button>'
-      +'<button class="dv-btn" type="button" onclick="closeDocViewer()">\u2715<span class="dv-lbl"> Close</span></button>'
-    +'</span></div>'
-    +'<div class="dv-body" id="dv-body"><div class="dv-load"><div class="spinner"></div><div>Loading\u2026</div></div></div>';
-  document.body.appendChild(ov);
-  document.body.style.overflow='hidden';
-  ov.addEventListener('click', function(e){ if(e.target===ov) closeDocViewer(); });
-  document.addEventListener('keydown', _dvEsc);
-  // FAST PATH: stream the file straight into an iframe (browser shows page 1 before the
-  // whole file has downloaded). Used for large scans (DPP/answer sheets). The endpoint
-  // must serve inline (?inline=1). Download stays authed + lazy.
-  if(opts.stream){
-    var su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-    var body=document.getElementById('dv-body');
-    if(body){ body.innerHTML='<div id="dv-pdf" style="height:100%"></div>';
-      try{ _pdfView(document.getElementById('dv-pdf'), su, {title:name||'Document', downloadName:name||'document.pdf', src:su}); }
-      catch(_e){ body.innerHTML='<iframe class="dv-frame" src="'+su+'" title="'+esc(name||'document')+'"></iframe>'; } }
-    var dl=document.getElementById('dv-dl'); if(dl){ dl.href='#'; dl.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name); }; }
-    var op=document.getElementById('dv-open'); if(op){ op.onclick=function(){ try{ window.open(su,'_blank'); }catch(e){} }; }
-    return;
-  }
-  try{
-    var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok) throw new Error('fail');
-    var ct=(r.headers.get('content-type')||'').toLowerCase();
-    var raw=await r.blob();
-    if(!raw||!raw.size) throw new Error('empty');
-    var nm=(name||'').toLowerCase();
-    var isImg=ct.indexOf('image')>=0 || /\.(png|jpe?g|webp|gif|bmp)$/.test(nm);
-    var isPdf=ct.indexOf('pdf')>=0 || /\.pdf$/.test(nm);
-    var blob=isPdf?new Blob([raw],{type:'application/pdf'}):raw;
-    var u=URL.createObjectURL(blob); window._dvUrl=u;
-    var body2=document.getElementById('dv-body');
-    if(body2){
-      if(isImg) body2.innerHTML='<img loading="lazy" class="dv-img" src="'+u+'" alt="'+esc(name||'')+'">';
-      else if(isPdf){ body2.innerHTML='<div id="dv-pdf" style="height:100%"></div>';
-        var _su=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-        try{ _pdfView(document.getElementById('dv-pdf'), blob, {title:name||'Document', downloadName:name||'document.pdf', src:_su}); }
-        catch(_e){ body2.innerHTML='<iframe class="dv-frame" src="'+_su+'" title="'+esc(name||'document')+'"></iframe>'; } }
-      else body2.innerHTML='<iframe class="dv-frame" src="'+u+'" title="'+esc(name||'document')+'"></iframe>';
-    }
-    var dl2=document.getElementById('dv-dl'); if(dl2){ dl2.href='#'; dl2.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name||'document'); }; }
-    var op2=document.getElementById('dv-open'); if(op2){ op2.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
-  }catch(e){
-    var tokUrl=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-    var body3=document.getElementById('dv-body'); if(body3) body3.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
-    var dl3=document.getElementById('dv-dl'); if(dl3){ dl3.href=tokUrl; dl3.removeAttribute('download'); dl3.target='_blank'; }
-    var op3=document.getElementById('dv-open'); if(op3){ op3.onclick=function(){ try{ window.open(tokUrl,'_blank'); }catch(e){} }; }
+      document.body.appendChild(f); setTimeout(function(){ try{ f.remove(); }catch(x){} }, 120000);
+      try{ if(typeof toast==='function') toast('Downloading\u2026'); }catch(x){}
+    }catch(e2){ try{ window.open(tok,'_blank'); }catch(e3){ try{ window.location.href=tok; }catch(e4){} } }
   }
 }
 async function _dvLazyDownload(url, name){
