@@ -79,9 +79,11 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         "ready_for_youtube": c("ready_for_youtube"),
         "due_today": q.filter(VideoTask.deadline != None,
                               func.date(VideoTask.deadline) == today,
-                              ~VideoTask.lifecycle.in_(["uploaded", "completed"])).count(),
+                              VideoTask.is_old == False,
+                              VideoTask.lifecycle.in_(active_states)).count(),
         "overdue": q.filter(VideoTask.deadline != None, VideoTask.deadline < now,
-                            ~VideoTask.lifecycle.in_(["uploaded", "completed"])).count(),
+                            VideoTask.is_old == False,
+                            VideoTask.lifecycle.in_(active_states)).count(),
     }
     # This-month metrics
     month_start = datetime(now.year, now.month, 1)
@@ -144,12 +146,11 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         # YouTuber tasks live in their own "YouTuber Tasks" section — never in the general list.
         query = query.filter(or_(VideoTask.creator_type == None,
                                  VideoTask.creator_type != "youtuber"))
-        # Projects / urgent videos have their own sections, so hide them ONLY in the default
-        # (no-status) view. The moment a specific status is filtered (e.g. "Uploaded"), show
-        # EVERY kind so nothing is missed — even an urgent or project collab video.
-        if not (status or "").strip():
-            query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
-                                     VideoTask.kind == "normal"))
+        # Projects / one-shot / rapid-revision ki apni "Projects" section hai — general Tasks
+        # list (PM Review, Editing, Uploaded, sab) me kabhi na dikhein. Pehle sirf no-status
+        # view me hide hote the, isliye PM Review filter par project bhi aa jaata tha.
+        query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
+                                 VideoTask.kind == "normal"))
     if teacher_id:
         # collab-aware: match the primary teacher OR any collaborator (precise JSON
         # boundary patterns against json.dumps format "[2, 3]" so id 1 != 11).
@@ -219,7 +220,12 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     now = datetime.utcnow()
     if deadline == "overdue":
         query = query.filter(VideoTask.deadline != None, VideoTask.deadline < now,
-                             ~VideoTask.lifecycle.in_(["uploaded", "completed"]))
+                             VideoTask.is_old == False,
+                             VideoTask.lifecycle.in_([
+                                 "creator_assigned", "creator_working", "creator_submitted",
+                                 "pm_review", "approved", "editor_assigned", "editing",
+                                 "editing_paused", "editing_done", "qc_pending", "qc_changes",
+                                 "ready_for_youtube", "changes_required"]))
     elif deadline == "today":
         query = query.filter(VideoTask.deadline != None,
                              func.date(VideoTask.deadline) == date.today())

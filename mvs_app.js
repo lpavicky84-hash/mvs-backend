@@ -24269,7 +24269,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // Which KPI cards drill into a filtered list (status/deadline). Others stay static.
   var KPI_NAV={
-    production:{ pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, thumb_changes:{status:'thumb_changes'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
+    production:{ active:{status:''}, teacher_pending:{status:''}, youtuber_pending:{yt:1}, graphics:{status:'thumb_review'},
+                 pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, thumb_changes:{status:'thumb_changes'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
                  ready_for_youtube:{status:'ready_for_youtube'}, due_today:{deadline:'today'}, overdue:{deadline:'overdue'} },
     editor:{ assigned:{status:'editor_assigned'}, not_started:{status:'editor_assigned'}, editing:{status:'editing'},
              qc_pending:{status:'qc_pending'}, changes:{status:'qc_changes'} },
@@ -27578,6 +27579,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodKpiGo=function(portal,key){
     var nav=(KPI_NAV[portal]||{})[key]; if(!nav) return;
+    if(nav.yt){ prodNav('youtuber','videos'); return; }   // youtuber_pending -> YouTuber Tasks section
     var f=_flt(portal); f.status=nav.status||''; f.deadline=nav.deadline||'';
     prodNav(portal,(portal==='youtuber')?'videos':'tasks');
   };
