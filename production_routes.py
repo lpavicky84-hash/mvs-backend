@@ -6,7 +6,7 @@ is authorised server-side and updates the shared state engine in production_core
 from fastapi import APIRouter, Depends, HTTPException, Body, Response
 import json
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_
 from datetime import datetime, date, timedelta
 
 from database import get_db
@@ -63,18 +63,25 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                      "pm_review", "approved", "editor_assigned", "editing",
                      "editing_paused", "editing_done", "qc_pending", "qc_changes",
                      "ready_for_youtube", "changes_required"]
+    _live = db.query(VideoTask.id).filter(VideoTask.cancelled == False)
     kpis = {
-        "active": q.filter(VideoTask.lifecycle.in_(active_states)).count(),
+        "active": q.filter(VideoTask.is_old == False, or_(
+                     VideoTask.lifecycle.in_(["creator_assigned", "creator_working", "changes_required"]),
+                     and_(or_(VideoTask.lifecycle == None, VideoTask.lifecycle == ""),
+                          VideoTask.status.in_(["assigned", "reshoot", "rejected", "new", "in_progress"])))).count(),
         "teacher_pending": q.filter(VideoTask.creator_type == "teacher",
                                     VideoTask.lifecycle.in_(["creator_assigned", "creator_working", "changes_required"])).count(),
         "youtuber_pending": q.filter(VideoTask.creator_type == "youtuber",
                                      VideoTask.lifecycle.in_(["creator_assigned", "creator_working", "changes_required"])).count(),
         "pm_review": q.filter(or_(VideoTask.lifecycle.in_(["creator_submitted", "pm_review"]),
                                   VideoTask.status == "submitted")).count(),
-        "thumb_review": db.query(GraphicsTask).filter(GraphicsTask.status == "submitted").count(),
-        "thumb_changes": db.query(GraphicsTask).filter(GraphicsTask.status == "changes").count(),
+        "thumb_review": db.query(GraphicsTask).filter(GraphicsTask.status == "submitted",
+                                                      GraphicsTask.task_id.in_(_live)).count(),
+        "thumb_changes": db.query(GraphicsTask).filter(GraphicsTask.status == "changes",
+                                                       GraphicsTask.task_id.in_(_live)).count(),
         "editing": c("editing", "editing_paused"),
-        "graphics": db.query(GraphicsTask).filter(GraphicsTask.status.in_(["in_progress", "submitted"])).count(),
+        "graphics": db.query(GraphicsTask).filter(GraphicsTask.status.in_(["in_progress", "submitted"]),
+                                                  GraphicsTask.task_id.in_(_live)).count(),
         "qc_pending": c("qc_pending"),
         "ready_for_youtube": c("ready_for_youtube"),
         "due_today": q.filter(VideoTask.deadline != None,
@@ -186,6 +193,7 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         # their state in the admin `status` field (lifecycle may be blank). Match BOTH so
         # every task shows up under the right filter.
         _SMAP = {
+            "assigned":         (["creator_assigned", "creator_working", "changes_required"], ["assigned", "reshoot", "rejected", "new", "in_progress"]),
             "pm_review":        (["pm_review", "creator_submitted"], ["submitted"]),
             "approved":         (["approved"],                       ["approved"]),
             "editor_assigned":  (["editor_assigned"],                ["editing_soon"]),
@@ -2806,6 +2814,14 @@ def pm_delete_task(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or
     # Soft delete (reversible): removed from every list but data is preserved.
     t = _task(db, tid)
     t.cancelled = True
+    # Associated thumbnail/graphics task ko bhi active se hata do — warna graphics portal/count
+    # me deleted task ka thumbnail dikhta reh jaata tha. (Approved rehne do — history.)
+    try:
+        for g in db.query(GraphicsTask).filter(GraphicsTask.task_id == tid,
+                                               GraphicsTask.status != "approved").all():
+            g.status = "cancelled"
+    except Exception:
+        pass
     db.commit()
     return {"ok": True}
 

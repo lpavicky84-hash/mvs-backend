@@ -24269,7 +24269,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // Which KPI cards drill into a filtered list (status/deadline). Others stay static.
   var KPI_NAV={
-    production:{ active:{status:''}, teacher_pending:{status:''}, youtuber_pending:{yt:1}, graphics:{status:'thumb_review'},
+    production:{ active:{status:'assigned'}, teacher_pending:{status:'assigned'}, youtuber_pending:{yt:1}, graphics:{status:'thumb_review'},
                  pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, thumb_changes:{status:'thumb_changes'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
                  ready_for_youtube:{status:'ready_for_youtube'}, due_today:{deadline:'today'}, overdue:{deadline:'overdue'} },
     editor:{ assigned:{status:'editor_assigned'}, not_started:{status:'editor_assigned'}, editing:{status:'editing'},
