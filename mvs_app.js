@@ -9997,6 +9997,7 @@ function adminAllowed(page){
   if(page==='batches') return secs.includes('batches')||secs.includes('students');
   if(page==='requests') return secs.includes('requests')||secs.includes('students');
   if(page==='ytasks') return secs.includes('ytasks')||secs.includes('vtasks');
+  if(page==='prodtrack') return secs.includes('prodtrack')||secs.includes('prodteam')||secs.includes('prodmon');
   return secs.includes(page);
 }
 function applyAdminAccess(){
@@ -10038,6 +10039,7 @@ function openAdmin(){
   try{ initAdminMatCheck(); }catch(e){}
   try{ initAdminSupport(); }catch(e){}
   try{ initAdminProdMonitor(); }catch(e){}
+  try{ initAdminLiveTracker(); }catch(e){}
   try{ initAdminTranslation(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
   try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
@@ -10154,7 +10156,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
+  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -10171,6 +10173,7 @@ function _aLoadPage(page){
   else if(page==='complaints') loadAComplaints();
   else if(page==='feedback') loadAFeedback();
   else if(page==='prodmon') loadAProdMonitor();
+  else if(page==='prodtrack') loadAProdTracker();
   else if(page==='prodboard') loadAProdBoard();
   else if(page==='translation') loadATranslation();
   else if(page==='vtasks') loadAVTasks();
@@ -24228,6 +24231,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
       nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
+            {g:'Live',items:[ {p:'tracker',t:'Live Team Tracker',i:'clock'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'q:uploaded',t:'Uploaded Videos',i:'upload'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
@@ -24243,7 +24247,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
              {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'} ]},
             {g:'Thumbnails',items:[ {p:'ytthumbs',t:'Thumbnail Review',i:'image'}, {p:'ytthumbchg',t:'Thumbnail Changes',i:'edit'},
              {p:'thumbboard',t:'Thumbnail Board',i:'image'} ]},
-            {g:'Production',items:[ {p:'board',t:'Production Board',i:'grid'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
+            {g:'Production',items:[ {p:'tracker',t:'Team Tracker',i:'clock'}, {p:'board',t:'Production Board',i:'grid'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
              {p:'ytb:editing',t:'Editing Progress',i:'clock'}, {p:'ytb:ready',t:'Ready for YouTube',i:'upload'} ]},
             {g:'Insights',items:[ {p:'ytviews',t:'Realtime Views',i:'chart'}, {p:'yttimeline',t:'Timeline',i:'list'} ]},
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
@@ -25352,6 +25356,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='projects') return renderProjects(portal,body);
     if(page==='ytasks'){ body.innerHTML='<div id="pyt-content" class="yt-scope"></div>'; try{ loadAYtTasks('pyt-content'); }catch(e){ body.innerHTML='<div class="p-empty">Could not load.</div>'; } return; }
     if(page==='announce') return renderAnnounce(portal,body);
+    if(page==='tracker') return renderTracker(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
     if(page==='tasks'||page==='videos') return renderList(portal,body);
@@ -27790,6 +27795,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   // --- PM team / workload ---
+  function renderTracker(portal,body){
+    try{ return window.renderLiveTracker(body, P[portal].api, portal); }
+    catch(e){ body.innerHTML='<div class="p-empty">Could not load tracker. '+esc(e&&e.message||'')+'</div>'; }
+  }
+
   function renderTeam(portal,body){
     return api(P[portal].api+'/team').then(function(r){
       if(_stale(portal,'team')) return;
@@ -28251,6 +28261,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(page==='board') return renderBoard(portal,body);
       if(page==='thumbboard') return renderThumbBoard(portal,body);
       if(page==='tasks'||page==='videos'){ var _tf=_flt(portal); _tf._locked=false; _tf.status=''; _tf.deadline=''; _tf.epreset=''; _tf.gpreset=''; _tf.ypreset=''; return renderList(portal,body); }
+      if(page==='tracker') return renderTracker(portal,body);
       if(page==='team') return renderTeam(portal,body);
       if(page==='views') return renderViews(portal,body);
       if(page==='time') return renderEditorTime(portal,body);
@@ -29060,6 +29071,298 @@ var _AP_ROLES=[
   {key:'youtuber',label:'YouTubers',one:'YouTuber'}
 ];
 function _apRoleMeta(k){ for(var i=0;i<_AP_ROLES.length;i++) if(_AP_ROLES[i].key===k) return _AP_ROLES[i]; return {key:k,label:k,one:k}; }
+
+// ===================== LIVE TEAM TRACKER (shared: production + admin + youtuber) =====================
+// One place to see the whole production team live: who is editing what right now, for how long,
+// what is paused, what is queued, and what is completed. Read-only. Premium + phone responsive.
+(function(){
+  var LT = window._LT = window._LT || {};
+  var LTSVG_SEARCH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
+  var LTSVG_REFRESH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>';
+
+  function _ltEsc(s){ try{ return esc(String(s==null?'':s)); }catch(e){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); } }
+  function _ltIc(k){ try{ return ic(k)||''; }catch(e){ return ''; } }
+  function _ltDur(s){ s=Math.max(0,Math.floor(s||0)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; function p(x){ return (x<10?'0':'')+x; } if(h>0) return h+'h '+p(m)+'m '+p(ss)+'s'; if(m>0) return m+'m '+p(ss)+'s'; return ss+'s'; }
+  function _ltInitials(n){ n=String(n||'').trim(); if(!n) return '?'; var pr=n.split(/\s+/); return (((pr[0]||'')[0]||'')+(pr.length>1?((pr[pr.length-1]||'')[0]||''):'')).toUpperCase(); }
+  function _ltUrgent(p){ return (p==='urgent')?'<span class="lt-urgent">URGENT</span>':''; }
+  function _ltDue(x){ if(!x||!x.deadline) return ''; return '<span class="lt-due'+(x.overdue?' od':'')+'">'+(x.overdue?'Overdue':'Due')+': '+_ltEsc(x.deadline)+'</span>'; }
+  function _ltRef(x){ return x.ref_code?'<span class="lt-ref">'+_ltEsc(x.ref_code)+'</span>':''; }
+
+  function _ltInjectCss(){
+    if(document.getElementById('lt-css')) return;
+    var css=[
+    '.lt-wrap{max-width:100%}',
+    '.lt-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}',
+    '.lt-bar-l{display:flex;align-items:center;gap:10px;min-width:0}',
+    '.lt-h{font-size:1.12rem;font-weight:800;letter-spacing:-.01em;color:var(--text,#2a2313)}',
+    '.lt-live{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;color:#2e9e6b;text-transform:uppercase;letter-spacing:.05em}',
+    '.lt-live i{width:8px;height:8px;border-radius:50%;background:#2e9e6b;display:inline-block;animation:ltPulse 1.2s ease-in-out infinite}',
+    '@keyframes ltPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}',
+    '.lt-upd{font-size:.72rem;color:var(--muted,#8a7d5c)}',
+    '.lt-bar-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '.lt-search{display:flex;align-items:center;gap:8px;background:var(--card,#fffdf7);border:1px solid var(--border,#ece2cd);border-radius:11px;padding:8px 12px;min-width:180px}',
+    '.lt-search svg{width:15px;height:15px;color:var(--muted,#8a7d5c);flex:0 0 auto}',
+    '.lt-search input{border:0;outline:0;background:transparent;font-size:.86rem;color:var(--text,#2a2313);width:100%}',
+    '.lt-rfr{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border,#ece2cd);background:var(--card,#fffdf7);color:var(--text,#2a2313);font-weight:700;font-size:.82rem;padding:8px 14px;border-radius:11px;cursor:pointer;transition:transform .12s,box-shadow .12s}',
+    '.lt-rfr:hover{transform:translateY(-1px);box-shadow:0 4px 12px -6px rgba(120,90,10,.5)}',
+    '.lt-rfr svg{width:15px;height:15px}',
+    '.lt-strip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}',
+    '.lt-stat{flex:1 1 130px;min-width:120px;background:linear-gradient(180deg,var(--card,#fffdf7),var(--surface-2,#fdf9f0));border:1px solid var(--border,#ece2cd);border-radius:14px;padding:12px 14px;position:relative;overflow:hidden}',
+    '.lt-stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--primary,#e6ad4e)}',
+    '.lt-stat.g::before{background:#2e9e6b}.lt-stat.a::before{background:#d9911f}.lt-stat.b::before{background:#3a86c8}.lt-stat.r::before{background:#d1443a}.lt-stat.m::before{background:#8a7d5c}',
+    '.lt-stat .n{font-size:1.5rem;font-weight:800;line-height:1;color:var(--text,#2a2313)}',
+    '.lt-stat .l{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted,#8a7d5c);margin-top:5px}',
+    '.lt-sec{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted,#8a7d5c);margin:20px 2px 12px;display:flex;align-items:center;gap:8px}',
+    '.lt-sec .c{background:var(--surface-2,#f2ece0);border:1px solid var(--border,#ece2cd);border-radius:999px;padding:1px 9px;font-size:.72rem;color:var(--text,#2a2313)}',
+    '.lt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}',
+    '.lt-card{position:relative;background:linear-gradient(180deg,var(--card,#fffdf7),var(--surface-2,#fdf9f0));border:1px solid var(--border,#ece2cd);border-radius:18px;padding:15px 16px 15px 19px;overflow:hidden;box-shadow:0 10px 30px -20px rgba(120,90,10,.5)}',
+    '.lt-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--muted,#b7ab8c)}',
+    '.lt-card.s-editing::before,.lt-card.s-working::before{background:linear-gradient(180deg,#39c489,#2e9e6b)}',
+    '.lt-card.s-paused::before{background:linear-gradient(180deg,#eab24a,#d9911f)}',
+    '.lt-card.s-queued::before,.lt-card.s-review::before,.lt-card.s-submitted::before,.lt-card.s-changes::before{background:linear-gradient(180deg,#5aa0d8,#3a86c8)}',
+    'body.dark .lt-card{background:linear-gradient(180deg,#1b1508,#161006);border-color:#2c2410}',
+    '.lt-top{display:flex;align-items:center;gap:11px;margin-bottom:12px}',
+    '.lt-av{width:40px;height:40px;flex:0 0 40px;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.92rem}',
+    '.lt-id{min-width:0;flex:1}',
+    '.lt-name{font-weight:800;font-size:1rem;color:var(--text,#2a2313);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.lt-idr{display:flex;align-items:center;gap:7px;margin-top:3px;flex-wrap:wrap}',
+    '.lt-chip{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:999px}',
+    '.lt-chip.c-editing,.lt-chip.c-working{background:rgba(46,158,107,.16);color:#1f8a5c}',
+    '.lt-chip.c-paused{background:rgba(217,145,31,.18);color:#a9791f}',
+    '.lt-chip.c-queued,.lt-chip.c-review,.lt-chip.c-submitted,.lt-chip.c-changes{background:rgba(58,134,200,.16);color:#2f6fa8}',
+    '.lt-chip.c-idle{background:var(--surface-2,#f2ece0);color:var(--muted,#8a7d5c)}',
+    '.lt-load{font-size:.72rem;font-weight:700;color:var(--muted,#8a7d5c);background:var(--surface-2,#f2ece0);border:1px solid var(--border,#ece2cd);border-radius:999px;padding:3px 9px}',
+    '.lt-load.over{background:rgba(209,68,58,.12);color:#d1443a;border-color:rgba(209,68,58,.25)}',
+    '.lt-now{background:linear-gradient(135deg,rgba(46,158,107,.10),rgba(46,158,107,.03));border:1px solid rgba(46,158,107,.25);border-radius:13px;padding:11px 13px;margin-bottom:11px}',
+    'body.dark .lt-now{background:linear-gradient(135deg,rgba(46,158,107,.16),rgba(46,158,107,.05))}',
+    '.lt-now.od{background:linear-gradient(135deg,rgba(209,68,58,.10),rgba(209,68,58,.03));border-color:rgba(209,68,58,.28)}',
+    '.lt-now-h{font-size:.64rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#1f8a5c;display:flex;align-items:center;gap:8px;margin-bottom:5px}',
+    '.lt-now.od .lt-now-h{color:#d1443a}',
+    '.lt-urgent{background:#d1443a;color:#fff;font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.05em}',
+    '.lt-now-title{font-weight:700;font-size:.92rem;color:var(--text,#2a2313);line-height:1.3;margin-bottom:8px}',
+    '.lt-ref{font-family:ui-monospace,monospace;font-size:.7rem;color:var(--muted,#8a7d5c);margin-left:6px}',
+    '.lt-prog{height:7px;border-radius:999px;background:var(--surface-2,#eadfc7);overflow:hidden;margin-bottom:9px}',
+    '.lt-prog span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#39c489,#2e9e6b);transition:width .4s}',
+    '.lt-now-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}',
+    '.lt-timer{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:800;font-size:1.02rem;color:#1f8a5c;letter-spacing:.01em}',
+    '.lt-timer.frozen{color:var(--muted,#8a7d5c)}',
+    '.lt-due{font-size:.72rem;font-weight:700;color:var(--muted,#8a7d5c)}',
+    '.lt-due.od{color:#d1443a}',
+    '.lt-idle{display:flex;align-items:center;gap:8px;background:var(--surface-2,#f7f1e4);border:1px dashed var(--border,#e0d4b3);border-radius:12px;padding:12px 13px;font-size:.84rem;font-weight:600;color:var(--muted,#8a7d5c);margin-bottom:11px}',
+    '.lt-subsec{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8a7d5c);margin:0 0 6px}',
+    '.lt-rows{display:flex;flex-direction:column;gap:6px;margin-bottom:11px}',
+    '.lt-row{display:flex;align-items:center;gap:9px;background:var(--surface-2,#faf5ea);border:1px solid var(--border,#ece2cd);border-radius:10px;padding:8px 11px}',
+    'body.dark .lt-row{background:#211a0d;border-color:#2c2410}',
+    '.lt-row.u{border-color:rgba(209,68,58,.4)}',
+    '.lt-row-t{flex:1;min-width:0;font-size:.83rem;font-weight:600;color:var(--text,#2a2313);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.lt-row-m{display:flex;align-items:center;gap:7px;flex:0 0 auto}',
+    '.lt-mini{font-family:ui-monospace,monospace;font-size:.72rem;font-weight:700;color:#a9791f}',
+    '.lt-comp{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:3px;padding-top:11px;border-top:1px solid var(--border,#ece2cd)}',
+    '.lt-comp-btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border,#ece2cd);background:transparent;color:var(--text,#2a2313);font-weight:700;font-size:.78rem;padding:6px 12px;border-radius:9px;cursor:pointer}',
+    '.lt-comp-btn:hover{background:var(--surface-2,#f2ece0)}',
+    '.lt-comp-btn b{color:#2e9e6b}',
+    '.lt-month{font-size:.72rem;color:var(--muted,#8a7d5c)}',
+    '.lt-complist{margin-top:9px;display:none;flex-direction:column;gap:5px}',
+    '.lt-complist.open{display:flex}',
+    '.lt-crow{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted,#8a7d5c);padding:6px 10px;background:var(--surface-2,#faf5ea);border-radius:9px}',
+    'body.dark .lt-crow{background:#211a0d}',
+    '.lt-crow .d{width:6px;height:6px;border-radius:50%;background:#2e9e6b;flex:0 0 auto}',
+    '.lt-crow-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text,#4a3c1a)}',
+    '.lt-empty{padding:22px;text-align:center;color:var(--muted,#8a7d5c);font-size:.88rem;background:var(--surface-2,#faf5ea);border:1px dashed var(--border,#e0d4b3);border-radius:14px}',
+    '.lt-alert{position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(209,68,58,.12),rgba(230,173,78,.10));border:1px solid rgba(209,68,58,.30);border-radius:16px;padding:13px 16px;margin-bottom:16px;box-shadow:0 0 0 0 rgba(209,68,58,.3);animation:ltGlow 2.4s ease-in-out infinite}',
+    'body.dark .lt-alert{background:linear-gradient(135deg,rgba(209,68,58,.22),rgba(230,173,78,.10))}',
+    '@keyframes ltGlow{0%,100%{box-shadow:0 0 0 0 rgba(209,68,58,.28)}50%{box-shadow:0 0 0 6px rgba(209,68,58,0)}}',
+    '.lt-alert-h{display:flex;align-items:center;gap:9px;font-size:.98rem;font-weight:800;color:#c1443a;letter-spacing:-.01em}',
+    '.lt-alert-h svg{width:18px;height:18px;flex:0 0 auto}',
+    '.lt-alert-h b{margin-left:auto;background:#d1443a;color:#fff;border-radius:999px;padding:2px 11px;font-size:.8rem}',
+    '.lt-alert-sub{font-size:.8rem;color:var(--muted,#8a7d5c);margin:5px 0 11px}',
+    '.lt-alert-list{display:flex;flex-wrap:wrap;gap:9px}',
+    '.lt-apill{display:inline-flex;align-items:center;gap:8px;background:var(--card,#fffdf7);border:1px solid rgba(209,68,58,.28);border-radius:12px;padding:8px 13px;font-weight:800;font-size:.86rem;color:var(--text,#2a2313);cursor:pointer;transition:transform .12s,box-shadow .12s}',
+    '.lt-apill:hover{transform:translateY(-1px);box-shadow:0 6px 16px -8px rgba(209,68,58,.6)}',
+    '.lt-apill em{font-style:normal;font-weight:700;font-size:.72rem;color:#c1443a;background:rgba(209,68,58,.12);padding:2px 8px;border-radius:999px}',
+    'body.dark .lt-apill{background:#211a0d}',
+    '.lt-need-b{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px;background:rgba(209,68,58,.14);color:#c1443a;border:1px solid rgba(209,68,58,.28)}',
+    '.lt-card.lt-need::before{background:linear-gradient(180deg,#e2564b,#d1443a)}',
+    '.lt-flash{animation:ltFlash 1.5s ease}',
+    '@keyframes ltFlash{0%,100%{box-shadow:0 10px 30px -20px rgba(120,90,10,.5)}30%{box-shadow:0 0 0 3px rgba(230,173,78,.9),0 12px 30px -12px rgba(230,173,78,.6)}}',
+    '@media(max-width:640px){.lt-grid{grid-template-columns:1fr}.lt-search{min-width:0;flex:1}.lt-bar-r{width:100%}.lt-stat{flex:1 1 45%;min-width:0}.lt-stat .n{font-size:1.3rem}.lt-apill{flex:1 1 100%;justify-content:space-between}}'
+    ].join('');
+    var st=document.createElement('style'); st.id='lt-css'; st.textContent=css; document.head.appendChild(st);
+  }
+
+  function _ltRow(x){
+    return '<div class="lt-row'+((x.priority==='urgent')?' u':'')+'"><span class="lt-row-t">'+_ltEsc(x.title)+_ltRef(x)+'</span>'+
+      '<span class="lt-row-m">'+_ltUrgent(x.priority)+_ltDue(x)+'</span></div>';
+  }
+  function _ltCompleted(p){
+    var list=(p.completed_recent||[]);
+    var rows=list.length?list.map(function(x){ return '<div class="lt-crow"><span class="d"></span><span class="lt-crow-t">'+_ltEsc(x.title)+'</span>'+_ltRef(x)+'</div>'; }).join(''):'<div class="lt-crow"><span class="lt-crow-t">No completed videos yet.</span></div>';
+    var more=(p.completed_count>list.length)?'<div class="lt-crow"><span class="lt-crow-t">Showing latest '+list.length+' of '+p.completed_count+'.</span></div>':'';
+    return '<div class="lt-comp"><button class="lt-comp-btn" onclick="_ltToggleCompleted(this)">'+_ltIc('check')+' Completed <b>'+(p.completed_count||0)+'</b></button>'+
+      '<span class="lt-month">'+(p.completed_month||0)+' this month</span></div>'+
+      '<div class="lt-complist">'+rows+more+'</div>';
+  }
+
+  function _ltEditorCard(p){
+    var h='<div class="lt-card s-'+_ltEsc(p.status)+(p.needs_task?' lt-need':'')+'" data-eid="'+(p.id||0)+'" data-name="'+_ltEsc((p.name||'').toLowerCase())+'">';
+    h+='<div class="lt-top"><div class="lt-av">'+_ltEsc(_ltInitials(p.name))+'</div><div class="lt-id"><div class="lt-name">'+_ltEsc(p.name||'Editor')+'</div>'+
+      '<div class="lt-idr"><span class="lt-chip c-'+_ltEsc(p.status)+'">'+_ltEsc(p.status)+'</span><span class="lt-load'+(p.overloaded?' over':'')+'">'+(p.active_count||0)+' / '+(p.recommended||5)+'</span>'+(p.needs_task?'<span class="lt-need-b">Assign next</span>':'')+'</div></div></div>';
+    if(p.current){
+      var c=p.current;
+      h+='<div class="lt-now'+(c.overdue?' od':'')+'"><div class="lt-now-h">Now Editing '+_ltUrgent(c.priority)+'</div>'+
+        '<div class="lt-now-title">'+_ltEsc(c.title)+_ltRef(c)+'</div>'+
+        '<div class="lt-prog"><span style="width:'+Math.max(2,Math.min(100,c.progress||0))+'%"></span></div>'+
+        '<div class="lt-now-foot"><span class="lt-timer" data-base="'+(c.live_seconds||0)+'" data-run="'+(c.running?1:0)+'">'+_ltDur(c.live_seconds||0)+'</span>'+_ltDue(c)+'</div></div>';
+    } else if(p.status==='idle'){
+      h+='<div class="lt-idle">'+_ltIc('check')+' Available — no active task right now.</div>';
+    }
+    if((p.paused||[]).length){
+      h+='<div class="lt-subsec">Paused ('+p.paused.length+')</div><div class="lt-rows">'+p.paused.map(function(x){
+        return '<div class="lt-row'+((x.priority==='urgent')?' u':'')+'"><span class="lt-row-t">'+_ltEsc(x.title)+_ltRef(x)+'</span><span class="lt-row-m"><span class="lt-mini">'+_ltDur(x.live_seconds||0)+' done</span>'+_ltDue(x)+'</span></div>';
+      }).join('')+'</div>';
+    }
+    if((p.queue||[]).length){
+      h+='<div class="lt-subsec">In Queue ('+p.queue.length+')</div><div class="lt-rows">'+p.queue.map(_ltRow).join('')+'</div>';
+    }
+    if((p.review||[]).length){
+      h+='<div class="lt-subsec">Submitted / In QC ('+p.review.length+')</div><div class="lt-rows">'+p.review.map(_ltRow).join('')+'</div>';
+    }
+    h+=_ltCompleted(p);
+    h+='</div>';
+    return h;
+  }
+
+  function _ltGraphicsCard(p){
+    var h='<div class="lt-card s-'+_ltEsc(p.status)+'" data-name="'+_ltEsc((p.name||'').toLowerCase())+'">';
+    h+='<div class="lt-top"><div class="lt-av">'+_ltEsc(_ltInitials(p.name))+'</div><div class="lt-id"><div class="lt-name">'+_ltEsc(p.name||'Designer')+'</div>'+
+      '<div class="lt-idr"><span class="lt-chip c-'+_ltEsc(p.status)+'">'+_ltEsc(p.status)+'</span><span class="lt-load'+(p.overloaded?' over':'')+'">'+(p.active_count||0)+' / '+(p.recommended||5)+'</span></div></div></div>';
+    if(p.current){
+      var c=p.current;
+      h+='<div class="lt-now'+(c.overdue?' od':'')+'"><div class="lt-now-h">Designing '+_ltUrgent(c.priority)+'</div>'+
+        '<div class="lt-now-title">'+_ltEsc(c.title)+_ltRef(c)+'</div>'+
+        '<div class="lt-now-foot"><span class="lt-mini">'+(c.since?('Started '+_ltEsc(c.since)):'In progress')+'</span>'+_ltDue(c)+'</div></div>';
+    } else if(p.status==='idle'){
+      h+='<div class="lt-idle">'+_ltIc('check')+' Available — no active thumbnail right now.</div>';
+    }
+    if((p.changes||[]).length){
+      h+='<div class="lt-subsec">Changes ('+p.changes.length+')</div><div class="lt-rows">'+p.changes.map(_ltRow).join('')+'</div>';
+    }
+    if((p.queue||[]).length){
+      h+='<div class="lt-subsec">In Queue ('+p.queue.length+')</div><div class="lt-rows">'+p.queue.map(_ltRow).join('')+'</div>';
+    }
+    if((p.submitted||[]).length){
+      h+='<div class="lt-subsec">Submitted for Review ('+p.submitted.length+')</div><div class="lt-rows">'+p.submitted.map(_ltRow).join('')+'</div>';
+    }
+    h+=_ltCompleted(p);
+    h+='</div>';
+    return h;
+  }
+
+  function _ltRender(data){
+    if(!LT.host || !LT.host.isConnected) { _ltStop(); return; }
+    var s=data.summary||{};
+    var stat=function(cls,n,l){ return '<div class="lt-stat '+cls+'"><div class="n">'+(n||0)+'</div><div class="l">'+l+'</div></div>'; };
+    var html='<div class="lt-wrap">';
+    html+='<div class="lt-bar"><div class="lt-bar-l"><span class="lt-h">Live Team Tracker</span><span class="lt-live"><i></i>Live</span><span class="lt-upd">Updated '+_ltEsc(new Date().toLocaleTimeString())+'</span></div>'+
+      '<div class="lt-bar-r"><label class="lt-search">'+LTSVG_SEARCH+'<input type="text" id="lt-q" placeholder="Search person..." oninput="_ltFilter(this.value)"></label>'+
+      '<button class="lt-rfr" onclick="_ltRefreshNow()">'+LTSVG_REFRESH+' Refresh</button></div></div>';
+    var alerts=(data.alerts||[]);
+    if(alerts.length){
+      html+='<div class="lt-alert"><div class="lt-alert-h">'+_ltIc('alert')+'<span>Assign work now</span><b>'+alerts.length+'</b></div>'+
+        '<div class="lt-alert-sub">These editors are about to run out of tasks — assign the next video as soon as possible.</div>'+
+        '<div class="lt-alert-list">'+alerts.map(function(a){ var tag=(a.reason==='idle')?'free now':((a.reason==='free')?'submitted \u00b7 free':('task '+(a.progress||0)+'% done')); return '<button class="lt-apill" onclick="_ltJump('+(a.id||0)+')">'+_ltEsc(a.name||'Editor')+'<em>'+tag+'</em></button>'; }).join('')+'</div></div>';
+    }
+    html+='<div class="lt-strip">'+
+      stat('g',s.editing_now,'Editing now')+
+      (s.needs_assignment?stat('r',s.needs_assignment,'Needs a task'):'')+
+      stat('m',s.idle,'Editors idle')+
+      stat('a',s.paused,'Paused')+
+      stat('b',s.queued,'In queue')+
+      stat('r',s.overdue,'Overdue')+
+      stat('g',s.graphics_working,'Graphics working')+
+      '</div>';
+    var eds=(data.editors||[]);
+    html+='<div class="lt-sec">Editors <span class="c">'+eds.length+'</span></div>';
+    html+=eds.length?('<div class="lt-grid" id="lt-editors">'+eds.map(_ltEditorCard).join('')+'</div>'):'<div class="lt-empty">No editors on the team yet.</div>';
+    var gfx=(data.graphics||[]);
+    html+='<div class="lt-sec">Graphics Designers <span class="c">'+gfx.length+'</span></div>';
+    html+=gfx.length?('<div class="lt-grid" id="lt-graphics">'+gfx.map(_ltGraphicsCard).join('')+'</div>'):'<div class="lt-empty">No graphics designers on the team yet.</div>';
+    html+='</div>';
+    LT.host.innerHTML=html;
+    LT.rootEl=LT.host.querySelector('.lt-wrap');
+    LT.loadedAt=Date.now();
+    try{
+      var _aids=alerts.map(function(a){return a.id;});
+      if(LT._alertInit){ alerts.forEach(function(a){ if((LT.prevAlertIds||[]).indexOf(a.id)<0){ try{ toast(_ltEsc(a.name||'An editor')+(a.reason==='finishing'?' is almost done — assign the next task.':' is free — assign a task.')); }catch(e){} } }); }
+      LT.prevAlertIds=_aids; LT._alertInit=true;
+    }catch(e){}
+    if(LT.filter){ var q=document.getElementById('lt-q'); if(q) q.value=LT.filter; _ltApplyFilter(); }
+  }
+
+  function _ltFetch(showLoading){
+    if(!_ltAlive()){ _ltStop(); return; }
+    if(showLoading && !LT.host.querySelector('.lt-wrap')){ LT.host.innerHTML='<div class="p-load" style="padding:26px;text-align:center;color:var(--muted,#8a7d5c)">Loading live tracker...</div>'; }
+    api(LT.apiBase+'/team-tracker').then(function(r){ if(!_ltAlive()){ _ltStop(); return; } LT.data=r; _ltRender(r); })
+      .catch(function(e){ if(LT.host && LT.host.isConnected && !LT.host.querySelector('.lt-wrap')){ LT.host.innerHTML='<div class="lt-empty">Could not load the live tracker. '+_ltEsc(e&&e.message||'')+'</div>'; } });
+  }
+
+  function _ltTick(){
+    if(!_ltAlive()){ _ltStop(); return; }
+    if(document.hidden) return;
+    var base=Math.floor((Date.now()-(LT.loadedAt||Date.now()))/1000);
+    var els=LT.host.querySelectorAll('.lt-timer[data-run="1"]');
+    for(var i=0;i<els.length;i++){ var b=parseInt(els[i].getAttribute('data-base'),10)||0; els[i].textContent=_ltDur(b+base); }
+  }
+
+  function _ltApplyFilter(){
+    var q=(LT.filter||'').trim().toLowerCase();
+    var cards=LT.host?LT.host.querySelectorAll('.lt-card'):[];
+    for(var i=0;i<cards.length;i++){ var nm=cards[i].getAttribute('data-name')||''; cards[i].style.display=(!q||nm.indexOf(q)>=0)?'':'none'; }
+  }
+
+  function _ltAlive(){ if(!LT.host||!LT.host.isConnected) return false; if(LT.rootEl && !LT.rootEl.isConnected) return false; return true; }
+
+  function _ltStop(){ if(LT.tickInt){ clearInterval(LT.tickInt); LT.tickInt=null; } if(LT.refInt){ clearInterval(LT.refInt); LT.refInt=null; } }
+
+  window.renderLiveTracker=function(host,apiBase,portal){
+    if(!host) return;
+    _ltInjectCss();
+    _ltStop();
+    LT.host=host; LT.apiBase=apiBase; LT.portal=portal; LT.filter=LT.filter||''; LT.rootEl=null; LT.prevAlertIds=[]; LT._alertInit=false;
+    _ltFetch(true);
+    LT.refInt=setInterval(function(){ if(!_ltAlive()){ _ltStop(); return; } if(!document.hidden) _ltFetch(false); }, 25000);
+    LT.tickInt=setInterval(_ltTick, 1000);
+  };
+  window._ltRefreshNow=function(){ _ltFetch(false); };
+  window._ltFilter=function(v){ LT.filter=v||''; _ltApplyFilter(); };
+  window._ltToggleCompleted=function(btn){ var el=btn&&btn.parentNode&&btn.parentNode.nextElementSibling; if(el&&el.classList&&el.classList.contains('lt-complist')) el.classList.toggle('open'); };
+  window._ltJump=function(id){ if(!LT.host) return; var c=LT.host.querySelector('.lt-card[data-eid="'+id+'"]'); if(c){ try{ c.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){ try{ c.scrollIntoView(); }catch(_){} } c.classList.add('lt-flash'); setTimeout(function(){ try{ c.classList.remove('lt-flash'); }catch(e){} },1600); } };
+})();
+
+function initAdminLiveTracker(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="prodtrack"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodteam'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodmon'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'urgent'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('prodtrack',this)");
+    d.innerHTML=(typeof ic==='function'?ic('clock'):'')+'<span>Live Tracker</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-prodtrack')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-prodtrack';
+    pg.innerHTML='<div id="a-prodtrack-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+function loadAProdTracker(){
+  var el=document.getElementById('a-prodtrack-content'); if(!el) return;
+  try{ window.renderLiveTracker(el, '/api/production', 'admin'); }
+  catch(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load live tracker.</div>'; }
+}
 
 function initAdminProdTeam(){
   var app=document.getElementById('admin-app'); if(!app) return;

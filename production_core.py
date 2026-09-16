@@ -1034,3 +1034,169 @@ def editor_rank_and_streak(db, sp):
         except Exception:
             pass
         return 0
+
+
+# ==================================================================== LIVE TEAM TRACKER
+# One read-only snapshot of the whole production team: who is editing what right now,
+# for how long (live), what is paused, what is queued, and completed counts/lists.
+# Safe for PM, admin and youtuber portals (no payout/financial data exposed).
+def _tt_editor_brief(db, t, now):
+    live, running = editing_time_state(db, t)
+    since = None
+    if running:
+        s = (db.query(EditingSession)
+             .filter(EditingSession.task_id == t.id, EditingSession.ended_at == None)  # noqa: E711
+             .order_by(EditingSession.started_at.desc()).first())
+        since = (s.started_at if s else t.editing_started_at)
+    else:
+        since = t.editing_started_at
+    lc = t.lifecycle or ""
+    overdue = bool(t.deadline and t.deadline < now and lc not in ("ready_for_youtube", "uploaded", "completed"))
+    return {
+        "id": t.id, "title": (t.title or "Untitled"), "ref_code": (t.ref_code or ""),
+        "lifecycle": lc, "priority": (t.priority or "normal"),
+        "progress": int(t.editing_progress or 0),
+        "deadline": (_dt_raw(t.deadline) if t.deadline else ""),
+        "overdue": overdue,
+        "since": (_dt(since) if since else ""),
+        "live_seconds": int(live), "running": bool(running),
+    }
+
+
+def _tt_graphics_brief(db, g, now):
+    t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+    st = g.status or ""
+    overdue = bool(g.deadline and g.deadline < now and st != "approved")
+    return {
+        "id": g.task_id, "title": ((t.title if t else "") or "Untitled"),
+        "ref_code": ((t.ref_code if t else "") or ""),
+        "status": st, "priority": (g.priority or "normal"),
+        "deadline": (_dt_raw(g.deadline) if g.deadline else ""),
+        "overdue": overdue,
+        "since": (_dt(g.started_at) if g.started_at else ""),
+    }
+
+
+def build_team_tracker(db):
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    DONE = ["ready_for_youtube", "uploaded", "completed"]
+    QUEUE = ["editor_assigned", "editing_soon", "approved", "qc_changes"]
+
+    editors = []
+    alerts = []
+    s_editing = s_idle = s_paused = s_overdue = s_queued = s_need = 0
+    for sp in (db.query(ProductionStaffProfile)
+               .filter(ProductionStaffProfile.staff_role == "editor",
+                       ProductionStaffProfile.is_active == True)  # noqa: E712
+               .order_by(ProductionStaffProfile.id.asc()).all()):
+        base = db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
+                                          VideoTask.editor_id == sp.id)
+        cur_t = (base.filter(VideoTask.lifecycle == "editing")
+                 .order_by(VideoTask.editing_started_at.desc()).first())
+        current = _tt_editor_brief(db, cur_t, now) if cur_t else None
+        paused = [_tt_editor_brief(db, t, now) for t in
+                  base.filter(VideoTask.lifecycle == "editing_paused").order_by(VideoTask.updated_at.desc()).all()]
+        queue = [_tt_editor_brief(db, t, now) for t in
+                 base.filter(VideoTask.lifecycle.in_(QUEUE)).order_by(VideoTask.deadline.asc()).all()]
+        queue.sort(key=lambda x: 0 if x["priority"] == "urgent" else 1)  # urgent first (stable: keeps deadline order)
+        review = [_tt_editor_brief(db, t, now) for t in
+                  base.filter(VideoTask.lifecycle.in_(["editing_done", "qc_pending"])).order_by(VideoTask.updated_at.desc()).all()]
+        completed_recent = [_tt_editor_brief(db, t, now) for t in
+                            base.filter(VideoTask.lifecycle.in_(DONE)).order_by(VideoTask.updated_at.desc()).limit(10).all()]
+        completed_count = base.filter(VideoTask.lifecycle.in_(DONE)).count()
+        completed_month = base.filter(VideoTask.lifecycle.in_(DONE), VideoTask.updated_at >= month_start).count()
+        overdue_count = base.filter(VideoTask.deadline != None, VideoTask.deadline < now,  # noqa: E711
+                                    ~VideoTask.lifecycle.in_(DONE)).count()
+        active_count = (1 if current else 0) + len(paused) + len(queue) + len(review)
+        rec = sp.recommended_load or 5
+        status = ("editing" if current else ("paused" if paused else
+                  ("review" if review else ("queued" if queue else "idle"))))
+        # --- "about to run out of work" detection (alert PM to assign the next task) ---
+        need = False
+        need_reason = ""
+        need_progress = 0
+        if active_count == 0:
+            need, need_reason = True, "idle"
+        elif active_count == 1:
+            if current:
+                need_progress = int(current.get("progress") or 0)
+                if need_progress >= 50:
+                    need, need_reason = True, "finishing"
+            elif review:
+                need, need_reason = True, "free"
+            elif paused:
+                need_progress = int(paused[0].get("progress") or 0)
+                if need_progress >= 50:
+                    need, need_reason = True, "finishing"
+        if need:
+            alerts.append({"id": sp.id, "name": (sp.user.name if sp.user else ""),
+                           "reason": need_reason, "progress": need_progress})
+            s_need += 1
+        editors.append({
+            "id": sp.id, "name": (sp.user.name if sp.user else ""),
+            "recommended": rec, "overloaded": active_count > rec, "active_count": active_count,
+            "status": status, "current": current, "paused": paused, "queue": queue, "review": review,
+            "completed_recent": completed_recent, "completed_count": completed_count,
+            "completed_month": completed_month, "overdue_count": overdue_count,
+            "needs_task": need, "need_reason": need_reason, "need_progress": need_progress,
+        })
+        if current:
+            s_editing += 1
+        elif not (paused or queue or review):
+            s_idle += 1
+        if paused:
+            s_paused += 1
+        s_overdue += overdue_count
+        s_queued += len(queue)
+
+    graphics = []
+    g_working = g_idle = 0
+    for sp in (db.query(ProductionStaffProfile)
+               .filter(ProductionStaffProfile.staff_role == "graphics",
+                       ProductionStaffProfile.is_active == True)  # noqa: E712
+               .order_by(ProductionStaffProfile.id.asc()).all()):
+        gbase = db.query(GraphicsTask).filter(
+            GraphicsTask.graphics_id == sp.id,
+            GraphicsTask.task_id.in_(db.query(VideoTask.id).filter(VideoTask.cancelled == False)))  # noqa: E712
+        cur_g = gbase.filter(GraphicsTask.status == "in_progress").order_by(GraphicsTask.started_at.desc()).first()
+        current = _tt_graphics_brief(db, cur_g, now) if cur_g else None
+        queue = [_tt_graphics_brief(db, g, now) for g in gbase.filter(GraphicsTask.status == "new").all()]
+        changes = [_tt_graphics_brief(db, g, now) for g in gbase.filter(GraphicsTask.status == "changes").all()]
+        submitted = [_tt_graphics_brief(db, g, now) for g in gbase.filter(GraphicsTask.status == "submitted").all()]
+        for lst in (queue, changes):
+            lst.sort(key=lambda x: 0 if x["priority"] == "urgent" else 1)
+        completed_recent = [_tt_graphics_brief(db, g, now) for g in
+                            gbase.filter(GraphicsTask.status == "approved").order_by(GraphicsTask.approved_at.desc()).limit(10).all()]
+        completed_count = gbase.filter(GraphicsTask.status == "approved").count()
+        completed_month = gbase.filter(GraphicsTask.status == "approved", GraphicsTask.approved_at != None,  # noqa: E711
+                                       GraphicsTask.approved_at >= month_start).count()
+        active_count = (1 if current else 0) + len(queue) + len(changes) + len(submitted)
+        rec = sp.recommended_load or 5
+        status = ("working" if current else ("changes" if changes else
+                  ("submitted" if submitted else ("queued" if queue else "idle"))))
+        graphics.append({
+            "id": sp.id, "name": (sp.user.name if sp.user else ""),
+            "recommended": rec, "overloaded": active_count > rec, "active_count": active_count,
+            "status": status, "current": current, "queue": queue, "changes": changes,
+            "submitted": submitted, "completed_recent": completed_recent,
+            "completed_count": completed_count, "completed_month": completed_month,
+        })
+        if current:
+            g_working += 1
+        elif not (queue or changes or submitted):
+            g_idle += 1
+
+    _need_order = {"idle": 0, "free": 1, "finishing": 2}
+    alerts.sort(key=lambda a: (_need_order.get(a["reason"], 9), -(a["progress"] or 0)))
+    return {
+        "server_now": _dt(now),
+        "summary": {
+            "editors_total": len(editors), "editing_now": s_editing, "idle": s_idle,
+            "paused": s_paused, "overdue": s_overdue, "queued": s_queued,
+            "needs_assignment": s_need,
+            "graphics_total": len(graphics), "graphics_working": g_working, "graphics_idle": g_idle,
+        },
+        "alerts": alerts,
+        "editors": editors, "graphics": graphics,
+    }

@@ -654,6 +654,13 @@ def yt_editors(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     return {"editors": out}
 
 
+@router.get("/team-tracker")
+def yt_team_tracker(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """Live production-team tracker (read-only) for creator visibility — same snapshot
+    the PM sees: who is editing what right now, what is paused/queued, and completed."""
+    return pc.build_team_tracker(db)
+
+
 # ============================================================ DIRECT EDITOR ASSIGN (§32)
 @router.post("/assign-editor")
 def yt_assign_editor(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):

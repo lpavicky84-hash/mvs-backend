@@ -1206,6 +1206,13 @@ def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
             "youtubers": yts}
 
 
+@router.get("/team-tracker")
+def pm_team_tracker(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Live snapshot of the whole team — current/paused/queued/completed per editor and
+    graphics designer, with live active-editing time. Read-only."""
+    return pc.build_team_tracker(db)
+
+
 # ============================================================ PEOPLE (dropdowns)
 @router.get("/people")
 def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
