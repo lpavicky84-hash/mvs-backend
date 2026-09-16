@@ -10242,22 +10242,29 @@ window.vtAdminChat=async function(id){
 };
 function _vtAdminRenderChat(id,comments){
   const roleLbl=function(r){ return ({admin:'Admin',teacher:'Teacher',youtuber:'YouTuber',editor:'Editor',graphics:'Graphics',pm:'Manager',production_manager:'Manager'})[r]||(r||''); };
+  const audLbl=function(a){ return ({creator:'Teacher',editor:'Editor',internal:'Graphics / Team',project:'Project'})[a||'creator']||'Teacher'; };
+  const audCol=function(a){ return ({creator:'#2e9e6b',editor:'#7c4fc0',internal:'#c99a2e',project:'#2a7fb8'})[a||'creator']||'#8a7d5c'; };
   const thread=(comments&&comments.length)?comments.map(function(c){
     const mine=(c.role==='admin');
     const img=c.attachment_url?`<img loading="lazy" src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:180px;max-height:140px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
-    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author||'')}${roleLbl(c.role)?` \u00b7 ${esc(roleLbl(c.role))}`:''}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at||'')}</div></div>`;
+    const atag=`<span style="font-size:.6rem;font-weight:700;padding:1px 7px;border-radius:999px;background:${audCol(c.audience)}1e;color:${audCol(c.audience)};margin-left:6px">${audLbl(c.audience)}</span>`;
+    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author||'')}${roleLbl(c.role)?` \u00b7 ${esc(roleLbl(c.role))}`:''}${atag}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at||'')}</div></div>`;
   }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
   showModal('Chat \u2014 all messages',
     `<div class="tvn-thread" id="tvn-thread">${thread}</div>
-     <div class="form-group" style="margin-top:10px"><label>Message (as admin)</label><textarea id="vtac-reply" class="input" rows="2" placeholder="Type a message..."></textarea></div>`,
+     <div class="form-grid" style="margin-top:10px;grid-template-columns:150px 1fr;gap:10px;align-items:end">
+       <div class="form-group"><label>Send to</label><select id="vtac-aud" class="input"><option value="creator">Teacher</option><option value="editor">Editor</option><option value="internal">Graphics / Team</option></select></div>
+       <div class="form-group"><label>Message (as admin)</label><textarea id="vtac-reply" class="input" rows="2" placeholder="Type a message..."></textarea></div>
+     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="vtAdminChatSend(${id})">${ic('send')} Send</button>`);
   const th=document.getElementById('tvn-thread'); if(th) th.scrollTop=th.scrollHeight;
 }
 window.vtAdminChatSend=async function(id){
   const el=document.getElementById('vtac-reply'); const msg=(el?el.value:'').trim();
   if(!msg){ toast('Type a message first',true); return; }
+  const aud=(document.getElementById('vtac-aud')||{}).value||'creator';
   try{
-    await api('/api/admin/video-tasks/'+id+'/comments','POST',{message:msg});
+    await api('/api/admin/video-tasks/'+id+'/comments','POST',{message:msg, audience:aud});
     let comments=[]; try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
     _vtAdminRenderChat(id,comments);
   }catch(e){ toast((e&&e.message)||'Could not send',true); }

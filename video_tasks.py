@@ -1568,24 +1568,47 @@ def vt_teacher_project_chat_ping(pid: int, payload: dict = Body(default={}),
     return project_chat_ping(db, current_user, pid, typing=bool((payload or {}).get("typing")))
 
 
+@router.get("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
+def vt_admin_comments(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """All chat messages on a task — admin sees every thread (creator, editor, internal, project)."""
+    return {"comments": _vtc_list(db, task_id)}
+
+
 @router.post("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_comment_add(task_id: int, payload: dict = Body(...),
                          db: Session = Depends(get_db), me=Depends(get_admin)):
     t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
     if not t:
         raise HTTPException(404, "Task not found")
-    c = _vtc_add(db, task_id, me, payload.get("message"), "admin")
+    # admin can message anyone on the task: teacher (creator), editor, or graphics (internal)
+    _aud = (payload.get("audience") or "creator").strip().lower()
+    if _aud not in ("creator", "editor", "internal"):
+        _aud = "creator"
+    c = _vtc_add(db, task_id, me, payload.get("message"), "admin", audience=_aud)
     if not c:
         raise HTTPException(400, "Message cannot be empty")
-    # notify the creator (and collaborators) that the manager replied
-    for tid in _collab_all_ids(t):
-        tp = _teacher_profile(db, tid)
-        if tp and tp.user_id:
-            _vt_notify(db, tp.user_id, "Manager replied on your video task",
-                       f'Message on "{t.title}": {c.message[:120]}',
-                       "video_task", link=str(task_id))
+    try:
+        if _aud == "creator":
+            # notify the creator (and collaborators) that the manager replied
+            for tid in _collab_all_ids(t):
+                tp = _teacher_profile(db, tid)
+                if tp and tp.user_id:
+                    _vt_notify(db, tp.user_id, "Manager replied on your video task",
+                               f'Message on "{t.title}": {c.message[:120]}',
+                               "video_task", link=str(task_id))
+        else:
+            from models import ProductionStaffProfile as _SP
+            _sid = t.editor_id if _aud == "editor" else t.graphics_id
+            if _sid:
+                s = db.query(_SP).filter(_SP.id == _sid).first()
+                if s and s.user_id:
+                    _vt_notify(db, s.user_id, "Admin messaged you on a task",
+                               f'Message on "{t.title}": {c.message[:120]}',
+                               "video_task", link=str(task_id))
+    except Exception:
+        pass
     db.commit()
-    return {"ok": True, "comment": _vtc_out(db, c)}
+    return {"ok": True, "comment": _vtc_out(db, c), "audience": _aud}
 
 
 def _vt_notify_UNUSED(db, user_id, title, message, ntype="video_task", link=None):
