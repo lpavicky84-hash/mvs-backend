@@ -10235,10 +10235,43 @@ function _tvtRenderNeeds(id,t,remarks,refVid){
     `${refBlock}${remBlock}<div style="margin-top:12px;font-size:.82rem;color:var(--text-muted)">Have a question? Use "Chat with PM" to message the manager.</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="closeModal();tvtChatPM(${id})">${ic('send')} Chat with PM</button>`);
 }
-window.vtAdminChat=async function(id){
-  let comments=[];
-  try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){ toast('Could not load chat',true); return; }
-  _vtAdminRenderChat(id,comments);
+window.vtAdminChat=function(id){
+  if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable',true); return; }
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  api('/api/production/tasks/'+id).then(function(t){
+    t=t||{}; var g=t.graphics||{};
+    window._vtAdminCS={ id:id, map:{
+      creator:{label:'Teacher', role:'teacher', pid:0, name:(t.creator_name||'Teacher')},
+      editor:{label:'Editor', role:'editor', pid:(t.editor_id||0), name:(t.editor_name||'Editor')},
+      internal:{label:'Graphics / Team', role:'graphics', pid:(g.graphics_id||0), name:(g.graphics_name||'Graphics')}
+    }};
+    _vtAdminOpen('creator');
+  }).catch(function(){
+    window._vtAdminCS={ id:id, map:{creator:{label:'Teacher',role:'teacher',pid:0,name:'Teacher'},editor:{label:'Editor',role:'editor',pid:0,name:'Editor'},internal:{label:'Graphics / Team',role:'graphics',pid:0,name:'Graphics'}} };
+    _vtAdminOpen('creator');
+  });
+};
+function _vtAdminOpen(aud){
+  var cs=window._vtAdminCS; if(!cs) return;
+  var base='/api/production/tasks/'+cs.id;
+  window._ytcOpen({ getUrl:base+'/comments?audience='+aud, postUrl:base+'/comments', pingUrl:base+'/chat-ping?audience='+aud,
+    audience:aud, mineRole:'admin', title:'Chat', taskId:0, barPortal:'', _adminPills:true, _adminAud:aud });
+}
+window.vtAdminChatSwitch=function(aud){ _vtAdminOpen(aud); };
+window._vtAdminPills=function(cur){
+  var cs=window._vtAdminCS; if(!cs) return '';
+  var order=['creator','editor','internal']; var col={creator:'#2e9e6b',editor:'#7c4fc0',internal:'#c99a2e'};
+  return '<div style="font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Chatting with</div><div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'+order.map(function(a){ var m=cs.map[a]||{}; var on=(cur===a); return '<button type="button" onclick="vtAdminChatSwitch(\''+a+'\')" style="border:1.5px solid '+(on?col[a]:'var(--border)')+';background:'+(on?col[a]:'transparent')+';color:'+(on?'#fff':'var(--muted)')+';border-radius:999px;padding:6px 15px;font-size:.8rem;font-weight:700;cursor:pointer">'+esc(m.label||a)+'</button>'; }).join('')+'</div>';
+};
+window._vtAdminHead=function(aud){
+  var cs=window._vtAdminCS; var m=(cs&&cs.map[aud])||{};
+  var ini=(String(m.name||'?').trim().split(/\s+/).slice(0,2).map(function(p){return p[0]||'';}).join('')||'?').toUpperCase();
+  return '<div style="display:flex;align-items:center;gap:11px"><div id="chat-hav" style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#c99a2e,#a5791f);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.9rem;flex:0 0 40px;background-size:cover;background-position:center">'+esc(ini)+'</div><div class="h-title" style="margin:0">'+esc(m.name||m.label||'Chat')+'</div></div>';
+};
+window._vtAdminHeadAvatar=function(aud){
+  var cs=window._vtAdminCS; var m=(cs&&cs.map[aud])||{};
+  if(!m.pid || (m.role!=='editor'&&m.role!=='graphics')) return;
+  api('/api/production/member-photo?role='+encodeURIComponent(m.role)+'&profile_id='+m.pid).then(function(r){ var p=(r&&r.photo)||''; var el=document.getElementById('chat-hav'); if(el&&p){ el.style.backgroundImage='url('+p+')'; el.textContent=''; } }).catch(function(){});
 };
 function _vtAdminRenderChat(id,comments){
   const roleLbl=function(r){ return ({admin:'Admin',teacher:'Teacher',youtuber:'YouTuber',editor:'Editor',graphics:'Graphics',pm:'Manager',production_manager:'Manager'})[r]||(r||''); };
@@ -25888,14 +25921,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._chatImg=null;
   function _ytcRender(comments, presence){
     var cfg=window._chatCfg||{};
-    var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:4px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet.</div>')+'</div>';
+    var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding:4px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet \u2014 start the conversation below.</div>')+'</div>';
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div><div class="h-title">'+esc(cfg.title||'Chat')+'</div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;width:100%;align-items:center"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button><input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')ytcSend()"><button class="p-btn p-btn-primary" onclick="ytcSend()">Send</button><input type="file" id="chat-file" accept="image/*" style="display:none"></div></div></div>';
+    var _hdr=(cfg._adminPills && window._vtAdminHead)?window._vtAdminHead(cfg._adminAud):('<div class="h-title">'+esc(cfg.title||'Chat')+'</div>');
+    var _pills=(cfg._adminPills && window._vtAdminPills)?window._vtAdminPills(cfg._adminAud):'';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block"><div id="chat-prev" style="margin-bottom:6px"></div><div style="display:flex;gap:8px;width:100%;align-items:center"><button class="p-btn" title="Attach image" style="padding:8px 12px" onclick="document.getElementById(\'chat-file\').click()">\ud83d\udcce</button><input class="p-input" id="chat-msg" placeholder="Type or paste an image..." style="flex:1" onkeydown="if(event.key===\'Enter\')ytcSend()"><button class="p-btn p-btn-primary" onclick="ytcSend()">Send</button><input type="file" id="chat-file" accept="image/*" style="display:none"></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     _chatWireInputs();
     _chatPresenceBar(presence);
+    if(cfg._adminPills && window._vtAdminHeadAvatar) window._vtAdminHeadAvatar(cfg._adminAud);
     var sc=document.getElementById('chat-scroll'); if(sc) sc.scrollTop=sc.scrollHeight;
   }
   function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||''; api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[], r&&r.presence); _chatLivePoll(function(){ api(cfg.getUrl).then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[], cfg.mineRole, rr&&rr.presence); }); }); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
@@ -27464,7 +27500,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<span style="width:8px;height:8px;border-radius:50%;background:'+sc+';flex:0 0 8px"></span>'+
           '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.title)+'</div>'+
           '<div style="font-size:.72rem;color:var(--muted)">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+(v.is_collab?' \u00b7 collab':'')+'</div></div>'+
-          '<div style="font-size:.82rem;font-weight:700;white-space:nowrap">'+_num(v.views)+' <span style="font-weight:400;color:var(--muted);font-size:.72rem">views</span></div>'+
+          (v.on_youtube?('<div style="font-size:.82rem;font-weight:700;white-space:nowrap">'+_num(v.views)+' <span style="font-weight:400;color:var(--muted);font-size:.72rem">views</span></div>'):('<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;font-style:italic">Not on YouTube yet</div>'))+
           (v.youtube_url?'<a class="pj-btn" href="'+esc(v.youtube_url)+'" target="_blank" rel="noopener">Open</a>':'')+
         '</div>';
       }).join(''):'<div style="color:var(--muted);padding:26px;text-align:center">No videos in this category.</div>';
@@ -27501,7 +27537,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var ini=isCollab?'\u222b':((esc((c.name||'?').trim().charAt(0)).toUpperCase())||'?');
       var col=isCollab?'#7c3aed':_crPal[idx%_crPal.length];
       var rank=isCollab?'<div class="crp-rank" style="color:#7c3aed;font-size:.62rem">COLLAB</div>':'<div class="crp-rank">#'+(idx+1)+'</div>';
-      var sub=isCollab?(vids+' shared video'+(vids===1?'':'s')):(vids+' video'+(vids===1?'':'s')+(collabN?(' \u00b7 in '+collabN+' collab'):''));
+      var solo=c.solo_videos||0;
+      var sub=isCollab?(vids+' shared video'+(vids===1?'':'s')):((collabN>0)?(solo+' solo \u00b7 '+collabN+' collab'):(vids+' video'+(vids===1?'':'s')));
       var vbif=showBif?'<div style="font-size:.6rem;color:var(--text-muted);margin-top:2px;font-weight:600">'+_num(c.individual_views||0)+' solo \u00b7 '+_num(c.collab_views||0)+' collab</div>':'';
       var vbifC=isCollab?'<div style="font-size:.6rem;color:#7c3aed;margin-top:2px;font-weight:600">not on any one teacher</div>':'';
       var cdTid=isCollab?0:(c.id||0);

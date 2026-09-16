@@ -324,7 +324,8 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
     _aud = (payload.get("audience") or "creator").strip().lower()
     if _aud not in ("creator", "internal", "editor"):
         _aud = "creator"
-    c = _vtc_add(db, tid, me, payload.get("message"), "production_manager", _att, _aud)
+    _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
+    c = _vtc_add(db, tid, me, payload.get("message"), _crole, _att, _aud)
     from video_tasks import _chat_touch as _ct0
     try: _ct0(db, me, tid, _aud, typing=False)
     except Exception: pass
@@ -1338,7 +1339,7 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 
     def _blank(nm):
         return {"name": nm, "videos": 0, "completed": 0, "pending": 0, "overdue": 0,
-                "individual_views": 0, "collab_views": 0, "collab_videos": 0,
+                "solo_videos": 0, "individual_views": 0, "collab_views": 0, "collab_videos": 0,
                 "_otd": 0, "_oth": 0}
 
     tstats = {}
@@ -1376,17 +1377,33 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                     _otd_c += 1
                     if _otc:
                         _oth_c += 1
-            # each collaborator: collab views feed their TOTAL (bifurcated), not their solo stats
+            # each collaborator: the collab video counts toward THEIR totals too (same as views),
+            # so a teacher who only does collab work still shows their completions.
             for tid in ids:
                 s = tstats.setdefault(tid, _blank(tname.get(tid, "")))
                 s["collab_videos"] += 1
+                s["videos"] += 1
                 s["collab_views"] += v
+                if comp:
+                    s["completed"] += 1
+                else:
+                    s["pending"] += 1
+                if over:
+                    s["overdue"] += 1
+                _otm = getattr(t, "on_time", None)
+                if _otm is None and getattr(t, "submitted_at", None) and t.deadline:
+                    _otm = (t.submitted_at <= t.deadline)
+                if comp and _otm is not None:
+                    s["_otd"] += 1
+                    if _otm:
+                        s["_oth"] += 1
         else:
             tid = t.teacher_id
             if not tid:
                 continue
             s = tstats.setdefault(tid, _blank(tname.get(tid, "")))
             s["videos"] += 1
+            s["solo_videos"] += 1
             if comp:
                 s["completed"] += 1
             else:
@@ -1468,7 +1485,7 @@ def pm_creator_videos(teacher_id: int = 0, cat: str = "",
         ids = _cai(t) if _cai else ([t.teacher_id] if t.teacher_id else [])
         is_collab = len(ids) > 1
         if teacher_id > 0:
-            if is_collab or t.teacher_id != teacher_id:
+            if teacher_id not in ids:
                 continue
         else:
             if not is_collab:
@@ -1482,6 +1499,7 @@ def pm_creator_videos(teacher_id: int = 0, cat: str = "",
         st = "completed" if _comp(t) else ("overdue" if _over(t) else "pending")
         out.append({"id": t.id, "title": t.title or "Untitled", "state": st,
                     "status": (getattr(t, "status", "") or ""), "views": int(getattr(t, "yt_views", 0) or 0),
+                    "on_youtube": bool((getattr(t, "yt_video_id", "") or "").strip() or (t.youtube_url or "").strip()),
                     "deadline": pc._dt(t.deadline), "subject": t.subject or "",
                     "is_collab": is_collab, "youtube_url": t.youtube_url or ""})
     out.sort(key=lambda x: x["views"], reverse=True)
