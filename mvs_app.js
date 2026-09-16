@@ -10164,6 +10164,10 @@ async function openUserSessions(uid){
   }catch(e){ document.getElementById('us-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
 
+// Master list of admin section titles (page key -> title). SINGLE SOURCE OF TRUTH:
+// koi bhi naya section yahan add karo -> nav title bhi milega AUR admin-user access
+// dropdown (ADMIN_SECTIONS) mein apne aap aa jaayega (neeche derive hota hai).
+const ADMIN_PAGE_TITLES={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice'};
 function aPage(page,el){
   if(!adminAllowed(page)){ toast('You do not have access to this section.',true); return; }
   navPush('admin-app',page);
@@ -10174,7 +10178,7 @@ function aPage(page,el){
   }
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings'};
+  const titles=ADMIN_PAGE_TITLES;
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
@@ -16044,13 +16048,16 @@ async function doResetData(){
   }catch(e){ document.getElementById('rst-out').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.innerHTML='Delete Selected Data'; }
 }
 /* ===== v94: Admin Users — restricted sub-admins with section-wise access ===== */
-const ADMIN_SECTIONS=[
-  ['dashboard','Dashboard'],['approvals','Approvals'],['live','Live Users'],['timetable','Time Table'],
-  ['qbank','Study Material'],['material','Classes Material'],['doubts','Doubts'],['tests','Tests Tracker'],
-  ['vtasks','Task Manager'],['ytasks','YouTuber Tasks'],['urgent','Urgent Videos'],['teachers','Teachers'],['reports','Teacher Reports'],['tranks','Teacher Ranking'],
-  ['compliance','Class Compliance'],['attendance','Attendance'],['payouts','Payouts'],['students','Students'],['requests','Student Requests'],
-  ['notify','Send Notice'],['subjects','Subjects'],['syllabus','Syllabus Manager'],['categories','Teacher Categories'],['matcheck','Material Checker'],['complaints','Complaints'],['feedback','Feedback'],['admins','Admin Users']
-];
+// Admin-user access dropdown ki list — ab ADMIN_PAGE_TITLES (single source of truth) se DERIVE hoti
+// hai. Curated display order neeche; koi bhi naya section ADMIN_PAGE_TITLES mein add hote hi yahan
+// apne aap (order ke end mein) aa jaayega — dobara manually add karne ki zarurat nahi.
+const _ADMIN_SEC_ORDER=['dashboard','approvals','live','timetable','qbank','material','doubts','tests','dpptracker','vtasks','ytasks','urgent','prodteam','prodmon','prodboard','prodtrack','teachers','reports','tranks','categories','compliance','attendance','payouts','students','requests','counts','batches','notify','subjects','syllabus','matcheck','complaints','feedback','translation','admins'];
+const ADMIN_SECTIONS=(function(){
+  var out=[], seen={}, T=(typeof ADMIN_PAGE_TITLES!=='undefined')?ADMIN_PAGE_TITLES:{};
+  _ADMIN_SEC_ORDER.forEach(function(k){ if(T[k]!==undefined && !seen[k]){ seen[k]=1; out.push([k,T[k]]); } });
+  Object.keys(T).forEach(function(k){ if(!seen[k]){ seen[k]=1; out.push([k,T[k]]); } });
+  return out;
+})();
 let _aaFull=false, _aaSel=new Set(['dashboard']), _aaEdit={};
 window._sddOpen=new Set();
 document.addEventListener('click',()=>{ if(window._sddOpen.size){ window._sddOpen.clear(); document.querySelectorAll('.sdd.open').forEach(d=>d.classList.remove('open')); } });

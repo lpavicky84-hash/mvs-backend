@@ -296,7 +296,8 @@ def teacher_dashboard(db: Session = Depends(get_db), current_user=Depends(get_te
     # unresolved = not-resolved PLUS resolved-but-new-follow-up (thread ka last msg student ka)
     from models import DoubtResponse as _DR
     unresolved = 0
-    for d in db.query(Doubt).filter(Doubt.teacher_id == tp.id).all():
+    for d in db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                    Doubt.assigned_to_admin == False).all():
         is_resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
         if not is_resolved:
             unresolved += 1
@@ -5969,7 +5970,8 @@ def _month_activity(db, tp, month):
             videos += 1
 
     doubts_assigned = db.query(Doubt).filter(
-        Doubt.teacher_id == tp.id, Doubt.created_at >= dt0, Doubt.created_at < dt1).count()
+        Doubt.teacher_id == tp.id, Doubt.assigned_to_admin == False,
+        Doubt.created_at >= dt0, Doubt.created_at < dt1).count()
     doubts_resolved = db.query(Doubt).filter(
         Doubt.teacher_id == tp.id, Doubt.resolved_at != None,
         Doubt.resolved_at >= dt0, Doubt.resolved_at < dt1).count()
@@ -7620,8 +7622,10 @@ def _teacher_rank_rows(db, days=90):
 
         # ---- Doubts: PENALTY-ONLY (sirf pending ghatate hain; koi doubt/pending nahi -> N/A) ----
         received = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                          Doubt.assigned_to_admin == False,
                                           Doubt.created_at >= since).count()
         pending = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                         Doubt.assigned_to_admin == False,
                                          Doubt.status == DoubtStatus.pending,
                                          Doubt.created_at >= since).count()
         doubt_score = _tr_doubt(received, pending)          # None when nothing pending

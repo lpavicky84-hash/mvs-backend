@@ -460,6 +460,7 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     try:
         _now = datetime.utcnow()
         dqs = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                     Doubt.assigned_to_admin == False,
                                      Doubt.created_at >= dt0, Doubt.created_at < dt1).all()
         rec = len(dqs)
         for dq in dqs:
