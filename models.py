@@ -565,6 +565,7 @@ class VideoTask(Base):
     collab_not_completed = Column(Text, default="")        # JSON {teacher_id: true} — per-teacher "task not completed" (collab)
     submitted_by       = Column(Integer, nullable=True)   # collab: jis teacher ne actually submit kiya uski profile id
     status_history = Column(Text, default="")             # JSON [{s, at, note}] — status timeline
+    chapter_excludes = Column(Text, default="")           # JSON [normalized titles] — chapters the PM/admin removed; auto-sync must NOT re-add these
     last_link_at   = Column(DateTime, nullable=True)      # special task me aakhri chapter link kab aaya
     admin_seen_at  = Column(DateTime, nullable=True)      # admin ne special update kab dekha (NEW blink)
     weekly_quota   = Column(Integer, default=0)           # project/one-shot: har week kitni videos chahiye
@@ -604,6 +605,7 @@ class VideoTask(Base):
     ontime_appreciated  = Column(Boolean, default=False)      # on-time appreciation sent once
     remarks_audience    = Column(String(10), default="both")  # pm | editor | both (§31)
     on_hold         = Column(Boolean, default=False)
+    project_editor_id = Column(Integer, nullable=True)    # whole-project assigned to this editor (production_staff_profiles.id) — Phase 3
     cancelled       = Column(Boolean, default=False)
     published_at    = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=func.now())
@@ -624,6 +626,19 @@ class VideoTaskChapter(Base):
     edit_status  = Column(String(20), default="")         # production: editing_soon / editing_done / uploaded
     changed_at   = Column(DateTime, nullable=True)        # v91: link add/update/remove kab hua (admin blink)
     vintage      = Column(String(10), default="")         # "" unverified | new | old (admin verifies)
+    review_status = Column(String(20), default="")        # project video approval: ''=none/legacy | pending | approved | changes
+    review_note   = Column(String(600), default="")       # PM/admin note when changes are requested
+    reviewed_at   = Column(DateTime, nullable=True)        # when the video was approved / sent back
+    editor_id     = Column(Integer, nullable=True)         # single project-video assigned to this editor (production_staff_profiles.id)
+    graphics_id   = Column(Integer, nullable=True)         # single project-video thumbnail assigned to this graphics designer
+    assigned_at   = Column(DateTime, nullable=True)        # when this video was assigned to an editor
+    edit_state    = Column(String(20), default="")        # '' | assigned | editing | edited (editor workflow — Phase 4 drives editing/edited)
+    edited_link   = Column(String(600), default="")       # editor-submitted edited video (Phase 4)
+    editing_started_at = Column(DateTime, nullable=True)   # when the editor started editing this video
+    edited_at     = Column(DateTime, nullable=True)        # when the editor submitted the edited video
+    gfx_state     = Column(String(20), default="")        # '' | assigned | done (graphics thumbnail workflow)
+    thumbnail_link = Column(String(600), default="")       # graphics-submitted thumbnail for this video
+    thumb_refs    = Column(Text, default="")               # JSON list of reference thumbnail URLs (PM -> graphics)
 
 
 class VideoViewSnapshot(Base):

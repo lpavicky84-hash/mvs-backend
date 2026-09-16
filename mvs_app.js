@@ -11038,14 +11038,38 @@ async function avtChVintage(tid,cid,v){
     toast(v==='new'?'Marked NEW — counts toward this month\'s target':'Marked OLD — not counted this month');
   }catch(e){ toast(e.message||'Could not update'); }
 }
+function _vtReviewBadge(c){
+  var rs=c.review_status||(c.link?'approved':'');
+  var m={pending:['Pending review','#b45309','#fef3c7'],approved:['Approved','#166534','#dcfce7'],changes:['Changes requested','#b91c1c','#fee2e2']}[rs];
+  if(!m) return '';
+  return `<span style="font-size:.64rem;font-weight:700;padding:2px 8px;border-radius:999px;color:${m[1]};background:${m[2]};margin-left:6px">${m[0]}</span>`;
+}
 function _vtChRow(t,c){
+  var rs=c.review_status||(c.link?'approved':'');
+  if(rs==='changes'){
+    return `<div class="vt-chr" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>${_vtReviewBadge(c)}
+      <div style="flex-basis:100%;width:100%;font-size:.72rem;color:#b91c1c;margin:3px 0 2px">Changes requested: ${esc(c.review_note||'please re-shoot / re-upload the video')}</div>
+      <span class="inp"><input class="input" id="tvt-ch-${t.id}-${c.id}" value="${esc(c.link||'')}" placeholder="https://drive.google.com/...">
+      <button class="btn btn-primary btn-sm" style="padding:5px 12px" onclick="tvtChapterSave(${t.id},${c.id})">${ic('send')} Re-submit</button></span></div>`;
+  }
   if(c.link) return `<div class="vt-chr done" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
-    <span class="dt">${esc(c.submitted_at||'')}</span>${_vtChBadge(c)}
+    <span class="dt">${esc(c.submitted_at||'')}</span>${_vtReviewBadge(c)}${_vtChBadge(c)}
     <a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a>
     <button class="btn btn-ghost btn-sm" style="padding:3px 9px;font-size:.66rem" onclick="tvtChEdit(${t.id},${c.id})">Change</button></div>`;
   return `<div class="vt-chr" id="vt-chr-${t.id}-${c.id}"><span class="dot"></span><span class="nm">${esc(c.title)}</span>
     <span class="inp"><input class="input" id="tvt-ch-${t.id}-${c.id}" placeholder="https://drive.google.com/...">
     <button class="btn btn-primary btn-sm" style="padding:5px 12px" onclick="tvtChapterSave(${t.id},${c.id})">${ic('send')} Save</button></span></div>`;
+}
+function tvtProjectChat(pid,title){
+  if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable'); return; }
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  window._ytcOpen({
+    getUrl:'/api/teacher/projects/'+pid+'/chat',
+    postUrl:'/api/teacher/projects/'+pid+'/chat',
+    pingUrl:'/api/teacher/projects/'+pid+'/chat-ping',
+    audience:'project', mineRole:'teacher', title:'Project Chat \u2014 '+(title||''),
+    taskId:pid, barPortal:''
+  });
 }
 function _vtSpecialT(sp){
   if(!sp||!sp.length) return `<div class="ws-empty"><p><b>No projects match this filter</b></p><small>Choose All Subjects / All Types, or wait for projects to be assigned.</small></div>`;
@@ -11060,6 +11084,7 @@ function _vtSpecialT(sp){
       <div class="os-sub">${subTxt} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.total?'': ' · items will auto-fill shortly'}</div>
       ${_vtOsWeek(t)}</div>
       <button class="vt-os-hbtn" onclick="vtStatusOpen(${t.id},'t',event)">${ic('history')} History</button>
+      <button class="vt-os-hbtn" onclick="event.stopPropagation();tvtProjectChat(${t.id},'${esc(t.subject||t.title||'').replace(/['\"]/g,'')}')">${ic('send')} Chat</button>
       ${_vtOsProg(t)}</div>`;
     const body=t.total?`<div>${t.chapters.map(c=>_vtChRow(t,c)).join('')}</div>`
       :`<div style="font-size:.78rem;color:var(--text-muted);padding:8px 4px">This subject's chapters are not in the syllabus manager / timetable yet — the list will appear here automatically once they are uploaded.</div>`;
@@ -11085,7 +11110,7 @@ async function tvtChapterSave(tid,cid){
   if(!link&&had&&!confirm('Remove this video link? The chapter will be marked as not submitted, and the admin will see this change.')) return;
   try{
     const r=await api(`/api/teacher/video-tasks/${tid}/chapter-link`,'POST',{chapter_id:cid,link});
-    toast(!link?'Link removed.':(r.completed?'All items completed — great work!':`Saved — ${r.done}/${r.total} done.`));
+    toast(!link?'Link removed.':(r.review_status==='pending'?'Submitted for review \u2014 waiting for approval.':(r.completed?'All videos approved \u2014 great work!':`Saved \u2014 ${r.done}/${r.total} approved.`)));
     loadTVTasks();
   }catch(e){ toast(e.message||'Could not save'); }
 }
@@ -11657,19 +11682,112 @@ function avtSpecTypeSet(k){ _avtSpecTab=k||''; _avtSpecProj=''; avtSpecRefresh()
 const _VT_PJCOL=[['#3a2c07','#6b4f0c'],['#053f3c','#0f6f6a'],['#16294d','#2c4d86'],['#4a1c0b','#8a3a17'],['#33124e','#5b2a86'],['#0d3320','#1e6b41'],['#471021','#8a1f42'],['#082f45','#0f5a82']];
 function _vtPjCol(id){ return _VT_PJCOL[(Math.abs(+id)||0)%_VT_PJCOL.length]; }
 function _avtSpecCard(t){
-  const rows=(t.chapters||[]).map(c=> c.link
-    ? `<div class="vt-chr done${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}${_avtVinSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a></div>`
-    : `<div class="vt-chr${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">pending</span>${c.changed?`<span class="vt-chg">Link removed${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}</div>`).join('');
+  const rows=(t.chapters||[]).map(function(c){
+    var rv=c.review_status||(c.link?'approved':'');
+    var rvm={pending:['Pending review','#b45309','#fef3c7'],approved:['Approved','#166534','#dcfce7'],changes:['Changes requested','#b91c1c','#fee2e2']}[rv];
+    var badge=rvm?`<span style="font-size:.64rem;font-weight:700;padding:2px 8px;border-radius:999px;color:${rvm[1]};background:${rvm[2]};margin-left:6px">${rvm[0]}</span>`:'';
+    var acts=(rv==='pending')?`<span style="display:inline-flex;gap:6px;margin-left:8px">
+        <button class="btn btn-sm" style="background:#16a34a;color:#fff;padding:3px 12px" onclick="avtChReview(${t.id},${c.id},'approve')">Approve</button>
+        <button class="btn btn-sm" style="background:#dc2626;color:#fff;padding:3px 12px" onclick="avtChReview(${t.id},${c.id},'changes')">Changes</button></span>`:'';
+    var note=(rv==='changes'&&c.review_note)?`<div style="flex-basis:100%;width:100%;color:#b91c1c;font-size:.72rem;margin-top:2px">Note: ${esc(c.review_note)}</div>`:'';
+    var asg='';
+    if(rv==='approved'){
+      var who=[];
+      if(c.editor_name) who.push('Editor: '+esc(c.editor_name));
+      if(c.graphics_name) who.push('Graphics: '+esc(c.graphics_name));
+      var stTxt=(c.edit_state&&c.edit_state!=='assigned'&&c.editor_name)?` <span style="color:#2563eb">(${esc(c.edit_state)})</span>`:'';
+      var whoTxt=who.length?`<span style="font-size:.72rem;color:var(--text-muted);margin-left:8px">${who.join(' · ')}${stTxt}</span>`:'';
+      var deliv='';
+      if(c.edited_link) deliv+=`<a href="${esc(c.edited_link)}" target="_blank" rel="noopener" style="color:#16a34a;text-decoration:underline;font-size:.72rem;margin-left:8px">edited video</a>`;
+      if(c.thumbnail_link) deliv+=`<a href="${esc(c.thumbnail_link)}" target="_blank" rel="noopener" style="color:#d97706;text-decoration:underline;font-size:.72rem;margin-left:8px">thumbnail</a>`;
+      var assigned=(c.editor_name||c.graphics_name);
+      var unb=assigned?`<button class="btn btn-sm btn-ghost" style="padding:3px 10px" onclick="avtUnassignVideo(${c.id})">Remove</button>`:'';
+      asg=`<span style="display:inline-flex;gap:6px;align-items:center;margin-left:6px">${whoTxt}${deliv}<button class="btn btn-sm" style="background:#2563eb;color:#fff;padding:3px 12px" onclick="avtAssignVideo(${t.id},${c.id},'${esc(c.title).replace(/['\"]/g,'')}')">${assigned?'Reassign':'Assign'}</button>${unb}</span>`;
+    }
+    return c.link
+      ? `<div class="vt-chr done${c.changed?' vt-changed':''}" style="flex-wrap:wrap"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">${esc(c.submitted_at||'')}</span>${badge}${c.changed?`<span class="vt-chg">Link updated${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}${_avtChSel(t,c)}<a class="lk" href="${esc(c.link)}" target="_blank" rel="noopener">${ic('play')} Open video</a>${acts}${asg}${note}</div>`
+      : `<div class="vt-chr${c.changed?' vt-changed':''}"><span class="dot"></span><span class="nm">${esc(c.title)}</span><span class="dt">not submitted</span>${c.changed?`<span class="vt-chg">Link removed${c.changed_at?' · '+esc(c.changed_at):''}</span>`:''}</div>`;
+  }).join('');
   return `<div class="vt-os" id="avt-os-${t.id}" data-pnew="${t.is_new?1:0}" style="border-color:${_vtPjCol(t.id)[1]}55">
     <div class="vt-os-h" style="background:linear-gradient(135deg,${_vtPjCol(t.id)[0]},${_vtPjCol(t.id)[1]})" onclick="avtSpecOpen(${t.id})">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
-      <div class="os-sub">${esc(t.teacher)} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div>
+      <div class="os-sub">${esc(t.teacher)} · ${t.kind==='project'?'Final deadline':'Deadline'}: <b>${esc(t.deadline_nice||'—')}</b>${t.project_editor_name?' · Project editor: <b>'+esc(t.project_editor_name)+'</b>':''}${t.last_link_at?' · Last update: '+esc(t.last_link_at):''}</div>
       ${_vtOsWeek(t)}</div>
       <button class="vt-os-hbtn" onclick="vtStatusOpen(${t.id},'a',event)">${ic('history')} History</button>
       <button class="vt-os-hbtn" onclick="openVTEdit(${t.id},event)">${ic('edit')} Edit</button>
+      <button class="vt-os-hbtn" onclick="event.stopPropagation();avtAssignProject(${t.id},'${esc(t.subject||t.title||'').replace(/['\"]/g,'')}')">${ic('users')} Assign Editor</button>
+      <button class="vt-os-hbtn" onclick="event.stopPropagation();avtProjectChat(${t.id},'${esc(t.subject||t.title||'').replace(/['\"]/g,'')}')">${ic('send')} Chat</button>
       <button class="vt-os-hbtn" onclick="avtDeleteProject(${t.id},'${esc(t.subject||t.title||'').replace(/'/g,'')}',event)">${ic('trash')} Delete</button>
       ${_vtOsProg(t)}</div>
     <div class="vt-os-b">${rows||`<div style="font-size:.78rem;color:var(--text-muted);padding:6px 2px">Chapters are not in the syllabus manager / timetable yet — they will auto-fill once uploaded.</div>`}</div></div>`;
+}
+async function avtChReview(taskId,cid,action){
+  let note='';
+  if(action==='changes'){
+    note=prompt('What needs to change in this video? (the teacher will see this note)');
+    if(note===null) return;
+    note=(note||'').trim();
+    if(!note){ toast('Please add a short note'); return; }
+  }
+  try{
+    await api('/api/admin/video-tasks/chapter-review','POST',{chapter_id:cid,action:action,note:note});
+    toast(action==='approve'?'Video approved':'Sent back for changes');
+    loadAVTasks(true);
+  }catch(e){ toast(e.message||'Could not save'); }
+}
+async function avtAssignVideo(taskId,cid,title){
+  let p; try{ p=await api('/api/production/people?role='); }catch(e){ toast('Could not load people'); return; }
+  const eds=(p.editors||[]), gfx=(p.graphics||[]);
+  const edOpts='<option value="">\u2014 none \u2014</option>'+eds.map(e=>`<option value="${e.id}">${esc(e.name)} (${e.active||0} active)</option>`).join('');
+  const gfOpts='<option value="">\u2014 none \u2014</option>'+gfx.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  showModal(`Assign video \u2014 ${esc(title||'')}`,`
+    <div class="form-group"><label>Editor</label><select id="avt-asg-ed" class="input">${edOpts}</select></div>
+    <div class="form-group"><label>Graphics Designer (optional)</label><select id="avt-asg-gf" class="input">${gfOpts}</select></div>
+    <div class="form-group"><label>Reference thumbnails for graphics (optional \u2014 one link per line)</label><textarea id="avt-asg-refs" class="input" rows="2" placeholder="https://..."></textarea></div>
+    <div style="font-size:.8rem;color:var(--text-muted)">The editor will see this as a task in their portal. Graphics will get the thumbnail for this video.</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="avtAssignVideoSave(${taskId},${cid})">Assign</button>`);
+}
+async function avtAssignVideoSave(taskId,cid){
+  const ed=(document.getElementById('avt-asg-ed')||{}).value||'', gf=(document.getElementById('avt-asg-gf')||{}).value||'';
+  if(!ed&&!gf){ toast('Choose an editor and/or graphics'); return; }
+  const body={chapter_id:cid}; if(ed) body.editor_id=+ed; if(gf) body.graphics_id=+gf;
+  const rf=(document.getElementById('avt-asg-refs')||{}).value||'';
+  const refs=rf.split('\n').map(x=>x.trim()).filter(Boolean);
+  if(refs.length) body.thumb_refs=refs;
+  try{ await api('/api/production/assign-project-video','POST',body); closeModal(); toast('Assigned'); loadAVTasks(true); }
+  catch(e){ toast(e.message||'Failed'); }
+}
+async function avtUnassignVideo(cid){
+  if(!confirm('Remove this assignment?')) return;
+  try{ await api('/api/production/unassign-project-video','POST',{chapter_id:cid,which:'both'}); toast('Unassigned'); loadAVTasks(true); }
+  catch(e){ toast(e.message||'Failed'); }
+}
+async function avtAssignProject(taskId,title){
+  let p; try{ p=await api('/api/production/people?role=editor'); }catch(e){ toast('Could not load editors'); return; }
+  const eds=(p.editors||[]);
+  const edOpts='<option value="">\u2014 choose editor \u2014</option>'+eds.map(e=>`<option value="${e.id}">${esc(e.name)} (${e.active||0} active)</option>`).join('');
+  showModal(`Assign whole project \u2014 ${esc(title||'')}`,`
+    <div class="form-group"><label>Editor (owns the whole project)</label><select id="avt-asgp-ed" class="input">${edOpts}</select></div>
+    <div class="form-group"><label>Deadline (optional)</label><input id="avt-asgp-dl" type="datetime-local" class="input"></div>
+    <div style="font-size:.8rem;color:var(--text-muted)">This editor will work every video of the project from their Projects section, as time allows.</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="avtAssignProjectSave(${taskId})">Assign Project</button>`);
+}
+async function avtAssignProjectSave(taskId){
+  const ed=(document.getElementById('avt-asgp-ed')||{}).value||''; if(!ed){ toast('Choose an editor'); return; }
+  const body={task_id:taskId, editor_id:+ed}; const dl=(document.getElementById('avt-asgp-dl')||{}).value||''; if(dl) body.deadline=dl;
+  try{ await api('/api/production/assign-project','POST',body); closeModal(); toast('Project assigned'); loadAVTasks(true); }
+  catch(e){ toast(e.message||'Failed'); }
+}
+function avtProjectChat(pid,title){
+  if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable'); return; }
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  window._ytcOpen({
+    getUrl:'/api/production/projects/'+pid+'/chat',
+    postUrl:'/api/production/projects/'+pid+'/chat',
+    pingUrl:'/api/production/projects/'+pid+'/chat-ping',
+    audience:'project', mineRole:'admin', title:'Project Chat \u2014 '+(title||''),
+    taskId:pid, barPortal:''
+  });
 }
 function avtSpecSubSet(s){ _avtSpecSub=s||''; avtSpecRefresh(); }
 function avtSpecClsSet(c){ _avtSpecCls=c||''; _avtSpecSub=''; avtSpecRefresh(); }
@@ -24237,6 +24355,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
     editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'list'},
+             {p:'projectvideos',t:'Project Videos',i:'folder'},
              {p:'edt:editing',t:'Editing In Progress',i:'edit'}, {p:'edt:ready',t:'Ready for Submission',i:'upload'},
              {p:'edt:changes',t:'Changes Required',i:'alert'}, {p:'edt:completed',t:'Completed',i:'check'} ]},
             {g:'Published',items:[ {p:'uploads',t:'Published',i:'video'} ]},
@@ -24253,6 +24372,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
     graphics:{ role:'graphics', title:'Graphics', sub:'Thumbnails', api:'/api/graphics',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'image'},
+             {p:'projectthumbs',t:'Project Thumbnails',i:'image'},
              {p:'gfx:today',t:'Today',i:'calendar'}, {p:'gfx:pending',t:'Pending',i:'clock'},
              {p:'gfx:completed',t:'Completed',i:'check'} ]},
             {g:'Review',items:[ {p:'gfx:review',t:'Thumbnail Review',i:'eye'}, {p:'gfx:changes',t:'Changes Required',i:'alert'} ]},
@@ -25354,6 +25474,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='board') return renderBoard(portal,body);
     if(page==='thumbboard') return renderThumbBoard(portal,body);
     if(page==='projects') return renderProjects(portal,body);
+    if(page==='projectvideos') return renderEditorProjectVideos(portal,body);
+    if(page==='projectthumbs') return renderGfxProjectThumbs(portal,body);
     if(page==='ytasks'){ body.innerHTML='<div id="pyt-content" class="yt-scope"></div>'; try{ loadAYtTasks('pyt-content'); }catch(e){ body.innerHTML='<div class="p-empty">Could not load.</div>'; } return; }
     if(page==='announce') return renderAnnounce(portal,body);
     if(page==='tracker') return renderTracker(portal,body);
@@ -26812,6 +26934,105 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load timeline.</div>'; });
   }
   // --- editor published videos + realtime views ---
+  function renderEditorProjectVideos(portal,body){
+    body.innerHTML='<div class="p-load">Loading project videos...</div>';
+    return api(P.editor.api+'/project-videos').then(function(r){
+      var vids=(r&&r.videos)||[], whole=(r&&r.whole_projects)||[];
+      if(!vids.length && !whole.length){
+        body.innerHTML='<div class="p-empty"><h3>No project videos assigned</h3><p>When a PM or admin assigns you a project video or a whole project, it will appear here.</p></div>';
+        return;
+      }
+      var stCol={assigned:['Assigned','#d97706'],editing:['Editing','#2563eb'],edited:['Edited','#16a34a']};
+      var vcards=vids.map(function(v){
+        var st=stCol[v.edit_state]||stCol.assigned;
+        var srcBtn=v.link?'<a class="pj-btn" href="'+esc(v.link)+'" target="_blank" rel="noopener">Open source video</a>':'';
+        var chatBtn='<button class="pj-btn" onclick="edtProjectChat('+v.project_id+',\''+esc(v.project_title||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button>';
+        var act='';
+        if(v.edit_state==='editing'){
+          act='<button class="pj-btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="edtPvSubmit('+v.chapter_id+')">Submit Edited Video</button>';
+        }else if(v.edit_state==='edited'){
+          act=(v.edited_link?'<a class="pj-btn" href="'+esc(v.edited_link)+'" target="_blank" rel="noopener">Edited video</a>':'')+'<button class="pj-btn" onclick="edtPvReopen('+v.chapter_id+')">Change</button>';
+        }else{
+          act='<button class="pj-btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="edtPvStart('+v.chapter_id+')">Start Editing</button>';
+        }
+        return '<div class="pj-card2" style="--pj0:#1e3a5f;--pj1:#2563eb;margin-bottom:10px"><div class="pj-c-head" style="cursor:default">'+
+          '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+esc(v.project_title||'Project')+'</span><span class="pj-title">'+esc(v.title||'')+'</span>'+
+            '<span style="margin-left:8px;font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:999px;background:'+st[1]+';color:#fff">'+st[0]+'</span></div>'+
+          '<div class="pj-sub">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+'</div></div></div>'+
+          '<div class="pj-c-acts">'+srcBtn+act+chatBtn+'</div>'+
+        '</div>';
+      }).join('');
+      var wcards=whole.map(function(w){
+        return '<div class="pj-card2" style="--pj0:#3a2c5f;--pj1:#7c3aed;margin-bottom:10px"><div class="pj-c-head" style="cursor:default">'+
+          '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">WHOLE PROJECT</span><span class="pj-title">'+esc(w.title||'')+'</span></div>'+
+          '<div class="pj-sub">'+(w.subject?esc(w.subject)+' \u00b7 ':'')+(w.deadline?'Deadline: '+esc(w.deadline):'')+' \u00b7 Individual videos will appear above as they are approved</div></div></div>'+
+          '<div class="pj-c-acts"><button class="pj-btn" onclick="edtProjectChat('+w.project_id+',\''+esc(w.title||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button></div>'+
+        '</div>';
+      }).join('');
+      body.innerHTML='<div style="margin-bottom:14px"><h2 style="margin:0 0 4px">Project Videos</h2><p style="margin:0;color:var(--muted);font-size:.85rem">Start editing an assigned video, then submit the edited drive link when done.</p></div>'+
+        (whole.length?'<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin:12px 0 6px">Whole projects ('+whole.length+')</div>'+wcards:'')+
+        (vids.length?'<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin:12px 0 6px">Assigned videos ('+vids.length+')</div>'+vcards:'');
+    }).catch(function(){ body.innerHTML='<div class="p-empty">Could not load project videos.</div>'; });
+  }
+  window.edtPvStart=function(cid){
+    api(P.editor.api+'/project-videos/'+cid+'/start','POST',{}).then(function(){ toast('Editing started'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.edtPvSubmit=function(cid){
+    var link=prompt('Paste the edited video drive link:'); if(link===null) return; link=(''+link).trim();
+    if(!link){ toast('Link required',true); return; }
+    api(P.editor.api+'/project-videos/'+cid+'/submit','POST',{edited_link:link}).then(function(){ toast('Edited video submitted'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.edtPvReopen=function(cid){
+    api(P.editor.api+'/project-videos/'+cid+'/reopen','POST',{}).then(function(){ toast('Reopened for editing'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.edtProjectChat=function(pid,title){
+    if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable',true); return; }
+    window._ytcOpen({
+      getUrl:P.editor.api+'/projects/'+pid+'/chat',
+      postUrl:P.editor.api+'/projects/'+pid+'/chat',
+      pingUrl:P.editor.api+'/projects/'+pid+'/chat-ping',
+      audience:'project', mineRole:'editor', title:'Project Chat \u2014 '+(title||''),
+      taskId:pid, barPortal:'editor'
+    });
+  };
+  function renderGfxProjectThumbs(portal,body){
+    body.innerHTML='<div class="p-load">Loading project thumbnails...</div>';
+    return api(P.graphics.api+'/project-thumbnails').then(function(r){
+      var th=(r&&r.thumbnails)||[];
+      if(!th.length){ body.innerHTML='<div class="p-empty"><h3>No project thumbnails assigned</h3><p>When a PM or admin assigns you a project video thumbnail, it will appear here.</p></div>'; return; }
+      var stCol={assigned:['To do','#d97706'],done:['Submitted','#16a34a']};
+      var cards=th.map(function(v){
+        var st=stCol[v.gfx_state]||stCol.assigned;
+        var refs=(v.refs||[]).map(function(u,i){ return '<a class="pj-btn" href="'+esc(u)+'" target="_blank" rel="noopener">Reference '+(i+1)+'</a>'; }).join('');
+        var vidBtn=v.video_link?'<a class="pj-btn" href="'+esc(v.video_link)+'" target="_blank" rel="noopener">Watch video</a>':'';
+        var act=(v.gfx_state==='done')
+          ? (v.thumbnail_link?'<a class="pj-btn" href="'+esc(v.thumbnail_link)+'" target="_blank" rel="noopener">Thumbnail</a>':'')+'<button class="pj-btn" onclick="gfxPvSubmit('+v.chapter_id+')">Change</button>'
+          : '<button class="pj-btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="gfxPvSubmit('+v.chapter_id+')">Submit Thumbnail</button>';
+        return '<div class="pj-card2" style="--pj0:#3a2c1e;--pj1:#d97706;margin-bottom:10px"><div class="pj-c-head" style="cursor:default">'+
+          '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+esc(v.project_title||'Project')+'</span><span class="pj-title">'+esc(v.title||'')+'</span>'+
+            '<span style="margin-left:8px;font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:999px;background:'+st[1]+';color:#fff">'+st[0]+'</span></div>'+
+          '<div class="pj-sub">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+((v.refs&&v.refs.length)?' \u00b7 '+v.refs.length+' reference'+(v.refs.length>1?'s':''):'')+'</div></div></div>'+
+          '<div class="pj-c-acts">'+vidBtn+refs+act+'<button class="pj-btn" onclick="gfxProjectChat('+v.project_id+',\''+esc(v.project_title||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button></div>'+
+        '</div>';
+      }).join('');
+      body.innerHTML='<div style="margin-bottom:14px"><h2 style="margin:0 0 4px">Project Thumbnails</h2><p style="margin:0;color:var(--muted);font-size:.85rem">Design a thumbnail for each assigned video. Open the references, then submit your thumbnail link.</p></div>'+cards;
+    }).catch(function(){ body.innerHTML='<div class="p-empty">Could not load project thumbnails.</div>'; });
+  }
+  window.gfxPvSubmit=function(cid){
+    var link=prompt('Paste the thumbnail drive/image link:'); if(link===null) return; link=(''+link).trim();
+    if(!link){ toast('Link required',true); return; }
+    api(P.graphics.api+'/project-thumbnails/'+cid+'/submit','POST',{thumbnail_link:link}).then(function(){ toast('Thumbnail submitted'); _refresh('graphics'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.gfxProjectChat=function(pid,title){
+    if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable',true); return; }
+    window._ytcOpen({
+      getUrl:P.graphics.api+'/projects/'+pid+'/chat',
+      postUrl:P.graphics.api+'/projects/'+pid+'/chat',
+      pingUrl:P.graphics.api+'/projects/'+pid+'/chat-ping',
+      audience:'project', mineRole:'graphics', title:'Project Chat \u2014 '+(title||''),
+      taskId:pid, barPortal:'graphics'
+    });
+  };
   function renderEditorUploads(portal,body){
     body.innerHTML='<div class="p-load">Loading published videos...</div>';
     return api(P.editor.api+'/uploads').then(function(r){
@@ -27469,13 +27690,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var klbl={one_shot:'ONE SHOT',rapid_revision:'RAPID REVISION',project:'PROJECT'}[p.kind]||'PROJECT';
         return '<div class="pj-card2" id="pjc-'+p.id+'" style="--pj0:'+col[0]+';--pj1:'+col[1]+'">'+
           '<div class="pj-c-head" onclick="prodProjExpand('+p.id+')">'+
-            '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+klbl+'</span><span class="pj-title">'+esc(p.title||p.subject||'Project')+'</span></div>'+
-            '<div class="pj-sub">'+esc(p.creator||'')+(p.deadline?' \u00b7 Deadline: '+esc(p.deadline):'')+(p.updated?' \u00b7 Updated: '+esc(p.updated):'')+'</div></div>'+
+            '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+klbl+'</span><span class="pj-title">'+esc(p.title||p.subject||'Project')+'</span>'+((p.chapters_pending||0)>0?'<span class="pj-review-badge" id="pjrev-'+p.id+'" style="margin-left:8px;font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:999px;background:#fbbf24;color:#3a2c00">'+p.chapters_pending+' to review</span>':'')+'</div>'+
+            '<div class="pj-sub">'+esc(p.creator||'')+(p.deadline?' \u00b7 Deadline: '+esc(p.deadline):'')+(p.updated?' \u00b7 Updated: '+esc(p.updated):'')+(p.project_editor_name?' \u00b7 Project editor: '+esc(p.project_editor_name):'')+(((p.vids_assigned||0)+(p.vids_editing||0)+(p.vids_edited||0))>0?' \u00b7 '+((p.vids_assigned||0)+(p.vids_editing||0))+' in editing, '+(p.vids_edited||0)+' edited':'')+'</div></div>'+
             '<div class="pj-c-r"><div class="pj-pct">'+p.pct+'%</div><div class="pj-ch">'+p.chapters_done+' / '+p.chapters_total+' chapters done</div><div class="pj-track"><i style="width:'+p.pct+'%"></i></div></div>'+
             '<span class="pj-chev" id="pjchev-'+p.id+'">\u25be</span></div>'+
           '<div class="pj-c-acts"><button class="pj-btn" onclick="event.stopPropagation();prodStatusHistory('+p.id+')">History</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodEditTask('+p.id+')">Edit</button>'+
-            '<button class="pj-btn" onclick="event.stopPropagation();prodMarkOld('+p.id+','+(p.is_old?'false':'true')+')">'+(p.is_old?'Mark New':'Mark Old')+'</button>'+
+            '<button class="pj-btn" onclick="event.stopPropagation();prodAssignProject('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Assign Editor</button>'+
+            '<button class="pj-btn" onclick="event.stopPropagation();prodProjectChat('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button>'+
             '<button class="pj-btn pj-del" onclick="event.stopPropagation();prodDeleteTask('+p.id+')">Delete</button></div>'+
           '<div class="pj-chapters" id="pjch-'+p.id+'" style="display:none"></div>'+
           '</div>';
@@ -27490,14 +27712,130 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var box=document.getElementById('pjch-'+id), chev=document.getElementById('pjchev-'+id); if(!box) return;
     if(box.style.display!=='none'){ box.style.display='none'; if(chev)chev.style.transform=''; return; }
     box.style.display='block'; if(chev)chev.style.transform='rotate(180deg)';
+    window._prodProjChaps(id);
+  };
+  window._prodProjChaps=function(id){
+    var box=document.getElementById('pjch-'+id); if(!box) return;
     box.innerHTML='<div class="p-load" style="color:#fff">Loading chapters...</div>';
     api(P.production.api+'/tasks/'+id+'/chapters').then(function(r){
       var chs=r.chapters||[];
       box.innerHTML=chs.length?chs.map(function(ch){
-        var st=ch.status||''; var lbl=st==='uploaded'?'uploaded':(st==='editing_done'?'edited':(st==='editing_soon'?'to edit':((ch.link&&ch.link.trim())?'submitted':'pending')));
-        return '<div class="pj-ch-row"><span class="pj-ch-dot"></span><span class="pj-ch-t">'+esc(ch.title)+(ch.link?' <a href="'+esc(ch.link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#ffe6ad;text-decoration:underline">open</a>':'')+'</span><span class="pj-ch-st">'+lbl+'</span></div>';
+        var rv=ch.review||((ch.link&&(''+ch.link).trim())?'approved':'');
+        var rvm={pending:['Pending review','#fbbf24'],approved:['Approved','#34d399'],changes:['Changes requested','#f87171']}[rv];
+        var badge=rvm?'<span class="pj-ch-st" style="color:'+rvm[1]+'">'+rvm[0]+'</span>':'<span class="pj-ch-st" style="opacity:.7">not submitted</span>';
+        var acts=(rv==='pending')?'<span style="display:inline-flex;gap:6px;margin-left:8px">'+
+            '<button onclick="event.stopPropagation();prodChapReview('+id+','+ch.id+',\'approve\')" style="cursor:pointer;border:0;border-radius:8px;padding:4px 12px;font-size:.72rem;font-weight:700;background:#16a34a;color:#fff">Approve</button>'+
+            '<button onclick="event.stopPropagation();prodChapReview('+id+','+ch.id+',\'changes\')" style="cursor:pointer;border:0;border-radius:8px;padding:4px 12px;font-size:.72rem;font-weight:700;background:#dc2626;color:#fff">Changes</button></span>':'';
+        var note=(rv==='changes'&&ch.review_note)?'<div style="flex-basis:100%;width:100%;color:#fca5a5;font-size:.72rem;margin-top:2px">Note: '+esc(ch.review_note)+'</div>':'';
+        var lnk=ch.link?' <a href="'+esc(ch.link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#ffe6ad;text-decoration:underline">open</a>':'';
+        var asg='';
+        if(rv==='approved'){
+          var who=[];
+          if(ch.editor_name) who.push('Editor: '+esc(ch.editor_name));
+          if(ch.graphics_name) who.push('Graphics: '+esc(ch.graphics_name));
+          var stTxt=(ch.edit_state&&ch.edit_state!=='assigned'&&ch.editor_name)?' <span style="color:#93c5fd">('+esc(ch.edit_state)+')</span>':'';
+          var whoTxt=who.length?'<span style="color:#e5d9b0;font-size:.72rem;margin-left:8px">'+who.join(' \u00b7 ')+stTxt+'</span>':'';
+          var deliv='';
+          if(ch.edited_link) deliv+='<a href="'+esc(ch.edited_link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#86efac;text-decoration:underline;font-size:.72rem;margin-left:8px">edited video</a>';
+          if(ch.thumbnail_link) deliv+='<a href="'+esc(ch.thumbnail_link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#fdba74;text-decoration:underline;font-size:.72rem;margin-left:8px">thumbnail</a>';
+          var assigned=(ch.editor_name||ch.graphics_name);
+          var unbtn=assigned?'<button onclick="event.stopPropagation();prodUnassignVideo('+id+','+ch.id+')" style="cursor:pointer;border:0;border-radius:8px;padding:4px 10px;font-size:.7rem;background:rgba(255,255,255,.15);color:#fff;margin-left:6px">Remove</button>':'';
+          asg=whoTxt+deliv+'<button onclick="event.stopPropagation();prodAssignVideo('+id+','+ch.id+',\''+esc(ch.title).replace(/[\\\'\"]/g,'')+'\')" style="cursor:pointer;border:0;border-radius:8px;padding:4px 12px;font-size:.7rem;font-weight:600;background:#3b82f6;color:#fff;margin-left:8px">'+(assigned?'Reassign':'Assign')+'</button>'+unbtn;
+        }
+        return '<div class="pj-ch-row" style="flex-wrap:wrap"><span class="pj-ch-dot"></span><span class="pj-ch-t">'+esc(ch.title)+lnk+'</span>'+badge+acts+asg+note+'</div>';
       }).join(''):'<div style="color:#fff;opacity:.8;padding:8px">No chapter items.</div>';
     }).catch(function(){ box.innerHTML='<div style="color:#fff;opacity:.8;padding:8px">Could not load chapters.</div>'; });
+  };
+  window.prodChapReview=function(taskId,cid,action){
+    var note='';
+    if(action==='changes'){
+      note=prompt('What needs to change in this video? (the teacher will see this note)');
+      if(note===null) return;
+      note=(''+note).trim();
+      if(!note){ toast('Please add a short note',true); return; }
+    }
+    api(P.production.api+'/chapter-review','POST',{chapter_id:cid,action:action,note:note}).then(function(r){
+      toast(action==='approve'?'Video approved':'Sent back for changes');
+      window._prodProjChaps(taskId);
+      var card=document.getElementById('pjc-'+taskId);
+      if(card&&r){
+        var pctEl=card.querySelector('.pj-pct'); if(pctEl) pctEl.textContent=r.pct+'%';
+        var chEl=card.querySelector('.pj-ch'); if(chEl) chEl.textContent=r.done+' / '+r.total+' chapters done';
+        var trk=card.querySelector('.pj-track i'); if(trk) trk.style.width=r.pct+'%';
+        var rev=document.getElementById('pjrev-'+taskId);
+        if((r.pending||0)>0){ if(rev){ rev.textContent=r.pending+' to review'; } }
+        else if(rev){ rev.parentNode.removeChild(rev); }
+      }
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodAssignVideo=function(taskId,cid,title){
+    api(P.production.api+'/people?role=').then(function(p){
+      var eds=(p.editors||[]), gfx=(p.graphics||[]);
+      var edOpts='<option value="">\u2014 none \u2014</option>'+eds.map(function(e){return '<option value="'+e.id+'">'+esc(e.name)+' ('+(e.active||0)+' active)</option>';}).join('');
+      var gfOpts='<option value="">\u2014 none \u2014</option>'+gfx.map(function(g){return '<option value="'+g.id+'">'+esc(g.name)+'</option>';}).join('');
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      dr.innerHTML='<div class="p-modal"><div class="pd-head"><div class="h-title">Assign video \u2014 '+esc(title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="p-field"><label>Editor</label><select class="p-select" id="pav-editor">'+edOpts+'</select></div>'+
+          '<div class="p-field"><label>Graphics Designer (optional)</label><select class="p-select" id="pav-graphics">'+gfOpts+'</select></div>'+
+          '<div class="p-field"><label>Reference thumbnails for graphics (optional \u2014 one link per line)</label><textarea class="p-area" id="pav-refs" placeholder="https://... (paste one or more reference thumbnail links)"></textarea></div>'+
+          '<div style="font-size:.78rem;color:var(--muted)">The editor will see this as a task in their portal. Graphics will get the thumbnail for this video.</div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAssignVideoSave('+taskId+','+cid+')">Assign</button></div></div></div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load people',true); });
+  };
+  window.prodAssignVideoSave=function(taskId,cid){
+    var ed=(document.getElementById('pav-editor')||{}).value||'', gf=(document.getElementById('pav-graphics')||{}).value||'';
+    if(!ed && !gf){ toast('Choose an editor and/or graphics',true); return; }
+    var body={chapter_id:cid}; if(ed) body.editor_id=parseInt(ed,10); if(gf) body.graphics_id=parseInt(gf,10);
+    var rf=(document.getElementById('pav-refs')||{}).value||'';
+    var refs=rf.split('\n').map(function(x){return x.trim();}).filter(Boolean);
+    if(refs.length) body.thumb_refs=refs;
+    api(P.production.api+'/assign-project-video','POST',body).then(function(){
+      prodDismiss(); toast('Assigned'); window._prodProjChaps(taskId); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodUnassignVideo=function(taskId,cid){
+    if(!confirm('Remove this assignment?')) return;
+    api(P.production.api+'/unassign-project-video','POST',{chapter_id:cid,which:'both'}).then(function(){
+      toast('Unassigned'); window._prodProjChaps(taskId); _refresh('production');
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodAssignProject=function(taskId,title){
+    api(P.production.api+'/people?role=editor').then(function(p){
+      var eds=(p.editors||[]);
+      var edOpts='<option value="">\u2014 choose editor \u2014</option>'+eds.map(function(e){return '<option value="'+e.id+'">'+esc(e.name)+' ('+(e.active||0)+' active)</option>';}).join('');
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      dr.innerHTML='<div class="p-modal"><div class="pd-head"><div class="h-title">Assign whole project \u2014 '+esc(title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="p-field"><label>Editor (owns the whole project)</label><select class="p-select" id="pap-editor">'+edOpts+'</select></div>'+
+          '<div class="p-field"><label>Deadline (optional)</label><input class="p-input" id="pap-deadline" type="datetime-local"></div>'+
+          '<div style="font-size:.78rem;color:var(--muted)">This editor will work every video of the project from their Projects section, as time allows.</div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAssignProjectSave('+taskId+')">Assign Project</button></div></div></div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load editors',true); });
+  };
+  window.prodAssignProjectSave=function(taskId){
+    var ed=(document.getElementById('pap-editor')||{}).value||''; if(!ed){ toast('Choose an editor',true); return; }
+    var body={task_id:taskId, editor_id:parseInt(ed,10)};
+    var dl=(document.getElementById('pap-deadline')||{}).value||''; if(dl) body.deadline=dl;
+    api(P.production.api+'/assign-project','POST',body).then(function(){ prodDismiss(); toast('Project assigned'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodProjectChat=function(pid,title){
+    if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable',true); return; }
+    window._ytcOpen({
+      getUrl:P.production.api+'/projects/'+pid+'/chat',
+      postUrl:P.production.api+'/projects/'+pid+'/chat',
+      pingUrl:P.production.api+'/projects/'+pid+'/chat-ping',
+      audience:'project', mineRole:'production_manager', title:'Project Chat \u2014 '+(title||''),
+      taskId:pid, barPortal:'production'
+    });
   };
   window.prodEditTask=function(id){
     Promise.all([
@@ -27532,6 +27870,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             gfxList.map(function(g){ return '<option value="'+g.id+'"'+(t.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+'</option>'; }).join('')+'</select></div>'+
           '<div class="p-field"><label>Editor</label><select class="p-select" id="pe-editor"><option value="">Assign later</option>'+
             edList.map(function(ed){ return '<option value="'+ed.id+'"'+(t.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+'</option>'; }).join('')+'</select></div>'+
+          '<div class="p-field" id="pe-chaps-field" style="display:none"><label>Project Chapters <span style="font-weight:400;color:var(--muted);font-size:.8rem">(untick to remove \u2014 removed chapters stay removed after refresh)</span></label><div id="pe-chaps" style="max-height:230px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:8px"><div class="p-load">Loading chapters...</div></div><div id="pe-chaps-n" style="font-size:.74rem;color:var(--muted);margin-top:5px"></div></div>'+
           (t.creator_type!=='youtuber'?('<div class="p-field"><label>Collaborating Teachers (tick to add/remove; primary cannot be removed)</label><div id="pe-collab" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px">'+(function(){
             var primaryId=t.teacher_id; var cur={}; (t.collab_teacher_ids||[]).forEach(function(x){cur[x]=1;}); (t.collaborators||[]).forEach(function(c){ if(!c.primary && c.id!==primaryId) cur[c.id]=1; });
             return teachList.map(function(tt){ var isP=(tt.id===primaryId); return '<label style="display:flex;align-items:center;gap:9px;padding:6px 4px"><input type="checkbox" class="pe-collab-cb" value="'+tt.id+'" '+(cur[tt.id]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+(isP?' (Primary)':'')+'</span></label>'; }).join('');
@@ -27541,7 +27880,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
       document.body.appendChild(dr);
+      try{ prodEditChapsLoad(id); }catch(e){}
     }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
+  };
+  window.prodEditChapsLoad=function(id){
+    var box=document.getElementById('pe-chaps'); if(!box) return;
+    api(P.production.api+'/tasks/'+id+'/chapters').then(function(r){
+      var chs=(r&&r.chapters)||[]; var wrap=document.getElementById('pe-chaps-field');
+      if(!chs.length){ if(wrap) wrap.style.display='none'; return; }
+      if(wrap) wrap.style.display='';
+      box.innerHTML=chs.map(function(c){
+        var hasLink=(c.link&&(''+c.link).trim());
+        return '<label style="display:flex;align-items:center;gap:9px;padding:6px 4px"><input type="checkbox" class="pe-chap-cb" value="'+esc(c.title).replace(/"/g,'&quot;')+'" checked onchange="prodEditChapsCount()"> <span style="flex:1">'+esc(c.title)+(hasLink?' <span style="font-size:.7rem;color:#2e9e6b">\u00b7 submitted</span>':'')+'</span></label>';
+      }).join('');
+      prodEditChapsCount();
+    }).catch(function(){ var wrap=document.getElementById('pe-chaps-field'); if(wrap) wrap.style.display='none'; });
+  };
+  window.prodEditChapsCount=function(){
+    var cbs=[].slice.call(document.querySelectorAll('#pe-chaps .pe-chap-cb'));
+    var n=cbs.filter(function(c){return c.checked;}).length;
+    var el=document.getElementById('pe-chaps-n'); if(el) el.textContent=n+' of '+cbs.length+' chapters kept';
   };
   window.prodEditThumbToggle=function(v){ var w=document.getElementById('pe-gfx-wrap'); if(w) w.style.display=(v==='yes')?'':'none'; };
   window.prodEditSave=function(id){
@@ -27556,6 +27914,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(thumbReq && gid) body.graphics_id=parseInt(gid,10);
     body.editor_id=g('pe-editor')?parseInt(g('pe-editor'),10):0;
     var dl=(g('pe-deadline')||'').trim(); if(dl) body.deadline=dl;
+    // chapters (projects / One Shot / Rapid Revision) — send the kept (ticked) list
+    var chBox=document.getElementById('pe-chaps');
+    if(chBox && chBox.querySelector('.pe-chap-cb')){
+      var chsel=[].slice.call(chBox.querySelectorAll('.pe-chap-cb:checked')).map(function(c){return c.value;});
+      if(!chsel.length){ toast('Keep at least one chapter',true); return; }
+      body.chapters=chsel;
+    }
     // collab teachers
     var cbox=document.getElementById('pe-collab'); var collabIds=null;
     if(cbox){ var pid=((window._prodEdit||{}).task||{}).teacher_id; collabIds=[].slice.call(cbox.querySelectorAll('.pe-collab-cb')).filter(function(c){return c.checked && String(c.value)!==String(pid);}).map(function(c){return parseInt(c.value,10);}); }

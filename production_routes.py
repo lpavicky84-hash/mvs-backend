@@ -2661,9 +2661,26 @@ def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_p
     t = _task(db, tid)
     rows = (db.query(_PVChapter).filter(_PVChapter.task_id == t.id)
             .order_by(_PVChapter.sort.asc(), _PVChapter.id.asc()).all())
+    def _rv(c):
+        rs = (getattr(c, "review_status", "") or "").strip()
+        if rs in ("pending", "approved", "changes"):
+            return rs
+        return "approved" if (c.link or "").strip() else ""
+    _pe = getattr(t, "project_editor_id", None)
+    nm = _staff_name_map(db, [c.editor_id for c in rows] + [c.graphics_id for c in rows] + [_pe])
     return {"is_project": (getattr(t, "kind", "") == "project"),
+            "project_editor_id": _pe, "project_editor_name": nm.get(_pe, ""),
             "chapters": [{"id": c.id, "title": c.title, "link": (c.link or ""),
-                          "status": _p_ch_status(c)} for c in rows]}
+                          "status": _p_ch_status(c),
+                          "review": _rv(c),
+                          "review_note": (getattr(c, "review_note", "") or ""),
+                          "editor_id": c.editor_id, "editor_name": nm.get(c.editor_id, ""),
+                          "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
+                          "edit_state": (getattr(c, "edit_state", "") or ""),
+                          "edited_link": (getattr(c, "edited_link", "") or ""),
+                          "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
+                          "gfx_state": (getattr(c, "gfx_state", "") or ""),
+                          "assigned": bool(c.editor_id or c.graphics_id)} for c in rows]}
 
 
 @router.post("/chapter-status")
@@ -2695,6 +2712,225 @@ def prod_chapter_status(payload: dict = Body(...), db: Session = Depends(get_db)
 # ============================================================ PROJECTS LIST (premium section)
 # Projects = one_shot / rapid_revision / project. Each shows chapter progress so the PM can
 # see, per subject, how many videos are done. Same VideoTask + VideoTaskChapter data as admin.
+@router.post("/chapter-review")
+def prod_chapter_review(payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    """PM/admin approves or sends back a single project video (mirrors task approval)."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    return _vt._do_chapter_review(db, payload.get("chapter_id"), payload.get("action"),
+                                  payload.get("note") or "")
+
+
+# ============================================================ PROJECT VIDEO ASSIGNMENT (Phase 3)
+# Two modes: (a) assign a single approved project-video to an editor (+ optional graphics),
+# (b) assign a whole project to one editor with a deadline. Names show on the card; PM/admin
+# get counts + a filter of which project's which chapter is in editing / edited.
+def _staff_name_map(db, ids=None):
+    from models import ProductionStaffProfile as _SP
+    q = db.query(_SP)
+    if ids:
+        q = q.filter(_SP.id.in_([i for i in ids if i]))
+    m = {}
+    for s in q.all():
+        m[s.id] = (s.user.name if s.user else "") or ("#%d" % s.id)
+    return m
+
+
+def _valid_staff(db, sid, role):
+    from models import ProductionStaffProfile as _SP
+    if not sid:
+        return None
+    try:
+        s = db.query(_SP).filter(_SP.id == int(sid), _SP.staff_role == role).first()
+    except Exception:
+        return None
+    return s.id if s else None
+
+
+@router.post("/assign-project-video")
+def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get_db),
+                            me=Depends(get_pm_or_admin)):
+    """Assign ONE approved project video to an editor (and optionally a graphics designer)."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(payload.get("chapter_id") or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    rs = (getattr(row, "review_status", "") or "").strip()
+    approved = (rs == "approved") or (rs == "" and (row.link or "").strip())
+    if not approved:
+        raise HTTPException(400, "Approve this video first, then assign it for editing")
+    eid = _valid_staff(db, payload.get("editor_id"), "editor")
+    gid = _valid_staff(db, payload.get("graphics_id"), "graphics")
+    if not eid and not gid:
+        raise HTTPException(400, "Choose an editor and/or a graphics designer")
+    t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
+    proj = (t.title or t.subject or "project") if t else "project"
+    if eid:
+        row.editor_id = eid
+        if (getattr(row, "edit_state", "") or "") in ("", "assigned"):
+            row.edit_state = "assigned"
+    if gid:
+        row.graphics_id = gid
+        if (getattr(row, "gfx_state", "") or "") in ("", "assigned"):
+            row.gfx_state = "assigned"
+    refs = payload.get("thumb_refs")
+    if isinstance(refs, list):
+        import json as _json
+        row.thumb_refs = _json.dumps([str(x).strip() for x in refs if str(x).strip()][:10])
+    row.assigned_at = datetime.utcnow()
+    from models import ProductionStaffProfile as _SP
+    try:
+        if eid:
+            ep = db.query(_SP).filter(_SP.id == eid).first()
+            if ep and ep.user_id:
+                pc.notify(db, ep.user_id, "Project video assigned for editing",
+                          f'"{row.title}" from "{proj}" has been assigned to you for editing.',
+                          "video_task", link=str(row.task_id))
+        if gid:
+            gp = db.query(_SP).filter(_SP.id == gid).first()
+            if gp and gp.user_id:
+                pc.notify(db, gp.user_id, "Project thumbnail assigned",
+                          f'A thumbnail for "{row.title}" from "{proj}" has been assigned to you.',
+                          "graphics_task", link=str(row.task_id))
+    except Exception:
+        pass
+    db.commit()
+    nm = _staff_name_map(db, [row.editor_id, row.graphics_id])
+    return {"ok": True, "chapter_id": row.id,
+            "editor_id": row.editor_id, "editor_name": nm.get(row.editor_id, ""),
+            "graphics_id": row.graphics_id, "graphics_name": nm.get(row.graphics_id, ""),
+            "edit_state": (getattr(row, "edit_state", "") or "")}
+
+
+@router.post("/unassign-project-video")
+def pm_unassign_project_video(payload: dict = Body(...), db: Session = Depends(get_db),
+                              me=Depends(get_pm_or_admin)):
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(payload.get("chapter_id") or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    which = (payload.get("which") or "both").strip().lower()
+    if which in ("editor", "both"):
+        row.editor_id = None
+        row.edit_state = ""
+    if which in ("graphics", "both"):
+        row.graphics_id = None
+    if not row.editor_id and not row.graphics_id:
+        row.assigned_at = None
+    db.commit()
+    return {"ok": True, "chapter_id": row.id}
+
+
+@router.post("/assign-project")
+def pm_assign_project(payload: dict = Body(...), db: Session = Depends(get_db),
+                      me=Depends(get_pm_or_admin)):
+    """Assign a WHOLE project to one editor (they will work each video in their Projects section)."""
+    t = db.query(VideoTask).filter(VideoTask.id == int(payload.get("task_id") or 0)).first()
+    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+        raise HTTPException(404, "Project not found")
+    eid = _valid_staff(db, payload.get("editor_id"), "editor")
+    if not eid:
+        raise HTTPException(400, "Choose an editor")
+    t.project_editor_id = eid
+    dl = (payload.get("deadline") or "").strip()
+    if dl:
+        try:
+            t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
+        except Exception:
+            pass
+    from models import ProductionStaffProfile as _SP
+    try:
+        ep = db.query(_SP).filter(_SP.id == eid).first()
+        if ep and ep.user_id:
+            pc.notify(db, ep.user_id, "Whole project assigned to you",
+                      f'The project "{t.title or t.subject}" has been assigned to you. '
+                      f'Edit each video from your Projects section.', "video_task", link=str(t.id))
+    except Exception:
+        pass
+    try:
+        pc.log_event(db, t, me, t.lifecycle, note="Whole project assigned to an editor")
+    except Exception:
+        pass
+    db.commit()
+    nm = _staff_name_map(db, [eid])
+    return {"ok": True, "task_id": t.id, "project_editor_id": eid, "editor_name": nm.get(eid, "")}
+
+
+@router.post("/unassign-project")
+def pm_unassign_project(payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    t = db.query(VideoTask).filter(VideoTask.id == int(payload.get("task_id") or 0)).first()
+    if not t:
+        raise HTTPException(404, "Project not found")
+    t.project_editor_id = None
+    db.commit()
+    return {"ok": True, "task_id": t.id}
+
+
+@router.get("/project-videos")
+def pm_project_videos(state: str = "", project_id: int = 0,
+                      db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Every assigned project video across projects — for the PM/admin 'in editing / edited'
+    view with a filter (which project's which chapter is where)."""
+    if not _PROJECT_OK:
+        return {"videos": [], "summary": {"assigned": 0, "editing": 0, "edited": 0}}
+    projq = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                       VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
+    projs = {t.id: t for t in projq.all()}
+    if not projs:
+        return {"videos": [], "summary": {"assigned": 0, "editing": 0, "edited": 0}}
+    rows = (db.query(_PVChapter)
+            .filter(_PVChapter.task_id.in_(list(projs.keys())),
+                    _PVChapter.editor_id.isnot(None)).all())
+    nm = _staff_name_map(db)
+    summary = {"assigned": 0, "editing": 0, "edited": 0}
+    out = []
+    for c in rows:
+        st = (getattr(c, "edit_state", "") or "") or "assigned"
+        bucket = "editing" if st == "editing" else ("edited" if st == "edited" else "assigned")
+        summary[bucket] = summary.get(bucket, 0) + 1
+        if state and bucket != state:
+            continue
+        if project_id and c.task_id != project_id:
+            continue
+        t = projs.get(c.task_id)
+        out.append({
+            "chapter_id": c.id, "chapter_title": c.title,
+            "project_id": c.task_id, "project_title": (t.title or t.subject or "Project") if t else "Project",
+            "kind": (t.kind if t else ""), "subject": (t.subject if t else ""),
+            "editor_id": c.editor_id, "editor_name": nm.get(c.editor_id, ""),
+            "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
+            "edit_state": bucket, "link": (c.link or ""),
+            "edited_link": (getattr(c, "edited_link", "") or ""),
+        })
+    return {"videos": out, "summary": summary}
+
+
+@router.get("/projects/{pid}/chat")
+def pm_project_chat(pid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from video_tasks import project_chat_get
+    return project_chat_get(db, me, pid)
+
+
+@router.post("/projects/{pid}/chat")
+def pm_project_chat_add(pid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    from video_tasks import project_chat_add
+    role = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
+    return project_chat_add(db, me, pid, payload, role)
+
+
+@router.post("/projects/{pid}/chat-ping")
+def pm_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                         me=Depends(get_pm_or_admin)):
+    from video_tasks import project_chat_ping
+    return project_chat_ping(db, me, pid, typing=bool((payload or {}).get("typing")))
+
+
 @router.get("/projects")
 def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str = "",
                 db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
@@ -2716,13 +2952,21 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
         ids = [t.id for t in rows]
         if ids:
             for c in db.query(_VC).filter(_VC.task_id.in_(ids)).all():
-                p = prog.setdefault(c.task_id, {"total": 0, "done": 0})
+                p = prog.setdefault(c.task_id, {"total": 0, "done": 0, "pending": 0,
+                                                "assigned": 0, "editing": 0, "edited": 0})
                 p["total"] += 1
-                st = (getattr(c, "edit_status", "") or "")
-                if st == "uploaded" or (c.link or "").strip():
+                rs = (getattr(c, "review_status", "") or "").strip()
+                if rs == "approved" or (rs == "" and (c.link or "").strip()):
                     p["done"] += 1
+                elif rs == "pending":
+                    p["pending"] += 1
+                if getattr(c, "editor_id", None):
+                    est = (getattr(c, "edit_state", "") or "") or "assigned"
+                    p[("editing" if est == "editing" else ("edited" if est == "edited" else "assigned"))] += 1
     except Exception:
         pass
+    _pe_ids = [getattr(t, "project_editor_id", None) for t in rows]
+    _pe_nm = _staff_name_map(db, [i for i in _pe_ids if i])
     out = []
     counts = {"one_shot": 0, "rapid_revision": 0, "project": 0}
     subjects = set()
@@ -2730,21 +2974,26 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
         counts[t.kind] = counts.get(t.kind, 0) + 1
         if t.subject:
             subjects.add(t.subject)
-        p = prog.get(t.id, {"total": 0, "done": 0})
+        p = prog.get(t.id, {"total": 0, "done": 0, "pending": 0, "assigned": 0, "editing": 0, "edited": 0})
         cname = ""
         try:
             cname, _ = pc.creator_info(db, t)
         except Exception:
             pass
         pct = round(100.0 * p["done"] / p["total"]) if p["total"] else 0
+        _pe = getattr(t, "project_editor_id", None)
         out.append({
             "id": t.id, "kind": t.kind, "title": t.title or "Untitled",
             "subject": t.subject or "", "creator": cname,
             "class_level": ("12" if "12" in (t.subject or "") else ("10" if "10" in (t.subject or "") else "")),
             "deadline": pc._dt(t.deadline), "updated": pc._dt(t.updated_at),
             "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
-            "chapters_total": p["total"], "chapters_done": p["done"], "pct": pct,
-            "is_old": bool(getattr(t, "is_old", False)),
+            "chapters_total": p["total"], "chapters_done": p["done"],
+            "chapters_pending": p.get("pending", 0),
+            "vids_assigned": p.get("assigned", 0), "vids_editing": p.get("editing", 0),
+            "vids_edited": p.get("edited", 0),
+            "project_editor_id": _pe, "project_editor_name": _pe_nm.get(_pe, ""),
+            "pct": pct, "is_old": bool(getattr(t, "is_old", False)),
         })
     return {"projects": out, "counts": counts,
             "subjects": sorted(subjects),
@@ -2808,6 +3057,44 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                               f'You have been assigned to edit "{t.title}".', "video_task", link=str(t.id))
         else:
             t.editor_id = None
+    # chapter edit (projects / One Shot / Rapid Revision) — remove unticked chapters and
+    # remember the removals in chapter_excludes so the syllabus auto-sync never re-adds
+    # them (this is what makes a PM's chapter removal actually stick after refresh).
+    sel = payload.get("chapters")
+    if isinstance(sel, list) and _PROJECT_OK:
+        def _pnorm_ch(s):
+            return " ".join(str(s or "").split()).lower()
+        keep, seen_k = [], set()
+        for x in sel:
+            s2 = " ".join(str(x or "").split())[:300]
+            if s2 and s2.lower() not in seen_k:
+                seen_k.add(s2.lower())
+                keep.append(s2)
+        if keep:
+            try:
+                excl = set(y for y in json.loads(getattr(t, "chapter_excludes", "") or "[]") if isinstance(y, str))
+            except Exception:
+                excl = set()
+            rows = db.query(_PVChapter).filter(_PVChapter.task_id == t.id).all()
+            existing_norm = set()
+            for crow in rows:
+                cn = _pnorm_ch(crow.title)
+                if cn not in seen_k:
+                    excl.add(cn)
+                    db.delete(crow)
+                else:
+                    existing_norm.add(cn)
+            sort = max([getattr(crow, "sort", 0) or 0 for crow in rows] + [-1]) + 1
+            for s2 in keep:
+                cn = _pnorm_ch(s2)
+                if cn not in existing_norm:
+                    db.add(_PVChapter(task_id=t.id, title=s2, sort=sort))
+                    sort += 1
+                excl.discard(cn)
+            try:
+                t.chapter_excludes = json.dumps(sorted(excl))
+            except Exception:
+                pass
     try:
         pc.log_event(db, t, me, t.lifecycle, note="Edited by production manager")
     except Exception:

@@ -20,6 +20,123 @@ def _me_staff(db, me):
     return sp
 
 
+@router.get("/project-videos")
+def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Project videos assigned to this editor (single videos + whole projects). Phase 3 is a
+    read view — the full start/pause/submit workflow is added in the Projects section (Phase 4)."""
+    sp = _me_staff(db, me)
+    from models import VideoTaskChapter as _VC
+    proj_rows = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                           VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
+    pmap = {t.id: t for t in proj_rows}
+    vids = []
+    if pmap:
+        for c in (db.query(_VC).filter(_VC.task_id.in_(list(pmap.keys())),
+                                       _VC.editor_id == sp.id).all()):
+            t = pmap.get(c.task_id)
+            vids.append({
+                "chapter_id": c.id, "title": c.title,
+                "project_id": c.task_id, "project_title": (t.title or t.subject or "Project") if t else "Project",
+                "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
+                "link": (c.link or ""), "edited_link": (getattr(c, "edited_link", "") or ""),
+                "edit_state": (getattr(c, "edit_state", "") or "") or "assigned",
+                "deadline": pc._dt(t.deadline) if t else "",
+            })
+    whole = [{"project_id": t.id, "title": t.title or t.subject or "Project",
+              "subject": t.subject or "", "kind": t.kind, "deadline": pc._dt(t.deadline)}
+             for t in proj_rows if getattr(t, "project_editor_id", None) == sp.id]
+    return {"videos": vids, "whole_projects": whole,
+            "count": len(vids), "whole_count": len(whole)}
+
+
+def _my_pv_chapter(db, sp, cid):
+    from models import VideoTaskChapter as _VC
+    c = db.query(_VC).filter(_VC.id == int(cid or 0)).first()
+    if not c or c.editor_id != sp.id:
+        raise HTTPException(404, "Assigned video not found")
+    return c
+
+
+@router.post("/project-videos/{cid}/start")
+def editor_pv_start(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    c.edit_state = "editing"
+    if not c.editing_started_at:
+        c.editing_started_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "edit_state": c.edit_state}
+
+
+@router.post("/project-videos/{cid}/submit")
+def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                     me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    link = (payload.get("edited_link") or "").strip()
+    if not link:
+        raise HTTPException(400, "Edited video drive link is required")
+    c.edited_link = link
+    c.edit_state = "edited"
+    c.edited_at = datetime.utcnow()
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    proj = (t.title or t.subject or "project") if t else "project"
+    try:
+        pc.notify_pms(db, "Project video edited",
+                      f'{me.name} submitted the edited "{c.title}" from "{proj}".',
+                      "production", link=str(c.task_id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "edit_state": c.edit_state, "edited_link": link}
+
+
+@router.post("/project-videos/{cid}/reopen")
+def editor_pv_reopen(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    c.edit_state = "editing"
+    db.commit()
+    return {"ok": True, "edit_state": c.edit_state}
+
+
+def _editor_in_project(db, sp, pid):
+    from models import VideoTaskChapter as _VC
+    t = db.query(VideoTask).filter(VideoTask.id == int(pid or 0)).first()
+    if not t:
+        return False
+    if getattr(t, "project_editor_id", None) == sp.id:
+        return True
+    return db.query(_VC).filter(_VC.task_id == int(pid), _VC.editor_id == sp.id).first() is not None
+
+
+@router.get("/projects/{pid}/chat")
+def editor_project_chat(pid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    if not _editor_in_project(db, sp, pid):
+        raise HTTPException(403, "Not assigned to this project")
+    from video_tasks import project_chat_get
+    return project_chat_get(db, me, pid)
+
+
+@router.post("/projects/{pid}/chat")
+def editor_project_chat_add(pid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                            me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    if not _editor_in_project(db, sp, pid):
+        raise HTTPException(403, "Not assigned to this project")
+    from video_tasks import project_chat_add
+    return project_chat_add(db, me, pid, payload, "editor")
+
+
+@router.post("/projects/{pid}/chat-ping")
+def editor_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                             me=Depends(get_editor)):
+    from video_tasks import project_chat_ping
+    return project_chat_ping(db, me, pid, typing=bool((payload or {}).get("typing")))
+
+
+
 def _my_task(db, sp, tid):
     t = db.query(VideoTask).filter(VideoTask.id == int(tid)).first()
     if not t:

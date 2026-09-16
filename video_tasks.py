@@ -104,11 +104,26 @@ def _ensure_special_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN edit_status VARCHAR(20) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN changed_at DATETIME NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN review_status VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN review_note VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN reviewed_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_id INTEGER NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN graphics_id INTEGER NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN assigned_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN edit_state VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN edited_link VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN editing_started_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN edited_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN gfx_state VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumbnail_link VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_refs TEXT NULL",
+        "ALTER TABLE video_tasks ADD COLUMN project_editor_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN collab_verified TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN collab_not_completed TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN submitted_by INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN chapter_excludes TEXT NULL",
     ]
     for ddl in alters:
         try:
@@ -162,6 +177,119 @@ def _ch_status(c):
     if es in CHAPTER_EDIT_STATUSES:
         return es
     return "editing_soon" if (c.link or "").strip() else ""
+
+
+def _ch_review(c):
+    """Project-video approval state: 'pending' | 'approved' | 'changes' | ''.
+    Legacy rows (link present, review_status khali) approved maane jaate hain, taaki
+    approval-system aane par purane project 0% pe reset na ho."""
+    rs = (getattr(c, "review_status", "") or "").strip()
+    if rs in ("pending", "approved", "changes"):
+        return rs
+    return "approved" if (c.link or "").strip() else ""
+
+
+def _ch_approved(c):
+    return _ch_review(c) == "approved"
+
+
+def _recompute_special_completion(db, t):
+    """Special/project task ki completion approval par tay hoti hai — jab har chapter
+    APPROVED ho jaaye tabhi task 'submitted' (complete). Koi chapter changes/pending ho
+    to task wapas open. Progress + admin notify ek hi jagah se consistent rehta hai."""
+    if (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+        return
+    chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all()
+    total = len(chs)
+    approved = sum(1 for c in chs if _ch_approved(c))
+    now = _now_ist()
+    all_done = bool(total and approved == total)
+    if all_done and t.status != "submitted":
+        t.status = "submitted"
+        t.submitted_at = now
+        t.on_time = bool(t.deadline and now <= t.deadline)
+        unit = {"one_shot": "chapters", "rapid_revision": "chapters",
+                "project": "videos"}.get(t.kind, "items")
+        _hist_add(t, "submitted", "All %d %s approved — %s" % (
+            total, unit, "on time" if t.on_time else "delayed"))
+        try:
+            tp = _teacher_profile(db, t.teacher_id)
+            uname = db.query(User).filter(User.id == tp.user_id).first() if tp else None
+            if t.kind == "one_shot":
+                label = "One Shot — %s" % t.subject
+            elif t.kind == "project":
+                label = t.title
+            else:
+                label = "Rapid Revision — %s" % t.subject
+            for a in db.query(User).filter(User.role == "admin", User.is_active == True).all():
+                _vt_notify(db, a.id, "%s Complete" % label,
+                           '%s: all %d %s approved for "%s" (%s).'
+                           % ((uname.name if uname else "A teacher"), total, unit, label,
+                              "on time" if t.on_time else "delayed"))
+        except Exception:
+            pass
+    elif (not all_done) and t.status == "submitted":
+        # ek video wapas changes/pending — task dobara open
+        t.status = "assigned"
+        t.submitted_at = None
+        t.on_time = None
+        _hist_add(t, "progress", "Reopened — a video is pending review again (%d/%d approved)" % (approved, total))
+
+
+def _do_chapter_review(db, cid, action, note=""):
+    """Approve / send-back a single project video (shared by admin + PM). Mirrors the
+    task approval flow: teacher submits a video -> PM/admin approves or asks for changes."""
+    row = db.query(VideoTaskChapter).filter(VideoTaskChapter.id == int(cid or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    if not (row.link or "").strip():
+        raise HTTPException(400, "No video has been submitted for this chapter yet")
+    t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
+    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+        raise HTTPException(404, "Project not found")
+    action = (action or "").strip().lower()
+    note = (note or "").strip()[:600]
+    now = _now_ist()
+    subj = t.subject or t.title or "project"
+    if action == "approve":
+        row.review_status = "approved"
+        row.review_note = ""
+        row.reviewed_at = now
+        _hist_add(t, "progress", '"%s" video approved' % row.title)
+        try:
+            tp = _teacher_profile(db, t.teacher_id)
+            if tp and tp.user_id:
+                _vt_notify(db, tp.user_id, "Project video approved",
+                           'Your video for "%s" (%s) has been approved.' % (row.title, subj),
+                           link=str(t.id))
+        except Exception:
+            pass
+    elif action in ("changes", "reject"):
+        if not note:
+            raise HTTPException(400, "Add a short note on what needs to change")
+        row.review_status = "changes"
+        row.review_note = note
+        row.reviewed_at = now
+        _hist_add(t, "progress", '"%s" video sent back for changes: %s' % (row.title, note))
+        try:
+            tp = _teacher_profile(db, t.teacher_id)
+            if tp and tp.user_id:
+                _vt_notify(db, tp.user_id, "Project video needs changes",
+                           'Your video for "%s" (%s) needs changes: %s. Please re-submit from My Tasks.'
+                           % (row.title, subj, note), link=str(t.id))
+        except Exception:
+            pass
+    else:
+        raise HTTPException(400, "Invalid action — use approve or changes")
+    _recompute_special_completion(db, t)
+    db.commit()
+    chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all()
+    total = len(chs)
+    done = sum(1 for c in chs if _ch_approved(c))
+    pending = sum(1 for c in chs if _ch_review(c) == "pending")
+    return {"ok": True, "chapter_id": row.id, "review_status": _ch_review(row),
+            "done": done, "pending": pending, "total": total,
+            "pct": round(100 * done / total) if total else 0, "task_status": t.status}
 
 
 def _subject_cls(subject):
@@ -506,15 +634,38 @@ def _dl(val):
     return datetime.strptime(val, "%Y-%m-%dT%H:%M")
 
 
+def _norm_ch(s):
+    return re.sub(r"\s+", " ", (s or "")).strip().lower()
+
+
+def _excludes_get(t):
+    """Set of normalized chapter titles the PM/admin deliberately removed."""
+    try:
+        v = json.loads(getattr(t, "chapter_excludes", "") or "[]")
+        return set(x for x in v if isinstance(x, str))
+    except Exception:
+        return set()
+
+
+def _excludes_save(t, s):
+    try:
+        t.chapter_excludes = json.dumps(sorted(s))
+    except Exception:
+        t.chapter_excludes = "[]"
+
+
 def _sync_chapters(db, t, titles):
     """Missing chapter rows add karo (jo hain unhe — khaas kar jinme link hai — kabhi
-    chhedo nahi). True agar kuch badla."""
-    existing = { (c.title or "").strip().lower() for c in
+    chhedo nahi). Manually-removed chapters (chapter_excludes) ko kabhi wapas add mat
+    karo — warna PM/admin ka delete refresh pe undo ho jata tha. True agar kuch badla."""
+    excl = _excludes_get(t)
+    existing = { _norm_ch(c.title) for c in
                  db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all() }
     changed = False
     sort = len(existing)
     for ti in titles:
-        if ti.strip().lower() in existing:
+        n = _norm_ch(ti)
+        if n in existing or n in excl:
             continue
         db.add(VideoTaskChapter(task_id=t.id, title=ti.strip()[:300], sort=sort))
         sort += 1
@@ -643,11 +794,15 @@ def _dedupe_special(db, teacher_id, kind):
     for _k, grp in groups.items():
         if len(grp) < 2:
             continue
-        keep = grp[0]
+        # Prefer a visible (non-cancelled) task as the survivor so a stale cancelled
+        # duplicate can never hide a legitimately active One Shot / Rapid Revision.
+        # If every task in the group is cancelled (deliberately deleted), it stays deleted.
+        keep = next((x for x in grp if not getattr(x, "cancelled", False)), grp[0])
+        extras = [x for x in grp if x is not keep]
         existing = { _tk(c.title): c for c in
                      db.query(VideoTaskChapter)
                      .filter(VideoTaskChapter.task_id == keep.id).all() }
-        for extra in grp[1:]:
+        for extra in extras:
             for c in (db.query(VideoTaskChapter)
                       .filter(VideoTaskChapter.task_id == extra.id).all()):
                 key = _tk(c.title)
@@ -691,15 +846,22 @@ def _ensure_kind_parity(db, tp):
     monitor me One Shot 24 vs Rapid Revision 21 jaisa gap aa jata tha.
     Ye pass existing One Shot tasks se chalti hai (profile subjects pe depend
     nahi), idempotent hai — RR already ho to kuch nahi karti."""
+    # active One Shot subjects only — a soft-deleted (cancelled) One Shot must not
+    # spawn a Rapid Revision for a subject the PM/admin deliberately removed.
     os_subjects = [s for (s,) in db.query(VideoTask.subject)
-                   .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "one_shot")
+                   .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "one_shot",
+                           VideoTask.cancelled.isnot(True))
                    .distinct().all() if (s or "").strip()]
     if not os_subjects:
         return False
-    rr_subjects = {s for (s,) in db.query(VideoTask.subject)
-                   .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "rapid_revision")
-                   .distinct().all()}
-    missing = [s for s in os_subjects if s not in rr_subjects]
+    # Rapid Revision idents INCLUDING cancelled — so a deleted RR is never seen as
+    # "missing" and resurrected. Normalized identity guards against subject-name
+    # drift ('Physics · Class 12' vs 'Physics 12') causing a phantom recreate.
+    rr_idents = {_subj_ident(*_display_base_cls(s)) for (s,) in db.query(VideoTask.subject)
+                 .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "rapid_revision")
+                 .distinct().all() if (s or "").strip()}
+    missing = [s for s in os_subjects
+               if _subj_ident(*_display_base_cls(s)) not in rr_idents]
     if not missing:
         return False
     _u = db.query(User).filter(User.id == tp.user_id).first()
@@ -721,6 +883,18 @@ def _ensure_kind_parity(db, tp):
                        'front of it. Deadline: %s.'
                        % (subj, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")))
     return True
+
+
+def _cancelled_idents(db, tid, kind):
+    """Normalized subject identities that have a SOFT-DELETED (cancelled) special task
+    of this kind — used to make deletion stick: the self-heal must never resurrect them."""
+    out = set()
+    for (s,) in (db.query(VideoTask.subject)
+                 .filter(VideoTask.teacher_id == tid, VideoTask.kind == kind,
+                         VideoTask.cancelled.is_(True)).distinct().all()):
+        if (s or "").strip():
+            out.add(_subj_ident(*_display_base_cls(s)))
+    return out
 
 
 def _ensure_special_teacher(db, tp):
@@ -751,6 +925,8 @@ def _ensure_special_teacher(db, tp):
     # One Shot vs Rapid Revision parity ke liye) — bas notification nahi jayega.
     _inactive = bool(_u is not None and _u.is_active is False)
     named = _special_subject_names(db, tp, subs)   # [(raw_name, cls, stable_display)]
+    _cx_os = _cancelled_idents(db, tp.id, "one_shot")        # deliberately-deleted One Shots
+    _cx_rr = _cancelled_idents(db, tp.id, "rapid_revision")  # deliberately-deleted Rapid Revisions
     # One Shot — har subject ka ek task, chapters syllabus/timetable se
     for nm, cl, display in named:
         titles, _src = _chapters_for(db, tp.id, nm, cl)
@@ -775,6 +951,11 @@ def _ensure_special_teacher(db, tp):
                 changed = True
                 if t is None:
                     t = lt
+        # Respect a deliberate delete: a cancelled One Shot for this subject (exact match
+        # or under a name variant) must be neither re-synced nor resurrected.
+        if (t is not None and getattr(t, "cancelled", False)) or \
+           (t is None and _subj_ident(*_display_base_cls(display)) in _cx_os):
+            continue
         if not t:
             t = VideoTask(teacher_id=tp.id, title="One Shot — %s (All Chapters)" % display,
                           kind="one_shot", subject=display, video_type="One Shot Video",
@@ -817,6 +998,10 @@ def _ensure_special_teacher(db, tp):
                 changed = True
                 if rt is None:
                     rt = lt
+        # Respect a deliberate delete (same as One Shot above).
+        if (rt is not None and getattr(rt, "cancelled", False)) or \
+           (rt is None and _subj_ident(*_display_base_cls(display)) in _cx_rr):
+            continue
         if not rt:
             rt = VideoTask(teacher_id=tp.id,
                            title="Rapid Revision — %s (All Chapters)" % display,
@@ -844,7 +1029,8 @@ def _ensure_special_teacher(db, tp):
     # item_source 'custom' wale projects ke items admin ke banaye hue hain, unhe chhedo nahi.
     for pt in (db.query(VideoTask)
                .filter(VideoTask.teacher_id == tp.id, VideoTask.kind == "project",
-                       VideoTask.item_source == "syllabus").all()):
+                       VideoTask.item_source == "syllabus",
+                       VideoTask.cancelled.isnot(True)).all()):
         base, pcls = _display_base_cls(pt.subject)
         if base and _pe_sync_prune(db, pt, tp.id, base, pcls):
             changed = True
@@ -1259,9 +1445,127 @@ def vt_teacher_comment_add(task_id: int, payload: dict = Body(...),
     return {"ok": True, "comment": _vtc_out(db, c)}
 
 
-@router.get("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
-def vt_admin_comments(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
-    return {"comments": _vtc_list(db, task_id)}
+# ============================================================ PROJECT CHAT (Phase 5)
+# One shared thread per project (audience='project') — teacher, PM, admin, assigned
+# editors and graphics all talk together. Reuses VideoTaskComment on the project's task id.
+PROJECT_KINDS = ("one_shot", "rapid_revision", "project")
+
+
+def _project_or_404(db, pid):
+    t = db.query(VideoTask).filter(VideoTask.id == int(pid or 0)).first()
+    if not t or (getattr(t, "kind", "") or "") not in PROJECT_KINDS:
+        raise HTTPException(404, "Project not found")
+    return t
+
+
+def _project_chat_user_ids(db, project):
+    """Every user who can see a project's chat: teacher (+collab), all admins & PMs,
+    assigned editors/graphics (per chapter + whole-project editor)."""
+    ids = set()
+    try:
+        tp = _teacher_profile(db, project.teacher_id)
+        if tp and tp.user_id:
+            ids.add(tp.user_id)
+        for cid in (_collab_extra_ids(project) or []):
+            ctp = db.query(TeacherProfile).filter(TeacherProfile.id == cid).first()
+            if ctp and ctp.user_id:
+                ids.add(ctp.user_id)
+    except Exception:
+        pass
+    try:
+        for u in db.query(User).filter(User.role.in_(["admin", "production_manager"]),
+                                       User.is_active == True).all():
+            ids.add(u.id)
+    except Exception:
+        pass
+    try:
+        from models import ProductionStaffProfile as _SP
+        sids = set()
+        for c in db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == project.id).all():
+            if getattr(c, "editor_id", None):
+                sids.add(c.editor_id)
+            if getattr(c, "graphics_id", None):
+                sids.add(c.graphics_id)
+        if getattr(project, "project_editor_id", None):
+            sids.add(project.project_editor_id)
+        if sids:
+            for s in db.query(_SP).filter(_SP.id.in_(list(sids))).all():
+                if s.user_id:
+                    ids.add(s.user_id)
+    except Exception:
+        pass
+    return ids
+
+
+def _notify_project_chat(db, project, author_id, author_name, message):
+    label = project.title or project.subject or "project"
+    body = "%s: %s" % (author_name or "Someone", (message or "")[:120])
+    for uid in _project_chat_user_ids(db, project):
+        if uid and uid != author_id:
+            try:
+                _vt_notify(db, uid, "Project chat — %s" % label, body, link=str(project.id))
+            except Exception:
+                pass
+
+
+def project_chat_get(db, user, pid):
+    """Shared list + presence for a project chat (any participant portal)."""
+    _project_or_404(db, pid)
+    _vtc_mark_read(db, user, pid, "project")
+    _chat_touch(db, user, pid, "project")
+    return {"comments": _vtc_list_v(db, pid, "project", getattr(user, "id", None)),
+            "presence": _chat_other_presence(db, getattr(user, "id", None), pid, "project")}
+
+
+def project_chat_add(db, user, pid, payload, role):
+    t = _project_or_404(db, pid)
+    _att = (payload.get("attachment_url") or "").strip()
+    if not _att:
+        _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+        if _imgs:
+            try:
+                import production_core as pc
+                urls = pc.save_images(db, t, _imgs[:1], "chat", None, user, return_urls=True) or []
+                if urls:
+                    _att = urls[0]
+            except Exception:
+                _att = ""
+    c = _vtc_add(db, pid, user, payload.get("message"), role, attachment_url=_att, audience="project")
+    try:
+        _chat_touch(db, user, pid, "project", typing=False)
+    except Exception:
+        pass
+    if not c:
+        raise HTTPException(400, "Message cannot be empty")
+    try:
+        _notify_project_chat(db, t, getattr(user, "id", None),
+                             getattr(user, "name", ""), c.message)
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+def project_chat_ping(db, user, pid, typing=False):
+    _chat_touch(db, user, pid, "project", typing=bool(typing))
+    return {"presence": _chat_other_presence(db, getattr(user, "id", None), pid, "project")}
+
+
+@router.get("/teacher/projects/{pid}/chat")
+def vt_teacher_project_chat(pid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return project_chat_get(db, current_user, pid)
+
+
+@router.post("/teacher/projects/{pid}/chat")
+def vt_teacher_project_chat_add(pid: int, payload: dict = Body(...),
+                                db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return project_chat_add(db, current_user, pid, payload, "teacher")
+
+
+@router.post("/teacher/projects/{pid}/chat-ping")
+def vt_teacher_project_chat_ping(pid: int, payload: dict = Body(default={}),
+                                 db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return project_chat_ping(db, current_user, pid, typing=bool((payload or {}).get("typing")))
 
 
 @router.post("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
@@ -1624,17 +1928,46 @@ def _special_out(db, t, tname_map=None, ch_map=None):
                .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all())
     lla = getattr(t, "last_link_at", None)
     asa = getattr(t, "admin_seen_at", None)
+    # staff names for assigned videos (editor / graphics) + whole-project editor
+    _sids = set()
+    for c in chs:
+        if getattr(c, "editor_id", None): _sids.add(c.editor_id)
+        if getattr(c, "graphics_id", None): _sids.add(c.graphics_id)
+    _pe = getattr(t, "project_editor_id", None)
+    if _pe: _sids.add(_pe)
+    _snm = {}
+    if _sids:
+        try:
+            from models import ProductionStaffProfile as _SP
+            for s in db.query(_SP).filter(_SP.id.in_(list(_sids))).all():
+                _snm[s.id] = (s.user.name if s.user else "") or ("#%d" % s.id)
+        except Exception:
+            pass
     # v91: chapter-level change flag — link add/update/remove admin_seen ke baad hua ho
     out["chapters"] = [{
         "id": c.id, "title": c.title, "link": c.link or "",
         "submitted_at": c.submitted_at.strftime("%d %b %Y, %I:%M %p") if c.submitted_at else "",
         "edit_status": _ch_status(c),
+        "review_status": _ch_review(c),
+        "review_note": (getattr(c, "review_note", "") or ""),
+        "editor_id": getattr(c, "editor_id", None),
+        "editor_name": _snm.get(getattr(c, "editor_id", None), "") if getattr(c, "editor_id", None) else "",
+        "graphics_id": getattr(c, "graphics_id", None),
+        "graphics_name": _snm.get(getattr(c, "graphics_id", None), "") if getattr(c, "graphics_id", None) else "",
+        "edit_state": (getattr(c, "edit_state", "") or ""),
+        "edited_link": (getattr(c, "edited_link", "") or ""),
+        "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
+        "gfx_state": (getattr(c, "gfx_state", "") or ""),
         "vintage": (getattr(c, "vintage", "") or ""),
         "changed": bool(getattr(c, "changed_at", None) and (not asa or c.changed_at > asa)),
         "changed_at": c.changed_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "changed_at", None) else "",
     } for c in chs]
-    done = sum(1 for c in chs if (c.link or "").strip())
+    out["project_editor_id"] = _pe
+    out["project_editor_name"] = _snm.get(_pe, "") if _pe else ""
+    done = sum(1 for c in chs if _ch_approved(c))
+    pending = sum(1 for c in chs if _ch_review(c) == "pending")
     out["done"] = done
+    out["pending"] = pending
     out["total"] = len(chs)
     out["pct"] = round(100 * done / len(chs)) if chs else 0
     out["cls"] = _subject_cls(out.get("subject") or "")
@@ -2497,22 +2830,26 @@ def vt_edit(task_id: int, payload: dict = Body(...),
                     keep.append(s2)
             if not keep:
                 raise HTTPException(400, "At least one chapter must stay selected")
+            excl = _excludes_get(t)
             rows = (db.query(VideoTaskChapter)
                     .filter(VideoTaskChapter.task_id == t.id).all())
             removed = 0
             for crow in rows:
-                if (crow.title or "").strip().lower() not in seen_k:
+                if _norm_ch(crow.title) not in seen_k:
+                    excl.add(_norm_ch(crow.title))   # remember removal — auto-sync must NOT re-add it
                     db.delete(crow)
                     removed += 1
-            existing = {(crow.title or "").strip().lower() for crow in rows
-                        if (crow.title or "").strip().lower() in seen_k}
+            existing = { _norm_ch(crow.title) for crow in rows
+                        if _norm_ch(crow.title) in seen_k }
             sort = max([getattr(crow, "sort", 0) or 0 for crow in rows] + [-1]) + 1
             added = 0
             for s2 in keep:
-                if s2.lower() not in existing:
+                if _norm_ch(s2) not in existing:
                     db.add(VideoTaskChapter(task_id=t.id, title=s2, sort=sort))
                     sort += 1
                     added += 1
+                excl.discard(_norm_ch(s2))   # kept / re-added -> no longer excluded
+            _excludes_save(t, excl)
             if removed or added:
                 changes.append("chapters (%d added, %d removed)" % (added, removed))
     for fld, col in (("reference", "reference"), ("reference_video", "reference_video"), ("remarks", "remarks")):
@@ -2862,7 +3199,9 @@ def _special_payload(db, kind):
                 have[ck] = c
             elif (c.get("link") or "").strip() and not (have[ck].get("link") or "").strip():
                 have[ck].update(c)
-        tgt["done"] = sum(1 for c in tgt["chapters"] if (c.get("link") or "").strip())
+        tgt["done"] = sum(1 for c in tgt["chapters"]
+                          if (c.get("review_status") == "approved"
+                              or (not c.get("review_status") and (c.get("link") or "").strip())))
         tgt["total"] = len(tgt["chapters"])
         tgt["pct"] = round(100 * tgt["done"] / tgt["total"]) if tgt["total"] else 0
         tgt["is_new"] = bool(tgt.get("is_new") or o.get("is_new"))
@@ -3308,56 +3647,41 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
         row.link = ""
         row.submitted_at = None
         row.edit_status = ""
+        row.review_status = ""
+        row.review_note = ""
     else:
         row.link = link
         row.submitted_at = now
+        row.review_status = "pending"      # PM/admin approval chahiye (task jaisa) — auto-done nahi
+        row.review_note = ""
         if first_time and _ch_status(row) == "editing_soon":
             row.edit_status = "editing_soon"   # nayi recording — editing karwani hai
     row.changed_at = now                       # admin ko changed-link blink
     t.last_link_at = now
     chs = (db.query(VideoTaskChapter)
            .filter(VideoTaskChapter.task_id == t.id).all())
-    done = sum(1 for c in chs if (c.link or "").strip())
+    done = sum(1 for c in chs if _ch_approved(c))
+    pending = sum(1 for c in chs if _ch_review(c) == "pending")
     total = len(chs)
-    just_completed = bool(total and done == total and t.status == "assigned" and not removing)
-    # v91: link remove karne pe agar task submitted ho chuka tha to wapas open ho jaye
-    if removing and t.status != "assigned":
-        t.status = "assigned"
-        t.submitted_at = None
-        t.on_time = None
-        _hist_add(t, "progress", '"%s" link removed — task reopened (%d/%d)' % (row.title, done, total))
-    elif removing:
-        _hist_add(t, "progress", '"%s" link removed (%d/%d)' % (row.title, done, total))
+    if removing:
+        _hist_add(t, "progress", '"%s" video link removed (%d/%d approved)' % (row.title, done, total))
     elif first_time:
-        _hist_add(t, "progress", '"%s" link added (%d/%d)' % (row.title, done, total))
+        _hist_add(t, "progress", '"%s" video submitted for review (%d/%d approved)' % (row.title, done, total))
     else:
-        _hist_add(t, "progress", '"%s" link updated (%d/%d)' % (row.title, done, total))
-    if just_completed:
-        t.status = "submitted"
-        t.submitted_at = now
-        t.on_time = bool(t.deadline and now <= t.deadline)
-        unit = {"one_shot": "chapters", "rapid_revision": "chapters",
-                "project": "videos"}.get(t.kind, "items")
-        _hist_add(t, "submitted", "All %d %s linked — %s" % (
-            total, unit, "on time" if t.on_time else "delayed"))
-    if just_completed:
-        uname = db.query(User).filter(User.id == tp.user_id).first()
-        if t.kind == "one_shot":
-            label = "One Shot — %s" % t.subject
-        elif t.kind == "project":
-            label = t.title
-        else:
-            label = "Rapid Revision — %s" % t.subject
-        unit = {"one_shot": "chapters", "rapid_revision": "chapters",
-                "project": "videos"}.get(t.kind, "items")
-        for a in db.query(User).filter(User.role == "admin", User.is_active == True).all():
-            _vt_notify(db, a.id, "%s Complete" % label,
-                       '%s completed all %d %s of "%s" (%s). View it in the Task Manager.'
-                       % ((uname.name if uname else "A teacher"), total, unit, label,
-                          "on time" if t.on_time else "delayed"))
+        _hist_add(t, "progress", '"%s" video re-submitted for review (%d/%d approved)' % (row.title, done, total))
+    _recompute_special_completion(db, t)
     db.commit()
-    return {"ok": True, "done": done, "total": total,
-            "completed": bool(total and done == total)}
+    return {"ok": True, "done": done, "total": total, "pending": pending,
+            "completed": bool(total and done == total),
+            "review_status": _ch_review(row)}
+
+
+@router.post("/admin/video-tasks/chapter-review", dependencies=[Depends(_admin_section_guard)])
+def vt_admin_chapter_review(payload: dict = Body(...), db: Session = Depends(get_db),
+                            _=Depends(get_admin)):
+    """Admin approves / sends back a single project video."""
+    return _do_chapter_review(db, payload.get("chapter_id"), payload.get("action"),
+                              payload.get("note") or payload.get("remarks") or "")
 
 
 @router.post("/admin/video-tasks/chapter-status", dependencies=[Depends(_admin_section_guard)])

@@ -20,6 +20,99 @@ def _me_staff(db, me):
     return sp
 
 
+def _my_gfx_chapter(db, sp, cid):
+    from models import VideoTaskChapter as _VC
+    c = db.query(_VC).filter(_VC.id == int(cid or 0)).first()
+    if not c or c.graphics_id != sp.id:
+        raise HTTPException(404, "Assigned thumbnail not found")
+    return c
+
+
+@router.get("/project-thumbnails")
+def gfx_project_thumbnails(db: Session = Depends(get_db), me=Depends(get_graphics)):
+    """Project-video thumbnails assigned to this graphics designer (Phase 4)."""
+    sp = _me_staff(db, me)
+    from models import VideoTaskChapter as _VC
+    import json as _json
+    proj_rows = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                           VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
+    pmap = {t.id: t for t in proj_rows}
+    out = []
+    if pmap:
+        for c in db.query(_VC).filter(_VC.task_id.in_(list(pmap.keys())),
+                                      _VC.graphics_id == sp.id).all():
+            t = pmap.get(c.task_id)
+            refs = []
+            try:
+                refs = _json.loads(c.thumb_refs) if (getattr(c, "thumb_refs", "") or "").strip() else []
+            except Exception:
+                refs = []
+            if not isinstance(refs, list):
+                refs = []
+            out.append({
+                "chapter_id": c.id, "title": c.title,
+                "project_id": c.task_id, "project_title": (t.title or t.subject or "Project") if t else "Project",
+                "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
+                "video_link": (c.link or ""), "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
+                "gfx_state": (getattr(c, "gfx_state", "") or "") or "assigned",
+                "refs": refs, "deadline": pc._dt(t.deadline) if t else "",
+            })
+    return {"thumbnails": out, "count": len(out)}
+
+
+@router.post("/project-thumbnails/{cid}/submit")
+def gfx_project_thumb_submit(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                             me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    c = _my_gfx_chapter(db, sp, cid)
+    link = (payload.get("thumbnail_link") or "").strip()
+    if not link:
+        raise HTTPException(400, "Thumbnail drive/image link is required")
+    c.thumbnail_link = link
+    c.gfx_state = "done"
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    proj = (t.title or t.subject or "project") if t else "project"
+    try:
+        pc.notify_pms(db, "Project thumbnail submitted",
+                      f'{me.name} submitted a thumbnail for "{c.title}" from "{proj}".',
+                      "production", link=str(c.task_id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "gfx_state": c.gfx_state, "thumbnail_link": link}
+
+
+def _gfx_in_project(db, sp, pid):
+    from models import VideoTaskChapter as _VC
+    return db.query(_VC).filter(_VC.task_id == int(pid or 0), _VC.graphics_id == sp.id).first() is not None
+
+
+@router.get("/projects/{pid}/chat")
+def gfx_project_chat(pid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    if not _gfx_in_project(db, sp, pid):
+        raise HTTPException(403, "Not assigned to this project")
+    from video_tasks import project_chat_get
+    return project_chat_get(db, me, pid)
+
+
+@router.post("/projects/{pid}/chat")
+def gfx_project_chat_add(pid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                         me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    if not _gfx_in_project(db, sp, pid):
+        raise HTTPException(403, "Not assigned to this project")
+    from video_tasks import project_chat_add
+    return project_chat_add(db, me, pid, payload, "graphics")
+
+
+@router.post("/projects/{pid}/chat-ping")
+def gfx_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                          me=Depends(get_graphics)):
+    from video_tasks import project_chat_ping
+    return project_chat_ping(db, me, pid, typing=bool((payload or {}).get("typing")))
+
+
 def _my_gtask(db, sp, tid):
     g = db.query(GraphicsTask).filter(GraphicsTask.task_id == int(tid)).first()
     if not g:
