@@ -10244,25 +10244,52 @@ function _vtAdminRenderChat(id,comments){
   const roleLbl=function(r){ return ({admin:'Admin',teacher:'Teacher',youtuber:'YouTuber',editor:'Editor',graphics:'Graphics',pm:'Manager',production_manager:'Manager'})[r]||(r||''); };
   const audLbl=function(a){ return ({creator:'Teacher',editor:'Editor',internal:'Graphics / Team',project:'Project'})[a||'creator']||'Teacher'; };
   const audCol=function(a){ return ({creator:'#2e9e6b',editor:'#7c4fc0',internal:'#c99a2e',project:'#2a7fb8'})[a||'creator']||'#8a7d5c'; };
+  if(!window._vtacAud) window._vtacAud='creator';
   const thread=(comments&&comments.length)?comments.map(function(c){
     const mine=(c.role==='admin');
-    const img=c.attachment_url?`<img loading="lazy" src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:180px;max-height:140px;border-radius:8px;margin-top:5px;cursor:pointer;display:block">`:'';
-    const atag=`<span style="font-size:.6rem;font-weight:700;padding:1px 7px;border-radius:999px;background:${audCol(c.audience)}1e;color:${audCol(c.audience)};margin-left:6px">${audLbl(c.audience)}</span>`;
-    return `<div class="tvn-msg ${mine?'mine':'them'}"><div class="tvn-msg-a">${esc(c.author||'')}${roleLbl(c.role)?` \u00b7 ${esc(roleLbl(c.role))}`:''}${atag}</div>${c.message?`<div class="tvn-msg-b">${esc(c.message)}</div>`:''}${img}<div class="tvn-msg-t">${esc(c.at||'')}</div></div>`;
-  }).join(''):'<div style="color:var(--text-muted);font-size:.82rem;padding:6px 0">No messages yet.</div>';
+    const tc=audCol(c.audience);
+    const img=c.attachment_url?`<img loading="lazy" src="${esc(c.attachment_url)}" onclick="window.open('${esc(c.attachment_url)}','_blank')" style="max-width:190px;max-height:150px;border-radius:10px;margin-top:6px;cursor:pointer;display:block">`:'';
+    return `<div class="vtac-msg ${mine?'mine':'them'}">
+      <div class="vtac-meta"><b>${esc(c.author||'')}</b>${roleLbl(c.role)?` \u00b7 ${esc(roleLbl(c.role))}`:''}<span class="vtac-tag" style="background:${tc};color:#fff">${audLbl(c.audience)}</span></div>
+      ${c.message?`<div class="vtac-body">${esc(c.message)}</div>`:''}${img}
+      <div class="vtac-time">${esc(c.at||'')}</div></div>`;
+  }).join(''):'<div class="vtac-empty">No messages yet \u2014 start the conversation below.</div>';
+  const audOpts=[['creator','Teacher','#2e9e6b'],['editor','Editor','#7c4fc0'],['internal','Graphics / Team','#c99a2e']];
+  const pills=audOpts.map(function(o){ const on=(window._vtacAud===o[0]); return `<button type="button" class="vtac-pill${on?' on':''}" data-aud="${o[0]}" style="--pc:${o[2]}" onclick="vtacPick(this)">${o[1]}</button>`; }).join('');
   showModal('Chat \u2014 all messages',
-    `<div class="tvn-thread" id="tvn-thread">${thread}</div>
-     <div class="form-grid" style="margin-top:10px;grid-template-columns:150px 1fr;gap:10px;align-items:end">
-       <div class="form-group"><label>Send to</label><select id="vtac-aud" class="input"><option value="creator">Teacher</option><option value="editor">Editor</option><option value="internal">Graphics / Team</option></select></div>
-       <div class="form-group"><label>Message (as admin)</label><textarea id="vtac-reply" class="input" rows="2" placeholder="Type a message..."></textarea></div>
-     </div>`,
+    `<style>
+      .vtac-thread{max-height:44vh;min-height:120px;overflow-y:auto;padding:4px 2px 6px;display:flex;flex-direction:column;gap:9px;margin-bottom:16px}
+      .vtac-empty{color:var(--text-muted);font-size:.85rem;text-align:center;padding:30px 0}
+      .vtac-msg{max-width:80%;padding:9px 13px;border-radius:15px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+      .vtac-msg.mine{align-self:flex-end;background:linear-gradient(135deg,#b8941f,#907016);color:#fff;border-bottom-right-radius:5px}
+      .vtac-msg.them{align-self:flex-start;background:var(--card-soft,#f4efe2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:5px}
+      .vtac-meta{font-size:.66rem;opacity:.9;margin-bottom:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+      .vtac-tag{font-size:.56rem;font-weight:800;padding:1px 8px;border-radius:999px;letter-spacing:.02em}
+      .vtac-body{font-size:.88rem;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+      .vtac-time{font-size:.6rem;opacity:.72;margin-top:5px}
+      .vtac-sendto{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px}
+      .vtac-pills{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px}
+      .vtac-pill{border:1.5px solid var(--border);background:var(--card,#fff);color:var(--text-muted);border-radius:999px;padding:7px 17px;font-size:.82rem;font-weight:700;cursor:pointer;transition:all .15s}
+      .vtac-pill:hover{border-color:var(--pc)}
+      .vtac-pill.on{border-color:var(--pc);background:var(--pc);color:#fff;box-shadow:0 2px 8px -2px var(--pc)}
+      .vtac-ta{width:100%;border:1.5px solid var(--border);border-radius:13px;padding:12px 14px;font-size:.9rem;font-family:inherit;resize:vertical;min-height:70px;box-sizing:border-box}
+      .vtac-ta:focus{outline:none;border-color:#b8941f;box-shadow:0 0 0 3px rgba(184,148,31,.12)}
+     </style>
+     <div class="vtac-thread" id="tvn-thread">${thread}</div>
+     <div class="vtac-sendto">Send to</div>
+     <div class="vtac-pills">${pills}</div>
+     <textarea id="vtac-reply" class="vtac-ta" placeholder="Type your message as admin\u2026"></textarea>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="vtAdminChatSend(${id})">${ic('send')} Send</button>`);
-  const th=document.getElementById('tvn-thread'); if(th) th.scrollTop=th.scrollHeight;
+  try{ var _th=document.getElementById('tvn-thread'); if(_th) _th.scrollTop=_th.scrollHeight; }catch(e){}
 }
+window.vtacPick=function(el){
+  document.querySelectorAll('.vtac-pill').forEach(function(p){ p.classList.remove('on'); });
+  el.classList.add('on'); window._vtacAud=el.getAttribute('data-aud')||'creator';
+};
 window.vtAdminChatSend=async function(id){
   const el=document.getElementById('vtac-reply'); const msg=(el?el.value:'').trim();
   if(!msg){ toast('Type a message first',true); return; }
-  const aud=(document.getElementById('vtac-aud')||{}).value||'creator';
+  const aud=window._vtacAud||'creator';
   try{
     await api('/api/admin/video-tasks/'+id+'/comments','POST',{message:msg, audience:aud});
     let comments=[]; try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
@@ -12445,7 +12472,8 @@ function _vvFilterList(wrapId){
 const _VV_COL=['#0891b2','#7c3aed','#059669','#d97706','#dc2626','#2563eb','#db2777','#65a30d','#0d9488','#9333ea'];
 function _vvCollab(el){
   let names=[]; try{ names=JSON.parse(el.getAttribute('data-names')||'[]'); }catch(e){}
-  showModal('Collab Teachers', names.length?`<p style="font-size:.82rem;color:var(--text-muted);margin-bottom:10px">All these teachers worked on this video together — the views belong to all of them:</p><div class="cbp-list">${names.map(n=>`<div class="cbp-row"><span class="cbp-nm">${esc(n)}</span></div>`).join('')}</div>`:'<div class="pfb-muted">No teachers found.</div>', `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  const rows=names.length?names.map(function(n){ return `<div style="background:var(--card-soft,#f7f2e6);border:1px solid var(--border);border-radius:13px;padding:11px 15px;display:flex;align-items:center;gap:12px"><span style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:800;flex:0 0 32px">${esc((n||'?').slice(0,1).toUpperCase())}</span><span style="font-weight:700;font-size:.92rem">${esc(n)}</span></div>`; }).join(''):'';
+  showModal('Collab Teachers', names.length?`<p style="font-size:.84rem;color:var(--text-muted);margin-bottom:14px">All these teachers worked on this video together \u2014 the views belong to all of them:</p><div style="display:flex;flex-direction:column;gap:9px;max-height:56vh;overflow-y:auto">${rows}</div>`:'<div style="color:var(--text-muted);padding:18px;text-align:center">No teachers found.</div>', `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 function _svgBars(items, highlightName){
   const data=(items||[]).slice(0,10);
@@ -27286,6 +27314,30 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
   window.crTab=function(t){ window._crTab=t; _renderCreators(); };
+  window.crDrill=function(tid,cat,name){
+    var catLbl={completed:'Completed',pending:'Pending',overdue:'Overdue'}[cat]||cat;
+    api(P.production.api+'/creator-videos?teacher_id='+tid+'&cat='+encodeURIComponent(cat)).then(function(r){
+      var vs=(r&&r.videos)||[];
+      var stCol={completed:'#16a34a',pending:'#d97706',overdue:'#dc2626'};
+      var rows=vs.length?vs.map(function(v){
+        var sc=stCol[v.state]||'#8a7d5c';
+        return '<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--border)">'+
+          '<span style="width:8px;height:8px;border-radius:50%;background:'+sc+';flex:0 0 8px"></span>'+
+          '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.title)+'</div>'+
+          '<div style="font-size:.72rem;color:var(--muted)">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+(v.is_collab?' \u00b7 collab':'')+'</div></div>'+
+          '<div style="font-size:.82rem;font-weight:700;white-space:nowrap">'+_num(v.views)+' <span style="font-weight:400;color:var(--muted);font-size:.72rem">views</span></div>'+
+          (v.youtube_url?'<a class="pj-btn" href="'+esc(v.youtube_url)+'" target="_blank" rel="noopener">Open</a>':'')+
+        '</div>';
+      }).join(''):'<div style="color:var(--muted);padding:26px;text-align:center">No videos in this category.</div>';
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      dr.innerHTML='<div class="p-modal" style="max-width:620px"><div class="pd-head"><div class="h-title">'+esc(name||'Videos')+' \u2014 '+catLbl+' ('+vs.length+')</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body" style="max-height:62vh;overflow-y:auto">'+rows+'</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button></div></div></div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load videos',true); });
+  };
   function _renderCreators(){
     var body=document.getElementById('production-body'); if(!body) return;
     var r=window._crData||{}; var tab=window._crTab||'teachers';
@@ -27313,7 +27365,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var sub=isCollab?(vids+' shared video'+(vids===1?'':'s')):(vids+' video'+(vids===1?'':'s')+(collabN?(' \u00b7 in '+collabN+' collab'):''));
       var vbif=showBif?'<div style="font-size:.6rem;color:var(--text-muted);margin-top:2px;font-weight:600">'+_num(c.individual_views||0)+' solo \u00b7 '+_num(c.collab_views||0)+' collab</div>':'';
       var vbifC=isCollab?'<div style="font-size:.6rem;color:#7c3aed;margin-top:2px;font-weight:600">not on any one teacher</div>':'';
-      function chip(val,label,cls){ return '<span class="crp-chip '+cls+'"><b>'+val+'</b> '+label+'</span>'; }
+      var cdTid=isCollab?0:(c.id||0);
+      function chip(val,label,cls,cat){ var clk=(!isYt&&cat)?(' style="cursor:pointer" onclick="crDrill('+cdTid+',\''+cat+'\',\''+esc(c.name||'').replace(/[\\\'\"]/g,'')+'\')" title="Tap to see these videos"'):''; return '<span class="crp-chip '+cls+'"'+clk+'><b>'+val+'</b> '+label+'</span>'; }
       return '<div class="crp-card"'+(isCollab?' style="border-color:#7c3aed66"':'')+'>'+
         '<div class="crp-top">'+rank+
           '<div class="crp-ava" style="background:'+col+'">'+ini+'</div>'+
@@ -27322,9 +27375,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '</div>'+
         '<div class="crp-barwrap"><div class="crp-bar"><div class="crp-fill" style="width:'+Math.min(100,compPct)+'%'+(isCollab?';background:#7c3aed':'')+'"></div></div><span class="crp-barlbl">'+compPct+'% done</span></div>'+
         '<div class="crp-chips">'+
-          chip(done,isYt?'Published':'Completed','green')+
-          chip(pending,'Pending','amber')+
-          (isYt?'':chip(overdue,'Overdue','red'))+
+          chip(done,isYt?'Published':'Completed','green','completed')+
+          chip(pending,'Pending','amber','pending')+
+          (isYt?'':chip(overdue,'Overdue','red','overdue'))+
           chip(onTime,'On-time','blue')+
         '</div>'+
       '</div>';

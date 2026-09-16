@@ -1337,9 +1337,12 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                     collab["overdue"] += 1
                 collab["views"] += v
                 collab["collab_views"] += v
-                if comp and t.published_at and t.deadline:
+                _otc = getattr(t, "on_time", None)
+                if _otc is None and getattr(t, "submitted_at", None) and t.deadline:
+                    _otc = (t.submitted_at <= t.deadline)
+                if comp and _otc is not None:
                     _otd_c += 1
-                    if t.published_at <= t.deadline:
+                    if _otc:
                         _oth_c += 1
             # each collaborator: collab views feed their TOTAL (bifurcated), not their solo stats
             for tid in ids:
@@ -1359,9 +1362,12 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
             if over:
                 s["overdue"] += 1
             s["individual_views"] += v
-            if comp and t.published_at and t.deadline:
+            _ot = getattr(t, "on_time", None)
+            if _ot is None and getattr(t, "submitted_at", None) and t.deadline:
+                _ot = (t.submitted_at <= t.deadline)
+            if comp and _ot is not None:
                 s["_otd"] += 1
-                if t.published_at <= t.deadline:
+                if _ot:
                     s["_oth"] += 1
 
     teachers = []
@@ -1402,6 +1408,54 @@ def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     return {"teachers": teachers, "collab": collab_out, "youtubers": youtubers}
 
 
+@router.get("/creator-videos")
+def pm_creator_videos(teacher_id: int = 0, cat: str = "",
+                      db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Drill-down for the Creator Performance chips — the videos behind a teacher's (or the
+    Collab row's) Completed / Pending / Overdue count. teacher_id=0 => the Collab bucket."""
+    now = datetime.utcnow()
+    try:
+        from video_tasks import (VT_COMPLETED_STATUSES as _COMPLETED, _collab_all_ids as _cai,
+                                 NOT_SPECIAL as _NS)
+    except Exception:
+        _COMPLETED = {"approved", "editing_soon", "editing_done", "uploaded"}
+        _cai = None
+        _NS = None
+    def _comp(t):
+        return (getattr(t, "status", "") or "") in _COMPLETED
+    def _over(t):
+        return bool(t.deadline and t.deadline < now and not _comp(t))
+    tq = db.query(VideoTask).filter(VideoTask.creator_type == "teacher",
+                                    VideoTask.cancelled.isnot(True),
+                                    VideoTask.proposal_ok != "pending")
+    if _NS is not None:
+        tq = tq.filter(_NS)
+    cat = (cat or "").strip().lower()
+    out = []
+    for t in tq.all():
+        ids = _cai(t) if _cai else ([t.teacher_id] if t.teacher_id else [])
+        is_collab = len(ids) > 1
+        if teacher_id > 0:
+            if is_collab or t.teacher_id != teacher_id:
+                continue
+        else:
+            if not is_collab:
+                continue
+        if cat == "completed" and not _comp(t):
+            continue
+        if cat == "pending" and _comp(t):
+            continue
+        if cat == "overdue" and not _over(t):
+            continue
+        st = "completed" if _comp(t) else ("overdue" if _over(t) else "pending")
+        out.append({"id": t.id, "title": t.title or "Untitled", "state": st,
+                    "status": (getattr(t, "status", "") or ""), "views": int(getattr(t, "yt_views", 0) or 0),
+                    "deadline": pc._dt(t.deadline), "subject": t.subject or "",
+                    "is_collab": is_collab, "youtube_url": t.youtube_url or ""})
+    out.sort(key=lambda x: x["views"], reverse=True)
+    return {"videos": out, "count": len(out)}
+
+
 # ============================================================ REAL-TIME VIEWS
 @router.get("/views")
 def pm_views(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
@@ -1418,38 +1472,39 @@ def pm_views(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         _cai = _ctn = None
     by_creator = {}
     videos = []
-    collab_names = set()
     for t in vids:
         v = int(t.yt_views or 0)
         real_name, real_ctype = pc.creator_info(db, t)
         is_collab = False
+        team = []
         if _cai:
             try:
                 _ids = _cai(t)
                 is_collab = len(_ids) > 1
                 if is_collab and _ctn:
-                    for _i in _ids:
-                        _nm = _ctn(db, _i)
-                        if _nm:
-                            collab_names.add(_nm)
+                    team = sorted({(_ctn(db, _i) or "") for _i in _ids if (_ctn(db, _i) or "")})
             except Exception:
                 is_collab = False
-        # collab videos are grouped under a single "Collab" creator (same as the admin view)
-        gname, gctype = ("Collab", "collab") if is_collab else (real_name or "Unknown", real_ctype)
+        # collab video -> TEAM-specific bucket: same set of teachers merge into one "Collab"
+        # row, a different set of teachers becomes its own separate "Collab" row (no mixing).
+        if is_collab:
+            gname = ("Collab: " + " + ".join(team)) if team else "Collab"
+            gctype = "collab"
+        else:
+            gname, gctype = (real_name or "Unknown"), real_ctype
         key = (gname or "Unknown") + "|" + gctype
-        c = by_creator.setdefault(key, {"name": gname or "Unknown", "creator_type": gctype.lower(), "views": 0, "videos": 0})
+        c = by_creator.setdefault(key, {"name": gname or "Unknown", "creator_type": gctype.lower(),
+                                        "views": 0, "videos": 0, "is_collab": is_collab,
+                                        "collab_names": team})
         c["views"] += v; c["videos"] += 1
         videos.append({"id": t.id, "title": t.title or "Untitled", "ref_code": t.ref_code or "",
                        "creator": real_name or "Unknown", "creator_type": real_ctype.lower(),
-                       "is_collab": is_collab,
+                       "is_collab": is_collab, "collab_names": team,
                        "video_type": t.video_type or "", "views": v,
                        "youtube_url": t.youtube_url or "", "published_at": pc._dt(t.published_at)})
     creators = sorted(by_creator.values(), key=lambda x: x["views"], reverse=True)
     for c in creators:
         c["share"] = round(100.0 * c["views"] / total_views, 1) if total_views else 0
-        if c["name"] == "Collab":
-            c["is_collab"] = True
-            c["collab_names"] = sorted(collab_names)
     videos.sort(key=lambda x: x["views"], reverse=True)
     highest = videos[0] if videos else None
     return {"total_views": total_views, "uploaded": uploaded, "pending_upload": pending_upload,
