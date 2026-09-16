@@ -24608,25 +24608,40 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-btn.ptc-review-blink .rev-dot{background:#7a5c12}',
 '.p-area-req,textarea.p-area-req{border:2px solid #d1443a !important;box-shadow:0 0 0 3px rgba(209,68,58,.15) !important;animation:reqPulse .5s ease}',
 '@keyframes reqPulse{0%{box-shadow:0 0 0 0 rgba(209,68,58,.3)}100%{box-shadow:0 0 0 3px rgba(209,68,58,.15)}}',
-'.pq-wrap{margin-top:16px}',
-'.pq-h{font-size:1.02rem;font-weight:800;color:#c23a30;display:flex;align-items:center;gap:8px;margin:0 2px 10px}',
-'.pq-h .pq-n{background:#d1443a;color:#fff;border-radius:999px;font-size:.72rem;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}',
-'.pq-prem{border:2px solid rgba(209,68,58,.45);border-radius:16px;background:var(--surface,#fff);margin-bottom:12px;overflow:hidden}',
-'body.dark .pq-prem{background:#161310}',
-'.pq-prem.blink{animation:pqBlink 1.8s ease-in-out infinite}',
-'@keyframes pqBlink{0%,100%{box-shadow:0 0 0 0 rgba(209,68,58,0)}50%{box-shadow:0 0 0 4px rgba(209,68,58,.15)}}',
-'.pq-prem-body{padding:14px 16px}',
-'.pq-chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}',
-'.pq-prem-title{font-weight:800;font-size:1.02rem;margin-bottom:8px}',
-'.pq-prem-box{background:rgba(217,119,6,.10);border-radius:10px;padding:9px 12px;font-size:.82rem;font-weight:600;color:#a15c12;margin-bottom:9px}',
-'body.dark .pq-prem-box{background:rgba(217,119,6,.16)}',
-'.pq-prem-reason{font-weight:500;color:var(--text-muted);margin-top:3px;font-style:italic}',
-'.pq-prem-who{display:inline-flex;align-items:center;gap:7px;background:#c99a2e;color:#fff;font-weight:700;font-size:.82rem;padding:5px 12px;border-radius:999px;margin-bottom:8px}',
+'.pq-wrap{margin-top:18px}',
+'.pq-h{font-size:1.05rem;font-weight:800;color:var(--text,#2a2313);display:flex;align-items:center;gap:9px;margin:0 2px 12px;letter-spacing:-.01em}',
+'.pq-h svg{color:#c23a30;width:18px;height:18px}',
+'.pq-h .pq-n{background:linear-gradient(135deg,#e0574b,#c23a30);color:#fff;border-radius:999px;font-size:.72rem;font-weight:800;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0 7px;box-shadow:0 2px 6px rgba(194,58,48,.35)}',
+'.pq-prem{position:relative;border:1px solid var(--border,#ece2cd);border-radius:18px;background:linear-gradient(180deg,var(--card,#fffdf7),var(--surface-2,#fdf9f0));margin-bottom:14px;overflow:hidden;box-shadow:0 10px 30px -18px rgba(120,90,10,.55),0 2px 6px -3px rgba(120,90,10,.14);transition:box-shadow .2s ease,transform .2s ease}',
+'.pq-prem:hover{transform:translateY(-2px)}',
+'.pq-prem::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#e8c15a,#c99a2e)}',
+'.pq-prem-prop::before{background:linear-gradient(180deg,#8a5cd0,#c23a30)}',
+'body.dark .pq-prem{background:linear-gradient(180deg,#1b1508,#161006);border-color:#2c2410}',
+'.pq-prem.blink{animation:pqBlink 2.2s ease-in-out infinite}',
+'@keyframes pqBlink{0%,100%{box-shadow:0 10px 30px -18px rgba(120,90,10,.55),0 0 0 0 rgba(209,68,58,0)}50%{box-shadow:0 10px 30px -18px rgba(120,90,10,.55),0 0 0 4px rgba(209,68,58,.14)}}',
+'.pq-prem-body{padding:16px 18px 16px 22px}',
+'.pq-chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}',
+'.pq-prem-title{font-weight:800;font-size:1.12rem;line-height:1.3;letter-spacing:-.01em;color:var(--text,#2a2313);margin-bottom:11px}',
+'.pq-prem-box{position:relative;background:linear-gradient(135deg,rgba(217,119,6,.10),rgba(201,154,46,.05));border:1px solid rgba(201,154,46,.22);border-left:3px solid #c99a2e;border-radius:12px;padding:11px 14px;font-size:.82rem;font-weight:600;color:#a15c12;margin-bottom:11px}',
+'body.dark .pq-prem-box{background:linear-gradient(135deg,rgba(217,119,6,.16),rgba(201,154,46,.08));border-color:rgba(201,154,46,.28)}',
+'.pq-box-tag{display:block;font-size:.64rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#b07d16;margin-bottom:3px}',
+'.pq-box-main{font-size:.9rem;font-weight:700;color:var(--text,#4a3c1a)}',
+'.pq-box-sub{font-size:.82rem;font-weight:600;color:var(--muted,#8a7d5c);margin-top:2px}',
+'.pq-prem-reason{font-weight:500;color:var(--muted,#8a7d5c);margin-top:5px;font-style:italic;font-size:.82rem}',
+'.pq-prem-who{display:inline-flex;align-items:center;gap:9px;background:linear-gradient(135deg,#e0b23a,#c99a2e);color:#fff;font-weight:700;font-size:.84rem;padding:6px 15px;border-radius:999px;margin-bottom:11px;box-shadow:0 3px 10px -2px rgba(201,154,46,.5)}',
+'.pq-prem-prop .pq-prem-who{padding-left:5px}',
 '.pq-prem-who .pq-av svg{width:14px;height:14px;vertical-align:-2px}',
-'.pq-prem-date{color:#c23a30;font-weight:700;font-size:.8rem;margin-bottom:6px}',
-'.pq-prem-exp{background:var(--surface-2,#f2ede1);border-radius:9px;padding:7px 11px;font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-bottom:12px}',
-'body.dark .pq-prem-exp{background:#221b0d}',
+'.pq-av-ini{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:rgba(255,255,255,.28);color:#fff;font-size:.72rem;font-weight:800;flex:0 0 auto}',
+'.pq-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}',
+'.pq-meta-i{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;font-weight:600;padding:6px 11px;border-radius:999px;background:var(--surface-2,#f7f1e4);border:1px solid var(--border,#ece2cd);color:var(--muted,#8a7d5c)}',
+'.pq-meta-i svg{width:13px;height:13px;opacity:.85}',
+'.pq-meta-prop{color:#c23a30;background:rgba(209,68,58,.08);border-color:rgba(209,68,58,.2)}',
+'.pq-meta-prop svg{opacity:1;color:#c23a30}',
+'body.dark .pq-meta-i{background:#221b0d;border-color:#2c2410}',
 '.pq-prem-acts{display:flex;gap:10px;flex-wrap:wrap}',
+'.pq-prem-acts .btn{font-weight:800;border-radius:11px;padding:9px 18px}',
+'.pq-prem-acts .btn-gold{box-shadow:0 4px 14px -4px rgba(201,154,46,.6)}',
+'.pq-prem-acts .btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 18px -4px rgba(201,154,46,.72)}',
 '.pk-card.pk-blink{animation:pkBlink 1.4s ease-in-out infinite}',
 '@keyframes pkBlink{0%,100%{box-shadow:0 0 0 0 rgba(209,68,58,0);border-color:rgba(209,68,58,.5)}50%{box-shadow:0 0 0 4px rgba(209,68,58,.22);border-color:rgba(209,68,58,.95)}}',
 /* mobile filter button + drawer */
@@ -26061,18 +26076,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(props.length){
         html+='<div class="pq-wrap"><div class="pq-h">'+ic('help')+' Video Proposals \u2014 Approval Needed <span class="pq-n">'+props.length+'</span></div>';
         html+=props.map(function(t){
-          var chips='<span class="vt-pill" style="background:rgba(124,79,192,.14);color:#6d3fb0;font-weight:800">PROPOSAL</span>';
+          var chips='<span class="vt-pill" style="background:linear-gradient(135deg,#8a5cd0,#6d3fb0);color:#fff;font-weight:800;box-shadow:0 2px 6px rgba(124,79,192,.32)">PROPOSAL</span>';
           if(t.video_type) chips+='<span class="vt-type">'+esc(t.video_type)+'</span>';
           if(t.channel_name) chips+='<span class="vt-pill assigned">'+esc(t.channel_name)+'</span>';
           if(t.streaming) chips+='<span class="vt-pill">'+(t.streaming==='live'?'LIVE':'RECORDED')+'</span>';
-          var reqLine='Requested: TASK \u2014 single video'+(t.subject?'<br>Subject: '+esc(t.subject):'');
+          var subj=(t.subject?esc(t.subject):'');
           var exp=(t.deadline||t.expected_deadline||'');
-          return '<div class="pq-prem blink"><div class="pq-prem-body"><div class="pq-chips">'+chips+'</div>'+
+          var nm=(t.creator_name||'\u2014');
+          var ini=(String(nm).trim().split(/\s+/).map(function(w){return (w&&w[0])||'';}).join('').slice(0,2)||'\u2014').toUpperCase();
+          return '<div class="pq-prem pq-prem-prop blink"><div class="pq-prem-body"><div class="pq-chips">'+chips+'</div>'+
             '<div class="pq-prem-title">'+esc(t.title||'Untitled')+'</div>'+
-            '<div class="pq-prem-box">'+reqLine+'</div>'+
-            '<div class="pq-prem-who"><span class="pq-av">'+ic('user')+'</span>'+esc(t.creator_name||'\u2014')+'</div>'+
-            '<div class="pq-prem-date">proposed'+(t.created_at?' \u00b7 '+esc(t.created_at):'')+'</div>'+
-            (exp?'<div class="pq-prem-exp">'+ic('clock')+' Expected by: '+esc(exp)+'</div>':'')+
+            '<div class="pq-prem-box"><span class="pq-box-tag">Requested</span><div class="pq-box-main">Task \u2014 single video</div>'+(subj?'<div class="pq-box-sub">Subject: '+subj+'</div>':'')+'</div>'+
+            '<div class="pq-prem-who"><span class="pq-av-ini">'+esc(ini)+'</span><span>'+esc(nm)+'</span></div>'+
+            '<div class="pq-meta"><span class="pq-meta-i pq-meta-prop">'+ic('clock')+'<span>Proposed'+(t.created_at?' \u00b7 '+esc(t.created_at):'')+'</span></span>'+
+            (exp?'<span class="pq-meta-i">'+ic('clock')+'<span>Expected by '+esc(exp)+'</span></span>':'')+'</div>'+
             '<div class="pq-prem-acts"><button class="btn btn-gold btn-sm" onclick="prodApproveProposal('+t.id+')">'+ic('check')+' Approve &amp; Assign</button>'+
             '<button class="btn btn-ghost btn-sm" onclick="prodDeclineProposal('+t.id+')">Decline</button></div></div></div>';
         }).join('')+'</div>';
