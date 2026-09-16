@@ -1160,11 +1160,43 @@ def mark_completed(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or
 
 
 # ============================================================ TEAM / WORKLOAD
+# ---- Production Team management (PM-accessible; reuses the admin logic) ----
+@router.get("/team-users")
+def pm_team_users(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import admin_routes as _ar
+    return _ar.list_production_users(role=role, db=db, _=None)
+
+
+@router.post("/team-users")
+def pm_team_users_create(payload: dict = Body(...), db: Session = Depends(get_db),
+                         me=Depends(get_pm_or_admin)):
+    import admin_routes as _ar
+    return _ar.create_production_user(payload=payload, db=db, _=None)
+
+
+@router.patch("/team-users/{uid}")
+def pm_team_users_update(uid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                         me=Depends(get_pm_or_admin)):
+    import admin_routes as _ar
+    return _ar.update_production_user(uid=uid, payload=payload, db=db, _=None)
+
+
+@router.delete("/team-users/{uid}")
+def pm_team_users_delete(uid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import admin_routes as _ar
+    return _ar.delete_production_user(uid=uid, db=db, _=None)
+
+
+@router.post("/team-users/{uid}/reset-password")
+def pm_team_users_reset(uid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import admin_routes as _ar
+    return _ar.reset_production_password(uid=uid, payload=None, db=db, _=None)
+
+
 @router.get("/team")
 def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     now = datetime.utcnow()
     today = date.today()
-
     def staff_block(role):
         out = []
         for sp in db.query(ProductionStaffProfile).filter(
