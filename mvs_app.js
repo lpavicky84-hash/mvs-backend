@@ -436,8 +436,13 @@ let countdownTimer = null;
 // Koi bhi successful POST/PATCH/DELETE poora cache clear kar deta hai, to data kabhi
 // stale nahi rehta. Login/logout pe bhi clear hota hai.
 const _apiCache={};
-const _API_TTL=60000;
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image|\/voice|\/file|\/download|\/pdf|\/content|\/badge|video-tasks\/my|video-tasks\b|production\/tasks|production\/dashboard|(editor|graphics|youtuber)\/(tasks|videos|dashboard)|\/collab|\/performance|\/refresh-views|(editor|graphics)\/(uploads|library|time-analytics)/i;
+const _API_TTL=45000;
+// v-perf: sirf SACH mein real-time / binary endpoints uncached — task lists, dashboards,
+// performance, uploads, library sab ab instant-cache + background refresh (stale-while-revalidate)
+// se chalte hain. Kisi bhi mutation (POST/PUT/DELETE) ke baad cache khud bust ho jaata hai (_apiBust),
+// isliye action ke turant baad data fresh aata hai; sirf doosron ke changes 45s TTL / focus-refresh
+// pe aate hain. Isse har portal pe "click = turant" ho jaata hai.
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image\b|\/voice|\/file\b|\/download|\/pdf|\/content|\/badge|\/refresh-views|\/chat-ping|\/comments|\/collab\b|auth\/ping|\/thumbnail\b/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 // Should the background/auto refresh SKIP re-rendering right now? Re-rendering the
@@ -1097,6 +1102,19 @@ let _auth401=0;
 function _authFail(){ _auth401++; if(_auth401>=2) _sessionExpired(); }
 // wapas tab pe aate hi turant ping — live list mein turant wapas aa jaao
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _pingNow(); });
+// v-perf: tab wapas focus hone par current section ka data khud fresh ho jaaye — manual
+// refresh ki zarurat na pade. Cache stale-mark karke active portal ka silent re-render.
+(function(){
+  var _lf=0;
+  function _autoFresh(){
+    if(document.hidden) return;
+    var n=Date.now(); if(n-_lf<4000) return; _lf=n;
+    try{ if(typeof _apiBust==='function') _apiBust(); }catch(e){}
+    try{ if(typeof window._prodAutoRefresh==='function') window._prodAutoRefresh(); }catch(e){}
+  }
+  try{ document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') _autoFresh(); }); }catch(e){}
+  try{ window.addEventListener('focus', _autoFresh); }catch(e){}
+})();
 function startStudentHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,60000); }
 function startHeartbeat(){ if(_hbInt) return; _pingNow(); _hbInt=setInterval(_pingNow,60000); }
 function stopStudentHeartbeat(){ if(_hbInt){ clearInterval(_hbInt); _hbInt=null; } }
@@ -10932,10 +10950,15 @@ function _vtThumbUrl(t){
   var th=t.thumbnail;
   if(th && typeof th==='object'){
     if(th.approved===false || th.pending===true) return '';   // graphics abhi pending -> approve ke baad hi
-    return th.url||th.link||th.thumbnail_url||th.image||th.src||'';
+    return _absThumb(th.url||th.link||th.thumbnail_url||th.image||th.src||'');
   }
-  if(typeof th==='string' && th) return th;
-  return t.thumbnail_link||t.thumbnail_b64||t.thumbnail_url||(typeof t.thumb==='string'?t.thumb:'')||'';
+  if(typeof th==='string' && th) return _absThumb(th);
+  return _absThumb(t.thumbnail_link||t.thumb_url||t.thumbnail_url||(typeof t.thumb==='string'?t.thumb:'')||'');
+}
+function _absThumb(u){
+  if(!u) return '';
+  if(u.charAt(0)==='/' && /^\/api\//.test(u)) return (typeof API!=='undefined'&&API?API:'')+u;
+  return u;
 }
 function _vtThumb(t,who){
   const gth=_vtThumbUrl(t);
@@ -10951,7 +10974,7 @@ function vtThumbOpen(id,who){
   const name=((t.title||'thumbnail').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'thumbnail');
   const link=_vtThumbUrl(t);
   if(!link){ toast('No thumbnail attached to this task'); return; }
-  if(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(link)) openImageViewerSrc(link,name+'.jpg');
+  if(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(link)||/\/api\/vt-thumb\//.test(link)) openImageViewerSrc(link,name+'.jpg');
   else window.open(link,'_blank');
 }
 function vtStatusOpen(id,who,ev){
@@ -28619,6 +28642,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ab(label,onclick,kind){ return '<button class="p-btn'+(kind?' p-btn-'+kind:'')+'" onclick="'+onclick+'">'+esc(label)+'</button>'; }
 
   // ---- action executors (all refresh the current page on success) ----
+  function _activeProdPortal(){
+    var ps=['production','editor','graphics','youtuber'];
+    for(var i=0;i<ps.length;i++){ var b=document.getElementById(ps[i]+'-body'); if(b && b.offsetParent!==null) return ps[i]; }
+    return '';
+  }
+  window._prodAutoRefresh=function(){ try{ var pp=_activeProdPortal(); if(pp && typeof _refresh==='function') _refresh(pp); }catch(e){} };
   function _refresh(portal){ try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
     if(portal==='production'){
       var _yh=document.getElementById(window._ytHost||'a-ytasks-content');

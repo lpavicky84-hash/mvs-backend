@@ -1859,7 +1859,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
     out["submitted_by"] = _sub_by or (t.teacher_id if t.submitted_at else None)
     out["submitted_by_name"] = _tn(out["submitted_by"]) if out["submitted_by"] else ""
     if with_thumb:
-        out["thumbnail_b64"] = t.thumbnail_b64 or ""
+        out["thumb_url"] = ("/api/vt-thumb/%d" % t.id) if (t.thumbnail_b64 or "") else ""
     # ---- thumbnail (graphics) status so the creator knows if a thumbnail is coming
     out["thumbnail_required"] = bool(getattr(t, "thumbnail_required", False))
     # ---- production assignment info (so admin/PM cards can assign editor & graphics)
@@ -1907,14 +1907,46 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
     # thumbnail_link seedha use hota hai). Graphics ka thumbnail object pehle se set ho (assigned/
     # pending/approved) to OVERRIDE nahi karte -> uska apna approval flow chalta rehta hai.
     if not out.get("thumbnail"):
-        _adm_thumb = (t.thumbnail_b64 or t.thumbnail_link or "")
-        if _adm_thumb:
+        _adm_url = ("/api/vt-thumb/%d" % t.id) if (t.thumbnail_b64 or "") else (t.thumbnail_link or "")
+        if _adm_url:
             out["thumbnail"] = {
                 "status": "approved", "designer": "", "deadline": "",
                 "seconds_left": None, "overdue": False,
-                "url": _adm_thumb, "approved": True, "pending": False,
+                "url": _adm_url, "approved": True, "pending": False,
             }
     return out
+
+
+@router.get("/vt-thumb/{tid}")
+def vt_thumb(tid: int, db: Session = Depends(get_db)):
+    """Serve a task thumbnail as a real, browser-cacheable image instead of shipping the
+    full base64 inside every task-list response (that made lists MB-sized and un-cacheable)."""
+    from fastapi import Response
+    from fastapi.responses import RedirectResponse
+    import base64 as _b64lib
+    t = db.query(VideoTask).filter(VideoTask.id == tid).first()
+    raw = (getattr(t, "thumbnail_b64", "") or "") if t else ""
+    link = (getattr(t, "thumbnail_link", "") or "") if t else ""
+    if not raw:
+        if link:
+            return RedirectResponse(link)
+        return Response(status_code=404)
+    if raw.startswith("http"):
+        return RedirectResponse(raw)
+    mime = "image/jpeg"; data = raw
+    if raw.startswith("data:"):
+        try:
+            head, b64 = raw.split(",", 1)
+            mime = (head.split(":", 1)[1].split(";", 1)[0]) or "image/jpeg"
+            data = b64
+        except Exception:
+            data = raw
+    try:
+        img = _b64lib.b64decode(data)
+    except Exception:
+        return Response(status_code=404)
+    return Response(content=img, media_type=mime,
+                    headers={"Cache-Control": "public, max-age=604800, immutable"})
 
 
 def _special_out(db, t, tname_map=None, ch_map=None):
