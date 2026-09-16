@@ -10474,7 +10474,7 @@ async function openTVTPropose(){
       <div class="form-group" id="tvt-p-collab-wrap" style="grid-column:1/-1;display:none"><label>Collaborating teachers (each is verified separately)</label>
         <div class="ms-box" onclick="_msToggle('tvtc')"><span id="tvtc-ms-lbl" class="ms-ph">Select teachers…</span><span class="ms-arw">\u25be</span></div>
         <div class="ms-panel" id="tvtc-ms-panel"><label style="color:var(--text-muted)">Loading teachers…</label></div>
-        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">You are the primary. Selected teachers collaborate on this video and are verified separately.</div></div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">All selected teachers collaborate equally on this video and are verified separately.</div></div>
       <div class="form-group" id="tvt-p-scope-wrap" style="grid-column:1/-1;display:none"><label>Project scope</label>
         <select id="tvt-p-scope" class="input" onchange="tvtScopeToggle()">
           <option value="chapter">Complete chapter — from my timetable (manager assigns the videos)</option>
@@ -11164,7 +11164,7 @@ function _avtCard(t){
       const asgInfo=(t.editor_name||t.graphics_name)
         ?`<span class="vt-pill editing_soon" style="cursor:default">${[t.editor_name?('Editor: '+esc(t.editor_name)):'',t.graphics_name?('Graphics: '+esc(t.graphics_name)):''].filter(Boolean).join(' · ')}</span>`:'';
       return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
-        <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${t.is_collab?'Collab':esc(t.submitted_by_name||t.teacher)}</span>`:''}</div>
+        <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.submitted_by_name||(t.is_collab?'Collab':t.teacher))}${t.is_collab?' (collab)':''}</span>`:''}</div>
         <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}${asgInfo}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
@@ -11401,10 +11401,10 @@ async function aEditCollab(taskId){
       const isPrimary=(tt.id===primaryId);
       return `<label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)">
         <input type="checkbox" value="${tt.id}" ${current[tt.id]?'checked':''} ${isPrimary?'disabled checked':''} class="aec-chk">
-        <span style="flex:1">${esc(tt.name)}${isPrimary?' <span style="color:var(--accent);font-weight:700">(Primary)</span>':''}</span></label>`;
+        <span style="flex:1">${esc(tt.name)}</span></label>`;
     }).join('');
     showModal('Edit Collaboration',
-      `<div style="font-size:.85rem;color:var(--text-muted);margin-bottom:10px">Tick the teachers who should collaborate on this task. The primary teacher cannot be removed.</div>
+      `<div style="font-size:.85rem;color:var(--text-muted);margin-bottom:10px">Tick every teacher who collaborates on this task — all are treated equally and verified separately.</div>
        <div style="max-height:340px;overflow-y:auto">${rows}</div>`,
       `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aSaveCollab(${taskId},${primaryId||'null'})">Save Changes</button>`);
   }catch(e){ toast((e&&e.message)||'Could not load',true); }
@@ -11848,14 +11848,14 @@ async function openVTEdit(id,ev){
       ${t.proposal_media_note?`<div class="form-group" style="grid-column:1/-1"><label>Teacher's note (references / slides)</label><div style="font-size:.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap">${esc(t.proposal_media_note)}</div></div>`:''}
       <div class="form-group" style="grid-column:1/-1"><label>Reference Video link <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— teacher taps a blinking button to open it</span></label><input id="vt-e-refvid" class="input" placeholder="https://drive.google.com/... or YouTube link" value="${esc(t.reference_video||'')}"></div>
       <div class="form-group" style="grid-column:1/-1"><label>Remarks for Teacher <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— shows as a blinking "Video Needs" button on the teacher card</span></label><textarea id="vt-e-remarks" class="input" rows="2">${esc(t.remarks||'')}</textarea></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Collaborating Teachers <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— tick every teacher on this task. The primary teacher cannot be removed.</span></label>
+      <div class="form-group" style="grid-column:1/-1"><label>Collaborating Teachers <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— tick every teacher on this task; all collaborate equally.</span></label>
         <div id="vt-e-collab" class="vt-echaps" style="max-height:220px;overflow-y:auto">${(function(){
           var primaryId=t.teacher_id;
           var current={}; (t.collab_teacher_ids||[]).forEach(function(x){ current[x]=1; });
           (t.collab_teachers||[]).forEach(function(c){ if(!c.primary && c.id!==primaryId) current[c.id]=1; });
           return _vtTeachers.map(function(tt){
             var isP=(tt.pid===primaryId);
-            return '<label class="vt-echap" style="display:flex;align-items:center;gap:9px;padding:7px 4px"><input type="checkbox" class="vt-e-collab-cb" value="'+tt.pid+'" '+(current[tt.pid]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+(isP?' <b style="color:var(--accent)">(Primary)</b>':'')+'</span></label>';
+            return '<label class="vt-echap" style="display:flex;align-items:center;gap:9px;padding:7px 4px"><input type="checkbox" class="vt-e-collab-cb" value="'+tt.pid+'" '+(current[tt.pid]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+'</span></label>';
           }).join('');
         })()}</div></div>
       ${special?`<div class="form-group" style="grid-column:1/-1"><label>Chapters Included <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— uncheck to remove, check to add (PE = exam chapters, TMA = assignment-only)</span></label>
@@ -27252,32 +27252,38 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _renderCreators(){
     var body=document.getElementById('production-body'); if(!body) return;
     var r=window._crData||{}; var tab=window._crTab||'teachers';
-    var teachers=r.teachers||[], youtubers=r.youtubers||[];
+    var teachers=r.teachers||[], collab=r.collab||[], youtubers=r.youtubers||[];
     var html='<div class="pd-tabs" style="margin-bottom:14px">'+
       '<button class="pd-tab'+(tab==='teachers'?' on':'')+'" onclick="crTab(\'teachers\')">Teachers ('+teachers.length+')</button>'+
       '<button class="pd-tab'+(tab==='youtubers'?' on':'')+'" onclick="crTab(\'youtubers\')">YouTubers ('+youtubers.length+')</button></div>';
-    var list=(tab==='teachers')?teachers:youtubers;
-    if(!list.length){ html+='<div class="p-empty">No '+tab+' with production activity yet.</div>'; body.innerHTML=html; return; }
-    var _crPal=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
     var isYt=(tab==='youtubers');
-    html+='<div class="crp-grid">'+list.map(function(c,idx){
+    var list=isYt?youtubers:teachers;
+    var collabList=isYt?[]:collab;
+    if(!list.length && !collabList.length){ html+='<div class="p-empty">No '+tab+' with production activity yet.</div>'; body.innerHTML=html; return; }
+    var _crPal=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
+    function _crCard(c,idx){
+      var isCollab=!!c.is_collab;
       var vids=c.videos||0;
       var done=isYt?(c.published||0):(c.completed||0);
-      var pending=c.pending||0, overdue=c.overdue||0, collab=c.collab_videos||0;
+      var pending=c.pending||0, overdue=c.overdue||0, collabN=c.collab_videos||0;
       var onTime=(c.on_time_pct==null)?'\u2014':(c.on_time_pct+'%');
       var views=_num(c.views);
+      var showBif=(!isYt)&&(!isCollab)&&((c.collab_views||0)>0);
       var compPct=vids?Math.round(done/vids*100):0;
-      var ini=(esc((c.name||'?').trim().charAt(0)).toUpperCase())||'?';
-      var col=_crPal[idx%_crPal.length];
+      var ini=isCollab?'\u222b':((esc((c.name||'?').trim().charAt(0)).toUpperCase())||'?');
+      var col=isCollab?'#7c3aed':_crPal[idx%_crPal.length];
+      var rank=isCollab?'<div class="crp-rank" style="color:#7c3aed;font-size:.62rem">COLLAB</div>':'<div class="crp-rank">#'+(idx+1)+'</div>';
+      var sub=isCollab?(vids+' shared video'+(vids===1?'':'s')):(vids+' video'+(vids===1?'':'s')+(collabN?(' \u00b7 in '+collabN+' collab'):''));
+      var vbif=showBif?'<div style="font-size:.6rem;color:var(--text-muted);margin-top:2px;font-weight:600">'+_num(c.individual_views||0)+' solo \u00b7 '+_num(c.collab_views||0)+' collab</div>':'';
+      var vbifC=isCollab?'<div style="font-size:.6rem;color:#7c3aed;margin-top:2px;font-weight:600">not on any one teacher</div>':'';
       function chip(val,label,cls){ return '<span class="crp-chip '+cls+'"><b>'+val+'</b> '+label+'</span>'; }
-      return '<div class="crp-card">'+
-        '<div class="crp-top">'+
-          '<div class="crp-rank">#'+(idx+1)+'</div>'+
+      return '<div class="crp-card"'+(isCollab?' style="border-color:#7c3aed66"':'')+'>'+
+        '<div class="crp-top">'+rank+
           '<div class="crp-ava" style="background:'+col+'">'+ini+'</div>'+
-          '<div class="crp-id"><div class="crp-name">'+esc(c.name||'\u2014')+'</div><div class="crp-sub">'+vids+' video'+(vids===1?'':'s')+(collab?(' \u00b7 '+collab+' collab'):'')+'</div></div>'+
-          '<div class="crp-views"><b>'+views+'</b><span>views</span></div>'+
+          '<div class="crp-id"><div class="crp-name">'+esc(c.name||'\u2014')+'</div><div class="crp-sub">'+sub+'</div></div>'+
+          '<div class="crp-views"><b>'+views+'</b><span>views</span>'+vbif+vbifC+'</div>'+
         '</div>'+
-        '<div class="crp-barwrap"><div class="crp-bar"><div class="crp-fill" style="width:'+Math.min(100,compPct)+'%"></div></div><span class="crp-barlbl">'+compPct+'% done</span></div>'+
+        '<div class="crp-barwrap"><div class="crp-bar"><div class="crp-fill" style="width:'+Math.min(100,compPct)+'%'+(isCollab?';background:#7c3aed':'')+'"></div></div><span class="crp-barlbl">'+compPct+'% done</span></div>'+
         '<div class="crp-chips">'+
           chip(done,isYt?'Published':'Completed','green')+
           chip(pending,'Pending','amber')+
@@ -27285,7 +27291,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           chip(onTime,'On-time','blue')+
         '</div>'+
       '</div>';
-    }).join('')+'</div>';
+    }
+    var cards=collabList.map(function(c){ return _crCard(c,-1); }).join('')+
+              list.map(function(c,idx){ return _crCard(c,idx); }).join('');
+    html+='<div class="crp-grid">'+cards+'</div>';
     body.innerHTML=html;
   }
 
@@ -27871,9 +27880,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="p-field"><label>Editor</label><select class="p-select" id="pe-editor"><option value="">Assign later</option>'+
             edList.map(function(ed){ return '<option value="'+ed.id+'"'+(t.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+'</option>'; }).join('')+'</select></div>'+
           '<div class="p-field" id="pe-chaps-field" style="display:none"><label>Project Chapters <span style="font-weight:400;color:var(--muted);font-size:.8rem">(untick to remove \u2014 removed chapters stay removed after refresh)</span></label><div id="pe-chaps" style="max-height:230px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:8px"><div class="p-load">Loading chapters...</div></div><div id="pe-chaps-n" style="font-size:.74rem;color:var(--muted);margin-top:5px"></div></div>'+
-          (t.creator_type!=='youtuber'?('<div class="p-field"><label>Collaborating Teachers (tick to add/remove; primary cannot be removed)</label><div id="pe-collab" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px">'+(function(){
+          (t.creator_type!=='youtuber'?('<div class="p-field"><label>Collaborating Teachers (tick every teacher — all collaborate equally)</label><div id="pe-collab" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px">'+(function(){
             var primaryId=t.teacher_id; var cur={}; (t.collab_teacher_ids||[]).forEach(function(x){cur[x]=1;}); (t.collaborators||[]).forEach(function(c){ if(!c.primary && c.id!==primaryId) cur[c.id]=1; });
-            return teachList.map(function(tt){ var isP=(tt.id===primaryId); return '<label style="display:flex;align-items:center;gap:9px;padding:6px 4px"><input type="checkbox" class="pe-collab-cb" value="'+tt.id+'" '+(cur[tt.id]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+(isP?' (Primary)':'')+'</span></label>'; }).join('');
+            return teachList.map(function(tt){ var isP=(tt.id===primaryId); return '<label style="display:flex;align-items:center;gap:9px;padding:6px 4px"><input type="checkbox" class="pe-collab-cb" value="'+tt.id+'" '+(cur[tt.id]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+'</span></label>'; }).join('');
           })()+'</div></div>'):'')+
         '</div>'+
         '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodEditSave('+id+')">Save Changes</button></div></div>'+
@@ -28379,11 +28388,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodCollabPopup=function(id){
     api(P.production.api+'/tasks/'+id+'/collab').then(function(r){
       var cols=(r&&r.collaborators)||[];
-      var body=cols.length?cols.map(function(c){ return '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)"><span style="flex:1;font-weight:600">'+esc(c.name)+(c.primary?' <span style="color:#7c4fc0;font-weight:800">(Primary)</span>':'')+'</span><span style="font-size:.8rem;color:'+(c.verified?'#2e9e6b':'#a9791f')+'">'+(c.verified?'Approved':'Pending')+'</span></div>'; }).join(''):'<div class="p-opt">No collaborators.</div>';
+      var subBy=(r&&r.submitted_by_name)?'<div style="padding:4px 4px 10px;font-size:.84rem;color:var(--muted)">Submitted by <b style="color:var(--text)">'+esc(r.submitted_by_name)+'</b></div>':'';
+      var body=cols.length?cols.map(function(c){ return '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)"><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span style="font-size:.8rem;color:'+(c.verified?'#2e9e6b':'#a9791f')+'">'+(c.verified?'Approved':'Pending')+'</span></div>'; }).join(''):'<div class="p-opt">No collaborators.</div>';
       var old=document.getElementById('prod-modal2'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
       dr.innerHTML='<div class="p-modal" style="max-width:420px"><div class="pd-head"><div class="h-title">Collaborating Teachers</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
-        '<div class="p-modal-body">'+body+'</div>'+
+        '<div class="p-modal-body">'+subBy+body+'</div>'+
         '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Close</button><button class="p-btn p-btn-primary" onclick="document.getElementById(\'prod-modal2\').remove();prodEditCollab('+id+')">Edit</button></div></div></div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
       document.body.appendChild(dr);
@@ -28402,11 +28412,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var isPrimary=(tt.id===primaryId);
         return '<label class="an-chk" style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(140,125,92,.14)">'+
           '<input type="checkbox" value="'+tt.id+'" '+(current[tt.id]?'checked':'')+(isPrimary?' disabled checked':'')+' class="ec-chk">'+
-          '<span style="flex:1">'+esc(tt.name)+(isPrimary?' <span style="color:#a9791f;font-weight:700">(Primary)</span>':'')+'</span></label>';
+          '<span style="flex:1">'+esc(tt.name)+'</span></label>';
       }).join('');
       dr.innerHTML='<div class="p-modal" style="max-width:440px">'+
         '<div class="pd-head"><div class="h-title">Edit Collaboration</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
-        '<div class="p-modal-body"><div class="pk-lbl" style="margin-bottom:10px">Tick the teachers who should collaborate on this task. The primary teacher cannot be removed.</div>'+
+        '<div class="p-modal-body"><div class="pk-lbl" style="margin-bottom:10px">Tick every teacher who collaborates on this task — all are treated equally and verified separately.</div>'+
         '<div style="max-height:320px;overflow-y:auto">'+rows+'</div></div>'+
         '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button>'+
         '<button class="p-btn p-btn-primary" onclick="prodSaveCollab('+id+','+(primaryId||'null')+')">Save Changes</button></div></div>'+
@@ -28661,7 +28671,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(col && col.is_collab){
         var cols=col.collaborators||[];
         collabHtml='<div class="sh-collab"><div class="sh-collab-h">COLLAB TASK '+(col.all_verified?'<span class="sh-allv">All verified</span>':'<span class="sh-somev">'+cols.filter(function(x){return x.verified;}).length+'/'+cols.length+' verified</span>')+'</div>'+
-          cols.map(function(c){ return '<span class="sh-ct'+(c.verified?' ok':'')+'">'+esc(c.name)+' \u2014 '+(c.verified?'Approved':'Pending')+(c.primary?' (Primary)':'')+'</span>'; }).join('')+
+          cols.map(function(c){ return '<span class="sh-ct'+(c.verified?' ok':'')+'">'+esc(c.name)+' \u2014 '+(c.verified?'Approved':'Pending')+'</span>'; }).join('')+
           '<div style="margin-top:10px"><button class="p-btn p-btn-primary" onclick="prodEditCollab('+id+')">Edit Collaboration</button></div></div>';
       }
       var rows=tl.length?tl.map(function(e){

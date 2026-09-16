@@ -1276,53 +1276,130 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
 @router.get("/creators")
 def pm_creators(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     now = datetime.utcnow()
-    done = ["uploaded", "completed", "ready_for_youtube"]
+    try:
+        from video_tasks import (VT_COMPLETED_STATUSES as _COMPLETED, _collab_all_ids as _cai,
+                                 NOT_SPECIAL as _NS)
+    except Exception:
+        _COMPLETED = {"approved", "editing_soon", "editing_done", "uploaded"}
+        _cai = None
+        _NS = None
 
-    def stats_for(base):
-        total = base.count()
-        completed = base.filter(VideoTask.lifecycle.in_(done)).count()
-        pending = base.filter(~VideoTask.lifecycle.in_(done)).count()
-        overdue = base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
-                              ~VideoTask.lifecycle.in_(done)).count()
-        views = int(base.with_entities(func.coalesce(func.sum(VideoTask.yt_views), 0)).scalar() or 0)
-        comp = base.filter(VideoTask.lifecycle.in_(done), VideoTask.published_at != None,
-                           VideoTask.deadline != None).all()
-        den = len(comp); hit = sum(1 for t in comp if t.published_at <= t.deadline)
-        return {"videos": total, "completed": completed, "pending": pending, "overdue": overdue,
-                "views": views, "on_time_pct": round(100.0 * hit / den) if den else None}
+    def _is_completed(t):
+        return (getattr(t, "status", "") or "") in _COMPLETED
+
+    def _is_overdue(t):
+        return bool(t.deadline and t.deadline < now and not _is_completed(t))
+
+    # Teacher name map
+    tname = {}
+    for tp in db.query(TeacherProfile).all():
+        tname[tp.id] = (tp.user.name if tp.user else "") or ""
+
+    # All eligible teacher tasks (mirror admin's teacher stats: normal kind, not a pending
+    # proposal, not cancelled). Special/project tasks use chapter approval, not status.
+    tq = db.query(VideoTask).filter(VideoTask.creator_type == "teacher",
+                                    VideoTask.cancelled.isnot(True),
+                                    VideoTask.proposal_ok != "pending")
+    if _NS is not None:
+        tq = tq.filter(_NS)
+    all_tasks = tq.all()
+
+    def _blank(nm):
+        return {"name": nm, "videos": 0, "completed": 0, "pending": 0, "overdue": 0,
+                "individual_views": 0, "collab_views": 0, "collab_videos": 0,
+                "_otd": 0, "_oth": 0}
+
+    tstats = {}
+    collab = {"name": "Collab", "is_collab": True, "videos": 0, "completed": 0,
+              "pending": 0, "overdue": 0, "views": 0, "individual_views": 0,
+              "collab_views": 0, "collab_videos": 0, "on_time_pct": None}
+    collab_seen = set()
+    _otd_c = 0
+    _oth_c = 0
+
+    for t in all_tasks:
+        ids = _cai(t) if _cai else ([t.teacher_id] if t.teacher_id else [])
+        is_collab = len(ids) > 1
+        v = int(getattr(t, "yt_views", 0) or 0)
+        comp = _is_completed(t)
+        over = _is_overdue(t)
+        if is_collab:
+            # count the shared video ONCE in the Collab row
+            if t.id not in collab_seen:
+                collab_seen.add(t.id)
+                collab["videos"] += 1
+                collab["collab_videos"] += 1
+                if comp:
+                    collab["completed"] += 1
+                else:
+                    collab["pending"] += 1
+                if over:
+                    collab["overdue"] += 1
+                collab["views"] += v
+                collab["collab_views"] += v
+                if comp and t.published_at and t.deadline:
+                    _otd_c += 1
+                    if t.published_at <= t.deadline:
+                        _oth_c += 1
+            # each collaborator: collab views feed their TOTAL (bifurcated), not their solo stats
+            for tid in ids:
+                s = tstats.setdefault(tid, _blank(tname.get(tid, "")))
+                s["collab_videos"] += 1
+                s["collab_views"] += v
+        else:
+            tid = t.teacher_id
+            if not tid:
+                continue
+            s = tstats.setdefault(tid, _blank(tname.get(tid, "")))
+            s["videos"] += 1
+            if comp:
+                s["completed"] += 1
+            else:
+                s["pending"] += 1
+            if over:
+                s["overdue"] += 1
+            s["individual_views"] += v
+            if comp and t.published_at and t.deadline:
+                s["_otd"] += 1
+                if t.published_at <= t.deadline:
+                    s["_oth"] += 1
 
     teachers = []
-    for tp in db.query(TeacherProfile).all():
-        # collab-aware: a collab video counts for every collaborator separately (same
-        # precise JSON-boundary matching used by the task list).
-        _ts = str(tp.id)
-        base = db.query(VideoTask).filter(VideoTask.creator_type == "teacher", or_(
-            VideoTask.teacher_id == tp.id,
-            VideoTask.collab_teacher_ids == "[" + _ts + "]",
-            VideoTask.collab_teacher_ids.like("[" + _ts + ", %"),
-            VideoTask.collab_teacher_ids.like("%, " + _ts + ", %"),
-            VideoTask.collab_teacher_ids.like("%, " + _ts + "]"),
-        ))
-        if base.count() == 0:
-            continue
-        s = stats_for(base); s["name"] = tp.user.name if tp.user else ""; s["id"] = tp.id
-        # how many of these are collaborations (shown separately, like the admin panel)
-        s["collab_videos"] = base.filter(VideoTask.collab_teacher_ids != None,
-                                         VideoTask.collab_teacher_ids != "").count()
-        teachers.append(s)
-    teachers.sort(key=lambda x: x["videos"], reverse=True)
+    for tid, s in tstats.items():
+        s["id"] = tid
+        s["views"] = s["individual_views"] + s["collab_views"]
+        s["on_time_pct"] = round(100.0 * s["_oth"] / s["_otd"]) if s["_otd"] else None
+        s.pop("_otd", None)
+        s.pop("_oth", None)
+        if s["videos"] or s["collab_videos"]:
+            teachers.append(s)
+    teachers.sort(key=lambda x: (x["videos"] + x["collab_videos"]), reverse=True)
+
+    if _otd_c:
+        collab["on_time_pct"] = round(100.0 * _oth_c / _otd_c)
+    collab_out = [collab] if collab["videos"] else []
 
     youtubers = []
     for yp in db.query(YouTuberProfile).all():
         base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.creator_type == "youtuber", VideoTask.youtuber_id == yp.id)
         if base.count() == 0:
             continue
-        s = stats_for(base); s["name"] = yp.user.name if yp.user else ""; s["id"] = yp.id
-        s["published"] = base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"])).count()
-        youtubers.append(s)
+        done = ["uploaded", "completed", "ready_for_youtube"]
+        total = base.count()
+        completed = base.filter(VideoTask.lifecycle.in_(done)).count()
+        views = int(base.with_entities(func.coalesce(func.sum(VideoTask.yt_views), 0)).scalar() or 0)
+        comp = base.filter(VideoTask.lifecycle.in_(done), VideoTask.published_at != None, VideoTask.deadline != None).all()
+        den = len(comp); hit = sum(1 for t in comp if t.published_at <= t.deadline)
+        youtubers.append({"videos": total, "completed": completed,
+                          "pending": total - completed,
+                          "overdue": base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+                                                 ~VideoTask.lifecycle.in_(done)).count(),
+                          "views": views, "on_time_pct": round(100.0 * hit / den) if den else None,
+                          "name": yp.user.name if yp.user else "", "id": yp.id,
+                          "published": base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"])).count()})
     youtubers.sort(key=lambda x: x["videos"], reverse=True)
 
-    return {"teachers": teachers, "youtubers": youtubers}
+    return {"teachers": teachers, "collab": collab_out, "youtubers": youtubers}
 
 
 # ============================================================ REAL-TIME VIEWS
@@ -2378,8 +2455,10 @@ def prod_task_collab(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_
         return {"is_collab": False, "collaborators": []}
     vmap = _c_vmap(t)
     cols = [{"id": i, "name": _c_tname(db, i) or ("Teacher #%s" % i),
-             "verified": bool(vmap.get(str(i))), "primary": (i == t.teacher_id)} for i in ids]
+             "verified": bool(vmap.get(str(i)))} for i in ids]
+    _sub = getattr(t, "submitted_by", None)
     return {"is_collab": True, "collaborators": cols,
+            "submitted_by_name": (_c_tname(db, _sub) if _sub else "") or "",
             "all_verified": all(vmap.get(str(i)) for i in ids)}
 
 
