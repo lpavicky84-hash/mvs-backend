@@ -1327,27 +1327,55 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
     if role in ("", "teacher"):
         rows = (db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id)
                 .filter(User.is_active == True).order_by(User.name.asc()).all())
+        try:
+            from category_models import teacher_assigned_subjects as _tas
+        except Exception:
+            _tas = None
         teachers = []
         for t in rows:
             subs = []
-            try:
-                for sc in (t.subject_classes or []):
-                    nm = (sc.get("subject") or "").strip()
-                    cl = str(sc.get("class") or "").strip()
-                    label = (nm + (" " + cl if cl else "")).strip()
-                    if label and label not in subs:
-                        subs.append(label)
-            except Exception:
-                pass
-            if not subs:
-                try:
-                    for nm in (t.subjects or []):
-                        nm = (nm or "").strip()
+            nios_subjects = []
+            cats = []
+            in_nios = True
+            info = _tas(db, t.id) if _tas else None
+            if info and info.get("has_any"):
+                # AUTHORITATIVE: strictly Category Access (image: "Category Access").
+                in_nios = bool(info.get("in_nios"))
+                for nm, cl in info.get("nios", []):
+                    if nm:
+                        nios_subjects.append({"name": nm, "class": cl})
+                        lbl = (nm + (" " + cl if cl else "")).strip()
+                        if lbl not in subs:
+                            subs.append(lbl)
+                cats = info.get("cats", [])
+                for c in cats:
+                    for nm in c.get("subjects", []):
                         if nm and nm not in subs:
                             subs.append(nm)
+            else:
+                # legacy fallback — teacher has NO category rows (older/un-migrated)
+                try:
+                    for sc in (t.subject_classes or []):
+                        nm = (sc.get("subject") or "").strip()
+                        cl = str(sc.get("class") or "").strip()
+                        label = (nm + (" " + cl if cl else "")).strip()
+                        if label and label not in subs:
+                            subs.append(label)
+                            nios_subjects.append({"name": nm, "class": cl})
                 except Exception:
                     pass
-            teachers.append({"id": t.id, "name": t.user.name if t.user else "", "subjects": subs})
+                if not subs:
+                    try:
+                        for nm in (t.subjects or []):
+                            nm = (nm or "").strip()
+                            if nm and nm not in subs:
+                                subs.append(nm)
+                                nios_subjects.append({"name": nm, "class": ""})
+                    except Exception:
+                        pass
+            teachers.append({"id": t.id, "name": t.user.name if t.user else "",
+                             "subjects": subs, "nios_subjects": nios_subjects,
+                             "categories": cats, "in_nios": in_nios})
         out["teachers"] = teachers
     return out
 
@@ -2763,27 +2791,19 @@ def prod_subjects(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         out.setdefault(s.class_level, []).append(
             {"id": s.id, "name": s.name, "code": s.code, "mode": (s.mode or "live")})
         _catalog.add((s.name or "").strip().lower())
-    # UG-PG (college) subjects: teachers ke subjects jo NIOS 10/12 catalog me nahi hain
-    # (DU-SOL / UG-PG papers). subject_classes me class == "UG-PG" ho to seedhe, warna
-    # flat subjects me se non-catalog naam. Duplicate hata ke naam-wise sorted.
+    # UG-PG (college) subjects — AUTHORITATIVE: Category Access ke non-NIOS categories
+    # ke CategorySubject (du_sol / UG-PG papers). Wahi naam jo admin ne banaye hain.
     _seen = set()
     _ug = []
     try:
-        for tp in db.query(TeacherProfile).all():
-            for sc in (tp.subject_classes or []):
-                try:
-                    _nm = (sc.get("subject") or "").strip()
-                    _cl = str(sc.get("class") or "").strip()
-                except Exception:
-                    _nm, _cl = "", ""
-                if _nm and (_cl.upper().replace(" ", "") in ("UG-PG", "UGPG", "UG", "PG") or
-                            _nm.lower() not in _catalog):
-                    _k = _nm.lower()
-                    if _k not in _seen and _k not in _catalog:
-                        _seen.add(_k); _ug.append(_nm)
-            for _nm in (tp.subjects or []):
-                _nm = (_nm or "").strip()
-                if _nm and _nm.lower() not in _catalog and _nm.lower() not in _seen:
+        from category_models import Category, CategorySubject
+        noncat_ids = [c.id for c in db.query(Category).filter(
+            Category.internal_key != "nios").all()]
+        if noncat_ids:
+            for cs in db.query(CategorySubject).filter(
+                    CategorySubject.category_id.in_(noncat_ids)).all():
+                _nm = (cs.name or "").strip()
+                if _nm and _nm.lower() not in _seen:
                     _seen.add(_nm.lower()); _ug.append(_nm)
     except Exception:
         pass

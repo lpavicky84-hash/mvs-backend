@@ -29622,12 +29622,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     prodDismiss();
   };
   window.awSetCreatorType=function(ct){ _awSave(); window._aw.data.creator_type=ct; window._aw.data.teacher_id=0; window._aw.data.youtuber_id=0; _awRender(); };
-  function _awSubjectOptions(){
-    var aw=window._aw; if(!aw) return [];
-    var d=aw.data; if(d.creator_type!=='teacher') return [];
-    var tid=d.teacher_id; if(!tid) return [];
-    var t=((aw.people||{}).teachers||[]).filter(function(m){return m.id===tid;})[0];
-    return (t&&t.subjects)?t.subjects.slice():[];
+  function _awSubjTeacher(){
+    var aw=window._aw; if(!aw) return null;
+    var d=aw.data; if(d.creator_type!=='teacher') return null;
+    var tid=d.teacher_id; if(!tid) return null;
+    return ((aw.people||{}).teachers||[]).filter(function(m){return m.id===tid;})[0]||null;
+  }
+  // Subject options STRICTLY teacher ke Category Access se: NIOS group (sirf jab teacher
+  // NIOS me ho) + har college/UG-PG category apne group me. Isse Krati jaise college-only
+  // teacher ko sirf uske du_sol subjects dikhte hain, Political Science nahi.
+  function _awSubjectGrouped(d){
+    var t=_awSubjTeacher(); if(!t) return {count:0, html:''};
+    var html=''; var cnt=0;
+    if(t.in_nios!==false && t.nios_subjects && t.nios_subjects.length){
+      var no=t.nios_subjects.map(function(x){ var s=(x.name||'').trim(); var c=(x.class||'').trim(); if(!s) return ''; cnt++; var lbl=s+(c?' '+c:''); return '<option value="'+esc(lbl)+'"'+((d.subject===lbl)?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('');
+      if(no) html+='<optgroup label="NIOS">'+no+'</optgroup>';
+    }
+    (t.categories||[]).forEach(function(cat){
+      var cn=(cat.category||'College').trim();
+      var co=(cat.subjects||[]).map(function(s){ s=(s||'').trim(); if(!s) return ''; cnt++; return '<option value="'+esc(s)+'"'+((d.subject===s)?' selected':'')+'>'+esc(s)+' · '+esc(cn)+'</option>'; }).join('');
+      if(co) html+='<optgroup label="'+esc(cn)+' (College)">'+co+'</optgroup>';
+    });
+    if(!html && t.subjects && t.subjects.length){
+      html=t.subjects.map(function(s){ s=(s||'').trim(); if(!s) return ''; cnt++; return '<option value="'+esc(s)+'"'+((d.subject===s)?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
+    }
+    return {count:cnt, html:html};
   }
   window.awNext=function(){ _awSave(); var aw=window._aw;
     if(aw.step===1){
@@ -29764,13 +29783,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       // 4) subject — teacher only (YouTubers make topic-based videos, no subject)
       if(d.creator_type==='teacher' && !isCollab){
-        var subjOpts=_awSubjectOptions();
+        var subj=_awSubjectGrouped(d);
         if(d.creator_type==='teacher' && !sel){
           html+='<div class="p-field"><label>Subject</label><select class="p-select" disabled><option>Select a teacher first</option></select></div>';
-        } else if(subjOpts.length){
-          html+='<div class="p-field"><label>Subject'+(d.creator_type==='teacher'?'':' (optional)')+'</label><select class="p-select" id="aw-subject"><option value="">Select or type below</option>'+
-            subjOpts.map(function(s){ return '<option value="'+esc(s)+'"'+((d.subject===s)?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+
-            (d.subject&&subjOpts.indexOf(d.subject)<0?'<option value="'+esc(d.subject)+'" selected>'+esc(d.subject)+'</option>':'')+'</select></div>';
+        } else if(subj.count){
+          var _extra=(d.subject && subj.html.indexOf('value="'+esc(d.subject)+'"')<0)?'<option value="'+esc(d.subject)+'" selected>'+esc(d.subject)+'</option>':'';
+          html+='<div class="p-field"><label>Subject</label><select class="p-select" id="aw-subject"><option value="">Select or type below</option>'+
+            subj.html+_extra+'</select></div>';
         } else {
           html+='<div class="p-field"><label>Subject (optional)</label><input class="p-input" id="aw-subject" list="aw-subject-list" placeholder="Select or type" value="'+esc(d.subject||'')+'">'+_awDatalist('aw-subject-list','subject')+'</div>';
         }

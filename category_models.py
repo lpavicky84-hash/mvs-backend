@@ -384,3 +384,67 @@ def backfill_categories():
         db.rollback()
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# AUTHORITATIVE per-teacher subjects — strictly from Category Access
+# (teacher_category_subjects). This is what the admin ticks in "Category Access",
+# so it is the single source of truth for the Assign-Work subject dropdowns.
+# Legacy teacher_profiles.subjects/subject_classes can go stale (e.g. NIOS
+# unchecked but old subject_classes left behind) — so we IGNORE it whenever the
+# teacher has ANY category assignment, and only fall back to legacy when the
+# teacher has no category rows at all (older, un-migrated teachers).
+# ---------------------------------------------------------------------------
+def teacher_assigned_subjects(db, teacher_pid):
+    """Returns:
+      {
+        "has_any": bool,        # teacher has ANY category-subject assignment
+        "in_nios": bool,        # active NIOS category assignment
+        "nios":    [(name, class_level_str), ...],   # NIOS subjects (school 10/12)
+        "cats":    [{"category": display, "internal_key": key,
+                     "subjects": [name, ...]}, ...],  # non-NIOS (college/UG-PG)
+      }
+    """
+    out = {"has_any": False, "in_nios": False, "nios": [], "cats": []}
+    try:
+        nios_cat = db.query(Category).filter(Category.internal_key == "nios").first()
+        nios_id = nios_cat.id if nios_cat else None
+        active_cat_ids = {tc.category_id for tc in db.query(TeacherCategory).filter(
+            TeacherCategory.teacher_id == teacher_pid,
+            TeacherCategory.status == "active").all()}
+        out["in_nios"] = bool(nios_id and nios_id in active_cat_ids)
+        tcs_rows = db.query(TeacherCategorySubject).filter(
+            TeacherCategorySubject.teacher_id == teacher_pid).all()
+        if not tcs_rows:
+            return out
+        out["has_any"] = True
+        cs_ids = [x.category_subject_id for x in tcs_rows]
+        cs_map = {cs.id: cs for cs in db.query(CategorySubject).filter(
+            CategorySubject.id.in_(cs_ids)).all()}
+        cat_ids = list({x.category_id for x in tcs_rows})
+        cat_map = {c.id: c for c in db.query(Category).filter(
+            Category.id.in_(cat_ids)).all()}
+        # group assigned subjects by category, honouring only active categories
+        grouped = {}
+        for x in tcs_rows:
+            if x.category_id not in active_cat_ids:
+                continue  # category removed but subject rows lingered -> ignore
+            cs = cs_map.get(x.category_subject_id)
+            if not cs:
+                continue
+            grouped.setdefault(x.category_id, []).append(cs)
+        for cid, subs in grouped.items():
+            cat = cat_map.get(cid)
+            if cid == nios_id:
+                for cs in subs:
+                    out["nios"].append(((cs.name or "").strip(),
+                                        str(cs.class_level or "").strip()))
+            else:
+                out["cats"].append({
+                    "category": (cat.display_name if cat else "College"),
+                    "internal_key": (cat.internal_key if cat else ""),
+                    "subjects": [(cs.name or "").strip() for cs in subs if (cs.name or "").strip()],
+                })
+    except Exception:
+        return {"has_any": False, "in_nios": False, "nios": [], "cats": []}
+    return out

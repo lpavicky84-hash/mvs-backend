@@ -245,11 +245,18 @@ def admin_set_teacher_category_access(tid: int, payload: dict = Body(...),
         if nios:
             if nios.id in want_cats:
                 nios_sub_ids = [s for (c, s) in want_subs if c == nios.id]
-                names = [cs.name for cs in db.query(CategorySubject).filter(
-                    CategorySubject.id.in_(nios_sub_ids)).all()] if nios_sub_ids else []
-                tp.subjects = names
+                cs_rows = db.query(CategorySubject).filter(
+                    CategorySubject.id.in_(nios_sub_ids)).all() if nios_sub_ids else []
+                tp.subjects = [cs.name for cs in cs_rows]
+                # subject_classes ko bhi sync karo (class-paired) taaki stale
+                # "Political Science 12" jaisa data assign-form me na dikhe.
+                tp.subject_classes = [{"subject": cs.name,
+                                       "class": str(cs.class_level or "").strip()}
+                                      for cs in cs_rows if cs.name]
             else:
+                # NIOS hata diya -> legacy NIOS fields poori tarah clear
                 tp.subjects = []
+                tp.subject_classes = []
     except Exception:
         pass
     db.commit()

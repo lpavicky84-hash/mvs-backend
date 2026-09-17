@@ -1561,6 +1561,21 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 ClassEntry.status == ClassStatus.done,
                 ClassEntry.scheduled_date >= month_start
             ).count()
+            # AUTHORITATIVE subjects from Category Access (teacher_category_subjects).
+            # Stale legacy subject_classes (e.g. NIOS unchecked but old data left) is
+            # ignored whenever the teacher has ANY category assignment.
+            _sc = _derive_subject_classes(profile, db)
+            _cats = list(cat_map.get(profile.id, {}).values())
+            _in_nios = (profile.id in nios_ids) if nios_known else True
+            try:
+                from category_models import teacher_assigned_subjects as _tas
+                _info = _tas(db, profile.id)
+                if _info.get("has_any"):
+                    _in_nios = bool(_info.get("in_nios"))
+                    _sc = [{"subject": nm, "class": cl} for (nm, cl) in _info.get("nios", []) if nm]
+                    _cats = _info.get("cats", [])
+            except Exception:
+                pass
             result.append({
                 "id": t.id,
                 "profile_id": profile.id,
@@ -1571,15 +1586,15 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 "urgent_enabled": (getattr(profile, "urgent_enabled", True) is not False),
                 "is_active": t.is_active,
                 "subjects": profile.subjects,
-                "subject_classes": _derive_subject_classes(profile, db),
+                "subject_classes": _sc,
                 "batch": profile.batch,
                 "total_classes_done": classes_done,
                 "monthly_classes_done": monthly_done,
                 "reschedule_this_month": profile.reschedule_count_this_month,
                 "reschedule_limit": 2,
                 "can_see_students": profile.id in _students_allowed_ids(db),
-                "categories": list(cat_map.get(profile.id, {}).values()),
-                "in_nios": (profile.id in nios_ids) if nios_known else True,
+                "categories": _cats,
+                "in_nios": _in_nios,
             })
     return result
 
