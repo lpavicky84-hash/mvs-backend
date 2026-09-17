@@ -10137,11 +10137,14 @@ function _luRow(u,tab){
   // wahan role dobara likhne ki zaroorat nahi. Role name ab NAAM ke niche (premium).
   const _isProd=['editor','graphics','youtuber','production_manager'].indexOf(u.role)>=0;
   const roleSub=_isProd?`<div class="lu-role-sub" style="margin-top:3px;font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:${_rb[1]}">${esc(_rb[0])}</div>`:'';
-  let right='';
-  if(tab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
-  else if(tab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
-  else right=`<div class="lu-right">${u.phone?`<a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone)}" onclick="event.stopPropagation()">${ic('bell')} Call</a>`:''}</div>`;
-  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name"><span style="word-break:normal;overflow-wrap:break-word">${esc(u.name)}</span></div>${roleSub}<div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
+  // 2-row layout: naam + time UPAR; code + page-badge NICHE. Isse lambe naam aur wide
+  // page-badge (jaise 'Study Material') kabhi collide/toot nahi hote (permanent fix).
+  let topRight='', pageChip='';
+  if(tab==='live'){ topRight=`<span class="lu-dur">${u.duration_min}m</span>`; if(u.page) pageChip=`<span class="lu-page">${esc(u.page)}</span>`; }
+  else if(tab==='offline'){ topRight=`<span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span>`; }
+  else { topRight=u.phone?`<a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone)}" onclick="event.stopPropagation()">${ic('bell')} Call</a>`:''; }
+  const meta=`${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}`;
+  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-toprow"><div class="lu-name">${esc(u.name)}</div>${topRight}</div>${roleSub}<div class="lu-botrow"><span class="lu-meta">${meta}</span>${pageChip}</div></div></div>`;
 }
 function _luSection(title,list,tab,emptyMsg){
   const rows=list.length?list.map(u=>_luRow(u,tab)).join(''):`<div class="ws-empty"><p>${emptyMsg}</p></div>`;
@@ -10166,14 +10169,15 @@ function _paintLive(d){
   _setLiveBadge(c.live||0);   // page and header badge always show the same count
   el.innerHTML=`<style>
     #a-live-content .lu3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
-    #a-live-content .lu-row{display:flex;align-items:center;gap:9px}
-    #a-live-content .lu-dot{flex:0 0 auto}
+    #a-live-content .lu-row{display:flex;align-items:flex-start;gap:9px}
+    #a-live-content .lu-dot{flex:0 0 auto;margin-top:5px}
     #a-live-content .lu-main{flex:1;min-width:0}
-    #a-live-content .lu-name{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-weight:700;word-break:normal;overflow-wrap:normal}
-    #a-live-content .lu-meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal}
+    #a-live-content .lu-toprow{display:flex;align-items:flex-start;gap:8px;justify-content:space-between}
+    #a-live-content .lu-name{flex:1;min-width:0;font-weight:700;line-height:1.25;word-break:break-word;overflow-wrap:anywhere}
+    #a-live-content .lu-botrow{display:flex;align-items:center;gap:8px;justify-content:space-between;min-width:0;margin-top:3px}
+    #a-live-content .lu-meta{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal}
     #a-live-content .lu-role{white-space:nowrap !important;word-break:keep-all !important;flex:0 0 auto}
-    #a-live-content .lu-right{flex:0 0 auto;display:flex;align-items:center;gap:8px;white-space:nowrap}
-    #a-live-content .lu-page,#a-live-content .lu-dur,#a-live-content .lu-dim{white-space:nowrap}
+    #a-live-content .lu-page,#a-live-content .lu-dur,#a-live-content .lu-dim{white-space:nowrap;flex:0 0 auto}
     /* PC-only premium polish (phone <=640px bilkul untouched) */
     @media(min-width:641px){
       #a-live-content .lu-row{padding:9px 8px;border-radius:12px;transition:background .14s}
