@@ -24462,7 +24462,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
       nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
-            {g:'Live',items:[ {p:'tracker',t:'Live Team Tracker',i:'clock'} ]},
+            {g:'Live',items:[ {p:'liveteam',t:'Live Users',i:'user'}, {p:'tracker',t:'Live Team Tracker',i:'clock'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'q:uploaded',t:'Uploaded Videos',i:'upload'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'}, {p:'prodteam',t:'Production Team',i:'team'} ]},
             {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
@@ -25233,6 +25233,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.cr-m .n{font-size:1.15rem;font-weight:800;line-height:1}',
 '.cr-m .l{font-size:.68rem;color:#8a7d5c;text-transform:uppercase;letter-spacing:.04em;margin-top:3px}',
 '.ph-search{position:relative}',
+'.ph-live{display:inline-flex;align-items:center;gap:7px;background:rgba(46,158,107,.12);border:1px solid rgba(46,158,107,.32);color:#1f8a54;border-radius:999px;padding:8px 14px;font-size:.84rem;font-weight:700;cursor:pointer;white-space:nowrap}',
+'.ph-live:hover{background:rgba(46,158,107,.2)}',
+'.ph-live b{font-weight:800}',
+'.ph-live-dot{width:8px;height:8px;border-radius:50%;background:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.18);flex:0 0 auto}',
 '.ph-search input{width:230px;max-width:38vw;padding:9px 13px;border-radius:11px;border:1px solid rgba(230,173,78,.28);background:rgba(255,255,255,.04);color:inherit;font-size:.85rem}',
 '.ph-search input:focus{outline:none;border-color:rgba(230,173,78,.6)}',
 '.gs-panel{position:absolute;top:46px;left:0;width:360px;max-width:80vw;max-height:60vh;overflow-y:auto;background:#fff;border:1px solid #ece2cd;border-radius:14px;box-shadow:0 20px 50px -12px rgba(40,30,10,.35);z-index:130}',
@@ -25251,11 +25255,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .prod-burger{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:rgba(230,173,78,.14);border:1px solid rgba(230,173,78,.3);color:'+accent+';cursor:pointer}',
 '  .prod-burger svg{width:20px;height:20px}',
 '  .prodbody{padding:6px 16px 40px}',
-'  .prodhead{padding:16px}',
+'  .prodhead{padding:12px 14px;gap:10px;flex-wrap:nowrap}',
+'  .prodhead>div{min-width:0}',
+'  .prodhead>div:last-child{flex:0 0 auto;gap:8px}',
 '  .prodhead .ph-badge{display:none}',
 '  .prodhead .ph-date{display:none}',
-'  .prodhead .ph-hi{font-size:1.02rem;max-width:44vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-'  .ph-search input{width:150px;max-width:30vw}',
+'  .prodhead .ph-hi{display:none}',        /* greeting ab body me (pdash-greet) — header truncate nahi hoga */
+'  .ph-search{display:none}',              /* phone/tablet: search chhupa do -> icons fit */
+'  .ph-live{padding:7px 11px;font-size:.78rem}',
+'  .ph-bell{width:38px;height:38px}',
+'  .pdash-greet{display:block;margin:2px 2px 14px}',
+'  .pdash-greet h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.02em;line-height:1.15}',
+'  .pdash-date{font-size:.82rem;color:var(--muted);margin-top:3px}',
 '  .prod-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}',
 '  .prodapp.side-open .prod-scrim{display:block}',
 '  .pk-grid{grid-template-columns:1fr 1fr;gap:11px}',
@@ -25264,11 +25275,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .vv-tiles{grid-template-columns:1fr 1fr}',
 '  .p-toolbar{flex-wrap:wrap;gap:8px}',
 '}',
+'.pdash-greet{display:none}',              /* desktop: header me greeting hai, body wala chhupa */
 '@media(max-width:480px){',
-'  .ph-search{flex:1;min-width:0}',
-'  .ph-search input{width:100%;max-width:none}',
-'  .prodhead{gap:8px}',
-'  .prodhead .ph-hi{max-width:38vw}',
+'  .prodhead{gap:7px;padding:11px 12px}',
+'  .ph-live b{font-size:.82rem}',
+'  .pdash-greet h1{font-size:1.32rem}',
 '  .aw-steps .s{font-size:.6rem}',
 '  .pd-head{padding:14px 16px 10px}',
 '  .pd-body{padding:16px}',
@@ -25279,7 +25290,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@media(max-width:380px){',
 '  .pk-grid{grid-template-columns:1fr;gap:10px}',
 '  .pk-val{font-size:1.6rem}',
-'  .prodhead .ph-hi{max-width:34vw;font-size:.95rem}',
+'  .ph-live{padding:6px 9px}',
 '}',
 /* ===== Creator Performance — premium cards ===== */
 '.crp-grid{display:flex;flex-direction:column;gap:12px}',
@@ -25361,6 +25372,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '</div>'+
             '<div style="display:flex;align-items:center;gap:12px">'+
               (portal==='production'?'<div class="ph-search"><input id="prod-gsearch" placeholder="Search tasks, creators, editors..." oninput="prodGSearch(this.value)" autocomplete="off"></div>':'')+
+              (portal==='production'?'<button class="ph-live" id="prod-live-pill" onclick="prodNav(\'production\',\'liveteam\')" title="Production team live — tap to view"><span class="ph-live-dot"></span><b id="prod-live-n">0</b> live</button>':'')+
               '<button class="ph-bell ph-theme" onclick="toggleDark()" title="Dark / Light mode"><span class="thm-moon">'+ic('moon')+'</span><span class="thm-sun">'+ic('sun')+'</span></button>'+
               '<button class="ph-bell" onclick="prodBell(\''+portal+'\')">'+icon('bell')+'<span class="ph-bell-dot" id="'+portal+'-bell-dot" style="display:none">0</span></button>'+
               '<div class="ph-badge">'+d.title+'</div>'+
@@ -25391,7 +25403,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
     // presence touch hoti thi -> kabhi live nahi dikhte the). Turant + har 40s (_hbTimer).
     try{ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage='Dashboard'; api(window._hbUrl,'POST',{page:'Dashboard'}).catch(function(){}); }catch(e){}
-    if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000); }
+    if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000);
+      try{ _prodLivePoll(); if(window._prodLiveInt) clearInterval(window._prodLiveInt); window._prodLiveInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodLivePoll(); },20000); }catch(e){} }
     return Promise.resolve();
   };
   function _prodNavBadges(){
@@ -25611,6 +25624,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='projectthumbs') return renderGfxProjectThumbs(portal,body);
     if(page==='ytasks'){ body.innerHTML='<div id="pyt-content" class="yt-scope"></div>'; try{ loadAYtTasks('pyt-content'); }catch(e){ body.innerHTML='<div class="p-empty">Could not load.</div>'; } return; }
     if(page==='announce') return renderAnnounce(portal,body);
+    if(page==='liveteam') return renderPmLiveTeamPage(portal,body);
     if(page==='tracker') return renderTracker(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
@@ -26285,8 +26299,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _loadWork('editor');
         return;
       }
-      if(portal==='production' && r.bottleneck && r.bottleneck!=='None')
-        html+='<div class="p-bottleneck">Current bottleneck: '+esc(r.bottleneck)+'</div>';
+      if(portal==='production')
+        html+='<div class="pdash-greet"><h1>'+esc(_greet()+', '+(r.greeting_name||NAME||''))+'</h1><div class="pdash-date">'+esc(_today())+'</div></div>';
       html+='<div class="pk-grid">';
       var _KICON={requests:'bell',pending_review:'eye',pm_review:'eye',in_production:'edit',editing:'edit',
         graphics:'image',thumb_review:'image',thumb_changes:'edit',qc:'check',ready:'video',ready_for_youtube:'video',published:'upload',uploaded:'upload',
@@ -26308,45 +26322,67 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         });
         html+='</div>';
       }
-      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-liveteam"></div><div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
+      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
       if(portal!=='production') _loadWork(portal);   // production dashboard pe "Needs Your Attention" nahi — sab sidebar sections me
-      if(portal==='production'){ try{ _loadPmLiveTeam(); }catch(e){} try{ _loadQueues(); }catch(e){} }
+      if(portal==='production'){ try{ _loadQueues(); }catch(e){} }
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
   }
 
-  // --- PM dashboard: production team live (like admin's Live Users) ---
-  function _loadPmLiveTeam(){
-    var box=document.getElementById('production-liveteam'); if(!box) return;
+  // --- PM header live pill ---
+  function _setProdLivePill(n){ var b=document.getElementById('prod-live-n'); if(b) b.textContent=(n||0); }
+  function _prodLivePoll(){
+    api(P.production.api+'/live-team').then(function(r){ _setProdLivePill((r&&r.counts&&r.counts.total)||0); }).catch(function(){});
+  }
+  // --- PM portal: Live Users page (dedicated section, like admin's Live Users) ---
+  function _pmLiveCss(){
+    if(document.getElementById('plt-css')) return;
+    var s=document.createElement('style'); s.id='plt-css'; s.textContent=[
+      '.plt-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}',
+      '.plt-tile{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;box-shadow:0 2px 10px -8px rgba(0,0,0,.14)}',
+      '.plt-n{font-size:1.9rem;font-weight:800;line-height:1}',
+      '.plt-l{font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:6px}',
+      '.plt-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:8px 18px 10px;box-shadow:0 2px 12px -8px rgba(0,0,0,.14)}',
+      '.plt-row{display:flex;align-items:center;gap:12px;padding:12px 2px;border-top:1px solid var(--border)}',
+      '.plt-row:first-child{border-top:0}',
+      '.plt-av{width:40px;height:40px;flex:0 0 40px;border-radius:50%;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.95rem}',
+      '.plt-who{flex:1;min-width:0}',
+      '.plt-nm{font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+      '.plt-badge{font-size:.6rem;font-weight:800;padding:2px 9px;border-radius:999px;white-space:nowrap}',
+      '.plt-meta{font-size:.75rem;color:var(--muted);margin-top:2px}',
+      '.plt-r{flex:0 0 auto;text-align:right;white-space:nowrap}',
+      '.plt-page{font-size:.74rem;color:var(--muted);display:block}',
+      '.plt-dur{font-size:.82rem;font-weight:700;color:#2e9e6b}',
+      '.plt-empty{color:var(--muted);padding:34px 2px;text-align:center;font-size:.9rem}',
+      '@media(max-width:560px){.plt-tiles{grid-template-columns:1fr 1fr}}'
+    ].join(''); document.head.appendChild(s);
+  }
+  function renderPmLiveTeamPage(portal,body){
+    _pmLiveCss();
+    if(!body.querySelector('#plt-page')){
+      body.innerHTML='<div id="plt-page"><div class="sm-head" style="border:none;padding:0 2px 14px"><div><h2 style="margin:0">Live Users</h2><p style="color:var(--muted);font-size:.85rem;margin:3px 0 0">Your production team — who is online, what they are doing, right now.</p></div><span class="pager-info" style="color:var(--muted);font-size:.74rem">Auto-refreshes every 20s</span></div><div id="plt-tiles"></div><div id="plt-list"></div></div>';
+    }
+    _pmLivePaint();
+    try{ if(window._pltInt) clearInterval(window._pltInt); window._pltInt=setInterval(function(){
+      var pg=(window._prodCurPage||{}).production;
+      var vis=document.getElementById('production-app'); vis=vis&&vis.classList.contains('active');
+      if(pg==='liveteam' && vis && !document.hidden && document.getElementById('plt-page')) _pmLivePaint();
+    },20000); }catch(e){}
+  }
+  function _pmLivePaint(){
+    var tbox=document.getElementById('plt-tiles'), lbox=document.getElementById('plt-list');
+    if(!tbox||!lbox) return;
     api(P.production.api+'/live-team').then(function(r){
+      if(!document.getElementById('plt-page')) return;
       var lc=(r&&r.counts)||{}; var lp=(r&&r.people)||[];
       var role={editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Manager','#0369a1']};
       function tile(lbl,n,col){ return '<div class="plt-tile"><div class="plt-n" style="color:'+col+'">'+(n||0)+'</div><div class="plt-l">'+lbl+'</div></div>'; }
+      tbox.innerHTML='<div class="plt-tiles">'+tile('Online Now',lc.total,'#2e9e6b')+tile('Editors',lc.editors,'#7c3aed')+tile('Graphics',lc.graphics,'#c2410c')+tile('YouTubers',lc.youtubers,'#be123c')+tile('Managers',lc.pms,'#0369a1')+'</div>';
       var rows=lp.length?lp.map(function(p){ var rb=role[p.role]||['Team','#4f46e5']; var ini=(String(p.name||'?').trim().charAt(0)||'?').toUpperCase();
         return '<div class="plt-row"><span class="plt-av" style="background:'+rb[1]+'">'+esc(ini)+'</span><div class="plt-who"><div class="plt-nm">'+esc(p.name||'')+' <span class="plt-badge" style="background:'+rb[1]+'1a;color:'+rb[1]+'">'+rb[0]+'</span></div><div class="plt-meta">'+esc(p.code||'')+'</div></div><div class="plt-r"><span class="plt-page">'+esc(p.page||'')+'</span><span class="plt-dur">'+(p.duration_min||0)+'m</span></div></div>';
       }).join(''):'<div class="plt-empty">No production team online right now.</div>';
-      if(!document.getElementById('plt-css')){ var s=document.createElement('style'); s.id='plt-css'; s.textContent=[
-        '.plt-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin:6px 0 20px;box-shadow:0 2px 12px -8px rgba(0,0,0,.14)}',
-        '.plt-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}',
-        '.plt-title{font-weight:800;font-size:1rem;display:flex;align-items:center;gap:8px}',
-        '.plt-dot{width:9px;height:9px;border-radius:50%;background:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.18)}',
-        '.plt-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px;margin-bottom:12px}',
-        '.plt-tile{background:var(--bg,#fbf7ee);border:1px solid var(--border);border-radius:12px;padding:11px 12px;text-align:center}',
-        '.plt-n{font-size:1.4rem;font-weight:800;line-height:1}',
-        '.plt-l{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}',
-        '.plt-row{display:flex;align-items:center;gap:11px;padding:9px 2px;border-top:1px solid var(--border)}',
-        '.plt-av{width:34px;height:34px;flex:0 0 34px;border-radius:50%;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.86rem}',
-        '.plt-who{flex:1;min-width:0}',
-        '.plt-nm{font-weight:700;font-size:.9rem;display:flex;align-items:center;gap:7px;flex-wrap:wrap}',
-        '.plt-badge{font-size:.58rem;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}',
-        '.plt-meta{font-size:.72rem;color:var(--muted)}',
-        '.plt-r{flex:0 0 auto;text-align:right;white-space:nowrap}',
-        '.plt-page{font-size:.72rem;color:var(--muted);display:block}',
-        '.plt-dur{font-size:.78rem;font-weight:700;color:#2e9e6b}',
-        '.plt-empty{color:var(--muted);padding:16px 2px;text-align:center;font-size:.86rem}'
-      ].join(''); document.head.appendChild(s); }
-      box.innerHTML='<div class="plt-wrap"><div class="plt-head"><div class="plt-title"><span class="plt-dot"></span>Production Team Live ('+(lc.total||0)+')</div><span style="font-size:.72rem;color:var(--muted)">Auto-refreshes</span></div>'+
-        '<div class="plt-tiles">'+tile('Online',lc.total,'#2e9e6b')+tile('Editors',lc.editors,'#7c3aed')+tile('Graphics',lc.graphics,'#c2410c')+tile('YouTubers',lc.youtubers,'#be123c')+tile('Managers',lc.pms,'#0369a1')+'</div>'+rows+'</div>';
-    }).catch(function(){ if(box) box.innerHTML=''; });
+      lbox.innerHTML='<div class="plt-wrap">'+rows+'</div>';
+      try{ _setProdLivePill(lc.total||0); }catch(e){}
+    }).catch(function(){ if(lbox) lbox.innerHTML='<div class="plt-empty">Could not load live users.</div>'; });
   }
   // --- dashboard "current work" cards with a primary action on the card ---
   function _workTitle(portal){ return portal==='production'?'Needs Your Attention':'Your Current Work'; }
