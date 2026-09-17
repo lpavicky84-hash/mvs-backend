@@ -11630,7 +11630,7 @@ async function loadAVTasks(fromCache){
     window._avtMap={}; (list.tasks||[]).forEach(t=>window._avtMap[t.id]=t); (list.proposals||[]).forEach(t=>window._avtMap[t.id]=t); (list.urgent||[]).forEach(t=>window._avtMap[t.id]=t); _setUrgentBadge((list.urgent||[]).filter(u=>u.status!=='uploaded').length);
     window._avtSpec=(spec&&spec.one_shot)?spec:null;
     if(window._avtSpec){ (spec.one_shot.tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.rapid_revision||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); ((spec.project||{}).tasks||[]).forEach(t=>window._avtMap[t.id]=t); }
-    _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name,sc:t.subject_classes||[],subs:t.subjects||[]}));
+    _vtTeachers=(Array.isArray(ts)?ts:(ts.teachers||[])).map(t=>({pid:t.profile_id,name:t.name,sc:t.subject_classes||[],subs:t.subjects||[],cats:t.categories||[],inNios:(t.in_nios!==false)}));
     const checking=(list.tasks||[]).filter(t=>t.status==='submitted'&&!t.reviewed).length;
     const badge=document.getElementById('a-vt-badge');
     const bn=checking+(list.proposals||[]).length;
@@ -12084,7 +12084,7 @@ async function openVTAssign(proposalId){
         <div class="ms-box" onclick="_msToggle('vtf')"><span id="vtf-ms-lbl" class="ms-ph">Select teachers…</span><span class="ms-arw">\u25be</span></div>
         <div class="ms-panel" id="vtf-ms-panel">${_vtTeachers.map(t=>`<label><input type="checkbox" class="vtf-ms-cb" value="${t.pid}" onchange="_msUpd('vtf')"> ${esc(t.name)}</label>`).join('')}</div></div>
       <div class="form-group"><label>Subject <span style="font-weight:600;color:var(--text-muted)">(optional)</span></label><select id="vt-f-subject" class="input" onchange="vtfSubjectChange()"><option value="">— Select a teacher first —</option></select></div>
-      <div class="form-group"><label>Class</label><select id="vt-f-class" class="input"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
+      <div class="form-group"><label>Class / Stream</label><select id="vt-f-class" class="input"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option><option value="UG-PG">UG-PG (College)</option></select></div>
       <div id="vt-f-autot" class="vtp-auto" style="grid-column:1/-1;display:none"></div>
       <div class="form-group"><label>YouTube Channel</label><select id="vt-f-channel" class="input"><option value="">— Select channel —</option>${cOpts}</select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Streaming</label><select id="vt-f-stream" class="input" onchange="_vtFilterTypes('vt-f-stream','vt-f-type',_vtTypes)"><option value="" ${preStream?'':'selected'}>— Not set —</option><option value="recorded" ${preStream==='recorded'?'selected':''}>Recorded</option><option value="live" ${preStream==='live'?'selected':''}>Live</option></select></div>
@@ -12160,8 +12160,8 @@ function _vtProjectForm(){
   const tOpts=`<option value="0">Auto — fetched from the subject</option>`+_vtTeachers.map(t=>`<option value="${t.pid}">${esc(t.name)}</option>`).join('');
   const dOpts=VTP_DAYS.map(d=>`<option value="${d}" ${d==='sunday'?'selected':''}>${VTP_DLBL[d]}</option>`).join('');
   return `<div class="form-grid vt-form">
-      <div class="form-group"><label>Subject</label><select id="vtp-subject" class="input" onchange="vtpSubjectChange()"><option value="">— Loading subjects… —</option></select></div>
-      <div class="form-group"><label>Class</label><select id="vtp-class" class="input" onchange="vtpSubjectChange()"><option value="">— Auto from subject —</option><option value="10">Class 10</option><option value="12">Class 12</option></select></div>
+      <div class="form-group"><label>Class / Stream</label><select id="vtp-class" class="input" onchange="vtpClassChange()"><option value="">— Select class —</option><option value="10">Class 10</option><option value="12">Class 12</option><option value="UG-PG">UG-PG (College)</option></select></div>
+      <div class="form-group"><label>Subject</label><select id="vtp-subject" class="input" onchange="vtpSubjectChange()"><option value="">— Select class first —</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Collaborate with others?</label>
         <select id="vtp-collab-on" class="input" onchange="_vtCollabMode('vtp',this.value)">
           <option value="no" selected>No — single teacher</option>
@@ -12206,9 +12206,25 @@ async function vtpLoadSubjects(){
   try{
     const d=await api('/api/admin/subjects');
     window._vtpSubs=d;
-    const grp=(lv,lbl)=>`<optgroup label="${lbl}">${(d[lv]||[]).map(x=>`<option value="${esc(x.name)}" data-level="${lv}">${esc(x.name)}</option>`).join('')}</optgroup>`;
-    sel.innerHTML=`<option value="">— Select subject —</option>`+grp('12','Class 12')+grp('10','Class 10');
+    vtpClassChange();   // pehle class chuno -> phir usi class ke subjects bharo
   }catch(e){ sel.innerHTML=`<option value="">— Could not load subjects —</option>`; }
+}
+// Class-first: class chunte hi sirf us class/stream ke subjects dropdown me aaye.
+function vtpClassChange(){
+  const clsSel=document.getElementById('vtp-class'), sel=document.getElementById('vtp-subject');
+  if(!sel) return;
+  const cls=(clsSel&&clsSel.value)||'';
+  const d=window._vtpSubs||{};
+  if(!cls){
+    sel.innerHTML='<option value="">— Select class first —</option>';
+  } else {
+    const list=d[cls]||[];
+    sel.innerHTML='<option value="">— Select subject —</option>'+list.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');
+  }
+  // UG-PG (college) me NIOS syllabus/chapters nahi hote -> Connect ko "No" (video names khud likho)
+  const conn=document.getElementById('vtp-connect');
+  if(conn){ if(cls==='UG-PG') conn.value='no'; vtpConnectToggle(); }
+  vtpSubjectChange();
 }
 // ---- Task Assign form: subject dropdown + auto teacher fetch ----
 function _vtfActiveTeacher(){
@@ -12224,13 +12240,32 @@ function vtfTeacherSubjects(){
   const pid=_vtfActiveTeacher();
   const t=_vtTeachers.find(x=>x.pid===pid);
   if(!pid||!t){ ssel.innerHTML='<option value="">— Select a teacher first —</option>'; return; }
-  let sc=(t.sc&&t.sc.length)?t.sc:[];
-  if(!sc.length && t.subs && t.subs.length) sc=t.subs.map(s=>({subject:s,class:''}));
-  if(!sc.length){ ssel.innerHTML='<option value="">— This teacher has no subjects set —</option>'; return; }
-  ssel.innerHTML='<option value="">— No subject (standalone video) —</option>'+sc.map(x=>{
+  // NIOS (school) subjects — SIRF tab jab teacher NIOS category me ho. College-only
+  // teacher (jaise UG-PG wale) ko NIOS Class 10/12 subjects nahi dikhne chahiye.
+  let sc=[];
+  if(t.inNios){
+    sc=(t.sc&&t.sc.length)?t.sc:[];
+    if(!sc.length && t.subs && t.subs.length) sc=t.subs.map(s=>({subject:s,class:''}));
+  }
+  const niosOpts=sc.map(x=>{
     const s=(x.subject||'').trim(), c=(x.class||x.class_level||'').trim();
     return `<option value="${esc(s)}" data-level="${esc(c)}">${esc(s)}${c?' \u00b7 Class '+esc(c):''}</option>`;
   }).join('');
+  // Category (College / UG-PG) subjects — Category Access se assigned. Har category
+  // apne optgroup me; class/stream us category ka naam (data-level="UG-PG").
+  let catHtml='';
+  (t.cats||[]).forEach(cat=>{
+    const cn=(cat.category||'Category').trim();
+    const opts=(cat.subjects||[]).map(s=>{
+      s=(s||'').trim(); if(!s) return '';
+      return `<option value="${esc(s)}" data-level="UG-PG" data-stream="${esc(cn)}">${esc(s)} \u00b7 ${esc(cn)}</option>`;
+    }).join('');
+    if(opts) catHtml+=`<optgroup label="${esc(cn)} (College)">${opts}</optgroup>`;
+  });
+  if(!niosOpts && !catHtml){ ssel.innerHTML='<option value="">— This teacher has no subjects set —</option>'; return; }
+  ssel.innerHTML='<option value="">— No subject (standalone video) —</option>'
+    +(niosOpts?`<optgroup label="NIOS">${niosOpts}</optgroup>`:'')
+    +catHtml;
 }
 function vtfSubjectChange(){
   const sel=document.getElementById('vt-f-subject'), cls=document.getElementById('vt-f-class');
@@ -12311,9 +12346,14 @@ function _vtPrefillProject(pre){
       const m=String(pre.subject).match(/^(.*?)\s+(10|12)$/);
       const sName=(m?m[1]:pre.subject).trim(), sCls=m?m[2]:'';
       const setSub=()=>{ const ss=document.getElementById('vtp-subject'), sc=document.getElementById('vtp-class');
-        if(!ss||ss.options.length<=1) return false;
+        if(!ss||!sc) return false;
+        // class-first: pehle sahi class set karo (subjects usi se bharte hain), phir subject select
+        let cls=sCls;
+        if(!cls){ const d=window._vtpSubs||{}; Object.keys(d).forEach(k=>{ if((d[k]||[]).some(x=>(x.name||'').toLowerCase()===sName.toLowerCase())) cls=k; }); }
+        if(cls && sc.value!==cls){ sc.value=cls; try{ vtpClassChange(); }catch(e){} }
+        if(ss.options.length<=1) return false;
         const opt=[...ss.options].find(o=>(o.value||'').toLowerCase()===sName.toLowerCase());
-        if(opt){ ss.value=opt.value; if(sc&&sCls) sc.value=sCls; try{ vtpSubjectChange(); }catch(e){} return true; }
+        if(opt){ ss.value=opt.value; try{ vtpSubjectChange(); }catch(e){} return true; }
         return false; };
       if(!setSub()){ setTimeout(setSub,500); }
     }

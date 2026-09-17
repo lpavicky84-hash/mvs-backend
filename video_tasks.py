@@ -3050,6 +3050,36 @@ def _subject_teachers(db, subject, class_level=""):
             out.append({"profile_id": tp.id,
                         "name": (_u.name if _u else "") or ("Teacher #%d" % tp.id),
                         "class": cl, "level": lv})
+    # College / UG-PG subjects — Category Access se assigned teacher bhi auto-fetch ho
+    # (ye subjects NIOS subject_classes me nahi hote). Sirf read/match — koi task nahi banta.
+    if not lv_want:
+        try:
+            from category_models import Category, CategorySubject, TeacherCategorySubject
+            noncat_ids = [c.id for c in db.query(Category).filter(
+                Category.internal_key != "nios").all()]
+            if noncat_ids:
+                cs_ids = [cs.id for cs in db.query(CategorySubject).filter(
+                    CategorySubject.category_id.in_(noncat_ids)).all()
+                    if squash(cs.name or "") == sq]
+                if cs_ids:
+                    seen_pid = {o["profile_id"] for o in out}
+                    for tcs in db.query(TeacherCategorySubject).filter(
+                            TeacherCategorySubject.category_subject_id.in_(cs_ids)).all():
+                        pid = tcs.teacher_id
+                        if pid in seen_pid:
+                            continue
+                        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pid).first()
+                        if not tp:
+                            continue
+                        _u = db.query(User).filter(User.id == tp.user_id).first()
+                        if _u is not None and _u.is_active is False:
+                            continue
+                        out.append({"profile_id": pid,
+                                    "name": (_u.name if _u else "") or ("Teacher #%d" % pid),
+                                    "class": "UG-PG", "level": ""})
+                        seen_pid.add(pid)
+        except Exception:
+            pass
     return out
 
 

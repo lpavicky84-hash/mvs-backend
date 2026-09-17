@@ -1976,11 +1976,32 @@ def broadcast_notification(
 def get_subjects(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import AvailableSubject
     subs = db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all()
-    result = {"10": [], "12": []}
+    result = {"10": [], "12": [], "UG-PG": []}
     for s in subs:
-        result.get(s.class_level, []).append({
+        result.setdefault(s.class_level, []).append({
             "id": s.id, "name": s.name, "code": s.code,
             "mode": (s.mode or "live")})
+    # UG-PG (college) subjects — Category Access ka authoritative source
+    # (non-NIOS categories ke saare CategorySubject). Isse admin Project ka
+    # class="UG-PG" chunne par sirf college subjects dikhein (NIOS ke nahi).
+    try:
+        from category_models import Category, CategorySubject
+        noncat_ids = [c.id for c in db.query(Category).filter(
+            Category.internal_key != "nios").all()]
+        seen = set()
+        ug = []
+        if noncat_ids:
+            for cs in db.query(CategorySubject).filter(
+                    CategorySubject.category_id.in_(noncat_ids)).all():
+                nm = (cs.name or "").strip()
+                if nm and nm.lower() not in seen:
+                    seen.add(nm.lower())
+                    ug.append({"id": cs.id, "name": nm,
+                               "code": getattr(cs, "code", "") or "",
+                               "mode": "recorded"})
+        result["UG-PG"] = sorted(ug, key=lambda x: x["name"].lower())
+    except Exception:
+        result["UG-PG"] = result.get("UG-PG", [])
     return result
 
 
