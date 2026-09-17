@@ -14857,7 +14857,7 @@ async function _waSendLoginReminders(){
   var afterId=0, sent=0, failed=0, total=null, loops=0;
   try{
     while(loops<600){ loops++;
-      var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{all_pending:true,batch:batch,after_id:afterId,limit:50});
+      var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{all_pending:true,batch:batch,after_id:afterId,limit:30});
       sent+=(r.sent||0); failed+=(r.failed||0); if(total===null&&r.total!=null) total=r.total;
       if(out) out.innerHTML=_waProgHtml(sent+failed,total,sent,failed,'Sending');
       if(!r.has_more) break; afterId=r.last_id||afterId;
@@ -14884,9 +14884,9 @@ async function _waSendSelectedLogin(){
   if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
   var sent=0, failed=0, tot=ids.length;
   try{
-    for(var i=0;i<ids.length;i+=50){
-      var chunk=ids.slice(i,i+50);
-      var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{profile_ids:chunk,limit:50});
+    for(var i=0;i<ids.length;i+=30){
+      var chunk=ids.slice(i,i+30);
+      var r=await api('/api/admin/whatsapp/send-login-reminder','POST',{profile_ids:chunk,limit:30});
       sent+=(r.sent||0); failed+=(r.failed||0);
       if(out) out.innerHTML=_waProgHtml(sent+failed,tot,sent,failed,'Sending');
     }

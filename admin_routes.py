@@ -6307,20 +6307,48 @@ def whatsapp_send_login_reminder(payload: dict, db: Session = Depends(get_db), _
         if not ids:
             raise HTTPException(status_code=400, detail="No students selected")
         students = base.filter(_SP.id.in_(ids)).order_by(_SP.id).limit(limit).all()
-    sent, failed, last_id = 0, [], after_id
+    # Pehle sab zaroori fields nikaal lo (plain values) — threads me ORM/DB touch NAHI
+    # karenge (session thread-safe nahi hota). last_id order-wise students se.
+    last_id = after_id
+    jobs = []
     for sp in students:
         last_id = sp.id
-        name = sp.user.name if sp.user else "Student"
+        nm = sp.user.name if sp.user else "Student"
+        bt = sp.batch_name or ""
         try:
-            msg = W.build_message(name, sp.batch_name or "", sp.phone)
-            ok, detail = W.send(sp.phone, text=msg, name=name, batch=sp.batch_name or "")
+            msg = W.build_message(nm, bt, sp.phone)
+        except Exception:
+            msg = None
+        jobs.append({"id": sp.id, "name": nm, "phone": sp.phone, "batch": bt, "msg": msg})
+
+    # WhatsApp sends ko PARALLEL bhejo (network I/O) taaki 50 messages bhi gateway
+    # timeout se pehle nikal jaayein -> 502 khatam. DB write baad me main thread me.
+    def _one(j):
+        try:
+            if j["msg"] is None:
+                return (j["id"], False, "message build failed", j["name"], j["phone"])
+            ok, detail = W.send(j["phone"], text=j["msg"], name=j["name"], batch=j["batch"])
+            return (j["id"], bool(ok), str(detail), j["name"], j["phone"])
         except Exception as e:
-            ok, detail = False, str(e)
+            return (j["id"], False, str(e), j["name"], j["phone"])
+
+    results = []
+    if jobs:
+        from concurrent.futures import ThreadPoolExecutor
+        _workers = min(15, len(jobs))
+        with ThreadPoolExecutor(max_workers=_workers) as ex:
+            results = list(ex.map(_one, jobs))
+
+    sent, failed = 0, []
+    ok_ids = []
+    for (sid, ok, detail, nm, ph) in results:
         if ok:
-            sp.login_reminder_at = _dt.now()
-            sent += 1
+            ok_ids.append(sid); sent += 1
         else:
-            failed.append({"name": name, "phone": sp.phone, "error": str(detail)[:120]})
+            failed.append({"name": nm, "phone": ph, "error": str(detail)[:120]})
+    if ok_ids:
+        db.query(_SP).filter(_SP.id.in_(ok_ids)).update(
+            {_SP.login_reminder_at: _dt.now()}, synchronize_session=False)
     db.commit()
     return {"sent": sent, "failed": len(failed), "errors": failed[:25],
             "last_id": last_id, "has_more": len(students) == limit, "total": total,
