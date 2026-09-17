@@ -10116,12 +10116,12 @@ async function loadALive(){
 const _LU_ROLE_BADGE={teacher:['Teacher','#0d9488'],admin:['Admin','#b45309'],student:['Student','#4f46e5'],editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Prod. Manager','#0369a1']};
 function _luRow(u,tab){
   const _rb=_LU_ROLE_BADGE[u.role]||[(u.role||'User'),'#4f46e5'];
-  const badge=`<span class="lu-role" style="background:${_rb[1]}1a;color:${_rb[1]};font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;letter-spacing:.02em">${esc(_rb[0])}</span>`;
+  const badge=`<span class="lu-role" style="background:${_rb[1]}1a;color:${_rb[1]};font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;display:inline-block;flex:0 0 auto">${esc(_rb[0])}</span>`;
   let right='';
   if(tab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
   else if(tab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
   else right=`<div class="lu-right">${u.phone?`<a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone)}" onclick="event.stopPropagation()">${ic('bell')} Call</a>`:''}</div>`;
-  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name">${esc(u.name)} ${badge}</div><div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
+  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name"><span style="word-break:normal;overflow-wrap:break-word">${esc(u.name)}</span> ${badge}</div><div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
 }
 function _luSection(title,list,tab,emptyMsg){
   const rows=list.length?list.map(u=>_luRow(u,tab)).join(''):`<div class="ws-empty"><p>${emptyMsg}</p></div>`;
@@ -10144,7 +10144,18 @@ function _paintLive(d){
   const body=`<div class="ws-grid-3 lu3">${_luSection('Admins',admins,_luTab,em[0])}${_luSection('Teachers',teachers,_luTab,em[1])}${_luSection('Students',students,_luTab,em[2])}${_luSection('Production Team',production,_luTab,em[3])}</div>`;
   el.dataset.painted='1';
   _setLiveBadge(c.live||0);   // page and header badge always show the same count
-  el.innerHTML=`<style>#a-live-content .lu3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}</style><div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers, students and the production team shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 20s</span></div>${cards}${tabs}${body}`;
+  el.innerHTML=`<style>
+    #a-live-content .lu3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+    #a-live-content .lu-row{display:flex;align-items:center;gap:9px}
+    #a-live-content .lu-dot{flex:0 0 auto}
+    #a-live-content .lu-main{flex:1;min-width:0}
+    #a-live-content .lu-name{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-weight:700;word-break:normal;overflow-wrap:normal}
+    #a-live-content .lu-meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal}
+    #a-live-content .lu-role{white-space:nowrap !important;word-break:keep-all !important;flex:0 0 auto}
+    #a-live-content .lu-right{flex:0 0 auto;display:flex;align-items:center;gap:8px;white-space:nowrap}
+    #a-live-content .lu-page,#a-live-content .lu-dur,#a-live-content .lu-dim{white-space:nowrap}
+    @media(max-width:640px){#a-live-content .lu3{grid-template-columns:1fr}}
+  </style><div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers, students and the production team shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 20s</span></div>${cards}${tabs}${body}`;
 }
 
 async function openUserSessions(uid){
@@ -26297,12 +26308,46 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         });
         html+='</div>';
       }
-      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
+      body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-liveteam"></div><div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
       if(portal!=='production') _loadWork(portal);   // production dashboard pe "Needs Your Attention" nahi — sab sidebar sections me
-      if(portal==='production'){ try{ _loadQueues(); }catch(e){} }
+      if(portal==='production'){ try{ _loadPmLiveTeam(); }catch(e){} try{ _loadQueues(); }catch(e){} }
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
   }
 
+  // --- PM dashboard: production team live (like admin's Live Users) ---
+  function _loadPmLiveTeam(){
+    var box=document.getElementById('production-liveteam'); if(!box) return;
+    api(P.production.api+'/live-team').then(function(r){
+      var lc=(r&&r.counts)||{}; var lp=(r&&r.people)||[];
+      var role={editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Manager','#0369a1']};
+      function tile(lbl,n,col){ return '<div class="plt-tile"><div class="plt-n" style="color:'+col+'">'+(n||0)+'</div><div class="plt-l">'+lbl+'</div></div>'; }
+      var rows=lp.length?lp.map(function(p){ var rb=role[p.role]||['Team','#4f46e5']; var ini=(String(p.name||'?').trim().charAt(0)||'?').toUpperCase();
+        return '<div class="plt-row"><span class="plt-av" style="background:'+rb[1]+'">'+esc(ini)+'</span><div class="plt-who"><div class="plt-nm">'+esc(p.name||'')+' <span class="plt-badge" style="background:'+rb[1]+'1a;color:'+rb[1]+'">'+rb[0]+'</span></div><div class="plt-meta">'+esc(p.code||'')+'</div></div><div class="plt-r"><span class="plt-page">'+esc(p.page||'')+'</span><span class="plt-dur">'+(p.duration_min||0)+'m</span></div></div>';
+      }).join(''):'<div class="plt-empty">No production team online right now.</div>';
+      if(!document.getElementById('plt-css')){ var s=document.createElement('style'); s.id='plt-css'; s.textContent=[
+        '.plt-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin:6px 0 20px;box-shadow:0 2px 12px -8px rgba(0,0,0,.14)}',
+        '.plt-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}',
+        '.plt-title{font-weight:800;font-size:1rem;display:flex;align-items:center;gap:8px}',
+        '.plt-dot{width:9px;height:9px;border-radius:50%;background:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.18)}',
+        '.plt-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px;margin-bottom:12px}',
+        '.plt-tile{background:var(--bg,#fbf7ee);border:1px solid var(--border);border-radius:12px;padding:11px 12px;text-align:center}',
+        '.plt-n{font-size:1.4rem;font-weight:800;line-height:1}',
+        '.plt-l{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}',
+        '.plt-row{display:flex;align-items:center;gap:11px;padding:9px 2px;border-top:1px solid var(--border)}',
+        '.plt-av{width:34px;height:34px;flex:0 0 34px;border-radius:50%;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.86rem}',
+        '.plt-who{flex:1;min-width:0}',
+        '.plt-nm{font-weight:700;font-size:.9rem;display:flex;align-items:center;gap:7px;flex-wrap:wrap}',
+        '.plt-badge{font-size:.58rem;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}',
+        '.plt-meta{font-size:.72rem;color:var(--muted)}',
+        '.plt-r{flex:0 0 auto;text-align:right;white-space:nowrap}',
+        '.plt-page{font-size:.72rem;color:var(--muted);display:block}',
+        '.plt-dur{font-size:.78rem;font-weight:700;color:#2e9e6b}',
+        '.plt-empty{color:var(--muted);padding:16px 2px;text-align:center;font-size:.86rem}'
+      ].join(''); document.head.appendChild(s); }
+      box.innerHTML='<div class="plt-wrap"><div class="plt-head"><div class="plt-title"><span class="plt-dot"></span>Production Team Live ('+(lc.total||0)+')</div><span style="font-size:.72rem;color:var(--muted)">Auto-refreshes</span></div>'+
+        '<div class="plt-tiles">'+tile('Online',lc.total,'#2e9e6b')+tile('Editors',lc.editors,'#7c3aed')+tile('Graphics',lc.graphics,'#c2410c')+tile('YouTubers',lc.youtubers,'#be123c')+tile('Managers',lc.pms,'#0369a1')+'</div>'+rows+'</div>';
+    }).catch(function(){ if(box) box.innerHTML=''; });
+  }
   // --- dashboard "current work" cards with a primary action on the card ---
   function _workTitle(portal){ return portal==='production'?'Needs Your Attention':'Your Current Work'; }
   function _loadQueues(){
