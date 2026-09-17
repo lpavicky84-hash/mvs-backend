@@ -25249,6 +25249,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.gs-badge{font-size:.66rem;font-weight:800;padding:3px 8px;border-radius:999px;background:rgba(230,173,78,.16);color:#a9791f;white-space:nowrap}',
 '.gs-empty{padding:22px 14px;text-align:center;color:#9c8f6e;font-size:.84rem}',
 '.prod-burger{display:none}',
+'.pdash-greet{display:none}',              /* desktop default: header me greeting; body wala chhupa. Media query se PEHLE taaki mobile override chale */
 '@media(max-width:860px){',
 '  .prodside{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s}',
 '  .prodapp.side-open .prodside{transform:translateX(0)}',
@@ -25275,7 +25276,6 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .vv-tiles{grid-template-columns:1fr 1fr}',
 '  .p-toolbar{flex-wrap:wrap;gap:8px}',
 '}',
-'.pdash-greet{display:none}',              /* desktop: header me greeting hai, body wala chhupa */
 '@media(max-width:480px){',
 '  .prodhead{gap:7px;padding:11px 12px}',
 '  .ph-live b{font-size:.82rem}',
@@ -28545,19 +28545,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   function renderTeam(portal,body){
-    return Promise.all([
-      api(P[portal].api+'/team'),
-      api(P[portal].api+'/live-team').catch(function(){return {counts:{},people:[]};})
-    ]).then(function(res){
-      var r=res[0]||{}; var lt=res[1]||{}; var lc=lt.counts||{}; var lp=lt.people||[];
+    return api(P[portal].api+'/team').then(function(r){
+      r=r||{};
       if(_stale(portal,'team')) return;
-      var _lrole={editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Prod. Manager','#0369a1']};
-      function _lchip(lbl,n,col){ return '<div style="flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 15px"><div style="font-size:1.5rem;font-weight:800;line-height:1;color:'+col+'">'+(n||0)+'</div><div style="font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px">'+lbl+'</div></div>'; }
-      var liveRows=lp.length?lp.map(function(p){ var rb=_lrole[p.role]||['Team','#4f46e5']; return '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-top:1px solid var(--border)"><span style="width:8px;height:8px;border-radius:50%;background:#2e9e6b;flex:0 0 8px"></span><span style="flex:1;font-weight:700;font-size:.88rem">'+esc(p.name||'')+' <span style="font-size:.6rem;font-weight:800;padding:1px 8px;border-radius:999px;background:'+rb[1]+'1a;color:'+rb[1]+'">'+rb[0]+'</span></span><span style="font-size:.74rem;color:var(--muted)">'+esc(p.page||'')+' · '+(p.duration_min||0)+'m</span></div>'; }).join(''):'<div style="color:var(--muted);padding:14px 4px;font-size:.85rem">No production team online right now.</div>';
-      var liveStrip='<div style="margin-bottom:18px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div class="p-sec" style="margin:0">Team Live Now</div><span style="font-size:.72rem;color:var(--muted)">Auto-refreshes on focus</span></div>'+
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">'+_lchip('Online',lc.total,'#2e9e6b')+_lchip('Editors',lc.editors,'#7c3aed')+_lchip('Graphics',lc.graphics,'#c2410c')+_lchip('YouTubers',lc.youtubers,'#be123c')+_lchip('Managers',lc.pms,'#0369a1')+'</div>'+
-        '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px 14px 12px">'+liveRows+'</div></div>';
-      _renderTeamBody(portal,body,r,liveStrip);
+      // Live team view now lives only in the dedicated "Live Users" page (Live nav group).
+      _renderTeamBody(portal,body,r,'');
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load team. '+esc(e&&e.message||'')+'</div>'; });
   }
   function _renderTeamBody(portal,body,r,liveStrip){
