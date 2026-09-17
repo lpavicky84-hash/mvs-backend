@@ -55,6 +55,68 @@ def public_url(key):
     return "%s/%s" % (c["public_url"], str(key).lstrip("/"))
 
 
+def _extract_key(v):
+    """R2 object key from a stored value (R2 URL / bare key). None if it's NOT an R2
+    object (base64, Google-Drive link, unknown host) -> caller must not rewrite it."""
+    if not v:
+        return None
+    s = str(v).strip()
+    c = _cfg()
+    base = (c.get("public_url") or "")
+    if s.startswith("http"):
+        from urllib.parse import urlparse
+        p = urlparse(s)
+        host = (p.netloc or "").lower()
+        pub_host = (urlparse(base).netloc or "").lower() if base else ""
+        is_r2 = ("r2.dev" in host) or ("r2.cloudflarestorage.com" in host) or (pub_host and host == pub_host)
+        if not is_r2:
+            return None  # e.g. Google Drive / external link -> leave as-is
+        path = (p.path or "").lstrip("/")
+        bkt = str(c.get("bucket") or "")
+        if "cloudflarestorage.com" in host and bkt and path.startswith(bkt + "/"):
+            path = path[len(bkt) + 1:]
+        return path or None
+    # bare R2 key heuristic (NOT base64): short, clean path, with an extension
+    import re as _re
+    if len(s) < 400 and "/" in s and "." in s.rsplit("/", 1)[-1] \
+            and _re.match(r'^[A-Za-z0-9_\-]+(/[A-Za-z0-9_\-.]+)+$', s):
+        return s.lstrip("/")
+    return None
+
+
+def to_custom_domain(v):
+    """Kisi bhi R2 URL/key ko custom-domain (R2_PUBLIC_URL, e.g. mvsdatabase.com) par
+    rewrite karo. Non-R2 (Drive/base64) ko waisa hi chhodo -> kuch tootega nahi."""
+    base = (_cfg().get("public_url") or "").rstrip("/")
+    if not base or not v:
+        return v
+    key = _extract_key(v)
+    return "%s/%s" % (base, key) if key else v
+
+
+def serve_url(v):
+    """Custom-domain public URL for a stored value, or None if it's base64/unknown
+    (in that case the server must proxy the bytes). R2 objects -> CDN URL."""
+    base = (_cfg().get("public_url") or "").rstrip("/")
+    if not base:
+        return None
+    key = _extract_key(v)
+    return "%s/%s" % (base, key) if key else None
+
+
+def _direct_media_on():
+    """Opt-in: media ko server se proxy karne ke bajaye CDN (custom domain) par 302
+    redirect karo -> server load ~0, sab kuch mvsdatabase.com se. Default OFF (safe).
+    R2 bucket par GET ke liye CORS policy add karne ke baad hi ON karein."""
+    return (os.getenv("R2_DIRECT_MEDIA") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _redirect_to(url):
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=url, status_code=302,
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+
 def upload_bytes(key, data, content_type="application/octet-stream", cache_seconds=31536000):
     """Upload bytes -> return public URL. key e.g. 'photos/teacher/5.jpg'."""
     cli = _client()
@@ -100,8 +162,10 @@ def photo_response(value):
         raise HTTPException(status_code=404, detail="No photo")
     if isinstance(value, str) and value.startswith("http"):
         from fastapi.responses import RedirectResponse
+        # R2 URL ho to custom domain (mvsdatabase.com) par serve karo -> purane pub-*.r2.dev
+        # links bhi wahi domain se khulenge. Non-R2 (Drive) waisa hi.
         # browser 1 din cache kare — warna har render par 302 dobara hit hota tha (photo flood)
-        return RedirectResponse(url=value, status_code=302,
+        return RedirectResponse(url=to_custom_domain(value), status_code=302,
                                 headers={"Cache-Control": "public, max-age=86400"})
     import base64 as _b64
     from fastapi import Response
@@ -136,6 +200,11 @@ def file_response(value, media_type="application/octet-stream", filename=None, d
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
+    # Opt-in: R2 object ho to server se proxy na karo -> CDN (custom domain) par redirect.
+    if _direct_media_on():
+        _su = serve_url(value)
+        if _su:
+            return _redirect_to(_su)
     data = _resolve_bytes(value)
     if data is None:
         raise HTTPException(status_code=502, detail="File storage se retrieve nahi ho pa raha.")
@@ -264,6 +333,11 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
+    # Opt-in: R2 object ho to CDN (custom domain) par redirect -> server load ~0.
+    if _direct_media_on():
+        _su = serve_url(value)
+        if _su:
+            return _redirect_to(_su)
     data = _resolve_bytes(value)
     if data is None:
         raise HTTPException(status_code=502,
