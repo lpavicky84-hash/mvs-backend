@@ -593,11 +593,20 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         if not existing:
             g = GraphicsTask(task_id=t.id, graphics_id=t.graphics_id, status="new",
                              priority=(payload.get("priority") or "normal"),
-                             instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip(),
-                             reference_image=(payload.get("graphics_reference") or payload.get("reference_image") or "").strip())
-            # PM ne clipboard/upload se reference image(s) di ho to R2 pe upload karke store karo.
-            # Multiple references supported: graphics_reference_uploads = [base64, base64, ...]
+                             instructions=(payload.get("graphics_instructions") or payload.get("graphics_notes") or "").strip())
+            # Reference thumbnails: PM ki TYPED link(s) AUR clipboard/upload ki images -> DONO ko
+            # ek hi reference_images array me merge karo. Pehle uploads typed link ko overwrite kar
+            # deti thi -> graphics portal (jo reference_images padhta hai) ko link dikhta hi nahi tha.
             import json as _json
+            _ref_urls = []
+            # typed Drive/image link(s) — single field, but split on newline in case of multiple
+            _typed = (payload.get("graphics_reference") or payload.get("reference_image") or "").strip()
+            if _typed:
+                for _ln in _typed.replace(",", "\n").split("\n"):
+                    _ln = _ln.strip()
+                    if _ln and _ln not in _ref_urls:
+                        _ref_urls.append(_ln)
+            # pasted / uploaded reference images -> R2
             _refups = payload.get("graphics_reference_uploads")
             if not _refups:
                 _one = payload.get("graphics_reference_upload")
@@ -605,11 +614,14 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
             if _refups:
                 try:
                     _rurls = pc.save_images(db, t, list(_refups), "reference", None, me, return_urls=True) or []
-                    if _rurls:
-                        g.reference_image = _rurls[0]
-                        g.reference_images = _json.dumps(_rurls)
+                    for _u in _rurls:
+                        if _u and _u not in _ref_urls:
+                            _ref_urls.append(_u)
                 except Exception:
                     pass
+            if _ref_urls:
+                g.reference_image = _ref_urls[0]
+                g.reference_images = _json.dumps(_ref_urls[:8])
             gdl = (payload.get("graphics_deadline") or payload.get("deadline") or "").strip()
             if gdl:
                 try:
