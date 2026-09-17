@@ -468,9 +468,11 @@ function _swrBlocked(){
   return false;
 }
 // Track the last real user interaction (capture phase, once, app-wide).
+// scroll/touchmove/wheel bhi track karte hain -> mobile pe momentum-scroll ke beech
+// background re-render fire hokar page ko "atak"/freeze na kare (SWR tab tak defer karega).
 try{
-  ['pointerdown','keydown','input','change','paste','touchstart'].forEach(function(ev){
-    document.addEventListener(ev, function(){ window._lastUserAct=Date.now(); }, true);
+  ['pointerdown','keydown','input','change','paste','touchstart','touchmove','wheel','scroll'].forEach(function(ev){
+    document.addEventListener(ev, function(){ window._lastUserAct=Date.now(); }, {capture:true,passive:true});
   });
 }catch(e){}
 function _swrRerender(){
@@ -25349,9 +25351,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         if(it.p==='notifs') badge='<span class="ps-badge ps-notif-badge" data-notif-badge="1" style="display:none"></span>';
         return '<div class="ps-item" data-page="'+it.p+'" onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span style="flex:1">'+it.t+'</span>'+badge+'</div>';
       }).join('');
-      var op=(gi===0)?' open':'';
-      return '<div class="ps-group ps-gh'+op+'" onclick="prodNavGroup(this)">'+grp.g+'</div>'
-        +'<div class="ps-gitems'+op+'">'+items+'</div>';
+      // sabhi groups by default band -> user click karke sub-section khole (accordion)
+      return '<div class="ps-group ps-gh" onclick="prodNavGroup(this)">'+grp.g+'</div>'
+        +'<div class="ps-gitems">'+items+'</div>';
     }).join('');
     var logo=(typeof _mvsLogoImg==='function')?_mvsLogoImg(38):'';
     var html=''+
@@ -25573,17 +25575,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ _curLoader=function(){ try{ _refresh(portal); }catch(e){} }; }catch(e){}
     el.classList.remove('side-open');
     el.querySelectorAll('.ps-item').forEach(function(n){ n.classList.toggle('on', n.getAttribute('data-page')===page); });
-    // accordion: is page ka group khol do, baaki band
-    try{
-      var _ai=el.querySelector('.ps-item[data-page="'+page+'"]');
-      var _gi=_ai&&_ai.closest?_ai.closest('.ps-gitems'):null;
-      if(_gi && !_gi.classList.contains('open')){
-        var _as=_gi.parentNode;
-        _as.querySelectorAll('.ps-gh.open,.ps-gitems.open').forEach(function(x){ x.classList.remove('open'); });
-        _gi.classList.add('open');
-        var _gh=_gi.previousElementSibling; if(_gh) _gh.classList.add('open');
-      }
-    }catch(e){}
+    // NOTE: nav groups sirf header click (prodNavGroup) se khulte hain. Yaha auto-open
+    // nahi karte -> sidebar load pe fully collapsed rehta hai (user ki request).
     var body=document.getElementById(portal+'-body'); if(!body) return;
     body.innerHTML='<div class="p-load">Loading...</div>';
     try{ history.replaceState({mvs:1,app:portal+'-app',pg:page},'', '/'+portal); }catch(e){}
