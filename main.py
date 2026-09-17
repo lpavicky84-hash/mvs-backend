@@ -214,6 +214,8 @@ def ensure_columns():
         "ALTER TABLE users MODIFY COLUMN role ENUM('admin','teacher','student','production_manager','editor','youtuber','graphics') NOT NULL",
         # Widen the role column that stores the role name as text so 'production_manager' (18 chars) fits.
         "ALTER TABLE user_sessions MODIFY COLUMN role VARCHAR(30)",
+        # logout marker: closes a session so re-login starts a FRESH duration (no reuse of old started_at).
+        "ALTER TABLE user_sessions ADD COLUMN ended_at DATETIME NULL",
         # New VideoTask lifecycle / creator columns (new tables are auto-created by create_all).
         "ALTER TABLE video_tasks ADD COLUMN ref_code VARCHAR(30) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN creator_type VARCHAR(20) DEFAULT 'teacher'",

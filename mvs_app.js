@@ -839,7 +839,21 @@ function goLogin(portal){
   }
   _premiumLogin(portal);
 }
-function logout(){ try{ window._ttSelfPhoto=null; window._tphotoCache={}; window._selfPhotoCache={}; window._m75Resize=null; }catch(e){} goHome(); }
+function logout(){
+  // Backend ko batao ki session close ho gayi -> agli login pe live duration 0 se start ho
+  // (warna purana started_at reuse hota tha aur "88m" jaisa dikhta rehta tha). keepalive:true
+  // se request navigate/clear ke baad bhi complete ho jati hai.
+  try{
+    if(TOKEN){ fetch('/api/auth/logout',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN}}).catch(function(){}); }
+  }catch(e){}
+  // heartbeat + live poll timers band -> logout ke baad koi ping session dobara na khole
+  try{ if(window._hbTimer){ clearInterval(window._hbTimer); window._hbTimer=null; } }catch(e){}
+  try{ if(window._prodLiveInt){ clearInterval(window._prodLiveInt); window._prodLiveInt=null; } }catch(e){}
+  try{ if(window._prodBadgeInt){ clearInterval(window._prodBadgeInt); window._prodBadgeInt=null; } }catch(e){}
+  try{ if(window._pltInt){ clearInterval(window._pltInt); window._pltInt=null; } }catch(e){}
+  try{ window._ttSelfPhoto=null; window._tphotoCache={}; window._selfPhotoCache={}; window._m75Resize=null; }catch(e){}
+  goHome();
+}
 // ===== SESSION PERSIST — refresh karne par logout na ho, wahi page par wapas aao =====
 // v171: session ab PORTAL-WISE store hoti hai (mvs_sess_admin / _teacher / _student).
 // Isse ek hi browser me admin aur student dono alag-alag rah sakte hain, aur student

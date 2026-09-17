@@ -456,7 +456,8 @@ def presence_ping(payload: dict = None, request: Request = None,
     now = datetime.now()
     role = getattr(current_user.role, "value", str(current_user.role))
     s = db.query(UserSession).filter(
-        UserSession.user_id == current_user.id).order_by(UserSession.last_seen.desc()).first()
+        UserSession.user_id == current_user.id,
+        UserSession.ended_at == None).order_by(UserSession.last_seen.desc()).first()
     if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=SESSION_IDLE_MIN):
         s.last_seen = now
         if page:
@@ -474,4 +475,31 @@ def presence_ping(payload: dict = None, request: Request = None,
                 sp.session_start = now
             sp.last_seen = now
     db.commit()
+    return {"ok": True}
+
+
+@router.post("/logout")
+def presence_logout(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Close the user's open session(s) on logout so the NEXT login starts a fresh
+    live-duration from 0 (instead of reusing the old started_at) and they immediately
+    drop off the Live Users view."""
+    from models import UserSession
+    now = datetime.now()
+    try:
+        db.query(UserSession).filter(
+            UserSession.user_id == current_user.id,
+            UserSession.ended_at == None
+        ).update({UserSession.ended_at: now, UserSession.last_seen: now},
+                 synchronize_session=False)
+        role = getattr(current_user.role, "value", str(current_user.role))
+        if role == "student":
+            sp = db.query(StudentProfile).filter(StudentProfile.user_id == current_user.id).first()
+            if sp:
+                sp.last_seen = now
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
     return {"ok": True}

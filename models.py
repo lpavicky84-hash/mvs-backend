@@ -983,6 +983,7 @@ class UserSession(Base):
     last_seen    = Column(DateTime, default=func.now(), index=True)
     current_page = Column(String(40), nullable=True)  # which section they are on
     ip           = Column(String(45), nullable=True)
+    ended_at     = Column(DateTime, nullable=True, index=True)  # set on explicit logout -> session closed, no reuse, drops off live, fresh started_at next login
 
 
 class ActivityLog(Base):

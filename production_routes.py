@@ -1219,7 +1219,8 @@ def pm_live_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     for uid, last, page, started in db.query(
             UserSession.user_id, func.max(UserSession.last_seen),
             func.max(UserSession.current_page), func.max(UserSession.started_at)
-        ).filter(UserSession.last_seen >= cutoff).group_by(UserSession.user_id).all():
+        ).filter(UserSession.last_seen >= cutoff,
+                 UserSession.ended_at == None).group_by(UserSession.user_id).all():
         live_ids[uid] = (last, page, started)
     _roles = [UserRole.editor, UserRole.graphics, UserRole.youtuber, UserRole.production_manager]
     people = []

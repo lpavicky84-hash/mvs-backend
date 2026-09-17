@@ -220,7 +220,8 @@ def touch_session(db, user, page=None):
         now = datetime.now()
         role = getattr(getattr(user, "role", None), "value", str(getattr(user, "role", "")))
         pg = (str(page).strip()[:40] if page else None)
-        s = (db.query(UserSession).filter(UserSession.user_id == user.id)
+        s = (db.query(UserSession).filter(UserSession.user_id == user.id,
+                                          UserSession.ended_at == None)
              .order_by(UserSession.last_seen.desc()).first())
         if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=3):
             s.last_seen = now

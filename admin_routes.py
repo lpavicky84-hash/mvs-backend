@@ -5240,7 +5240,9 @@ def admin_live_users(full: int = 0, db: Session = Depends(get_db), _=Depends(get
     by_user = {uid: {"count": c, "last": last, "live": None} for uid, c, last in agg}
 
     # sirf RECENT (live) sessions ka detail (chhota set — poori table nahi)
-    for s in db.query(UserSession).filter(UserSession.last_seen >= cutoff).all():
+    # ended_at set => logout ho chuka, live me mat dikhao
+    for s in db.query(UserSession).filter(UserSession.last_seen >= cutoff,
+                                          UserSession.ended_at == None).all():
         d = by_user.get(s.user_id)
         if d and (d["live"] is None or (s.last_seen and s.last_seen > (d["live"].last_seen or cutoff))):
             d["live"] = s
