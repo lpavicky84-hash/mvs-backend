@@ -25243,17 +25243,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .prodhead{padding:16px}',
 '  .prodhead .ph-badge{display:none}',
 '  .prodhead .ph-date{display:none}',
-'  .prodhead .ph-hi{font-size:1.05rem;max-width:30vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-'  .ph-search input{width:150px;max-width:32vw}',
+'  .prodhead .ph-hi{font-size:1.02rem;max-width:44vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'  .ph-search input{width:150px;max-width:30vw}',
 '  .prod-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}',
 '  .prodapp.side-open .prod-scrim{display:block}',
+'  .pk-grid{grid-template-columns:1fr 1fr;gap:11px}',
+'  .pk-card{padding:14px 14px 13px}',
+'  .pk-val{font-size:1.5rem}',
+'  .vv-tiles{grid-template-columns:1fr 1fr}',
+'  .p-toolbar{flex-wrap:wrap;gap:8px}',
 '}',
 '@media(max-width:480px){',
-'  .ph-search input{width:120px}',
+'  .ph-search{flex:1;min-width:0}',
+'  .ph-search input{width:100%;max-width:none}',
+'  .prodhead{gap:8px}',
+'  .prodhead .ph-hi{max-width:38vw}',
 '  .aw-steps .s{font-size:.6rem}',
 '  .pd-head{padding:14px 16px 10px}',
 '  .pd-body{padding:16px}',
 '  .pd-foot{padding:10px 16px}',
+'  .p-modal{max-width:100% !important;border-radius:18px 18px 0 0}',
+'  .crp-grid{gap:10px}',
+'}',
+'@media(max-width:380px){',
+'  .pk-grid{grid-template-columns:1fr;gap:10px}',
+'  .pk-val{font-size:1.6rem}',
+'  .prodhead .ph-hi{max-width:34vw;font-size:.95rem}',
 '}',
 /* ===== Creator Performance — premium cards ===== */
 '.crp-grid{display:flex;flex-direction:column;gap:12px}',
@@ -25361,6 +25376,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     prodNav(portal,'dashboard');
     try{ prodLoadProfilePhoto(portal); }catch(e){}
     prodStartNotifPoll(portal);
+    // v-perf/live: production team ki online presence UserSession me record karo taaki
+    // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
+    // presence touch hoti thi -> kabhi live nahi dikhte the). Turant + har 40s (_hbTimer).
+    try{ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage='Dashboard'; api(window._hbUrl,'POST',{page:'Dashboard'}).catch(function(){}); }catch(e){}
     if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000); }
     return Promise.resolve();
   };
@@ -25522,7 +25541,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // --- nav dispatch ---
   window.prodNav=function(portal,page){
-    try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
+    try{ if(portal){ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage=(String(page||'dashboard').replace(/^[a-z]+:/,'').replace(/[_-]+/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();})); } }catch(e){}
     var el=document.getElementById(portal+'-app'); if(!el) return;
     (window._prodCurPage=window._prodCurPage||{})[portal]=page;
     // let the SWR background-refresh quietly re-render THIS portal's current page when
@@ -25945,7 +25964,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   try{ if(!window._hbTimer){ window._hbTimer=setInterval(function(){
     var url=window._hbUrl;
     if(!url && window._chatPingUrl){ url=window._chatPingUrl; if(url.indexOf('/teacher/')>=0) url='/api/teacher/heartbeat'; else url=url.replace(/\/tasks\/\d+\/chat-ping.*/,'/heartbeat'); window._hbUrl=url; }
-    if(url){ try{ api(url,'POST',{}).catch(function(){}); }catch(e){} }
+    if(url){ try{ api(url,'POST',{page:(window._hbPage||'')}).catch(function(){}); }catch(e){} }
   }, 40000); } }catch(e){}
   window.ytcSend=function(){
     var cfg=window._chatCfg; if(!cfg) return;
@@ -29460,7 +29479,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var teachers=aw.people?((aw.people.teachers)||[]):[];
       var teachOpts='<option value="">Auto from subject</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((p.teacher_id==t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
       var html=modeTabs+
-        '<div class="p-field"><label>Class</label><select class="p-select" id="pj-class" onchange="prodPjChange()"><option value="12"'+(cl==='12'?' selected':'')+'>Class 12</option><option value="10"'+(cl==='10'?' selected':'')+'>Class 10</option></select></div>'+
+        '<div class="p-field"><label>Class / Stream</label><select class="p-select" id="pj-class" onchange="prodPjChange()"><option value="12"'+(cl==='12'?' selected':'')+'>Class 12</option><option value="10"'+(cl==='10'?' selected':'')+'>Class 10</option><option value="UG-PG"'+(cl==='UG-PG'?' selected':'')+'>UG-PG (College)</option></select></div>'+
         '<div class="p-field"><label>Subject</label><select class="p-select" id="pj-subject" onchange="prodPjChange()">'+subOpts+'</select></div>'+
         '<div class="p-field"><label>Teacher</label><select class="p-select" id="pj-teacher" onchange="prodPjChange()">'+teachOpts+'</select></div>'+
         '<div class="p-field"><label>Project Title (optional)</label><input class="p-input" id="pj-title" placeholder="Auto: Project — Subject" value="'+esc(p.title||'')+'"></div>'+
@@ -29483,7 +29502,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _pjSave(){
     var p=window._aw.proj||{}; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
+    var _prevCls=p.class_level;
     if(g('pj-class')!==undefined)p.class_level=g('pj-class');
+    // UG-PG me NIOS syllabus nahi hota -> auto "type video names" mode (jaise hi UG-PG chuna jaaye)
+    if(p.class_level==='UG-PG' && _prevCls!=='UG-PG') p.connect=false;
     if(g('pj-subject')!==undefined)p.subject=g('pj-subject');
     if(g('pj-teacher')!==undefined)p.teacher_id=g('pj-teacher');
     if(g('pj-title')!==undefined)p.title=g('pj-title');
@@ -31012,23 +31034,58 @@ function _renderTeacherCats(){
       '.tca-cb.on{background:#b8941f;border-color:#b8941f}',
       '.tca-nm{font-weight:800}',
       '.tca-key{font-family:ui-monospace,monospace;font-size:.7rem;color:#8a7d5c}',
-      '.tca-subs{padding:4px 14px 12px 45px;display:flex;flex-wrap:wrap;gap:8px}',
+      '.tca-subs{padding:4px 14px 14px 45px}',
       '.tca-subs.dis{opacity:.4;pointer-events:none}',
-      '.tca-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;border:1px solid var(--border);cursor:pointer;font-size:.8rem;font-weight:600}',
-      '.tca-chip.on{background:rgba(184,148,31,.14);border-color:#b8941f;color:#8a6d12}',
-      'body.dark .tca-chip.on{color:#e6c15a}'
+      '.tca-dd{position:relative}',
+      '.tca-ddtrig{width:100%;text-align:left;border:1.5px solid var(--border);background:var(--card);border-radius:12px;padding:11px 14px;font-size:.86rem;cursor:pointer;display:flex;align-items:center;gap:10px;color:inherit}',
+      '.tca-ddtrig:hover{border-color:#c98a2e}',
+      '.tca-ddtrig.open{border-color:#b8941f;box-shadow:0 0 0 3px rgba(184,148,31,.12)}',
+      '.tca-ddsum{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.tca-ddcount{background:#b8941f;color:#fff;font-size:.66rem;font-weight:800;padding:2px 9px;border-radius:999px;flex:0 0 auto}',
+      '.tca-ddcaret{flex:0 0 auto;transition:transform .16s;color:var(--muted)}',
+      '.tca-ddtrig.open .tca-ddcaret{transform:rotate(180deg)}',
+      '.tca-ddpanel{margin-top:8px;border:1px solid var(--border);border-radius:12px;background:var(--card);overflow:hidden;box-shadow:0 8px 24px -10px rgba(0,0,0,.18)}',
+      '.tca-ddsearch{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid var(--border);padding:11px 14px;font-size:.86rem;background:transparent;color:inherit}',
+      '.tca-ddsearch:focus{outline:none}',
+      '.tca-ddbar{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)}',
+      '.tca-ddbarbtn{font-size:.72rem;font-weight:700;color:#8a6d12;background:rgba(184,148,31,.1);border:0;border-radius:8px;padding:5px 11px;cursor:pointer}',
+      '.tca-ddlist{max-height:230px;overflow-y:auto;padding:5px}',
+      '.tca-ddrow{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;cursor:pointer;font-size:.86rem}',
+      '.tca-ddrow:hover{background:rgba(184,148,31,.08)}',
+      '.tca-ddrow.on{background:rgba(184,148,31,.13)}',
+      '.tca-ddbox{width:19px;height:19px;border-radius:6px;border:2px solid #cbb98f;display:flex;align-items:center;justify-content:center;font-size:.72rem;color:#fff;flex:0 0 auto}',
+      '.tca-ddrow.on .tca-ddbox{background:#b8941f;border-color:#b8941f}',
+      '.tca-ddnm{flex:1}'
     ].join('');
     document.head.appendChild(s);
   }
+  window._tcaOpen=window._tcaOpen||{};
   var html=st.cats.map(function(c,ci){
-    var subs=(c.subjects||[]).map(function(su,si){
-      return '<span class="tca-chip'+(su.assigned?' on':'')+'" onclick="tcaToggleSub('+ci+','+si+')">'
-        +'<span style="font-weight:800">'+(su.assigned?'\u2713':'+')+'</span>'+esc(su.name)+(su.code?' <span class="tca-key">'+esc(su.code)+'</span>':'')+'</span>';
-    }).join('') || '<span style="color:#9c8f6e;font-size:.8rem">No subjects in this category yet — add them in Teacher Categories → Subjects.</span>';
+    var all=(c.subjects||[]); var selN=all.filter(function(s){return s.assigned;}).length;
+    var open=!!window._tcaOpen[ci];
+    var picker;
+    if(!all.length){
+      picker='<span style="color:#9c8f6e;font-size:.8rem">No subjects in this category yet — add them in Teacher Categories → Subjects.</span>';
+    }else{
+      var selNames=all.filter(function(s){return s.assigned;}).map(function(s){return s.name;});
+      var sumTxt=selN?esc(selNames.slice(0,3).join(', '))+(selN>3?(' +'+(selN-3)+' more'):''):'<span style="color:var(--muted)">Select subjects…</span>';
+      var rows=all.map(function(su,si){
+        return '<div class="tca-ddrow'+(su.assigned?' on':'')+'" data-nm="'+esc((su.name||'').toLowerCase())+'" onclick="event.stopPropagation();tcaToggleSub('+ci+','+si+')">'
+          +'<span class="tca-ddbox">'+(su.assigned?'✓':'')+'</span>'
+          +'<span class="tca-ddnm">'+esc(su.name)+'</span>'+(su.code?'<span class="tca-key">'+esc(su.code)+'</span>':'')+'</div>';
+      }).join('');
+      picker='<div class="tca-dd">'
+        +'<div class="tca-ddtrig'+(open?' open':'')+'" onclick="event.stopPropagation();tcaDrop('+ci+')"><span class="tca-ddsum">'+sumTxt+'</span>'+(selN?'<span class="tca-ddcount">'+selN+'</span>':'')+'<span class="tca-ddcaret">▾</span></div>'
+        +(open?('<div class="tca-ddpanel" onclick="event.stopPropagation()">'
+          +'<input class="tca-ddsearch" placeholder="Search subjects…" oninput="tcaSubFilter('+ci+',this.value)">'
+          +'<div class="tca-ddbar"><button class="tca-ddbarbtn" onclick="tcaSubAll('+ci+',1)">Select all</button><button class="tca-ddbarbtn" onclick="tcaSubAll('+ci+',0)">Clear</button></div>'
+          +'<div class="tca-ddlist" id="tca-ddlist-'+ci+'">'+rows+'</div></div>'):'')
+      +'</div>';
+    }
     return '<div class="tca-cat">'
-      +'<div class="tca-hd" onclick="tcaToggleCat('+ci+')"><span class="tca-cb'+(c.assigned?' on':'')+'">'+(c.assigned?'\u2713':'')+'</span>'
-        +'<div style="flex:1"><div class="tca-nm">'+esc(c.display_name)+'</div><div class="tca-key">'+esc(c.internal_key)+'</div></div></div>'
-      +'<div class="tca-subs'+(c.assigned?'':' dis')+'">'+subs+'</div>'
+      +'<div class="tca-hd" onclick="tcaToggleCat('+ci+')"><span class="tca-cb'+(c.assigned?' on':'')+'">'+(c.assigned?'✓':'')+'</span>'
+        +'<div style="flex:1"><div class="tca-nm">'+esc(c.display_name)+(c.assigned&&all.length?' <span style="font-size:.72rem;font-weight:600;color:#8a6d12">('+selN+'/'+all.length+' subjects)</span>':'')+'</div><div class="tca-key">'+esc(c.internal_key)+'</div></div></div>'
+      +'<div class="tca-subs'+(c.assigned?'':' dis')+'">'+picker+'</div>'
     +'</div>';
   }).join('') || '<div style="color:#9c8f6e;padding:12px">No active categories. Create one in Teacher Categories.</div>';
   document.getElementById('modal-body').innerHTML='<div style="font-size:.82rem;color:#8a7d5c;margin-bottom:10px">Tick the workspaces this teacher can access, then choose their subjects inside each. Renaming a category later never affects this.</div>'+html;
@@ -31042,8 +31099,28 @@ function tcaToggleCat(ci){
 }
 function tcaToggleSub(ci,si){
   var c=window._tcaState.cats[ci]; if(!c.assigned) return;
-  c.subjects[si].assigned=!c.subjects[si].assigned; _renderTeacherCats();
+  c.subjects[si].assigned=!c.subjects[si].assigned;
+  window._tcaOpen=window._tcaOpen||{}; window._tcaOpen[ci]=true;   // dropdown khula rehna chahiye
+  _renderTeacherCats();
 }
+window.tcaDrop=function(ci){
+  var c=window._tcaState&&window._tcaState.cats[ci]; if(!c||!c.assigned) return;
+  window._tcaOpen=window._tcaOpen||{}; window._tcaOpen[ci]=!window._tcaOpen[ci];
+  _renderTeacherCats();
+};
+window.tcaSubFilter=function(ci,q){
+  q=(q||'').trim().toLowerCase();
+  var box=document.getElementById('tca-ddlist-'+ci); if(!box) return;
+  box.querySelectorAll('.tca-ddrow').forEach(function(r){
+    var nm=r.getAttribute('data-nm')||''; r.style.display=(!q||nm.indexOf(q)>=0)?'':'none';
+  });
+};
+window.tcaSubAll=function(ci,on){
+  var c=window._tcaState&&window._tcaState.cats[ci]; if(!c||!c.assigned) return;
+  (c.subjects||[]).forEach(function(s){ s.assigned=!!on; });
+  window._tcaOpen=window._tcaOpen||{}; window._tcaOpen[ci]=true;
+  _renderTeacherCats();
+};
 async function tcaSave(){
   var st=window._tcaState; if(!st) return;
   var access=st.cats.filter(function(c){return c.assigned;}).map(function(c){

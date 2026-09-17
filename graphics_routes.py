@@ -262,7 +262,9 @@ def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphic
             "presence": _chat_other_presence(db, getattr(me, "id", None), tid, "internal")}
 
 @router.post("/heartbeat")
-def gfx_heartbeat(db: Session = Depends(get_db), me=Depends(get_graphics)):
+def gfx_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
+                  me=Depends(get_graphics)):
+    pc.touch_session(db, me, (payload or {}).get("page"))
     from video_tasks import _chat_touch_global
     _chat_touch_global(db, me)
     return {"ok": True}

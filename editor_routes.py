@@ -328,7 +328,9 @@ def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
             "presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, "editor")}
 
 @router.post("/heartbeat")
-def editor_heartbeat(db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
+                     me=Depends(get_editor)):
+    pc.touch_session(db, me, (payload or {}).get("page"))
     import video_tasks as _VT
     _VT._chat_touch_global(db, me)
     return {"ok": True}

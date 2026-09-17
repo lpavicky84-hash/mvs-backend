@@ -290,7 +290,9 @@ def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db)
             "presence": _chat_other_presence(db, getattr(me, "id", None), tid, _aud)}
 
 @router.post("/heartbeat")
-def pm_heartbeat(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+def pm_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
+                 me=Depends(get_pm_or_admin)):
+    pc.touch_session(db, me, (payload or {}).get("page"))
     from video_tasks import _chat_touch_global
     _chat_touch_global(db, me)
     return {"ok": True}
@@ -2753,11 +2755,38 @@ except Exception:   # pragma: no cover
 
 @router.get("/subjects")
 def prod_subjects(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
-    from models import AvailableSubject
-    out = {"10": [], "12": []}
+    from models import AvailableSubject, TeacherProfile
+    out = {"10": [], "12": [], "UG-PG": []}
+    _catalog = set()   # NIOS 10/12 subject names (lowercased) — sab yahan aate hain
     for s in db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all():
-        out.get(s.class_level, out.setdefault(s.class_level, [])).append(
+        out.setdefault(s.class_level, []).append(
             {"id": s.id, "name": s.name, "code": s.code, "mode": (s.mode or "live")})
+        _catalog.add((s.name or "").strip().lower())
+    # UG-PG (college) subjects: teachers ke subjects jo NIOS 10/12 catalog me nahi hain
+    # (DU-SOL / UG-PG papers). subject_classes me class == "UG-PG" ho to seedhe, warna
+    # flat subjects me se non-catalog naam. Duplicate hata ke naam-wise sorted.
+    _seen = set()
+    _ug = []
+    try:
+        for tp in db.query(TeacherProfile).all():
+            for sc in (tp.subject_classes or []):
+                try:
+                    _nm = (sc.get("subject") or "").strip()
+                    _cl = str(sc.get("class") or "").strip()
+                except Exception:
+                    _nm, _cl = "", ""
+                if _nm and (_cl.upper().replace(" ", "") in ("UG-PG", "UGPG", "UG", "PG") or
+                            _nm.lower() not in _catalog):
+                    _k = _nm.lower()
+                    if _k not in _seen and _k not in _catalog:
+                        _seen.add(_k); _ug.append(_nm)
+            for _nm in (tp.subjects or []):
+                _nm = (_nm or "").strip()
+                if _nm and _nm.lower() not in _catalog and _nm.lower() not in _seen:
+                    _seen.add(_nm.lower()); _ug.append(_nm)
+    except Exception:
+        pass
+    out["UG-PG"] = [{"id": 0, "name": n, "code": "", "mode": "recorded"} for n in sorted(_ug)]
     return out
 
 

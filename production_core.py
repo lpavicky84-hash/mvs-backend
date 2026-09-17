@@ -209,6 +209,34 @@ def set_state(db, t, new_state, actor=None, event=None, meta=None, force=False):
     return True
 
 
+# ---------------------------------------------------------------- presence
+def touch_session(db, user, page=None):
+    """Record/refresh a UserSession for ANY logged-in user (production team included).
+    Production portals ping their own /heartbeat which earlier only touched chat presence —
+    so editors/graphics/PMs/YouTubers never showed up in Live Users. This makes them appear
+    exactly like students/teachers/admins (same 3-min idle -> new session logic)."""
+    try:
+        from models import UserSession
+        now = datetime.now()
+        role = getattr(getattr(user, "role", None), "value", str(getattr(user, "role", "")))
+        pg = (str(page).strip()[:40] if page else None)
+        s = (db.query(UserSession).filter(UserSession.user_id == user.id)
+             .order_by(UserSession.last_seen.desc()).first())
+        if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=3):
+            s.last_seen = now
+            if pg:
+                s.current_page = pg
+        else:
+            db.add(UserSession(user_id=user.id, role=role, started_at=now,
+                               last_seen=now, current_page=pg))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------- notifications
 def notify(db, user_id, title, message, ntype="production", link=None):
     if not user_id:
