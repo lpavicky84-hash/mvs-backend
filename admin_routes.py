@@ -790,7 +790,7 @@ def review_reschedule(
         students = [sp for sp in all_students if sp.subjects and class_entry.subject in sp.subjects]
         for sp in students:
             if sp.user:
-                notify(db, sp.user.id,
+                notify(db, sp.user_id,
                        f"📅 Class Rescheduled — {class_entry.subject}",
                        f"{teacher_user.name if teacher_user else 'Teacher'} ki {class_entry.subject} class {rs.original_date} se {rs.new_date}, {rs.new_time} pe ho gayi.",
                        "class_rescheduled")
@@ -2826,7 +2826,7 @@ async def admin_upload_material(
         label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(material_type.strip(), (category.strip() or "Material"))
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and subject.strip() in sp.subjects and sp.user:
-                n = Notification(user_id=sp.user.id, title=f"📚 New {label}: {subject.strip()}",
+                n = Notification(user_id=sp.user_id, title=f"📚 New {label}: {subject.strip()}",
                                  message=f"Admin uploaded {label} for {subject.strip()}.", notif_type="new_material")
                 db.add(n)
         db.commit()
@@ -2913,13 +2913,13 @@ def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin))
             msg = f"Aapki {e.subject} extra class ({e.entry_date}) approve ho gayi."
             if shifted:
                 msg += f" {shifted} later classes were shifted automatically."
-            db.add(Notification(user_id=tp.user.id, title="Extra Class Approved",
+            db.add(Notification(user_id=tp.user_id, title="Extra Class Approved",
                                 message=msg, notif_type="class_approved"))
     # notify students of that subject
     _nk = (_SR.canon_norm(e.subject) if _SR else e.subject)
     for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
         if sp.subjects and _nk in {(_SR.canon_norm(x) if _SR else x) for x in sp.subjects} and sp.user:
-            db.add(Notification(user_id=sp.user.id, title=f"New Class: {e.subject}",
+            db.add(Notification(user_id=sp.user_id, title=f"New Class: {e.subject}",
                                 message=f"An extra class was added for {e.subject} ({e.entry_date} {e.time_text or ''}). See the time table.",
                                 notif_type="new_class"))
     db.commit()
@@ -2937,7 +2937,7 @@ def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     if tid:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
         if tp and tp.user:
-            db.add(Notification(user_id=tp.user.id, title="Extra Class Rejected",
+            db.add(Notification(user_id=tp.user_id, title="Extra Class Rejected",
                                 message=f"Your {subj} extra class request was rejected.", notif_type="class_rejected"))
     db.commit()
     return {"message": "Rejected"}
@@ -3876,11 +3876,16 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
     # user_id (MVSS...) ek hi query me — warna har student par alag query (N+1) chalti thi (slow + RAM)
     from models import User as _User
     _uid_map = {}
+    _name_map = {}
     try:
-        for _pid, _ucode in db.query(StudentProfile.id, _User.user_id).join(_User, StudentProfile.user_id == _User.id):
+        # user_id code AUR name dono ek hi query me -> `sp.user.name` wali N+1 (har student par
+        # alag User load) khatam. 3000+ students par yahi Students page ko slow kar rahi thi.
+        for _pid, _ucode, _uname in db.query(StudentProfile.id, _User.user_id, _User.name).join(_User, StudentProfile.user_id == _User.id):
             _uid_map[_pid] = _ucode
+            _name_map[_pid] = _uname or ""
     except Exception:
         _uid_map = {}
+        _name_map = {}
     # onboarding flags alag table se (raw SQL, bulk)
     _flag_map = {}
     try:
@@ -3896,7 +3901,7 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
     want_med = (medium or "").strip().lower()
     out = []
     for sp in rows:
-        nm = sp.user.name if sp.user else ""
+        nm = _name_map.get(sp.id, "")
         if ql and ql not in nm.lower() and ql not in (sp.phone or ""):
             continue
         ssubs = sp.subjects or []
@@ -4755,7 +4760,7 @@ def notify_single_teacher(tid: int, payload: dict, db: Session = Depends(get_db)
     message = (payload.get("message") or "").strip()
     if not title or not message:
         raise HTTPException(status_code=400, detail="Title and message are required")
-    notify(db, tp.user.id, "📢 " + title, message, "admin_message")
+    notify(db, tp.user_id, "📢 " + title, message, "admin_message")
     db.commit()
     return {"message": f"Notification sent to {tp.user.name}"}
 
@@ -4941,11 +4946,11 @@ def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
         d.resolved_at = datetime.now()
     sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
     if sp and sp.user:
-        notify(db, sp.user.id, "🏛️ MVS Foundation Replied to Your Doubt",
+        notify(db, sp.user_id, "🏛️ MVS Foundation Replied to Your Doubt",
                f"Your {d.subject or ''} doubt got an official response: {body[:120]}", "doubt_resolved")
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
     if tp and tp.user:
-        notify(db, tp.user.id, "🏛️ Admin Replied on a Doubt",
+        notify(db, tp.user_id, "🏛️ Admin Replied on a Doubt",
                f"MVS Foundation posted an official reply on the {d.subject or ''} doubt by "
                f"{sp.user.name if sp and sp.user else 'a student'}.", "doubt")
     db.commit()
@@ -5128,7 +5133,7 @@ async def admin_upload_questionbank(
     try:
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.user:
-                db.add(Notification(user_id=sp.user.id,
+                db.add(Notification(user_id=sp.user_id,
                     title=f"📘 New {category.strip() or 'Question Bank'} ({medium.strip()})",
                     message=f"{title.strip()} is now available in the Question Bank.",
                     notif_type="questionbank"))
@@ -5282,6 +5287,10 @@ def admin_live_users(full: int = 0, db: Session = Depends(get_db), _=Depends(get
     counts = {"live": len(live), "students_live": sum(1 for x in live if x["role"] == "student"),
               "teachers_live": sum(1 for x in live if x["role"] == "teacher"),
               "admins_live": sum(1 for x in live if x["role"] == "admin"),
+              "editors_live": sum(1 for x in live if x["role"] == "editor"),
+              "graphics_live": sum(1 for x in live if x["role"] == "graphics"),
+              "youtubers_live": sum(1 for x in live if x["role"] == "youtuber"),
+              "pms_live": sum(1 for x in live if x["role"] == "production_manager"),
               "never": n_never, "offline": n_offline}
     if full:
         offline.sort(key=lambda x: x["last_seen_min"])
@@ -5414,7 +5423,7 @@ def admin_warn_teacher(teacher_id: int, db: Session = Depends(get_db), _=Depends
            "This affects MVS Foundation's reputation and makes the children anxious. "
            "It will also reflect in your monthly report.\n\n"
            "Please start your classes on time.")
-    db.add(Notification(user_id=tp.user.id, title="\u26a0\ufe0f Class Punctuality Reminder",
+    db.add(Notification(user_id=tp.user_id, title="\u26a0\ufe0f Class Punctuality Reminder",
                         message=msg, notif_type="warning"))
     db.commit()
     return {"message": "Reminder sent to %s" % tp.user.name}
@@ -6169,7 +6178,7 @@ def admin_student_request_review(rid: int, payload: dict = Body(...), db: Sessio
             msg = "Your %s-change request has been approved. %s." % (rec.get("type", ""), applied or "Done")
         else:
             msg = "Your %s-change request was reviewed but not approved. Contact the admin if needed." % rec.get("type", "")
-        db.add(Notification(user_id=sp.user.id,
+        db.add(Notification(user_id=sp.user_id,
                             title=("\u2705 Request approved" if action == "approve" else "Request reviewed"),
                             message=msg, notif_type="student_request"))
         db.commit()

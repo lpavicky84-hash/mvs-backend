@@ -1194,6 +1194,38 @@ def pm_team_users_reset(uid: int, db: Session = Depends(get_db), me=Depends(get_
     return _ar.reset_production_password(uid=uid, payload=None, db=db, _=None)
 
 
+@router.get("/live-team")
+def pm_live_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Who on the production team is online right now — editors, graphics, YouTubers and PMs.
+    Light: only recent sessions + the matching users (no full-table scan)."""
+    from models import UserSession, User, UserRole
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=3)
+    live_ids = {}
+    for uid, last, page, started in db.query(
+            UserSession.user_id, func.max(UserSession.last_seen),
+            func.max(UserSession.current_page), func.max(UserSession.started_at)
+        ).filter(UserSession.last_seen >= cutoff).group_by(UserSession.user_id).all():
+        live_ids[uid] = (last, page, started)
+    _roles = [UserRole.editor, UserRole.graphics, UserRole.youtuber, UserRole.production_manager]
+    people = []
+    if live_ids:
+        for u in db.query(User).filter(User.id.in_(list(live_ids.keys())),
+                                       User.role.in_(_roles)).all():
+            last, page, started = live_ids.get(u.id, (None, None, None))
+            role = getattr(u.role, "value", str(u.role))
+            people.append({"user_id": u.id, "name": u.name or "", "code": u.user_id or "",
+                           "role": role, "page": page or "—",
+                           "duration_min": max(0, int((now - (started or last or now)).total_seconds() // 60))})
+    people.sort(key=lambda x: -x["duration_min"])
+    counts = {"editors": sum(1 for p in people if p["role"] == "editor"),
+              "graphics": sum(1 for p in people if p["role"] == "graphics"),
+              "youtubers": sum(1 for p in people if p["role"] == "youtuber"),
+              "pms": sum(1 for p in people if p["role"] == "production_manager"),
+              "total": len(people)}
+    return {"people": people, "counts": counts}
+
+
 @router.get("/team")
 def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     now = datetime.utcnow()

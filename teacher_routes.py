@@ -462,7 +462,7 @@ def upload_dpp(req: DPPCreate, db: Session = Depends(get_db), current_user=Depen
         from models import StudentProfile
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and (dpp.subject or "").strip() in sp.subjects and sp.user:
-                notify(db, sp.user.id,
+                notify(db, sp.user_id,
                        f"📝 New DPP: {(dpp.subject or '').strip()}",
                        f"{current_user.name} ne {(dpp.subject or '').strip()} ({dpp.reference or 'General'}) ka naya DPP diya hai. DPP section mein dekho!",
                        "new_dpp")
@@ -490,7 +490,7 @@ def create_test(req: TestCreate, db: Session = Depends(get_db), current_user=Dep
         when = f"{test.test_date} {test.test_time or ''}".strip()
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and (test.subject or "").strip() in sp.subjects and sp.user:
-                notify(db, sp.user.id,
+                notify(db, sp.user_id,
                        f"🧪 New Test Scheduled: {(test.subject or '').strip()}",
                        f"{current_user.name} ne {(test.subject or '').strip()} ka test schedule kiya hai — {when}. Tests section mein dekho!",
                        "test_reminder")
@@ -1607,7 +1607,7 @@ async def upload_material(
         _nk = _subj_norm(subject.strip())
         for sp in sps:
             if sp.subjects and _nk in {_subj_norm(x) for x in sp.subjects} and sp.user:
-                notify(db, sp.user.id, f"📚 New {label}: {subject.strip()}",
+                notify(db, sp.user_id, f"📚 New {label}: {subject.strip()}",
                        f"{current_user.name} ne {subject.strip()} ({chapter.strip() or 'General'}) ke liye {label} upload ki hai. Materials section mein dekho!",
                        "new_material")
         db.commit()
@@ -2662,7 +2662,7 @@ def set_marks(sid: int, payload: dict, db: Session = Depends(get_db), current_us
     if m.student_id:
         sp = db.query(StudentProfile).filter(StudentProfile.id == m.student_id).first()
         if sp and sp.user:
-            db.add(Notification(user_id=sp.user.id, title="DPP Checked!",
+            db.add(Notification(user_id=sp.user_id, title="DPP Checked!",
                                 message=f"{current_user.name} checked your {m.subject} DPP. Marks: {m.marks}",
                                 notif_type="marks"))
     db.commit()
@@ -2985,7 +2985,7 @@ def _maybe_warn_late(db, tp, entry):
         title = "\u26a0\ufe0f Class Punctuality Reminder"
         # only remind once a month
         seen = db.query(Notification).filter(
-            Notification.user_id == tp.user.id, Notification.title == title,
+            Notification.user_id == tp.user_id, Notification.title == title,
             Notification.created_at >= datetime(today.year, today.month, 1)).first()
         if seen:
             return
@@ -2993,7 +2993,7 @@ def _maybe_warn_late(db, tp, entry):
                "This affects MVS Foundation's reputation and makes the children anxious. "
                "It will also reflect in your monthly report.\n\n"
                "Please start your classes on time." % late)
-        notify(db, tp.user.id, title, msg, "warning")
+        notify(db, tp.user_id, title, msg, "warning")
         db.commit()
     except Exception:
         db.rollback()
@@ -3016,7 +3016,7 @@ def _notify_class_done(subject, chapter, part, teacher_name, dpp_given):
                    if dpp_given else "")))
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if subject in (sp.subjects or []) and sp.user:
-                notify(db, sp.user.id, "\U0001F4DA %s class complete" % subject, msg, "class")
+                notify(db, sp.user_id, "\U0001F4DA %s class complete" % subject, msg, "class")
         db.commit()
     except Exception:
         db.rollback()
@@ -3453,7 +3453,7 @@ def _notify_new_content(db, batch_id, subject, teacher_name, kind):
             sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
         for sp in sps:
             if sp.user and sp.subjects and nk in {_subj_norm(x) for x in sp.subjects}:
-                notify(db, sp.user.id, title, body, ntype)
+                notify(db, sp.user_id, title, body, ntype)
         db.commit()
     except Exception:
         db.rollback()
@@ -4571,7 +4571,7 @@ def _notify_lecture_students(subject, title, teacher_name):
         studs = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
         for sp in studs:
             if subject in (sp.subjects or []) and sp.user:
-                notify(db, sp.user.id, "\U0001F4DA New Lecture: %s" % subject,
+                notify(db, sp.user_id, "\U0001F4DA New Lecture: %s" % subject,
                        "%s ne '%s' ka lecture report daala hai. Mark it done to verify." % (teacher_name, title),
                        "lecture")
         db.commit()
@@ -5215,7 +5215,7 @@ def _notify_class_moved(db, tp, moved, headline, note):
             parts.append(f"+{len(rows) - 6} more")
         msg = (note + " " if note else "") + "; ".join(parts) + ". Check your time table."
         for sp in _students_of_subject(db, subj):
-            db.add(Notification(user_id=sp.user.id, title=f"{headline}{subj}",
+            db.add(Notification(user_id=sp.user_id, title=f"{headline}{subj}",
                                 message=msg, notif_type="class_rescheduled",
                                 image_url=img))
 

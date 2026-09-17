@@ -998,7 +998,7 @@ async def ask_doubt(
                   audio_b64=audio_b64)
     db.add(doubt)
     if tp and tp.user:
-        notify(db, tp.user.id, f"New Doubt — {current_user.name}",
+        notify(db, tp.user_id, f"New Doubt — {current_user.name}",
                f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt")
     else:
         # Is subject ka koi teacher assign nahi — doubt kisi ke paas nahi jaayega.
@@ -1127,7 +1127,7 @@ def student_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
     elif d.teacher_id:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
         if tp and tp.user:
-            notify(db, tp.user.id, "💬 Student Follow-up on Doubt",
+            notify(db, tp.user_id, "💬 Student Follow-up on Doubt",
                    f"{current_user.name} added a follow-up on their {d.subject or ''} doubt: {body[:120]}", "doubt")
     db.commit()
     return {"message": "Reply added"}
@@ -1881,7 +1881,7 @@ def _notify_submission(teacher_id, subject, title, student_name):
     try:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
         if tp and tp.user:
-            notify(db, tp.user.id, "📥 Submission: %s" % subject,
+            notify(db, tp.user_id, "📥 Submission: %s" % subject,
                    "%s submitted an answer for %s." % (student_name, title), "submission")
             db.commit()
     except Exception:
@@ -3398,7 +3398,7 @@ def student_dpp_raise_doubt(pack_id: int, data: dict = Body(...), db: Session = 
                   attach_name=("question.%s" % ("jpg" if mime == "image/jpeg" else "png")) if qimg else None)
     db.add(doubt)
     if tp and tp.user:
-        notify(db, tp.user.id, "DPP Doubt — %s" % current_user.name,
+        notify(db, tp.user_id, "DPP Doubt — %s" % current_user.name,
                "%s | Q%d | %s" % (pk.title, qno, (note or qtext)[:100]), "new_doubt")
     db.commit()
     db.refresh(doubt)

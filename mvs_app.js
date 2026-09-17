@@ -10113,8 +10113,10 @@ async function loadALive(){
   try{ const d=await api('/api/admin/live-users'); window._lastLive=d; _paintLive(d); }
   catch(e){ el.innerHTML=errHtml(e); }
 }
+const _LU_ROLE_BADGE={teacher:['Teacher','#0d9488'],admin:['Admin','#b45309'],student:['Student','#4f46e5'],editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Prod. Manager','#0369a1']};
 function _luRow(u,tab){
-  const badge=u.role==='teacher'?'<span class="lu-role t">Teacher</span>':(u.role==='admin'?'<span class="lu-role a">Admin</span>':'<span class="lu-role s">Student</span>');
+  const _rb=_LU_ROLE_BADGE[u.role]||[(u.role||'User'),'#4f46e5'];
+  const badge=`<span class="lu-role" style="background:${_rb[1]}1a;color:${_rb[1]};font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;letter-spacing:.02em">${esc(_rb[0])}</span>`;
   let right='';
   if(tab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
   else if(tab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
@@ -10132,15 +10134,17 @@ function _paintLive(d){
   const students=list.filter(u=>u.role==='student');
   const teachers=list.filter(u=>u.role==='teacher');
   const admins=list.filter(u=>u.role==='admin');
-  const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Admins Live',c.admins_live||0,'shield','amber')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
+  const production=list.filter(u=>['editor','graphics','youtuber','production_manager'].includes(u.role));
+  const prodLive=(c.editors_live||0)+(c.graphics_live||0)+(c.youtubers_live||0)+(c.pms_live||0);
+  const cards=`<div class="stats-grid">${statCard('Online Now',c.live||0,'user','green')}${statCard('Students Live',c.students_live||0,'users','indigo')}${statCard('Teachers Live',c.teachers_live||0,'user','teal')}${statCard('Admins Live',c.admins_live||0,'shield','amber')}${statCard('Production Live',prodLive,'play','teal')}${statCard('Never Logged In',c.never||0,'shield','amber',"luTab('never')")}</div>`;
   const tabs=`<div class="tt-tabs"><button class="tt-tab ${_luTab==='live'?'active':''}" onclick="luTab('live')">Online (${c.live||0})</button><button class="tt-tab ${_luTab==='offline'?'active':''}" onclick="luTab('offline')">Recent (${c.offline||0})</button><button class="tt-tab ${_luTab==='never'?'active':''}" onclick="luTab('never')">Never Logged In (${c.never||0})</button></div>`;
-  const em={live:['No admins online right now.','No teachers online right now.','No students online right now.'],
-            offline:['No recent admin sessions.','No recent teacher sessions.','No recent student sessions.'],
-            never:['\u2705 All admins have logged in.','\u2705 All teachers have logged in.','\u2705 All students have logged in.']}[_luTab];
-  const body=`<div class="ws-grid-3 lu3">${_luSection('Admins',admins,_luTab,em[0])}${_luSection('Teachers',teachers,_luTab,em[1])}${_luSection('Students',students,_luTab,em[2])}</div>`;
+  const em={live:['No admins online right now.','No teachers online right now.','No students online right now.','No production team online right now.'],
+            offline:['No recent admin sessions.','No recent teacher sessions.','No recent student sessions.','No recent production sessions.'],
+            never:['\u2705 All admins have logged in.','\u2705 All teachers have logged in.','\u2705 All students have logged in.','\u2705 All production team have logged in.']}[_luTab];
+  const body=`<div class="ws-grid-3 lu3">${_luSection('Admins',admins,_luTab,em[0])}${_luSection('Teachers',teachers,_luTab,em[1])}${_luSection('Students',students,_luTab,em[2])}${_luSection('Production Team',production,_luTab,em[3])}</div>`;
   el.dataset.painted='1';
   _setLiveBadge(c.live||0);   // page and header badge always show the same count
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers and students shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 20s</span></div>${cards}${tabs}${body}`;
+  el.innerHTML=`<style>#a-live-content .lu3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}</style><div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers, students and the production team shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 20s</span></div>${cards}${tabs}${body}`;
 }
 
 async function openUserSessions(uid){
@@ -28441,8 +28445,23 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
 
   function renderTeam(portal,body){
-    return api(P[portal].api+'/team').then(function(r){
+    return Promise.all([
+      api(P[portal].api+'/team'),
+      api(P[portal].api+'/live-team').catch(function(){return {counts:{},people:[]};})
+    ]).then(function(res){
+      var r=res[0]||{}; var lt=res[1]||{}; var lc=lt.counts||{}; var lp=lt.people||[];
       if(_stale(portal,'team')) return;
+      var _lrole={editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Prod. Manager','#0369a1']};
+      function _lchip(lbl,n,col){ return '<div style="flex:1;min-width:110px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 15px"><div style="font-size:1.5rem;font-weight:800;line-height:1;color:'+col+'">'+(n||0)+'</div><div style="font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:4px">'+lbl+'</div></div>'; }
+      var liveRows=lp.length?lp.map(function(p){ var rb=_lrole[p.role]||['Team','#4f46e5']; return '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-top:1px solid var(--border)"><span style="width:8px;height:8px;border-radius:50%;background:#2e9e6b;flex:0 0 8px"></span><span style="flex:1;font-weight:700;font-size:.88rem">'+esc(p.name||'')+' <span style="font-size:.6rem;font-weight:800;padding:1px 8px;border-radius:999px;background:'+rb[1]+'1a;color:'+rb[1]+'">'+rb[0]+'</span></span><span style="font-size:.74rem;color:var(--muted)">'+esc(p.page||'')+' · '+(p.duration_min||0)+'m</span></div>'; }).join(''):'<div style="color:var(--muted);padding:14px 4px;font-size:.85rem">No production team online right now.</div>';
+      var liveStrip='<div style="margin-bottom:18px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div class="p-sec" style="margin:0">Team Live Now</div><span style="font-size:.72rem;color:var(--muted)">Auto-refreshes on focus</span></div>'+
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">'+_lchip('Online',lc.total,'#2e9e6b')+_lchip('Editors',lc.editors,'#7c3aed')+_lchip('Graphics',lc.graphics,'#c2410c')+_lchip('YouTubers',lc.youtubers,'#be123c')+_lchip('Managers',lc.pms,'#0369a1')+'</div>'+
+        '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px 14px 12px">'+liveRows+'</div></div>';
+      _renderTeamBody(portal,body,r,liveStrip);
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load team. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  function _renderTeamBody(portal,body,r,liveStrip){
+    {
       function block(title,arr,fields,kind){
         if(!arr||!arr.length) return '<div class="p-sec">'+title+'</div><div class="p-empty" style="padding:20px">None yet.</div>';
         return '<div class="p-sec">'+title+'</div>'+arr.map(function(m){
@@ -28453,11 +28472,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<span class="pt-stage" '+(over?'style="background:rgba(209,68,58,.14);color:#d1443a"':'')+'>'+load+'</span></div>';
         }).join('');
       }
-      var html=block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Overdue','overdue']],'editor');
+      var html=(liveStrip||'')+block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Overdue','overdue']],'editor');
       html+=block('Graphics',r.graphics,[['Active','active'],['Completed','completed']],'graphics');
       html+=block('YouTubers',r.youtubers,[['Pending','pending'],['In Production','in_production'],['Published','published']],'youtuber');
       body.innerHTML=html;
-    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load team. '+esc(e&&e.message||'')+'</div>'; });
+    }
   }
 
   // --- analytics ---
