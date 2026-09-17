@@ -10132,12 +10132,16 @@ async function loadALive(){
 const _LU_ROLE_BADGE={teacher:['Teacher','#0d9488'],admin:['Admin','#b45309'],student:['Student','#4f46e5'],editor:['Editor','#7c3aed'],graphics:['Graphics','#c2410c'],youtuber:['YouTuber','#be123c'],production_manager:['Prod. Manager','#0369a1']};
 function _luRow(u,tab){
   const _rb=_LU_ROLE_BADGE[u.role]||[(u.role||'User'),'#4f46e5'];
-  const badge=`<span class="lu-role" style="background:${_rb[1]}1a;color:${_rb[1]};font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;display:inline-block;flex:0 0 auto">${esc(_rb[0])}</span>`;
+  // Role label SIRF Production Team ke liye (usme editor/graphics/youtuber/manager mix
+  // hote hain). Admins/Teachers/Students column ka header hi category bata deta hai ->
+  // wahan role dobara likhne ki zaroorat nahi. Role name ab NAAM ke niche (premium).
+  const _isProd=['editor','graphics','youtuber','production_manager'].indexOf(u.role)>=0;
+  const roleSub=_isProd?`<div class="lu-role-sub" style="margin-top:3px;font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:${_rb[1]}">${esc(_rb[0])}</div>`:'';
   let right='';
   if(tab==='live') right=`<div class="lu-right"><span class="lu-page">${esc(u.page||'')}</span><span class="lu-dur">${u.duration_min}m</span></div>`;
   else if(tab==='offline') right=`<div class="lu-right"><span class="lu-dim">${u.last_seen_min<60?u.last_seen_min+'m ago':Math.floor(u.last_seen_min/60)+'h ago'}</span></div>`;
   else right=`<div class="lu-right">${u.phone?`<a class="btn btn-ghost btn-sm" href="tel:${esc(u.phone)}" onclick="event.stopPropagation()">${ic('bell')} Call</a>`:''}</div>`;
-  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name"><span style="word-break:normal;overflow-wrap:break-word">${esc(u.name)}</span> ${badge}</div><div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
+  return `<div class="lu-row" onclick="openUserSessions(${u.user_id})"><span class="lu-dot ${tab==='live'?'on':''}"></span><div class="lu-main"><div class="lu-name"><span style="word-break:normal;overflow-wrap:break-word">${esc(u.name)}</span></div>${roleSub}<div class="lu-meta">${esc(u.code||'')}${u.phone?' \u00b7 '+esc(u.phone):''} \u00b7 ${u.logins} login${u.logins===1?'':'s'}</div></div>${right}</div>`;
 }
 function _luSection(title,list,tab,emptyMsg){
   const rows=list.length?list.map(u=>_luRow(u,tab)).join(''):`<div class="ws-empty"><p>${emptyMsg}</p></div>`;
@@ -10170,6 +10174,16 @@ function _paintLive(d){
     #a-live-content .lu-role{white-space:nowrap !important;word-break:keep-all !important;flex:0 0 auto}
     #a-live-content .lu-right{flex:0 0 auto;display:flex;align-items:center;gap:8px;white-space:nowrap}
     #a-live-content .lu-page,#a-live-content .lu-dur,#a-live-content .lu-dim{white-space:nowrap}
+    /* PC-only premium polish (phone <=640px bilkul untouched) */
+    @media(min-width:641px){
+      #a-live-content .lu-row{padding:9px 8px;border-radius:12px;transition:background .14s}
+      #a-live-content .lu-row:hover{background:rgba(230,173,78,.08)}
+      #a-live-content .lu-row+.lu-row{border-top:1px solid var(--border)}
+      #a-live-content .lu-name{font-size:.94rem;font-weight:800;line-height:1.25}
+      #a-live-content .lu-meta{font-size:.72rem;color:var(--text-muted);margin-top:2px}
+      #a-live-content .lu-page{font-size:.68rem;font-weight:700;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+      #a-live-content .lu-dur{font-size:.82rem;font-weight:800;color:#2e9e6b}
+    }
     @media(max-width:640px){#a-live-content .lu3{grid-template-columns:1fr}}
   </style><div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2>Live Users</h2><p>Admins, teachers, students and the production team shown separately \u2014 who is online, what they are doing, and who never logs in.</p></div><span class="pager-info">Auto-refreshes every 20s</span></div>${cards}${tabs}${body}`;
 }
