@@ -28864,7 +28864,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodCloseTask=function(){ _stopEditTimer(); var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
-  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
+  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
     try{ if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; } }catch(e){}
     try{ if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; } }catch(e){}
     try{ if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; } }catch(e){}
@@ -29503,18 +29503,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // only when there's nothing to resume (or after Cancel / a successful Create).
     var resume=!!(window._awResume && window._aw && window._aw.data &&
                   (window._aw.data.title || window._aw.data.teacher_id || window._aw.data.youtuber_id ||
-                   (window._aw.data.collab_all_ids&&window._aw.data.collab_all_ids.length) || window._aw.step>1));
+                   (window._aw.data.collab_all_ids&&window._aw.data.collab_all_ids.length) || window._aw.step>1 ||
+                   (window._aw.mode==='project' && window._aw.proj && (window._aw.proj.subject||window._aw.proj.title||window._aw.proj.class_level))));
+    // In-memory draft na ho -> localStorage se restore (page reload / accidental cut ke baad bhi filled data bacha rahe)
+    if(!resume){
+      try{
+        var _sv=JSON.parse(localStorage.getItem(_awKey())||'null');
+        if(_sv && _sv.data && (_sv.data.title||_sv.data.teacher_id||_sv.data.youtuber_id||_sv.step>1||
+             (_sv.proj&&(_sv.proj.subject||_sv.proj.title))|| _sv.mode==='project')){
+          window._aw={step:_sv.step||1, mode:_sv.mode||'task', data:_sv.data||{}, proj:_sv.proj||null, people:null};
+          resume=true;
+        }
+      }catch(e){}
+    }
     if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null}; }
     window._awResume=false;
     var old=document.getElementById('prod-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
     dr.innerHTML='<div class="pd-panel"><div class="pd-head"><div class="h-title">Assign Work</div>'+
-      '<button class="pd-x" onclick="_awSave();window._awResume=true;prodDismiss()">&times;</button></div>'+
+      '<div style="display:flex;gap:8px;align-items:center;flex:0 0 auto">'+
+        '<button class="p-btn" type="button" style="padding:6px 12px;font-size:.8rem;font-weight:700" onclick="prodAwClearNew()" title="Clear this form and start a new one">Clear</button>'+
+        '<button class="pd-x" onclick="prodAwClose()">&times;</button>'+
+      '</div></div>'+
       '<div class="pd-body" id="aw-body"><div class="p-load">Loading...</div></div>'+
       '<div class="pd-foot" id="aw-foot"></div></div>';
     // Click on the dark backdrop = close but KEEP the data (reopen resumes it).
-    dr.addEventListener('click',function(e){ if(e.target===dr){ try{_awSave();}catch(_e){} window._awResume=true; prodDismiss(); } });
+    dr.addEventListener('click',function(e){ if(e.target===dr){ prodAwClose(); } });
     document.body.appendChild(dr);
+    // Auto-save har 2s -> jo bhi type/select kiya hai wo turant localStorage me chala jaaye
+    // (page suddenly cut/reload ho to bhi filled data safe rahe).
+    try{ if(window._awAutoSave) clearInterval(window._awAutoSave);
+      window._awAutoSave=setInterval(function(){
+        if(!document.getElementById('prod-drawer')){ clearInterval(window._awAutoSave); window._awAutoSave=null; return; }
+        try{ if(window._aw){ if(window._aw.mode==='project') _pjSave(); else _awSave(); _awPersist(); } }catch(e){}
+      }, 2000);
+    }catch(e){}
     Promise.all([
       api(P.production.api+'/people').catch(function(){return {teachers:[],youtubers:[]};}),
       api(P.production.api+'/tasks?size=150').catch(function(){return {tasks:[]};}),
@@ -29563,6 +29586,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(g('aw-editor')!==undefined)d.editor_id=g('aw-editor')?parseInt(g('aw-editor'),10):0; }
     else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); if(g('aw-refvid')!==undefined)d.reference_video=g('aw-refvid').trim(); if(g('aw-remarks')!==undefined)d.remarks=g('aw-remarks').trim(); }
   }
+  // ---- Assign Work draft persistence (survives accidental close / page reload) ----
+  function _awKey(){ try{ return 'mvs_awdraft_'+((typeof ROLE!=='undefined'&&ROLE)?ROLE:'prod'); }catch(e){ return 'mvs_awdraft_prod'; } }
+  function _awPersist(){ try{ var aw=window._aw; if(!aw||!aw.data) return;
+    // heavy base64 images (thumbnail / reference uploads) localStorage me NAHI daalte -> quota
+    // exceed na ho; sirf text details persist hoti hain (title, subject, teacher, deadline, etc.)
+    var d=aw.data, dd={}; var _skip={thumb_upload:1,graphics_reference_uploads:1,graphics_reference_upload:1,thumb_b64:1};
+    for(var k in d){ if(Object.prototype.hasOwnProperty.call(d,k) && !_skip[k]) dd[k]=d[k]; }
+    var snap={step:aw.step||1,mode:aw.mode||'task',data:dd,proj:aw.proj||null};
+    var str=JSON.stringify(snap); if(str.length>200000) return;
+    localStorage.setItem(_awKey(),str);
+  }catch(e){} }
+  function _awClearStorage(){ try{ localStorage.removeItem(_awKey()); }catch(e){} }
+  // Close karo par data KEEP raho (resume). Save throw kare tab bhi drawer band ho -> screen atkegi nahi.
+  window.prodAwClose=function(){
+    try{ if(window._aw){ if(window._aw.mode==='project') _pjSave(); else _awSave(); } }catch(e){}
+    try{ _awPersist(); }catch(e){}
+    window._awResume=true;
+    try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
+    prodDismiss();
+  };
+  // Ek button se filled data mita ke fresh form -> auto kabhi nahi, sirf user ke clear/cancel/create par.
+  window.prodAwClearNew=function(){
+    var aw=window._aw||{};
+    window._aw={step:1, mode:'task', data:{creator_type:'teacher', priority:'normal'}, proj:null,
+                people:aw.people||null, channels:aw.channels||[], types:aw.types||[], opts:aw.opts||{}};
+    _awClearStorage(); window._awResume=false;
+    try{ _awRender(); }catch(e){}
+    try{ toast('Form cleared'); }catch(e){}
+  };
+  // Cancel = jaan-boojh kar discard -> memory + localStorage dono saaf.
+  window.prodAwCancel=function(){
+    window._aw=null; window._awResume=false; _awClearStorage();
+    try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
+    prodDismiss();
+  };
   window.awSetCreatorType=function(ct){ _awSave(); window._aw.data.creator_type=ct; window._aw.data.teacher_id=0; window._aw.data.youtuber_id=0; _awRender(); };
   function _awSubjectOptions(){
     var aw=window._aw; if(!aw) return [];
@@ -29616,7 +29674,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Final deadline</label><input class="p-input" id="pj-deadline" type="datetime-local" value="'+esc(p.deadline||'')+'"></div>'+
         '<div class="p-field"><label>Remarks for teacher (optional)</label><textarea class="p-area" id="pj-remarks" placeholder="Any instructions...">'+esc(p.remarks||'')+'</textarea></div>';
       body.innerHTML=html;
-      if(foot) foot.innerHTML='<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodCreateProject()">Create Project</button>';
+      if(foot) foot.innerHTML='<button class="p-btn" onclick="prodAwCancel()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodCreateProject()">Create Project</button>';
       if(p.connect) prodPjPreview();
     });
   }
@@ -29659,7 +29717,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       title:(p.title||'').trim(),connect:!!p.connect,chapter_scope:p.chapter_scope||'',chapter_group:(p.chapter_group!==undefined?p.chapter_group:'chapters'),items:p.items||[],
       weekly_quota:p.weekly_quota||0,weekly_day:p.weekly_day||'',deadline:p.deadline.replace(' ','T'),remarks:(p.remarks||'').trim()};
     _pBusy(true);
-    api(P.production.api+'/project','POST',payload).then(function(r){ prodDismiss(); toast('Project created — '+((r&&r.total)||0)+' videos assigned to '+((r&&r.teacher)||'teacher')); _refresh('production'); })
+    api(P.production.api+'/project','POST',payload).then(function(r){ window._aw=null; window._awResume=false; _awClearStorage(); prodDismiss(); toast('Project created — '+((r&&r.total)||0)+' videos assigned to '+((r&&r.teacher)||'teacher')); _refresh('production'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not create project',true); });
   };
   function _awRender(){
@@ -29763,7 +29821,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '</div>';
     }
     body.innerHTML=html;
-    var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="window._aw=null;window._awResume=false;prodDismiss()">Cancel</button>';
+    var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodAwCancel()">Cancel</button>';
     var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
@@ -29847,10 +29905,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // Optimistic: close the drawer NOW and create in the background — no blocking 10s wait.
     var _wasCollab=((d.collab_teacher_ids||[]).length>0);
     window._awResume=false;
+    try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
     prodDismiss();
     toast('Creating task\u2026');
-    api(P.production.api+'/tasks','POST',body).then(function(){ window._aw=null; window._awResume=false; toast('Production task created'+(_wasCollab?' (collab)':'')); _refresh('production'); })
-      .catch(function(e){ window._awResume=true; toast((e&&e.message)||'Could not create task \u2014 your details are saved, tap “New Task” to retry',true); });
+    api(P.production.api+'/tasks','POST',body).then(function(){ window._aw=null; window._awResume=false; _awClearStorage(); toast('Production task created'+(_wasCollab?' (collab)':'')); _refresh('production'); })
+      .catch(function(e){ window._awResume=true; try{_awPersist();}catch(_e){} toast((e&&e.message)||'Could not create task \u2014 your details are saved, tap “New Task” to retry',true); });
   };
 
   function _prodModal(title,inner){
