@@ -9607,6 +9607,36 @@ function _dbtLoadAvas(role){
   });
 }
 function _dbtSafe(t){ return esc(String(t==null?'':t)).replace(/\n/g,'<br>'); }
+// Doubt text ko PADHNE-YOGYA banata hai: bade blank-line gaps hatao, paste se toote
+// subscript (m\n1) jodo, aur common math notation (m_2, s^-1, mu_{x}, theta, deg, <=)
+// ko readable format me render karo. Sab bounded/O(n) regex -> kabhi freeze nahi.
+function _doubtPretty(t){
+  t=String(t==null?'':t).replace(/\r\n?/g,'\n');
+  t=t.replace(/\n{2,}/g,'\n');                        // huge vertical gaps -> single line break
+  // paste se toote 1-3 char fragments (m \n 1 \n m \n 1) ko ek line par le aao
+  for(var k=0;k<6;k++){ t=t.replace(/(^|\n)[ \t]*([A-Za-z0-9]{1,3})[ \t]*\n[ \t]*([A-Za-z0-9]{1,3})[ \t]*(?=\n|$)/g,'$1$2 $3'); }
+  var s=esc(t);
+  // greek + units (mu_{x} ko mu se PEHLE)
+  s=s.replace(/\bmu[_ ]?\{?\s*x\s*\}?/gi,'μₓ')
+     .replace(/\btheta\b/gi,'θ').replace(/\balpha\b/gi,'α').replace(/\bbeta\b/gi,'β')
+     .replace(/\bgamma\b/gi,'γ').replace(/\blambda\b/gi,'λ').replace(/\bomega\b/gi,'ω')
+     .replace(/\brho\b/gi,'ρ').replace(/\bphi\b/gi,'φ').replace(/\bpi\b/gi,'π')
+     .replace(/\bmu\b/gi,'μ').replace(/\bDelta\b/g,'Δ');
+  s=s.replace(/\s*\bdeg(?:ree)?s?\b/gi,'°');
+  // operators (esc ke baad < > -> &lt; &gt;)
+  s=s.replace(/&lt;=/g,'≤').replace(/&gt;=/g,'≥').replace(/!=/g,'≠')
+     .replace(/\+\/-|\+-/g,'±').replace(/-&gt;/g,'→');
+  // superscript: ^{..} / ^-1 / ^ - 1 / ^2
+  s=s.replace(/\^\s*\{\s*([^}]{1,16})\s*\}/g,'<sup>$1</sup>')
+     .replace(/\^\s*(-?)\s*(\d+)/g,'<sup>$1$2</sup>')
+     .replace(/\^\s*([A-Za-z])/g,'<sup>$1</sup>');
+  // subscript: _{..} / _1 / _n
+  s=s.replace(/_\s*\{\s*([^}]{1,16})\s*\}/g,'<sub>$1</sub>')
+     .replace(/_\s*(\d+|[A-Za-z])/g,'<sub>$1</sub>');
+  s=s.replace(/(\d)\s*\*\s*(\d)/g,'$1×$2');       // 2*3 -> 2×3
+  s=s.replace(/ \* /g,' × ');                       // unit multiply: 20m * s -> 20m × s
+  return s.replace(/\n/g,'<br>');
+}
 // BULLETPROOF doubt formatter: student ka untrusted text render karta hai bina kisi catastrophic
 // heuristic ke. Sirf explicit $...$ / $$...$$ ko KaTeX se render karta hai (bounded regex + KaTeX,
 // dono O(n) — kabhi hang/freeze nahi ho sakta). Baaki sab plain escaped text. _fmtRich (jisme heavy
@@ -9614,20 +9644,20 @@ function _dbtSafe(t){ return esc(String(t==null?'':t)).replace(/\n/g,'<br>'); }
 function _doubtFmt(raw){
   var t=String(raw==null?'':raw);
   if(!t) return '';
-  if(t.length>6000 || t.indexOf('$')<0 || !window.katex) return _dbtSafe(t);
+  if(t.length>6000 || t.indexOf('$')<0 || !window.katex) return _doubtPretty(t);
   try{
     var parts=t.split(/(\$\$[^$]{0,600}\$\$|\$[^$\n]{1,400}\$)/g);
     var out='';
     for(var i=0;i<parts.length;i++){
       var p=parts[i]; if(!p) continue;
       if(/^\$\$[^$]{0,600}\$\$$/.test(p)){
-        try{ out+='<div class="math-block">'+window.katex.renderToString(p.slice(2,-2),{throwOnError:false,displayMode:true})+'</div>'; }catch(e){ out+=_dbtSafe(p); }
+        try{ out+='<div class="math-block">'+window.katex.renderToString(p.slice(2,-2),{throwOnError:false,displayMode:true})+'</div>'; }catch(e){ out+=_doubtPretty(p); }
       } else if(/^\$[^$\n]{1,400}\$$/.test(p)){
-        try{ out+=window.katex.renderToString(p.slice(1,-1),{throwOnError:false}); }catch(e){ out+=_dbtSafe(p); }
-      } else out+=_dbtSafe(p);
+        try{ out+=window.katex.renderToString(p.slice(1,-1),{throwOnError:false}); }catch(e){ out+=_doubtPretty(p); }
+      } else out+=_doubtPretty(p);
     }
     return out;
-  }catch(e){ return _dbtSafe(t); }
+  }catch(e){ return _doubtPretty(t); }
 }
 function dbtThreadHTML(d){
   const rs=d.responses||[]; if(!rs.length) return '';
@@ -28425,7 +28455,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var stages=[['pm_review','PM Review'],['editor_assigned','Editor Assignment'],['editing','Editing'],['qc_pending','QC'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['completed','Completed']];
     var opts=stages.map(function(s){ return '<option value="'+s[0]+'">'+s[1]+'</option>'; }).join('');
     var old=document.getElementById('prod-modal2'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='140';
+    // z-index 230 -> Assign Work/Task drawer (200) ke UPAR khule (warna peeche chhup jaata tha)
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='230';
     dr.innerHTML='<div class="p-modal" style="max-width:420px"><div class="pd-head"><div class="h-title">Move to board</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
       '<div class="p-modal-body"><div class="p-field"><label>Choose the board / stage</label><select class="p-select" id="pms-sel">'+opts+'</select></div>'+
       '<div class="p-opt" style="margin-top:10px;font-size:.8rem;color:var(--muted)">Video us board par chala jaayega aur process wahi se dobara start hoga. Kuch delete nahi hota.</div></div>'+
