@@ -2784,6 +2784,41 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
     out.sort(key=lambda x: (x["name"] or "").lower())
     return {"total": len(out), "students": out}
 
+
+@router.get("/student/{sid}/profile")
+def teacher_student_profile(sid: int, db: Session = Depends(get_db),
+                            current_user=Depends(get_teacher)):
+    """Ek student ki poori (read-only) profile — teacher ke Doubts/My-Students se
+    khulne wale 'Profile' button ke liye. Sirf un teachers ko jinke paas My Students
+    access hai, aur sirf apne (subject-matched) students ki hi detail milti hai."""
+    from models import StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    if not tp or not _teacher_sees_students(tp, db):
+        raise HTTPException(status_code=403, detail="My Students access not enabled for you.")
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    ssubs = sp.subjects or []
+    scls = "".join(ch for ch in str(sp.class_level or "") if ch.isdigit())[:2] or None
+    subs = tp.subjects or []
+    tkeys = {(_SR.canon_key(x, scls) if _SR else _subj_key(x)) for x in subs}
+    matched = [x for x in ssubs if (_SR.canon_key(x, scls) if _SR else _subj_key(x)) in tkeys]
+    if not matched:
+        raise HTTPException(status_code=403, detail="This student is not in your subjects.")
+    nm = (sp.user.name if sp.user else "") or ""
+    return {"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
+            "user_id": (sp.user.user_id if sp.user else None),
+            "batch": sp.batch_name, "medium": sp.medium, "email": sp.email,
+            "class_name": sp.class_name, "nios_ref": sp.nios_ref,
+            "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+            "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
+            "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
+            "is_verified": bool(sp.is_verified),
+            "all_subjects": (_SR.canon_list(ssubs, scls) if _SR else ssubs),
+            "subjects": (_SR.canon_list(matched, scls) if _SR else matched),
+            "has_photo": bool(sp.photo_b64)}
+
+
 # ===== TEACHER -> ADMIN MESSAGE =====
 @router.post("/message-admin")
 def teacher_message_admin(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):

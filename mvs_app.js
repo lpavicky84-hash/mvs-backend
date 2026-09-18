@@ -9754,9 +9754,13 @@ async function openDoubtChat(role,sid,encName){
   _ensureDoubtChatCss();
   const name=decodeURIComponent(encName||'')||'Student';
   if(!sid){ toast('Student not linked.',true); return; }
+  // Teacher jinke paas "My Students" access hai -> Doubts modal me se hi student ki poori
+  // profile ek click me (My Students section jaaye bina).
+  const _profBtn=(role==='teacher' && window._tCanSeeStudents)
+    ? `<button class="btn btn-primary" onclick="openTStudentProfile(${sid},'${encName}')">${ic('user')} Profile</button>` : '';
   showModal(esc(name)+' \u2014 Doubts',
     `<div class="dchat-modal-wrap"><div class="dchat-hdr"><div class="av" id="dchat-av">${esc(initials(name))}</div><div><div class="nm">${esc(name)}</div><div class="sub" id="dchat-sub">Loading chat\u2026</div></div></div><div class="dchat-scroll" id="dchat-scroll"><div class="dchat-empty">Loading\u2026</div></div></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    _profBtn+`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   try{
     const d=await api('/api/'+role+'/student-doubts?student_id='+sid);
     const sub=document.getElementById('dchat-sub');
@@ -9817,6 +9821,35 @@ async function _doubtRateStatus(){
   try{ return await api('/api/student/doubt-rate-status?t='+Date.now()); }catch(e){ return null; }
 }
 async function openStudentDoubts(sid,encName){ return openDoubtChat('teacher',sid,encName); }
+
+// Teacher-side read-only student profile (Doubts modal ke "Profile" button se). Premium
+// look ke liye wahi sp-* styles reuse karte hain, par koi admin action (edit/delete/password)
+// nahi — sirf details. Access backend par bhi gated (My Students + subject-match).
+async function openTStudentProfile(sid,encName){
+  const name=decodeURIComponent(encName||'')||'Student';
+  if(typeof _spCss==='function'){ try{ _spCss(); }catch(e){} }
+  showModal('Student Profile',
+    `<div class="sp-head"><div class="sp-photo" id="tsp-${sid}">${esc(initials(name))}</div>`
+    +`<div style="flex:1;min-width:0"><h2 class="sp-name">${esc(name)}</h2><div class="sp-sub" id="tsp-sub-${sid}">Loading…</div></div></div>`
+    +`<div id="tsp-body-${sid}" style="margin-top:6px"><div class="spinner"></div></div>`,
+    `<button class="btn btn-ghost" onclick="openDoubtChat('teacher',${sid},'${encName}')">‹ Back to doubts</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+  try{
+    const s=await api('/api/teacher/student/'+sid+'/profile');
+    const sub=document.getElementById('tsp-sub-'+sid);
+    if(sub) sub.textContent=(s.user_id||'')+(s.batch?(' · '+s.batch):'');
+    const subs=(s.subjects||[]).map(x=>`<span class="sp-chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
+    const info=[['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch||'—'],
+      ['Class',s.class_name||(s.class?('Class '+s.class):'—')],['Medium',s.medium||'—'],
+      ['Exam Session',s.exam_session||'—'],['Goal',s.goal||'—'],['Last Seen',s.last_seen||'Never logged in']];
+    const body=document.getElementById('tsp-body-'+sid);
+    if(body) body.innerHTML=`<div class="sp-grid">${info.map(function(kv){return '<div class="sp-cell"><div class="sp-k">'+kv[0]+'</div><div class="sp-v">'+esc(kv[1])+'</div></div>';}).join('')}</div>`
+      +`<div class="sp-cell" style="margin-top:12px"><div class="sp-k">Subjects (with you)</div><div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">${subs}</div></div>`;
+    if(s.has_photo){ try{ loadImgInto('tsp-'+sid,'/api/teacher/student/'+sid+'/photo'); }catch(e){} }
+  }catch(e){
+    const body=document.getElementById('tsp-body-'+sid);
+    if(body) body.innerHTML=`<div class="dchat-empty">${esc((e&&e.message)||'Could not load profile')}</div>`;
+  }
+}
 
 async function dbtRespond(role,id,iid){
   const inp=document.getElementById(iid); const body=(inp?inp.value:'').trim();
