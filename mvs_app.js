@@ -14201,6 +14201,7 @@ function _teacherSubjByClass(subjects, subjectClasses){
   return {c10:[],c12:[],other:(subjects||[]).slice()};
 }
 function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.name)} <b>${esc(s.code)}</b></span>`).join(''); }
+function _tSubjToggle(id,btn){ var b=document.getElementById(id); if(!b) return; var open=b.style.display!=='none'; b.style.display=open?'none':'block'; try{ var c=btn&&btn.querySelector('.tsubj-chev'); if(c) c.style.transform=open?'rotate(0deg)':'rotate(180deg)'; }catch(e){} }
 async function loadAMaterial(){
   const el=document.getElementById('a-material-content');
   el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2></div><div id="a-mat-tree"></div>`;
@@ -14326,11 +14327,17 @@ async function loadATeachers(){
    const other=(_inNios&&sc.other.length)?`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:var(--warning)">Class not set \u2014 fix via Edit</div>${sc.other.map(s=>`<span class="code-chip">${esc(s)}</span>`).join('')}</div>`:'';
    const catBlocks=(t.categories||[]).map(c=>`<div class="tcard2-cls"><div class="tcard2-cls-h" style="color:#b8941f">${esc(c.category)}</div>${(c.subjects||[]).length?c.subjects.map(s=>`<span class="code-chip">${esc(s)}</span>`).join(''):'<span class="tcard2-sub">No subjects yet</span>'}</div>`).join('');
    const none=(!(_inNios&&sc.c10.length)&&!(_inNios&&sc.c12.length)&&!(_inNios&&sc.other.length)&&!(t.categories||[]).length)?`<div class="tcard2-sub" style="margin-top:10px">No subjects assigned yet.</div>`:'';
+   // Subjects ko ek collapsible button ke andar rakho -> lambi list card ko nahi todti (premium)
+   const _nsub=(_inNios?(sc.c10.length+sc.c12.length+sc.other.length):0)+(t.categories||[]).reduce((a,c)=>a+((c.subjects||[]).length),0);
+   const _sbid='tsubj-'+t.profile_id;
+   const subjSection=_nsub
+     ? `<button type="button" onclick="_tSubjToggle('${_sbid}',this)" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding:10px 13px;border:1px solid var(--border);border-radius:11px;background:var(--bg);font-weight:700;font-size:.85rem;cursor:pointer;color:var(--text)"><span style="display:flex;align-items:center;gap:8px">${ic('grid')} Subjects (${_nsub})</span><span class="tsubj-chev" style="opacity:.55;transition:transform .18s">▾</span></button><div id="${_sbid}" style="display:none;margin-top:8px">${cls10}${cls12}${other}${catBlocks}</div>`
+     : none;
    const ph=`tphoto-${t.profile_id}`;
    html+=`<div class="tcard2"><div class="tcard2-head"><div class="tcard2-photo${t.has_photo?' clickable':''}" id="${ph}" onclick="viewPhoto('${ph}','${esc((t.name||'').replace(/'/g,''))}',${t.profile_id})" title="${t.has_photo?'View photo':'Upload photo'}">${esc(initials(t.name||'T'))}</div><div style="flex:1"><div class="tcard2-name">${esc(t.name)}</div><div class="tcard2-sub"><code>${esc(t.user_id)}</code> · ${esc(t.phone||'no phone')}</div><span class="tag ${t.is_active?'tag-done':'tag-low'}" style="margin-top:6px">${t.is_active?'Active':'Inactive'}</span></div></div>
-     ${cls10}${cls12}${other}${catBlocks}${none}
+     ${subjSection}
      <div class="tcard2-stats"><div class="mini-stat"><div class="n">${t.total_classes_done||0}</div><div class="l">Classes</div></div><div class="mini-stat"><div class="n">${t.monthly_classes_done||0}</div><div class="l">This Month</div></div><div class="mini-stat"><div class="n">${t.reschedule_this_month||0}</div><div class="l">Reschedule</div></div></div>
-     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-ghost btn-sm" onclick="openTeacherCategories(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('grid')} Categories</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherStudents(${t.profile_id},${t.can_see_students?1:0},this)" style="${t.can_see_students?'color:#059669;font-weight:800':'color:#b07f1e'}">${ic('users')} Students: ${t.can_see_students?'ON':'OFF'}</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherUrgent(${t.profile_id},${t.urgent_enabled===false?0:1},this)" style="${t.urgent_enabled===false?'color:#b07f1e':'color:#059669;font-weight:800'}">${ic('alert')} Urgent: ${t.urgent_enabled===false?'OFF':'ON'}</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+     <div class="tcard2-actions"><button class="btn btn-primary btn-sm" onclick="openNotifyTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('bell')} Notify</button><button class="btn btn-ghost btn-sm" onclick='openEditTeacher(${t.profile_id},${JSON.stringify({name:t.name,phone:t.phone,subjects:t.subjects||[],subject_classes:t.subject_classes||[],is_active:t.is_active}).replace(/'/g,"&#39;")})'>${ic('edit')} Edit</button><button class="btn btn-ghost btn-sm" onclick="openTeacherPhoto(${t.profile_id})">${ic('upload')} Photo</button><button class="btn btn-ghost btn-sm" onclick="openResetPassword('teacher',${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('shield')} Password</button><button class="btn btn-ghost btn-sm" onclick="openTeacherCategories(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('grid')} Categories</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherStudents(${t.profile_id},${t.can_see_students?1:0},this)" style="${t.can_see_students?'color:#059669;font-weight:800':'color:#b07f1e'}">${ic('users')} Students: ${t.can_see_students?'ON':'OFF'}</button><button class="btn btn-ghost btn-sm" onclick="toggleTeacherUrgent(${t.profile_id},${t.urgent_enabled===false?0:1},this)" style="${t.urgent_enabled===false?'color:#b07f1e':'color:#059669;font-weight:800'}">${ic('alert')} Urgent: ${t.urgent_enabled===false?'OFF':'ON'}</button><button class="btn btn-danger btn-sm" onclick="deleteTeacher(${t.profile_id},'${esc((t.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
  });
  html+=`</div>`;
  el.innerHTML=html;
@@ -28412,6 +28419,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!confirm('Delete this? It will be removed from all lists (reversible by admin).')) return;
     api(P.production.api+'/tasks/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
+  // Kisi bhi video ko kisi bhi board/stage par bhejo (admin/PM) -> process wahi se firse
+  // start. Data delete nahi hota; sirf lifecycle set + re-activate.
+  window.prodMoveStagePicker=function(id){
+    var stages=[['pm_review','PM Review'],['editor_assigned','Editor Assignment'],['editing','Editing'],['qc_pending','QC'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['completed','Completed']];
+    var opts=stages.map(function(s){ return '<option value="'+s[0]+'">'+s[1]+'</option>'; }).join('');
+    var old=document.getElementById('prod-modal2'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='140';
+    dr.innerHTML='<div class="p-modal" style="max-width:420px"><div class="pd-head"><div class="h-title">Move to board</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+      '<div class="p-modal-body"><div class="p-field"><label>Choose the board / stage</label><select class="p-select" id="pms-sel">'+opts+'</select></div>'+
+      '<div class="p-opt" style="margin-top:10px;font-size:.8rem;color:var(--muted)">Video us board par chala jaayega aur process wahi se dobara start hoga. Kuch delete nahi hota.</div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodMoveStage('+id+')">Move</button></div></div></div>';
+    document.body.appendChild(dr);
+  };
+  window.prodMoveStage=function(id){
+    var sel=document.getElementById('pms-sel'); var stage=sel?sel.value:''; if(!stage) return;
+    api(P.production.api+'/tasks/'+id+'/move-stage','POST',{stage:stage}).then(function(r){
+      var m=document.getElementById('prod-modal2'); if(m) m.remove();
+      try{ prodCloseTask(); }catch(e){}
+      toast('Moved to '+((r&&r.label)||'board'));
+      try{ _apiBust(); }catch(e){}
+      try{ _refresh('production'); }catch(e){}
+    }).catch(function(e){ toast((e&&e.message)||'Could not move',true); });
+  };
   var _ST_LABEL={pm_review:'PM Review',thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
@@ -29087,6 +29117,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(t.youtube_url) b.push(_ab('Send to Students','prodNotifyStudents('+t.id+')','ok'));
       if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
       b.push(_ab(t.is_old?'Mark as New':'Mark as Old','prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')'));
+      b.push(_ab('Move to board…','prodMoveStagePicker('+t.id+')'));
+      b.push(_ab('Delete','prodDeleteTask('+t.id+')','danger'));
     }
     if(!b.length) return '';
     return '<div class="p-acts" id="p-acts">'+b.join('')+'</div>';

@@ -1561,9 +1561,10 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 ClassEntry.status == ClassStatus.done,
                 ClassEntry.scheduled_date >= month_start
             ).count()
-            # AUTHORITATIVE subjects from Category Access (teacher_category_subjects).
-            # Stale legacy subject_classes (e.g. NIOS unchecked but old data left) is
-            # ignored whenever the teacher has ANY category assignment.
+            # NIOS subjects: subject_classes se (Edit-modal + class ki sacchai) — isse
+            # English/12 (302) aur English/10 (202) ka class kabhi galat/mix nahi hota.
+            # College (non-NIOS) subjects + NIOS membership: Category Access se authoritative.
+            # Card NIOS ko in_nios par gate karta hai -> NIOS-off teacher ka stale NIOS nahi dikhta.
             _sc = _derive_subject_classes(profile, db)
             _cats = list(cat_map.get(profile.id, {}).values())
             _in_nios = (profile.id in nios_ids) if nios_known else True
@@ -1572,7 +1573,6 @@ def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
                 _info = _tas(db, profile.id)
                 if _info.get("has_any"):
                     _in_nios = bool(_info.get("in_nios"))
-                    _sc = [{"subject": nm, "class": cl} for (nm, cl) in _info.get("nios", []) if nm]
                     _cats = _info.get("cats", [])
             except Exception:
                 pass

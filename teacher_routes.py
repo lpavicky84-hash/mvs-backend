@@ -2727,12 +2727,27 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
     if not _teacher_sees_students(tp, db):
         return []   # is teacher ke liye "My Students" access admin ne band kiya hai
     subs = tp.subjects or []
-    # Class-aware canonical keys: 'PHYSICS'(Cl-12 student) aur teacher ka 'Physics'
-    # dono ka key 'c312' — koi bhi case/alias/class-variant miss nahi hoga.
+    _tsc = tp.subject_classes or []
+    # Class-aware keys — ab teacher ki APNI class (subject_classes) se, taaki English/12
+    # (302) aur English/10 (202) alag rahein aur ek class ke students doosri class ke
+    # teacher ke portal par na dikhein. Blank-class entry ho to student class fallback.
     def _tkeys(cls):
-        if _SR is not None:
-            return {_SR.canon_key(x, cls) for x in subs}
-        return {_subj_key(x) for x in subs if _subj_key(x)}
+        if _SR is None:
+            return {_subj_key(x) for x in subs if _subj_key(x)}
+        keys = set()
+        if _tsc:
+            for sc in _tsc:
+                try:
+                    nm = (sc.get("subject") or "").strip()
+                    c = str(sc.get("class") or sc.get("class_level") or "").strip()
+                except Exception:
+                    continue
+                if nm:
+                    keys.add(_SR.canon_key(nm, c or cls))
+        else:
+            for x in subs:
+                keys.add(_SR.canon_key(x, cls))
+        return keys
     def _skeys(ssubs, cls):
         if _SR is not None:
             return {_SR.canon_key(x, cls) for x in ssubs}

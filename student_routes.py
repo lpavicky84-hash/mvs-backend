@@ -832,21 +832,50 @@ def _norm_subj(s):
     return (s or "").strip().lower()
 
 
-def _teacher_for_subject(db, subject):
+def _teacher_for_subject(db, subject, cls=None):
+    """Subject ka teacher. Ab CLASS-AWARE: English (Class 12, code 302) aur English
+    (Class 10, code 202) ALAG hain -> student ki class ke hisaab se SAHI teacher milta
+    hai (naam same ho tab bhi mixing nahi). Class-specific match na mile to naam-only
+    fallback (purana behaviour, taaki doubt kahin to route ho)."""
     want = _norm_subj(subject)
     if not want:
         return None
+    cls_d = "".join(ch for ch in str(cls or "") if ch.isdigit())[:2] or None
+    want_key = None
+    if _SR is not None and cls_d:
+        try:
+            want_key = _SR.canon_key(subject, cls_d)
+        except Exception:
+            want_key = None
+    fallback = None
     for tp in db.query(TeacherProfile).all():
-        subs = tp.subjects or []
-        if isinstance(subs, str):
-            subs = [p for chunk in subs.split(",") for p in chunk.split("|")]
-        if want in {_norm_subj(x) for x in subs}:
-            return tp
-    return None
+        # 1) class-aware: teacher ke subject_classes me se uski APNI class ke saath match
+        if want_key and _SR is not None:
+            for scp in (tp.subject_classes or []):
+                try:
+                    nm = (scp.get("subject") or "").strip()
+                    c = str(scp.get("class") or scp.get("class_level") or "").strip()
+                except Exception:
+                    continue
+                if nm and c:
+                    try:
+                        if _SR.canon_key(nm, c) == want_key:
+                            return tp
+                    except Exception:
+                        pass
+        # 2) naam-only fallback (pehla match yaad rakho — class data blank ho tab)
+        if fallback is None:
+            subs = tp.subjects or []
+            if isinstance(subs, str):
+                subs = [p for chunk in subs.split(",") for p in chunk.split("|")]
+            if want in {_norm_subj(x) for x in subs}:
+                fallback = tp
+    return fallback
 
 @router.get("/teacher-for-subject")
 def teacher_for_subject(subject: str, db: Session = Depends(get_db), current_user=Depends(get_student)):
-    tp = _teacher_for_subject(db, subject)
+    _sp = get_student_profile(current_user, db)
+    tp = _teacher_for_subject(db, subject, getattr(_sp, "class_level", None))
     if not tp or not tp.user:
         return {"found": False, "teacher_name": None, "teacher_id": None}
     return {"found": True, "teacher_name": tp.user.name, "teacher_user_id": tp.user.user_id, "teacher_id": tp.id, "has_photo": bool(tp.photo_b64)}
@@ -975,7 +1004,7 @@ async def ask_doubt(
     if teacher_id:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
     if not tp:
-        tp = _teacher_for_subject(db, subject)
+        tp = _teacher_for_subject(db, subject, getattr(sp, "class_level", None))
     img_b64 = attach_mime = attach_name = None
     if file is not None:
         raw = await file.read()
@@ -1933,7 +1962,7 @@ def student_my_teachers(db: Session = Depends(get_db), current_user=Depends(get_
     out = []
     seen = set()
     for s in subs:
-        tp = _teacher_for_subject(db, s)
+        tp = _teacher_for_subject(db, s, getattr(sp, "class_level", None))
         if tp and tp.user:
             key = (tp.id, s)
             if key in seen:

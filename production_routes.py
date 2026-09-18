@@ -3381,6 +3381,48 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
     return {"ok": True, "id": t.id}
 
 
+_MOVE_STAGES = {
+    "pm_review": "PM Review",
+    "editor_assigned": "Editor Assignment",
+    "editing": "Editing",
+    "qc_pending": "QC",
+    "ready_for_youtube": "Ready for YouTube",
+    "uploaded": "Uploaded",
+    "completed": "Completed",
+}
+
+
+@router.get("/move-stages")
+def pm_move_stages(me=Depends(get_pm_or_admin)):
+    """Board stages jinpe koi bhi video move ki ja sakti hai (admin/PM)."""
+    return {"stages": [{"key": k, "label": v} for k, v in _MOVE_STAGES.items()]}
+
+
+@router.post("/tasks/{tid}/move-stage")
+def pm_move_stage(tid: int, payload: dict = Body(...),
+                  db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Kisi bhi video ko kisi bhi board/stage par bhejo — process wahi se firse start.
+    Data destroy NAHI hota (links/history preserve); sirf lifecycle set + re-activate."""
+    t = _task(db, tid)
+    stage = (payload.get("stage") or "").strip()
+    if stage not in _MOVE_STAGES:
+        raise HTTPException(status_code=400, detail="Invalid stage")
+    t.cancelled = False
+    try:
+        t.on_hold = False
+    except Exception:
+        pass
+    # jab wapas (PM/editing) le jaate hain to QC ka purana verdict clear -> dobara QC hoga
+    if stage in ("pm_review", "editor_assigned", "editing"):
+        try:
+            t.qc_status = ""
+        except Exception:
+            pass
+    t.lifecycle = stage
+    db.commit()
+    return {"ok": True, "lifecycle": stage, "label": _MOVE_STAGES[stage]}
+
+
 @router.delete("/tasks/{tid}")
 def pm_delete_task(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     # Soft delete (reversible): removed from every list but data is preserved.
