@@ -523,6 +523,11 @@ def _ensure_production_columns():
         "ALTER TABLE youtuber_profiles ADD COLUMN monthly_target INTEGER",
         "ALTER TABLE video_task_comments ADD COLUMN attachment_url VARCHAR(600)",
         "ALTER TABLE video_task_comments ADD COLUMN audience VARCHAR(20)",
+        # per-role editor fields (Assign Work "Editor" section) + editor collab
+        "ALTER TABLE video_tasks ADD COLUMN editor_deadline DATETIME",
+        "ALTER TABLE video_tasks ADD COLUMN editor_instructions TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN editor_reference TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN collab_editor_ids TEXT",
     ]
     for _s in _stmts:
         try:
@@ -699,6 +704,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
             "thumbnail_candidates": (_json_list(g.thumbnail_candidates) if g else []),
             "final_note": (getattr(g, "final_note", "") if g else ""),
             "deadline_iso": ((g.deadline.strftime("%Y-%m-%dT%H:%M:%S") if getattr(g, "deadline", None) else "") if g else ""),
+            "deadline": (_dt_raw(getattr(g, "deadline", None)) if g else ""),
             "instructions": (g.instructions if g else ""),
             "remarks": (g.remarks if g else ""),
             "quality_rating": (g.quality_rating if g else None),

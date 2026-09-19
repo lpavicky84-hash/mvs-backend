@@ -24821,6 +24821,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.aw-sechead{display:flex;align-items:center;gap:9px;font-size:.82rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a6d1f;margin:22px 0 12px;padding:9px 13px;background:linear-gradient(135deg,rgba(201,154,46,.14),rgba(201,154,46,.05));border:1px solid rgba(201,154,46,.28);border-radius:11px}',
 '.aw-sechead svg{width:16px;height:16px;flex:0 0 auto}',
 '.aw-sechead:first-child{margin-top:2px}',
+'@keyframes pdHotPulse{0%,100%{background:rgba(230,173,78,.14);box-shadow:0 0 0 0 rgba(230,173,78,.30)}50%{background:rgba(230,173,78,.28);box-shadow:0 0 0 4px rgba(230,173,78,0)}}',
+'.pd-hot{display:inline-block;font-weight:800;color:#8a6d1f;padding:2px 9px;border-radius:8px;animation:pdHotPulse 1.5s ease-in-out infinite;white-space:pre-wrap}',
+'body.dark .pd-hot{color:#f0d493}',
+'.pd-hot-link{display:inline-block;font-weight:800;color:#a9791f;text-decoration:underline;padding:2px 9px;border-radius:8px;animation:pdHotPulse 1.5s ease-in-out infinite;word-break:break-all}',
+'.pd-collab-tag{display:inline-block;font-size:.78rem;font-weight:800;color:#7c4fc0;background:rgba(124,79,192,.14);padding:1px 8px;border-radius:999px;margin-left:4px}',
 '.vt-team{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:.8rem;color:var(--text-muted);margin-top:2px}',
 '.vt-team svg{width:13px;height:13px;vertical-align:-2px;margin-right:2px}',
 '.vt-team b{color:var(--text)}',
@@ -27956,7 +27961,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!_hasThumb && !g.graphics_name) chips.push('<span class="pw-chip pw-pend">\u26a0 Thumbnail pending</span>');
       if(!t.editor_name && ['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0) chips.push('<span class="pw-chip pw-pend">\u26a0 Editor pending</span>');
     }
-    var meta=[]; if(t.deadline) meta.push('Deadline: '+esc(t.deadline));
+    var meta=[]; var _metaDl=(portal==='editor' && t.editor_deadline)?t.editor_deadline:t.deadline; if(_metaDl) meta.push((portal==='editor'&&t.editor_deadline?'Editor deadline: ':'Deadline: ')+esc(_metaDl));
     var df=t.deadline_flag||{};
     // Editor portal: editor ki apni deadline (editor_deadline) dikhao agar set hai, warna task deadline.
     var _dlIso=t.deadline_iso||'';
@@ -29123,14 +29128,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       return '<div class="pd-tl">'+rows.map(function(e){ return '<div class="ev"><div class="at">'+esc(e.at||'')+'</div><div class="lb">'+esc(e.label||'')+(e.actor?' <span class="ac">— '+esc(e.actor)+'</span>':'')+'</div></div>'; }).join('')+'</div>';
     }
     if(tab==='editor'){
-      if(!t.editor_name) return '<div class="pd-empty">No editor assigned yet.</div>';
+      var _hasEd=!!(t.editor_name)||!!(t.collab_editor_names&&t.collab_editor_names.length);
+      var _eins=(t.editor_instructions||'').trim();
+      var _eref=(t.editor_reference||'').trim();
+      if(!_hasEd && !_eins && !_eref) return '<div class="pd-empty">No editor assigned yet.</div>';
+      var _ename=esc(t.editor_name||'')+((t.collab_editor_names&&t.collab_editor_names.length)?(' <span class="pd-collab-tag">+ '+t.collab_editor_names.map(function(n){return esc(n);}).join(' + ')+'</span>'):'');
+      var _erefHtml=_eref?(/^https?:\/\//i.test(_eref)?('<a href="'+esc(_eref)+'" target="_blank" rel="noopener" class="pd-hot-link">'+esc(_eref)+'</a>'):('<span class="pd-hot">'+esc(_eref)+'</span>')):'';
       return '<div class="pd-kv">'+
-        _kv('Editor', esc(t.editor_name))+
+        _kv((t.collab_editor_names&&t.collab_editor_names.length)?'Editors':'Editor', _ename||'Not assigned')+
+        _kv('Editor Deadline', t.editor_deadline?('<span class="pd-hot">'+esc(t.editor_deadline)+'</span>'):'Not set')+
+        (_eins?_kv('Instructions', '<span class="pd-hot">'+esc(_eins)+'</span>'):'')+
+        (_erefHtml?_kv('Reference', _erefHtml):'')+
         _kv('Progress', '<div>'+(t.editing_progress||0)+'%</div><div class="pd-progress"><span style="width:'+(t.editing_progress||0)+'%"></span></div>')+
         _kv('Active Editing Time', _editTimerHtml(t))+
         _kv('Revisions', String(t.revision_count||0))+
         _kv('Edited Link', t.edited_link?('<a href="'+esc(t.edited_link)+'" target="_blank">Open link</a>'):'Not submitted')+
-        _kv('Deadline', esc(t.deadline||'Not set'))+
       '</div>';
     }
     if(tab==='graphics'){
@@ -29142,8 +29154,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       return '<div class="pd-kv">'+
         _kv('Graphics Member', esc(g.graphics_name||'Unassigned'))+
         _kv('Status', esc(g.status||'new'))+
+        _kv('Graphics Deadline', g.deadline?('<span class="pd-hot">'+esc(g.deadline)+'</span>'):'Not set')+
         _kv('Revisions', String(g.revision_count||0))+
-        _kv('Instructions', esc(g.instructions||''))+
+        (((g.instructions||'').trim())?_kv('Instructions', '<span class="pd-hot">'+esc(g.instructions)+'</span>'):'')+
         _kv('Thumbnail', g.thumbnail_url?('<a href="'+esc(g.thumbnail_url)+'" target="_blank">Open thumbnail</a>'):'Not submitted')+
       '</div>'+_refGal+_thumbGal;
     }
