@@ -3306,6 +3306,9 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
     for f in ("subject", "video_type", "channel_name", "reference", "reference_video", "remarks", "streaming", "thumbnail_link"):
         if f in payload:
             setattr(t, f, (payload.get(f) or "").strip())
+    if "priority" in payload:
+        _pr = (payload.get("priority") or "normal").strip() or "normal"
+        t.priority = _pr
     # thumbnail requirement + graphics designer (create/assign the sub-task if needed)
     if "thumbnail_required" in payload:
         t.thumbnail_required = bool(payload.get("thumbnail_required"))
@@ -3326,6 +3329,19 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                     db.add(g)
                 else:
                     g.graphics_id = gid
+                # wizard/edit se aayi reference thumbnail + instructions + deadline persist
+                _gi = (payload.get("graphics_instructions") or payload.get("instructions") or "").strip()
+                if _gi:
+                    g.instructions = _gi
+                _gr = (payload.get("graphics_reference") or payload.get("reference_image") or "").strip()
+                if _gr:
+                    g.reference_image = _gr
+                _gd = (payload.get("graphics_deadline") or "").strip()
+                if _gd:
+                    try:
+                        g.deadline = datetime.fromisoformat(_gd.replace("Z", ""))
+                    except Exception:
+                        pass
                 if gp.user_id:
                     pc.notify(db, gp.user_id, "Thumbnail task assigned",
                               f'You have been assigned the thumbnail for "{t.title}".', "graphics_task", link=str(t.id))

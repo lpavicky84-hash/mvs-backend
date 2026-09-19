@@ -28374,6 +28374,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     });
   };
   window.prodEditTask=function(id){
+    // Route to the multi-level wizard (edit mode) so Edit opens the same
+    // Content -> Production -> References flow as Assign Work, pre-filled.
+    // Multi-chapter projects keep the classic single-page editor.
+    try{
+      api(P.production.api+'/tasks/'+id+'/chapters').then(function(r){
+        if(r && (r.chapters||[]).length){ window.prodEditTaskClassic(id); }
+        else { prodAssignWork(null, id); }
+      }).catch(function(){ prodAssignWork(null, id); });
+    }catch(e){ try{ prodAssignWork(null, id); }catch(_e){ window.prodEditTaskClassic(id); } }
+  };
+  window.prodEditTaskClassic=function(id){
     Promise.all([
       api(P.production.api+'/tasks/'+id),
       api(P.production.api+'/channels').catch(function(){return {channels:[]};}),
@@ -29171,7 +29182,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
       b.push(_ab(t.is_old?'Mark as New':'Mark as Old','prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')'));
       // admin ko basic field edit (title/deadline/channel/collab/chapters) bhi chahiye
-      try{ if(typeof ROLE!=='undefined' && ROLE==='admin' && typeof openVTEdit==='function') b.push(_ab('Edit details','openVTEdit('+t.id+')')); }catch(e){}
+      try{ if(typeof ROLE!=='undefined' && ROLE==='admin') b.push(_ab('Edit details','prodEditTask('+t.id+')')); }catch(e){}
       b.push(_ab('Move to board…','prodMoveStagePicker('+t.id+')'));
       b.push(_ab('Delete','prodDeleteTask('+t.id+')','danger'));
     }
@@ -29653,32 +29664,38 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodNewTask=function(){ if((typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL==='youtuber')){ ytNewTask(); return; } prodAssignWork(); };
-  window.prodAssignWork=function(preCreator){
+  window.prodAssignWork=function(preCreator, editId){
     ensureCSS(); // admin may open this without the portal shell ever loading its CSS
-    // Resume an in-progress form (accidental close should NOT wipe filled data). Start fresh
-    // only when there's nothing to resume (or after Cancel / a successful Create).
-    var resume=!!(window._awResume && window._aw && window._aw.data &&
+    editId = editId || null;
+    var resume=false;
+    if(editId){
+      // EDIT mode: hamesha task se fresh prefill (draft/resume ignore).
+      window._aw={step:1, mode:'task', editId:editId, data:{creator_type:'teacher', priority:'normal'}, people:null};
+    } else {
+      // Resume an in-progress form (accidental close should NOT wipe filled data). Start fresh
+      // only when there's nothing to resume (or after Cancel / a successful Create).
+      resume=!!(window._awResume && window._aw && window._aw.data && !window._aw.editId &&
                   (window._aw.data.title || window._aw.data.teacher_id || window._aw.data.youtuber_id ||
                    (window._aw.data.collab_all_ids&&window._aw.data.collab_all_ids.length) || window._aw.step>1 ||
                    (window._aw.mode==='project' && window._aw.proj && (window._aw.proj.subject||window._aw.proj.title||window._aw.proj.class_level))));
-    // In-memory draft na ho -> localStorage se restore (page reload / accidental cut ke baad bhi filled data bacha rahe)
-    if(!resume){
-      try{
-        var _sv=JSON.parse(localStorage.getItem(_awKey())||'null');
-        if(_sv && _sv.data && (_sv.data.title||_sv.data.teacher_id||_sv.data.youtuber_id||_sv.step>1||
-             (_sv.proj&&(_sv.proj.subject||_sv.proj.title))|| _sv.mode==='project')){
-          window._aw={step:_sv.step||1, mode:_sv.mode||'task', data:_sv.data||{}, proj:_sv.proj||null, people:null};
-          resume=true;
-        }
-      }catch(e){}
+      if(!resume){
+        try{
+          var _sv=JSON.parse(localStorage.getItem(_awKey())||'null');
+          if(_sv && _sv.data && (_sv.data.title||_sv.data.teacher_id||_sv.data.youtuber_id||_sv.step>1||
+               (_sv.proj&&(_sv.proj.subject||_sv.proj.title))|| _sv.mode==='project')){
+            window._aw={step:_sv.step||1, mode:_sv.mode||'task', data:_sv.data||{}, proj:_sv.proj||null, people:null};
+            resume=true;
+          }
+        }catch(e){}
+      }
+      if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null}; }
     }
-    if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null}; }
     window._awResume=false;
     var old=document.getElementById('prod-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-drawer';
-    dr.innerHTML='<div class="pd-panel"><div class="pd-head"><div class="h-title">Assign Work</div>'+
+    dr.innerHTML='<div class="pd-panel"><div class="pd-head"><div class="h-title">'+(editId?'Edit Task':'Assign Work')+'</div>'+
       '<div style="display:flex;gap:8px;align-items:center;flex:0 0 auto">'+
-        '<button class="p-btn" type="button" style="padding:6px 12px;font-size:.8rem;font-weight:700" onclick="prodAwClearNew()" title="Clear this form and start a new one">Clear</button>'+
+        (editId?'':'<button class="p-btn" type="button" style="padding:6px 12px;font-size:.8rem;font-weight:700" onclick="prodAwClearNew()" title="Clear this form and start a new one">Clear</button>')+
         '<button class="pd-x" onclick="prodAwClose()">&times;</button>'+
       '</div></div>'+
       '<div class="pd-body" id="aw-body"><div class="p-load">Loading...</div></div>'+
@@ -29691,7 +29708,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ if(window._awAutoSave) clearInterval(window._awAutoSave);
       window._awAutoSave=setInterval(function(){
         if(!document.getElementById('prod-drawer')){ clearInterval(window._awAutoSave); window._awAutoSave=null; return; }
-        try{ if(window._aw){ if(window._aw.mode==='project') _pjSave(); else _awSave(); _awPersist(); } }catch(e){}
+        try{ if(window._aw && !window._aw.editId){ if(window._aw.mode==='project') _pjSave(); else _awSave(); _awPersist(); } }catch(e){}
       }, 2000);
     }catch(e){}
     Promise.all([
@@ -29711,9 +29728,36 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         subject: merge(['Physics 12','Chemistry 12','Biology 12','Mathematics 12','Science 10','Social Science 10'], sb),
         streaming: ['Recorded','Live']
       };
-      _awRender();
+      if(window._aw.editId){
+        // EDIT: existing task ko wizard fields me prefill karo, phir render.
+        api(P.production.api+'/tasks/'+window._aw.editId).then(function(t){ _awPrefillFromTask(t); _awRender(); })
+          .catch(function(){ _awRender(); });
+      } else {
+        _awRender();
+      }
     });
   };
+  // Existing task -> wizard data (edit mode prefill)
+  function _awPrefillFromTask(t){
+    t=t||{}; var aw=window._aw; if(!aw) return; var d=aw.data||{}; aw.mode='task';
+    d.creator_type=(t.creator_type==='youtuber')?'youtuber':'teacher';
+    if(d.creator_type==='youtuber') d.youtuber_id=t.youtuber_id||0; else d.teacher_id=t.teacher_id||0;
+    d.title=t.title||''; d.subject=t.subject||''; d.video_type=t.video_type||'';
+    d.channel_name=t.channel_name||''; d.streaming=t.streaming||'';
+    d.deadline=t.deadline_iso||''; d.priority=(t.priority==='urgent'||t.priority==='most_urgent')?'urgent':'normal';
+    d.reference=t.reference||''; d.reference_video=t.reference_video||''; d.remarks=t.remarks||'';
+    d.thumbnail_required=!!t.thumbnail_required; d.graphics_id=t.graphics_id||0; d.editor_id=t.editor_id||0;
+    var g=t.graphics||{};
+    d.graphics_instructions=t.graphics_instructions||g.instructions||'';
+    d.graphics_reference=t.graphics_reference||g.reference_image||'';
+    d.graphics_deadline=t.graphics_deadline_iso||g.deadline_iso||'';
+    // collab teachers
+    var pid=t.teacher_id; var ids=[]; if(pid) ids.push(pid);
+    (t.collab_teacher_ids||[]).forEach(function(x){ if(x&&ids.indexOf(x)<0) ids.push(x); });
+    (t.collaborators||[]).forEach(function(c){ if(c&&c.id&&ids.indexOf(c.id)<0) ids.push(c.id); });
+    if(ids.length>1){ d.collab_on=true; d.collab_all_ids=ids.slice(); d.collab_teacher_ids=ids.slice(1); }
+    aw.data=d;
+  }
   function _awOpts(key){ return ((window._aw&&window._aw.opts)||{})[key]||[]; }
   function _awDatalist(id,key){ return '<datalist id="'+id+'">'+_awOpts(key).map(function(o){ return '<option value="'+esc(o)+'">'; }).join('')+'</datalist>'; }
   window.prodAwAddChannel=function(){ _awSave(); var n=prompt('New channel name:'); if(!n||!n.trim())return; n=n.trim();
@@ -29997,7 +30041,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     body.innerHTML=html;
     var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodAwCancel()">Cancel</button>';
-    var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">Create Production Task</button>';
+    var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">'+(aw.editId?'Save Changes':'Create Production Task')+'</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
   window.awPickCreator=function(){ _awSave();
@@ -30060,9 +30104,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   document.addEventListener('paste',function(e){ if(!window._aw||window._aw.step!==2||!window._aw.data.thumbnail_required) return; var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(/^image\//.test(items[i].type)){ _awSave(); var f=items[i].getAsFile(); if((window._awPasteTarget||'ref')==='thumb') _awReadImg(f); else _awReadRef(f); e.preventDefault(); break; } } });
   window.awCollabMulti=function(){ var s=document.getElementById('aw-collab-multi'); if(!s) return; var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); } window._aw.data.collab_teacher_ids=ids; var opt=document.querySelector('#aw-body .p-opt'); };
-  window.awCreate=function(){ _awSave(); var d=window._aw.data;
+  window.awCreate=function(){ _awSave(); var aw=window._aw, d=aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
     if(d.thumbnail_required && !d.graphics_id){ toast('Select a graphics designer (thumbnail is required)',true); window._aw.step=2; _awRender(); return; }
+    // ---- EDIT MODE: existing task update (create nahi) ----
+    if(aw.editId){
+      var eid=aw.editId;
+      var eb={title:d.title, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'',
+        streaming:d.streaming||'', reference:d.reference||'', reference_video:d.reference_video||'', remarks:d.remarks||'',
+        priority:d.priority||'normal', thumbnail_required:!!d.thumbnail_required};
+      if(d.deadline) eb.deadline=d.deadline;
+      if(d.thumbnail_required && d.graphics_id){ eb.graphics_id=d.graphics_id;
+        if(d.graphics_deadline) eb.graphics_deadline=d.graphics_deadline;
+        if(d.graphics_instructions) eb.graphics_instructions=d.graphics_instructions;
+        if(d.graphics_reference) eb.graphics_reference=d.graphics_reference;
+      } else if(!d.thumbnail_required){ eb.graphics_id=0; }
+      eb.editor_id=d.editor_id?d.editor_id:0;
+      var _collab=(d.creator_type==='teacher' && d.collab_on)?((d.collab_all_ids&&d.collab_all_ids.length?d.collab_all_ids.slice(1):(d.collab_teacher_ids||[]))):null;
+      window._awResume=false;
+      try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
+      prodDismiss();
+      toast('Saving changes…');
+      api(P.production.api+'/tasks/'+eid+'/edit','POST',eb).then(function(){
+        var done=function(){ window._aw=null; toast('Changes saved'); try{_apiBust();}catch(e){} _refresh('production'); };
+        if(_collab!==null){ api(P.production.api+'/tasks/'+eid+'/edit-collab','POST',{teacher_ids:_collab}).then(done).catch(done); }
+        else done();
+      }).catch(function(e){ toast((e&&e.message)||'Could not save changes',true); });
+      return;
+    }
     var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', priority:d.priority||'normal'};
     if(d.creator_type==='teacher'){ body.teacher_id=d.teacher_id; if((d.collab_teacher_ids||[]).length) body.collab_teacher_ids=d.collab_teacher_ids; } else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
     if(d.deadline) body.deadline=d.deadline;
