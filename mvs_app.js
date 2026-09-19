@@ -20834,6 +20834,8 @@ function initResponsiveCss(){
     'body.dark .aw-ms{background:#1b1508;border-color:#2c2410}',
     /* multiple reference thumbnails grid (numbered) */
     '.aw-refgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px}',
+    '.aw-reflink{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;color:#8a6d1f;text-decoration:none;padding:10px;word-break:break-all}',
+    '.aw-reflink svg{width:14px;height:14px;flex:0 0 auto}',
     '.aw-refcell{position:relative;border:1px solid var(--border,#d9cdae);border-radius:10px;overflow:hidden;background:#000}',
     '.aw-refcell img{width:100%;height:96px;object-fit:cover;display:block;cursor:zoom-in}',
     '.aw-refn{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.7);color:#fff;font-size:.66rem;font-weight:800;padding:2px 7px;border-radius:999px;z-index:1}',
@@ -29233,8 +29235,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(t.youtube_url) b.push(_ab('Send to Students','prodNotifyStudents('+t.id+')','ok'));
       if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
       b.push(_ab(t.is_old?'Mark as New':'Mark as Old','prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')'));
-      // admin ko basic field edit (title/deadline/channel/collab/chapters) bhi chahiye
-      try{ if(typeof ROLE!=='undefined' && ROLE==='admin') b.push(_ab('Edit details','prodEditTask('+t.id+')')); }catch(e){}
+      // PM/admin dono ko drawer se hi full multi-level edit chahiye
+      b.push(_ab('Edit Task','prodEditTask('+t.id+')','primary'));
       b.push(_ab('Move to board…','prodMoveStagePicker('+t.id+')'));
       b.push(_ab('Delete','prodDeleteTask('+t.id+')','danger'));
     }
@@ -29805,7 +29807,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     d.thumbnail_required=!!t.thumbnail_required; d.graphics_id=t.graphics_id||0; d.editor_id=t.editor_id||0;
     var g=t.graphics||{};
     d.graphics_instructions=t.graphics_instructions||g.instructions||'';
-    d.graphics_reference=t.graphics_reference||g.reference_image||'';
+    // saari existing reference thumbnails (links + images) ko load karo taaki edit pe koi
+    // gayab na ho -> PM inhe dekh/hata sakta hai, aur naye add kar sakta hai.
+    d.graphics_reference_existing=(g.reference_images&&g.reference_images.length)?g.reference_images.slice():((g.reference_image)?[g.reference_image]:[]);
+    d.graphics_reference='';            // typed input sirf NAYE link ke liye
+    d.graphics_reference_uploads=[];    // sirf NAYI uploaded images
     d.graphics_deadline=t.graphics_deadline_iso||g.deadline_iso||'';
     // graphics status: agar final thumbnail already hai (approved / uploaded) -> 'done', warna 'pending'
     d.thumb_existing_url=(g.thumbnail_url||t.thumbnail||'');
@@ -30136,11 +30142,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<div class="p-field"><label>Graphics deadline <span style="color:var(--muted);font-weight:600">(designer must finish by)</span></label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
             '<div class="p-field"><label>Thumbnail brief / remarks <span style="color:var(--muted);font-weight:600">(designer will see this)</span></label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
             '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 add several, Ctrl+V pastes here</span></label>'+
-              '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+
+              // pehle se attached references (edit pe) \u2014 inhe hata sakte ho, warna preserve rahenge
+              (((d.graphics_reference_existing&&d.graphics_reference_existing.length))?('<div class="aw-refgrid" style="margin-bottom:8px">'+d.graphics_reference_existing.map(function(u,i){ var _img=/^https?:\/\//i.test(u)&&(/\.(png|jpe?g|webp|gif|bmp)(\?|#|$)/i.test(u)||u.indexOf('/reference')>=0||u.indexOf('r2.')>=0||u.indexOf('cloudflarestorage')>=0)||/^data:image/.test(u); return '<div class="aw-refcell">'+(_img?('<img loading="lazy" src="'+esc(u)+'" onclick="prodLightbox&&prodLightbox(\''+esc(u).replace(/'/g,"")+'\')" title="Click to view full">'):('<a href="'+esc(u)+'" target="_blank" rel="noopener" class="aw-reflink">'+ic('play')+' Open link</a>'))+'<button type="button" class="aw-x" onclick="event.stopPropagation();awRefExistingRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+
+              '<input class="p-input" id="aw-gfx-reference" placeholder="Add a Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+
               '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+
                 '<div class="aw-drop-hint"><b>Add reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V). You can add up to 6.</div>'+
               '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)">'+
-              ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">Reference '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>';
+              ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">New '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>';
         }
       }
     } else {
@@ -30258,6 +30266,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awRefFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadRef(f); };
   window.awThumbRemove=function(){ _awSave(); if(window._aw&&window._aw.data) window._aw.data.thumb_upload=''; _awRender(); };
   window.awRefRemove=function(i){ _awSave(); var d=window._aw&&window._aw.data; if(!d)return; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(typeof i==='number') d.graphics_reference_uploads.splice(i,1); else d.graphics_reference_uploads=[]; _awRender(); };
+  window.awRefExistingRemove=function(i){ _awSave(); var d=window._aw&&window._aw.data; if(!d)return; d.graphics_reference_existing=d.graphics_reference_existing||[]; if(typeof i==='number') d.graphics_reference_existing.splice(i,1); else d.graphics_reference_existing=[]; _awRender(); };
   window.awRefView=function(i){ var d=window._aw&&window._aw.data; var u=d&&(d.graphics_reference_uploads||[])[i]; if(!u)return; var o=document.createElement('div'); o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out'; o.onclick=function(){o.remove();}; o.innerHTML='<img loading="lazy" src="'+u+'" style="max-width:95%;max-height:95%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5)">'; document.body.appendChild(o); };
   window.awRefDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-ref-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadRef(f); };
   window.awThumbDrop=function(e){ e.preventDefault(); _awSave(); var el=document.getElementById('aw-thumb-drop'); if(el)el.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; _awReadImg(f); };
@@ -30291,6 +30300,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           eb.graphics_instructions=d.graphics_instructions||'';
           eb.graphics_reference=d.graphics_reference||'';
           eb.graphics_reference_uploads=(d.graphics_reference_uploads||[]);
+          eb.graphics_reference_existing=(d.graphics_reference_existing||[]); // jo pehle se the, preserve
         }
       } else if(!d.thumbnail_required){ eb.graphics_id=0; }
       eb.editor_id=d.editor_id?d.editor_id:0;
@@ -30326,6 +30336,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         if(d.graphics_reference) body.graphics_reference=d.graphics_reference;
         if(d.graphics_reference_uploads&&d.graphics_reference_uploads.length) body.graphics_reference_uploads=d.graphics_reference_uploads;
         else if(d.graphics_reference_upload) body.graphics_reference_upload=d.graphics_reference_upload;
+        if(d.graphics_reference_existing&&d.graphics_reference_existing.length) body.graphics_reference_existing=d.graphics_reference_existing;
       }
     }
     if(d.editor_id) body.editor_id=d.editor_id;

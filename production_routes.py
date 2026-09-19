@@ -3382,6 +3382,11 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
 
                 def _merge_refs(existing):
                     refs = list(existing or [])
+                    # wizard se aayi "kept" existing references (jo PM ne hataayi nahi) — preserve
+                    for _ke in (payload.get("graphics_reference_existing") or []):
+                        _ke = str(_ke or "").strip()
+                        if _ke and _ke not in refs:
+                            refs.append(_ke)
                     _typed = (payload.get("graphics_reference") or payload.get("reference_image") or "").strip()
                     if _typed:
                         for _ln in _typed.replace(",", "\n").split("\n"):
