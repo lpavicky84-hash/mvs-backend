@@ -237,8 +237,13 @@ def subject_code_for_name(db, class_level, name):
     for a in av:
         if (a.name or "").strip().lower() == n and a.code:
             return str(a.code).strip()
-    for s in SD.SUBJECTS.get(str(class_level), []):
-        if s["name"].strip().lower() == n:
+    # Match against the FULL master list = static SUBJECTS + admin overrides
+    # (subjects added/edited/verified via the Syllabus Manager are stored as
+    # overrides). Pehle sirf SD.SUBJECTS check hota tha, isliye manager se
+    # add/edit kiye gaye subjects (Physics/Chemistry/Biology) student ke naam
+    # se match nahi hote the -> "not linked to the syllabus master".
+    for s in subject_list(db, str(class_level), include_hidden=True):
+        if (s.get("name") or "").strip().lower() == n:
             return s["code"]
     return None
 
