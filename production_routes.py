@@ -797,6 +797,18 @@ def assign_editor(tid: int, payload: dict = Body(...),
     if not ed:
         raise HTTPException(400, "Valid editor_id required")
     t.editor_id = eid
+    # optional: admin/PM editor ko brief/instruction de sakta hai (editor portal isse
+    # 'Reference / Brief' me dekhta hai) + optional naya deadline. Blank ho to chhedte nahi.
+    _eins = (payload.get("instructions") or payload.get("editor_instructions") or "").strip()
+    if _eins:
+        t.reference = _eins
+    _edl = (payload.get("deadline") or "").strip()
+    if _edl:
+        try:
+            from datetime import datetime as _dte
+            t.deadline = _dte.fromisoformat(_edl.replace("Z", ""))
+        except Exception:
+            pass
     # PM manually assigned an editor. Internal state stays 'editor_assigned' (what the
     # editor portal reads); it is DISPLAYED as "Editing Soon". Normal path from Approved
     # is validated; a late re-assignment from a deeper state is a PM oversight action.

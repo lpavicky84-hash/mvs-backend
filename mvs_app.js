@@ -11353,7 +11353,7 @@ function _avtCard(t){
         ?`<button class="btn btn-ghost btn-sm" onclick="openVTReview(${t.id})">${ic('edit')} Update Status</button>`:'';
       const notifyBtn=(t.submitted_link)
         ?`<button class="btn btn-gold btn-sm" onclick="vtNotifyStudents(${t.id})" title="Send this video link to all students">${ic('send')} Send to Students</button>`:'';
-      const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="openVTEdit(${t.id})" title="Edit title, deadline, type, channel, thumbnail">${ic('edit')} Edit</button>`;
+      const editTaskBtn=`<button class="btn btn-ghost btn-sm" onclick="prodOpenTask('production',${t.id})" title="Open in production view — assign editor/graphics, references, move stage, edit details">${ic('edit')} Manage</button>`;
       const delTaskBtn=`<button class="btn btn-ghost btn-sm vt-del" onclick="vtDeleteTask(${t.id})" title="Delete this task permanently">${ic('trash')} Delete</button>`;
       const ytBtn=`<button class="btn btn-ghost btn-sm" onclick="openVtYtLink(${t.id},'${esc(t.youtube_url||'').replace(/'/g,'')}')" title="Post the published YouTube link">${ic('play')} ${t.youtube_url?'Edit YT Link':'Post YT Link'}</button>`;
       const histBtn=`<button class="btn btn-ghost btn-sm" onclick="vtStatusOpen(${t.id},'a',event)" title="See the full status timeline">${ic('history')} Timeline</button>`;
@@ -11361,10 +11361,12 @@ function _avtCard(t){
       const _aRefv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
       const refvBtn=_aRefv?`<button class="btn btn-sm vt-refv-btn" onclick="window.open('${esc(_aRefv).replace(/'/g,'')}','_blank','noopener')" title="Teacher's reference video">${ic('play')} Reference Video</button>`:'';
       const convoBtn=`<button class="btn btn-ghost btn-sm" onclick="aVtConvo(${t.id})" title="Reference video, remarks and the conversation with the teacher">${ic('alert')} Video Needs</button>`;
-      const _lcAssign=['approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','qc_changes','ready_for_youtube'];
-      const asgEditorBtn=(_lcAssign.indexOf(t.lifecycle)>=0 && !t.editor_name)
+      // Purane admin-assigned videos (jinka production lifecycle blank/legacy hai) ko bhi
+      // editor/graphics assign kar paayein -> sirf uploaded/completed par chhupao.
+      const _notFinal=['uploaded','completed'].indexOf(t.lifecycle)<0;
+      const asgEditorBtn=(_notFinal && !t.editor_name)
         ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'editor')" title="Assign an editor to this video">${ic('play')} ${t.editor_id?'Reassign Editor':'Assign Editor'}</button>`:'';
-      const asgGfxBtn=(['approved','editor_assigned','editing'].indexOf(t.lifecycle)>=0 && !t.graphics_name)
+      const asgGfxBtn=(_notFinal && !t.graphics_name)
         ?`<button class="btn btn-ghost btn-sm" onclick="aAssignProd(${t.id},'graphics')" title="Assign a graphics designer for the thumbnail">${ic('image')} ${t.graphics_id?'Reassign Graphics':'Assign Graphics'}</button>`:'';
       const asgThumbBtn=`<button class="btn btn-ghost btn-sm" onclick="prodThumbUpload('admin',${t.id})" title="Upload / change / remove the thumbnail">${ic('image')} Thumbnail</button>`;
       const asgInfo=(t.editor_name||t.graphics_name)
@@ -11435,7 +11437,15 @@ async function aAssignProd(id, role){
     if(!list.length){ toast('No '+(role==='editor'?'editors':'graphics designers')+' available. Add them under Production Team first.',true); return; }
     const label=(role==='editor')?'Editor':'Graphics Designer';
     const opts=list.map(p=>`<option value="${p.id}">${esc(p.name)}${p.active!=null?` · ${p.active} active`:''}</option>`).join('');
-    const extra=(role==='graphics')?`<div class="form-group"><label>Thumbnail deadline (optional)</label><input id="aap-deadline" type="datetime-local" class="input"></div>`:'';
+    let extra='';
+    if(role==='editor'){
+      extra=`<div class="form-group"><label>Instructions / brief for editor <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— editor apne portal me "Reference / Brief" me dekhega</span></label><textarea id="aap-ins" class="input" rows="3" placeholder="e.g. Intro cut rakho, captions add karo, 10 min ke andar..."></textarea></div>
+        <div class="form-group"><label>Editing deadline (optional)</label><input id="aap-deadline" type="datetime-local" class="input"></div>`;
+    } else {
+      extra=`<div class="form-group"><label>Reference thumbnail link (optional) <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— Drive/image URL jise dekh kar designer banaye</span></label><input id="aap-ref" class="input" placeholder="https://drive.google.com/... or image URL"></div>
+        <div class="form-group"><label>Instructions for graphics (optional)</label><textarea id="aap-ins" class="input" rows="3" placeholder="e.g. Bold red '95 SCORE' badge, student face left side, MVS logo..."></textarea></div>
+        <div class="form-group"><label>Thumbnail deadline (optional)</label><input id="aap-deadline" type="datetime-local" class="input"></div>`;
+    }
     showModal(`Assign ${label}`,
       `<div class="form-group"><label>Choose ${label.toLowerCase()}</label><select id="aap-sel" class="input"><option value="">Select...</option>${opts}</select></div>${extra}`,
       `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aAssignProdSave(${id},'${role}')">${ic('check')} Assign</button>`);
@@ -11444,8 +11454,20 @@ async function aAssignProd(id, role){
 async function aAssignProdSave(id, role){
   const sel=document.getElementById('aap-sel'); const val=sel?sel.value:'';
   if(!val){ toast('Please choose someone',true); return; }
-  const body=(role==='editor')?{editor_id:parseInt(val,10)}:{graphics_id:parseInt(val,10)};
-  if(role==='graphics'){ const dl=document.getElementById('aap-deadline'); if(dl&&dl.value) body.deadline=dl.value; }
+  const ins=((document.getElementById('aap-ins')||{}).value||'').trim();
+  const dl=(document.getElementById('aap-deadline')||{}).value||'';
+  let body;
+  if(role==='editor'){
+    body={editor_id:parseInt(val,10)};
+    if(ins) body.instructions=ins;
+    if(dl) body.deadline=dl;
+  } else {
+    body={graphics_id:parseInt(val,10)};
+    const ref=((document.getElementById('aap-ref')||{}).value||'').trim();
+    if(ref) body.reference_image=ref;
+    if(ins) body.instructions=ins;
+    if(dl) body.deadline=dl;
+  }
   const path=(role==='editor')?`/api/production/tasks/${id}/assign-editor`:`/api/production/tasks/${id}/assign-graphics`;
   try{
     await api(path,'POST',body);
@@ -11758,7 +11780,7 @@ async function loadAVTasks(fromCache){
         <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="vt-btn-dark" onclick="openVTChannels()">${ic('settings')} Channels (${_vtChannels.length})</button>
         <button class="vt-btn-dark" onclick="openVTTypes()">${ic('plus')} Video Types (${_vtTypes.length})</button>
         <button class="vt-btn-dark" onclick="openVvKey()">${ic('play')} YouTube Key</button>
-        <button class="vt-btn-gold" onclick="openVTAssign()">${ic('plus')} Assign Work</button></div></div>
+        <button class="vt-btn-gold" onclick="prodAssignWork()">${ic('plus')} Assign Work</button></div></div>
       <div class="card vv-card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer;user-select:none" onclick="_avtVvToggle()"><h3>${ic('chart')} Real-time Video Views</h3><span class="vt-os-chev" id="a-vv-chev">${ic('chev-down')}</span></div><div class="card-body" id="a-vv-body" style="display:none"><div id="a-vv-wrap"></div></div></div>
       <div class="card vv-card" style="margin-bottom:16px"><div class="card-header" style="cursor:pointer;user-select:none" onclick="_avtTgToggle()"><h3>${ic('clipboard')} Teacher Monthly Targets <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">— who needs how many videos</span></h3><span class="vt-os-chev" id="a-tg-chev">${ic('chev-down')}</span></div><div class="card-body" id="a-tg-body" style="display:none"><div id="a-tg-wrap"></div></div></div>
       <div class="vt-cards">
@@ -29148,6 +29170,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(t.youtube_url) b.push(_ab('Send to Students','prodNotifyStudents('+t.id+')','ok'));
       if(lc==='uploaded') b.push(_ab('Mark Completed','prodAct(\'production\','+t.id+',\'/complete\')','ok'));
       b.push(_ab(t.is_old?'Mark as New':'Mark as Old','prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')'));
+      // admin ko basic field edit (title/deadline/channel/collab/chapters) bhi chahiye
+      try{ if(typeof ROLE!=='undefined' && ROLE==='admin' && typeof openVTEdit==='function') b.push(_ab('Edit details','openVTEdit('+t.id+')')); }catch(e){}
       b.push(_ab('Move to board…','prodMoveStagePicker('+t.id+')'));
       b.push(_ab('Delete','prodDeleteTask('+t.id+')','danger'));
     }
@@ -29164,6 +29188,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window._prodAutoRefresh=function(){ try{ var pp=_activeProdPortal(); if(pp && typeof _refresh==='function') _refresh(pp); }catch(e){} };
   function _refresh(portal){ try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
+    // Admin apne Task Manager page se production actions (assign/move/create) karta hai ->
+    // us page ko bhi turant refresh karo (production body admin me hota nahi).
+    try{ var _av=document.getElementById('a-vtasks-content'); if(_av && _av.offsetParent!==null && typeof loadAVTasks==='function'){ _apiBust(); loadAVTasks(); } }catch(e){}
     if(portal==='production'){
       var _yh=document.getElementById(window._ytHost||'a-ytasks-content');
       if(_yh && _yh.offsetParent!==null && typeof loadAYtTasks==='function'){ try{ loadAYtTasks(); return; }catch(e){} }
@@ -29500,12 +29527,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!list.length){ box.innerHTML='<div class="p-empty" style="padding:16px">No '+role+'s available. Create one from the Admin panel first.</div>'; return; }
       var tarr=(role==='editor')?(team.editors||[]):(team.graphics||[]);
       var loadOf=function(pid){ for(var i=0;i<tarr.length;i++){ if(tarr[i].id===pid) return tarr[i]; } return null; };
-      var rows=list.map(function(m){ var w=loadOf(m.id);
-        var active=(m.active!=null?m.active:(w?(w.active||0):0)), rec=(w&&w.recommended)||m.recommended||5, over=active>rec;
-        var pend=(m.pending!=null?m.pending:0);
-        return '<button class="p-btn" style="display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;margin-bottom:6px;gap:10px" onclick="prodAssignPick('+id+',\''+role+'\','+m.id+',this)"><span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.name)+'</span><span style="font-size:.72rem;font-weight:800;white-space:nowrap;color:'+(over?'#d1443a':'#2e9e6b')+'">'+active+' active'+(role==='editor'?(' \u00b7 '+pend+' pending'):'')+(over?' \u00b7 busy':'')+'</span></button>';
-      }).join('');
-      box.innerHTML='<div class="p-field"><label>Tap a '+role+' to assign (one click)</label><div>'+rows+'</div></div><div style="margin-top:8px"><button class="p-btn" onclick="prodDismiss()">Cancel</button></div>';
+      var opts='<option value="">Select '+role+'\u2026</option>'+list.map(function(m){ var w=loadOf(m.id);
+        var active=(m.active!=null?m.active:(w?(w.active||0):0));
+        return '<option value="'+m.id+'">'+esc(m.name)+(active!=null?(' \u00b7 '+active+' active'):'')+'</option>'; }).join('');
+      var extra;
+      if(role==='graphics'){
+        extra='<div class="p-field"><label>Reference thumbnail link (optional)</label><input class="p-input" id="pasf-ref" placeholder="https://drive.google.com/... or image URL"></div>'+
+              '<div class="p-field"><label>Instructions for graphics (optional)</label><textarea class="p-area" id="pasf-ins" placeholder="e.g. bold 95 SCORE badge, student face left side, MVS logo\u2026"></textarea></div>'+
+              '<div class="p-field"><label>Thumbnail deadline (optional)</label><input class="p-input" id="pasf-dl" type="datetime-local"></div>';
+      } else {
+        extra='<div class="p-field"><label>Instructions / brief for editor (optional)</label><textarea class="p-area" id="pasf-ins" placeholder="e.g. intro cut, captions, keep under 10 min\u2026"></textarea></div>'+
+              '<div class="p-field"><label>Editing deadline (optional)</label><input class="p-input" id="pasf-dl" type="datetime-local"></div>';
+      }
+      box.innerHTML='<div class="p-field"><label>Choose '+role+'</label><select class="p-select" id="pasf-sel">'+opts+'</select></div>'+extra+
+        '<div style="display:flex;gap:8px;margin-top:10px"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAssignSubmit('+id+',\''+role+'\')">Assign</button></div>';
     }).catch(function(e){ box.innerHTML='<div class="p-empty" style="padding:16px">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   };
   window.prodAssignPick=function(id,role,pid,btn){
@@ -29515,8 +29550,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ if(btn){ btn.disabled=false; btn.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
   window.prodAssignSubmit=function(id,role){
-    var v=(document.getElementById('p-assign-sel')||{}).value; if(!v){ toast('Pick one',true); return; }
-    prodAssignPick(id,role,v,null);
+    var v=(document.getElementById('pasf-sel')||{}).value; if(!v){ toast('Pick a '+role,true); return; }
+    var body={}; body[role+'_id']=parseInt(v,10);
+    var ins=((document.getElementById('pasf-ins')||{}).value||'').trim();
+    var dl=(document.getElementById('pasf-dl')||{}).value||'';
+    if(ins) body.instructions=ins;
+    if(dl) body.deadline=dl;
+    if(role==='graphics'){ var ref=((document.getElementById('pasf-ref')||{}).value||'').trim(); if(ref) body.reference_image=ref; }
+    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ prodDismiss(); toast(role.charAt(0).toUpperCase()+role.slice(1)+' assigned'); _refresh('production'); })
+      .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
 
   // ---- PM: create new task ----
