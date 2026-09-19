@@ -10571,6 +10571,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
           ${t.reference?_refText:''}
+          ${(t.editor_name||t.graphics_name)?`<span class="vt-team">${t.editor_name?`${ic('edit')} ${(t.collab_editor_names&&t.collab_editor_names.length)?'Editors':'Editor'}: <b>${esc(t.editor_name)}${(t.collab_editor_names&&t.collab_editor_names.length)?(' + '+t.collab_editor_names.map(function(n){return esc(n);}).join(' + ')):''}</b>`:''}${(t.editor_name&&t.graphics_name)?' &nbsp;·&nbsp; ':''}${t.graphics_name?`${ic('image')} Graphics: <b>${esc(t.graphics_name)}</b>`:''}</span>`:''}
           <span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}${_chatBtn}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)}${isU?'':` — <b>${t.on_time?'on time':'delayed'}</b>`}</span>`:''}
           ${upTxt?`<span>${upTxt}</span>`:''}
@@ -24817,6 +24818,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pk-card.good .pk-val{color:#2e9e6b}',
 /* section title */
 '.p-sec{font-size:.95rem;font-weight:800;margin:22px 0 12px;letter-spacing:-.01em}',
+'.aw-sechead{display:flex;align-items:center;gap:9px;font-size:.82rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a6d1f;margin:22px 0 12px;padding:9px 13px;background:linear-gradient(135deg,rgba(201,154,46,.14),rgba(201,154,46,.05));border:1px solid rgba(201,154,46,.28);border-radius:11px}',
+'.aw-sechead svg{width:16px;height:16px;flex:0 0 auto}',
+'.aw-sechead:first-child{margin-top:2px}',
+'.vt-team{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:.8rem;color:var(--text-muted);margin-top:2px}',
+'.vt-team svg{width:13px;height:13px;vertical-align:-2px;margin-right:2px}',
+'.vt-team b{color:var(--text)}',
 '.p-bottleneck{display:inline-flex;align-items:center;gap:8px;background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.28);color:#d1443a;border-radius:10px;padding:8px 14px;font-weight:700;font-size:.86rem;margin-bottom:8px}',
 /* task rows */
 '.pt-row{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #ece2cd;border-radius:13px;padding:13px 16px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s,transform .05s}',
@@ -27942,7 +27949,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
     if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
     if(t.streaming) chips.push('<span class="pw-chip'+(/live/i.test(t.streaming)?' pwlive':'')+'">'+esc(t.streaming)+'</span>');
-    if(t.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(t.editor_name)+'</span>');
+    if(t.editor_name){ var _edtxt=esc(t.editor_name)+((t.collab_editor_names&&t.collab_editor_names.length)?(' + '+t.collab_editor_names.map(function(n){return esc(n);}).join(' + ')):''); chips.push('<span class="pw-chip ed">'+((t.collab_editor_names&&t.collab_editor_names.length)?'Editors: ':'Editor: ')+_edtxt+'</span>'); }
     if(g.graphics_name) chips.push('<span class="pw-chip gr">Graphics: '+esc(g.graphics_name)+'</span>');
     var _hasThumb=!!_finalThumb(t);
     if(t.creator_type==='youtuber'){
@@ -27951,8 +27958,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     var meta=[]; if(t.deadline) meta.push('Deadline: '+esc(t.deadline));
     var df=t.deadline_flag||{};
-    if(t.deadline_iso){ var live=_dlHuman(t.deadline_iso, t.lifecycle); if(live) df=live; }
-    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(t.deadline_iso?(' data-dl="'+esc(t.deadline_iso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(df.label)+'</span>':'';
+    // Editor portal: editor ki apni deadline (editor_deadline) dikhao agar set hai, warna task deadline.
+    var _dlIso=t.deadline_iso||'';
+    if(portal==='editor' && t.editor_deadline_iso){ _dlIso=t.editor_deadline_iso; }
+    if(_dlIso){ var live=_dlHuman(_dlIso, t.lifecycle); if(live) df=live; }
+    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(df.label)+(portal==='editor'&&t.editor_deadline_iso?' (editor)':'')+'</span>':'';
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
@@ -27967,6 +27977,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(lc==='editing_done'||lc==='qc_changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'editor\',\'submit\','+t.id+')">'+(lc==='qc_changes'?'Submit Revised':'Submit Video')+'</button>';
       if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
+      if((t.editor_instructions||'').trim()||(t.editor_reference||'').trim()) acts+='<button class="ptc-btn ptc-ref-blink" onclick="event.stopPropagation();edtBrief('+t.id+')"><span class="rev-dot"></span>PM Brief</button>';
       var _euc=t.unread_total||0; var _eb=(_euc>0?' <span class="chat-badge">'+_euc+'</span>':''); var _ebl=(_euc>0?' chat-blink':'');
       if(t.creator_type==='youtuber') acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatCreator('+t.id+')">\uD83D\uDCAC Chat with YouTuber'+_eb+'</button>';
       else acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatPM('+t.id+')">\uD83D\uDCAC Chat with PM'+_eb+'</button>';
@@ -29777,6 +29788,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     d.graphics_instructions=t.graphics_instructions||g.instructions||'';
     d.graphics_reference=t.graphics_reference||g.reference_image||'';
     d.graphics_deadline=t.graphics_deadline_iso||g.deadline_iso||'';
+    // graphics status: agar final thumbnail already hai (approved / uploaded) -> 'done', warna 'pending'
+    d.thumb_existing_url=(g.thumbnail_url||t.thumbnail||'');
+    d.graphics_status=((g.status==='approved')||g.thumbnail_url||t.thumbnail)?'done':'pending';
+    d.thumb_rating=g.quality_rating||0;
+    // editor section prefill (+ collab editors)
+    d.editor_deadline=t.editor_deadline_iso||''; d.editor_instructions=t.editor_instructions||''; d.editor_reference=t.editor_reference||'';
+    var _cei=(t.collab_editor_ids||[]).slice();
+    if(_cei.length){ d.editor_collab_on=true; d.collab_editor_ids=_cei.slice(); d.editor_all_ids=(t.editor_id?[t.editor_id]:[]).concat(_cei); }
+    else { d.editor_collab_on=false; d.collab_editor_ids=[]; d.editor_all_ids=[]; }
     // collab teachers
     var pid=t.teacher_id; var ids=[]; if(pid) ids.push(pid);
     (t.collab_teacher_ids||[]).forEach(function(x){ if(x&&ids.indexOf(x)<0) ids.push(x); });
@@ -29790,27 +29810,51 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/channels','POST',{name:n}).then(function(r){ (window._aw.channels=window._aw.channels||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.channel_name=r.name;} _awRender(); toast('Channel added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.prodAwAddType=function(){ _awSave(); var n=prompt('New video type name:'); if(!n||!n.trim())return; n=n.trim();
     api(P.production.api+'/video-types','POST',{name:n}).then(function(r){ (window._aw.types=window._aw.types||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.video_type=r.name;} _awRender(); toast('Type added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
-  var _AW_STEPS=['Content','Production','References'];
+  var _AW_STEPS=['Teacher','Graphics','Editor'];
   function _awSave(){
     var aw=window._aw; if(!aw) return; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
     var s=aw.step, d=aw.data;
     if(s===1){
+      // Teacher section: creator meta + teacher details (priority, deadline, refs, remarks)
       if(g('aw-title')!==undefined)d.title=g('aw-title').trim();
       if(g('aw-vtype')!==undefined)d.video_type=g('aw-vtype').trim();
       if(g('aw-channel')!==undefined)d.channel_name=g('aw-channel').trim();
       if(g('aw-subject')!==undefined)d.subject=g('aw-subject').trim();
       if(g('aw-stream')!==undefined)d.streaming=g('aw-stream').trim();
       if(g('aw-creator')!==undefined){ var v=g('aw-creator'); if(d.creator_type==='teacher')d.teacher_id=v?parseInt(v,10):0; else d.youtuber_id=v?parseInt(v,10):0; }
+      if(g('aw-priority')!==undefined)d.priority=g('aw-priority');
+      if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline');
+      if(g('aw-refvid')!==undefined)d.reference_video=g('aw-refvid').trim();
+      if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim();
+      if(g('aw-remarks')!==undefined)d.remarks=g('aw-remarks').trim();
+      var ar=document.getElementById('aw-approval'); if(ar)d.approval_required=ar.checked;
     }
-    else if(s===2){ if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline'); if(g('aw-priority')!==undefined)d.priority=g('aw-priority'); var ar=document.getElementById('aw-approval'); if(ar)d.approval_required=ar.checked;
+    else if(s===2){
+      // Graphics section
       var tr=document.getElementById('aw-thumbreq'); if(tr)d.thumbnail_required=(tr.value==='yes');
+      if(g('aw-gfx-status')!==undefined)d.graphics_status=g('aw-gfx-status');
       if(g('aw-graphics')!==undefined)d.graphics_id=g('aw-graphics')?parseInt(g('aw-graphics'),10):0;
       if(g('aw-gfxdeadline')!==undefined)d.graphics_deadline=g('aw-gfxdeadline');
       if(g('aw-gfx-instructions')!==undefined)d.graphics_instructions=g('aw-gfx-instructions');
       if(g('aw-gfx-reference')!==undefined)d.graphics_reference=g('aw-gfx-reference');
       if(g('aw-thumb-rating')!==undefined)d.thumb_rating=g('aw-thumb-rating')?parseInt(g('aw-thumb-rating'),10):0;
-      if(g('aw-editor')!==undefined)d.editor_id=g('aw-editor')?parseInt(g('aw-editor'),10):0; }
-    else if(s===3){ if(g('aw-reference')!==undefined)d.reference=g('aw-reference').trim(); if(g('aw-refvid')!==undefined)d.reference_video=g('aw-refvid').trim(); if(g('aw-remarks')!==undefined)d.remarks=g('aw-remarks').trim(); }
+    }
+    else if(s===3){
+      // Editor section
+      var etog=document.getElementById('aw-editor-collab-toggle'); if(etog)d.editor_collab_on=(etog.value==='yes');
+      if(d.editor_collab_on){
+        // editor_all_ids taps se maintain hoti hai; primary = pehla, baaki collab
+        var _ea=d.editor_all_ids||[];
+        d.editor_id=_ea[0]||0;
+        d.collab_editor_ids=_ea.slice(1);
+      } else {
+        if(g('aw-editor')!==undefined)d.editor_id=g('aw-editor')?parseInt(g('aw-editor'),10):0;
+        d.collab_editor_ids=[];
+      }
+      if(g('aw-editor-deadline')!==undefined)d.editor_deadline=g('aw-editor-deadline');
+      if(g('aw-editor-instructions')!==undefined)d.editor_instructions=g('aw-editor-instructions').trim();
+      if(g('aw-editor-reference')!==undefined)d.editor_reference=g('aw-editor-reference').trim();
+    }
   }
   // ---- Assign Work draft persistence (survives accidental close / page reload) ----
   function _awKey(){ try{ return 'mvs_awdraft_'+((typeof ROLE!=='undefined'&&ROLE)?ROLE:'prod'); }catch(e){ return 'mvs_awdraft_prod'; } }
@@ -29874,16 +29918,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     return {count:cnt, html:html};
   }
-  window.awNext=function(){ _awSave(); var aw=window._aw;
+  window.awNext=function(){ _awSave(); var aw=window._aw, d=aw.data;
     if(aw.step===1){
-      if(!(aw.data.title||'').trim()){ toast('Title is required',true); return; }
-      if(aw.data.creator_type==='teacher' && aw.data.collab_on){
-        var _cn=(aw.data.collab_all_ids||[]).length; if(!_cn) _cn=(aw.data.teacher_id?1:0)+((aw.data.collab_teacher_ids||[]).length);
+      if(!(d.title||'').trim()){ toast('Title is required',true); return; }
+      if(d.creator_type==='teacher' && d.collab_on){
+        var _cn=(d.collab_all_ids||[]).length; if(!_cn) _cn=(d.teacher_id?1:0)+((d.collab_teacher_ids||[]).length);
         if(_cn<2){ toast('Select at least 2 teachers for a collaboration',true); return; }
       } else {
-        var id=aw.data.creator_type==='teacher'?aw.data.teacher_id:aw.data.youtuber_id;
-        if(!id){ toast('Please select a '+aw.data.creator_type,true); return; }
+        var id=d.creator_type==='teacher'?d.teacher_id:d.youtuber_id;
+        if(!id){ toast('Please select a '+d.creator_type,true); return; }
       }
+    }
+    if(aw.step===2 && d.thumbnail_required){
+      if((d.graphics_status||'pending')==='done'){
+        if(!d.thumb_upload && !d.thumb_existing_url){ toast('Upload the final thumbnail (or switch to "Thumbnail pending")',true); return; }
+      }
+      if(!d.graphics_id){ toast('Select a graphics designer',true); return; }
     }
     if(aw.step<3){ aw.step++; _awRender(); }
   };
@@ -30027,45 +30077,76 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Video Type</label><div style="display:flex;gap:8px;align-items:center">'+tySel+'<button class="p-btn" type="button" onclick="prodAwAddType()">Add</button></div></div>'+
         '<div class="p-field"><label>Channel</label><div style="display:flex;gap:8px;align-items:center">'+chSel+'<button class="p-btn" type="button" onclick="prodAwAddChannel()">Add</button></div></div>'+
         '<div class="p-field"><label>Streaming</label><select class="p-select" id="aw-stream"><option value="">Select</option>'+_awOpts('streaming').map(function(o){ return '<option value="'+esc(o)+'"'+((d.streaming===o)?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
+      // ---- Teacher details: priority + teacher deadline + reference video + brief + remarks
+      // (sab kuch jo teacher ko dikhega, ek hi section mein)
+      html+='<div class="aw-sechead">'+ic('user')+' Teacher details</div>'+
+        '<div class="p-field"><label>Priority <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-priority"><option value="normal"'+((d.priority!=='urgent'&&d.priority!=='most_urgent')?' selected':'')+'>— Normal (no priority) —</option><option value="urgent"'+((d.priority==='urgent'||d.priority==='most_urgent')?' selected':'')+'>Urgent</option></select></div>'+
+        '<div class="p-field"><label>'+(d.creator_type==='youtuber'?'YouTuber':'Teacher')+' deadline <span style="color:var(--muted);font-weight:600">(submit the video by)</span></label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
+        '<div class="p-field"><label>Reference Video link <span style="color:var(--muted);font-weight:600">(teacher taps a blinking button to open)</span></label><input class="p-input" id="aw-refvid" placeholder="https://drive.google.com/... or YouTube" value="'+esc(d.reference_video||'')+'"></div>'+
+        '<div class="p-field"><label>Reference / Instructions <span style="color:var(--muted);font-weight:600">(link or notes)</span></label><input class="p-input" id="aw-reference" placeholder="Reference link or notes (optional)" value="'+esc(d.reference||'')+'"></div>'+
+        '<div class="p-field"><label>Remarks for creator <span style="color:var(--muted);font-weight:600">(how to shoot — shows as a "Video Needs" button)</span></label><textarea class="p-area" id="aw-remarks" placeholder="Any specific instructions...">'+esc(d.remarks||'')+'</textarea></div>'+
+        (d.creator_type==='youtuber'?'<div class="p-field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="aw-approval"'+(d.approval_required?' checked':'')+'> Require PM approval before production</label><div class="p-opt">If off, this creator’s videos go straight into production after they submit.</div></div>':'');
     } else if(aw.step===2){
-      var isYt=d.creator_type==='youtuber';
-      var ppl=aw.people||{}; var gfxList=ppl.graphics||[]; var edList=ppl.editors||[];
+      // ===== GRAPHICS section =====
+      var ppl=aw.people||{}; var gfxList=ppl.graphics||[];
       var thumbYes=!!d.thumbnail_required;
-      html+='<div class="p-field"><label>Deadline</label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
-        '<div class="p-field"><label>Priority <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-priority"><option value="normal"'+((d.priority!=='urgent'&&d.priority!=='most_urgent')?' selected':'')+'>\u2014 Normal (no priority) \u2014</option><option value="urgent"'+((d.priority==='urgent'||d.priority==='most_urgent')?' selected':'')+'>Urgent</option></select></div>'+
+      // sub-status: 'done' (final thumbnail ready) | 'pending' (designer will make it)
+      var gstat=d.graphics_status || (d.thumb_upload?'done':'pending');
+      d.graphics_status=gstat;
+      var gfxSel='<div class="p-field"><label>Graphics Designer (required)</label><select class="p-select" id="aw-graphics"><option value="">Choose designer...</option>'+
+        gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>';
+      html+='<div class="aw-sechead">'+ic('image')+' Graphics / Thumbnail</div>'+
         '<div class="p-field"><label>Thumbnail required for this task?</label><select class="p-select" id="aw-thumbreq" onchange="awThumbToggle(this.value)">'+
           '<option value="no"'+(!thumbYes?' selected':'')+'>No \u2014 not needed</option>'+
-          '<option value="yes"'+(thumbYes?' selected':'')+'>Yes \u2014 assign a graphics designer</option></select></div>'+
-        (thumbYes?('<div class="p-field"><label>Graphics Designer (required)</label><select class="p-select" id="aw-graphics"><option value="">Choose designer...</option>'+
-          gfxList.map(function(g){ return '<option value="'+g.id+'"'+(d.graphics_id===g.id?' selected':'')+'>'+esc(g.name)+(g.active!==undefined?(' \u00b7 '+g.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
-          '<div class="p-field"><label>Thumbnail deadline (designer must finish by)</label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
-          '<div class="p-field"><label>Thumbnail brief / remarks (designer will see this)</label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
-          '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 add several, Ctrl+V pastes here</span></label>'+            '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+            '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+              '<div class="aw-drop-hint"><b>Add reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V). You can add up to 6.</div>'+            '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)">'+            ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">Reference '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>'+
-          '<div class="p-field"><label>Already have the FINAL thumbnail? Upload it here <span style="color:var(--muted);font-weight:600">(click here first, then Ctrl+V)</span></label>'+
+          '<option value="yes"'+(thumbYes?' selected':'')+'>Yes \u2014 needs a thumbnail</option></select></div>';
+      if(thumbYes){
+        html+='<div class="p-field"><label>Thumbnail status</label><select class="p-select" id="aw-gfx-status" onchange="awGfxStatusToggle(this.value)">'+
+            '<option value="pending"'+(gstat!=='done'?' selected':'')+'>Thumbnail pending \u2014 assign a designer to make it</option>'+
+            '<option value="done"'+(gstat==='done'?' selected':'')+'>Thumbnail done \u2014 I already have the final</option></select></div>';
+        if(gstat==='done'){
+          // DONE: only final upload -> designer -> rating (no reference/brief)
+          html+='<div class="p-field"><label>Final thumbnail <span style="color:var(--muted);font-weight:600">(click here first, then Ctrl+V / drag-drop)</span></label>'+
             '<div id="aw-thumb-drop" class="aw-drop" onmousedown="awSetPasteTgt(\'thumb\')" onclick="awSetPasteTgt(\'thumb\');document.getElementById(\'aw-thumb-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awThumbDrop(event)">'+
-              (d.thumb_upload?('<img loading="lazy" src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:150px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awThumbRemove()">&times;</button>'):'<div class="aw-drop-hint"><b>Final thumbnail</b> \u2014 click here, then drag/drop or paste (Ctrl+V)</div>')+
-            '</div><input type="file" id="aw-thumb-file" accept="image/*" style="display:none" onchange="awThumbFile(event)">'+
-            (d.thumb_upload?'<div class="p-opt">Thumbnail attached. It will be auto-approved and you can rate it below.</div><div class="p-field" style="margin-top:8px"><label>Rate this thumbnail (optional)</label><select class="p-select" id="aw-thumb-rating"><option value="">No rating</option><option value="5"'+(d.thumb_rating==5?' selected':'')+'>5 - Excellent</option><option value="4"'+(d.thumb_rating==4?' selected':'')+'>4 - Good</option><option value="3"'+(d.thumb_rating==3?' selected':'')+'>3 - Average</option><option value="2"'+(d.thumb_rating==2?' selected':'')+'>2 - Below average</option><option value="1"'+(d.thumb_rating==1?' selected':'')+'>1 - Poor</option></select></div>':'')+
-          '</div>'):'')+
-        '<div class="p-field"><label>Editor (optional \u2014 can also assign after PM review)</label><select class="p-select" id="aw-editor"><option value="">Assign later</option>'+
-          edList.map(function(ed){ return '<option value="'+ed.id+'"'+(d.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+(ed.active!==undefined?(' \u00b7 '+ed.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
-        (isYt?'<div class="p-field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="aw-approval"'+(d.approval_required?' checked':'')+'> Require PM approval before production</label><div class="p-opt">If off, this creator\u2019s videos go straight into production after they submit.</div></div>':'');
+              (d.thumb_upload?('<img loading="lazy" src="'+esc(d.thumb_upload)+'" style="max-width:100%;max-height:170px;border-radius:8px"><button type="button" class="aw-x" onclick="event.stopPropagation();awThumbRemove()">&times;</button>'):(d.thumb_existing_url?('<img loading="lazy" src="'+esc(d.thumb_existing_url)+'" style="max-width:100%;max-height:170px;border-radius:8px;opacity:.9"><div class="p-opt" style="margin-top:6px">Current thumbnail \u2014 click / paste to replace</div>'):'<div class="aw-drop-hint"><b>Final thumbnail</b> \u2014 click here, then drag/drop or paste (Ctrl+V)</div>'))+
+            '</div><input type="file" id="aw-thumb-file" accept="image/*" style="display:none" onchange="awThumbFile(event)"></div>'+
+            gfxSel+
+            '<div class="p-field"><label>Rate this thumbnail <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-thumb-rating"><option value="">No rating</option><option value="5"'+(d.thumb_rating==5?' selected':'')+'>5 - Excellent</option><option value="4"'+(d.thumb_rating==4?' selected':'')+'>4 - Good</option><option value="3"'+(d.thumb_rating==3?' selected':'')+'>3 - Average</option><option value="2"'+(d.thumb_rating==2?' selected':'')+'>2 - Below average</option><option value="1"'+(d.thumb_rating==1?' selected':'')+'>1 - Poor</option></select></div>';
+        } else {
+          // PENDING: designer -> graphics deadline -> brief -> reference thumbnails (no final upload)
+          html+=gfxSel+
+            '<div class="p-field"><label>Graphics deadline <span style="color:var(--muted);font-weight:600">(designer must finish by)</span></label><input class="p-input" id="aw-gfxdeadline" type="datetime-local" value="'+esc(d.graphics_deadline||'')+'"></div>'+
+            '<div class="p-field"><label>Thumbnail brief / remarks <span style="color:var(--muted);font-weight:600">(designer will see this)</span></label><textarea class="p-area" id="aw-gfx-instructions" placeholder="e.g. bold title text, red-yellow theme, student photo on the right, big marks callout">'+esc(d.graphics_instructions||'')+'</textarea></div>'+
+            '<div class="p-field"><label>Reference thumbnail(s) for the designer <span style="color:#a9791f;font-weight:700">\u2014 add several, Ctrl+V pastes here</span></label>'+
+              '<input class="p-input" id="aw-gfx-reference" placeholder="Drive/image link (optional)" value="'+esc(d.graphics_reference||'')+'" style="margin-bottom:8px">'+
+              '<div id="aw-ref-drop" class="aw-drop aw-paste-on" onmousedown="awSetPasteTgt(\'ref\')" onclick="awSetPasteTgt(\'ref\');document.getElementById(\'aw-ref-file\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="awRefDrop(event)">'+
+                '<div class="aw-drop-hint"><b>Add reference</b> \u2014 drag &amp; drop, click, or paste (Ctrl+V). You can add up to 6.</div>'+
+              '</div><input type="file" id="aw-ref-file" accept="image/*" style="display:none" onchange="awRefFile(event)">'+
+              ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">Reference '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>';
+        }
+      }
     } else {
-      html+='<div class="p-field"><label>Reference / Instructions</label><input class="p-input" id="aw-reference" placeholder="Reference link or notes (optional)" value="'+esc(d.reference||'')+'"></div>';
-      html+='<div class="p-field"><label>Reference Video link (teacher taps a blinking button to open)</label><input class="p-input" id="aw-refvid" placeholder="https://drive.google.com/... or YouTube" value="'+esc(d.reference_video||'')+'"></div>';
-      html+='<div class="p-field"><label>Remarks for creator (how to shoot \u2014 shows as a "Video Needs" button)</label><textarea class="p-area" id="aw-remarks" placeholder="Any specific instructions...">'+esc(d.remarks||'')+'</textarea></div>';
-      var ppl2=aw.people||{}; var clist=(d.creator_type==='teacher')?(ppl2.teachers||[]):(ppl2.youtubers||[]); var cid=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
-      var cname=(clist.filter(function(m){return m.id===cid;})[0]||{}).name||'\u2014';
-      html+='<div class="p-sec">Review</div><div class="aw-sum">'+
-        '<div><b>Title:</b> '+esc(d.title||'\u2014')+'</div>'+
-        '<div><b>Creator:</b> '+esc(cname)+' ('+(d.creator_type==='teacher'?'Teacher':'YouTuber')+')</div>'+
-        (d.video_type?'<div><b>Video Type:</b> '+esc(d.video_type)+'</div>':'')+
-        (d.subject?'<div><b>Subject:</b> '+esc(d.subject)+'</div>':'')+
-        (d.channel_name?'<div><b>Channel:</b> '+esc(d.channel_name)+'</div>':'')+
-        '<div><b>Priority:</b> '+((d.priority==='urgent'||d.priority==='most_urgent')?'Urgent':'Normal')+'</div>'+
-        (d.deadline?'<div><b>Deadline:</b> '+esc(d.deadline.replace('T',' '))+'</div>':'')+
-        (d.creator_type==='youtuber'?'<div><b>Approval:</b> '+(d.approval_required?'Required':'Not required')+'</div>':'')+
-        '</div>';
+      // ===== EDITOR section =====
+      var ppl3=aw.people||{}; var edList=ppl3.editors||[];
+      var edOn=!!d.editor_collab_on;
+      html+='<div class="aw-sechead">'+ic('play')+' Editor</div>'+
+        '<div class="p-field"><label>Assign editor(s)?</label><select class="p-select" id="aw-editor-collab-toggle" onchange="awEditorCollabToggle(this.value)">'+
+          '<option value="no"'+(!edOn?' selected':'')+'>Single editor</option>'+
+          '<option value="yes"'+(edOn?' selected':'')+'>Collab \u2014 2 editors (urgent video)</option></select></div>';
+      if(edOn){
+        var _eall=d.editor_all_ids||(d.editor_id?[d.editor_id].concat(d.collab_editor_ids||[]):(d.collab_editor_ids||[]).slice());
+        d.editor_all_ids=_eall.slice();
+        html+='<div class="p-field"><label>Select editors for this collaboration <span style="color:var(--muted);font-weight:600">(tap names \u2014 pick 2 or more)</span></label>'+
+          '<div class="aw-ms" id="aw-editor-ms">'+
+          edList.map(function(m){ var on=_eall.indexOf(m.id)>=0; return '<div class="aw-ms-row'+(on?' on':'')+'" onclick="awEditorTap('+m.id+',this)"><span class="aw-ms-ck">'+(on?'\u2713':'')+'</span><span class="aw-ms-nm">'+esc(m.name)+(m.active!==undefined?(' \u00b7 '+m.active+' active'):'')+'</span></div>'; }).join('')+
+          '</div>'+
+          '<div class="p-opt" id="aw-editor-collab-note">'+(_eall.length>=2?(_eall.length+' editors selected \u2014 dono ko ye task dikhega aur dono edit kar sakte hain.'):'Pick 2 or more editors.')+'</div></div>';
+      } else {
+        html+='<div class="p-field"><label>Editor <span style="color:var(--muted);font-weight:600">(optional \u2014 can also assign after PM review)</label><select class="p-select" id="aw-editor"><option value="">Assign later</option>'+
+          edList.map(function(ed){ return '<option value="'+ed.id+'"'+(d.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+(ed.active!==undefined?(' \u00b7 '+ed.active+' active'):'')+'</option>'; }).join('')+'</select></div>';
+      }
+      html+='<div class="p-field"><label>Editor deadline <span style="color:var(--muted);font-weight:600">(editor must finish by)</span></label><input class="p-input" id="aw-editor-deadline" type="datetime-local" value="'+esc(d.editor_deadline||'')+'"></div>'+
+        '<div class="p-field"><label>Instructions for the editor <span style="color:var(--muted);font-weight:600">(editor will see this)</span></label><textarea class="p-area" id="aw-editor-instructions" placeholder="e.g. cut the first 30s, add intro, background music, captions...">'+esc(d.editor_instructions||'')+'</textarea></div>'+
+        '<div class="p-field"><label>Reference for the editor <span style="color:var(--muted);font-weight:600">(link or notes)</span></label><input class="p-input" id="aw-editor-reference" placeholder="Drive/YouTube reference link (optional)" value="'+esc(d.editor_reference||'')+'"></div>';
     }
     body.innerHTML=html;
     var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodAwCancel()">Cancel</button>';
@@ -30113,8 +30194,45 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     document.body.appendChild(dr);
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
   };
+  // Editor: PM ka brief (instructions + reference + editor deadline) dekho
+  window.edtBrief=function(id){
+    api(P.editor.api+'/tasks/'+id).then(function(t){ _edtBriefRender(t||{}); })
+      .catch(function(){ api(P.production.api+'/tasks/'+id).then(function(t){ _edtBriefRender(t||{}); }).catch(function(e){ toast((e&&e.message)||'Could not load',true); }); });
+  };
+  function _edtBriefRender(t){
+    var ins=(t.editor_instructions||'').trim(); var ref=(t.editor_reference||'').trim();
+    var dl=(t.editor_deadline||'').trim();
+    var o=document.getElementById('prod-modal'); if(o)o.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var refHtml=ref?(/^https?:\/\//i.test(ref)?('<a href="'+esc(ref)+'" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700">'+esc(ref)+'</a>'):esc(ref)):'—';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+      '<div class="pd-head"><div class="h-title">Brief from the Production Manager</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        (dl?('<div class="sdet-row" style="margin-bottom:10px"><span>Your deadline</span><b>'+esc(dl)+'</b></div>'):'')+
+        '<div class="p-field"><label>Instructions</label><div class="aw-sum" style="white-space:pre-wrap">'+(ins?esc(ins):'—')+'</div></div>'+
+        '<div class="p-field"><label>Reference</label><div class="aw-sum">'+refHtml+'</div></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Got it</button></div></div>'+
+    '</div>';
+    document.body.appendChild(dr);
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+  }
+  window.awEditorCollabToggle=function(v){ _awSave(); var d=window._aw.data; d.editor_collab_on=(v==='yes');
+    if(d.editor_collab_on){ if(!(d.editor_all_ids&&d.editor_all_ids.length)) d.editor_all_ids=(d.editor_id?[d.editor_id]:[]).concat(d.collab_editor_ids||[]); }
+    else { d.editor_all_ids=[]; }
+    _awRender(); };
+  window.awEditorTap=function(id,el){
+    var d=window._aw.data; d.editor_all_ids=d.editor_all_ids||[];
+    var i=d.editor_all_ids.indexOf(id);
+    if(i>=0){ d.editor_all_ids.splice(i,1); if(el){ el.classList.remove('on'); var c=el.querySelector('.aw-ms-ck'); if(c)c.textContent=''; } }
+    else { d.editor_all_ids.push(id); if(el){ el.classList.add('on'); var c2=el.querySelector('.aw-ms-ck'); if(c2)c2.textContent='✓'; } }
+    d.editor_id=d.editor_all_ids[0]||0;
+    d.collab_editor_ids=d.editor_all_ids.slice(1);
+    var note=document.getElementById('aw-editor-collab-note'); if(note) note.innerHTML=(d.editor_all_ids.length>=2?(d.editor_all_ids.length+' editors selected — dono ko ye task dikhega aur dono edit kar sakte hain.'):'Pick 2 or more editors.');
+  };
   window.awCollabAll=function(){ /* legacy no-op — replaced by awCollabTapTeacher */ };
-  window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); _awRender(); };
+  window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); if(v==='yes'&&!window._aw.data.graphics_status) window._aw.data.graphics_status='pending'; _awRender(); };
+  window.awGfxStatusToggle=function(v){ _awSave(); window._aw.data.graphics_status=(v==='done'?'done':'pending'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
   function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ var d=window._aw.data; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(d.graphics_reference_uploads.length>=6){ toast('Up to 6 reference images',true); return; } d.graphics_reference_uploads.push(r.result); _awRender(); }; r.readAsDataURL(file); }
   window.awThumbFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadImg(f); };
@@ -30135,6 +30253,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awCreate=function(){ _awSave(); var aw=window._aw, d=aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
     if(d.thumbnail_required && !d.graphics_id){ toast('Select a graphics designer (thumbnail is required)',true); window._aw.step=2; _awRender(); return; }
+    if(d.editor_collab_on && (d.editor_all_ids||[]).length===1){ toast('Pick 2 editors for a collab (or switch to Single editor)',true); window._aw.step=3; _awRender(); return; }
     // ---- EDIT MODE: existing task update (create nahi) ----
     if(aw.editId){
       var eid=aw.editId;
@@ -30143,11 +30262,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         priority:d.priority||'normal', thumbnail_required:!!d.thumbnail_required};
       if(d.deadline) eb.deadline=d.deadline;
       if(d.thumbnail_required && d.graphics_id){ eb.graphics_id=d.graphics_id;
-        if(d.graphics_deadline) eb.graphics_deadline=d.graphics_deadline;
-        if(d.graphics_instructions) eb.graphics_instructions=d.graphics_instructions;
-        if(d.graphics_reference) eb.graphics_reference=d.graphics_reference;
+        if((d.graphics_status||'pending')==='done'){
+          if(d.thumb_upload && /^data:/.test(d.thumb_upload)) eb.thumbnail_upload=d.thumb_upload;
+          if(d.thumb_rating) eb.thumbnail_rating=d.thumb_rating;
+        } else {
+          if(d.graphics_deadline) eb.graphics_deadline=d.graphics_deadline;
+          if(d.graphics_instructions) eb.graphics_instructions=d.graphics_instructions;
+          if(d.graphics_reference) eb.graphics_reference=d.graphics_reference;
+          if(d.graphics_reference_uploads&&d.graphics_reference_uploads.length) eb.graphics_reference_uploads=d.graphics_reference_uploads;
+        }
       } else if(!d.thumbnail_required){ eb.graphics_id=0; }
       eb.editor_id=d.editor_id?d.editor_id:0;
+      eb.collab_editor_ids=(d.editor_collab_on?(d.collab_editor_ids||[]):[]);
+      eb.editor_deadline=d.editor_deadline||'';
+      eb.editor_instructions=d.editor_instructions||'';
+      eb.editor_reference=d.editor_reference||'';
       var _collab=(d.creator_type==='teacher' && d.collab_on)?((d.collab_all_ids&&d.collab_all_ids.length?d.collab_all_ids.slice(1):(d.collab_teacher_ids||[]))):null;
       window._awResume=false;
       try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
@@ -30160,20 +30289,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }).catch(function(e){ toast((e&&e.message)||'Could not save changes',true); });
       return;
     }
-    var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', priority:d.priority||'normal'};
+    var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', reference_video:d.reference_video||'', remarks:d.remarks||'', priority:d.priority||'normal'};
     if(d.creator_type==='teacher'){ body.teacher_id=d.teacher_id; if((d.collab_teacher_ids||[]).length) body.collab_teacher_ids=d.collab_teacher_ids; } else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
     if(d.deadline) body.deadline=d.deadline;
     body.thumbnail_required=!!d.thumbnail_required;
     if(d.thumbnail_required && d.graphics_id) body.graphics_id=d.graphics_id;
-    if(d.thumbnail_required && d.graphics_deadline) body.graphics_deadline=d.graphics_deadline;
     if(d.thumbnail_required){
-      if(d.graphics_instructions) body.graphics_instructions=d.graphics_instructions;
-      if(d.graphics_reference) body.graphics_reference=d.graphics_reference;
-      if(d.graphics_reference_uploads&&d.graphics_reference_uploads.length) body.graphics_reference_uploads=d.graphics_reference_uploads;
-      else if(d.graphics_reference_upload) body.graphics_reference_upload=d.graphics_reference_upload;
+      if((d.graphics_status||'pending')==='done'){
+        // Thumbnail done: final upload + rating only (no reference/brief/graphics deadline)
+        if(d.thumb_upload){ body.thumbnail_upload=d.thumb_upload; if(d.thumb_rating) body.thumbnail_rating=d.thumb_rating; }
+      } else {
+        // Thumbnail pending: graphics deadline + brief + reference (no final upload)
+        if(d.graphics_deadline) body.graphics_deadline=d.graphics_deadline;
+        if(d.graphics_instructions) body.graphics_instructions=d.graphics_instructions;
+        if(d.graphics_reference) body.graphics_reference=d.graphics_reference;
+        if(d.graphics_reference_uploads&&d.graphics_reference_uploads.length) body.graphics_reference_uploads=d.graphics_reference_uploads;
+        else if(d.graphics_reference_upload) body.graphics_reference_upload=d.graphics_reference_upload;
+      }
     }
-    if(d.thumbnail_required && d.thumb_upload){ body.thumbnail_upload=d.thumb_upload; if(d.thumb_rating) body.thumbnail_rating=d.thumb_rating; }
     if(d.editor_id) body.editor_id=d.editor_id;
+    if(d.editor_collab_on && (d.collab_editor_ids||[]).length) body.collab_editor_ids=d.collab_editor_ids;
+    if(d.editor_deadline) body.editor_deadline=d.editor_deadline;
+    if(d.editor_instructions) body.editor_instructions=d.editor_instructions;
+    if(d.editor_reference) body.editor_reference=d.editor_reference;
     // Optimistic: close the drawer NOW and create in the background — no blocking 10s wait.
     var _wasCollab=((d.collab_teacher_ids||[]).length>0);
     window._awResume=false;

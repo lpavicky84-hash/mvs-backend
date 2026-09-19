@@ -289,6 +289,47 @@ def _name_for_staff(db, sid):
     return ""
 
 
+# ---- editor collab (2 editors on one urgent video) --------------------------
+def collab_editor_ids(t):
+    """ADDITIONAL editor ids (beyond the primary t.editor_id), as a clean int list."""
+    raw = getattr(t, "collab_editor_ids", "") or ""
+    if not raw:
+        return []
+    try:
+        v = json.loads(raw)
+    except Exception:
+        v = []
+    out = []
+    for x in (v or []):
+        try:
+            xi = int(x)
+        except Exception:
+            continue
+        if xi and xi not in out:
+            out.append(xi)
+    return out
+
+
+def all_editor_ids(t):
+    """Primary + collab editor ids (deduped, primary first)."""
+    ids = []
+    if getattr(t, "editor_id", None):
+        ids.append(int(t.editor_id))
+    for i in collab_editor_ids(t):
+        if i not in ids:
+            ids.append(i)
+    return ids
+
+
+def editor_can_access(t, editor_pid):
+    """Is this editor the primary OR a collaborator on the task?"""
+    try:
+        editor_pid = int(editor_pid or 0)
+    except Exception:
+        return False
+    return bool(editor_pid) and editor_pid in all_editor_ids(t)
+
+
 def _name_for_youtuber(db, yid):
     if not yid:
         return ""
@@ -619,6 +660,13 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
         "editor_id": t.editor_id,
         "editor_name": _name_for_staff(db, t.editor_id),
+        "collab_editor_ids": collab_editor_ids(t),
+        "collab_editor_names": [_name_for_staff(db, _ei) for _ei in collab_editor_ids(t)],
+        "is_editor_collab": len(all_editor_ids(t)) > 1,
+        "editor_instructions": (getattr(t, "editor_instructions", "") or ""),
+        "editor_reference": (getattr(t, "editor_reference", "") or ""),
+        "editor_deadline": _dt_raw(getattr(t, "editor_deadline", None)),
+        "editor_deadline_iso": (t.editor_deadline.strftime("%Y-%m-%dT%H:%M:%S") if getattr(t, "editor_deadline", None) else ""),
         "editing_progress": t.editing_progress or 0,
         "editing_seconds": t.editing_seconds or 0,
         "edited_link": t.edited_link or "",
@@ -650,6 +698,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
             "reference_images": (_json_list(g.reference_images, g.reference_image) if g else []),
             "thumbnail_candidates": (_json_list(g.thumbnail_candidates) if g else []),
             "final_note": (getattr(g, "final_note", "") if g else ""),
+            "deadline_iso": ((g.deadline.strftime("%Y-%m-%dT%H:%M:%S") if getattr(g, "deadline", None) else "") if g else ""),
             "instructions": (g.instructions if g else ""),
             "remarks": (g.remarks if g else ""),
             "quality_rating": (g.quality_rating if g else None),

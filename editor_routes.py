@@ -141,7 +141,8 @@ def _my_task(db, sp, tid):
     t = db.query(VideoTask).filter(VideoTask.id == int(tid)).first()
     if not t:
         raise HTTPException(404, "Task not found")
-    if t.editor_id != sp.id:
+    # primary editor OR a collaborator (2-editor urgent video) can access
+    if not pc.editor_can_access(t, sp.id):
         raise HTTPException(403, "This task is not assigned to you")
     return t
 
@@ -265,8 +266,12 @@ def editor_photo_get(db: Session = Depends(get_db), me=Depends(get_editor)):
 
 @router.get("/tasks")
 def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db), me=Depends(get_editor)):
+    from sqlalchemy import or_ as _or
     sp = _me_staff(db, me)
-    q = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
+    # primary editor OR a collaborator (broad LIKE narrows candidates; exact filter below)
+    q = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                   _or(VideoTask.editor_id == sp.id,
+                                       VideoTask.collab_editor_ids.like('%' + str(sp.id) + '%')))
     now = datetime.utcnow()
     preset = (filter or "").lower()
     if preset == "editing":
@@ -290,6 +295,8 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
         else:
             q = q.filter(VideoTask.lifecycle == status)
     rows = q.order_by(VideoTask.updated_at.desc()).all()
+    # LIKE can over-match (12 vs 120) -> exact membership check
+    rows = [t for t in rows if pc.editor_can_access(t, sp.id)]
     _ccm = pc.comment_count_map(db, [t.id for t in rows])
     _outs = [pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0)) for t in rows]
     try:

@@ -235,6 +235,12 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN on_hold BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN cancelled BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN published_at DATETIME NULL",
+        # per-role editor fields: PM ka editor ke liye alag deadline + instructions +
+        # reference, aur editor collab (2 editors on urgent video)
+        "ALTER TABLE video_tasks ADD COLUMN editor_deadline DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN editor_instructions TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN editor_reference TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN collab_editor_ids TEXT",
     ]
     for s in stmts:
         try:

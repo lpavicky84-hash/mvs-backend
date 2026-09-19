@@ -588,6 +588,35 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                                                      ProductionStaffProfile.staff_role == "editor").first()
         if ep:
             t.editor_id = eid
+    # collab editors (2 editors on an urgent video) — additional editor ids beyond the primary
+    import json as _jce
+    _ced = []
+    for x in (payload.get("collab_editor_ids") or []):
+        try:
+            xi = int(x)
+        except Exception:
+            continue
+        if xi and xi != t.editor_id and xi not in _ced and db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.id == xi, ProductionStaffProfile.staff_role == "editor").first():
+            _ced.append(xi)
+    if _ced:
+        try:
+            t.collab_editor_ids = _jce.dumps(_ced)
+        except Exception:
+            pass
+    # editor ke liye alag deadline + instructions + reference (Assign Work "Editor" section)
+    _edl = (payload.get("editor_deadline") or "").strip()
+    if _edl:
+        try:
+            t.editor_deadline = datetime.fromisoformat(_edl.replace("Z", ""))
+        except Exception:
+            pass
+    _ein = (payload.get("editor_instructions") or "").strip()
+    if _ein:
+        t.editor_instructions = _ein
+    _eref = (payload.get("editor_reference") or "").strip()
+    if _eref:
+        t.editor_reference = _eref
     pc.set_state(db, t, "creator_assigned", actor=me, event="task_created")
     pc.log_event(db, t, me, "creator_assigned", new_state="creator_assigned")
     db.flush()
@@ -673,6 +702,11 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         if ep and ep.user_id:
             pc.notify(db, ep.user_id, "You are the editor for an upcoming video",
                       f'You have been pre-assigned to edit "{title}" once it is ready.', "video_task", link=str(t.id))
+    for _cei in pc.collab_editor_ids(t):
+        _cep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == _cei).first()
+        if _cep and _cep.user_id:
+            pc.notify(db, _cep.user_id, "You are a co-editor for an upcoming video",
+                      f'You have been added as a co-editor on "{title}".', "video_task", link=str(t.id))
     # notify creator
     if ctype == "teacher":
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
@@ -805,16 +839,20 @@ def assign_editor(tid: int, payload: dict = Body(...),
     if not ed:
         raise HTTPException(400, "Valid editor_id required")
     t.editor_id = eid
-    # optional: admin/PM editor ko brief/instruction de sakta hai (editor portal isse
-    # 'Reference / Brief' me dekhta hai) + optional naya deadline. Blank ho to chhedte nahi.
+    # optional: admin/PM editor ko brief/instruction + reference de sakta hai (editor portal
+    # isse "PM Brief" me dekhta hai) + optional editor deadline. Ye editor-specific fields hain
+    # -> teacher ka reference/deadline chhedte NAHI. Blank ho to overwrite nahi karte.
     _eins = (payload.get("instructions") or payload.get("editor_instructions") or "").strip()
     if _eins:
-        t.reference = _eins
-    _edl = (payload.get("deadline") or "").strip()
+        t.editor_instructions = _eins
+    _eref = (payload.get("editor_reference") or payload.get("reference") or "").strip()
+    if _eref:
+        t.editor_reference = _eref
+    _edl = (payload.get("editor_deadline") or payload.get("deadline") or "").strip()
     if _edl:
         try:
             from datetime import datetime as _dte
-            t.deadline = _dte.fromisoformat(_edl.replace("Z", ""))
+            t.editor_deadline = _dte.fromisoformat(_edl.replace("Z", ""))
         except Exception:
             pass
     # PM manually assigned an editor. Internal state stays 'editor_assigned' (what the
@@ -3350,6 +3388,27 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                         g.deadline = datetime.fromisoformat(_gd.replace("Z", ""))
                     except Exception:
                         pass
+                # edit-mode "Thumbnail done": PM ne naya final thumbnail upload kiya -> auto-approve + rating
+                _upl = payload.get("thumbnail_upload")
+                if _upl:
+                    try:
+                        _uu = pc.save_images(db, t, [_upl], "thumbnail", None, me, return_urls=True) or []
+                        if _uu:
+                            g.thumbnail_url = _uu[0]
+                            t.thumbnail_link = _uu[0]
+                            g.status = "approved"
+                            try:
+                                g.submitted_at = datetime.utcnow()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                _rt = payload.get("thumbnail_rating")
+                if _rt:
+                    try:
+                        g.quality_rating = int(_rt)
+                    except Exception:
+                        pass
                 if gp.user_id:
                     pc.notify(db, gp.user_id, "Thumbnail task assigned",
                               f'You have been assigned the thumbnail for "{t.title}".', "graphics_task", link=str(t.id))
@@ -3371,6 +3430,35 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                               f'You have been assigned to edit "{t.title}".', "video_task", link=str(t.id))
         else:
             t.editor_id = None
+    # editor deadline / instructions / reference (Assign Work "Editor" section)
+    if "editor_deadline" in payload:
+        _edl = (payload.get("editor_deadline") or "").strip()
+        if _edl:
+            try:
+                t.editor_deadline = datetime.fromisoformat(_edl.replace("Z", ""))
+            except Exception:
+                pass
+        else:
+            t.editor_deadline = None
+    if "editor_instructions" in payload:
+        t.editor_instructions = (payload.get("editor_instructions") or "").strip()
+    if "editor_reference" in payload:
+        t.editor_reference = (payload.get("editor_reference") or "").strip()
+    if "collab_editor_ids" in payload:
+        import json as _jce2
+        _ced2 = []
+        for x in (payload.get("collab_editor_ids") or []):
+            try:
+                xi = int(x)
+            except Exception:
+                continue
+            if xi and xi != t.editor_id and xi not in _ced2 and db.query(ProductionStaffProfile).filter(
+                    ProductionStaffProfile.id == xi, ProductionStaffProfile.staff_role == "editor").first():
+                _ced2.append(xi)
+        try:
+            t.collab_editor_ids = _jce2.dumps(_ced2) if _ced2 else ""
+        except Exception:
+            pass
     # chapter edit (projects / One Shot / Rapid Revision) — remove unticked chapters and
     # remember the removals in chapter_excludes so the syllabus auto-sync never re-adds
     # them (this is what makes a PM's chapter removal actually stick after refresh).

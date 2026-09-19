@@ -586,6 +586,11 @@ class VideoTask(Base):
     priority        = Column(String(10), default="normal") # normal | urgent
     editor_id       = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True)
     graphics_id     = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True)
+    # per-role editor fields (PM sets in Assign Work "Editor" section)
+    editor_deadline     = Column(DateTime, nullable=True)     # editor must finish editing by
+    editor_instructions = Column(Text, default="")           # PM ka editor ke liye brief
+    editor_reference    = Column(Text, default="")           # editor ke liye reference link/notes
+    collab_editor_ids   = Column(Text, default="")           # JSON list of ADDITIONAL editor ids (collab edit)
     thumbnail_required  = Column(Boolean, default=False)   # PM wants a thumbnail for this task
     editing_progress = Column(Integer, default=0)          # 0..100
     editing_started_at = Column(DateTime, nullable=True)

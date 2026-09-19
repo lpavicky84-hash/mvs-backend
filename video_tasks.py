@@ -1896,6 +1896,20 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
             out["editor_name"] = (ep.user.name if ep and ep.user else "") or ""
         else:
             out["editor_name"] = ""
+        # collab editors (2 editors on an urgent video)
+        _cei = []
+        try:
+            import json as _jce3
+            _raw = getattr(t, "collab_editor_ids", "") or ""
+            _cei = [int(x) for x in (_jce3.loads(_raw) if _raw else []) if str(x).strip()]
+        except Exception:
+            _cei = []
+        _cnames = []
+        for _ei in _cei:
+            _ep2 = db.query(_PSPx).filter(_PSPx.id == _ei).first()
+            if _ep2 and _ep2.user and _ep2.user.name:
+                _cnames.append(_ep2.user.name)
+        out["collab_editor_names"] = _cnames
         if out["graphics_id"]:
             gpx = db.query(_PSPx).filter(_PSPx.id == out["graphics_id"]).first()
             out["graphics_name"] = (gpx.user.name if gpx and gpx.user else "") or ""
