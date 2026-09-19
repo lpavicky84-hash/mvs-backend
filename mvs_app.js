@@ -24831,6 +24831,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pd-hot-link:hover{background:rgba(230,173,78,.24)}',
 'body.dark .pd-hot-link{color:#f0d493}',
 '.pd-collab-tag{display:inline-block;font-size:.78rem;font-weight:800;color:#7c4fc0;background:rgba(124,79,192,.14);padding:1px 8px;border-radius:999px;margin-left:4px}',
+'.eb-wrap{display:flex;flex-direction:column;gap:14px}',
+'.eb-dl{display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,rgba(230,173,78,.16),rgba(230,173,78,.06));border:1px solid rgba(230,173,78,.35);border-radius:12px;padding:11px 14px}',
+'.eb-dl svg{width:16px;height:16px;color:#a9791f;flex:0 0 auto}',
+'.eb-dl-l{font-size:.8rem;font-weight:700;color:var(--text-muted)}',
+'.eb-dl-v{margin-left:auto;font-weight:800;color:#8a6d1f}',
+'body.dark .eb-dl-v{color:#f0d493}',
+'.eb-block{background:var(--surface-2,#faf6ec);border:1px solid rgba(140,125,92,.16);border-radius:12px;padding:13px 15px}',
+'.eb-h{display:flex;align-items:center;gap:7px;font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#a9791f;margin-bottom:9px}',
+'.eb-h svg{width:14px;height:14px}',
+'.eb-text{font-size:.92rem;line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word}',
+'.eb-empty{font-size:.88rem;color:var(--text-muted);font-style:italic}',
+'.eb-reflink{display:inline-flex;align-items:center;gap:7px;font-weight:800;color:#8a6d1f;text-decoration:none;padding:9px 15px;border-radius:10px;border:1px solid rgba(230,173,78,.45);background:rgba(230,173,78,.12)}',
+'.eb-reflink svg{width:15px;height:15px}',
+'.eb-reflink:hover{background:rgba(230,173,78,.24)}',
+'body.dark .eb-reflink{color:#f0d493}',
 '.vt-team{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:.8rem;color:var(--text-muted);margin-top:2px}',
 '.vt-team svg{width:13px;height:13px;vertical-align:-2px;margin-right:2px}',
 '.vt-team b{color:var(--text)}',
@@ -27989,8 +28004,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
       if((t.editor_instructions||'').trim()||(t.editor_reference||'').trim()) acts+='<button class="ptc-btn ptc-ref-blink" onclick="event.stopPropagation();edtBrief('+t.id+')"><span class="rev-dot"></span>PM Brief</button>';
       var _euc=t.unread_total||0; var _eb=(_euc>0?' <span class="chat-badge">'+_euc+'</span>':''); var _ebl=(_euc>0?' chat-blink':'');
-      if(t.creator_type==='youtuber') acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatCreator('+t.id+')">\uD83D\uDCAC Chat with YouTuber'+_eb+'</button>';
-      else acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatPM('+t.id+')">\uD83D\uDCAC Chat with PM'+_eb+'</button>';
+      // Editor sabse hamesha PM se hi baat karega (youtuber se direct nahi) \u2014 PM hi coordinate karega
+      acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatPM('+t.id+')">\uD83D\uDCAC Chat with PM'+_eb+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='graphics'){
       if(g.status==='new'||g.status==='pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'graphics\','+t.id+',\'/start\')">Start Designing</button>';
@@ -30231,14 +30246,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dl=(t.editor_deadline||'').trim();
     var o=document.getElementById('prod-modal'); if(o)o.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    var refHtml=ref?(/^https?:\/\//i.test(ref)?('<a href="'+esc(ref)+'" target="_blank" rel="noopener" style="color:var(--primary);font-weight:700">'+esc(ref)+'</a>'):esc(ref)):'—';
-    dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+    var refHtml=ref
+      ? (/^https?:\/\//i.test(ref)
+          ? ('<a href="'+esc(ref)+'" target="_blank" rel="noopener" class="eb-reflink">'+ic('play')+' Open reference</a>')
+          : ('<div class="eb-text">'+esc(ref)+'</div>'))
+      : '<div class="eb-empty">No reference provided</div>';
+    var body='<div class="eb-wrap">'+
+        (dl?('<div class="eb-dl">'+ic('clock')+'<span class="eb-dl-l">Your deadline</span><span class="eb-dl-v">'+esc(dl)+'</span></div>'):'')+
+        '<div class="eb-block"><div class="eb-h">'+ic('edit')+' Instructions from PM</div>'+
+          (ins?('<div class="eb-text">'+esc(ins)+'</div>'):('<div class="eb-empty">No instructions provided</div>'))+'</div>'+
+        '<div class="eb-block"><div class="eb-h">'+ic('play')+' Reference</div>'+refHtml+'</div>'+
+      '</div>';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
       '<div class="pd-head"><div class="h-title">Brief from the Production Manager</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body">'+
-        (dl?('<div class="sdet-row" style="margin-bottom:10px"><span>Your deadline</span><b>'+esc(dl)+'</b></div>'):'')+
-        '<div class="p-field"><label>Instructions</label><div class="aw-sum" style="white-space:pre-wrap">'+(ins?esc(ins):'—')+'</div></div>'+
-        '<div class="p-field"><label>Reference</label><div class="aw-sum">'+refHtml+'</div></div>'+
-      '</div>'+
+      '<div class="p-modal-body">'+body+'</div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Got it</button></div></div>'+
     '</div>';
     document.body.appendChild(dr);
