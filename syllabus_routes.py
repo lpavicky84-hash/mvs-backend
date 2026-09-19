@@ -636,23 +636,73 @@ def _student_profile(db, user):
     return sp
 
 
+def _name_code_map(db, class_level):
+    """subject NAME (lowercased) -> code for a class.
+    Master list (static SUBJECTS + admin overrides) pehle, phir AvailableSubject
+    (admin ka explicit name->code) upar overlay — taaki AvailableSubject jeete."""
+    m = {}
+    for s in subject_list(db, str(class_level), include_hidden=True):
+        nm = (s.get("name") or "").strip().lower()
+        if nm and nm not in m:
+            m[nm] = s["code"]
+    try:
+        for a in db.query(AvailableSubject).filter(
+                AvailableSubject.class_level == str(class_level)).all():
+            nm = (a.name or "").strip().lower()
+            if nm and a.code:
+                m[nm] = str(a.code).strip()
+    except Exception:
+        pass
+    return m
+
+
 def _student_codes(db, sp):
     """
     Subject codes for this student, mapped from their subject names.
     Returns (class_level, codes, unmapped_names).
 
+    Class level is chosen by which class actually CONTAINS the student's
+    subjects — not by blindly trusting the stored class_level field. Ek NEET/
+    science student jiske paas Physics/Chemistry/Biology (sirf class 12) hain
+    par jiska class_level galti se "10" set hai, uske ye subjects class 10 me
+    exist hi nahi karte the -> "not linked" dikhta tha. Ab jis class me sabse
+    zyada subjects match hote hain wahi class chuni jaati hai (tie pe stored
+    class_level ko preference), jisse genuine class-10 students bhi safe rehte.
+
     unmapped_names are subjects the student is enrolled in that have no entry
     in the syllabus master. They are reported, never silently dropped, so a
     missing subject shows up instead of quietly disappearing.
     """
-    cl = str(sp.class_level or class_level_from_name(sp.class_name) or "12")
     names = sp.subjects if isinstance(sp.subjects, list) else []
-    codes, unmapped = [], []
+    stored = str(sp.class_level or class_level_from_name(sp.class_name) or "").strip()
+    # candidate class levels: stored first (tie-break preference), then 12, then 10
+    cands = []
+    for c in [stored, "12", "10"]:
+        if c and c not in cands:
+            cands.append(c)
+    if not cands:
+        cands = ["12", "10"]
+    maps = {c: _name_code_map(db, c) for c in cands}
+    norm = [str(n or "").strip().lower() for n in names]
+
+    def _hits(c):
+        mm = maps[c]
+        return sum(1 for n in norm if n and n in mm)
+
+    cl = cands[0]
+    best = _hits(cl)
+    for c in cands[1:]:
+        h = _hits(c)
+        if h > best:   # strict '>' keeps the stored/earlier class on a tie
+            best, cl = h, c
+
+    nmap = maps[cl]
     subs = subject_list(db, cl, include_hidden=True)
     known = {s["code"] for s in subs}
     hidden = {s["code"] for s in subs if s.get("hidden")}
+    codes, unmapped = [], []
     for n in names:
-        c = subject_code_for_name(db, cl, n)
+        c = nmap.get(str(n or "").strip().lower())
         if c and c in known:
             # a subject hidden by the admin is removed from the tracker
             # entirely - not listed, not accessible, not reported as missing
