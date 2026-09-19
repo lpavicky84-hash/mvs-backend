@@ -16439,7 +16439,13 @@ const STUDENT_BATCHES=[
 ];
 async function openStudent(){
   try{_saveSession();}catch(e){}
-  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){} [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
+  // Sidebar load pe FULLY closed rahe — sab sections band, user click pe hi khulein.
+  // forceAll=true taaki late-inject hone wale sub-items (Classes Material/DPP Submit) bhi chhup jayein.
+  try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
+  // pehle 2 ticks forceAll=true (sab band), baad ke ticks false (late-inject items chhupein par
+  // user ne jo khola ho use band na karein)
+  [150,500].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,true); }); }catch(e){} }, d); });
+  [1100,2000].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
   // batch mode sabse pehle — taaki sidebar/pages sahi dikhein
   api('/api/student/profile').then(p=>{
     window._sBatch=p.batch_name||p.batch||''; _restoreSelBatch();
@@ -24705,8 +24711,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 'body.dark .prodapp{background:#100d07;color:#eee6d4}',
 '.prodwrap{display:flex;height:100%;width:100%}',
 /* sidebar */
-'.prodside{width:258px;flex:0 0 258px;background:#171203;color:#f0e6cf;display:flex;flex-direction:column;border-right:1px solid rgba(230,173,78,.16);overflow-y:auto}',
-'.prodside .ps-brand{display:flex;align-items:center;gap:11px;padding:18px 18px 14px}',
+'.prodside{width:258px;flex:0 0 258px;background:#171203;color:#f0e6cf;display:flex;flex-direction:column;border-right:1px solid rgba(230,173,78,.16);overflow:hidden;height:100%}',
+'.prodside .ps-brand{display:flex;align-items:center;gap:11px;padding:18px 18px 14px;flex:0 0 auto}',
+'.prodside .ps-nav{flex:1 1 auto;overflow-y:auto;min-height:0;padding-bottom:6px}',
+'.prodside .ps-nav::-webkit-scrollbar{width:7px}',
+'.prodside .ps-nav::-webkit-scrollbar-thumb{background:rgba(230,173,78,.28);border-radius:8px}',
 '.prodside .ps-logo{width:38px;height:38px;border-radius:10px;overflow:hidden;flex:0 0 38px;box-shadow:0 0 0 3px rgba(230,173,78,.14)}',
 '.prodside .ps-logo img{width:100%;height:100%;object-fit:contain}',
 '.prodside .ps-title{font-weight:800;font-size:1.02rem;line-height:1.05;letter-spacing:-.01em}',
@@ -24717,7 +24726,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodside .ps-badge{background:#d1443a;color:#fff;font-size:.7rem;font-weight:800;min-width:20px;text-align:center;padding:1px 7px;border-radius:999px;flex:0 0 auto}',
 '.prodside .ps-item:hover{background:rgba(230,173,78,.12);color:#fff}',
 '.prodside .ps-item.on{background:linear-gradient(135deg,rgba(230,173,78,.26),rgba(230,173,78,.10));color:#fff;box-shadow:inset 3px 0 0 '+accent+';font-weight:700}',
-'.prodside .ps-foot{margin-top:auto;padding:12px 10px;border-top:1px solid rgba(230,173,78,.14);display:flex;flex-direction:column;gap:8px}',
+'.prodside .ps-foot{flex:0 0 auto;padding:12px 10px;border-top:1px solid rgba(230,173,78,.14);display:flex;flex-direction:column;gap:8px}',
 '.ps-prof{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;cursor:pointer;transition:background .15s}',
 '.ps-prof:hover{background:rgba(230,173,78,.12)}',
 '.ps-prof-av{width:40px;height:40px;border-radius:50%;flex:none;background:linear-gradient(135deg,#c99a2e,#a5801f);color:#231a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem;background-size:cover;background-position:center;overflow:hidden}',
@@ -25556,7 +25565,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="prodwrap">'+
         '<aside class="prodside">'+
           '<div class="ps-brand"><div class="ps-logo">'+logo+'</div><div><div class="ps-title">'+d.title+'</div><div class="ps-sub">'+d.sub+'</div></div></div>'+
-          navHtml+
+          '<div class="ps-nav">'+navHtml+'</div>'+
           '<div class="ps-foot">'+
             '<div class="ps-prof" onclick="prodProfileOpen(\''+portal+'\')" title="Your profile"><div class="ps-prof-av" id="ps-prof-av-'+portal+'">'+esc((initials?initials(NAME||d.title):(NAME||d.title||'?').slice(0,1)).toUpperCase())+'</div><div class="ps-prof-i"><div class="ps-prof-n">'+esc(NAME||d.title)+'</div><div class="ps-prof-r">'+esc(d.role||portal)+'</div></div></div>'+
             '<button class="ps-fbtn" onclick="logout()">'+icon('logout')+'<span>Logout</span></button>'+
@@ -26967,6 +26976,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.yts-btn:hover{transform:translateY(-1px);box-shadow:0 9px 24px rgba(201,138,46,.4)}',
       '.yts-btn.ghost{background:var(--bg);color:var(--text);box-shadow:none;border:1px solid var(--border)}',
       '.yts-btn.ghost:hover{background:var(--card);border-color:#c98a2e}',
+      '.yts-nav{width:40px;height:40px;flex:0 0 auto;border-radius:11px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:transform .12s,background .12s,border-color .12s}',
+      '.yts-nav svg{width:18px;height:18px}',
+      '.yts-nav:hover{background:var(--card);border-color:#c98a2e;transform:translateY(-1px)}',
       '.ytw{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;scroll-snap-type:x proximity}',
       '.ytw-day{flex:0 0 262px;scroll-snap-align:start;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:120px}',
       '.ytw-day.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
@@ -26993,6 +27005,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ytLoadSpotlight(){ var host=document.getElementById('yt-spotlight'); if(!host) return;
     _ytLoad(function(tasks){ window._ytSpot=_ytDueSorted(tasks); window._ytSpotIdx=0; _ytSpotRender(); }); }
   window.ytSpotNext=function(){ var n=(window._ytSpot||[]).length; if(!n) return; window._ytSpotIdx=((window._ytSpotIdx||0)+1)%n; _ytSpotRender(); };
+  window.ytSpotPrev=function(){ var n=(window._ytSpot||[]).length; if(!n) return; window._ytSpotIdx=((window._ytSpotIdx||0)-1+n)%n; _ytSpotRender(); };
   function _ytSpotRender(){
     var host=document.getElementById('yt-spotlight'); if(!host) return;
     var list=window._ytSpot||[];
@@ -27011,7 +27024,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="yts-cd" id="yts-cd"><b>\u2014</b><span>left</span></div>'+
       (dlTxt?'<div class="yts-dl">'+ic('calendar')+' Deadline \u00b7 '+esc(dlTxt)+'</div>':'')+
       '<div class="yts-acts"><button class="yts-btn" onclick="prodOpenTask(\'youtuber\','+t.id+')">Open task</button>'+
-      (list.length>1?'<button class="yts-btn ghost" onclick="ytSpotNext()">Next \u2192</button>':'')+'</div></div></div></div>';
+      (list.length>1?('<button class="yts-nav" title="Previous" onclick="ytSpotPrev()">'+ic('back')+'</button>'+
+        '<button class="yts-nav" title="Next" onclick="ytSpotNext()" style="transform:scaleX(-1)">'+ic('back')+'</button>'):'')+
+      '</div></div></div></div>';
     _ytCdStart();
   }
   function _ytCdStart(){
