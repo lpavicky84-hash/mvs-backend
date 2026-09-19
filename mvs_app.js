@@ -26161,6 +26161,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.youtuber.api+'/videos/'+id,'DELETE').then(function(){ toast('Deleted'); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
   };
   window.ytChatEditor=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=editor',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'editor',mineRole:'youtuber',title:'Chat with Editor'}); };
+  window.ytChatGraphics=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=graphics',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'graphics',mineRole:'youtuber',title:'Chat with Graphics'}); };
+  // One "Chat" button for the youtuber -> menu with PM / Editor / Graphics (jitne assigned hain).
+  window.ytChatMenu=function(id, hasEditor, hasGraphics){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    var opts='<button class="pcm-opt" onclick="prodDismiss();ytChatPM('+id+')">'+ic('users')+'<span class="pcm-label">Chat with PM</span><span class="pcm-arw">›</span></button>';
+    if(hasEditor) opts+='<button class="pcm-opt" onclick="prodDismiss();ytChatEditor('+id+')">'+ic('play')+'<span class="pcm-label">Chat with Editor</span><span class="pcm-arw">›</span></button>';
+    if(hasGraphics) opts+='<button class="pcm-opt" onclick="prodDismiss();ytChatGraphics('+id+')">'+ic('image')+'<span class="pcm-label">Chat with Graphics</span><span class="pcm-arw">›</span></button>';
+    dr.innerHTML='<div class="p-modal" style="max-width:380px">'+
+      '<div class="pd-head"><div class="h-title">Chat about this video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div class="pcm-list">'+opts+'</div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
   window.edtChatCreator=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with YouTuber',taskId:id,barPortal:'editor',pingUrl:P.editor.api+'/tasks/'+id+'/chat-ping'}); };
   window.gfxChat=function(id){
     window._chatImg=null;
@@ -27967,12 +27981,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
       if(['uploaded','completed'].indexOf(lc)<0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytEditTask('+t.id+')">Edit</button>';
-      if(t.graphics && t.graphics.status==="submitted") acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();ytThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
+      // Thumbnail review: graphics ne submit kiya ho (blink) YA approved bhi ho to youtuber
+      // dobara dekh/badal sake (pehle PM approve kar deta to youtuber ko button milta hi nahi tha).
+      var _gst=(t.graphics&&t.graphics.status)||'';
+      if(t.graphics && (_gst==='submitted'||_gst==='changes'))
+        acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();ytThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
+      else if(t.graphics && _gst==='approved' && (t.graphics.thumbnail_url||_hasThumb))
+        acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytThumbReview('+t.id+')">Review Thumbnail</button>';
       if(lc==='creator_assigned'||lc==='creator_working') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Submit Video</button>';
       else if(lc==='changes_required') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'youtuber\',\'submit\','+t.id+')">Re-submit</button>';
       if(t.youtube_url||t.submitted_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link)+'\',\'_blank\')">Open Video</button>';
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytChatPM('+t.id+')">Chat with PM</button>';
-      if(t.editor_id) acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytChatEditor('+t.id+')">Chat with Editor</button>';
+      // Ek hi "Chat" button -> PM / Editor / Graphics (jitne assigned hain) ka menu.
+      var _ycu=t.unread_total||t.unread_count||0; var _ycb=(_ycu>0?' <span class="chat-badge">'+_ycu+'</span>':''); var _ycbl=(_ycu>0?' chat-blink':'');
+      acts+='<button class="ptc-btn'+_ycbl+'" onclick="event.stopPropagation();ytChatMenu('+t.id+','+(t.editor_id?'true':'false')+','+((t.graphics&&t.graphics.graphics_id)?'true':'false')+')">💬 Chat'+_ycb+'</button>';
       acts+='<button class="ptc-btn'+(_hasThumb?'':' ptc-ok')+'" onclick="event.stopPropagation();prodThumbUpload(\'youtuber\','+t.id+')">'+(_hasThumb?'Change Thumbnail':'Upload Thumbnail')+'</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
       acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();ytDeleteVideo('+t.id+')">Delete</button>';

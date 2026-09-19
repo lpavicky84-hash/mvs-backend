@@ -497,6 +497,15 @@ def yt_thumbnail(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                           "thumbnail", None, me, return_urls=True) or []
     if urls:
         t.thumbnail_link = urls[0]
+        # Agar is task pe graphics thumbnail already bana/approve hua hai, to card usi
+        # graphics thumbnail_url ko final dikhata hai (task_out precedence). Youtuber ke
+        # "Change Thumbnail" ko reflect karne ke liye graphics record ko bhi update karo —
+        # naya image final ban jaaye.
+        from models import GraphicsTask
+        g = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
+        if g:
+            g.thumbnail_url = urls[0]
+            g.status = "approved"
     pc.log_event(db, t, me, "thumbnail_uploaded", new_state=t.lifecycle)
     db.commit()
     return {"ok": True, "thumbnail": t.thumbnail_link or ""}
@@ -540,7 +549,7 @@ def yt_comments(tid: int, audience: str = "creator", db: Session = Depends(get_d
     yp = _me_yt(db, me)
     _my_task(db, yp, tid)
     aud = (audience or "creator").strip().lower()
-    if aud not in ("creator", "editor"):
+    if aud not in ("creator", "editor", "graphics"):
         aud = "creator"
     return {"comments": _VT._vtc_list(db, tid, aud)}
 
@@ -552,7 +561,7 @@ def yt_comment_add(tid: int, payload: dict = Body(...), db: Session = Depends(ge
     yp = _me_yt(db, me)
     t = _my_task(db, yp, tid)
     aud = (payload.get("audience") or "creator").strip().lower()
-    if aud not in ("creator", "editor"):
+    if aud not in ("creator", "editor", "graphics"):
         aud = "creator"
     att = (payload.get("attachment_url") or "").strip()
     imgs = payload.get("images")
@@ -566,15 +575,26 @@ def yt_comment_add(tid: int, payload: dict = Body(...), db: Session = Depends(ge
     c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "youtuber", attachment_url=att, audience=aud)
     if not c:
         raise HTTPException(400, "Empty message")
+    _snip = (payload.get("message") or "").strip()[:60]
     if aud == "editor":
         if t.editor_id:
             ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
             if ep and ep.user_id:
                 pc.notify(db, ep.user_id, "Message from YouTuber",
-                          f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "creator_chat", link=str(t.id))
+                          f'{me.name}: "{_snip}"', "creator_chat", link=str(t.id))
+    elif aud == "graphics":
+        # graphics thread (PM<->graphics internal) — youtuber bhi ismein baat kar sakta hai;
+        # graphics designer + PMs dono ko notify karo
+        if t.graphics_id:
+            gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.graphics_id).first()
+            if gp and gp.user_id:
+                pc.notify(db, gp.user_id, "Message from YouTuber",
+                          f'{me.name}: "{_snip}"', "creator_chat", link=str(t.id))
+        pc.notify_pms(db, "Message from YouTuber (graphics)",
+                      f'{me.name}: "{_snip}"', "creator_chat", link=str(t.id))
     else:
         pc.notify_pms(db, "Message from YouTuber",
-                      f'{me.name}: "{(payload.get("message") or "").strip()[:60]}"', "creator_chat", link=str(t.id))
+                      f'{me.name}: "{_snip}"', "creator_chat", link=str(t.id))
     db.commit()
     return {"ok": True, "comment": _VT._vtc_out(db, c)}
 
