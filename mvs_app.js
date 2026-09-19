@@ -24824,7 +24824,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@keyframes pdHotPulse{0%,100%{background:rgba(230,173,78,.14);box-shadow:0 0 0 0 rgba(230,173,78,.30)}50%{background:rgba(230,173,78,.28);box-shadow:0 0 0 4px rgba(230,173,78,0)}}',
 '.pd-hot{display:inline-block;font-weight:800;color:#8a6d1f;padding:2px 9px;border-radius:8px;animation:pdHotPulse 1.5s ease-in-out infinite;white-space:pre-wrap}',
 'body.dark .pd-hot{color:#f0d493}',
-'.pd-hot-link{display:inline-block;font-weight:800;color:#a9791f;text-decoration:underline;padding:2px 9px;border-radius:8px;animation:pdHotPulse 1.5s ease-in-out infinite;word-break:break-all}',
+'.pd-hot-link{display:inline-flex;align-items:center;gap:6px;font-weight:800;color:#8a6d1f;text-decoration:none;padding:6px 13px;border-radius:9px;border:1px solid rgba(230,173,78,.45);background:rgba(230,173,78,.12);animation:pdHotPulse 1.5s ease-in-out infinite}',
+'.pd-hot-link svg{width:14px;height:14px}',
+'.pd-hot-link:hover{background:rgba(230,173,78,.24)}',
+'body.dark .pd-hot-link{color:#f0d493}',
 '.pd-collab-tag{display:inline-block;font-size:.78rem;font-weight:800;color:#7c4fc0;background:rgba(124,79,192,.14);padding:1px 8px;border-radius:999px;margin-left:4px}',
 '.vt-team{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:.8rem;color:var(--text-muted);margin-top:2px}',
 '.vt-team svg{width:13px;height:13px;vertical-align:-2px;margin-right:2px}',
@@ -29133,7 +29136,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _eref=(t.editor_reference||'').trim();
       if(!_hasEd && !_eins && !_eref) return '<div class="pd-empty">No editor assigned yet.</div>';
       var _ename=esc(t.editor_name||'')+((t.collab_editor_names&&t.collab_editor_names.length)?(' <span class="pd-collab-tag">+ '+t.collab_editor_names.map(function(n){return esc(n);}).join(' + ')+'</span>'):'');
-      var _erefHtml=_eref?(/^https?:\/\//i.test(_eref)?('<a href="'+esc(_eref)+'" target="_blank" rel="noopener" class="pd-hot-link">'+esc(_eref)+'</a>'):('<span class="pd-hot">'+esc(_eref)+'</span>')):'';
+      var _erefHtml=_eref?(/^https?:\/\//i.test(_eref)?('<a href="'+esc(_eref)+'" target="_blank" rel="noopener" class="pd-hot-link">'+ic('play')+' Open reference</a>'):('<span class="pd-hot">'+esc(_eref)+'</span>')):'';
       return '<div class="pd-kv">'+
         _kv((t.collab_editor_names&&t.collab_editor_names.length)?'Editors':'Editor', _ename||'Not assigned')+
         _kv('Editor Deadline', t.editor_deadline?('<span class="pd-hot">'+esc(t.editor_deadline)+'</span>'):'Not set')+
@@ -29730,11 +29733,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!resume){
         try{
           var _sv=JSON.parse(localStorage.getItem(_awKey())||'null');
-          if(_sv && _sv.data && (_sv.data.title||_sv.data.teacher_id||_sv.data.youtuber_id||_sv.step>1||
+          // stale draft (30 min se purana) ko IGNORE karo -> ek task ka data doosre task me
+          // bleed na ho. Sirf recent, in-progress draft hi resume hoti hai.
+          var _fresh=_sv && _sv.ts && (Date.now()-_sv.ts) < 30*60*1000;
+          if(_fresh && _sv.data && (_sv.data.title||_sv.data.teacher_id||_sv.data.youtuber_id||_sv.step>1||
                (_sv.proj&&(_sv.proj.subject||_sv.proj.title))|| _sv.mode==='project')){
             window._aw={step:_sv.step||1, mode:_sv.mode||'task', data:_sv.data||{}, proj:_sv.proj||null, people:null};
             resume=true;
-          }
+          } else if(_sv && !_fresh){ _awClearStorage(); }
         }catch(e){}
       }
       if(!resume){ window._aw={step:1, data:{creator_type:(preCreator==='youtuber'?'youtuber':'teacher'), priority:'normal'}, people:null}; }
@@ -29876,7 +29882,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // exceed na ho; sirf text details persist hoti hain (title, subject, teacher, deadline, etc.)
     var d=aw.data, dd={}; var _skip={thumb_upload:1,graphics_reference_uploads:1,graphics_reference_upload:1,thumb_b64:1};
     for(var k in d){ if(Object.prototype.hasOwnProperty.call(d,k) && !_skip[k]) dd[k]=d[k]; }
-    var snap={step:aw.step||1,mode:aw.mode||'task',data:dd,proj:aw.proj||null};
+    var snap={step:aw.step||1,mode:aw.mode||'task',data:dd,proj:aw.proj||null,ts:Date.now()};
     var str=JSON.stringify(snap); if(str.length>200000) return;
     localStorage.setItem(_awKey(),str);
   }catch(e){} }
@@ -30275,14 +30281,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         priority:d.priority||'normal', thumbnail_required:!!d.thumbnail_required};
       if(d.deadline) eb.deadline=d.deadline;
       if(d.thumbnail_required && d.graphics_id){ eb.graphics_id=d.graphics_id;
+        eb.graphics_status=(d.graphics_status||'pending');
         if((d.graphics_status||'pending')==='done'){
           if(d.thumb_upload && /^data:/.test(d.thumb_upload)) eb.thumbnail_upload=d.thumb_upload;
           if(d.thumb_rating) eb.thumbnail_rating=d.thumb_rating;
         } else {
-          if(d.graphics_deadline) eb.graphics_deadline=d.graphics_deadline;
-          if(d.graphics_instructions) eb.graphics_instructions=d.graphics_instructions;
-          if(d.graphics_reference) eb.graphics_reference=d.graphics_reference;
-          if(d.graphics_reference_uploads&&d.graphics_reference_uploads.length) eb.graphics_reference_uploads=d.graphics_reference_uploads;
+          // pending: brief + reference (empty bhi bhejo taaki purana clear ho sake)
+          eb.graphics_deadline=d.graphics_deadline||'';
+          eb.graphics_instructions=d.graphics_instructions||'';
+          eb.graphics_reference=d.graphics_reference||'';
+          eb.graphics_reference_uploads=(d.graphics_reference_uploads||[]);
         }
       } else if(!d.thumbnail_required){ eb.graphics_id=0; }
       eb.editor_id=d.editor_id?d.editor_id:0;
@@ -30329,10 +30337,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _wasCollab=((d.collab_teacher_ids||[]).length>0);
     window._awResume=false;
     try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
+    // Draft ko ABHI (dismiss se pehle) clear karo -> PM turant "New Task" khole to pichle
+    // task ka data (instructions/reference) bleed na ho. Fail hone par neeche re-persist.
+    window._aw=null; _awClearStorage();
     prodDismiss();
     toast('Creating task\u2026');
-    api(P.production.api+'/tasks','POST',body).then(function(){ window._aw=null; window._awResume=false; _awClearStorage(); toast('Production task created'+(_wasCollab?' (collab)':'')); _refresh('production'); })
-      .catch(function(e){ window._awResume=true; try{_awPersist();}catch(_e){} toast((e&&e.message)||'Could not create task \u2014 your details are saved, tap “New Task” to retry',true); });
+    api(P.production.api+'/tasks','POST',body).then(function(){ window._awResume=false; _awClearStorage(); toast('Production task created'+(_wasCollab?' (collab)':'')); _refresh('production'); })
+      .catch(function(e){ window._aw={step:1,mode:'task',data:d,people:null}; window._awResume=true; try{_awPersist();}catch(_e){} toast((e&&e.message)||'Could not create task \u2014 your details are saved, tap “New Task” to retry',true); });
   };
 
   function _prodModal(title,inner){

@@ -3375,43 +3375,111 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                     db.add(g)
                 else:
                     g.graphics_id = gid
-                # wizard/edit se aayi reference thumbnail + instructions + deadline persist
-                _gi = (payload.get("graphics_instructions") or payload.get("instructions") or "").strip()
-                if _gi:
-                    g.instructions = _gi
-                _gr = (payload.get("graphics_reference") or payload.get("reference_image") or "").strip()
-                if _gr:
-                    g.reference_image = _gr
+                import json as _jr
+                _gstatus = (payload.get("graphics_status") or "").strip().lower()
+                _gi = (payload.get("graphics_instructions") or payload.get("instructions") or "")
                 _gd = (payload.get("graphics_deadline") or "").strip()
-                if _gd:
+
+                def _merge_refs(existing):
+                    refs = list(existing or [])
+                    _typed = (payload.get("graphics_reference") or payload.get("reference_image") or "").strip()
+                    if _typed:
+                        for _ln in _typed.replace(",", "\n").split("\n"):
+                            _ln = _ln.strip()
+                            if _ln and _ln not in refs:
+                                refs.append(_ln)
+                    _refups = payload.get("graphics_reference_uploads") or []
+                    if not _refups and payload.get("graphics_reference_upload"):
+                        _refups = [payload.get("graphics_reference_upload")]
+                    if _refups:
+                        try:
+                            _ru = pc.save_images(db, t, list(_refups), "reference", None, me, return_urls=True) or []
+                            for _u in _ru:
+                                if _u and _u not in refs:
+                                    refs.append(_u)
+                        except Exception:
+                            pass
+                    return refs
+
+                if _gstatus == "pending":
+                    # PM ne thumbnail DUBARA banwane ke liye pending kiya -> purana submitted
+                    # thumbnail + rating + candidates SAB clear, fresh reference + brief set.
+                    g.thumbnail_url = ""
+                    for _f in ("thumbnail_candidates", "quality_note"):
+                        try:
+                            setattr(g, _f, "")
+                        except Exception:
+                            pass
                     try:
-                        g.deadline = datetime.fromisoformat(_gd.replace("Z", ""))
+                        g.quality_rating = None
                     except Exception:
                         pass
-                # edit-mode "Thumbnail done": PM ne naya final thumbnail upload kiya -> auto-approve + rating
-                _upl = payload.get("thumbnail_upload")
-                if _upl:
                     try:
-                        _uu = pc.save_images(db, t, [_upl], "thumbnail", None, me, return_urls=True) or []
-                        if _uu:
-                            g.thumbnail_url = _uu[0]
-                            t.thumbnail_link = _uu[0]
-                            g.status = "approved"
-                            try:
-                                g.submitted_at = datetime.utcnow()
-                            except Exception:
-                                pass
+                        g.submitted_at = None
                     except Exception:
                         pass
-                _rt = payload.get("thumbnail_rating")
-                if _rt:
+                    g.status = "new"
+                    t.thumbnail_link = ""
+                    g.instructions = _gi.strip()
+                    _refs = _merge_refs([])
+                    g.reference_image = _refs[0] if _refs else ""
                     try:
-                        g.quality_rating = int(_rt)
+                        g.reference_images = _jr.dumps(_refs[:8]) if _refs else ""
                     except Exception:
                         pass
-                if gp.user_id:
-                    pc.notify(db, gp.user_id, "Thumbnail task assigned",
-                              f'You have been assigned the thumbnail for "{t.title}".', "graphics_task", link=str(t.id))
+                    if _gd:
+                        try:
+                            g.deadline = datetime.fromisoformat(_gd.replace("Z", ""))
+                        except Exception:
+                            pass
+                    if gp.user_id:
+                        pc.notify(db, gp.user_id, "New Thumbnail Task",
+                                  f'A fresh thumbnail is needed for "{t.title}".', "graphics_task", link=str(t.id))
+                else:
+                    if _gi.strip():
+                        g.instructions = _gi.strip()
+                    _existing = []
+                    if getattr(g, "reference_images", ""):
+                        try:
+                            _existing = _jr.loads(g.reference_images) or []
+                        except Exception:
+                            _existing = []
+                    _refs2 = _merge_refs(_existing)
+                    if _refs2:
+                        g.reference_image = _refs2[0]
+                        try:
+                            g.reference_images = _jr.dumps(_refs2[:8])
+                        except Exception:
+                            pass
+                    if _gd:
+                        try:
+                            g.deadline = datetime.fromisoformat(_gd.replace("Z", ""))
+                        except Exception:
+                            pass
+                    # edit-mode "Thumbnail done": PM ne naya final thumbnail upload kiya -> auto-approve + rating
+                    _upl = payload.get("thumbnail_upload")
+                    if _upl:
+                        try:
+                            _uu = pc.save_images(db, t, [_upl], "thumbnail", None, me, return_urls=True) or []
+                            if _uu:
+                                g.thumbnail_url = _uu[0]
+                                t.thumbnail_link = _uu[0]
+                                g.status = "approved"
+                                try:
+                                    g.submitted_at = datetime.utcnow()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                    _rt = payload.get("thumbnail_rating")
+                    if _rt:
+                        try:
+                            g.quality_rating = int(_rt)
+                        except Exception:
+                            pass
+                    if gp.user_id:
+                        pc.notify(db, gp.user_id, "Thumbnail task assigned",
+                                  f'You have been assigned the thumbnail for "{t.title}".', "graphics_task", link=str(t.id))
         else:
             t.graphics_id = None
     if "editor_id" in payload:
