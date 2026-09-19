@@ -29742,6 +29742,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     t=t||{}; var aw=window._aw; if(!aw) return; var d=aw.data||{}; aw.mode='task';
     d.creator_type=(t.creator_type==='youtuber')?'youtuber':'teacher';
     if(d.creator_type==='youtuber') d.youtuber_id=t.youtuber_id||0; else d.teacher_id=t.teacher_id||0;
+    d.creator_name=t.creator_name||''; // fallback label if creator not in current people list
     d.title=t.title||''; d.subject=t.subject||''; d.video_type=t.video_type||'';
     d.channel_name=t.channel_name||''; d.streaming=t.streaming||'';
     d.deadline=t.deadline_iso||''; d.priority=(t.priority==='urgent'||t.priority==='most_urgent')?'urgent':'normal';
@@ -29978,8 +29979,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '</div>'+
           '<div class="p-opt" id="aw-collab-note">'+(window._awCollabNoteHtml?window._awCollabNoteHtml(_allIds.length):(_allIds.length+' selected'))+'</div></div>';
       } else {
+        var _selInList=(sel&&list.filter(function(m){return m.id===sel;}).length>0);
+        var _selExtra=(sel&&!_selInList&&d.creator_name)?('<option value="'+sel+'" selected>'+esc(d.creator_name)+'</option>'):'';
         html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?('Teacher (subjects filter to this teacher)'):'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
-          '<option value="">Choose...</option>'+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
+          '<option value="">Choose...</option>'+_selExtra+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
       }
       // 4) subject — teacher only (YouTubers make topic-based videos, no subject)
       if(d.creator_type==='teacher' && !isCollab){

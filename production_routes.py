@@ -397,6 +397,9 @@ def pm_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or
     out["thumbnail_required"] = bool(getattr(t, "thumbnail_required", False))
     out["graphics_id"] = getattr(t, "graphics_id", None)
     out["editor_id"] = getattr(t, "editor_id", None)
+    # creator ids so the edit wizard can pre-select the teacher / youtuber
+    out["teacher_id"] = getattr(t, "teacher_id", None)
+    out["youtuber_id"] = getattr(t, "youtuber_id", None)
     return out
 
 
