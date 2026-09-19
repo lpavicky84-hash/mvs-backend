@@ -10095,6 +10095,7 @@ function adminAllowed(page){
   if(page==='requests') return secs.includes('requests')||secs.includes('students');
   if(page==='ytasks') return secs.includes('ytasks')||secs.includes('vtasks');
   if(page==='prodtrack') return secs.includes('prodtrack')||secs.includes('prodteam')||secs.includes('prodmon');
+  if(page==='upsched') return secs.includes('upsched')||secs.includes('prodboard')||secs.includes('prodmon')||secs.includes('prodteam');
   return secs.includes(page);
 }
 function applyAdminAccess(){
@@ -10137,6 +10138,7 @@ function openAdmin(){
   try{ initAdminSupport(); }catch(e){}
   try{ initAdminProdMonitor(); }catch(e){}
   try{ initAdminLiveTracker(); }catch(e){}
+  try{ initAdminUploadSchedule(); }catch(e){}
   try{ initAdminTranslation(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
   try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
@@ -10279,7 +10281,7 @@ async function openUserSessions(uid){
 // Master list of admin section titles (page key -> title). SINGLE SOURCE OF TRUTH:
 // koi bhi naya section yahan add karo -> nav title bhi milega AUR admin-user access
 // dropdown (ADMIN_SECTIONS) mein apne aap aa jaayega (neeche derive hota hai).
-const ADMIN_PAGE_TITLES={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice'};
+const ADMIN_PAGE_TITLES={dashboard:'Dashboard',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice'};
 function aPage(page,el){
   if(!adminAllowed(page)){ toast('You do not have access to this section.',true); return; }
   navPush('admin-app',page);
@@ -10309,6 +10311,7 @@ function _aLoadPage(page){
   else if(page==='prodmon') loadAProdMonitor();
   else if(page==='prodtrack') loadAProdTracker();
   else if(page==='prodboard') loadAProdBoard();
+  else if(page==='upsched') loadAUploadSchedule();
   else if(page==='translation') loadATranslation();
   else if(page==='vtasks') loadAVTasks();
   else if(page==='ytasks') loadAYtTasks('a-ytasks-content');
@@ -24636,7 +24639,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- portal definitions ---
   var P={
     production:{ role:'production_manager', title:'Production', sub:'Command Center', api:'/api/production',
-      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
+      nav:[ {g:'Operations',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'board',t:'Production Board',i:'board'}, {p:'thumbboard',t:'Thumbnail Board',i:'image'}, {p:'tasks',t:'Tasks',i:'list'}, {p:'ytasks',t:'YouTuber Tasks',i:'video'}, {p:'upsched',t:'Upload Schedule',i:'calendar'}, {p:'projects',t:'Projects',i:'folder'}, {p:'announce',t:'Announcements',i:'bell'} ]},
             {g:'Live',items:[ {p:'liveteam',t:'Live Users',i:'user'}, {p:'tracker',t:'Live Team Tracker',i:'clock'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'q:uploaded',t:'Uploaded Videos',i:'upload'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'}, {p:'prodteam',t:'Production Team',i:'team'} ]},
@@ -24654,7 +24657,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
              {p:'yttoday',t:'Today',i:'calendar'}, {p:'ytweekly',t:'Weekly',i:'calendar'} ]},
             {g:'Thumbnails',items:[ {p:'ytthumbs',t:'Thumbnail Review',i:'image'}, {p:'ytthumbchg',t:'Thumbnail Changes',i:'edit'},
              {p:'thumbboard',t:'Thumbnail Board',i:'image'} ]},
-            {g:'Production',items:[ {p:'tracker',t:'Team Tracker',i:'clock'}, {p:'board',t:'Production Board',i:'grid'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
+            {g:'Production',items:[ {p:'tracker',t:'Team Tracker',i:'clock'}, {p:'board',t:'Production Board',i:'grid'}, {p:'upsched',t:'Upload Schedule',i:'calendar'}, {p:'ytb:urgent',t:'Urgent Tasks',i:'alert'},
              {p:'ytb:editing',t:'Editing Progress',i:'clock'}, {p:'ytb:ready',t:'Ready for YouTube',i:'upload'} ]},
             {g:'Insights',items:[ {p:'ytviews',t:'Realtime Views',i:'chart'}, {p:'yttimeline',t:'Timeline',i:'list'} ]},
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
@@ -24706,6 +24709,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pw-edcollab-blink{display:inline-flex!important;align-items:center;gap:5px;font-weight:800!important;background:linear-gradient(135deg,rgba(46,158,107,.18),rgba(46,158,107,.08))!important;color:#1f7a44!important;border:1px solid rgba(46,158,107,.4);animation:pwEdCollabBlink 1.4s ease-in-out infinite}',
 '.pw-edcollab-blink svg{width:13px;height:13px}',
 'body.dark .pw-edcollab-blink{color:#5fd39e!important}',
+'.pw-upsched{display:inline-flex!important;align-items:center;gap:5px;background:rgba(58,134,200,.13)!important;color:#2f6da8!important;font-weight:800}',
+'.pw-upsched svg{width:12px;height:12px}',
+'body.dark .pw-upsched{color:#7db6e6!important}',
+'@keyframes pwYtPendBlink{0%,100%{background:rgba(220,38,38,.14);box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{background:rgba(220,38,38,.28);box-shadow:0 0 0 4px rgba(220,38,38,0)}}',
+'.pw-ytpend-blink{display:inline-flex!important;align-items:center;gap:5px;color:#dc2626!important;font-weight:800;animation:pwYtPendBlink 1.05s ease-in-out infinite}',
+'.pw-ytpend-blink svg{width:12px;height:12px}',
+'.usch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:8px}',
+'.usch-col{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:10px;min-height:130px;display:flex;flex-direction:column;gap:8px}',
+'.usch-col.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
+'.usch-day{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:.92rem;color:var(--text);padding:2px 4px 6px;border-bottom:1px solid var(--border)}',
+'.usch-day .usch-date{font-size:.72rem;font-weight:700;color:var(--muted)}',
+'.usch-empty{font-size:.78rem;color:var(--muted);text-align:center;padding:14px 0;opacity:.7}',
+'.usch-tbd{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:8px}',
+'.usch-card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:10px 12px;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s}',
+'.usch-card:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.08);border-color:#e6ad4e}',
+'.usch-card.pend{border-color:rgba(220,38,38,.5);background:rgba(220,38,38,.05)}',
+'.usch-t{font-weight:800;font-size:.86rem;line-height:1.25;color:var(--text)}',
+'.usch-m{font-size:.72rem;color:var(--muted);margin-top:3px}',
+'.usch-rem{font-size:.74rem;color:#8a6d1f;margin-top:6px;display:flex;align-items:flex-start;gap:5px;line-height:1.35}',
+'.usch-rem svg{width:12px;height:12px;flex:0 0 auto;margin-top:2px}',
+'.usch-pend{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:800;color:#dc2626;animation:pwYtPendBlink 1.05s ease-in-out infinite;padding:3px 8px;border-radius:8px}',
+'.usch-pend svg{width:12px;height:12px}',
+'.usch-live{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:800;color:#2e9e6b}',
+'.usch-live svg{width:12px;height:12px}',
+'.usch-plan{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:700;color:#2f6da8}',
+'.usch-plan svg{width:12px;height:12px}',
 '.aw-drop{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:var(--surface-2);transition:border-color .15s;position:relative}',
 '.aw-drop .aw-x{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(209,68,58,.92);color:#fff;font-size:1.05rem;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)}',
 '.aw-drop .aw-x:hover{background:#c0392b}',
@@ -25830,9 +25859,57 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='tracker') return renderTracker(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
+    if(page==='upsched') return renderUploadSchedule(portal,body);
     if(page==='tasks'||page==='videos') return renderList(portal,body);
     body.innerHTML='<div class="p-empty">This section is coming soon.</div>';
   };
+
+  // ===== Upload Schedule (weekly / monthly calendar) =====
+  function _upSchedCard(portal,t){
+    var _due=false; try{ if(t.upload_date_iso) _due=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
+    var pend=(_due && !t.youtube_url);
+    var time=''; try{ if(t.upload_date_iso){ var d=new Date(t.upload_date_iso); time=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }catch(e){}
+    var open='prodOpenTask(\''+portal+'\','+t.id+')';
+    return '<div class="usch-card'+(pend?' pend':'')+'" onclick="'+open+'">'+
+      '<div class="usch-t">'+esc(t.title||'Untitled')+'</div>'+
+      '<div class="usch-m">'+(t.channel_name?esc(t.channel_name):'')+(time?(' · '+esc(time)):'')+(t.creator_name?(' · '+esc(t.creator_name)):'')+'</div>'+
+      (t.upload_remarks?'<div class="usch-rem">'+ic('edit')+' '+esc(t.upload_remarks)+'</div>':'')+
+      (pend?'<div class="usch-pend">'+ic('alert')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-live">'+ic('check')+' Live</div>':(t.upload_date_iso?'<div class="usch-plan">'+ic('calendar')+' Scheduled</div>':'')))+
+    '</div>';
+  }
+  window.upSchedMode=function(portal,m){ window._upSchedMode=m; var body=document.getElementById(portal+'-body'); if(body) renderUploadSchedule(portal,body); };
+  function renderUploadSchedule(portal, body){
+    body.innerHTML='<div class="p-load">Loading upload schedule...</div>';
+    var mode=window._upSchedMode||'week';
+    api(P[portal].api+'/upload-schedule').then(function(r){
+      if(typeof _stale==='function' && _stale(portal,'upsched')) return;
+      var tasks=(r&&r.tasks)||[];
+      var tb='<div class="p-toolbar" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'+
+        '<div class="p-sec" style="margin:0">'+ic('calendar')+' Upload Schedule</div>'+
+        '<div style="display:flex;gap:6px">'+
+          '<button class="p-btn'+(mode==='week'?' p-btn-primary':'')+'" onclick="upSchedMode(\''+portal+'\',\'week\')">This Week</button>'+
+          '<button class="p-btn'+(mode==='month'?' p-btn-primary':'')+'" onclick="upSchedMode(\''+portal+'\',\'month\')">This Month</button>'+
+        '</div></div>';
+      function dOf(t){ if(!t.upload_date_iso) return null; var d=new Date(t.upload_date_iso); return isNaN(d.getTime())?null:d; }
+      var now=new Date(); var startOfDay=function(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()); };
+      var today=startOfDay(now); var days=(mode==='week')?7:30; var cols=''; var used={};
+      for(var i=0;i<days;i++){
+        var day=new Date(today.getTime()+i*86400000); var dayEnd=new Date(day.getTime()+86400000);
+        var items=tasks.filter(function(t){ var d=dOf(t); return d && d>=day && d<dayEnd; });
+        items.forEach(function(t){ used[t.id]=1; });
+        var lbl=(i===0?'Today':(i===1?'Tomorrow':day.toLocaleDateString(undefined,{weekday:'short'})));
+        var sub=day.getDate()+' '+day.toLocaleDateString(undefined,{month:'short'});
+        var isToday=(i===0);
+        cols+='<div class="usch-col'+(isToday?' today':'')+'"><div class="usch-day"><span>'+esc(lbl)+'</span><span class="usch-date">'+esc(sub)+(items.length?' · '+items.length:'')+'</span></div>'+
+          (items.length?items.map(function(t){ return _upSchedCard(portal,t); }).join(''):'<div class="usch-empty">No uploads</div>')+'</div>';
+      }
+      var tbd=tasks.filter(function(t){ return !used[t.id] && !t.upload_date_iso; });
+      var tbdHtml=tbd.length?('<div class="p-sec" style="margin-top:20px">No fixed date yet · '+tbd.length+'</div><div class="usch-tbd">'+tbd.map(function(t){ return _upSchedCard(portal,t); }).join('')+'</div>'):'';
+      var overdue=tasks.filter(function(t){ var d=dOf(t); return d && d<today && !t.youtube_url; });
+      var odHtml=overdue.length?('<div class="p-sec" style="margin-top:20px;color:#dc2626">'+ic('alert')+' Upload date passed — YT link pending · '+overdue.length+'</div><div class="usch-tbd">'+overdue.map(function(t){ return _upSchedCard(portal,t); }).join('')+'</div>'):'';
+      body.innerHTML=tb+(tasks.length?('<div class="usch-grid">'+cols+'</div>'+odHtml+tbdHtml):'<div class="p-empty">No videos scheduled yet. Set an upload date from a Ready-for-YouTube task.</div>');
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
@@ -27966,6 +28043,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _prodTaskCard(portal,t){
     var g=t.graphics||{}; var lc=t.lifecycle||'';
+    // Effective lifecycle for the EDITOR: legacy/admin tasks jinka production lifecycle blank
+    // hai par status set hai (jaise editing_soon) — unhe bhi sahi editor-state map karo, warna
+    // "Start Editing" / "Open Video" button dikhta hi nahi tha.
+    var _elc=lc;
+    if(portal==='editor' && !lc){ var _es=(t.status||'');
+      if(_es==='editing_soon'||_es==='approved') _elc='editor_assigned';
+      else if(_es==='editing_done') _elc='editing_done';
+      else if(_es==='uploaded'||_es==='completed') _elc='uploaded';
+      else if(_es==='assigned') _elc=(t.submitted_link?'editor_assigned':'creator_working');
+    }
     var thumb=_finalThumb(t); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
     var st=_prodStatus(t);
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
@@ -27980,7 +28067,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.priority==='most_urgent') chips.push('<span class="pw-chip pw-prio-blink most">'+ic('alert')+' MOST URGENT</span>');
     else if(t.priority==='urgent') chips.push('<span class="pw-chip pw-prio-blink">'+ic('alert')+' URGENT</span>');
     if(['creator_submitted','pm_review'].indexOf(t.lifecycle)>=0) chips.push('<span class="yt-new-blink">NEW</span>');
-    if(portal==='editor' && (t.lifecycle==='creator_assigned'||t.lifecycle==='creator_working'||t.lifecycle==='changes_required'||t.lifecycle==='reshoot_required')){
+    // Upload schedule chips: info chip jab date set ho; "Pending YT link" blink SIRF upload date
+    // aane ke baad (us din se) jab tak YT link post na ho.
+    if(t.upload_date && !t.youtube_url){
+      var _upDue=false; try{ if(t.upload_date_iso) _upDue=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
+      if(_upDue && (lc==='ready_for_youtube'||lc==='uploaded'||!lc)) chips.push('<span class="pw-chip pw-ytpend-blink">'+ic('alert')+' Pending YT link</span>');
+      else chips.push('<span class="pw-chip pw-upsched">'+ic('calendar')+' Upload: '+esc(t.upload_date)+'</span>');
+    }
+    if(portal==='editor' && (_elc==='creator_assigned'||_elc==='creator_working'||_elc==='changes_required'||_elc==='reshoot_required') && !t.submitted_link){
       chips.push('<span class="pw-chip pw-shoot-blink" onclick="event.stopPropagation();edtShootPending('+JSON.stringify(esc(t.creator_name||''))+','+JSON.stringify(esc(t.deadline||''))+')" title="Teacher hasn\'t shot the video yet \u2014 tap for their deadline">'+ic('clock')+' Shoot Pending</span>');
     }
     if((t.collab&&t.collab.length)||t.is_collab){
@@ -28012,14 +28106,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
     var acts='';
     if(portal==='editor'){
-      if(lc==='editor_assigned'||lc==='editing_soon'||lc==='approved') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
-      else if(lc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
+      if(_elc==='editor_assigned'||_elc==='editing_soon'||_elc==='approved') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
+      else if(_elc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/pause\')">Pause</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
-      else if(lc==='editing_paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/resume\')">Resume</button>';
+      else if(_elc==='editing_paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/resume\')">Resume</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
-      else if(lc==='editing_done'||lc==='qc_changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'editor\',\'submit\','+t.id+')">'+(lc==='qc_changes'?'Submit Revised':'Submit Video')+'</button>';
-      if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
+      else if(_elc==='editing_done'||_elc==='qc_changes') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodCardAct(\'editor\',\'submit\','+t.id+')">'+(_elc==='qc_changes'?'Submit Revised':'Submit Video')+'</button>';
+      // Open Video (source): editor ko creator ki submitted video dikhni chahiye
+      var _srcv=(t.submitted_link||t.source_link||'').trim(); if(_srcv) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(_srcv).replace(/'/g,"")+'\',\'_blank\',\'noopener\')">'+ic('play')+' Open Video</button>';
+      if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(_elc)>=0)
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
       if((t.editor_instructions||'').trim()||(t.editor_reference||'').trim()) acts+='<button class="ptc-btn ptc-ref-blink" onclick="event.stopPropagation();edtBrief('+t.id+')"><span class="rev-dot"></span>PM Brief</button>';
       var _euc=t.unread_total||0; var _eb=(_euc>0?' <span class="chat-badge">'+_euc+'</span>':''); var _ebl=(_euc>0?' chat-blink':'');
@@ -28076,6 +28172,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
+    // Upload schedule: ready_for_youtube ya uploaded pe PM tentative upload date + remarks set kare (editable)
+    if(lc==='ready_for_youtube'||lc==='uploaded') acts+='<button class="ptc-btn'+(t.upload_date?'':' ptc-ok')+'" onclick="event.stopPropagation();prodUploadSchedule('+t.id+')">'+ic('calendar')+' '+(t.upload_date?'Edit Upload Date':'Set Upload Date')+'</button>';
     var _refv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
     if(_refv) acts+='<button class="ptc-btn ptc-refv-blink" onclick="event.stopPropagation();window.open(\''+esc(_refv)+'\',\'_blank\')"><span class="rev-dot"></span>Reference Video</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
@@ -30297,6 +30395,35 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     d.collab_editor_ids=d.editor_all_ids.slice(1);
     var note=document.getElementById('aw-editor-collab-note'); if(note) note.innerHTML=(d.editor_all_ids.length>=2?(d.editor_all_ids.length+' editors selected — dono ko ye task dikhega aur dono edit kar sakte hain.'):'Pick 2 or more editors.');
   };
+  // PM/admin: tentative YouTube upload date + remarks (editable anytime)
+  window.prodUploadSchedule=function(id){
+    api(P.production.api+'/tasks/'+id).then(function(t){ _prodUploadScheduleRender(t||{id:id}); })
+      .catch(function(){ _prodUploadScheduleRender({id:id}); });
+  };
+  function _prodUploadScheduleRender(t){
+    var id=t.id; var dv=(t.upload_date_iso||'').slice(0,16); var rem=(t.upload_remarks||'');
+    var o=document.getElementById('prod-modal'); if(o)o.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
+      '<div class="pd-head"><div class="h-title">Upload Schedule</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="pus-date" type="datetime-local" value="'+esc(dv)+'"></div>'+
+        '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(agar fixed date na ho to yahan likho)</span></label><textarea class="p-area" id="pus-rem" placeholder="e.g. next week, after exam results...">'+esc(rem)+'</textarea></div>'+
+        '<div class="p-opt">Ye date &amp; remarks production, admin aur is video ke YouTuber ke Upload Schedule me dikhega. Baad me kabhi edit bhi kar sakte ho.</div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts">'+(t.upload_date?'<button class="p-btn" onclick="prodUploadScheduleSave('+id+',true)">Clear date</button>':'')+'<button class="p-btn p-btn-primary" onclick="prodUploadScheduleSave('+id+')">Save schedule</button></div></div>'+
+    '</div>';
+    document.body.appendChild(dr);
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+  }
+  window.prodUploadScheduleSave=function(id,clear){
+    var dv=clear?'':((document.getElementById('pus-date')||{}).value||'');
+    var rem=((document.getElementById('pus-rem')||{}).value||'').trim();
+    prodDismiss(); toast('Saving schedule…');
+    api(P.production.api+'/tasks/'+id+'/upload-schedule','POST',{upload_date:dv, upload_remarks:rem})
+      .then(function(){ toast('Upload schedule saved'); try{_apiBust();}catch(e){} _refresh('production'); })
+      .catch(function(e){ toast((e&&e.message)||'Could not save',true); });
+  };
   window.awCollabAll=function(){ /* legacy no-op — replaced by awCollabTapTeacher */ };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); if(v==='yes'&&!window._aw.data.graphics_status) window._aw.data.graphics_status='pending'; _awRender(); };
   window.awGfxStatusToggle=function(v){ _awSave(); window._aw.data.graphics_status=(v==='done'?'done':'pending'); _awRender(); };
@@ -30714,6 +30841,93 @@ function loadAProdTracker(){
   var el=document.getElementById('a-prodtrack-content'); if(!el) return;
   try{ window.renderLiveTracker(el, '/api/production', 'admin'); }
   catch(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load live tracker.</div>'; }
+}
+
+// ---- Admin: Upload Schedule (same weekly/monthly calendar as production) ----
+function initAdminUploadSchedule(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  if(!document.getElementById('ausch-css')){
+    var st=document.createElement('style'); st.id='ausch-css';
+    st.textContent=[
+      '#a-page-upsched .usch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:8px}',
+      '#a-page-upsched .usch-col{background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:14px;padding:10px;min-height:130px;display:flex;flex-direction:column;gap:8px}',
+      '#a-page-upsched .usch-col.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
+      '#a-page-upsched .usch-day{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:.92rem;padding:2px 4px 6px;border-bottom:1px solid var(--border,#e5e7eb)}',
+      '#a-page-upsched .usch-date{font-size:.72rem;font-weight:700;color:var(--text-muted,#6b7280)}',
+      '#a-page-upsched .usch-empty{font-size:.78rem;color:var(--text-muted,#6b7280);text-align:center;padding:14px 0;opacity:.7}',
+      '#a-page-upsched .usch-tbd{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:8px}',
+      '#a-page-upsched .usch-card{background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:11px;padding:10px 12px;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s}',
+      '#a-page-upsched .usch-card:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.08);border-color:#e6ad4e}',
+      '#a-page-upsched .usch-card.pend{border-color:rgba(220,38,38,.5);background:rgba(220,38,38,.05)}',
+      '#a-page-upsched .usch-t{font-weight:800;font-size:.86rem;line-height:1.25}',
+      '#a-page-upsched .usch-m{font-size:.72rem;color:var(--text-muted,#6b7280);margin-top:3px}',
+      '#a-page-upsched .usch-rem{font-size:.74rem;color:#8a6d1f;margin-top:6px;display:flex;align-items:flex-start;gap:5px;line-height:1.35}',
+      '#a-page-upsched .usch-rem svg{width:12px;height:12px;flex:0 0 auto;margin-top:2px}',
+      '@keyframes aUschBlink{0%,100%{background:rgba(220,38,38,.14)}50%{background:rgba(220,38,38,.28)}}',
+      '#a-page-upsched .usch-pend{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:800;color:#dc2626;animation:aUschBlink 1.05s ease-in-out infinite;padding:3px 8px;border-radius:8px}',
+      '#a-page-upsched .usch-pend svg,#a-page-upsched .usch-live svg,#a-page-upsched .usch-plan svg{width:12px;height:12px}',
+      '#a-page-upsched .usch-live{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:800;color:#2e9e6b}',
+      '#a-page-upsched .usch-plan{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:700;color:#2f6da8}'
+    ].join('\n');
+    document.head.appendChild(st);
+  }
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="upsched"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodboard'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodmon'")>=0;})[0]
+             ||items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'prodteam'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('upsched',this)");
+    d.innerHTML=(typeof ic==='function'?ic('calendar'):'')+'<span>Upload Schedule</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-upsched')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-upsched';
+    pg.innerHTML='<div id="a-upsched-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+var _aUpSchedMode='week';
+window.aUpSchedMode=function(m){ _aUpSchedMode=m; loadAUploadSchedule(); };
+function loadAUploadSchedule(){
+  var el=document.getElementById('a-upsched-content'); if(!el) return;
+  el.innerHTML='<div class="spinner"></div>';
+  var mode=_aUpSchedMode||'week';
+  api('/api/production/upload-schedule').then(function(r){
+    var tasks=(r&&r.tasks)||[];
+    var _e=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+    function card(t){
+      var due=false; try{ if(t.upload_date_iso) due=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
+      var pend=(due && !t.youtube_url);
+      var time=''; try{ if(t.upload_date_iso){ var dd=new Date(t.upload_date_iso); time=dd.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }catch(e){}
+      return '<div class="usch-card'+(pend?' pend':'')+'" onclick="prodOpenTask(\'production\','+t.id+')">'+
+        '<div class="usch-t">'+_e(t.title||'Untitled')+'</div>'+
+        '<div class="usch-m">'+(t.channel_name?_e(t.channel_name):'')+(time?(' · '+_e(time)):'')+(t.creator_name?(' · '+_e(t.creator_name)):'')+'</div>'+
+        (t.upload_remarks?'<div class="usch-rem">'+(typeof ic==='function'?ic('edit'):'')+' '+_e(t.upload_remarks)+'</div>':'')+
+        (pend?'<div class="usch-pend">'+(typeof ic==='function'?ic('alert'):'')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-live">'+(typeof ic==='function'?ic('check'):'')+' Live</div>':(t.upload_date_iso?'<div class="usch-plan">'+(typeof ic==='function'?ic('calendar'):'')+' Scheduled</div>':'')))+
+      '</div>';
+    }
+    var tb='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px"><h3 style="margin:0">Upload Schedule</h3>'+
+      '<div style="display:flex;gap:6px"><button class="btn btn-sm '+(mode==='week'?'btn-primary':'btn-ghost')+'" onclick="aUpSchedMode(\'week\')">This Week</button>'+
+      '<button class="btn btn-sm '+(mode==='month'?'btn-primary':'btn-ghost')+'" onclick="aUpSchedMode(\'month\')">This Month</button></div></div>';
+    function dOf(t){ if(!t.upload_date_iso) return null; var d=new Date(t.upload_date_iso); return isNaN(d.getTime())?null:d; }
+    var today=new Date(); today=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+    var days=(mode==='week')?7:30; var cols=''; var used={};
+    for(var i=0;i<days;i++){
+      var day=new Date(today.getTime()+i*86400000); var dayEnd=new Date(day.getTime()+86400000);
+      var its=tasks.filter(function(t){ var d=dOf(t); return d&&d>=day&&d<dayEnd; }); its.forEach(function(t){ used[t.id]=1; });
+      var lbl=(i===0?'Today':(i===1?'Tomorrow':day.toLocaleDateString(undefined,{weekday:'short'})));
+      cols+='<div class="usch-col'+(i===0?' today':'')+'"><div class="usch-day"><span>'+_e(lbl)+'</span><span class="usch-date">'+day.getDate()+' '+day.toLocaleDateString(undefined,{month:'short'})+(its.length?' · '+its.length:'')+'</span></div>'+(its.length?its.map(card).join(''):'<div class="usch-empty">No uploads</div>')+'</div>';
+    }
+    var tbd=tasks.filter(function(t){ return !used[t.id]&&!t.upload_date_iso; });
+    var overdue=tasks.filter(function(t){ var d=dOf(t); return d&&d<today&&!t.youtube_url; });
+    var html=tb+(tasks.length?('<div class="usch-grid">'+cols+'</div>'
+      +(overdue.length?('<h4 style="margin:20px 0 8px;color:#dc2626">Upload date passed — YT link pending · '+overdue.length+'</h4><div class="usch-tbd">'+overdue.map(card).join('')+'</div>'):'')
+      +(tbd.length?('<h4 style="margin:20px 0 8px">No fixed date yet · '+tbd.length+'</h4><div class="usch-tbd">'+tbd.map(card).join('')+'</div>'):''))
+      :'<div class="ws-empty" style="padding:40px;text-align:center;color:var(--text-muted)">No videos scheduled yet. Set an upload date from a Ready-for-YouTube task in the production portal.</div>');
+    el.innerHTML=html;
+  }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load upload schedule.</div>'; });
 }
 
 function initAdminProdTeam(){

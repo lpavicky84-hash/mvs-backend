@@ -193,6 +193,19 @@ def yt_video_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_yout
     return pc.task_out(db, t, timeline=True)
 
 
+@router.get("/upload-schedule")
+def yt_upload_schedule(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """This youtuber's OWN tasks that have an upload date or are ready/uploaded."""
+    from sqlalchemy import or_ as _or
+    yp = _me_yt(db, me)
+    rows = (db.query(VideoTask)
+            .filter(VideoTask.cancelled == False, VideoTask.youtuber_id == yp.id,
+                    _or(VideoTask.upload_date != None,
+                        VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"])))
+            .order_by(VideoTask.upload_date.asc()).all())
+    return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
+
+
 @router.get("/thumbnail-reviews")
 def yt_thumbnail_reviews(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     """Creator ke apne tasks jinke thumbnail review ke liye pending hain (ya changes me)."""

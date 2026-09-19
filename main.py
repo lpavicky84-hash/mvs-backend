@@ -241,6 +241,8 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN editor_instructions TEXT",
         "ALTER TABLE video_tasks ADD COLUMN editor_reference TEXT",
         "ALTER TABLE video_tasks ADD COLUMN collab_editor_ids TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN upload_date DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN upload_remarks TEXT",
     ]
     for s in stmts:
         try:

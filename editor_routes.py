@@ -391,7 +391,10 @@ def editor_comment_add(tid: int, payload: dict = Body(...), db: Session = Depend
 def editor_start(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     t = _my_task(db, sp, tid)
-    if t.lifecycle not in ("editor_assigned", "editing_soon", "approved", "editing_paused", "qc_changes"):
+    # legacy/admin task: lifecycle blank par status editing_soon/approved (video submitted) — allow
+    _legacy_ready = ((t.lifecycle or "") in ("", "creator_assigned")
+                     and (t.status or "") in ("editing_soon", "approved") )
+    if t.lifecycle not in ("editor_assigned", "editing_soon", "approved", "editing_paused", "qc_changes") and not _legacy_ready:
         raise HTTPException(400, "Task is not ready to start editing")
     if not _open_session(db, sp, t.id):
         db.add(EditingSession(task_id=t.id, editor_id=sp.id, started_at=datetime.utcnow()))

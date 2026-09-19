@@ -1222,6 +1222,55 @@ def add_youtube(tid: int, payload: dict = Body(...),
     return {"ok": True, "video_id": vid, "views": t.yt_views, "lifecycle": t.lifecycle}
 
 
+# ============================================================ UPLOAD SCHEDULE
+@router.post("/tasks/{tid}/upload-schedule")
+def pm_set_upload_schedule(tid: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """PM/admin sets a tentative YouTube upload date + remarks (editable anytime)."""
+    t = _task(db, tid)
+    if "upload_date" in payload:
+        _ud = (payload.get("upload_date") or "").strip()
+        if _ud:
+            try:
+                t.upload_date = datetime.fromisoformat(_ud.replace("Z", ""))
+            except Exception:
+                pass
+        else:
+            t.upload_date = None
+    if "upload_remarks" in payload:
+        t.upload_remarks = (payload.get("upload_remarks") or "").strip()
+    try:
+        pc.log_event(db, t, me, "upload_scheduled", new_state=t.lifecycle,
+                     meta={"date": (t.upload_date.strftime("%Y-%m-%d %H:%M") if t.upload_date else ""),
+                           "remarks": (t.upload_remarks or "")[:160]})
+    except Exception:
+        pass
+    # notify the youtuber creator about their upload schedule
+    try:
+        if (t.creator_type or "") == "youtuber" and t.youtuber_id:
+            yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+            if yp and yp.user_id:
+                _when = t.upload_date.strftime("%d %b %Y, %I:%M %p") if t.upload_date else "TBD"
+                pc.notify(db, yp.user_id, "Upload schedule set",
+                          f'"{t.title}" is scheduled to upload on {_when}.', "video_request", link=str(t.id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "upload_date": (t.upload_date.strftime("%d %b %Y, %I:%M %p") if t.upload_date else ""),
+            "upload_remarks": t.upload_remarks or ""}
+
+
+@router.get("/upload-schedule")
+def pm_upload_schedule(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """All tasks that have an upload date OR are ready/uploaded — for the weekly/monthly calendar."""
+    rows = (db.query(VideoTask)
+            .filter(VideoTask.cancelled == False,
+                    or_(VideoTask.upload_date != None,
+                        VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"])))
+            .order_by(VideoTask.upload_date.asc()).all())
+    return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
+
+
 @router.post("/tasks/{tid}/complete")
 def mark_completed(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)

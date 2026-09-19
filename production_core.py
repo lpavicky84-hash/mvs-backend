@@ -528,6 +528,8 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN editor_instructions TEXT",
         "ALTER TABLE video_tasks ADD COLUMN editor_reference TEXT",
         "ALTER TABLE video_tasks ADD COLUMN collab_editor_ids TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN upload_date DATETIME",
+        "ALTER TABLE video_tasks ADD COLUMN upload_remarks TEXT",
     ]
     for _s in _stmts:
         try:
@@ -682,6 +684,9 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "cancelled": bool(t.cancelled),
         "youtube_url": t.youtube_url or "",
         "yt_video_id": t.yt_video_id or "",
+        "upload_date": _dt_raw(getattr(t, "upload_date", None)),
+        "upload_date_iso": (t.upload_date.strftime("%Y-%m-%dT%H:%M:%S") if getattr(t, "upload_date", None) else ""),
+        "upload_remarks": (getattr(t, "upload_remarks", "") or ""),
         "yt_views": (t.yt_views if t.yt_views is not None else None),
         "yt_views_at": _dt(t.yt_views_at),
         "published_at": _dt(t.published_at),

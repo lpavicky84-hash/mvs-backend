@@ -591,6 +591,8 @@ class VideoTask(Base):
     editor_instructions = Column(Text, default="")           # PM ka editor ke liye brief
     editor_reference    = Column(Text, default="")           # editor ke liye reference link/notes
     collab_editor_ids   = Column(Text, default="")           # JSON list of ADDITIONAL editor ids (collab edit)
+    upload_date         = Column(DateTime, nullable=True)     # tentative YouTube upload date (PM sets after edit approved)
+    upload_remarks      = Column(Text, default="")           # upload note (jab fixed date na pata ho)
     thumbnail_required  = Column(Boolean, default=False)   # PM wants a thumbnail for this task
     editing_progress = Column(Integer, default=0)          # 0..100
     editing_started_at = Column(DateTime, nullable=True)
