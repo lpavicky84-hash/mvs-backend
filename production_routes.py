@@ -693,7 +693,12 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
 def approve_creator(tid: int, payload: dict = Body(default={}),
                     db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
-    if t.lifecycle not in ("creator_submitted", "pm_review"):
+    # Legacy / admin-assigned tasks ka production lifecycle blank ho sakta hai jabki status
+    # 'submitted' hota hai (card badge bhi "PM REVIEW" isi status se dikhata hai). Unhe bhi
+    # approve karne do — warna production portal se approve nahi ho paate the.
+    _legacy_submitted = ((t.lifecycle or "") in ("", "created", "creator_assigned", "creator_working")
+                         and (t.status or "") == "submitted")
+    if t.lifecycle not in ("creator_submitted", "pm_review") and not _legacy_submitted:
         raise HTTPException(400, "Task is not awaiting creator approval")
     db.add(TaskReview(task_id=t.id, kind="creator", reviewer_user_id=me.id,
                       decision="approved", remarks=(payload.get("remarks") or "")))

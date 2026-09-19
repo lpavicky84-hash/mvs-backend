@@ -27977,7 +27977,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
       acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();ytDeleteVideo('+t.id+')">Delete</button>';
     } else {
-    if(lc==='creator_submitted'||lc==='pm_review'){
+    // PM Review "Checking \u2014 Review" button: lifecycle-based OR legacy/admin-assigned tasks
+    // jinka lifecycle blank/legacy hai par status abhi 'submitted' hai (badge bhi "PM REVIEW"
+    // yahi status se dikhata hai). Warna move-to-board ke baad wale legacy tasks pe approve
+    // button gayab ho jaata tha.
+    if(lc==='creator_submitted'||lc==='pm_review'||((!_PTC_ST[lc])&&t.status==='submitted')){
       acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodReview('+t.id+')"><span class="rev-dot"></span>Checking \u2014 Review</button>';
     }
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_name)
