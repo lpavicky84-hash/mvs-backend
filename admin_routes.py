@@ -4450,6 +4450,16 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
         else:
             created += 1
 
+    # record the last student-sheet upload time so the Students page can show it
+    try:
+        from models import AppSetting as _AS
+        _row = db.query(_AS).filter(_AS.key == "last_student_sheet_upload").first()
+        if _row:
+            _row.value = datetime.utcnow().isoformat()
+        else:
+            db.add(_AS(key="last_student_sheet_upload", value=datetime.utcnow().isoformat()))
+    except Exception:
+        pass
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped,
             "duplicates": duplicates,
@@ -4557,6 +4567,15 @@ def admin_bulk_import_basic(payload: dict, db: Session = Depends(get_db), _=Depe
         db.add(_nsp)
         created += 1
 
+    try:
+        from models import AppSetting as _AS
+        _row = db.query(_AS).filter(_AS.key == "last_student_sheet_upload").first()
+        if _row:
+            _row.value = datetime.utcnow().isoformat()
+        else:
+            db.add(_AS(key="last_student_sheet_upload", value=datetime.utcnow().isoformat()))
+    except Exception:
+        pass
     db.commit()
     return {"created": created, "skipped": skipped, "duplicates": duplicates,
             "message": (f"{created} new students added, {len(duplicates)} already existed (skipped), "
@@ -5736,9 +5755,24 @@ def portal_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
                                     "session": st.get("session") or ""})
     except Exception:
         pass
+    # last student-sheet upload — Students page pe dikhane ke liye (IST display)
+    last_upload = ""
+    try:
+        from models import AppSetting as _AS
+        _lu = db.query(_AS).filter(_AS.key == "last_student_sheet_upload").first()
+        if _lu and _lu.value:
+            from datetime import timedelta as _tdu
+            try:
+                _dtv = datetime.fromisoformat(_lu.value)
+                last_upload = (_dtv + _tdu(hours=5, minutes=30)).strftime("%d %b %Y, %I:%M %p")
+            except Exception:
+                last_upload = _lu.value
+    except Exception:
+        last_upload = ""
     res = {"total": total, "mvs_portal": portal, "mvs_app": app,
            "portal_reachable": portal_reachable,
-           "pending_count": len(pending), "pending": pending[:300]}
+           "pending_count": len(pending), "pending": pending[:300],
+           "last_upload": last_upload}
     _oc["ov"] = (_time.time(), res)
     return res
 
