@@ -2828,7 +2828,56 @@ body.dark .cal-d.on{color:#34d399}
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 </head>
 <body><!-- LANDING -->
-<div id="landing" style="display:none"><div class="landing-logo"><h1> MVS Foundation</h1><p>Class Manager</p></div><div class="portal-cards"><div class="portal-card" onclick="goLogin('teacher')"><div class="icon"></div><h3>Teacher Portal</h3><p>Class tracking, PDF upload, DPP, doubts</p></div><div class="portal-card" onclick="goLogin('student')"><div class="icon"></div><h3>Student Portal</h3><p>Time table, downloads, tests, progress</p></div><div class="portal-card" onclick="goLogin('admin')"><div class="icon"></div><h3>Admin Panel</h3><p>Approvals, manage teachers & students</p></div></div>
+<div id="landing" style="display:none">
+<style>
+#landing{min-height:100vh;background:linear-gradient(160deg,#faf9f5,#f3f1e9 62%,#efe9db);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:0;padding:46px 20px 64px;overflow-y:auto;box-sizing:border-box}
+#landing .pl2-wrap{width:100%;max-width:1080px}
+#landing .pl2-brand{text-align:center;margin-bottom:36px}
+#landing .pl2-logo{width:90px;height:90px;border-radius:50%;margin:0 auto 18px;box-shadow:0 16px 42px -12px rgba(0,0,0,.42);background:#0f1836;overflow:hidden}
+#landing .pl2-logo img{width:100%;height:100%;object-fit:contain;display:block;border-radius:50%}
+#landing .pl2-title{font-size:2.4rem;font-weight:800;letter-spacing:-.02em;color:#1e2749;margin:0}
+#landing .pl2-title b{color:#b8941f;font-weight:800}
+#landing .pl2-sub{color:#8a8578;font-size:1rem;margin:10px 0 0;font-weight:500}
+#landing .pl2-divline{width:60px;height:3px;border-radius:2px;background:linear-gradient(90deg,#e2b458,#b8941f);margin:22px auto 0}
+#landing .pl2-sec{display:flex;align-items:center;gap:16px;margin:0 4px 22px}
+#landing .pl2-sec h2{font-size:1.12rem;font-weight:800;color:#1e2749;margin:0;white-space:nowrap}
+#landing .pl2-sec .pl2-line{flex:1;height:1px;background:#e3ddcb}
+#landing .pl2-sec .pl2-hint{color:#a49f90;font-size:.8rem;font-weight:600;white-space:nowrap}
+#landing .pl2-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+#landing .pl2-card{position:relative;background:#fff;border:1px solid #ece7d8;border-radius:20px;padding:24px 22px;min-height:96px;display:flex;align-items:center;gap:18px;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;box-shadow:0 4px 16px rgba(90,70,15,.05)}
+#landing .pl2-card:hover{transform:translateY(-4px);box-shadow:0 20px 44px -14px rgba(90,70,15,.24);border-color:#e2b458}
+#landing .pl2-ic{width:56px;height:56px;flex:0 0 auto;border-radius:16px;display:flex;align-items:center;justify-content:center;background:var(--ab);color:var(--a)}
+#landing .pl2-ic svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#landing .pl2-main{flex:1;min-width:0;padding-right:44px}
+#landing .pl2-t{font-size:1.1rem;font-weight:800;color:#1e2749;margin-bottom:4px}
+#landing .pl2-d{font-size:.83rem;color:#8a8578;line-height:1.45;font-weight:500}
+#landing .pl2-n{position:absolute;top:15px;right:20px;font-size:.8rem;font-weight:800;color:#d3cdba;letter-spacing:.05em}
+#landing .pl2-go{position:absolute;top:50%;right:18px;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;border:1.5px solid #e6cf96;display:flex;align-items:center;justify-content:center;color:#b8941f;transition:background .2s,color .2s,border-color .2s}
+#landing .pl2-card:hover .pl2-go{background:#e2b458;border-color:#e2b458;color:#fff}
+#landing .pl2-go svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+#landing .pl2-live{position:absolute;bottom:15px;right:20px;display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;color:#16a34a;letter-spacing:.06em}
+#landing .pl2-dot{width:7px;height:7px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.16)}
+@media(max-width:920px){#landing .pl2-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){#landing .pl2-grid{grid-template-columns:1fr}#landing .pl2-title{font-size:1.95rem}#landing .pl2-main{padding-right:40px}}
+</style>
+<div class="pl2-wrap">
+  <div class="pl2-brand">
+    <div class="pl2-logo"><img src="/api/student/logo" alt="MVS" onerror="this.style.display='none'"></div>
+    <h1 class="pl2-title">MVS <b>Foundation</b></h1>
+    <p class="pl2-sub">Every portal, one place — tap a card to open.</p>
+    <div class="pl2-divline"></div>
+  </div>
+  <div class="pl2-sec"><h2>Portals &amp; Forms</h2><span class="pl2-line"></span><span class="pl2-hint">tap to open</span></div>
+  <div class="pl2-grid">
+    <div class="pl2-card" onclick="goLogin('student')" style="--a:#c9962e;--ab:rgba(201,150,46,.14)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg></div><div class="pl2-main"><div class="pl2-t">Student Portal</div><div class="pl2-d">Time table, materials, tests &amp; progress</div></div><div class="pl2-n">01</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+    <div class="pl2-card" onclick="goLogin('teacher')" style="--a:#4f46e5;--ab:rgba(79,70,229,.12)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div class="pl2-main"><div class="pl2-t">Teacher Portal</div><div class="pl2-d">Class tracking, PDF upload, DPP, doubts</div></div><div class="pl2-n">02</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+    <div class="pl2-card" onclick="goLogin('admin')" style="--a:#2563eb;--ab:rgba(37,99,235,.12)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="pl2-main"><div class="pl2-t">Admin Panel</div><div class="pl2-d">Approvals, manage teachers &amp; students</div></div><div class="pl2-n">03</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+    <div class="pl2-card" onclick="goLogin('production')" style="--a:#059669;--ab:rgba(5,150,105,.12)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg></div><div class="pl2-main"><div class="pl2-t">Production Panel</div><div class="pl2-d">Video pipeline, tasks &amp; scheduling</div></div><div class="pl2-n">04</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+    <div class="pl2-card" onclick="goLogin('editor')" style="--a:#7c3aed;--ab:rgba(124,58,237,.12)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg></div><div class="pl2-main"><div class="pl2-t">Editor Portal</div><div class="pl2-d">Editing tasks, progress &amp; submissions</div></div><div class="pl2-n">05</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+    <div class="pl2-card" onclick="goLogin('graphics')" style="--a:#e11d48;--ab:rgba(225,29,72,.12)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><polyline points="21 15 16 10 5 21"/></svg></div><div class="pl2-main"><div class="pl2-t">Graphics Portal</div><div class="pl2-d">Thumbnail design tasks &amp; delivery</div></div><div class="pl2-n">06</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+    <div class="pl2-card" onclick="goLogin('youtuber')" style="--a:#dc2626;--ab:rgba(220,38,38,.12)"><div class="pl2-ic"><svg viewBox="0 0 24 24"><path d="M22 8.5a4 4 0 0 0-3-3.9C17 4 12 4 12 4s-5 0-7 .6A4 4 0 0 0 2 8.5 41 41 0 0 0 2 15.5a4 4 0 0 0 3 3.9C7 20 12 20 12 20s5 0 7-.6a4 4 0 0 0 3-3.9 41 41 0 0 0 0-7z"/><polygon points="10 9 15 12 10 15 10 9" fill="currentColor" stroke="none"/></svg></div><div class="pl2-main"><div class="pl2-t">YouTuber Studio</div><div class="pl2-d">Upload schedule &amp; publishing</div></div><div class="pl2-n">07</div><div class="pl2-go"><svg viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div><div class="pl2-live"><span class="pl2-dot"></span>LIVE</div></div>
+  </div>
+</div>
 </div><!-- LOGIN -->
 <div id="login-screen"><div class="login-box"><!-- Standard login (teacher/admin, and student fallback) --><div id="login-standard"><h2 id="login-title">Login</h2><p id="login-subtitle">MVS Foundation Portal</p><div class="form-group"><label>User ID</label><input class="form-control" id="login-uid" placeholder="User ID"></div><div class="form-group"><label>Password</label><input class="form-control" type="password" id="login-pass" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"></div><button class="login-btn" id="login-btn" onclick="doLogin()">Login</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div><!-- Student phone onboarding --><div id="login-student-phone" style="display:none"><h2> Welcome!</h2><p>Enter your registered phone number</p><div class="form-group"><label>Phone Number</label><input class="form-control" id="sp-phone" placeholder="98765xxxxx" onkeydown="if(event.key==='Enter')fetchStudent()"></div><button class="login-btn" id="sp-fetch-btn" onclick="fetchStudent()">View My Details</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div><!-- Student credentials display --><div id="login-student-creds" style="display:none"><h2 id="sc-congrats"> Congratulations!</h2><p>These are your login details — please copy them.</p><div class="form-group"><label>User ID</label><input class="form-control" id="sc-uid" readonly onclick="this.select()"></div><div class="form-group"><label>Password</label><input class="form-control" id="sc-pass" readonly onclick="this.select()"></div><button class="login-btn" onclick="studentDirectLogin()">Login →</button><p style="text-align:center;margin-top:16px;font-size:.75rem;opacity:.6;cursor:pointer" onclick="goHome()">← Back</p></div></div>
 </div><!-- SUBJECT SELECTION (student onboarding) -->
