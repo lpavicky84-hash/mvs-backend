@@ -4007,7 +4007,8 @@ def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
     period_start/end diye ho to views = us period me GAINED (snapshot delta).
     Collab video -> team-specific bucket ("Collab: A + B"): SAME team merge, ALAG team alag.
     teacher_id diya ho to collab-member wali videos bhi us teacher ke scope me aati hain."""
-    vids_all = [t for t in db.query(VideoTask).all() if (t.youtube_url or "")]
+    vids_all = [t for t in db.query(VideoTask).all()
+                if (t.youtube_url or "") and not bool(getattr(t, "cancelled", False))]
     tp_ids = set()
     for t in vids_all:
         if t.teacher_id:
@@ -4051,15 +4052,20 @@ def _vt_views_stats(db, teacher_id=None, period_start=None, period_end=None):
     if teacher_id:
         from sqlalchemy import or_ as _orSc
         scoped_tasks = db.query(VideoTask).filter(
+            VideoTask.cancelled.isnot(True),
             _orSc(VideoTask.teacher_id == teacher_id,
                   VideoTask.collab_teacher_ids.like("%" + str(teacher_id) + "%"))).all()
         scoped_tasks = [t for t in scoped_tasks
                         if (t.teacher_id == teacher_id or teacher_id in _collab_all_ids(t))]
     else:
-        scoped_tasks = db.query(VideoTask).all()
+        scoped_tasks = db.query(VideoTask).filter(VideoTask.cancelled.isnot(True)).all()
     vids = [t for t in scoped_tasks if (t.youtube_url or "")]
+    # "Upload pending" = single-video tasks jinpe abhi YouTube link nahi — projects
+    # (One Shot / Rapid Revision / project) yahan count NAHI hote, aur cancelled bhi nahi.
     pending = len([t for t in scoped_tasks
-                   if t.status in ("assigned", "submitted") and not (t.youtube_url or "")])
+                   if t.status in ("assigned", "submitted")
+                   and (t.kind or "normal") not in ("one_shot", "rapid_revision", "project")
+                   and not (t.youtube_url or "")])
     per_video, per_teacher, total_views, highest = [], {}, 0, None
     pt_collab, by_type = {}, {}
     for t in vids:
