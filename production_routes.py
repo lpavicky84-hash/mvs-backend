@@ -860,8 +860,10 @@ def assign_editor(tid: int, payload: dict = Body(...),
     # is validated; a late re-assignment from a deeper state is a PM oversight action.
     _prev = t.lifecycle or ""
     _ename = ed.user.name if ed.user else "editor"
+    # PM/admin assign (ya re-assign) hamesha allow — chahe task kisi bhi state me ho
+    # (approved / blank legacy / deeper state). force=True se invalid-transition error nahi aayega.
     pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned",
-                 meta={"note": "Assigned to " + _ename}, force=_reassign)
+                 meta={"note": "Assigned to " + _ename}, force=True)
     if _prev == "editor_assigned":
         # state didn't change -> set_state skipped the timeline event; log it so the
         # (re)assignment always shows up in the timeline.
