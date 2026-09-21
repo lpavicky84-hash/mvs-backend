@@ -815,14 +815,21 @@ def progress_history_out(db, t):
     out = []
     for e in rows:
         pct = None
-        if e.event == "progress_updated":
+        note = ""
+        if e.event in ("progress_updated", "editing_paused"):
             try:
-                pct = (json.loads(e.meta) if e.meta else {}).get("progress")
+                _m = (json.loads(e.meta) if e.meta else {}) or {}
+                pct = _m.get("progress")
+                note = _m.get("note") or ""
             except Exception:
                 pct = None
-        label = _lbl.get(e.event, "") or ((str(pct) + "%") if pct is not None else e.event)
-        out.append({"label": (str(pct) + "%") if pct is not None else label,
-                    "progress": pct, "at": _dt(e.created_at)})
+        base = _lbl.get(e.event, "") or ((str(pct) + "%") if pct is not None else e.event)
+        # for a pause we keep the "Paused" label and expose the % separately
+        if e.event == "progress_updated":
+            label = (str(pct) + "%") if pct is not None else base
+        else:
+            label = base
+        out.append({"label": label, "progress": pct, "note": note, "at": _dt(e.created_at)})
     return out
 
 

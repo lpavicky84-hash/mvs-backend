@@ -25345,10 +25345,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.edt-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}',
 '.edt-qb{border:1px solid rgba(46,158,107,.35);background:rgba(46,158,107,.08);color:#1f8a54;border-radius:8px;padding:6px 12px;font-weight:700;font-size:.82rem;cursor:pointer}',
 '.edt-qb:hover{background:rgba(46,158,107,.18)}',
+'.edt-qb:active{transform:scale(.96)}',
+'.edtp-sub{font-size:.78rem;color:var(--text-muted,#8a7d5c);margin-top:3px;font-weight:600}',
+'.edtp-modal .p-area{min-height:72px;resize:vertical}',
+'.edtp-custom{position:relative;max-width:150px}',
+'.edtp-custom .p-input{padding-right:30px;font-weight:800;font-size:1rem}',
+'.edtp-pctsign{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text-muted,#8a7d5c);pointer-events:none}',
 '.edt-hist{display:flex;flex-direction:column;gap:2px}',
 '.edt-hrow{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-left:3px solid #2e9e6b;background:rgba(46,158,107,.06);border-radius:0 8px 8px 0;margin-bottom:3px}',
 '.edt-hlbl{font-weight:800;font-size:.86rem;color:var(--text,#2c2415)}',
-'.edt-hat{font-size:.72rem;color:var(--text-muted,#8a7d5c)}',
+'.edt-hnote{font-size:.76rem;color:var(--text-muted,#8a7d5c);margin-top:2px;line-height:1.35;white-space:pre-wrap}',
+'.edt-hat{font-size:.72rem;color:var(--text-muted,#8a7d5c);flex:0 0 auto;margin-left:8px}',
 '.rate-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0}',
 '.rate-l{font-weight:600;font-size:.88rem;color:var(--text,#2c2415)}',
 '.rate-overall{background:rgba(224,165,78,.1);border-radius:10px;padding:8px 12px;margin-bottom:8px}',
@@ -26003,7 +26010,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
       var histHtml=hist.length?('<div class="p-sec">Progress History</div><div class="edt-hist">'+hist.map(function(h){
-        return '<div class="edt-hrow"><span class="edt-hlbl">'+esc(h.label||'')+'</span><span class="edt-hat">'+esc(h.at||'')+'</span></div>'; }).join('')+'</div>'):'';
+        return '<div class="edt-hrow"><div style="flex:1;min-width:0"><span class="edt-hlbl">'+esc(h.label||'')+'</span>'+(h.note?'<div class="edt-hnote">'+esc(h.note)+'</div>':'')+'</div><span class="edt-hat">'+esc(h.at||'')+'</span></div>'; }).join('')+'</div>'):'';
       dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
         '<div class="pd-head"><div class="h-title">Update Progress</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -26021,16 +26028,49 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
   window._edtSlide=function(v,setSlider){
-    v=parseInt(v,10)||0; window._edtProg=v;
+    v=parseInt(v,10)||0; if(v<0)v=0; if(v>100)v=100; window._edtProg=v;
     var fg=document.getElementById('edt-ring-fg'), val=document.getElementById('edt-ring-val'), sl=document.getElementById('edt-slider');
     var circ=2*Math.PI*52; if(fg){ fg.style.strokeDasharray=circ; fg.style.strokeDashoffset=circ*(1-v/100); }
     if(val) val.textContent=v+'%'; if(setSlider&&sl) sl.value=v;
+    // keep the custom number input (pause modal) in sync while dragging the slider
+    var pc=document.getElementById('edtp-pct'); if(pc && document.activeElement!==pc) pc.value=v;
   };
   window.edtProgSubmit=function(id){
     var v=window._edtProg||0;
     _pBusy(true);
     api(P.editor.api+'/tasks/'+id+'/progress','POST',{progress:v,remarks:(document.getElementById('edt-note')||{}).value||''})
       .then(function(){ prodDismiss(); toast('Progress updated'); _refresh('editor'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  // ---- Editor: Pause modal — progress % (preset + custom) + remarks (premium) ----
+  window.edtPauseModal=function(id){
+    api(P.editor.api+'/tasks/'+id).then(function(t){
+      var cur=t.editing_progress||0;
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      dr.innerHTML='<div class="p-modal edtp-modal" style="max-width:470px">'+
+        '<div class="pd-head"><div><div class="h-title">Pause Editing</div><div class="edtp-sub">Kitni editing ho chuki hai — set karke pause karo</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="edt-ring" id="edt-ring"><svg viewBox="0 0 120 120"><circle class="edt-ring-bg" cx="60" cy="60" r="52"/><circle class="edt-ring-fg" id="edt-ring-fg" cx="60" cy="60" r="52"/></svg><div class="edt-ring-val" id="edt-ring-val">'+cur+'%</div></div>'+
+          '<input type="range" min="0" max="100" step="1" value="'+cur+'" class="edt-slider" id="edt-slider" oninput="_edtSlide(this.value)">'+
+          '<div class="edt-quick">'+[10,25,50,75,90].map(function(p){ return '<button type="button" class="edt-qb" onclick="_edtSlide('+p+',true)">'+p+'%</button>'; }).join('')+'</div>'+
+          '<div class="p-field"><label>Custom percentage</label><div class="edtp-custom"><input class="p-input" id="edtp-pct" type="number" min="0" max="100" value="'+cur+'" oninput="_edtSlide(this.value,true)"><span class="edtp-pctsign">%</span></div></div>'+
+          '<div class="p-field"><label>Remarks <span style="color:var(--muted);font-weight:600">(what &amp; how much is done)</span></label><textarea class="p-area" id="edtp-rem" placeholder="e.g. rough cut done, color grading &amp; subtitles remaining"></textarea></div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="edtPauseSubmit('+id+')">Pause &amp; Save</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+      window._edtProg=cur; _edtSlide(cur,true);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  window.edtPauseSubmit=function(id){
+    var v=window._edtProg||0;
+    var rem=((document.getElementById('edtp-rem')||{}).value||'').trim();
+    if(!rem){ toast('Please add a short remark about what is done',true); var r=document.getElementById('edtp-rem'); if(r) r.focus(); return; }
+    _pBusy(true);
+    api(P.editor.api+'/tasks/'+id+'/pause','POST',{progress:v,remarks:rem})
+      .then(function(){ prodDismiss(); toast('Paused at '+v+'%'); _refresh('editor'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
   // ---- Editor: rich submit modal (drive link + remarks + attachments) ----
@@ -28152,7 +28192,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='editor'){
       if(_elc==='editor_assigned'||_elc==='editing_soon'||_elc==='approved') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
       else if(_elc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
-        acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/pause\')">Pause</button>';
+        acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPauseModal('+t.id+')">Pause</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
       else if(_elc==='editing_paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/resume\')">Resume</button>';
         acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/complete\')">Complete</button>'; }
@@ -29367,16 +29407,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _actions(portal,t){
     var b=[]; var lc=t.lifecycle||''; var g=t.graphics||{};
     if(portal==='editor'){
-      if(lc==='editor_assigned'||lc==='editing_soon'||lc==='approved') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
-      else if(lc==='editing'){ b.push(_ab('Update Progress','edtProgressModal('+t.id+')','primary'));
-        b.push(_ab('Pause','prodAct(\'editor\','+t.id+',\'/pause\')'));
+      // Effective lifecycle — legacy/admin tasks with blank lifecycle but a status set
+      // (e.g. editing_soon) ko bhi sahi editor-state map karo, warna Start Editing/Pause dikhte hi nahi the.
+      var _elc=lc;
+      if(!lc){ var _es=(t.status||'');
+        if(_es==='editing_soon'||_es==='approved') _elc='editor_assigned';
+        else if(_es==='editing_done') _elc='editing_done';
+        else if(_es==='uploaded'||_es==='completed') _elc='uploaded';
+        else if(_es==='assigned') _elc=(t.submitted_link?'editor_assigned':'creator_working');
+      }
+      if(_elc==='editor_assigned'||_elc==='editing_soon'||_elc==='approved') b.push(_ab('Start Editing','prodAct(\'editor\','+t.id+',\'/start\')','primary'));
+      else if(_elc==='editing'){ b.push(_ab('Update Progress','edtProgressModal('+t.id+')','primary'));
+        b.push(_ab('Pause','edtPauseModal('+t.id+')'));
         b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }
-      else if(lc==='editing_paused'){ b.push(_ab('Resume','prodAct(\'editor\','+t.id+',\'/resume\')','primary'));
+      else if(_elc==='editing_paused'){ b.push(_ab('Resume','prodAct(\'editor\','+t.id+',\'/resume\')','primary'));
         b.push(_ab('Complete Editing','prodAct(\'editor\','+t.id+',\'/complete\')','ok')); }
-      else if(lc==='editing_done') b.push(_ab('Submit Edited Video','edtSubmitModal('+t.id+')','primary'));
-      else if(lc==='qc_changes'){ b.push(_ab('View Changes','edtChangesView('+t.id+')','warn'));
+      else if(_elc==='editing_done') b.push(_ab('Submit Edited Video','edtSubmitModal('+t.id+')','primary'));
+      else if(_elc==='qc_changes'){ b.push(_ab('View Changes','edtChangesView('+t.id+')','warn'));
         b.push(_ab('Submit Revised Video','edtSubmitModal('+t.id+')','primary')); }
-      if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0)
+      if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(_elc)>=0)
         b.push(_ab((t.deadline_req_status==='pending'?'Extension Pending':'Request New Deadline'),'prodDeadlineReq('+t.id+')'));
     } else if(portal==='youtuber'){
       if(['uploaded','completed'].indexOf(lc)<0) b.push(_ab('Edit Task','ytEditTask('+t.id+')'));

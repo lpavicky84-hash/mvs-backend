@@ -413,15 +413,36 @@ def editor_start(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)
 
 
 @router.post("/tasks/{tid}/pause")
-def editor_pause(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_pause(tid: int, payload: dict = Body(default={}),
+                 db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     t = _my_task(db, sp, tid)
     if t.lifecycle != "editing":
         raise HTTPException(400, "Editing is not currently active")
+    payload = payload or {}
+    # progress % at pause time (optional but nudged in the UI)
+    _pct = None
+    if payload.get("progress") is not None and str(payload.get("progress")).strip() != "":
+        try:
+            _pct = max(0, min(100, int(payload.get("progress"))))
+            t.editing_progress = _pct
+        except Exception:
+            _pct = None
+    _rem = (payload.get("remarks") or "").strip()[:300]
     _close_open_session(db, sp, t)
     pc.set_state(db, t, "editing_paused", actor=me, event="editing_paused")
+    # log the pause with progress + remarks so it shows in the progress history / timeline
+    try:
+        _meta = {}
+        if _pct is not None:
+            _meta["progress"] = _pct
+        if _rem:
+            _meta["note"] = _rem
+        pc.log_event(db, t, me, "progress_updated", new_state=t.lifecycle, meta=_meta)
+    except Exception:
+        pass
     db.commit()
-    return {"ok": True, "editing_seconds": t.editing_seconds or 0}
+    return {"ok": True, "editing_seconds": t.editing_seconds or 0, "progress": t.editing_progress or 0}
 
 
 @router.post("/tasks/{tid}/resume")
