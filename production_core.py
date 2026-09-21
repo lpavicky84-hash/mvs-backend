@@ -913,7 +913,9 @@ def timeline_out(db, t):
 _EVENT_LABELS = {
     "deadline_requested": "Deadline Extension Requested",
     "deadline_extended": "Deadline Extended",
+    "deadline_changed": "Deadline Changed",
     "deadline_rejected": "Deadline Request Rejected",
+    "task_edited": "Task Edited",
     "quality_rated": "Quality Rated",
     "task_created": "Task Created",
     "creator_assigned": "Creator Assigned",

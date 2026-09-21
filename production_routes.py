@@ -3410,12 +3410,21 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
 def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
                  me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
+    # remember old deadline so a change can be recorded in the timeline
+    _old_dl_dt = t.deadline
+    _old_dl_str = t.deadline.strftime("%d %b %Y, %I:%M %p") if t.deadline else ""
+    _dl_changed = False
+    _new_dl_str = ""
     if (payload.get("title") or "").strip():
         t.title = payload["title"].strip()
     dl = (payload.get("deadline") or "").strip()
     if dl:
         try:
-            t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
+            _nd = datetime.fromisoformat(dl.replace("Z", ""))
+            if _nd != _old_dl_dt:
+                _dl_changed = True
+                _new_dl_str = _nd.strftime("%d %b %Y, %I:%M %p")
+            t.deadline = _nd
         except Exception:
             pass
     for f in ("subject", "video_type", "channel_name", "reference", "reference_video", "remarks", "streaming", "thumbnail_link"):
@@ -3640,7 +3649,33 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
             except Exception:
                 pass
     try:
-        pc.log_event(db, t, me, t.lifecycle, note="Edited by production manager")
+        if _dl_changed:
+            # deadline badla -> timeline me old -> new clearly dikhe
+            _dnote = ("Deadline: " + (_old_dl_str or "not set") + "  →  " + (_new_dl_str or "not set"))
+            pc.log_event(db, t, me, "deadline_changed", new_state=t.lifecycle,
+                         meta={"note": _dnote, "old_deadline": _old_dl_str, "new_deadline": _new_dl_str})
+        else:
+            pc.log_event(db, t, me, "task_edited", new_state=t.lifecycle,
+                         meta={"note": "Edited by " + (getattr(me, "name", "") or "production manager")})
+    except Exception:
+        pass
+    # ALSO record in the admin/teacher status_history JSON (that timeline modal reads a
+    # different store than the production ProductionEvent log) so the change shows there too.
+    try:
+        if _dl_changed:
+            import json as _jsh
+            from datetime import datetime as _dtsh, timedelta as _tdsh
+            try:
+                _h = _jsh.loads(t.status_history) if getattr(t, "status_history", "") else []
+                if not isinstance(_h, list):
+                    _h = []
+            except Exception:
+                _h = []
+            _ist = (_dtsh.utcnow() + _tdsh(hours=5, minutes=30))   # IST, matches admin _now_ist()
+            _h.append({"s": "edited",
+                       "at": _ist.strftime("%Y-%m-%dT%H:%M"),
+                       "note": "Deadline: " + (_old_dl_str or "not set") + " → " + (_new_dl_str or "not set")})
+            t.status_history = _jsh.dumps(_h)
     except Exception:
         pass
     db.commit()

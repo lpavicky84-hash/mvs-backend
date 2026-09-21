@@ -11834,7 +11834,57 @@ function _vtCdText(s){
   return neg?`Overdue by ${txt}`:`${txt} left`;
 }
 // ---- admin: One Shot / Rapid Revision / Projects monitor ----
-let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecProj='', _avtSpecOpen=false, _avtView='';
+let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecProj='', _avtSpecTeacher='', _avtSpecOpen=false, _avtView='';
+
+// ===== Reusable premium searchable dropdown (used for long subject lists etc.) =====
+// Native <select> me search nahi hota — ye custom combobox search ke saath premium hai.
+window._SSEL = window._SSEL || {};
+function _sselCss(){
+  if(document.getElementById('ssel-css')) return;
+  var s=document.createElement('style'); s.id='ssel-css';
+  s.textContent=[
+    '.ssel{position:relative;display:inline-block;min-width:200px;vertical-align:middle}',
+    '.ssel-field{display:flex;align-items:center;gap:8px;border:1px solid var(--border,#e5d9b0);background:var(--card,#fff);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:.88rem;font-weight:600;color:var(--text,#2c2415);min-height:38px}',
+    '.ssel-field:hover{border-color:#c98a2e}',
+    '.ssel-val{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ssel-val.ph{color:var(--text-muted,#8a7d5c);font-weight:600}',
+    '.ssel-arw{color:var(--text-muted,#8a7d5c);font-size:.8rem;flex:0 0 auto}',
+    '.ssel-pop{position:absolute;z-index:2000;top:calc(100% + 4px);left:0;min-width:100%;max-width:340px;background:var(--card,#fff);border:1px solid var(--border,#e5d9b0);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.18);overflow:hidden}',
+    '.ssel-search{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid var(--border,#eee);padding:10px 12px;font-size:.88rem;outline:none;background:var(--bg,#faf7ef);color:var(--text,#2c2415)}',
+    '.ssel-list{max-height:280px;overflow-y:auto;padding:4px}',
+    '.ssel-opt{padding:9px 12px;border-radius:8px;cursor:pointer;font-size:.86rem;font-weight:600;color:var(--text,#2c2415);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ssel-opt:hover{background:rgba(201,138,46,.12)}',
+    '.ssel-opt.on{background:rgba(201,138,46,.2);color:#8a5a12}',
+    '.ssel-empty{padding:14px 12px;text-align:center;color:var(--text-muted,#8a7d5c);font-size:.82rem}'
+  ].join('');
+  document.head.appendChild(s);
+  if(!window._sselOutside){ window._sselOutside=true;
+    document.addEventListener('click',function(e){ if(!e.target.closest||!e.target.closest('.ssel')){ document.querySelectorAll('.ssel-pop').forEach(function(p){p.style.display='none';}); } });
+  }
+}
+function _sselOpts(id,q){
+  var d=window._SSEL[id]; if(!d) return '';
+  q=(q||'').toLowerCase().trim();
+  var items=d.items.filter(function(o){ return !q || (o.l||'').toLowerCase().indexOf(q)>=0; });
+  if(!items.length) return '<div class="ssel-empty">No match</div>';
+  return items.map(function(o){ return '<div class="ssel-opt'+(String(o.v)===String(d.value)?' on':'')+'" onclick="_sselPick(\''+id+'\',\''+encodeURIComponent(o.v)+'\')">'+esc(o.l)+'</div>'; }).join('');
+}
+// items: [{v,l}]  cb: function(value)
+function _sselHtml(id, items, value, placeholder, cb){
+  _sselCss();
+  window._SSEL[id]={items:items||[], cb:cb, value:(value==null?'':value)};
+  var cur=(items||[]).filter(function(o){return String(o.v)===String(value);})[0];
+  var lbl=cur?cur.l:'';
+  return '<div class="ssel" id="'+id+'">'+
+    '<div class="ssel-field" onclick="_sselToggle(\''+id+'\')"><span class="ssel-val'+(lbl?'':' ph')+'">'+esc(lbl||placeholder||'Select')+'</span><span class="ssel-arw">▾</span></div>'+
+    '<div class="ssel-pop" style="display:none"><input class="ssel-search" placeholder="Search..." oninput="_sselFilter(\''+id+'\')" onclick="event.stopPropagation()"><div class="ssel-list" id="'+id+'-list">'+_sselOpts(id,'')+'</div></div>'+
+  '</div>';
+}
+window._sselToggle=function(id){ var w=document.getElementById(id); if(!w) return; var pop=w.querySelector('.ssel-pop'); if(!pop) return; var open=pop.style.display!=='none';
+  document.querySelectorAll('.ssel-pop').forEach(function(p){p.style.display='none';});
+  if(!open){ pop.style.display='block'; var s=pop.querySelector('.ssel-search'); if(s){ s.value=''; _sselFilter(id); setTimeout(function(){ try{s.focus();}catch(e){} },20); } } };
+window._sselFilter=function(id){ var w=document.getElementById(id); if(!w) return; var s=w.querySelector('.ssel-search'); var list=document.getElementById(id+'-list'); if(list) list.innerHTML=_sselOpts(id, s?s.value:''); };
+window._sselPick=function(id, ev){ var v=decodeURIComponent(ev); var d=window._SSEL[id]; if(!d) return; d.value=v; var w=document.getElementById(id); if(w){ var pop=w.querySelector('.ssel-pop'); if(pop) pop.style.display='none'; var cur=d.items.filter(function(o){return String(o.v)===String(v);})[0]; var val=w.querySelector('.ssel-val'); if(val){ val.textContent=cur?cur.l:(d._ph||''); val.classList.toggle('ph', !cur); } } if(d.cb){ try{ d.cb(v); }catch(e){} } };
 function avtView(v){ _avtView=(_avtView===v?'':v); if(_avtView==='projects') _avtSpecOpen=true; loadAVTasks(true); }
 function _avtSpecTotals(){
   const sp=window._avtSpec; if(!sp||!sp.one_shot) return {osN:0,osD:0,osT:0,rrN:0,rrD:0,rrT:0,prN:0,prD:0,prT:0};
@@ -11862,6 +11912,8 @@ function _avtSpecBody(){
   // v131: subject list ab SELECTED class se filter hoti hai + duplicate hata (Set).
   // Pehle union of all subjects tha (class 12 chunne pe bhi class 10 subjects dikhte the).
   const subs=[...new Set(_allTasksSP.filter(t=>!_avtSpecCls||String(t.cls)===String(_avtSpecCls)).map(t=>t.subject).filter(Boolean))].sort();
+  const teacherList=[...new Set(_allTasksSP.map(t=>t.teacher).filter(Boolean))].sort();
+  if(_avtSpecTeacher&&!teacherList.includes(_avtSpecTeacher)) _avtSpecTeacher='';
   const clsList=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>t.cls)))).values()].filter(Boolean).sort();
   if(_avtSpecCls&&!clsList.includes(_avtSpecCls)) clsList.push(_avtSpecCls);
   // v79: teacher portal jaisa ek hi premium filter bar — Class + Subject +
@@ -11879,7 +11931,7 @@ function _avtSpecBody(){
   const _pKinds=_avtSpecTab?[_avtSpecTab]:['one_shot','rapid_revision','project'];
   const _projOpts=[].concat(..._pKinds.map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>({id:String(t.id),lbl:`${_avtSpecTab?'':KLBL[k]+' — '}${t.subject||t.title}${t.teacher?' ('+t.teacher+')':''}`}))));
   if(_avtSpecProj&&!_projOpts.some(o=>o.id===_avtSpecProj)) _avtSpecProj='';
-  const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecProj) ts=ts.filter(x=>String(x.id)===_avtSpecProj); if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); return ts; };
+  const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecProj) ts=ts.filter(x=>String(x.id)===_avtSpecProj); if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); if(_avtSpecTeacher) ts=ts.filter(x=>x.teacher===_avtSpecTeacher); return ts; };
   const groups=_avtSpecTab?[[_avtSpecTab,KLBL[_avtSpecTab],inScope(_avtSpecTab)]]:_knds.map(([k,l])=>[k,l,inScope(k)]);
   const kindLbl=_avtSpecTab?KLBL[_avtSpecTab]:'';
   const bodyHtml=groups.map(([k,l,ts])=>ts.length?`${_avtSpecTab?'':`<div class="vtm-sec-cap" style="margin:10px 0 8px">${l} · ${ts.length} card${ts.length>1?'s':''}</div>`}${ts.map(_avtSpecCard).join('')}`:'').join('');
@@ -11890,10 +11942,9 @@ function _avtSpecBody(){
         ${clsList.map(c=>`<option value="${c}" ${_avtSpecCls===c?'selected':''}>Class ${c}</option>`).join('')}
       </select>
       <span class="vtm-fl">Subject</span>
-      <select class="vtm-sel" id="avt-spec-sub" onchange="avtSpecSubSet(this.value)">
-        <option value="">All Subjects (${subs.length})</option>
-        ${subs.map(s=>`<option value="${esc(s)}" ${_avtSpecSub===s?'selected':''}>${esc(s)}</option>`).join('')}
-      </select>
+      ${_sselHtml('avt-spec-sub', [{v:'',l:`All Subjects (${subs.length})`}].concat(subs.map(s=>({v:s,l:s}))), _avtSpecSub, 'All Subjects', function(v){ avtSpecSubSet(v); })}
+      <span class="vtm-fl">Teacher</span>
+      ${_sselHtml('avt-spec-teacher', [{v:'',l:`All Teachers (${teacherList.length})`}].concat(teacherList.map(tn=>({v:tn,l:tn}))), _avtSpecTeacher, 'All Teachers', function(v){ avtSpecTeacherSet(v); })}
       <span class="vtm-fl">Project Type</span>
       <select class="vtm-sel" id="avt-spec-type" onchange="avtSpecTypeSet(this.value)">
         <option value="">All Types (${totalN})</option>
@@ -12024,6 +12075,7 @@ function avtProjectChat(pid,title){
   });
 }
 function avtSpecSubSet(s){ _avtSpecSub=s||''; avtSpecRefresh(); }
+function avtSpecTeacherSet(tn){ _avtSpecTeacher=tn||''; avtSpecRefresh(); }
 function avtSpecClsSet(c){ _avtSpecCls=c||''; _avtSpecSub=''; avtSpecRefresh(); }
 function avtSpecToggle(){
   _avtSpecOpen=!_avtSpecOpen;
@@ -12092,34 +12144,104 @@ async function openVTEdit(id,ev){
             return '<label class="vt-echap" style="display:flex;align-items:center;gap:9px;padding:7px 4px"><input type="checkbox" class="vt-e-collab-cb" value="'+tt.pid+'" '+(current[tt.pid]?'checked':'')+(isP?' disabled checked':'')+'> <span>'+esc(tt.name)+'</span></label>';
           }).join('');
         })()}</div></div>
-      ${special?`<div class="form-group" style="grid-column:1/-1"><label>Chapters Included <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— uncheck to remove, check to add (PE = exam chapters, TMA = assignment-only)</span></label>
+      ${special?`<div class="form-group" style="grid-column:1/-1"><label>Chapters Included <span id="vt-e-chaps-note" style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— uncheck to remove, edit ✎ to rename (PE = exam chapters, TMA = assignment-only)</span></label>
         <div id="vt-e-chaps" class="vt-echaps"><div style="padding:10px;font-size:.82rem;color:var(--text-muted)">Loading chapters…</div></div></div>`:''}
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="vtEditSave(${t.id})">${ic('check')} Save Changes</button>`);
   if(special) vtEditChapsLoad(t.id);
 }
+function _vtEChCss(){
+  if(document.getElementById('vtech-css')) return;
+  const s=document.createElement('style'); s.id='vtech-css';
+  s.textContent=[
+    '.vt-echaps-bar{display:flex;align-items:center;gap:10px;padding:2px 2px 10px;font-size:.78rem;color:var(--text-muted,#8a7d5c);font-weight:700}',
+    '.vt-echaps-act{cursor:pointer;color:#b8941f;font-weight:800;white-space:nowrap}',
+    '.vt-echaps-act:hover{text-decoration:underline}',
+    '.vt-echaps-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;padding-right:2px}',
+    '.vt-echap{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border,#e5d9b0);border-radius:10px;background:var(--card,#fff)}',
+    '.vt-echap.editing{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
+    '.vt-echap-t{flex:1;font-size:.9rem;font-weight:600;color:var(--text,#2c2415);word-break:break-word}',
+    '.vt-echap-k{flex:0 0 auto;font-size:.64rem;font-weight:800;padding:2px 8px;border-radius:999px}',
+    '.vt-echap-k.pe{color:#166534;background:#dcfce7}',
+    '.vt-echap-k.tma{color:#b45309;background:#fef3c7}',
+    '.vt-echap-edin{flex:1;min-width:0}',
+    '.vt-echap-ren{flex:0 0 auto;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border,#e5d9b0);background:var(--bg,#faf7ef);border-radius:8px;cursor:pointer;color:var(--text-muted,#8a7d5c)}',
+    '.vt-echap-ren svg{width:15px;height:15px}',
+    '.vt-echap-ren:hover{color:#8a5a12;border-color:#c98a2e}',
+    '.vt-echap-ok{flex:0 0 auto;padding:0 14px;height:32px;border:0;border-radius:8px;background:#16a34a;color:#fff;font-weight:700;font-size:.8rem;cursor:pointer}',
+    '.vt-echap-xx{flex:0 0 auto;width:32px;height:32px;border:1px solid var(--border,#e5d9b0);background:var(--bg,#faf7ef);border-radius:8px;font-size:1.2rem;line-height:1;cursor:pointer;color:var(--text-muted,#8a7d5c)}',
+    '.vt-echap-xx:hover{color:#dc2626;border-color:#dc2626}',
+    '.vt-echaps-add{display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px dashed var(--border,#e5d9b0)}',
+    '.vt-echaps-add .input{flex:1}'
+  ].join('');
+  document.head.appendChild(s);
+}
 async function vtEditChapsLoad(id){
   const box=document.getElementById('vt-e-chaps'); if(!box) return;
+  _vtEChCss();
   try{
     const r=await api(`/api/admin/video-tasks/${id}/chapters`);
     const items=r.items||[];
     if(!items.length){ box.innerHTML=`<div style="padding:10px;font-size:.82rem;color:var(--text-muted)">No chapter list is available for this subject yet.</div>`; return; }
-    box.innerHTML=`<div class="vt-echaps-bar"><span id="vt-e-chaps-n"></span><span style="flex:1"></span>
-        <span class="vt-echaps-act" onclick="vtEditChapsAll(true)">Select all</span>
-        <span class="vt-echaps-act" onclick="vtEditChapsPE()">PE only</span></div>
-      <div class="vt-echaps-list">`+items.map(c=>`<label class="vt-echap">
-        <input type="checkbox" class="vt-echap-cb" data-kind="${esc(c.kind||'')}" value="${esc(c.title)}" ${c.sel?'checked':''} onchange="vtEditChapsCount()">
-        <span class="vt-echap-t">${esc(c.title)}</span>${c.kind?`<span class="vt-echap-k ${c.kind==='PE'?'pe':'tma'}">${c.kind}</span>`:''}</label>`).join('')+`</div>`;
-    vtEditChapsCount();
+    // model — allows inline rename + add without losing checkbox state
+    window._vtEChModel=items.map(c=>({title:String(c.title||''),kind:(c.kind||''),sel:!!c.sel}));
+    window._vtEChEdit=null;
+    // college subjects me PE/TMA nahi hote — kind kisi bhi item me na ho to PE-only + note hide
+    const hasKinds=window._vtEChModel.some(c=>c.kind==='PE'||c.kind==='TMA');
+    const note=document.getElementById('vt-e-chaps-note');
+    if(note) note.textContent=hasKinds?'— uncheck to remove, edit ✎ to rename (PE = exam chapters, TMA = assignment-only)':'— uncheck to remove, edit ✎ to rename, or add your own below';
+    window._vtEChHasKinds=hasKinds;
+    _vtEChRender();
   }catch(e){ box.innerHTML=`<div style="padding:10px;font-size:.82rem;color:var(--danger)">Could not load the chapter list — ${esc(e.message||'please try again')}</div>`; }
 }
-function vtEditChapsCount(){
-  const cbs=[...document.querySelectorAll('#vt-e-chaps .vt-echap-cb')];
-  const n=cbs.filter(c=>c.checked).length;
-  const el=document.getElementById('vt-e-chaps-n'); if(el) el.textContent=`${n} of ${cbs.length} chapters selected`;
+function _vtEChRender(){
+  const box=document.getElementById('vt-e-chaps'); if(!box) return;
+  const m=window._vtEChModel||[]; const hasKinds=window._vtEChHasKinds; const ed=window._vtEChEdit;
+  const rows=m.map((c,i)=>{
+    if(i===ed){
+      return `<div class="vt-echap editing"><input class="input vt-echap-edin" id="vt-echap-ed-${i}" value="${esc(c.title).replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter'){event.preventDefault();vtEChSaveName(${i});}else if(event.key==='Escape'){vtEChCancel();}">
+        <button type="button" class="vt-echap-ok" onclick="vtEChSaveName(${i})">Save</button>
+        <button type="button" class="vt-echap-xx" onclick="vtEChCancel()" title="Cancel">&times;</button></div>`;
+    }
+    return `<label class="vt-echap">
+      <input type="checkbox" class="vt-echap-cb" data-kind="${esc(c.kind||'')}" data-i="${i}" value="${esc(c.title)}" ${c.sel?'checked':''} onchange="vtEChToggle(${i},this.checked)">
+      <span class="vt-echap-t">${esc(c.title)}</span>${c.kind?`<span class="vt-echap-k ${c.kind==='PE'?'pe':'tma'}">${c.kind}</span>`:''}
+      <span style="flex:1"></span>
+      <button type="button" class="vt-echap-ren" onclick="event.preventDefault();vtEChEdit(${i})" title="Rename">${ic('edit')}</button></label>`;
+  }).join('');
+  box.innerHTML=`<div class="vt-echaps-bar"><span id="vt-e-chaps-n"></span><span style="flex:1"></span>
+      <span class="vt-echaps-act" onclick="vtEditChapsAll(true)">Select all</span>
+      ${hasKinds?`<span class="vt-echaps-act" onclick="vtEditChapsPE()">PE only</span>`:''}</div>
+    <div class="vt-echaps-list">${rows}</div>
+    <div class="vt-echaps-add"><input class="input" id="vt-echap-new" placeholder="Add a chapter / video name" onkeydown="if(event.key==='Enter'){event.preventDefault();vtEChAdd();}"><button type="button" class="btn btn-sm btn-primary" onclick="vtEChAdd()">Add</button></div>`;
+  vtEditChapsCount();
+  if(ed!=null){ const inp=document.getElementById('vt-echap-ed-'+ed); if(inp){ try{ inp.focus(); inp.select(); }catch(e){} } }
 }
-function vtEditChapsAll(v){ document.querySelectorAll('#vt-e-chaps .vt-echap-cb').forEach(c=>{ c.checked=v; }); vtEditChapsCount(); }
-function vtEditChapsPE(){ document.querySelectorAll('#vt-e-chaps .vt-echap-cb').forEach(c=>{ c.checked=(c.dataset.kind==='PE'); }); vtEditChapsCount(); }
+function vtEChToggle(i,on){ if(window._vtEChModel&&window._vtEChModel[i]) window._vtEChModel[i].sel=!!on; vtEditChapsCount(); }
+function vtEChEdit(i){ window._vtEChEdit=i; _vtEChRender(); }
+function vtEChCancel(){ window._vtEChEdit=null; _vtEChRender(); }
+function vtEChSaveName(i){
+  const inp=document.getElementById('vt-echap-ed-'+i); if(!inp) return;
+  const v=(inp.value||'').trim(); if(!v){ toast('Name cannot be empty'); return; }
+  const m=window._vtEChModel||[];
+  if(m.some((c,j)=>j!==i && c.title.toLowerCase()===v.toLowerCase())){ toast('Another chapter already has that name'); return; }
+  if(m[i]) m[i].title=v; window._vtEChEdit=null; _vtEChRender();
+}
+function vtEChAdd(){
+  const inp=document.getElementById('vt-echap-new'); if(!inp) return;
+  const v=(inp.value||'').trim(); if(!v) return;
+  const m=window._vtEChModel=window._vtEChModel||[];
+  if(m.some(c=>c.title.toLowerCase()===v.toLowerCase())){ toast('That name is already added'); return; }
+  m.push({title:v,kind:'',sel:true}); inp.value=''; _vtEChRender();
+  const ni=document.getElementById('vt-echap-new'); if(ni) ni.focus();
+}
+function vtEditChapsCount(){
+  const m=window._vtEChModel||[];
+  const n=m.filter(c=>c.sel).length;
+  const el=document.getElementById('vt-e-chaps-n'); if(el) el.textContent=`${n} of ${m.length} chapters selected`;
+}
+function vtEditChapsAll(v){ (window._vtEChModel||[]).forEach(c=>{ c.sel=!!v; }); _vtEChRender(); }
+function vtEditChapsPE(){ (window._vtEChModel||[]).forEach(c=>{ c.sel=(c.kind==='PE'); }); _vtEChRender(); }
 async function vtEditSave(id){
   const payload={
     title:document.getElementById('vt-e-title').value.trim(),
@@ -12135,8 +12257,8 @@ async function vtEditSave(id){
   const qEl=document.getElementById('vt-e-quota');
   if(qEl){ payload.weekly_quota=+qEl.value||0; payload.weekly_day=(document.getElementById('vt-e-day')||{}).value||''; }
   const chBox=document.getElementById('vt-e-chaps');
-  if(chBox && chBox.querySelector('.vt-echap-cb')){
-    const sel=[...chBox.querySelectorAll('.vt-echap-cb:checked')].map(c=>c.value);
+  if(chBox && Array.isArray(window._vtEChModel) && window._vtEChModel.length){
+    const sel=window._vtEChModel.filter(c=>c.sel).map(c=>String(c.title||'').trim()).filter(Boolean);
     if(!sel.length){ toast('Select at least one chapter'); return; }
     payload.chapters=sel;
   }
@@ -25351,6 +25473,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.edtp-custom{position:relative;max-width:150px}',
 '.edtp-custom .p-input{padding-right:30px;font-weight:800;font-size:1rem}',
 '.edtp-pctsign{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:800;color:var(--text-muted,#8a7d5c);pointer-events:none}',
+'.pji-wrap{border:1px solid var(--border,#e5d9b0);border-radius:12px;padding:12px;background:var(--bg,#faf7ef)}',
+'.pji-head{font-size:.82rem;color:var(--text-muted,#8a7d5c);font-weight:700;margin-bottom:10px}',
+'.pji-count{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 8px;border-radius:999px;background:#e6ad4e;color:#3a2a05;font-weight:800;font-size:.86rem;margin-right:4px}',
+'.pji-input-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}',
+'.pji-input-row .p-input{flex:1}',
+'.pji-list{display:flex;flex-direction:column;gap:7px}',
+'.pji-empty{font-size:.82rem;color:var(--text-muted,#8a7d5c);text-align:center;padding:14px 0;opacity:.85}',
+'.pji-row{display:flex;align-items:center;gap:10px;background:var(--card,#fff);border:1px solid var(--border,#e5d9b0);border-radius:10px;padding:8px 10px}',
+'.pji-row.editing{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
+'.pji-num{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:rgba(201,138,46,.15);color:#8a5a12;font-weight:800;font-size:.78rem}',
+'.pji-name{flex:1;font-size:.9rem;font-weight:600;color:var(--text,#2c2415);word-break:break-word}',
+'.pji-edit-in{flex:1;min-width:0}',
+'.pji-ed,.pji-x,.pji-ok{flex:0 0 auto;border:1px solid var(--border,#e5d9b0);background:var(--bg,#faf7ef);border-radius:8px;cursor:pointer;font-weight:700;color:var(--text-muted,#8a7d5c)}',
+'.pji-ed{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center}',
+'.pji-ed svg{width:15px;height:15px}',
+'.pji-x{width:30px;height:30px;font-size:1.2rem;line-height:1}',
+'.pji-x:hover{color:#dc2626;border-color:#dc2626}',
+'.pji-ok{padding:0 14px;height:30px;background:#16a34a;color:#fff;border-color:#16a34a;font-size:.8rem}',
+'.pji-ed:hover{color:#8a5a12;border-color:#c98a2e}',
 '.edt-hist{display:flex;flex-direction:column;gap:2px}',
 '.edt-hrow{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-left:3px solid #2e9e6b;background:rgba(46,158,107,.06);border-radius:0 8px 8px 0;margin-bottom:3px}',
 '.edt-hlbl{font-weight:800;font-size:.86rem;color:var(--text,#2c2415)}',
@@ -30203,7 +30344,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var teachOpts='<option value="">Auto from subject</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((p.teacher_id==t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
       var html=modeTabs+
         '<div class="p-field"><label>Class / Stream</label><select class="p-select" id="pj-class" onchange="prodPjChange()"><option value="12"'+(cl==='12'?' selected':'')+'>Class 12</option><option value="10"'+(cl==='10'?' selected':'')+'>Class 10</option><option value="UG-PG"'+(cl==='UG-PG'?' selected':'')+'>UG-PG (College)</option></select></div>'+
-        '<div class="p-field"><label>Subject</label><select class="p-select" id="pj-subject" onchange="prodPjChange()">'+subOpts+'</select></div>'+
+        '<div class="p-field"><label>Subject</label><input class="p-input" id="pj-subject" list="pj-subject-dl" placeholder="Type to search subject" value="'+esc(p.subject||'')+'" onchange="prodPjChange()"><datalist id="pj-subject-dl">'+list.map(function(s){ return '<option value="'+esc(s.name)+'">'; }).join('')+'</datalist></div>'+
         '<div class="p-field"><label>Teacher</label><select class="p-select" id="pj-teacher" onchange="prodPjChange()">'+teachOpts+'</select></div>'+
         '<div class="p-field"><label>Project Title (optional)</label><input class="p-input" id="pj-title" placeholder="Auto: Project — Subject" value="'+esc(p.title||'')+'"></div>'+
         '<div class="p-field"><label>Connect to syllabus chapters?</label><select class="p-select" id="pj-connect" onchange="prodPjChange()"><option value="1"'+(p.connect?' selected':'')+'>Yes — use syllabus chapters</option><option value="0"'+(!p.connect?' selected':'')+'>No — I will type video names</option></select></div>';
@@ -30212,7 +30353,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="p-field" id="pj-group-wrap" style="display:none"><label>Content</label><select class="p-select" id="pj-group" onchange="prodPjChange()"><option value="chapters"'+((p.chapter_group===undefined||p.chapter_group==='chapters')?' selected':'')+'>Chapters only (book lessons)</option><option value="categories"'+(p.chapter_group==='categories'?' selected':'')+'>Grammar / Writing / Reading only</option><option value=""'+(p.chapter_group===''?' selected':'')+'>Both (merged)</option></select></div>'+
           '<div id="pj-chapters" class="p-empty" style="margin-bottom:12px">Pick a subject to preview chapters.</div>';
       } else {
-        html+='<div class="p-field"><label>Video names (one per line)</label><textarea class="p-area" id="pj-items" placeholder="Chapter 1 - ...\nChapter 2 - ...">'+esc((p.items||[]).join('\n'))+'</textarea></div>';
+        html+='<div class="p-field"><label>Chapters / video names</label><div id="pj-items-wrap" class="pji-wrap">'+_pjItemsHtml(p)+'</div></div>';
       }
       html+='<div class="p-field"><label>Weekly target (videos/week, 0 = none)</label><input class="p-input" id="pj-quota" type="number" min="0" max="50" value="'+(p.weekly_quota||0)+'"></div>'+
         '<div class="p-field"><label>Weekly deadline day (optional)</label><select class="p-select" id="pj-day"><option value="">None</option>'+['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(function(dd){ return '<option value="'+dd+'"'+((p.weekly_day===dd)?' selected':'')+'>'+dd.charAt(0).toUpperCase()+dd.slice(1)+'</option>'; }).join('')+'</select></div>'+
@@ -30223,6 +30364,39 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(p.connect) prodPjPreview();
     });
   }
+  // ---- premium chapter/video-name entry (box + Add + running count + edit/remove) ----
+  function _pjItemsHtml(p){
+    var items=p.items||[]; var ed=window._pjEditIdx;
+    var rows=items.length?items.map(function(it,i){
+      if(i===ed){
+        return '<div class="pji-row editing"><span class="pji-num">'+(i+1)+'</span>'+
+          '<input class="p-input pji-edit-in" id="pji-edit-'+i+'" value="'+esc(it).replace(/"/g,'&quot;')+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();prodPjSaveItem('+i+');}else if(event.key===\'Escape\'){prodPjCancelEdit();}">'+
+          '<button class="pji-ok" type="button" onclick="prodPjSaveItem('+i+')">Save</button>'+
+          '<button class="pji-x" type="button" onclick="prodPjCancelEdit()" title="Cancel">&times;</button></div>';
+      }
+      return '<div class="pji-row"><span class="pji-num">'+(i+1)+'</span><span class="pji-name">'+esc(it)+'</span>'+
+        '<button class="pji-ed" type="button" onclick="prodPjEditItem('+i+')" title="Edit name">'+ic('edit')+'</button>'+
+        '<button class="pji-x" type="button" onclick="prodPjRemoveItem('+i+')" title="Remove">&times;</button></div>';
+    }).join(''):'<div class="pji-empty">No chapters added yet — type a name and click Add.</div>';
+    return '<div class="pji-head"><span class="pji-count">'+items.length+'</span> chapter'+(items.length===1?'':'s')+' added to this project</div>'+
+      '<div class="pji-input-row"><input class="p-input" id="pj-item-input" placeholder="Type chapter / video name, then Add" onkeydown="if(event.key===\'Enter\'){event.preventDefault();prodPjAddItem();}"><button class="p-btn p-btn-primary" type="button" onclick="prodPjAddItem()">Add</button></div>'+
+      '<div class="pji-list">'+rows+'</div>';
+  }
+  function _pjRenderItems(){ var wrap=document.getElementById('pj-items-wrap'); if(wrap) wrap.innerHTML=_pjItemsHtml(window._aw.proj||{}); }
+  window.prodPjAddItem=function(){
+    var inp=document.getElementById('pj-item-input'); if(!inp) return;
+    var v=(inp.value||'').trim(); if(!v) return;
+    var p=window._aw.proj=window._aw.proj||{}; p.items=p.items||[];
+    if(p.items.some(function(x){ return String(x).toLowerCase()===v.toLowerCase(); })){ toast('That name is already added',true); return; }
+    p.items.push(v); inp.value=''; window._pjEditIdx=undefined; _pjRenderItems();
+    var ni=document.getElementById('pj-item-input'); if(ni) ni.focus();
+  };
+  window.prodPjRemoveItem=function(i){ var p=window._aw.proj||{}; if(!p.items) return; p.items.splice(i,1); if(window._pjEditIdx===i) window._pjEditIdx=undefined; _pjRenderItems(); };
+  window.prodPjEditItem=function(i){ window._pjEditIdx=i; _pjRenderItems(); var ei=document.getElementById('pji-edit-'+i); if(ei){ try{ ei.focus(); ei.select(); }catch(e){} } };
+  window.prodPjCancelEdit=function(){ window._pjEditIdx=undefined; _pjRenderItems(); };
+  window.prodPjSaveItem=function(i){ var ei=document.getElementById('pji-edit-'+i); if(!ei) return; var v=(ei.value||'').trim(); if(!v){ toast('Name cannot be empty',true); return; } var p=window._aw.proj||{}; if(!p.items) return;
+    if(p.items.some(function(x,j){ return j!==i && String(x).toLowerCase()===v.toLowerCase(); })){ toast('Another chapter already has that name',true); return; }
+    p.items[i]=v; window._pjEditIdx=undefined; _pjRenderItems(); };
   function _pjSave(){
     var p=window._aw.proj||{}; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
     var _prevCls=p.class_level;
