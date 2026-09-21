@@ -1793,6 +1793,30 @@ def teacher_set_subjects(payload: dict, db: Session = Depends(get_db), current_u
     # BOSSE board = board-update videos, koi subject nahi — ek marker se setup complete
     if board.upper() == "BOSSE" and not selections:
         selections = [{"subject": "Board Updates", "class": "BOSSE"}]
+    # BOSSE teacher ko UG-PG jaisa NON-NIOS workspace do (NIOS syllabus/doubts nahi).
+    # Ek "BOSSE Board Updates" category (DU-SOL jaisi limited features) ensure karke usme
+    # assign karo, aur NIOS assignment deactivate — taaki portal college-teacher jaisa dikhe.
+    if board.upper() == "BOSSE":
+        try:
+            import category_models as _CM
+            from category_models import (Category as _Cat, TeacherCategory as _TC,
+                                         DU_SOL_DEFAULT_FEATURES as _DEF)
+            _bcat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _DEF)
+            db.flush()
+            _ex = db.query(_TC).filter(_TC.teacher_id == tp.id,
+                                       _TC.category_id == _bcat.id).first()
+            if _ex:
+                _ex.status = "active"
+            else:
+                db.add(_TC(teacher_id=tp.id, category_id=_bcat.id, status="active"))
+            # NIOS workspace hata do (BOSSE teacher ko NIOS sections nahi chahiye)
+            _nios = db.query(_Cat).filter(_Cat.internal_key == "nios").first()
+            if _nios:
+                for _tc in db.query(_TC).filter(_TC.teacher_id == tp.id,
+                                                _TC.category_id == _nios.id).all():
+                    _tc.status = "inactive"
+        except Exception:
+            pass
     if not selections:
         raise HTTPException(status_code=400, detail="Select at least 1 subject")
     # canonicalize ONLY NIOS (10/12) subject names — UG-PG / BOSSE names as-is
