@@ -1291,6 +1291,114 @@ def pm_upload_schedule(db: Session = Depends(get_db), me=Depends(get_pm_or_admin
     return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
 
 
+# ============================================================ DAILY / WEEKLY / MONTHLY REPORT
+@router.get("/report")
+def pm_report(period: str = "daily", date: str = "",
+              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Editor/graphics/production ka daily/weekly/monthly report data — portal se
+    hi image/PDF banane ke liye. Sab IST day boundaries pe compute hota hai."""
+    from models import ProductionStaffProfile as _SP
+    IST = timedelta(hours=5, minutes=30)
+    try:
+        anchor = datetime.fromisoformat(date) if date else (datetime.utcnow() + IST)
+    except Exception:
+        anchor = datetime.utcnow() + IST
+    anchor = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "weekly":
+        start_ist = anchor - timedelta(days=6)
+        end_ist = anchor + timedelta(days=1)
+        range_label = start_ist.strftime("%d %b") + " – " + anchor.strftime("%d %b %Y")
+    elif period == "monthly":
+        start_ist = anchor.replace(day=1)
+        end_ist = (start_ist.replace(year=start_ist.year + 1, month=1) if start_ist.month == 12
+                   else start_ist.replace(month=start_ist.month + 1))
+        range_label = start_ist.strftime("%B %Y")
+    else:
+        period = "daily"
+        start_ist = anchor
+        end_ist = anchor + timedelta(days=1)
+        range_label = anchor.strftime("%d %b %Y")
+    s = start_ist - IST   # UTC bounds (DB stores UTC)
+    e = end_ist - IST
+
+    def _nm(role):
+        return {sp.id: (sp.user.name if sp.user else ("#" + str(sp.id)))
+                for sp in db.query(_SP).filter(_SP.staff_role == role).all()}
+    ed_map = _nm("editor")
+    gf_map = _nm("graphics")
+
+    # ---- editors: completed (period) + current working (snapshot) ----
+    editors = []
+    tot_completed = 0
+    for eid, enm in ed_map.items():
+        completed = db.query(VideoTask).filter(
+            VideoTask.cancelled.isnot(True),
+            or_(VideoTask.editor_id == eid,
+                VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
+            VideoTask.editing_done_at != None,
+            VideoTask.editing_done_at >= s, VideoTask.editing_done_at < e).count()
+        working = db.query(VideoTask).filter(
+            VideoTask.cancelled.isnot(True),
+            or_(VideoTask.editor_id == eid,
+                VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
+            VideoTask.lifecycle.in_(["editing", "editing_paused"])).all()
+        wl = [{"title": (t.title or "Untitled")[:80],
+               "pct": int(t.editing_progress or 0),
+               "paused": (t.lifecycle == "editing_paused")} for t in working]
+        tot_completed += completed
+        if completed or wl:
+            editors.append({"name": enm, "completed": completed, "working": wl})
+    editors.sort(key=lambda x: (-x["completed"], -len(x["working"])))
+
+    # ---- graphics: submitted (period) + pending (snapshot) ----
+    graphics = []
+    _gname_by_actor = {}
+    for gev in db.query(ProductionEvent).filter(
+            ProductionEvent.event == "thumbnail_submitted",
+            ProductionEvent.created_at >= s, ProductionEvent.created_at < e).all():
+        _gname_by_actor[gev.actor_name or ""] = _gname_by_actor.get(gev.actor_name or "", 0) + 1
+    for gid, gnm in gf_map.items():
+        done = _gname_by_actor.get(gnm, 0)
+        pending = db.query(GraphicsTask).filter(
+            GraphicsTask.graphics_id == gid,
+            GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()
+        if done or pending:
+            graphics.append({"name": gnm, "done": done, "pending": pending})
+    graphics.sort(key=lambda x: (-x["done"], -x["pending"]))
+
+    # ---- production manager: assigned (period) + uploaded per channel (period) ----
+    assigned = db.query(ProductionEvent).filter(
+        ProductionEvent.event == "editor_assigned",
+        ProductionEvent.created_at >= s, ProductionEvent.created_at < e).count()
+    up_by_channel = {}
+    tot_uploaded = 0
+    for uev in db.query(ProductionEvent).filter(
+            ProductionEvent.event == "youtube_link_added",
+            ProductionEvent.created_at >= s, ProductionEvent.created_at < e).all():
+        t = db.query(VideoTask).filter(VideoTask.id == uev.task_id).first()
+        ch = (t.channel_name if t else "") or "Other"
+        up_by_channel[ch] = up_by_channel.get(ch, 0) + 1
+        tot_uploaded += 1
+    uploaded = sorted(({"channel": k, "count": v} for k, v in up_by_channel.items()),
+                      key=lambda x: -x["count"])
+
+    # currently editing / paused totals
+    now_editing = db.query(VideoTask).filter(VideoTask.cancelled.isnot(True),
+                                             VideoTask.lifecycle == "editing").count()
+    now_paused = db.query(VideoTask).filter(VideoTask.cancelled.isnot(True),
+                                            VideoTask.lifecycle == "editing_paused").count()
+
+    return {
+        "period": period, "range_label": range_label,
+        "generated_at": (datetime.utcnow() + IST).strftime("%d %b %Y, %I:%M %p"),
+        "editors": editors, "graphics": graphics,
+        "production": {"assigned": assigned, "uploaded": uploaded,
+                       "total_uploaded": tot_uploaded},
+        "totals": {"completed": tot_completed, "assigned": assigned,
+                   "uploaded": tot_uploaded, "editing": now_editing, "paused": now_paused},
+    }
+
+
 @router.post("/tasks/{tid}/complete")
 def mark_completed(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
