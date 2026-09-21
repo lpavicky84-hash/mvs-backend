@@ -1865,7 +1865,11 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "yt_views": (t.yt_views if getattr(t, "yt_views", None) is not None else None),
         "yt_views_at": t.yt_views_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "yt_views_at", None) else "",
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",
-        "history": (_full_hist_out(db, t) if (getattr(t, "lifecycle", "") or "") else _hist_out(t)),
+        # ALWAYS use the full merged timeline (ProductionEvents + status_history) so
+        # legacy/admin tasks (blank lifecycle) bhi sabhi stepwise events dikhayein —
+        # deadline change, editor assign, editing, approve, upload sab. _full_hist_out
+        # khud _hist_out par fall back karta hai jab kuch na ho.
+        "history": _full_hist_out(db, t),
     }
     # ---- collab (multi-teacher) info
     _allids = _collab_all_ids(t)

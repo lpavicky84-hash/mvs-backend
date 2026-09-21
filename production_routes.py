@@ -3659,25 +3659,6 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                          meta={"note": "Edited by " + (getattr(me, "name", "") or "production manager")})
     except Exception:
         pass
-    # ALSO record in the admin/teacher status_history JSON (that timeline modal reads a
-    # different store than the production ProductionEvent log) so the change shows there too.
-    try:
-        if _dl_changed:
-            import json as _jsh
-            from datetime import datetime as _dtsh, timedelta as _tdsh
-            try:
-                _h = _jsh.loads(t.status_history) if getattr(t, "status_history", "") else []
-                if not isinstance(_h, list):
-                    _h = []
-            except Exception:
-                _h = []
-            _ist = (_dtsh.utcnow() + _tdsh(hours=5, minutes=30))   # IST, matches admin _now_ist()
-            _h.append({"s": "edited",
-                       "at": _ist.strftime("%Y-%m-%dT%H:%M"),
-                       "note": "Deadline: " + (_old_dl_str or "not set") + " → " + (_new_dl_str or "not set")})
-            t.status_history = _jsh.dumps(_h)
-    except Exception:
-        pass
     db.commit()
     return {"ok": True, "id": t.id}
 
