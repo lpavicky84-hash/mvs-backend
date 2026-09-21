@@ -207,6 +207,7 @@ class TeacherProfile(Base):
     letter_remark_status = Column(String(20), nullable=True)  # v90: pending | resolved
     letter_remark_reply = Column(Text, nullable=True)         # v90: admin ka reply
     letter_remark_at = Column(DateTime, nullable=True)        # v90: remark kab aaya
+    feature_overrides = Column(Text, nullable=True)           # per-teacher section on/off (JSON {feature_key: bool})
 
     user    = relationship("User", back_populates="teacher_profile")
     classes = relationship("ClassEntry", back_populates="teacher")

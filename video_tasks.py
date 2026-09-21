@@ -898,10 +898,54 @@ def _cancelled_idents(db, tid, kind):
     return out
 
 
+def _is_nios_teacher(db, tp):
+    """True agar teacher NIOS workspace ka hai (default). Non-NIOS (BOSSE / college)
+    teachers ko auto One Shot / Rapid Revision NAHI milte — unke video tasks admin
+    manually assign karta hai."""
+    try:
+        from category_models import Category as _Cat, TeacherCategory as _TC
+        nios = db.query(_Cat).filter(_Cat.internal_key == "nios").first()
+        if not nios:
+            return True   # category system set nahi -> purana NIOS behavior
+        has_nios = db.query(_TC).filter(
+            _TC.teacher_id == tp.id, _TC.category_id == nios.id,
+            _TC.status == "active").first() is not None
+        if has_nios:
+            return True
+        other = db.query(_TC).filter(
+            _TC.teacher_id == tp.id, _TC.status == "active").first()
+        if other:
+            return False   # NIOS nahi, kisi aur (BOSSE/college) category me -> non-NIOS
+        return True        # koi category assignment hi nahi -> default NIOS
+    except Exception:
+        return True
+
+
+def _cancel_auto_special(db, tp):
+    """Non-NIOS teacher ke pehle se auto-bane One Shot / Rapid Revision tasks hata do
+    (soft cancel) — portal se gayab ho jayein."""
+    changed = False
+    try:
+        for t in db.query(VideoTask).filter(
+                VideoTask.teacher_id == tp.id,
+                VideoTask.kind.in_(["one_shot", "rapid_revision"]),
+                VideoTask.cancelled.isnot(True)).all():
+            t.cancelled = True
+            changed = True
+        if changed:
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
 def _ensure_special_teacher(db, tp):
     """Teacher ke One Shot (per subject) + Rapid Revision tasks banao/sync karo.
     Idempotent + self-heal: purane naam formats rename, duplicate tasks merge,
     links/history kabhi delete nahi hote."""
+    # Non-NIOS (BOSSE / college) teacher -> auto One Shot/Rapid Revision band + purane cancel
+    if not _is_nios_teacher(db, tp):
+        _cancel_auto_special(db, tp)
+        return
     changed = _ensure_kind_parity(db, tp)
     subs = _teacher_subject_list(db, tp)
     if not subs:

@@ -1649,18 +1649,75 @@ def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(g
     db.add(user)
     db.flush()
 
+    _board = (getattr(req, "board", "") or "").strip().lower()
+    # BOSSE = board-updates teacher, koi subject nahi -> marker se login subject-screen skip
+    _subj0 = req.subjects or []
+    _sc0 = []
+    if _board == "bosse":
+        _subj0 = ["Board Updates"]
+        _sc0 = [{"subject": "Board Updates", "class": "BOSSE"}]
     profile = TeacherProfile(
         user_id=user.id,
-        subjects=req.subjects or [],
-        subject_classes=[],
+        subjects=_subj0,
+        subject_classes=_sc0,
         gender=(req.gender or "").strip().lower() or None,
         phone=(req.phone or None),
         batch=req.batch or "",
         plain_password=req.password,
     )
+    # per-teacher section (feature) overrides — admin ne create pe jo sections chune
+    if getattr(req, "features", None) is not None:
+        try:
+            import json as _jf
+            from category_models import FEATURE_KEYS as _FK
+            _sel = set(req.features or [])
+            profile.feature_overrides = _jf.dumps({k: (k in _sel) for k in _FK})
+        except Exception:
+            pass
     db.add(profile)
+    db.flush()
+    # board -> workspace category assign (NIOS / BOSSE). UG-PG/college admin Category Access se.
+    try:
+        _assign_teacher_board(db, profile, _board)
+    except Exception:
+        pass
     db.commit()
     return {"message": f"Teacher {req.name} added successfully!", "user_id": candidate}
+
+
+def _assign_teacher_board(db, tp, board):
+    """Teacher ko uske board ki workspace category me daal do. nios/bosse handle;
+    baaki (ug-pg/college) admin Category Access se assign karta hai."""
+    board = (board or "").strip().lower().replace(" ", "").replace("/", "")
+    if board not in ("nios", "bosse", "ug-pg", "ugpg", "ug_pg"):
+        return
+    try:
+        import category_models as _CM
+        from category_models import (Category as _Cat, TeacherCategory as _TC,
+                                     DU_SOL_DEFAULT_FEATURES as _DEF)
+        if board == "bosse":
+            _ON = {"dashboard", "my_subjects", "my_tasks", "material_checker",
+                   "notifications", "profile"}
+            cat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _ON)
+        elif board in ("ug-pg", "ugpg", "ug_pg"):
+            cat = _CM._ensure_category(db, "ug_pg", "UG / PG", "UG/PG", 4, _DEF)
+        else:
+            cat = db.query(_Cat).filter(_Cat.internal_key == "nios").first()
+        if not cat:
+            return
+        db.flush()
+        ex = db.query(_TC).filter(_TC.teacher_id == tp.id,
+                                  _TC.category_id == cat.id).first()
+        if ex:
+            ex.status = "active"
+        else:
+            db.add(_TC(teacher_id=tp.id, category_id=cat.id, status="active"))
+        # dusri categories deactivate -> yahi board uska workspace bane
+        for tc in db.query(_TC).filter(_TC.teacher_id == tp.id,
+                                       _TC.category_id != cat.id).all():
+            tc.status = "inactive"
+    except Exception:
+        pass
 
 @router.patch("/teachers/{user_id}/toggle")
 def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -4647,6 +4704,21 @@ def edit_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depen
         tp.subjects = _SR.canon_list(_raw) if _SR else _raw
     if "is_active" in payload and tp.user:
         tp.user.is_active = bool(payload["is_active"])
+    # section (feature) overrides — admin edit se sections badle
+    if "features" in payload and isinstance(payload["features"], list):
+        try:
+            import json as _jf
+            from category_models import FEATURE_KEYS as _FK
+            _sel = set(payload["features"] or [])
+            tp.feature_overrides = _jf.dumps({k: (k in _sel) for k in _FK})
+        except Exception:
+            pass
+    # board change -> workspace category reassign
+    if payload.get("board"):
+        try:
+            _assign_teacher_board(db, tp, str(payload.get("board")))
+        except Exception:
+            pass
     db.commit()
     return {"message": "Teacher updated"}
 

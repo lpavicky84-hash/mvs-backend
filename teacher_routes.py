@@ -1799,10 +1799,20 @@ def teacher_set_subjects(payload: dict, db: Session = Depends(get_db), current_u
     if board.upper() == "BOSSE":
         try:
             import category_models as _CM
+            import category_service as _CS
             from category_models import (Category as _Cat, TeacherCategory as _TC,
-                                         DU_SOL_DEFAULT_FEATURES as _DEF)
-            _bcat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _DEF)
+                                         FEATURE_KEYS as _FK)
+            # BOSSE = specially video-tasks portal. Curated sections only:
+            # Dashboard, My Subjects, My Tasks, Material Checker, Notifications, Profile.
+            _BOSSE_ON = {"dashboard", "my_subjects", "my_tasks", "material_checker",
+                         "notifications", "profile"}
+            _bcat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _BOSSE_ON)
             db.flush()
+            # enforce the curated feature set (existing category bhi update ho)
+            try:
+                _CS.set_features(db, _bcat.id, {k: (k in _BOSSE_ON) for k in _FK})
+            except Exception:
+                pass
             _ex = db.query(_TC).filter(_TC.teacher_id == tp.id,
                                        _TC.category_id == _bcat.id).first()
             if _ex:

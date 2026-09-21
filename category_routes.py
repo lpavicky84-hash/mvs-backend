@@ -1383,9 +1383,29 @@ def teacher_my_categories(db: Session = Depends(get_db), me=Depends(get_teacher)
     if not tid:
         return {"categories": [], "multi": False}
     cats = CS.teacher_categories(db, tid)
+    # per-teacher section overrides (admin ne create/edit pe set kiye) — category default
+    # features ke upar apply hote hain.
+    _ov = None
+    try:
+        from models import TeacherProfile as _TP
+        _tp = db.query(_TP).filter(_TP.id == tid).first()
+        if _tp and getattr(_tp, "feature_overrides", None):
+            import json as _jo
+            _ov = _jo.loads(_tp.feature_overrides)
+            if not isinstance(_ov, dict):
+                _ov = None
+    except Exception:
+        _ov = None
     out = []
     for c in cats:
         d = CS.category_dict(db, c, with_counts=False)
-        d["features"] = sorted(CS.enabled_features(db, c.id))
+        feats = set(CS.enabled_features(db, c.id))
+        if _ov:
+            for k, v in _ov.items():
+                if v:
+                    feats.add(k)
+                else:
+                    feats.discard(k)
+        d["features"] = sorted(feats)
         out.append(d)
     return {"categories": out, "multi": len(out) > 1}

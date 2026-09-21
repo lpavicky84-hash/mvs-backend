@@ -2697,7 +2697,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker',vidperf:'Performance'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
@@ -2726,6 +2726,7 @@ function _tLoadPage(page){
   else if(page==='subjectmaterials') loadTSubjectMaterials();
   else if(page==='matchecker') loadTMatChecker();
   else if(page==='homework') loadTHomework();
+  else if(page==='vidperf') loadTVidPerf();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -14665,21 +14666,54 @@ function _subjBoxes(list,cls){
   if(!list||!list.length) return '<span style="color:var(--text-muted);font-size:.82rem">No subjects available</span>';
   return list.map(s=>`<label class="subj-check"><input type="checkbox" class="subj-cb" data-cls="${cls}" value="${esc(s.name)}"> ${esc(s.name)} <span class="code">${esc(s.code)}</span></label>`).join('');
 }
+var _TFEAT_CATALOG=[['dashboard','Dashboard'],['my_subjects','My Subjects'],['my_tasks','My Tasks'],['timetable','Time Table'],['dpp','DPP'],['tests','Tests'],['classes_material','Classes Material'],['study_material','Study Material'],['subject_materials','Subject Materials'],['material_checker','Material Checker'],['students','My Students'],['doubts','Doubts'],['performance','Performance'],['payout','Payout'],['notifications','Notifications'],['content_calendar','Content Calendar'],['profile','Profile']];
+var _TBOARD_DEFAULTS={
+  nios:['dashboard','my_tasks','timetable','students','dpp','tests','classes_material','study_material','doubts','performance','payout','notifications'],
+  bosse:['dashboard','my_subjects','my_tasks','material_checker','notifications','profile'],
+  'ug-pg':['dashboard','my_subjects','my_tasks','subject_materials','material_checker','performance','payout','notifications','profile']
+};
+function _atSectionsHtml(board){
+  var def=_TBOARD_DEFAULTS[board]||_TBOARD_DEFAULTS.nios;
+  return _TFEAT_CATALOG.map(function(f){
+    var on=def.indexOf(f[0])>=0;
+    return '<label class="at-sec"><input type="checkbox" class="at-sec-cb" value="'+f[0]+'"'+(on?' checked':'')+'><span>'+esc(f[1])+'</span></label>';
+  }).join('');
+}
+function atBoardChange(b){
+  var sec=document.getElementById('at-sections'); if(sec) sec.innerHTML=_atSectionsHtml(b);
+  var sw=document.getElementById('at-subj-wrap'); var note=document.getElementById('at-subj-note');
+  if(sw) sw.style.display=(b==='nios')?'':'none';
+  if(note) note.style.display=(b==='nios')?'none':'';
+}
 async function openAddTeacher(){
   let subj; try{ subj=await ensureSubjects(); }catch(e){ subj=null; }
   subj=subj||window._allSubjects||{'10':[],'12':[]};
   subj['10']=subj['10']||[]; subj['12']=subj['12']||[];
+  if(!document.getElementById('at-sec-css')){
+    var s=document.createElement('style'); s.id='at-sec-css';
+    s.textContent='.at-sec-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;margin-top:6px}.at-sec{display:flex;align-items:center;gap:8px;font-size:.86rem;cursor:pointer;padding:5px 2px}.at-sec input{width:16px;height:16px;accent-color:#b8941f}';
+    document.head.appendChild(s);
+  }
   showModal('Add Teacher',
- `<div class="alert alert-info">Enter the name, gender and phone, then select the subjects. <strong>User ID and password are generated automatically.</strong></div><div class="form-group"><label>Teacher Name</label><input class="form-control" id="at-name" placeholder="Rahul Sharma"></div><div class="form-group"><label>Gender</label><select class="form-control" id="at-gender"><option value="male">Male (Sir)</option><option value="female">Female (Ma'am)</option></select></div><div class="form-group"><label>Phone Number</label><input class="form-control" id="at-phone" placeholder="9876543210"></div><div class="form-group"><label>Subjects &mdash; select from either class (or both)</label><div class="subj-cols"><div class="subj-col"><div class="subj-col-h">Class 10</div>${_subjBoxes(subj['10'],'10')}</div><div class="subj-col"><div class="subj-col-h">Class 12</div>${_subjBoxes(subj['12'],'12')}</div></div></div>`,
+ `<div class="alert alert-info">Enter the name, gender and phone, choose the <strong>board</strong> and the <strong>sections</strong> this teacher gets. <strong>User ID &amp; password are auto-generated.</strong></div>`
+ +`<div class="form-group"><label>Teacher Name</label><input class="form-control" id="at-name" placeholder="Rahul Sharma"></div>`
+ +`<div class="form-group"><label>Gender</label><select class="form-control" id="at-gender"><option value="male">Male (Sir)</option><option value="female">Female (Ma'am)</option></select></div>`
+ +`<div class="form-group"><label>Phone Number</label><input class="form-control" id="at-phone" placeholder="9876543210"></div>`
+ +`<div class="form-group"><label>Board / Workspace</label><select class="form-control" id="at-board" onchange="atBoardChange(this.value)"><option value="nios">NIOS Board</option><option value="bosse">BOSSE Board (Board Updates)</option><option value="ug-pg">UG / PG (College)</option></select></div>`
+ +`<div class="form-group" id="at-subj-wrap"><label>Subjects &mdash; select from either class (or both)</label><div class="subj-cols"><div class="subj-col"><div class="subj-col-h">Class 10</div>${_subjBoxes(subj['10'],'10')}</div><div class="subj-col"><div class="subj-col-h">Class 12</div>${_subjBoxes(subj['12'],'12')}</div></div></div>`
+ +`<div class="form-group" id="at-subj-note" style="display:none"><div style="font-size:.82rem;color:var(--text-muted)">Subjects for this board are picked by the teacher at first login (or set later via Edit).</div></div>`
+ +`<div class="form-group"><label>Sections this teacher can see <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(preset by board — tick/untick to customise)</span></label><div class="at-sec-grid" id="at-sections">${_atSectionsHtml('nios')}</div></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAddTeacher()">Add Teacher</button>`);
 }
 async function submitAddTeacher(){
   const name=val('at-name');
-  const subjects=[...document.querySelectorAll('.subj-cb:checked')].map(c=>c.value);
+  const board=val('at-board')||'nios';
+  const subjects=(board==='nios')?[...document.querySelectorAll('.subj-cb:checked')].map(c=>c.value):[];
+  const features=[...document.querySelectorAll('.at-sec-cb:checked')].map(c=>c.value);
   if(!name){ toast('Teacher name is required.',true); return; }
   try{
  const password=genPassword();
- const r=await api('/api/admin/teachers/add','POST',{name,user_id:'auto',password,role:'teacher',subjects,gender:val('at-gender'),phone:val('at-phone')});
+ const r=await api('/api/admin/teachers/add','POST',{name,user_id:'auto',password,role:'teacher',subjects,gender:val('at-gender'),phone:val('at-phone'),board,features});
  showCredentials('Teacher',name,r.user_id,password);
  if(document.getElementById('a-page-teachers').classList.contains('active'))loadATeachers();
   }catch(e){ toast(e.message,true); }
@@ -14704,16 +14738,34 @@ async function openEditTeacher(pid,data){
      <div class="form-group"><label>Class 10 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s10">${subjectCheckboxes('et-s10','10',sel10)}</div></div>
      <div class="form-group"><label>Class 12 Subjects <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(tap to select)</span></label><div id="et-s12">${subjectCheckboxes('et-s12','12',sel12)}</div></div>
      <div class="form-group"><label>Status</label><select class="form-control" id="et-active"><option value="1"${data.is_active?' selected':''}>Active</option><option value="0"${!data.is_active?' selected':''}>Inactive</option></select></div>
+     <div class="form-group"><label>Board / Workspace &amp; Sections <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(pick a board to change the teacher's sections)</span></label><select class="form-control" id="et-board" onchange="etBoardChange(this.value)"><option value="">— Keep current —</option><option value="nios">NIOS Board</option><option value="bosse">BOSSE Board (Board Updates)</option><option value="ug-pg">UG / PG (College)</option></select></div>
+     <div class="form-group" id="et-sections-wrap" style="display:none"><div class="at-sec-grid" id="et-sections"></div></div>
      <div id="et-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="et-btn" onclick="saveEditTeacher(${pid})">Save</button>`);
+  if(!document.getElementById('at-sec-css')){
+    var s=document.createElement('style'); s.id='at-sec-css';
+    s.textContent='.at-sec-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;margin-top:6px}.at-sec{display:flex;align-items:center;gap:8px;font-size:.86rem;cursor:pointer;padding:5px 2px}.at-sec input{width:16px;height:16px;accent-color:#b8941f}';
+    document.head.appendChild(s);
+  }
+}
+function etBoardChange(b){
+  var wrap=document.getElementById('et-sections-wrap'); var sec=document.getElementById('et-sections');
+  if(!b){ if(wrap) wrap.style.display='none'; return; }
+  if(sec) sec.innerHTML=_atSectionsHtml(b);
+  if(wrap) wrap.style.display='';
 }
 async function saveEditTeacher(pid){
   const sc=[...pickedSubjects('et-s10').map(s=>({subject:s,class:'10'})),
             ...pickedSubjects('et-s12').map(s=>({subject:s,class:'12'}))];
-  if(!sc.length){ toast('Please select at least one subject.',true); return; }
+  const board=val('et-board');
+  // subjects sirf tab required jab board NIOS/keep-current ho (BOSSE/UG-PG me subject optional)
+  if(!sc.length && (board==='' || board==='nios')){ toast('Please select at least one subject.',true); return; }
+  const payload={name:val('et-name'),phone:val('et-phone'),is_active:val('et-active')==='1'};
+  if(sc.length) payload.subject_classes=sc;
+  if(board){ payload.board=board; payload.features=[...document.querySelectorAll('#et-sections .at-sec-cb:checked')].map(c=>c.value); }
   const btn=document.getElementById('et-btn'); btn.disabled=true; btn.textContent='Saving...';
   try{
-    await api('/api/admin/teacher/'+pid,'PATCH',{name:val('et-name'),phone:val('et-phone'),subject_classes:sc,is_active:val('et-active')==='1'});
+    await api('/api/admin/teacher/'+pid,'PATCH',payload);
     toast('Teacher updated.'); closeModal(); loadATeachers();
   }catch(e){ document.getElementById('et-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save'; }
 }
@@ -32469,9 +32521,15 @@ function _applyTNavFeatures(){
   var app=document.getElementById('teacher-app'); if(!app) return;
   if(!document.getElementById('tnav-feat-css')){
     var st=document.createElement('style'); st.id='tnav-feat-css';
-    st.textContent='#teacher-app .sidebar-nav .nav-item.nav-feat-off{display:none !important}#teacher-app .sidebar-nav .nav-section.nav-sec-off{display:none !important}';
+    st.textContent='#teacher-app .sidebar-nav .nav-item.nav-feat-off{display:none !important}#teacher-app .sidebar-nav .nav-section.nav-sec-off{display:none !important}'
+      // BOSSE workspace: late-injected NIOS items (My Batches / Homework Checker / Attendance)
+      // ko timing-safe hide karo — ye tab bhi chhupe jab item baad me inject ho.
+      +'#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="tmybatches"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="mybatches"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="homework"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="attendance"]{display:none !important}'
+      // "Performance" (video) sirf BOSSE me dikhe — baaki workspaces me chhupa
+      +'#teacher-app .sidebar-nav .nav-item.tnav-vidperf{display:none !important}#teacher-app.ws-bosse .sidebar-nav .nav-item.tnav-vidperf{display:flex !important}';
     document.head.appendChild(st);
   }
+  app.classList.toggle('ws-bosse', !!(window._tActiveCat && window._tActiveCat.internal_key==='bosse'));
   app.querySelectorAll('.sidebar-nav .nav-item').forEach(function(n){
     var oc=n.getAttribute('onclick')||'';
     var m=oc.match(/tPage\('([^']+)'/);
@@ -32489,6 +32547,16 @@ function _applyTNavFeatures(){
     }
     n.classList.toggle('nav-feat-off', !show);
   });
+  // BOSSE = specially video-tasks-only workspace. Feature-mapped na hone wale NIOS
+  // items (My Batches, Homework Checker, Attendance) yahan explicitly hide karo;
+  // Message Admin support ke liye visible rakho.
+  if(window._tActiveCat && window._tActiveCat.internal_key==='bosse'){
+    app.querySelectorAll('.sidebar-nav .nav-item').forEach(function(n){
+      var oc=n.getAttribute('onclick')||'';
+      if(/'tmybatches'|'homework'|'attendance'|'mybatches'/.test(oc)) n.classList.add('nav-feat-off');
+      if(oc.indexOf('openMessageAdmin')>=0) n.classList.remove('nav-feat-off');
+    });
+  }
   _tHideEmptyNavSections(app);
 }
 
@@ -32605,6 +32673,27 @@ function _tInjectCategoryNav(){
     pg3.innerHTML='<div id="t-matchecker-content"><div class="spinner"></div></div>';
     main.appendChild(pg3);
   }
+  // BOSSE ke liye alag "Performance" section (sirf video performance — youtuber jaisa).
+  // Inject sabhi category workspaces me; visibility _applyTNavFeatures BOSSE ko hi deta hai.
+  if(!nav.querySelector('[onclick*="vidperf"]')){
+    var a4=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
+      return (n.getAttribute('onclick')||'').indexOf("'vtasks'")>=0;})[0];
+    var d4=document.createElement('div'); d4.className='nav-item tnav-vidperf';
+    d4.setAttribute('onclick',"tPage('vidperf',this)");
+    d4.innerHTML=(typeof ic==='function'?ic('chart'):'')+'<span>Performance</span>'; d4.style.display='none';
+    if(a4){ a4.parentNode.insertBefore(d4, a4.nextSibling); } else { nav.appendChild(d4); }
+  }
+  if(!document.getElementById('t-page-vidperf')){
+    var pg4=document.createElement('div'); pg4.className='page'; pg4.id='t-page-vidperf';
+    pg4.innerHTML='<div id="t-vidperf-content"><div class="spinner"></div></div>';
+    main.appendChild(pg4);
+  }
+}
+function loadTVidPerf(){
+  var el=document.getElementById('t-vidperf-content'); if(!el) return;
+  el.innerHTML='<div style="margin-bottom:14px"><div style="font-weight:800;font-size:1.15rem">My Video Performance</div><div style="font-size:.84rem;color:#8a7d5c">Real-time YouTube views — your videos &amp; the team</div></div><div id="t-vidperf-wrap"><div class="spinner"></div></div>';
+  try{ renderVideoViews('t-vidperf-wrap','/api/teacher',false); }
+  catch(e){ var w=document.getElementById('t-vidperf-wrap'); if(w) w.innerHTML='<div style="padding:22px;color:#c1443a">Could not load performance.</div>'; }
 }
 
 function loadTMySubjects(){

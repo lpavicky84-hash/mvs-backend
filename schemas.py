@@ -19,6 +19,8 @@ class RegisterRequest(BaseModel):
     batch: Optional[str] = None
     class_name: Optional[str] = None
     gender: Optional[str] = None         # for teachers: male | female
+    board: Optional[str] = None          # teacher workspace: nios | bosse | ug-pg
+    features: Optional[List[str]] = None # teacher section overrides (feature keys to enable)
 
 class LoginRequest(BaseModel):
     user_id: str
