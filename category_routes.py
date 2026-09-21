@@ -1396,10 +1396,17 @@ def teacher_my_categories(db: Session = Depends(get_db), me=Depends(get_teacher)
                 _ov = None
     except Exception:
         _ov = None
+    # BOSSE = curated video-tasks workspace — features ko force karo (chahe purani
+    # category DU-SOL defaults se bani ho). Single "Performance" (video) dikhta hai.
+    _BOSSE_FEATS = {"dashboard", "my_subjects", "my_tasks", "material_checker",
+                    "performance", "notifications", "profile"}
     out = []
     for c in cats:
         d = CS.category_dict(db, c, with_counts=False)
-        feats = set(CS.enabled_features(db, c.id))
+        if (c.internal_key or "") == "bosse":
+            feats = set(_BOSSE_FEATS)
+        else:
+            feats = set(CS.enabled_features(db, c.id))
         if _ov:
             for k, v in _ov.items():
                 if v:

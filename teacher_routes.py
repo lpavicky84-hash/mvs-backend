@@ -1805,7 +1805,7 @@ def teacher_set_subjects(payload: dict, db: Session = Depends(get_db), current_u
             # BOSSE = specially video-tasks portal. Curated sections only:
             # Dashboard, My Subjects, My Tasks, Material Checker, Notifications, Profile.
             _BOSSE_ON = {"dashboard", "my_subjects", "my_tasks", "material_checker",
-                         "notifications", "profile"}
+                         "performance", "notifications", "profile"}
             _bcat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _BOSSE_ON)
             db.flush()
             # enforce the curated feature set (existing category bhi update ho)

@@ -2697,7 +2697,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker',vidperf:'Performance'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
@@ -2708,7 +2708,7 @@ function _tLoadPage(page){
   if(page==='dashboard'){ if(_tIsCatWorkspace()) loadTCatDashboard(); else loadTDashboard(); }
   else if(page==='vtasks') loadTVTasks();
   else if(page==='today'){ _ttTab='today'; tPage('timetable'); return; }
-  else if(page==='performance'){ if(_tIsCatWorkspace()) loadTCatPerformance(); else loadTPerformance(); }
+  else if(page==='performance'){ if(window._tActiveCat && window._tActiveCat.internal_key==='bosse') loadTBossePerf(); else if(_tIsCatWorkspace()) loadTCatPerformance(); else loadTPerformance(); }
   else if(page==='predicted') loadTPredicted();
   else if(page==='timetable') loadTTimetable();
   else if(page==='dpp') loadTDpp();
@@ -2726,7 +2726,6 @@ function _tLoadPage(page){
   else if(page==='subjectmaterials') loadTSubjectMaterials();
   else if(page==='matchecker') loadTMatChecker();
   else if(page==='homework') loadTHomework();
-  else if(page==='vidperf') loadTVidPerf();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -32524,9 +32523,7 @@ function _applyTNavFeatures(){
     st.textContent='#teacher-app .sidebar-nav .nav-item.nav-feat-off{display:none !important}#teacher-app .sidebar-nav .nav-section.nav-sec-off{display:none !important}'
       // BOSSE workspace: late-injected NIOS items (My Batches / Homework Checker / Attendance)
       // ko timing-safe hide karo — ye tab bhi chhupe jab item baad me inject ho.
-      +'#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="tmybatches"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="mybatches"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="homework"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="attendance"]{display:none !important}'
-      // "Performance" (video) sirf BOSSE me dikhe — baaki workspaces me chhupa
-      +'#teacher-app .sidebar-nav .nav-item.tnav-vidperf{display:none !important}#teacher-app.ws-bosse .sidebar-nav .nav-item.tnav-vidperf{display:flex !important}';
+      +'#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="tmybatches"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="mybatches"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="homework"],#teacher-app.ws-bosse .sidebar-nav .nav-item[onclick*="attendance"]{display:none !important}';
     document.head.appendChild(st);
   }
   app.classList.toggle('ws-bosse', !!(window._tActiveCat && window._tActiveCat.internal_key==='bosse'));
@@ -32673,27 +32670,15 @@ function _tInjectCategoryNav(){
     pg3.innerHTML='<div id="t-matchecker-content"><div class="spinner"></div></div>';
     main.appendChild(pg3);
   }
-  // BOSSE ke liye alag "Performance" section (sirf video performance — youtuber jaisa).
-  // Inject sabhi category workspaces me; visibility _applyTNavFeatures BOSSE ko hi deta hai.
-  if(!nav.querySelector('[onclick*="vidperf"]')){
-    var a4=[].slice.call(nav.querySelectorAll('.nav-item')).filter(function(n){
-      return (n.getAttribute('onclick')||'').indexOf("'vtasks'")>=0;})[0];
-    var d4=document.createElement('div'); d4.className='nav-item tnav-vidperf';
-    d4.setAttribute('onclick',"tPage('vidperf',this)");
-    d4.innerHTML=(typeof ic==='function'?ic('chart'):'')+'<span>Performance</span>'; d4.style.display='none';
-    if(a4){ a4.parentNode.insertBefore(d4, a4.nextSibling); } else { nav.appendChild(d4); }
-  }
-  if(!document.getElementById('t-page-vidperf')){
-    var pg4=document.createElement('div'); pg4.className='page'; pg4.id='t-page-vidperf';
-    pg4.innerHTML='<div id="t-vidperf-content"><div class="spinner"></div></div>';
-    main.appendChild(pg4);
-  }
 }
-function loadTVidPerf(){
-  var el=document.getElementById('t-vidperf-content'); if(!el) return;
-  el.innerHTML='<div style="margin-bottom:14px"><div style="font-weight:800;font-size:1.15rem">My Video Performance</div><div style="font-size:.84rem;color:#8a7d5c">Real-time YouTube views — your videos &amp; the team</div></div><div id="t-vidperf-wrap"><div class="spinner"></div></div>';
-  try{ renderVideoViews('t-vidperf-wrap','/api/teacher',false); }
-  catch(e){ var w=document.getElementById('t-vidperf-wrap'); if(w) w.innerHTML='<div style="padding:22px;color:#c1443a">Could not load performance.</div>'; }
+// BOSSE Performance = single "Performance" section showing VIDEO performance
+// (videos made / uploaded / pending + realtime views, Zeba's + all teachers).
+// Renders into the existing t-performance-content page (no duplicate nav item).
+function loadTBossePerf(){
+  var el=document.getElementById('t-performance-content'); if(!el) return;
+  el.innerHTML='<div style="margin-bottom:14px"><div style="font-weight:800;font-size:1.25rem">My Video Performance</div><div style="font-size:.86rem;color:#8a7d5c">Videos made, uploaded &amp; pending · real-time YouTube views (you &amp; the team)</div></div><div id="t-bosseperf-wrap"><div class="spinner"></div></div>';
+  try{ renderVideoViews('t-bosseperf-wrap','/api/teacher',false); }
+  catch(e){ var w=document.getElementById('t-bosseperf-wrap'); if(w) w.innerHTML='<div style="padding:22px;color:#c1443a">Could not load performance.</div>'; }
 }
 
 function loadTMySubjects(){

@@ -1697,7 +1697,7 @@ def _assign_teacher_board(db, tp, board):
                                      DU_SOL_DEFAULT_FEATURES as _DEF)
         if board == "bosse":
             _ON = {"dashboard", "my_subjects", "my_tasks", "material_checker",
-                   "notifications", "profile"}
+                   "performance", "notifications", "profile"}
             cat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _ON)
         elif board in ("ug-pg", "ugpg", "ug_pg"):
             cat = _CM._ensure_category(db, "ug_pg", "UG / PG", "UG/PG", 4, _DEF)
