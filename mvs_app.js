@@ -24925,7 +24925,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             {g:'Live',items:[ {p:'liveteam',t:'Live Users',i:'user'}, {p:'tracker',t:'Live Team Tracker',i:'clock'} ]},
             {g:'Pipeline',items:[ {p:'q:pm_review',t:'PM Review',i:'check'}, {p:'q:thumb_review',t:'Thumbnail Review',i:'image'}, {p:'q:thumb_changes',t:'Thumbnail Changes',i:'edit'}, {p:'q:editing',t:'Editing Queue',i:'video'}, {p:'q:qc_pending',t:'QC Queue',i:'check'}, {p:'q:ready_for_youtube',t:'Ready for YouTube',i:'video'}, {p:'q:uploaded',t:'Uploaded Videos',i:'upload'}, {p:'urgent',t:'Urgent Videos',i:'board'} ]},
             {g:'Team',items:[ {p:'team',t:'Team & Workload',i:'team'}, {p:'prodteam',t:'Production Team',i:'team'} ]},
-            {g:'Analytics',items:[ {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
+            {g:'Analytics',items:[ {p:'reports',t:'Reports',i:'chart'}, {p:'analytics',t:'Analytics',i:'grid'}, {p:'creators',t:'Creator Performance',i:'team'}, {p:'views',t:'Real-time Views',i:'grid'} ]} ] },
     editor:{ role:'editor', title:'Editor', sub:'Workspace', api:'/api/editor',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'tasks',t:'My Tasks',i:'list'},
              {p:'projectvideos',t:'Project Videos',i:'folder'},
@@ -26168,6 +26168,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='announce') return renderAnnounce(portal,body);
     if(page==='liveteam') return renderPmLiveTeamPage(portal,body);
     if(page==='tracker') return renderTracker(portal,body);
+    if(page==='reports') return renderReports(portal,body);
     if(page==='team') return renderTeam(portal,body);
     if(page==='analytics') return renderAnalytics(portal,body);
     if(page==='upsched') return renderUploadSchedule(portal,body);
@@ -29299,6 +29300,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     catch(e){ body.innerHTML='<div class="p-empty">Could not load tracker. '+esc(e&&e.message||'')+'</div>'; }
   }
 
+  // --- Daily / Weekly / Monthly Reports (inline page — image + PDF) ---
+  function renderReports(portal,body){
+    try{ if(typeof _repInjectCss==='function') _repInjectCss(); }catch(e){}
+    var apiBase=(P[portal]&&P[portal].api)||'/api/production';
+    window._REP={api:apiBase, period:'daily', date:_repToday(), data:null, canvas:null};
+    body.innerHTML='<div class="p-sec" style="margin-bottom:10px">'+ic('chart')+' Team Reports</div>'+
+      '<div class="rep-bar">'+
+        '<div class="rep-tabs">'+['daily','weekly','monthly'].map(function(p){ return '<button class="rep-tab'+(p==='daily'?' on':'')+'" data-p="'+p+'" onclick="_repSetPeriod(\''+p+'\')">'+p.charAt(0).toUpperCase()+p.slice(1)+'</button>'; }).join('')+'</div>'+
+        '<input type="date" class="rep-date" id="rep-date" value="'+window._REP.date+'" onchange="_repSetDate(this.value)">'+
+        '<span style="flex:1"></span>'+
+        '<button class="p-btn p-btn-primary" onclick="_repDownloadImage()">'+ic('download')+' Download Image</button>'+
+        '<button class="p-btn" onclick="_repDownloadPDF()">'+ic('download')+' Download PDF</button>'+
+      '</div>'+
+      '<div class="rep-hint" style="text-align:left;margin:0 0 12px">Daily → download the image and send it straight to your WhatsApp group. Weekly / Monthly → download the full PDF (with MVS logo).</div>'+
+      '<div id="rep-preview" class="rep-preview" style="max-height:none"><div class="spinner"></div></div>';
+    try{ _repLoad(); }catch(e){ var pv=document.getElementById('rep-preview'); if(pv) pv.innerHTML='<div class="p-empty">Could not load report.</div>'; }
+  }
+
   function renderTeam(portal,body){
     return api(P[portal].api+'/team').then(function(r){
       r=r||{};
@@ -31171,6 +31190,7 @@ function _apRoleMeta(k){ for(var i=0;i<_AP_ROLES.length;i++) if(_AP_ROLES[i].key
     var html='<div class="lt-wrap">';
     html+='<div class="lt-bar"><div class="lt-bar-l"><span class="lt-h">Live Team Tracker</span><span class="lt-live"><i></i>Live</span><span class="lt-upd">Updated '+_ltEsc(new Date().toLocaleTimeString())+'</span></div>'+
       '<div class="lt-bar-r"><label class="lt-search">'+LTSVG_SEARCH+'<input type="text" id="lt-q" placeholder="Search person..." oninput="_ltFilter(this.value)"></label>'+
+      '<button class="lt-rfr lt-rep-btn" onclick="prodOpenReports(\''+(LT.apiBase||'/api/production')+'\')">'+_ltIc('chart')+' Reports</button>'+
       '<button class="lt-rfr" onclick="_ltRefreshNow()">'+LTSVG_REFRESH+' Refresh</button></div></div>';
     var alerts=(data.alerts||[]);
     if(alerts.length){
@@ -31244,6 +31264,190 @@ function _apRoleMeta(k){ for(var i=0;i<_AP_ROLES.length;i++) if(_AP_ROLES[i].key
   window._ltToggleCompleted=function(btn){ var el=btn&&btn.parentNode&&btn.parentNode.nextElementSibling; if(el&&el.classList&&el.classList.contains('lt-complist')) el.classList.toggle('open'); };
   window._ltJump=function(id){ if(!LT.host) return; var c=LT.host.querySelector('.lt-card[data-eid="'+id+'"]'); if(c){ try{ c.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){ try{ c.scrollIntoView(); }catch(_){} } c.classList.add('lt-flash'); setTimeout(function(){ try{ c.classList.remove('lt-flash'); }catch(e){} },1600); } };
 })();
+
+// ================= PRODUCTION REPORTS — daily image (WhatsApp) + weekly/monthly PDF =================
+function _repToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _repPeriodLabel(){ var p=(window._REP&&window._REP.period)||'daily'; return {daily:'Daily',weekly:'Weekly',monthly:'Monthly'}[p]||'Daily'; }
+function _repInjectCss(){
+  if(document.getElementById('rep-css')) return;
+  var s=document.createElement('style'); s.id='rep-css';
+  s.textContent=[
+    '.rep-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}',
+    '.rep-tabs{display:inline-flex;gap:6px;background:var(--bg,#f4f1e8);border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:4px}',
+    '.rep-tab{border:0;background:transparent;padding:8px 18px;border-radius:9px;font-weight:800;font-size:.86rem;cursor:pointer;color:var(--text-muted,#8a7d5c)}',
+    '.rep-tab.on{background:#e6ad4e;color:#3a2a05}',
+    '.rep-date{border:1px solid var(--border,#e5ddcb);border-radius:10px;padding:8px 12px;font-size:.9rem;font-weight:600;background:var(--card,#fff);color:var(--text,#2c2415)}',
+    '.rep-preview{background:#faf9f5;border:1px solid var(--border,#e5ddcb);border-radius:14px;padding:14px;max-height:60vh;overflow:auto;text-align:center}',
+    '.rep-preview img{max-width:100%;height:auto;border-radius:10px;box-shadow:0 8px 26px -10px rgba(0,0,0,.3)}',
+    '.rep-hint{font-size:.78rem;color:var(--text-muted,#8a7d5c);margin-top:8px;text-align:center}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _repLogo(cb){
+  if(window._repLogoImg!==undefined){ cb(window._repLogoImg); return; }
+  var img=new Image(); img.crossOrigin='anonymous';
+  img.onload=function(){ window._repLogoImg=img; cb(img); };
+  img.onerror=function(){ window._repLogoImg=null; cb(null); };
+  img.src='/api/student/logo';
+}
+window.prodOpenReports=function(api){
+  window._REP={api:api||'/api/production', period:'daily', date:_repToday(), data:null, canvas:null};
+  var old=document.getElementById('rep-modal'); if(old) old.remove();
+  _repInjectCss();
+  var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='rep-modal'; dr.style.zIndex='200';
+  dr.innerHTML='<div class="p-modal rep-modal" style="max-width:900px">'+
+    '<div class="pd-head"><div class="h-title">Team Reports</div><button class="pd-x" onclick="document.getElementById(\'rep-modal\').remove()">&times;</button></div>'+
+    '<div class="p-modal-body">'+
+      '<div class="rep-bar">'+
+        '<div class="rep-tabs">'+['daily','weekly','monthly'].map(function(p){ return '<button class="rep-tab'+(p==='daily'?' on':'')+'" data-p="'+p+'" onclick="_repSetPeriod(\''+p+'\')">'+p.charAt(0).toUpperCase()+p.slice(1)+'</button>'; }).join('')+'</div>'+
+        '<input type="date" class="rep-date" id="rep-date" value="'+window._REP.date+'" onchange="_repSetDate(this.value)">'+
+      '</div>'+
+      '<div id="rep-preview" class="rep-preview"><div class="spinner"></div></div>'+
+      '<div class="rep-hint">Daily → download the image and send it directly to your WhatsApp group. Weekly / Monthly → download the full PDF (with MVS logo).</div>'+
+    '</div>'+
+    '<div class="pd-foot"><div class="p-acts">'+
+      '<button class="p-btn" onclick="document.getElementById(\'rep-modal\').remove()">Close</button>'+
+      '<button class="p-btn p-btn-primary" id="rep-dl-img" onclick="_repDownloadImage()">Download Image</button>'+
+      '<button class="p-btn" id="rep-dl-pdf" onclick="_repDownloadPDF()">Download PDF</button>'+
+    '</div></div></div>';
+  dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+  document.body.appendChild(dr);
+  _repLoad();
+};
+window._repSetPeriod=function(p){ if(!window._REP) return; window._REP.period=p; document.querySelectorAll('#rep-modal .rep-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-p')===p); }); _repLoad(); };
+window._repSetDate=function(v){ if(!window._REP) return; window._REP.date=v||_repToday(); _repLoad(); };
+function _repLoad(){
+  var pv=document.getElementById('rep-preview'); if(pv) pv.innerHTML='<div class="spinner"></div>';
+  var R=window._REP; if(!R) return;
+  api(R.api+'/report?period='+encodeURIComponent(R.period)+'&date='+encodeURIComponent(R.date)).then(function(d){
+    R.data=d; _repLogo(function(logo){ _repRender(d, logo); });
+  }).catch(function(e){ if(pv) pv.innerHTML='<div style="padding:24px;color:#c1443a">Could not load report. '+esc((e&&e.message)||'')+'</div>'; });
+}
+function _repRender(data, logo){
+  var pv=document.getElementById('rep-preview'); if(!pv) return;
+  var cv=_repCanvas(data, logo); window._REP.canvas=cv;
+  var img=document.createElement('img'); img.src=cv.toDataURL('image/png'); img.alt='report';
+  pv.innerHTML=''; pv.appendChild(img);
+}
+function _rr(ctx,x,y,w,h,r){ if(r>h/2)r=h/2; if(r>w/2)r=w/2; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function _repEllip(ctx,txt,max){ txt=String(txt||''); if(ctx.measureText(txt).width<=max) return txt; while(txt.length>1 && ctx.measureText(txt+'…').width>max) txt=txt.slice(0,-1); return txt+'…'; }
+function _repCanvas(data, logo){
+  var DPR=2, W=1080, pad=48, F='-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
+  var eds=data.editors||[], gfx=data.graphics||[], ups=(data.production&&data.production.uploaded)||[];
+  var t=data.totals||{};
+  // ---- measure height ----
+  var H=210+30;                 // header + gap
+  H+=110+40;                    // kpi
+  H+=58;                        // editors section header
+  if(eds.length){ eds.forEach(function(e){ H+=56 + ((e.working||[]).length*40) + 14; }); } else { H+=58; }
+  H+=58;                        // uploads header
+  H+=(ups.length?70:58);
+  H+=58;                        // graphics header
+  if(gfx.length){ H+=gfx.length*54; } else { H+=58; }
+  H+=76;                        // footer
+  var cv=document.createElement('canvas'); cv.width=W*DPR; cv.height=H*DPR;
+  var ctx=cv.getContext('2d'); ctx.scale(DPR,DPR);
+  ctx.textBaseline='alphabetic';
+  ctx.fillStyle='#faf9f5'; ctx.fillRect(0,0,W,H);
+  // ---- header ----
+  var hg=ctx.createLinearGradient(0,0,W,210); hg.addColorStop(0,'#14213d'); hg.addColorStop(1,'#2b2350');
+  ctx.fillStyle=hg; ctx.fillRect(0,0,W,210);
+  ctx.fillStyle='#e6ad4e'; ctx.fillRect(0,206,W,4);
+  ctx.save(); _rr(ctx,pad,46,96,96,20); ctx.clip(); ctx.fillStyle='#0f1836'; ctx.fillRect(pad,46,96,96);
+  if(logo){ try{ ctx.drawImage(logo,pad,46,96,96); }catch(e){} } else { ctx.fillStyle='#e6ad4e'; ctx.font='800 30px '+F; ctx.textAlign='center'; ctx.fillText('MVS',pad+48,104); ctx.textAlign='left'; }
+  ctx.restore();
+  var tx=pad+124;
+  ctx.fillStyle='#fff'; ctx.font='800 40px '+F; ctx.fillText('MVS Foundation',tx,86);
+  ctx.fillStyle='#e6ad4e'; ctx.font='800 24px '+F; ctx.fillText('Production Report · '+_repPeriodLabel(),tx,122);
+  ctx.fillStyle='rgba(255,255,255,.72)'; ctx.font='500 19px '+F; ctx.fillText((data.range_label||'')+'    •    Generated '+(data.generated_at||''),tx,152);
+  var y=210+30;
+  // ---- KPI ----
+  var kpis=[['Completed',t.completed,'#16a34a'],['Assigned',t.assigned,'#2563eb'],['Uploaded',t.uploaded,'#7c3aed'],['Editing',t.editing,'#c98a2e'],['Paused',t.paused,'#dc2626']];
+  var kw=(W-pad*2-16*4)/5;
+  kpis.forEach(function(k,i){ var kx=pad+i*(kw+16);
+    ctx.fillStyle='#fff'; _rr(ctx,kx,y,kw,110,16); ctx.fill(); ctx.strokeStyle='#ece7d8'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=k[2]; ctx.font='800 46px '+F; ctx.textAlign='center'; ctx.fillText(String(k[1]||0),kx+kw/2,y+60);
+    ctx.fillStyle='#8a8578'; ctx.font='700 15px '+F; ctx.fillText(k[0].toUpperCase(),kx+kw/2,y+90); ctx.textAlign='left'; });
+  y+=110+40;
+  function _sec(title,count){ ctx.fillStyle='#14213d'; ctx.font='800 24px '+F; ctx.fillText(title,pad,y+8); if(count!=null){ var lw=ctx.measureText(title).width; ctx.fillStyle='#e6ad4e'; ctx.font='800 18px '+F; ctx.fillText('('+count+')',pad+lw+12,y+7); } ctx.strokeStyle='#e3ddcb'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad,y+24); ctx.lineTo(W-pad,y+24); ctx.stroke(); y+=58; }
+  // ---- editors ----
+  _sec('Editors',eds.length);
+  if(!eds.length){ ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No editor activity in this period.',pad,y+10); y+=58; }
+  eds.forEach(function(e){
+    var wl=e.working||[]; var rowH=56+wl.length*40;
+    ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,rowH,14); ctx.fill(); ctx.strokeStyle='#ece7d8'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#14213d'; ctx.font='800 21px '+F; ctx.fillText(_repEllip(ctx,e.name,W-pad*2-260),pad+18,y+35);
+    // completed pill
+    var pill='✓ '+(e.completed||0)+' completed'; ctx.font='800 15px '+F; var pw2=ctx.measureText(pill).width+26; var px=W-pad-18-pw2;
+    ctx.fillStyle='rgba(22,163,74,.12)'; _rr(ctx,px,y+14,pw2,28,14); ctx.fill(); ctx.fillStyle='#16a34a'; ctx.fillText(pill,px+13,y+33);
+    var yy=y+56;
+    wl.forEach(function(w){
+      ctx.fillStyle='#5a5545'; ctx.font='600 16px '+F; ctx.fillText(_repEllip(ctx,w.title,W-pad*2-360),pad+22,yy+22);
+      var barX=W-pad-18-300, barW=220;
+      ctx.fillStyle='#eee7d6'; _rr(ctx,barX,yy+12,barW,12,6); ctx.fill();
+      ctx.fillStyle=w.paused?'#dc2626':'#16a34a'; _rr(ctx,barX,yy+12,Math.max(6,barW*(w.pct||0)/100),12,6); ctx.fill();
+      ctx.fillStyle=w.paused?'#dc2626':'#16a34a'; ctx.font='800 15px '+F; ctx.textAlign='left'; ctx.fillText((w.pct||0)+'%',barX+barW+12,yy+23);
+      ctx.fillStyle=w.paused?'#dc2626':'#c98a2e'; ctx.font='700 13px '+F; ctx.fillText(w.paused?'PAUSED':'EDITING',barX+barW+60,yy+23);
+      yy+=40;
+    });
+    y+=rowH+14;
+  });
+  // ---- uploads ----
+  _sec('Uploaded to Channels',data.production?data.production.total_uploaded:0);
+  if(ups.length){
+    var cx=pad;
+    ups.forEach(function(u){ var lab=(u.channel||'Other')+'  '+u.count; ctx.font='800 17px '+F; var cw=ctx.measureText(lab).width+40; if(cx+cw>W-pad){ cx=pad; y+=48; }
+      ctx.fillStyle='#fff'; _rr(ctx,cx,y,cw,42,12); ctx.fill(); ctx.strokeStyle='#e6ad4e'; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.fillStyle='#14213d'; ctx.font='700 16px '+F; ctx.fillText(u.channel||'Other',cx+16,y+27);
+      var nx=cx+16+ctx.measureText(u.channel||'Other').width+8; ctx.fillStyle='#7c3aed'; ctx.font='800 17px '+F; ctx.fillText(String(u.count),nx,y+27);
+      cx+=cw+12; });
+    y+=70;
+  } else { ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No uploads in this period.',pad,y+10); y+=58; }
+  // ---- graphics ----
+  _sec('Graphics Designers',gfx.length);
+  if(!gfx.length){ ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No graphics activity in this period.',pad,y+10); y+=58; }
+  gfx.forEach(function(g){
+    ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,46,12); ctx.fill(); ctx.strokeStyle='#ece7d8'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#14213d'; ctx.font='800 19px '+F; ctx.fillText(_repEllip(ctx,g.name,W-pad*2-320),pad+18,y+30);
+    var s1='Done '+(g.done||0), s2='Pending '+(g.pending||0);
+    ctx.font='800 15px '+F; var w2=ctx.measureText(s2).width+24, x2=W-pad-18-w2;
+    ctx.fillStyle='rgba(217,119,6,.12)'; _rr(ctx,x2,y+11,w2,24,12); ctx.fill(); ctx.fillStyle='#b45309'; ctx.fillText(s2,x2+12,y+28);
+    var w1=ctx.measureText(s1).width+24, x1=x2-10-w1;
+    ctx.fillStyle='rgba(22,163,74,.12)'; _rr(ctx,x1,y+11,w1,24,12); ctx.fill(); ctx.fillStyle='#16a34a'; ctx.fillText(s1,x1+12,y+28);
+    y+=54;
+  });
+  // ---- footer ----
+  ctx.fillStyle='#14213d'; ctx.fillRect(0,H-56,W,56);
+  ctx.fillStyle='#e6ad4e'; ctx.fillRect(0,H-56,W,3);
+  ctx.fillStyle='rgba(255,255,255,.85)'; ctx.font='700 16px '+F; ctx.textAlign='center';
+  ctx.fillText('MVS Foundation — Production Team · '+(data.production?data.production.assigned:0)+' assigned today · auto-generated from the portal',W/2,H-22);
+  ctx.textAlign='left';
+  return cv;
+}
+window._repDownloadImage=function(){
+  var R=window._REP; if(!R||!R.canvas){ toast('Report not ready',true); return; }
+  try{ R.canvas.toBlob(function(b){ if(!b){ toast('Could not export image',true); return; } var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='MVS-'+R.period+'-report-'+R.date+'.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000); toast('Image downloaded — send it to your WhatsApp group'); },'image/png'); }
+  catch(e){ toast('Could not export image',true); }
+};
+window._repDownloadPDF=function(){
+  var R=window._REP; if(!R||!R.canvas){ toast('Report not ready',true); return; }
+  var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF; if(!J){ toast('PDF library not loaded',true); return; }
+  try{
+    var cv=R.canvas; var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'});
+    var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
+    var ratio=pw/cv.width, fullH=cv.height*ratio;
+    if(fullH<=ph){ pdf.addImage(cv.toDataURL('image/png'),'PNG',0,0,pw,fullH); }
+    else {
+      var sliceCssH=Math.floor(cv.width*(ph/pw)); var sy=0, first=true;
+      while(sy<cv.height){ var sh=Math.min(sliceCssH, cv.height-sy);
+        var c2=document.createElement('canvas'); c2.width=cv.width; c2.height=sh;
+        c2.getContext('2d').drawImage(cv,0,sy,cv.width,sh,0,0,cv.width,sh);
+        if(!first) pdf.addPage(); first=false;
+        pdf.addImage(c2.toDataURL('image/png'),'PNG',0,0,pw,sh*ratio); sy+=sh; }
+    }
+    pdf.save('MVS-'+R.period+'-report-'+R.date+'.pdf'); toast('PDF downloaded');
+  }catch(e){ toast('Could not export PDF',true); }
+};
 
 function initAdminLiveTracker(){
   var app=document.getElementById('admin-app'); if(!app) return;
