@@ -2516,29 +2516,133 @@ function enterTeacherApp(){
   startDoubtBadge('teacher');
   startTopicReminders();
 }
-let _tSel10=[], _tSel12=[];
-async function showTeacherSubjectScreen(){
-  _tSel10=[]; _tSel12=[];
-  document.getElementById('t-subject-screen').style.display='flex';
-  for(const cls of ['10','12']){
- const wrap=document.getElementById('t-sub-'+cls);
- try{
- const subs=await api('/api/teacher/available-subjects?class_level='+cls);
- wrap.innerHTML=subs.map(s=>`<label style="display:inline-flex;align-items:center;gap:6px;color:#fff;cursor:pointer;width:48%;padding:6px;font-size:.85rem"><input type="checkbox" value="${esc(s.name)}" onchange="toggleTSub('${cls}',this)"> ${esc(s.name)}</label>`).join('');
- }catch(e){ wrap.innerHTML='<p style="color:#fff">Error loading</p>'; }
+// ===== Teacher first-login: board (NIOS / BOSSE / UG-PG) + premium subject dropdowns =====
+let _tBoard='', _tSubjSel={'10':[],'12':[],'UG-PG':[]}, _tAvailCache={};
+function _tbsCss(){
+  if(document.getElementById('tbs-css')) return;
+  var s=document.createElement('style'); s.id='tbs-css';
+  s.textContent=[
+    '.tbs-field{margin-top:16px;text-align:left}',
+    '.tbs-lbl{display:block;color:rgba(255,255,255,.85);font-weight:700;font-size:.82rem;margin-bottom:7px}',
+    '.tbs-board-sel{width:100%;box-sizing:border-box;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:12px;color:#fff;padding:13px 14px;font-size:.92rem;font-weight:600;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23e6ad4e\' stroke-width=\'3\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}',
+    '.tbs-board-sel:focus{border-color:#e6ad4e}',
+    '.tbs-board-sel option{background:#241c08;color:#fff}',
+    '.tbs-info{display:flex;gap:12px;align-items:flex-start;background:rgba(230,173,78,.12);border:1px solid rgba(230,173,78,.35);border-radius:14px;padding:16px;text-align:left;margin-top:6px}',
+    '.tbs-info svg{width:22px;height:22px;color:#e6ad4e;flex:0 0 auto;margin-top:2px}',
+    '.tbs-info b{display:block;color:#fff;font-size:.95rem;margin-bottom:3px}',
+    '.tbs-info span{color:rgba(255,255,255,.75);font-size:.83rem;line-height:1.5}',
+    // multi-select dropdown
+    '.mssel{position:relative;width:100%}',
+    '.mssel-field{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:12px 14px;cursor:pointer;color:#fff;min-height:48px;box-sizing:border-box}',
+    '.mssel-field:hover{border-color:rgba(230,173,78,.6)}',
+    '.mssel-val{flex:1;font-size:.9rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.mssel-val.ph{color:rgba(255,255,255,.5);font-weight:500}',
+    '.mssel-cnt{flex:0 0 auto;background:#e6ad4e;color:#3a2a05;font-weight:800;font-size:.72rem;border-radius:999px;padding:2px 9px}',
+    '.mssel-arw{color:rgba(255,255,255,.6);flex:0 0 auto;font-size:.8rem}',
+    '.mssel-pop{position:absolute;z-index:3000;top:calc(100% + 6px);left:0;right:0;background:#241c08;border:1px solid rgba(230,173,78,.35);border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.5);overflow:hidden}',
+    '.mssel-search{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;padding:11px 14px;font-size:.88rem;outline:none}',
+    '.mssel-search::placeholder{color:rgba(255,255,255,.4)}',
+    '.mssel-list{max-height:240px;overflow-y:auto;padding:6px}',
+    '.mssel-opt{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;color:#f0e6cf;font-size:.88rem;font-weight:600}',
+    '.mssel-opt:hover{background:rgba(230,173,78,.12)}',
+    '.mssel-opt.on{background:rgba(230,173,78,.2);color:#fff}',
+    '.mssel-ck{width:18px;height:18px;border-radius:5px;border:1.5px solid rgba(255,255,255,.4);flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;font-size:.72rem;color:#3a2a05;font-weight:800}',
+    '.mssel-opt.on .mssel-ck{background:#e6ad4e;border-color:#e6ad4e}',
+    '.mssel-empty{padding:16px;text-align:center;color:rgba(255,255,255,.5);font-size:.82rem}'
+  ].join('');
+  document.head.appendChild(s);
+  if(!window._msselOutside){ window._msselOutside=true;
+    document.addEventListener('click',function(e){ if(!e.target.closest||!e.target.closest('.mssel')){ document.querySelectorAll('.mssel-pop').forEach(function(p){p.style.display='none';}); } });
   }
 }
-function toggleTSub(cls,cb){
-  const arr=cls==='10'?_tSel10:_tSel12;
-  if(cb.checked){ if(!arr.includes(cb.value))arr.push(cb.value); }
-  else{ const i=arr.indexOf(cb.value); if(i>=0)arr.splice(i,1); }
+window._MSSEL=window._MSSEL||{};
+function _msselOpts(id,q){
+  var d=window._MSSEL[id]; if(!d) return '';
+  q=(q||'').toLowerCase().trim();
+  var items=d.items.filter(function(o){ return !q||(o.l||'').toLowerCase().indexOf(q)>=0; });
+  if(!items.length) return '<div class="mssel-empty">No subjects found</div>';
+  return items.map(function(o){ var on=d.selected.indexOf(String(o.v))>=0; return '<div class="mssel-opt'+(on?' on':'')+'" onclick="_msselToggle(\''+id+'\',\''+encodeURIComponent(o.v)+'\')"><span class="mssel-ck">'+(on?'✓':'')+'</span><span>'+esc(o.l)+'</span></div>'; }).join('');
+}
+function _msselFieldHtml(id){
+  var d=window._MSSEL[id]||{items:[],selected:[]};
+  var names=d.selected.map(function(v){ var it=d.items.filter(function(o){return String(o.v)===String(v);})[0]; return it?it.l:v; });
+  var lbl=names.length?names.join(', '):(d.ph||'Select');
+  return '<div class="mssel-field" onclick="_msselTogglePop(\''+id+'\')"><span class="mssel-val'+(names.length?'':' ph')+'">'+esc(lbl)+'</span>'+(names.length?'<span class="mssel-cnt">'+names.length+'</span>':'')+'<span class="mssel-arw">▾</span></div>';
+}
+function _msselHtml(id, items, selected, placeholder, cb){
+  _tbsCss();
+  window._MSSEL[id]={items:items||[], selected:(selected||[]).map(String), ph:placeholder||'Select', cb:cb};
+  return '<div class="mssel" id="'+id+'">'+_msselFieldHtml(id)+
+    '<div class="mssel-pop" style="display:none"><input class="mssel-search" placeholder="Search subjects..." oninput="_msselFilter(\''+id+'\')" onclick="event.stopPropagation()"><div class="mssel-list" id="'+id+'-list">'+_msselOpts(id,'')+'</div></div>'+
+  '</div>';
+}
+window._msselTogglePop=function(id){ var w=document.getElementById(id); if(!w) return; var pop=w.querySelector('.mssel-pop'); if(!pop) return; var open=pop.style.display!=='none';
+  document.querySelectorAll('.mssel-pop').forEach(function(p){p.style.display='none';});
+  if(!open){ pop.style.display='block'; var s=pop.querySelector('.mssel-search'); if(s){ s.value=''; _msselFilter(id); setTimeout(function(){ try{s.focus();}catch(e){} },20); } } };
+window._msselFilter=function(id){ var w=document.getElementById(id); if(!w) return; var s=w.querySelector('.mssel-search'); var list=document.getElementById(id+'-list'); if(list) list.innerHTML=_msselOpts(id, s?s.value:''); };
+window._msselToggle=function(id, ev){ var v=decodeURIComponent(ev); var d=window._MSSEL[id]; if(!d) return; var i=d.selected.indexOf(String(v)); if(i>=0) d.selected.splice(i,1); else d.selected.push(String(v));
+  var w=document.getElementById(id);
+  if(w){ var fld=w.querySelector('.mssel-field'); if(fld){ var tmp=document.createElement('div'); tmp.innerHTML=_msselFieldHtml(id); if(tmp.firstChild) fld.replaceWith(tmp.firstChild); } var list=document.getElementById(id+'-list'); if(list){ var s=w.querySelector('.mssel-search'); list.innerHTML=_msselOpts(id, s?s.value:''); } }
+  if(d.cb){ try{ d.cb(d.selected.slice()); }catch(e){} }
+};
+async function showTeacherSubjectScreen(){
+  _tBoard=''; _tSubjSel={'10':[],'12':[],'UG-PG':[]}; _tAvailCache={};
+  _tbsCss();
+  document.getElementById('t-subject-screen').style.display='flex';
+  var body=document.getElementById('t-subj-body'); if(!body) return;
+  body.innerHTML='<div class="tbs-field"><label class="tbs-lbl">Board</label>'+
+    '<select id="tbs-board" class="tbs-board-sel" onchange="tbsBoardChange(this.value)">'+
+    '<option value="">— Choose your board —</option>'+
+    '<option value="NIOS">NIOS Board</option>'+
+    '<option value="BOSSE">BOSSE Board (Board Updates)</option>'+
+    '<option value="UG-PG">UG / PG (College)</option>'+
+    '</select></div>'+
+    '<div id="tbs-subj-area"></div>';
+}
+async function _tbsFetch(cl){
+  if(_tAvailCache[cl]) return _tAvailCache[cl];
+  try{ var r=await api('/api/teacher/available-subjects?class_level='+encodeURIComponent(cl)); _tAvailCache[cl]=r||[]; }
+  catch(e){ _tAvailCache[cl]=[]; }
+  return _tAvailCache[cl];
+}
+async function tbsBoardChange(b){
+  _tBoard=b||'';
+  var area=document.getElementById('tbs-subj-area'); if(!area) return;
+  if(!b){ area.innerHTML=''; return; }
+  if(b==='BOSSE'){
+    area.innerHTML='<div class="tbs-info">'+ic('play')+'<div><b>Board Updates</b><span>You’ll create BOSSE board-update videos — no subject selection is needed. Just tap Save &amp; Continue.</span></div></div>';
+    return;
+  }
+  area.innerHTML='<div style="padding:20px;text-align:center"><div class="spinner"></div></div>';
+  if(b==='NIOS'){
+    var s10=await _tbsFetch('10'), s12=await _tbsFetch('12');
+    area.innerHTML='<div class="tbs-field"><label class="tbs-lbl">Class 10 subjects</label>'+
+        _msselHtml('tbs-ms-10', s10.map(function(x){return {v:x.name,l:x.name};}), _tSubjSel['10'], 'Select Class 10 subjects', function(sel){ _tSubjSel['10']=sel.slice(); })+'</div>'+
+      '<div class="tbs-field"><label class="tbs-lbl">Class 12 subjects</label>'+
+        _msselHtml('tbs-ms-12', s12.map(function(x){return {v:x.name,l:x.name};}), _tSubjSel['12'], 'Select Class 12 subjects', function(sel){ _tSubjSel['12']=sel.slice(); })+'</div>';
+  } else if(b==='UG-PG'){
+    var su=await _tbsFetch('UG-PG');
+    if(!su.length){ area.innerHTML='<div class="tbs-info">'+ic('alert')+'<div><b>No UG / PG subjects yet</b><span>Ask the admin to add college (UG/PG) subjects first, then set them here.</span></div></div>'; return; }
+    area.innerHTML='<div class="tbs-field"><label class="tbs-lbl">UG / PG subjects</label>'+
+      _msselHtml('tbs-ms-ug', su.map(function(x){return {v:x.name,l:x.name};}), _tSubjSel['UG-PG'], 'Select your UG / PG subjects', function(sel){ _tSubjSel['UG-PG']=sel.slice(); })+'</div>';
+  }
 }
 async function saveTeacherSubjects(){
-  const selections=[..._tSel10.map(s=>({subject:s,class:'10'})),..._tSel12.map(s=>({subject:s,class:'12'}))];
-  if(selections.length===0){ toast('Please select at least one subject.',true); return; }
-  const btn=document.getElementById('t-save-subj'); btn.disabled=true; btn.textContent='Saving...';
-  try{ await api('/api/teacher/set-subjects','POST',{selections}); toast('Subjects saved. '); enterTeacherApp(); }
-  catch(e){ toast(e.message,true); }
+  if(!_tBoard){ toast('Please choose your board first.',true); return; }
+  var selections=[];
+  if(_tBoard==='BOSSE'){
+    selections=[{subject:'Board Updates', class:'BOSSE'}];
+  } else if(_tBoard==='NIOS'){
+    selections=_tSubjSel['10'].map(function(s){return {subject:s,class:'10'};})
+      .concat(_tSubjSel['12'].map(function(s){return {subject:s,class:'12'};}));
+    if(!selections.length){ toast('Select at least one subject.',true); return; }
+  } else if(_tBoard==='UG-PG'){
+    selections=_tSubjSel['UG-PG'].map(function(s){return {subject:s,class:'UG-PG'};});
+    if(!selections.length){ toast('Select at least one subject.',true); return; }
+  }
+  var btn=document.getElementById('t-save-subj'); btn.disabled=true; btn.textContent='Saving...';
+  try{ await api('/api/teacher/set-subjects','POST',{board:_tBoard, selections:selections}); toast('Saved.'); enterTeacherApp(); }
+  catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Save & Continue →'; return; }
   btn.disabled=false; btn.textContent='Save & Continue →';
 }
 // ===== v101: TARGET-ONLY MODE (attendance disabled — punch on the other app) =====

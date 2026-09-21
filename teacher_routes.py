@@ -1765,6 +1765,21 @@ def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teac
 
 @router.get("/available-subjects")
 def teacher_available_subjects(class_level: str, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    # UG-PG (college) subjects — non-NIOS category papers (same source as production /subjects)
+    if (class_level or "").strip().upper() in ("UG-PG", "UG_PG", "UGPG"):
+        out, seen = [], set()
+        try:
+            from category_models import Category, CategorySubject
+            noncat = [c.id for c in db.query(Category).filter(Category.internal_key != "nios").all()]
+            if noncat:
+                for cs in db.query(CategorySubject).filter(CategorySubject.category_id.in_(noncat)).all():
+                    nm = (cs.name or "").strip()
+                    if nm and nm.lower() not in seen:
+                        seen.add(nm.lower())
+                        out.append({"name": nm, "code": ""})
+        except Exception:
+            pass
+        return sorted(out, key=lambda x: x["name"].lower())
     from models import AvailableSubject
     subs = db.query(AvailableSubject).filter(
         AvailableSubject.class_level == class_level, AvailableSubject.is_active == True).all()
@@ -1773,16 +1788,29 @@ def teacher_available_subjects(class_level: str, db: Session = Depends(get_db), 
 @router.post("/set-subjects")
 def teacher_set_subjects(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
-    selections = payload.get("selections", [])   # [{"subject":..,"class":"10"/"12"}]
+    board = (payload.get("board") or "").strip()   # NIOS | BOSSE | UG-PG
+    selections = payload.get("selections", [])   # [{"subject":..,"class":"10"/"12"/"UG-PG"/"BOSSE"}]
+    # BOSSE board = board-update videos, koi subject nahi — ek marker se setup complete
+    if board.upper() == "BOSSE" and not selections:
+        selections = [{"subject": "Board Updates", "class": "BOSSE"}]
     if not selections:
         raise HTTPException(status_code=400, detail="Select at least 1 subject")
+    # canonicalize ONLY NIOS (10/12) subject names — UG-PG / BOSSE names as-is
     if _SR is not None:
-        selections = [dict(x, subject=_SR.canon_display(x.get("subject"), x.get("class") or x.get("class_name")))
-                      for x in selections if x.get("subject")]
+        _new = []
+        for x in selections:
+            if not x.get("subject"):
+                continue
+            _cl = str(x.get("class") or x.get("class_name") or "")
+            if _cl in ("10", "12"):
+                _new.append(dict(x, subject=_SR.canon_display(x.get("subject"), _cl)))
+            else:
+                _new.append(dict(x))
+        selections = _new
     tp.subject_classes = selections
     tp.subjects = sorted({s.get("subject") for s in selections if s.get("subject")})
     db.commit()
-    return {"message": "Subjects save ho gaye!", "subjects": tp.subjects}
+    return {"message": "Subjects save ho gaye!", "subjects": tp.subjects, "board": board}
 
 # ===== TEACHER: VIEW TIMETABLE (by their subjects, admin-uploaded) =====
 @router.get("/my-timetable")
