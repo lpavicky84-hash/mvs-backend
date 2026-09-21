@@ -2,7 +2,7 @@
 Active editing time is measured from real EditingSession rows (excludes idle/paused)."""
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from datetime import datetime, date, timedelta
 
 from database import get_db
@@ -174,6 +174,12 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     def c(*st):
         return base.filter(VideoTask.lifecycle.in_(st)).count()
 
+    # legacy/admin-assigned tasks: lifecycle blank par status set (editing_soon/approved) —
+    # inhe bhi "to start" me count karo warna dashboard 0 dikhata hai jabki My Tasks me task hai
+    _legacy_ready = and_(or_(VideoTask.lifecycle == None, VideoTask.lifecycle == "",
+                             VideoTask.lifecycle == "creator_assigned"),
+                         VideoTask.status.in_(["editing_soon", "approved"]))
+
     month_start = datetime(now.year, now.month, 1)
     edited_m = base.filter(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"]),
                            VideoTask.updated_at >= month_start).count()
@@ -211,7 +217,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     total_views = db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
         VideoTask.cancelled == False, VideoTask.editor_id == sp.id).scalar() or 0
     cards = {
-        "assigned_today": base.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"])).count(),
+        "assigned_today": base.filter(or_(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]), _legacy_ready)).count(),
         "editing_now": c("editing", "editing_paused"),
         "due_soon": base.filter(VideoTask.deadline != None, VideoTask.deadline >= now,
                                 VideoTask.deadline <= soon,
@@ -231,8 +237,8 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
                          "badges": badges, "total_done": total_done, "rank": rank},
         "cards": cards,
         "kpis": {
-            "assigned": c("editor_assigned"),
-            "not_started": c("editor_assigned"),
+            "assigned": base.filter(or_(VideoTask.lifecycle == "editor_assigned", _legacy_ready)).count(),
+            "not_started": base.filter(or_(VideoTask.lifecycle == "editor_assigned", _legacy_ready)).count(),
             "editing": c("editing", "editing_paused"),
             "qc_pending": c("qc_pending"),
             "changes": c("qc_changes"),

@@ -1860,6 +1860,8 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "streaming": getattr(t, "streaming", "") or "",
         "youtube_url": getattr(t, "youtube_url", "") or "",
         "yt_video_id": getattr(t, "yt_video_id", "") or "",
+        "upload_date": (t.upload_date.strftime("%d %b %Y, %I:%M %p") if getattr(t, "upload_date", None) else ""),
+        "upload_remarks": (getattr(t, "upload_remarks", "") or ""),
         "yt_views": (t.yt_views if getattr(t, "yt_views", None) is not None else None),
         "yt_views_at": t.yt_views_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "yt_views_at", None) else "",
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",

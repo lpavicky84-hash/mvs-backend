@@ -39,7 +39,8 @@ const ICONS={
   'chev-down':_S+'<polyline points="6 9 12 15 18 9"/></svg>',
   history:_S+'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   alert:_S+'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-  link2:_S+'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+  link2:_S+'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  search:_S+'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
 function statCard(label,num,iconKey,accent,nav,blink){
@@ -10575,6 +10576,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
           ${t.reference?_refText:''}
           ${(t.editor_name||t.graphics_name)?`<span class="vt-team">${t.editor_name?`${ic('edit')} ${(t.collab_editor_names&&t.collab_editor_names.length)?'Editors':'Editor'}: <b>${esc(t.editor_name)}${(t.collab_editor_names&&t.collab_editor_names.length)?(' + '+t.collab_editor_names.map(function(n){return esc(n);}).join(' + ')):''}</b>`:''}${(t.editor_name&&t.graphics_name)?' &nbsp;·&nbsp; ':''}${t.graphics_name?`${ic('image')} Graphics: <b>${esc(t.graphics_name)}</b>`:''}</span>`:''}
+          ${t.upload_date?`<span class="vt-upsched">${ic('calendar')} Tentative upload: <b>${esc(t.upload_date)}</b></span>`:''}
           <span style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">${_refBtn}${_needsBtn}${_chatBtn}</span>
           ${t.submitted_at?`<span>${ic('check')} Submitted: ${esc(t.submitted_at)}${isU?'':` — <b>${t.on_time?'on time':'delayed'}</b>`}</span>`:''}
           ${upTxt?`<span>${upTxt}</span>`:''}
@@ -24891,6 +24893,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.vt-team{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:.8rem;color:var(--text-muted);margin-top:2px}',
 '.vt-team svg{width:13px;height:13px;vertical-align:-2px;margin-right:2px}',
 '.vt-team b{color:var(--text)}',
+'.vt-upsched{display:inline-flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:.8rem;color:#2f6da8;margin-top:3px;font-weight:600}',
+'.vt-upsched svg{width:13px;height:13px;vertical-align:-2px}',
+'.vt-upsched b{color:#2f6da8}',
 '.p-bottleneck{display:inline-flex;align-items:center;gap:8px;background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.28);color:#d1443a;border-radius:10px;padding:8px 14px;font-weight:700;font-size:.86rem;margin-bottom:8px}',
 /* task rows */
 '.pt-row{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #ece2cd;border-radius:13px;padding:13px 16px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s,transform .05s}',
@@ -25864,50 +25869,63 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     body.innerHTML='<div class="p-empty">This section is coming soon.</div>';
   };
 
-  // ===== Upload Schedule (weekly / monthly calendar) =====
-  function _upSchedCard(portal,t){
-    var _due=false; try{ if(t.upload_date_iso) _due=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
-    var pend=(_due && !t.youtube_url);
-    var time=''; try{ if(t.upload_date_iso){ var d=new Date(t.upload_date_iso); time=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }catch(e){}
-    var open='prodOpenTask(\''+portal+'\','+t.id+')';
-    return '<div class="usch-card'+(pend?' pend':'')+'" onclick="'+open+'">'+
-      '<div class="usch-t">'+esc(t.title||'Untitled')+'</div>'+
-      '<div class="usch-m">'+(t.channel_name?esc(t.channel_name):'')+(time?(' · '+esc(time)):'')+(t.creator_name?(' · '+esc(t.creator_name)):'')+'</div>'+
-      (t.upload_remarks?'<div class="usch-rem">'+ic('edit')+' '+esc(t.upload_remarks)+'</div>':'')+
-      (pend?'<div class="usch-pend">'+ic('alert')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-live">'+ic('check')+' Live</div>':(t.upload_date_iso?'<div class="usch-plan">'+ic('calendar')+' Scheduled</div>':'')))+
+  // ===== Upload Schedule (premium weekly / monthly — like YouTuber Weekly) =====
+  window._upSched={mode:'week',q:'',ch:''};
+  function _upItem(portal,t){
+    var due=false; try{ if(t.upload_date_iso) due=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
+    var pend=(due && !t.youtube_url);
+    var tl=''; try{ if(t.upload_date_iso){ tl=new Date(t.upload_date_iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); } }catch(e){}
+    var m=[]; if(t.channel_name) m.push(esc(t.channel_name)); if(tl) m.push(tl); if(t.creator_name) m.push(esc(t.creator_name));
+    return '<div class="ytw-item'+(pend?' usch-pend-item':'')+'" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+      '<div class="ytw-it-t">'+esc(t.title||'Untitled')+'</div>'+
+      (m.length?'<div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div>':'')+
+      (t.upload_remarks?'<div class="usch-remline">'+ic('edit')+' '+esc(t.upload_remarks)+'</div>':'')+
+      (pend?'<div class="usch-pendline">'+ic('alert')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-liveline">'+ic('check')+' Live</div>':''))+
     '</div>';
   }
-  window.upSchedMode=function(portal,m){ window._upSchedMode=m; var body=document.getElementById(portal+'-body'); if(body) renderUploadSchedule(portal,body); };
+  function _upChans(tasks){ var m={}; tasks.forEach(function(t){ var c=(t.channel_name||'').trim(); if(c)m[c]=1; }); return Object.keys(m).sort(); }
+  function _upFilter(tasks){ var st=window._upSched; var q=(st.q||'').toLowerCase(), ch=st.ch||'';
+    return tasks.filter(function(t){
+      if(ch && (t.channel_name||'')!==ch) return false;
+      if(q){ var hay=((t.title||'')+' '+(t.channel_name||'')+' '+(t.creator_name||'')+' '+(t.video_type||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      return true;
+    });
+  }
+  window.upSchedMode=function(portal,m){ window._upSched.mode=m; _upSchedApply(portal); };
+  window.upSchedFilter=function(portal){ var q=document.getElementById('usch-q'), c=document.getElementById('usch-ch'); window._upSched.q=q?q.value:''; window._upSched.ch=c?c.value:''; _upSchedApply(portal); };
+  function _upSchedApply(portal){
+    var wrap=document.getElementById('usch-wrap'); if(!wrap) return;
+    var tasks=_upFilter(window._upSchedTasks||[]); var mode=window._upSched.mode||'week';
+    function dOf(t){ if(!t.upload_date_iso) return null; var d=new Date(t.upload_date_iso); return isNaN(d.getTime())?null:d; }
+    var t0=new Date(); t0.setHours(0,0,0,0); var days=(mode==='week')?7:30; var cols=''; var used={};
+    for(var i=0;i<days;i++){
+      var day=new Date(t0.getTime()+i*86400000), s=day.getTime(), e=s+86400000;
+      var items=tasks.filter(function(t){ var d=dOf(t); return d && d.getTime()>=s && d.getTime()<e; }).sort(function(a,b){ return dOf(a)-dOf(b); });
+      items.forEach(function(t){ used[t.id]=1; });
+      var head='<div class="ytw-dh"><b>'+(i===0?'Today':day.toLocaleDateString('en-US',{weekday:'short'}))+'</b><span>'+day.toLocaleDateString('en-US',{day:'numeric',month:'short'})+(items.length?' · '+items.length:'')+'</span></div>';
+      cols+='<div class="ytw-day'+(i===0?' today':'')+'">'+head+(items.length?items.map(function(t){ return _upItem(portal,t); }).join(''):'<div class="ytw-empty">No uploads</div>')+'</div>';
+    }
+    var overdue=tasks.filter(function(t){ var d=dOf(t); return d && d.getTime()<t0.getTime() && !t.youtube_url; });
+    var tbd=tasks.filter(function(t){ return !used[t.id] && !t.upload_date_iso; });
+    var extra='';
+    if(overdue.length) extra+='<div class="p-sec" style="margin-top:20px;color:#dc2626">'+ic('alert')+' Upload date passed — YT link pending · '+overdue.length+'</div><div class="usch-tbd">'+overdue.map(function(t){ return _upItem(portal,t); }).join('')+'</div>';
+    if(tbd.length) extra+='<div class="p-sec" style="margin-top:20px">No fixed date yet · '+tbd.length+'</div><div class="usch-tbd">'+tbd.map(function(t){ return _upItem(portal,t); }).join('')+'</div>';
+    wrap.innerHTML=(tasks.length?('<div class="ytw">'+cols+'</div>'+extra):'<div class="p-empty" style="padding:30px">No videos match. Set an upload date from a Ready-for-YouTube task.</div>');
+  }
   function renderUploadSchedule(portal, body){
+    if(typeof _ytCss==='function'){ try{ _ytCss(); }catch(e){} }
     body.innerHTML='<div class="p-load">Loading upload schedule...</div>';
-    var mode=window._upSchedMode||'week';
     api(P[portal].api+'/upload-schedule').then(function(r){
       if(typeof _stale==='function' && _stale(portal,'upsched')) return;
-      var tasks=(r&&r.tasks)||[];
-      var tb='<div class="p-toolbar" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'+
-        '<div class="p-sec" style="margin:0">'+ic('calendar')+' Upload Schedule</div>'+
-        '<div style="display:flex;gap:6px">'+
-          '<button class="p-btn'+(mode==='week'?' p-btn-primary':'')+'" onclick="upSchedMode(\''+portal+'\',\'week\')">This Week</button>'+
-          '<button class="p-btn'+(mode==='month'?' p-btn-primary':'')+'" onclick="upSchedMode(\''+portal+'\',\'month\')">This Month</button>'+
-        '</div></div>';
-      function dOf(t){ if(!t.upload_date_iso) return null; var d=new Date(t.upload_date_iso); return isNaN(d.getTime())?null:d; }
-      var now=new Date(); var startOfDay=function(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()); };
-      var today=startOfDay(now); var days=(mode==='week')?7:30; var cols=''; var used={};
-      for(var i=0;i<days;i++){
-        var day=new Date(today.getTime()+i*86400000); var dayEnd=new Date(day.getTime()+86400000);
-        var items=tasks.filter(function(t){ var d=dOf(t); return d && d>=day && d<dayEnd; });
-        items.forEach(function(t){ used[t.id]=1; });
-        var lbl=(i===0?'Today':(i===1?'Tomorrow':day.toLocaleDateString(undefined,{weekday:'short'})));
-        var sub=day.getDate()+' '+day.toLocaleDateString(undefined,{month:'short'});
-        var isToday=(i===0);
-        cols+='<div class="usch-col'+(isToday?' today':'')+'"><div class="usch-day"><span>'+esc(lbl)+'</span><span class="usch-date">'+esc(sub)+(items.length?' · '+items.length:'')+'</span></div>'+
-          (items.length?items.map(function(t){ return _upSchedCard(portal,t); }).join(''):'<div class="usch-empty">No uploads</div>')+'</div>';
-      }
-      var tbd=tasks.filter(function(t){ return !used[t.id] && !t.upload_date_iso; });
-      var tbdHtml=tbd.length?('<div class="p-sec" style="margin-top:20px">No fixed date yet · '+tbd.length+'</div><div class="usch-tbd">'+tbd.map(function(t){ return _upSchedCard(portal,t); }).join('')+'</div>'):'';
-      var overdue=tasks.filter(function(t){ var d=dOf(t); return d && d<today && !t.youtube_url; });
-      var odHtml=overdue.length?('<div class="p-sec" style="margin-top:20px;color:#dc2626">'+ic('alert')+' Upload date passed — YT link pending · '+overdue.length+'</div><div class="usch-tbd">'+overdue.map(function(t){ return _upSchedCard(portal,t); }).join('')+'</div>'):'';
-      body.innerHTML=tb+(tasks.length?('<div class="usch-grid">'+cols+'</div>'+odHtml+tbdHtml):'<div class="p-empty">No videos scheduled yet. Set an upload date from a Ready-for-YouTube task.</div>');
+      window._upSchedTasks=(r&&r.tasks)||[];
+      var chans=_upChans(window._upSchedTasks); var st=window._upSched;
+      var bar='<div class="usch-bar">'+
+        '<div class="usch-srch">'+ic('search')+'<input id="usch-q" placeholder="Search title, channel, creator..." value="'+esc(st.q||'')+'" oninput="upSchedFilter(\''+portal+'\')"></div>'+
+        '<select id="usch-ch" class="usch-sel" onchange="upSchedFilter(\''+portal+'\')"><option value="">All channels</option>'+chans.map(function(c){ return '<option value="'+esc(c)+'"'+(st.ch===c?' selected':'')+'>'+esc(c)+'</option>'; }).join('')+'</select>'+
+        '<div class="usch-modes"><button class="p-btn'+(st.mode==='week'?' p-btn-primary':'')+'" onclick="upSchedMode(\''+portal+'\',\'week\')">This Week</button><button class="p-btn'+(st.mode==='month'?' p-btn-primary':'')+'" onclick="upSchedMode(\''+portal+'\',\'month\')">This Month</button></div>'+
+      '</div>';
+      body.innerHTML='<div class="p-sec" style="margin-bottom:6px">'+ic('calendar')+' Upload Schedule</div>'+bar+'<div id="usch-wrap"></div>';
+      _upSchedApply(portal);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
 
@@ -26063,6 +26081,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="pd-head"><div class="h-title">Review Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
           (t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">Open edited video</a>'+(t.revision_count?(' \u00b7 revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>')+
+          '<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
+          '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
+          '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results...">'+esc(t.upload_remarks||'')+'</textarea></div>'+
+          '<div class="aw-sechead" style="margin-top:6px">'+ic('edit')+' Changes / Reject</div>'+
           '<div class="p-field"><label>Remarks (required for changes/reject)</label><textarea class="p-area" id="qc-rem" placeholder="What should change?"></textarea></div>'+
           '<div class="p-field"><label>Drive reference (optional)</label><input class="p-input" id="qc-ref" placeholder="https://drive..."></div>'+
           '<div class="gfx-paste" id="qc-paste" tabindex="0"><div class="gfx-paste-i">Paste/upload screenshots (optional)</div><input type="file" id="qc-file" accept="image/*" multiple style="display:none"></div>'+
@@ -26086,7 +26108,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var rem=((document.getElementById('qc-rem')||{}).value||'').trim();
     var ref=((document.getElementById('qc-ref')||{}).value||'').trim();
     var id=window._qcId, ep, body={};
-    if(action==='approve'){ ep='/qc-approve'; }
+    if(action==='approve'){
+      var _ud=((document.getElementById('qc-update')||{}).value||'');
+      var _urem=((document.getElementById('qc-uprem')||{}).value||'').trim();
+      if(!_ud && !_urem){ toast('Set an upload date or remarks to approve',true); var _u=document.getElementById('qc-update'); if(_u) _u.focus(); return; }
+      ep='/qc-approve'; body={upload_date:_ud, upload_remarks:_urem};
+    }
     else if(action==='changes'){ if(!rem){ toast('Remarks required',true); return; } ep='/request-edit-changes'; body={remarks:rem,references:ref,images:window._qcImgs}; }
     else { if(!rem){ toast('Remarks required',true); return; } ep='/qc-reject'; body={remarks:rem,images:window._qcImgs}; }
     if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; }
@@ -26910,7 +26937,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ toast((e&&e.message)||'Could not decline',true); });
   };  function _workFilter(portal,arr){
     var out=arr;
-    if(portal==='editor') out=arr.filter(function(t){ return ['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'].indexOf(t.lifecycle)>=0; });
+    if(portal==='editor') out=arr.filter(function(t){ var lc=(t.lifecycle||''), st=(t.status||''); return ['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'].indexOf(lc)>=0 || (!lc && ['editing_soon','approved'].indexOf(st)>=0); });
     else if(portal==='graphics') out=arr.filter(function(t){ var s=(t.graphics||{}).status; return ['new','pending','in_progress','changes'].indexOf(s)>=0; });
     else if(portal==='youtuber') out=arr.filter(function(t){ return ['creator_assigned','creator_working','changes_required'].indexOf(t.lifecycle)>=0; });
     else if(portal==='production') out=arr.filter(function(t){ var lc=(t.lifecycle||''), st=(t.status||''); if(['uploaded','completed'].indexOf(lc)>=0||['uploaded','completed'].indexOf(st)>=0) return false; return ['creator_submitted','pm_review','qc_pending','ready_for_youtube'].indexOf(lc)>=0; });
@@ -27070,7 +27097,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ytw-it-t{font-size:.82rem;font-weight:700;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.ytw-it-m{font-size:.7rem;color:var(--muted);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}',
       '.ytw-empty{font-size:.75rem;color:var(--muted);text-align:center;padding:16px 0}',
-      '@media(max-width:640px){.yts-in{flex-direction:column}.yts-thumb{width:100%;height:170px}.ytw-day{flex-basis:82vw}}'
+      '.usch-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 16px}',
+      '.usch-srch{flex:1 1 260px;min-width:200px;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:0 12px;height:42px}',
+      '.usch-srch svg{width:16px;height:16px;color:var(--muted);flex:0 0 auto}',
+      '.usch-srch input{flex:1;border:0;background:transparent;outline:none;color:var(--text);font-size:.9rem;height:100%}',
+      '.usch-sel{height:42px;min-width:170px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:11px;padding:0 12px;font-size:.9rem;font-weight:600;cursor:pointer}',
+      '.usch-sel:focus{outline:none;border-color:#e6ad4e}',
+      '.usch-modes{display:inline-flex;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:4px}',
+      '.usch-modes .p-btn{height:34px;border:0;background:transparent;box-shadow:none}',
+      '.usch-tbd{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:10px}',
+      '.usch-pend-item{border-color:#f59e0b!important;box-shadow:0 0 0 2px rgba(245,158,11,.14)!important;animation:uschPend 1.6s ease-in-out infinite}',
+      '@keyframes uschPend{0%,100%{box-shadow:0 0 0 2px rgba(245,158,11,.12)}50%{box-shadow:0 0 0 3px rgba(245,158,11,.32)}}',
+      '.usch-remline{font-size:.7rem;color:var(--muted);margin-top:5px;display:flex;align-items:center;gap:5px;line-height:1.3}',
+      '.usch-remline svg{width:12px;height:12px;flex:0 0 auto}',
+      '.usch-pendline{font-size:.7rem;font-weight:700;color:#d97706;margin-top:5px;display:flex;align-items:center;gap:5px}',
+      '.usch-pendline svg{width:12px;height:12px;flex:0 0 auto}',
+      '.usch-liveline{font-size:.7rem;font-weight:700;color:#16a34a;margin-top:5px;display:flex;align-items:center;gap:5px}',
+      '.usch-liveline svg{width:12px;height:12px;flex:0 0 auto}',
+      '@media(max-width:640px){.yts-in{flex-direction:column}.yts-thumb{width:100%;height:170px}.ytw-day{flex-basis:82vw}.usch-bar{flex-direction:column;align-items:stretch}.usch-sel,.usch-modes{width:100%}.usch-modes .p-btn{flex:1}}'
     ].join(''); document.head.appendChild(s);
   }
   function _ytDlMs(t){ var d=(t&&t.deadline_iso)||''; if(!d) return null; var ms=new Date(String(d).replace(' ','T')).getTime(); return isNaN(ms)?null:ms; }  // parse exactly like _dlHuman so spotlight/weekly always match the app's other countdowns
@@ -28168,7 +28212,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     } else if(_thumbStage){
       acts+='<button class="ptc-btn'+(g.graphics_name?'':' ptc-ok')+'" onclick="event.stopPropagation();ytGfxManage('+t.id+')">'+(g.graphics_name?'Graphics \u00b7 '+esc(g.graphics_name):'Assign Graphics')+'</button>';
     }
-    if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\''+portal+'\','+t.id+',\'/qc-approve\')">QC Approve</button>';
+    if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();pmQcReview('+t.id+')">Review &amp; Approve</button>';
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
@@ -30408,7 +30452,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="pd-head"><div class="h-title">Upload Schedule</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+
         '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="pus-date" type="datetime-local" value="'+esc(dv)+'"></div>'+
-        '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(agar fixed date na ho to yahan likho)</span></label><textarea class="p-area" id="pus-rem" placeholder="e.g. next week, after exam results...">'+esc(rem)+'</textarea></div>'+
+        '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="pus-rem" placeholder="e.g. next week, after exam results...">'+esc(rem)+'</textarea></div>'+
         '<div class="p-opt">Ye date &amp; remarks production, admin aur is video ke YouTuber ke Upload Schedule me dikhega. Baad me kabhi edit bhi kar sakte ho.</div>'+
       '</div>'+
       '<div class="pd-foot"><div class="p-acts">'+(t.upload_date?'<button class="p-btn" onclick="prodUploadScheduleSave('+id+',true)">Clear date</button>':'')+'<button class="p-btn p-btn-primary" onclick="prodUploadScheduleSave('+id+')">Save schedule</button></div></div>'+
@@ -30849,25 +30893,34 @@ function initAdminUploadSchedule(){
   if(!document.getElementById('ausch-css')){
     var st=document.createElement('style'); st.id='ausch-css';
     st.textContent=[
-      '#a-page-upsched .usch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:8px}',
-      '#a-page-upsched .usch-col{background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:14px;padding:10px;min-height:130px;display:flex;flex-direction:column;gap:8px}',
-      '#a-page-upsched .usch-col.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
-      '#a-page-upsched .usch-day{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:.92rem;padding:2px 4px 6px;border-bottom:1px solid var(--border,#e5e7eb)}',
-      '#a-page-upsched .usch-date{font-size:.72rem;font-weight:700;color:var(--text-muted,#6b7280)}',
-      '#a-page-upsched .usch-empty{font-size:.78rem;color:var(--text-muted,#6b7280);text-align:center;padding:14px 0;opacity:.7}',
-      '#a-page-upsched .usch-tbd{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:8px}',
-      '#a-page-upsched .usch-card{background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:11px;padding:10px 12px;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s}',
-      '#a-page-upsched .usch-card:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.08);border-color:#e6ad4e}',
-      '#a-page-upsched .usch-card.pend{border-color:rgba(220,38,38,.5);background:rgba(220,38,38,.05)}',
-      '#a-page-upsched .usch-t{font-weight:800;font-size:.86rem;line-height:1.25}',
-      '#a-page-upsched .usch-m{font-size:.72rem;color:var(--text-muted,#6b7280);margin-top:3px}',
-      '#a-page-upsched .usch-rem{font-size:.74rem;color:#8a6d1f;margin-top:6px;display:flex;align-items:flex-start;gap:5px;line-height:1.35}',
-      '#a-page-upsched .usch-rem svg{width:12px;height:12px;flex:0 0 auto;margin-top:2px}',
-      '@keyframes aUschBlink{0%,100%{background:rgba(220,38,38,.14)}50%{background:rgba(220,38,38,.28)}}',
-      '#a-page-upsched .usch-pend{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:800;color:#dc2626;animation:aUschBlink 1.05s ease-in-out infinite;padding:3px 8px;border-radius:8px}',
-      '#a-page-upsched .usch-pend svg,#a-page-upsched .usch-live svg,#a-page-upsched .usch-plan svg{width:12px;height:12px}',
-      '#a-page-upsched .usch-live{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:800;color:#2e9e6b}',
-      '#a-page-upsched .usch-plan{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:.72rem;font-weight:700;color:#2f6da8}'
+      '#a-page-upsched .aus-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 16px}',
+      '#a-page-upsched .aus-srch{flex:1 1 260px;min-width:200px;display:flex;align-items:center;gap:8px;background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:11px;padding:0 12px;height:42px}',
+      '#a-page-upsched .aus-srch svg{width:16px;height:16px;color:var(--text-muted,#6b7280);flex:0 0 auto}',
+      '#a-page-upsched .aus-srch input{flex:1;border:0;background:transparent;outline:none;color:var(--text,#111);font-size:.9rem;height:100%}',
+      '#a-page-upsched .aus-sel{height:42px;min-width:170px;border:1px solid var(--border,#e5e7eb);background:var(--card,#fff);color:var(--text,#111);border-radius:11px;padding:0 12px;font-size:.9rem;font-weight:600;cursor:pointer}',
+      '#a-page-upsched .aus-sel:focus{outline:none;border-color:#e6ad4e}',
+      '#a-page-upsched .aus-modes{display:inline-flex;gap:6px;background:var(--bg,#f5f5f5);border:1px solid var(--border,#e5e7eb);border-radius:11px;padding:4px}',
+      '#a-page-upsched .aus-modes button{height:34px;padding:0 14px;border:0;background:transparent;border-radius:8px;font-weight:700;font-size:.82rem;cursor:pointer;color:var(--text-muted,#6b7280)}',
+      '#a-page-upsched .aus-modes button.on{background:#e6ad4e;color:#3a2a05}',
+      '#a-page-upsched .ytw{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;scroll-snap-type:x proximity}',
+      '#a-page-upsched .ytw-day{flex:0 0 262px;scroll-snap-align:start;background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:120px}',
+      '#a-page-upsched .ytw-day.today{border-color:#e6ad4e;box-shadow:0 0 0 2px rgba(230,173,78,.18)}',
+      '#a-page-upsched .ytw-dh{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:1px solid var(--border,#e5e7eb)}',
+      '#a-page-upsched .ytw-dh b{font-size:.98rem}#a-page-upsched .ytw-dh span{font-size:.72rem;color:var(--text-muted,#6b7280)}',
+      '#a-page-upsched .ytw-item{padding:9px 11px;border-radius:10px;background:var(--bg,#f7f7f7);border:1px solid var(--border,#e5e7eb);cursor:pointer;transition:.12s}',
+      '#a-page-upsched .ytw-item:hover{border-color:#e6ad4e;transform:translateX(2px)}',
+      '#a-page-upsched .ytw-it-t{font-size:.82rem;font-weight:700;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '#a-page-upsched .ytw-it-m{font-size:.7rem;color:var(--text-muted,#6b7280);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}',
+      '#a-page-upsched .ytw-empty{font-size:.75rem;color:var(--text-muted,#6b7280);text-align:center;padding:16px 0}',
+      '#a-page-upsched .usch-tbd{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:10px}',
+      '@keyframes aUschPend{0%,100%{box-shadow:0 0 0 2px rgba(245,158,11,.12)}50%{box-shadow:0 0 0 3px rgba(245,158,11,.32)}}',
+      '#a-page-upsched .usch-pend-item{border-color:#f59e0b!important;box-shadow:0 0 0 2px rgba(245,158,11,.14)!important;animation:aUschPend 1.6s ease-in-out infinite}',
+      '#a-page-upsched .usch-remline{font-size:.7rem;color:var(--text-muted,#6b7280);margin-top:5px;display:flex;align-items:center;gap:5px;line-height:1.3}',
+      '#a-page-upsched .usch-remline svg{width:12px;height:12px;flex:0 0 auto}',
+      '#a-page-upsched .usch-pendline{font-size:.7rem;font-weight:700;color:#d97706;margin-top:5px;display:flex;align-items:center;gap:5px}',
+      '#a-page-upsched .usch-pendline svg{width:12px;height:12px;flex:0 0 auto}',
+      '#a-page-upsched .usch-liveline{font-size:.7rem;font-weight:700;color:#16a34a;margin-top:5px;display:flex;align-items:center;gap:5px}',
+      '#a-page-upsched .usch-liveline svg{width:12px;height:12px;flex:0 0 auto}'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -30888,45 +30941,65 @@ function initAdminUploadSchedule(){
     main.appendChild(pg);
   }
 }
-var _aUpSchedMode='week';
-window.aUpSchedMode=function(m){ _aUpSchedMode=m; loadAUploadSchedule(); };
+var _aUpSched={mode:'week',q:'',ch:''};
+var _aUpSchedTasks=[];
+window.aUpSchedMode=function(m){ _aUpSched.mode=m; _aUpSchedApply(); };
+window.aUpSchedFilter=function(){ var q=document.getElementById('aus-q'), c=document.getElementById('aus-ch'); _aUpSched.q=q?q.value:''; _aUpSched.ch=c?c.value:''; _aUpSchedApply(); };
+function _aUpE(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function _aUpItem(t){
+  var due=false; try{ if(t.upload_date_iso) due=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
+  var pend=(due && !t.youtube_url);
+  var tl=''; try{ if(t.upload_date_iso){ tl=new Date(t.upload_date_iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); } }catch(e){}
+  var m=[]; if(t.channel_name) m.push(_aUpE(t.channel_name)); if(tl) m.push(tl); if(t.creator_name) m.push(_aUpE(t.creator_name));
+  return '<div class="ytw-item'+(pend?' usch-pend-item':'')+'" onclick="prodOpenTask(\'production\','+t.id+')">'+
+    '<div class="ytw-it-t">'+_aUpE(t.title||'Untitled')+'</div>'+
+    (m.length?'<div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div>':'')+
+    (t.upload_remarks?'<div class="usch-remline">'+(typeof ic==='function'?ic('edit'):'')+' '+_aUpE(t.upload_remarks)+'</div>':'')+
+    (pend?'<div class="usch-pendline">'+(typeof ic==='function'?ic('alert'):'')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-liveline">'+(typeof ic==='function'?ic('check'):'')+' Live</div>':''))+
+  '</div>';
+}
+function _aUpChans(tasks){ var m={}; tasks.forEach(function(t){ var c=(t.channel_name||'').trim(); if(c)m[c]=1; }); return Object.keys(m).sort(); }
+function _aUpFilter(tasks){ var q=(_aUpSched.q||'').toLowerCase(), ch=_aUpSched.ch||'';
+  return tasks.filter(function(t){
+    if(ch && (t.channel_name||'')!==ch) return false;
+    if(q){ var hay=((t.title||'')+' '+(t.channel_name||'')+' '+(t.creator_name||'')+' '+(t.video_type||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+    return true;
+  });
+}
+function _aUpSchedApply(){
+  var wrap=document.getElementById('aus-wrap'); if(!wrap) return;
+  var tasks=_aUpFilter(_aUpSchedTasks||[]); var mode=_aUpSched.mode||'week';
+  document.querySelectorAll('#a-page-upsched .aus-modes button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-m')===mode); });
+  function dOf(t){ if(!t.upload_date_iso) return null; var d=new Date(t.upload_date_iso); return isNaN(d.getTime())?null:d; }
+  var t0=new Date(); t0=new Date(t0.getFullYear(),t0.getMonth(),t0.getDate());
+  var days=(mode==='week')?7:30; var cols=''; var used={};
+  for(var i=0;i<days;i++){
+    var day=new Date(t0.getTime()+i*86400000), s=day.getTime(), e=s+86400000;
+    var items=tasks.filter(function(t){ var d=dOf(t); return d && d.getTime()>=s && d.getTime()<e; }).sort(function(a,b){ return dOf(a)-dOf(b); });
+    items.forEach(function(t){ used[t.id]=1; });
+    var head='<div class="ytw-dh"><b>'+(i===0?'Today':(i===1?'Tomorrow':day.toLocaleDateString('en-US',{weekday:'short'})))+'</b><span>'+day.toLocaleDateString('en-US',{day:'numeric',month:'short'})+(items.length?' · '+items.length:'')+'</span></div>';
+    cols+='<div class="ytw-day'+(i===0?' today':'')+'">'+head+(items.length?items.map(_aUpItem).join(''):'<div class="ytw-empty">No uploads</div>')+'</div>';
+  }
+  var overdue=tasks.filter(function(t){ var d=dOf(t); return d && d.getTime()<t0.getTime() && !t.youtube_url; });
+  var tbd=tasks.filter(function(t){ return !used[t.id] && !t.upload_date_iso; });
+  var extra='';
+  if(overdue.length) extra+='<h4 style="margin:20px 0 8px;color:#dc2626">Upload date passed — YT link pending · '+overdue.length+'</h4><div class="usch-tbd">'+overdue.map(_aUpItem).join('')+'</div>';
+  if(tbd.length) extra+='<h4 style="margin:20px 0 8px">No fixed date yet · '+tbd.length+'</h4><div class="usch-tbd">'+tbd.map(_aUpItem).join('')+'</div>';
+  wrap.innerHTML=(tasks.length?('<div class="ytw">'+cols+'</div>'+extra):'<div class="ws-empty" style="padding:40px;text-align:center;color:var(--text-muted)">No videos match. Set an upload date from a Ready-for-YouTube task in the production portal.</div>');
+}
 function loadAUploadSchedule(){
   var el=document.getElementById('a-upsched-content'); if(!el) return;
   el.innerHTML='<div class="spinner"></div>';
-  var mode=_aUpSchedMode||'week';
   api('/api/production/upload-schedule').then(function(r){
-    var tasks=(r&&r.tasks)||[];
-    var _e=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
-    function card(t){
-      var due=false; try{ if(t.upload_date_iso) due=(new Date(t.upload_date_iso).getTime()<=Date.now()); }catch(e){}
-      var pend=(due && !t.youtube_url);
-      var time=''; try{ if(t.upload_date_iso){ var dd=new Date(t.upload_date_iso); time=dd.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); } }catch(e){}
-      return '<div class="usch-card'+(pend?' pend':'')+'" onclick="prodOpenTask(\'production\','+t.id+')">'+
-        '<div class="usch-t">'+_e(t.title||'Untitled')+'</div>'+
-        '<div class="usch-m">'+(t.channel_name?_e(t.channel_name):'')+(time?(' · '+_e(time)):'')+(t.creator_name?(' · '+_e(t.creator_name)):'')+'</div>'+
-        (t.upload_remarks?'<div class="usch-rem">'+(typeof ic==='function'?ic('edit'):'')+' '+_e(t.upload_remarks)+'</div>':'')+
-        (pend?'<div class="usch-pend">'+(typeof ic==='function'?ic('alert'):'')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-live">'+(typeof ic==='function'?ic('check'):'')+' Live</div>':(t.upload_date_iso?'<div class="usch-plan">'+(typeof ic==='function'?ic('calendar'):'')+' Scheduled</div>':'')))+
-      '</div>';
-    }
-    var tb='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px"><h3 style="margin:0">Upload Schedule</h3>'+
-      '<div style="display:flex;gap:6px"><button class="btn btn-sm '+(mode==='week'?'btn-primary':'btn-ghost')+'" onclick="aUpSchedMode(\'week\')">This Week</button>'+
-      '<button class="btn btn-sm '+(mode==='month'?'btn-primary':'btn-ghost')+'" onclick="aUpSchedMode(\'month\')">This Month</button></div></div>';
-    function dOf(t){ if(!t.upload_date_iso) return null; var d=new Date(t.upload_date_iso); return isNaN(d.getTime())?null:d; }
-    var today=new Date(); today=new Date(today.getFullYear(),today.getMonth(),today.getDate());
-    var days=(mode==='week')?7:30; var cols=''; var used={};
-    for(var i=0;i<days;i++){
-      var day=new Date(today.getTime()+i*86400000); var dayEnd=new Date(day.getTime()+86400000);
-      var its=tasks.filter(function(t){ var d=dOf(t); return d&&d>=day&&d<dayEnd; }); its.forEach(function(t){ used[t.id]=1; });
-      var lbl=(i===0?'Today':(i===1?'Tomorrow':day.toLocaleDateString(undefined,{weekday:'short'})));
-      cols+='<div class="usch-col'+(i===0?' today':'')+'"><div class="usch-day"><span>'+_e(lbl)+'</span><span class="usch-date">'+day.getDate()+' '+day.toLocaleDateString(undefined,{month:'short'})+(its.length?' · '+its.length:'')+'</span></div>'+(its.length?its.map(card).join(''):'<div class="usch-empty">No uploads</div>')+'</div>';
-    }
-    var tbd=tasks.filter(function(t){ return !used[t.id]&&!t.upload_date_iso; });
-    var overdue=tasks.filter(function(t){ var d=dOf(t); return d&&d<today&&!t.youtube_url; });
-    var html=tb+(tasks.length?('<div class="usch-grid">'+cols+'</div>'
-      +(overdue.length?('<h4 style="margin:20px 0 8px;color:#dc2626">Upload date passed — YT link pending · '+overdue.length+'</h4><div class="usch-tbd">'+overdue.map(card).join('')+'</div>'):'')
-      +(tbd.length?('<h4 style="margin:20px 0 8px">No fixed date yet · '+tbd.length+'</h4><div class="usch-tbd">'+tbd.map(card).join('')+'</div>'):''))
-      :'<div class="ws-empty" style="padding:40px;text-align:center;color:var(--text-muted)">No videos scheduled yet. Set an upload date from a Ready-for-YouTube task in the production portal.</div>');
-    el.innerHTML=html;
+    _aUpSchedTasks=(r&&r.tasks)||[];
+    var chans=_aUpChans(_aUpSchedTasks); var st=_aUpSched;
+    var bar='<div class="aus-bar">'+
+      '<div class="aus-srch">'+(typeof ic==='function'?ic('search'):'')+'<input id="aus-q" placeholder="Search title, channel, creator..." value="'+_aUpE(st.q||'')+'" oninput="aUpSchedFilter()"></div>'+
+      '<select id="aus-ch" class="aus-sel" onchange="aUpSchedFilter()"><option value="">All channels</option>'+chans.map(function(c){ return '<option value="'+_aUpE(c)+'"'+(st.ch===c?' selected':'')+'>'+_aUpE(c)+'</option>'; }).join('')+'</select>'+
+      '<div class="aus-modes"><button data-m="week" class="'+(st.mode==='week'?'on':'')+'" onclick="aUpSchedMode(\'week\')">This Week</button><button data-m="month" class="'+(st.mode==='month'?'on':'')+'" onclick="aUpSchedMode(\'month\')">This Month</button></div>'+
+    '</div>';
+    el.innerHTML='<h3 style="margin:0 0 6px">Upload Schedule</h3>'+bar+'<div id="aus-wrap"></div>';
+    _aUpSchedApply();
   }).catch(function(e){ el.innerHTML='<div style="padding:24px;color:#c1443a">Could not load upload schedule.</div>'; });
 }
 

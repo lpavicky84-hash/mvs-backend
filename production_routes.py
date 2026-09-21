@@ -1106,7 +1106,7 @@ def thumbnail_reject(tid: int, payload: dict = Body(...),
 
 # ============================================================ QC (edited video)
 @router.post("/tasks/{tid}/qc-approve")
-def qc_approve(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+def qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
     if t.lifecycle != "qc_pending":
         raise HTTPException(400, "Task is not in QC")
@@ -1114,10 +1114,28 @@ def qc_approve(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_adm
     db.add(TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="approved",
                       revision_no=t.revision_count or 0))
     pc.set_state(db, t, "ready_for_youtube", actor=me, event="qc_approved")
+    # approve ke saath hi tentative upload date + remarks set ho jaaye (smooth transition)
+    _ud = (payload.get("upload_date") or "").strip()
+    if _ud:
+        try:
+            t.upload_date = datetime.fromisoformat(_ud.replace("Z", ""))
+        except Exception:
+            pass
+    if "upload_remarks" in payload:
+        t.upload_remarks = (payload.get("upload_remarks") or "").strip()
     if t.editor_id:
         ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ed and ed.user_id:
             pc.notify(db, ed.user_id, "QC Approved", f'Your edit of "{t.title}" passed QC.', "video_task", link=str(t.id))
+    # youtuber ko tentative upload date bata do
+    try:
+        if (t.creator_type or "") == "youtuber" and t.youtuber_id and t.upload_date:
+            yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+            if yp and yp.user_id:
+                pc.notify(db, yp.user_id, "Upload scheduled",
+                          f'"{t.title}" is scheduled to upload on {t.upload_date.strftime("%d %b %Y, %I:%M %p")}.', "video_request", link=str(t.id))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}
 
