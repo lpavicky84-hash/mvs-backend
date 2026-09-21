@@ -1002,12 +1002,13 @@ def deadline_flag(t):
     ad = abs(delta)
     d = int(ad // 86400); h = int((ad % 86400) // 3600); m = int((ad % 3600) // 60)
     if delta < 0:
-        # overdue: hours for the first 2 days (e.g. "34h 12m overdue"), then days
+        # delayed: hours for the first 2 days (e.g. "34h 12m delayed"), then days
+        # (kind stays "overdue" internally for colours/filters; only the label reads "delayed")
         if ad < 172800:
             th = int(ad // 3600)
-            s = "%dh %02dm overdue" % (th, m)
+            s = "%dh %02dm delayed" % (th, m)
         else:
-            s = "%dd %02dh overdue" % (d, h)
+            s = "%dd %02dh delayed" % (d, h)
         return ("overdue", s)
     if delta < 7200:          # under 2 hours -> DUE SOON
         return ("soon", ("Due soon %dh %02dm" % (h, m)) if h else ("Due soon %dm" % m))

@@ -117,6 +117,7 @@ def _ensure_special_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN gfx_state VARCHAR(20) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN thumbnail_link VARCHAR(600) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_refs TEXT NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN deadline DATETIME NULL",
         "ALTER TABLE video_tasks ADD COLUMN project_editor_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
@@ -1739,7 +1740,7 @@ def _vt_sweep_inner(db):
             changed = True
         if secs < 0 and not t.warned_overdue:
             t.warned_overdue = True
-            _vt_notify(db, uid, "Video Task Overdue",
+            _vt_notify(db, uid, "Video Task Delayed",
                        f'Your video task "{t.title}" has crossed its deadline. '
                        f'Repeated delays may affect your payout. Please submit the video link at the earliest.')
             changed = True

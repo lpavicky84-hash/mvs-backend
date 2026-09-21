@@ -55,7 +55,7 @@ def gfx_project_thumbnails(db: Session = Depends(get_db), me=Depends(get_graphic
                 "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
                 "video_link": (c.link or ""), "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
                 "gfx_state": (getattr(c, "gfx_state", "") or "") or "assigned",
-                "refs": refs, "deadline": pc._dt(t.deadline) if t else "",
+                "refs": refs, "deadline": pc._dt(getattr(c, "deadline", None) or (t.deadline if t else None)),
             })
     return {"thumbnails": out, "count": len(out)}
 

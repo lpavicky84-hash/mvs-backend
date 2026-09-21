@@ -3185,6 +3185,13 @@ def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get
     if isinstance(refs, list):
         import json as _json
         row.thumb_refs = _json.dumps([str(x).strip() for x in refs if str(x).strip()][:10])
+    # per-video deadline (editor/graphics ko is date tak submit karna hoga)
+    _dl = (payload.get("deadline") or "").strip()
+    if _dl:
+        try:
+            row.deadline = datetime.fromisoformat(_dl.replace("Z", ""))
+        except Exception:
+            pass
     row.assigned_at = datetime.utcnow()
     from models import ProductionStaffProfile as _SP
     try:

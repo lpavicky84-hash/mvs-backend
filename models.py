@@ -646,6 +646,7 @@ class VideoTaskChapter(Base):
     gfx_state     = Column(String(20), default="")        # '' | assigned | done (graphics thumbnail workflow)
     thumbnail_link = Column(String(600), default="")       # graphics-submitted thumbnail for this video
     thumb_refs    = Column(Text, default="")               # JSON list of reference thumbnail URLs (PM -> graphics)
+    deadline      = Column(DateTime, nullable=True)         # per-video deadline set at assign time (editor/graphics submit by this)
 
 
 class VideoViewSnapshot(Base):

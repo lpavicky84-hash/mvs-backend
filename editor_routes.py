@@ -40,7 +40,7 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
                 "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
                 "link": (c.link or ""), "edited_link": (getattr(c, "edited_link", "") or ""),
                 "edit_state": (getattr(c, "edit_state", "") or "") or "assigned",
-                "deadline": pc._dt(t.deadline) if t else "",
+                "deadline": pc._dt(getattr(c, "deadline", None) or (t.deadline if t else None)),
             })
     whole = [{"project_id": t.id, "title": t.title or t.subject or "Project",
               "subject": t.subject or "", "kind": t.kind, "deadline": pc._dt(t.deadline)}
@@ -747,7 +747,7 @@ def editor_performance(db: Session = Depends(get_db), me=Depends(get_editor)):
                 {"label": "Approved", "value": overall["videos_approved"]},
                 {"label": "Uploaded", "value": overall["videos_uploaded"]},
                 {"label": "Pending", "value": overall["pending"]},
-                {"label": "Overdue", "value": overall["overdue"]},
+                {"label": "Delayed", "value": overall["overdue"]},
             ],
             "donut": donut,
             "trend": trend,

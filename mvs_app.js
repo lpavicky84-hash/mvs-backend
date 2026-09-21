@@ -7967,7 +7967,7 @@ function _ytIsNew(t){
   if(_YT_DONE.indexOf(lc)<0 && _YT_PROD.indexOf(lc)<0 && _YT_REVIEW.indexOf(lc)<0) return true;
   return false;
 }
-function _ytOverdue(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
+function _ytDelayed(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
 function _ytNum(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
 function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replace(/"/g,'%22'):''; }
 
@@ -7999,7 +7999,7 @@ function _renderAYtTasks(){
   el.classList.add('yt-scope');
   var all=window._ytTasks||[], f=window._ytF;
   var total=all.length,done=0,prod=0,review=0,assigned=0,overdue=0,newcnt=0;
-  all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytOverdue(t))overdue++; if(_ytIsNew(t))newcnt++; });
+  all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytDelayed(t))overdue++; if(_ytIsNew(t))newcnt++; });
   function stat(l,n,color,icn,bucket,blink){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+((blink&&n>0)?' vt-ap-blink':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
   var byType={}; all.forEach(function(t){ var k=(t.video_type||'').trim()||'Uncategorized'; byType[k]=(byType[k]||0)+1; });
   var creators=[]; all.forEach(function(t){ var c=(t.creator_name||'').trim(); if(c&&creators.indexOf(c)<0)creators.push(c); }); creators.sort();
@@ -8031,7 +8031,7 @@ function _renderAYtTasks(){
     +stat('New Task',newcnt,'#dc2626','bell','new',true)
     +stat('In Production',prod,'#7c4fc0','play','prod')
     +stat('Published',done,'#059669','check','done')
-    +stat('Overdue',overdue,'#dc2626','alert','over');
+    +stat('Delayed',overdue,'#dc2626','alert','over');
   el.querySelector('.vt-cards').innerHTML=statRow;
   // type chips
   var typeKeys=Object.keys(byType);
@@ -8114,7 +8114,7 @@ window.ytGfxSubmit=function(){
   }
 };
 function _ytCard(t){
-  var b=_ytBucket(t), over=_ytOverdue(t), lc=t.lifecycle||'';
+  var b=_ytBucket(t), over=_ytDelayed(t), lc=t.lifecycle||'';
   var pc={done:'#059669',prod:'#7c4fc0',review:'#c99a2e',assigned:'#0891b2'}[b];
   var timg=_ytUrl(t.thumbnail);
   var thumb='<div class="ytc-thumb">'+(timg?'<img loading="lazy" src="'+timg+'" onerror="this.style.display=\'none\'">':ic('play'))+'</div>';
@@ -8128,7 +8128,7 @@ function _ytCard(t){
   var _prodStage=['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(lc)>=0;
   if(_prodStage && !t.editor_name) chips+='<span class="vt-pill" style="background:rgba(209,68,58,.12);color:#c1443a;font-weight:700">\u26a0 Editor pending</span>';
   if(_prodStage && !_hasThumb && !t.graphics_name) chips+='<span class="vt-pill" style="background:rgba(209,68,58,.12);color:#c1443a;font-weight:700">\u26a0 Thumbnail pending</span>';
-  var dl = t.deadline?'<span class="ytc-dl'+(over?' over':'')+'">'+ic('clock')+' '+esc(t.deadline)+(over?' · overdue':'')+'</span>':'';
+  var dl = t.deadline?'<span class="ytc-dl'+(over?' over':'')+'">'+ic('clock')+' '+esc(t.deadline)+(over?' · delayed':'')+'</span>':'';
   var acts='<button class="btn btn-ghost btn-sm" onclick="openYtDetail('+t.id+')">'+ic('eye')+' Details</button>';
   if(_prodStage){
     if(!t.editor_name) acts+='<button class="btn btn-ghost btn-sm" onclick="aAssignProd('+t.id+',\'editor\')">'+ic('play')+' Assign Editor</button>';
@@ -8173,7 +8173,7 @@ function _ytClientFilter(){
       if(f.creator && (t.creator_name||'')!==f.creator) show=false;
       if(show && f.channel && (t.channel_name||'')!==f.channel) show=false;
       if(show && f.video_type && (t.video_type||'')!==f.video_type) show=false;
-      if(show && f.bucket){ if(f.bucket==='over'){ show=_ytOverdue(t); } else if(f.bucket==='new'){ show=_ytIsNew(t); } else if(f.bucket!=='all'){ show=_ytBucket(t)===f.bucket; } }
+      if(show && f.bucket){ if(f.bucket==='over'){ show=_ytDelayed(t); } else if(f.bucket==='new'){ show=_ytIsNew(t); } else if(f.bucket!=='all'){ show=_ytBucket(t)===f.bucket; } }
       if(show && f.q){ var txt=((t.title||'')+' '+(t.creator_name||'')+' '+(t.channel_name||'')+' '+(t.subject||'')+' '+(t.video_type||'')+' '+(t.ref_code||'')).toLowerCase(); show=txt.indexOf(f.q)>=0; }
     } else {
       // fallback to data-attributes (legacy _ytCard)
@@ -8410,20 +8410,20 @@ function _ytSeriesSection(list){
     var name=(vids[0].series_name||'').trim(), creator=(vids[0].creator_name||'').trim();
     var done=vids.filter(function(t){return _ytBucket(t)==='done';}).length;
     var pct=vids.length?Math.round(100*done/vids.length):0;
-    var over=vids.filter(_ytOverdue).length;
+    var over=vids.filter(_ytDelayed).length;
     var srch=(name+' '+creator).toLowerCase();
     var rows=vids.map(function(t){
       var b=_ytBucket(t), pcolor={done:'#059669',prod:'#7c4fc0',review:'#c99a2e',assigned:'#0891b2'}[b];
       return '<div class="yt-vrow"><span class="vn">'+esc(t.title||'Untitled')+'</span>'
         +'<span class="vt-pill" style="background:'+pcolor+'1f;color:'+pcolor+'">'+esc(t.lifecycle_label||b)+'</span>'
-        +(_ytOverdue(t)?'<span class="vt-pill delayed">overdue</span>':'')
+        +(_ytDelayed(t)?'<span class="vt-pill delayed">delayed</span>':'')
         +'<button class="btn btn-ghost btn-sm" onclick="openYtDetail('+t.id+')" title="Details">'+ic('eye')+'</button></div>';
     }).join('');
     html+='<div class="yt-sgroup" data-creator="'+esc(creator)+'" data-txt="'+esc(srch)+'">'
       +'<div class="yt-shead" onclick="this.parentNode.classList.toggle(\'open\')">'
         +'<div style="flex:1;min-width:0"><div class="yt-stitle">'+ic('folder')+' '+esc(name||'Series')
           +' <span class="vt-pill assigned">'+ic('user')+' '+esc(creator||'—')+'</span>'
-          +(over?' <span class="vt-pill delayed">'+over+' overdue</span>':'')+'</div>'
+          +(over?' <span class="vt-pill delayed">'+over+' delayed</span>':'')+'</div>'
           +'<div class="yt-sbar"><i style="width:'+pct+'%"></i></div>'
           +'<div class="yt-sprog">'+done+' / '+vids.length+' published \u00b7 '+pct+'%</div></div>'
         +ic('chev-down')+'</div>'
@@ -8623,7 +8623,7 @@ async function submitYtEditor(id, btn){
 // ---- Top Creators ranking (polish) ----
 function _ytRankStrip(all){
   var m={};
-  (all||[]).forEach(function(t){ var c=(t.creator_name||'').trim(); if(!c)return; var r=m[c]=m[c]||{name:c,total:0,done:0,over:0}; r.total++; if(_ytBucket(t)==='done')r.done++; if(_ytOverdue(t))r.over++; });
+  (all||[]).forEach(function(t){ var c=(t.creator_name||'').trim(); if(!c)return; var r=m[c]=m[c]||{name:c,total:0,done:0,over:0}; r.total++; if(_ytBucket(t)==='done')r.done++; if(_ytDelayed(t))r.over++; });
   var rows=Object.keys(m).map(function(k){return m[k];});
   if(rows.length<2) return '';
   rows.sort(function(a,b){ return b.done-a.done || (b.total-b.over)-(a.total-a.over) || b.total-a.total; });
@@ -8634,7 +8634,7 @@ function _ytRankStrip(all){
     +rows.map(function(r,i){ var pct=r.total?Math.round(100*r.done/r.total):0; var medal=['#d4af37','#9aa0a6','#cd7f32'][i]||'var(--text-muted)';
         return '<div class="vt-rank-row" style="cursor:pointer;gap:8px;min-width:180px" onclick="_ytRankPick('+i+')">'
           +'<span class="sbb-av" style="background:'+medal+'22;color:'+medal+';font-weight:800">#'+(i+1)+'</span>'
-          +'<div class="sbb-main"><div class="sbb-nm">'+esc(r.name)+'</div><div style="font-size:.68rem;color:var(--text-muted)">'+r.done+'/'+r.total+' published \u00b7 '+pct+'%'+(r.over?' \u00b7 '+r.over+' overdue':'')+'</div></div></div>';
+          +'<div class="sbb-main"><div class="sbb-nm">'+esc(r.name)+'</div><div style="font-size:.68rem;color:var(--text-muted)">'+r.done+'/'+r.total+' published \u00b7 '+pct+'%'+(r.over?' \u00b7 '+r.over+' delayed':'')+'</div></div></div>';
       }).join('')
     +'</div></div></div>';
 }
@@ -10566,7 +10566,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       var _thObj=(th&&typeof th==='object')?th:null;
       const thumbBox=(_thObj && !_thObj.approved && !_vtThumbUrl(t))?`
         <div class="vt-thumb-status pending${_thObj.overdue?' overdue':''}">
-          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${_thObj.designer?` — ${esc(_thObj.designer)} is designing it`:''}</div>${_thObj.deadline?`<div class="vts-sub">Expected by <b>${esc(_thObj.deadline)}</b>${_thObj.overdue?' <span class="vts-late">· overdue</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
+          <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${_thObj.designer?` — ${esc(_thObj.designer)} is designing it`:''}</div>${_thObj.deadline?`<div class="vts-sub">Expected by <b>${esc(_thObj.deadline)}</b>${_thObj.overdue?' <span class="vts-late">· delayed</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
         </div>`:'';
       return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
@@ -11050,7 +11050,7 @@ function _vtPill(t,blink,who){
   else if(_lc==='qc_pending') lbl='Editor Submitted';
   else if(_lc==='qc_changes') lbl='Changes Required';
   else if(_lc==='ready_for_youtube') lbl='Ready for YouTube';
-  if((t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')&&t.overdue){ cls='delayed'; lbl='Overdue'; }
+  if((t.status==='assigned'||t.status==='reshoot'||t.status==='rejected')&&t.overdue){ cls='delayed'; lbl='Delayed'; }
   // teacher side: upload hone tak status blink karta rahe
   const bl=(blink&&t.status!=='uploaded'&&t.proposal_ok!=='pending')?' blink':'';
   let extra='';
@@ -11831,7 +11831,7 @@ function _vtCdText(s){
   const neg=s<0; s=Math.abs(s);
   const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;
   const txt=(d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');
-  return neg?`Overdue by ${txt}`:`${txt} left`;
+  return neg?`Delayed by ${txt}`:`${txt} left`;
 }
 // ---- admin: One Shot / Rapid Revision / Projects monitor ----
 let _avtSpecTab='', _avtSpecSub='', _avtSpecCls='', _avtSpecProj='', _avtSpecTeacher='', _avtSpecOpen=false, _avtView='';
@@ -12029,7 +12029,8 @@ async function avtAssignVideo(taskId,cid,title){
     <div class="form-group"><label>Editor</label><select id="avt-asg-ed" class="input">${edOpts}</select></div>
     <div class="form-group"><label>Graphics Designer (optional)</label><select id="avt-asg-gf" class="input">${gfOpts}</select></div>
     <div class="form-group"><label>Reference thumbnails for graphics (optional \u2014 one link per line)</label><textarea id="avt-asg-refs" class="input" rows="2" placeholder="https://..."></textarea></div>
-    <div style="font-size:.8rem;color:var(--text-muted)">The editor will see this as a task in their portal. Graphics will get the thumbnail for this video.</div>`,
+    <div class="form-group"><label>Deadline (optional \u2014 submit by this date &amp; time)</label><input id="avt-asg-dl" type="datetime-local" class="input"></div>
+    <div style="font-size:.8rem;color:var(--text-muted)">The editor &amp; graphics will see this as a task with the deadline in their portal.</div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="avtAssignVideoSave(${taskId},${cid})">Assign</button>`);
 }
 async function avtAssignVideoSave(taskId,cid){
@@ -12039,6 +12040,7 @@ async function avtAssignVideoSave(taskId,cid){
   const rf=(document.getElementById('avt-asg-refs')||{}).value||'';
   const refs=rf.split('\n').map(x=>x.trim()).filter(Boolean);
   if(refs.length) body.thumb_refs=refs;
+  const dl=(document.getElementById('avt-asg-dl')||{}).value||''; if(dl) body.deadline=dl;
   try{ await api('/api/production/assign-project-video','POST',body); closeModal(); toast('Assigned'); loadAVTasks(true); }
   catch(e){ toast(e.message||'Failed'); }
 }
@@ -24800,7 +24802,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var KPI_LABELS={
     active:'Active Tasks', teacher_pending:'Teacher Pending', youtuber_pending:'YouTuber Pending',
     pm_review:'PM Review', thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes', thumb_changes:'Thumbnail Changes', editing:'Editing', graphics:'Graphics', qc_pending:'QC Pending',
-    ready_for_youtube:'Ready for YouTube', due_today:'Due Today', overdue:'Overdue',
+    ready_for_youtube:'Ready for YouTube', due_today:'Due Today', overdue:'Delayed',
     assigned:'Assigned', not_started:'Not Started', changes:'Changes', completed:'Completed',
     requests:'Requests', pending_submission:'Pending Submission', submitted:'Submitted',
     in_production:'In Production', qc:'QC', published:'Published',
@@ -26760,7 +26762,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(r.appreciation && r.appreciation.total_done>0) html+=_appreciationStrip(r.appreciation);
       if(portal==='graphics' && r.cards){
         var GC=[['today_assigned','Today\u2019s Assigned','gfx:today','','calendar'],['today_done','Today\u2019s Done','gfx:completed','good','check'],
-                ['pending','Pending','gfx:pending','','clock'],['overdue','Overdue','gfx:overdue','urgent','alert'],
+                ['pending','Pending','gfx:pending','','clock'],['overdue','Delayed','gfx:overdue','urgent','alert'],
                 ['awaiting_pm','Awaiting PM Approval','gfx:review','','eye'],['changes','Changes Required','gfx:changes','warn','edit'],
                 ['weekly_completed','Weekly Completed','gfx:completed','good','image'],['monthly_completed','Monthly Completed','gfx:completed','good','chart']];
         html+='<div class="pk-grid">'+GC.map(function(x){
@@ -26788,7 +26790,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       if(portal==='editor' && r.cards){
         var EC=[['assigned_today','To Start','edt:assigned','','calendar'],['editing_now','Editing Now','edt:editing','','edit'],
-                ['due_soon','Due Soon','edt:editing','warn','clock'],['overdue','Overdue','edt:overdue','urgent','alert'],
+                ['due_soon','Due Soon','edt:editing','warn','clock'],['overdue','Delayed','edt:overdue','urgent','alert'],
                 ['submitted','Submitted','edt:submitted','good','upload'],['changes','Changes Required','edt:changes','warn','edit'],
                 ['completed','Completed','edt:completed','good','check'],['ready_for_youtube','Ready for YouTube','edt:completed','good','video'],
                 ['total_views','Total Views','uploads','','eye']]
@@ -27341,7 +27343,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var el=document.getElementById('yts-cd'); var list=window._ytSpot||[]; var t=list[window._ytSpotIdx||0];
       if(!el||!t){ if(window._ytCd){clearInterval(window._ytCd);window._ytCd=null;} return; }
       var ms=_ytDlMs(t); if(ms==null){ el.className='yts-cd'; el.innerHTML='<b>No deadline set</b>'; return; }
-      var c=_ytCdText(ms); el.className='yts-cd'+(c.over?' over':''); el.innerHTML='<b>'+c.txt+'</b><span>'+(c.over?'overdue':'left')+'</span>';
+      var c=_ytCdText(ms); el.className='yts-cd'+(c.over?' over':''); el.innerHTML='<b>'+c.txt+'</b><span>'+(c.over?'delayed':'left')+'</span>';
     };
     upd(); window._ytCd=setInterval(upd,1000);
   }
@@ -27478,7 +27480,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="ytf">'+
         '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="yt-q" placeholder="Search by title, channel, type..." oninput="_ytMyApply()"></div>'+
         '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option></select>'+
-        '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Overdue</option><option value="nodl">No deadline</option></select>'+
+        '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Delayed</option><option value="nodl">No deadline</option></select>'+
         '<button class="ytf-add" onclick="ytAddChannel()">+ Channel</button>'+
         '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div><div id="yt-my-grid"></div>';
       _ytFillChannels('yt-ch',channels);
@@ -27830,7 +27832,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var over=st&&(st.active||0)>(st.recommended||5);
       stats='<div class="pmt-stats"><div class="pmt-stat"><div class="n'+(over?' over':'')+'">'+load+'</div><div class="l">Workload</div></div>'+
         '<div class="pmt-stat"><div class="n">'+(st?st.completed||0:0)+'</div><div class="l">Completed</div></div>'+
-        (u.role==='editor'?'<div class="pmt-stat"><div class="n">'+(st?(st.overdue||0):0)+'</div><div class="l">Overdue</div></div>':'')+'</div>';
+        (u.role==='editor'?'<div class="pmt-stat"><div class="n">'+(st?(st.overdue||0):0)+'</div><div class="l">Delayed</div></div>':'')+'</div>';
     } else if(u.role==='youtuber'){
       stats='<div class="pmt-stats"><div class="pmt-stat"><div class="n">'+(st?st.pending||0:0)+'</div><div class="l">Pending</div></div>'+
         '<div class="pmt-stat"><div class="n">'+(st?st.in_production||0:0)+'</div><div class="l">In Production</div></div>'+
@@ -27947,7 +27949,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         return '<button class="gfx-seg-b'+(seg===s[0]?' on':'')+'" onclick="edtPerfSeg(\''+s[0]+'\')">'+s[1]+'</button>'; }).join('')+'</div></div>';
       // metric cards (Quantity / Quality / Timeliness)
       var cards=[['Videos Edited',o.videos_edited||0],['Approved',o.videos_approved||0],['Uploaded',o.videos_uploaded||0],
-                 ['Pending',o.pending||0],['Overdue',o.overdue||0],['Revisions',o.revision_count||0],
+                 ['Pending',o.pending||0],['Delayed',o.overdue||0],['Revisions',o.revision_count||0],
                  ['Avg Turnaround',(o.avg_turnaround_hours||0)+'h'],['On-time',(o.on_time_pct||0)+'%'],
                  ['Avg Quality',(o.avg_quality||0)+'\u2605'],['YouTube Views',_num(o.youtube_views||0)]];
       html+='<div class="pk-grid">'+cards.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
@@ -28118,7 +28120,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.crTab=function(t){ window._crTab=t; _renderCreators(); };
   window.crDrill=function(tid,cat,name){
-    var catLbl={completed:'Completed',pending:'Pending',overdue:'Overdue'}[cat]||cat;
+    var catLbl={completed:'Completed',pending:'Pending',overdue:'Delayed'}[cat]||cat;
     api(P.production.api+'/creator-videos?teacher_id='+tid+'&cat='+encodeURIComponent(cat)).then(function(r){
       var vs=(r&&r.videos)||[];
       var stCol={completed:'#16a34a',pending:'#d97706',overdue:'#dc2626'};
@@ -28181,7 +28183,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="crp-chips">'+
           chip(done,isYt?'Published':'Completed','green','completed')+
           chip(pending,'Pending','amber','pending')+
-          (isYt?'':chip(overdue,'Overdue','red','overdue'))+
+          (isYt?'':chip(overdue,'Delayed','red','overdue'))+
           chip(onTime,'On-time','blue')+
         '</div>'+
       '</div>';
@@ -28222,7 +28224,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var body;
     if(mode==='compact'){ body=(d>0?(d+'d '+p(h)+'h'):(h>0?(h+'h '+p(m)+'m'):(p(m)+'m'))); }
     else { body=(d>0?(d+'d '):'')+((d>0||h>0)?(p(h)+'h '):'')+p(m)+'m '+p(s)+'s'; }  // live ticking (default)
-    var lbl=over?(body+' overdue'):((kind==='soon'?'Due soon ':(kind==='today'?'Due today ':'Due in '))+body);
+    var lbl=over?(body+' delayed'):((kind==='soon'?'Due soon ':(kind==='today'?'Due today ':'Due in '))+body);
     return {kind:kind,label:lbl};
   }
   window._dlToggle=function(el){ el.setAttribute('data-dlmode', (el.getAttribute('data-dlmode')==='compact')?'full':'compact'); _dlTick(); };
@@ -28440,7 +28442,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       dl+badge+'<span class="pt-stage">'+esc(t.next_action||t.lifecycle_label||'')+'</span></div>';
   }
   var SAVED={
-    production:[['','All'],['pm_review','PM Review'],['editing','Editing'],['qc_pending','QC Queue'],['ready_for_youtube','Ready for YouTube'],['__overdue','Overdue']],
+    production:[['','All'],['pm_review','PM Review'],['editing','Editing'],['qc_pending','QC Queue'],['ready_for_youtube','Ready for YouTube'],['__overdue','Delayed']],
     editor:[['','All'],['editor_assigned','Not Started'],['editing','Editing'],['qc_changes','Changes']],
     youtuber:[['','All'],['creator_assigned','To Submit'],['pm_review','Submitted'],['uploaded','Published']],
     graphics:[['','All'],['new','New'],['in_progress','In Progress'],['changes','Changes']]
@@ -28493,7 +28495,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(portal==='graphics'){
       var gp=f.gpreset||'';
-      var segs=[['','All'],['today','Today'],['pending','Pending'],['review','Review'],['changes','Changes'],['completed','Completed'],['overdue','Overdue']];
+      var segs=[['','All'],['today','Today'],['pending','Pending'],['review','Review'],['changes','Changes'],['completed','Completed'],['overdue','Delayed']];
       return '<div class="p-filter"><div class="gfx-seg">'+segs.map(function(s){
         return '<button class="gfx-seg-b'+(gp===s[0]?' on':'')+'" onclick="gfxSeg(\''+s[0]+'\')">'+s[1]+'</button>';
       }).join('')+'</div></div>';
@@ -28719,7 +28721,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="p-field"><label>Editor</label><select class="p-select" id="pav-editor">'+edOpts+'</select></div>'+
           '<div class="p-field"><label>Graphics Designer (optional)</label><select class="p-select" id="pav-graphics">'+gfOpts+'</select></div>'+
           '<div class="p-field"><label>Reference thumbnails for graphics (optional \u2014 one link per line)</label><textarea class="p-area" id="pav-refs" placeholder="https://... (paste one or more reference thumbnail links)"></textarea></div>'+
-          '<div style="font-size:.78rem;color:var(--muted)">The editor will see this as a task in their portal. Graphics will get the thumbnail for this video.</div>'+
+          '<div class="p-field"><label>Deadline (optional \u2014 submit by this date &amp; time)</label><input class="p-input" id="pav-deadline" type="datetime-local"></div>'+
+          '<div style="font-size:.78rem;color:var(--muted)">The editor &amp; graphics will see this as a task with the deadline in their portal.</div>'+
         '</div>'+
         '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAssignVideoSave('+taskId+','+cid+')">Assign</button></div></div></div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -28733,6 +28736,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var rf=(document.getElementById('pav-refs')||{}).value||'';
     var refs=rf.split('\n').map(function(x){return x.trim();}).filter(Boolean);
     if(refs.length) body.thumb_refs=refs;
+    var dl=(document.getElementById('pav-deadline')||{}).value||''; if(dl) body.deadline=dl;
     api(P.production.api+'/assign-project-video','POST',body).then(function(){
       prodDismiss(); toast('Assigned'); window._prodProjChaps(taskId); _refresh('production');
     }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
@@ -28914,7 +28918,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var f=_flt(portal); var chips=[];
     if(f.status && !f._locked) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
     if(portal==='production'&&f.creator_type) chips.push(['Creator: '+(f.creator_type==='youtuber'?'YouTuber':'Teacher'),'creator_type']);
-    if(f.deadline) chips.push(['Deadline: '+(f.deadline==='overdue'?'Overdue':(f.deadline==='today'?'Due Today':f.deadline)),'deadline']);
+    if(f.deadline) chips.push(['Deadline: '+(f.deadline==='overdue'?'Delayed':(f.deadline==='today'?'Due Today':f.deadline)),'deadline']);
     if(portal==='production'&&f.priority) chips.push(['Priority: '+(f.priority==='urgent'?'Urgent':f.priority),'priority']);
     if(portal==='production'&&f.q) chips.push(['Search: "'+f.q+'"','q']);
     if(!chips.length) return '';
@@ -29017,7 +29021,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _prodPersonRender(kind,name,r){
     var s=r.stats||{}; var cards=[];
-    if(kind==='editor') cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Overdue',s.overdue,'overdue'],['Active Hrs',s.active_hours,'active'],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%',null]];
+    if(kind==='editor') cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Delayed',s.overdue,'overdue'],['Active Hrs',s.active_hours,'active'],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%',null]];
     else if(kind==='graphics') cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Avg Hrs',s.avg_hours,null]];
     else cards=[['Pending',s.pending,null],['Submitted',s.submitted,null],['In Production',s.in_production,null],['Published',s.published,null],['Total Views',s.total_views,null]];
     window._prodPersonAll=r.all_tasks||[];
@@ -29037,7 +29041,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodPersonCard=function(key){
     if(!key) return;
     var cont=document.getElementById('pp-cards'); if(cont) cont.querySelectorAll('.pp-stat').forEach(function(c){ c.classList.toggle('on', c.getAttribute('data-k')===key); });
-    var h=document.getElementById('pp-tlh'); if(h) h.textContent=(window._PKEYLBL2&&window._PKEYLBL2[key])||{active:'Active Tasks',completed:'Completed',this_month:'Completed This Month',overdue:'Overdue Tasks'}[key]||'Tasks';
+    var h=document.getElementById('pp-tlh'); if(h) h.textContent=(window._PKEYLBL2&&window._PKEYLBL2[key])||{active:'Active Tasks',completed:'Completed',this_month:'Completed This Month',overdue:'Delayed Tasks'}[key]||'Tasks';
     var el=document.getElementById('pp-tl'); if(el) el.innerHTML=(window._personTaskRows?_personTaskRows(_personFilter(window._prodPersonAll,key)):'');
   };
   window.prodThumbUpload=function(portal,id){
@@ -29159,7 +29163,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<span class="pt-stage" '+(over?'style="background:rgba(209,68,58,.14);color:#d1443a"':'')+'>'+load+'</span></div>';
         }).join('');
       }
-      var html=(liveStrip||'')+block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Overdue','overdue']],'editor');
+      var html=(liveStrip||'')+block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Delayed','overdue']],'editor');
       html+=block('Graphics',r.graphics,[['Active','active'],['Completed','completed']],'graphics');
       html+=block('YouTubers',r.youtubers,[['Pending','pending'],['In Production','in_production'],['Published','published']],'youtuber');
       body.innerHTML=html;
@@ -29173,7 +29177,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(_stale(portal,'analytics')) return;
       var o=r.overview||{};
       var kpis=[['Created',o.created],['Completed',o.completed],['Pending',o.pending],
-                ['Overdue',o.overdue,'warn'],['On-Time %',o.on_time_pct==null?'\u2014':o.on_time_pct+'%','good'],
+                ['Delayed',o.overdue,'warn'],['On-Time %',o.on_time_pct==null?'\u2014':o.on_time_pct+'%','good'],
                 ['Avg Production',o.avg_production_hours==null?'\u2014':o.avg_production_hours+'h'],
                 ['QC First-Pass',o.qc_first_pass_pct==null?'\u2014':o.qc_first_pass_pct+'%','good']];
       var html='<div class="p-toolbar" style="gap:8px">'+
@@ -30831,7 +30835,7 @@ function _apRoleMeta(k){ for(var i=0;i<_AP_ROLES.length;i++) if(_AP_ROLES[i].key
   function _ltDur(s){ s=Math.max(0,Math.floor(s||0)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; function p(x){ return (x<10?'0':'')+x; } if(h>0) return h+'h '+p(m)+'m '+p(ss)+'s'; if(m>0) return m+'m '+p(ss)+'s'; return ss+'s'; }
   function _ltInitials(n){ n=String(n||'').trim(); if(!n) return '?'; var pr=n.split(/\s+/); return (((pr[0]||'')[0]||'')+(pr.length>1?((pr[pr.length-1]||'')[0]||''):'')).toUpperCase(); }
   function _ltUrgent(p){ return (p==='urgent')?'<span class="lt-urgent">URGENT</span>':''; }
-  function _ltDue(x){ if(!x||!x.deadline) return ''; return '<span class="lt-due'+(x.overdue?' od':'')+'">'+(x.overdue?'Overdue':'Due')+': '+_ltEsc(x.deadline)+'</span>'; }
+  function _ltDue(x){ if(!x||!x.deadline) return ''; return '<span class="lt-due'+(x.overdue?' od':'')+'">'+(x.overdue?'Delayed':'Due')+': '+_ltEsc(x.deadline)+'</span>'; }
   function _ltRef(x){ return x.ref_code?'<span class="lt-ref">'+_ltEsc(x.ref_code)+'</span>':''; }
 
   function _ltInjectCss(){
@@ -31024,7 +31028,7 @@ function _apRoleMeta(k){ for(var i=0;i<_AP_ROLES.length;i++) if(_AP_ROLES[i].key
       stat('m',s.idle,'Editors idle')+
       stat('a',s.paused,'Paused')+
       stat('b',s.queued,'In queue')+
-      stat('r',s.overdue,'Overdue')+
+      stat('r',s.overdue,'Delayed')+
       stat('g',s.graphics_working,'Graphics working')+
       '</div>';
     var eds=(data.editors||[]);
@@ -31366,7 +31370,7 @@ function _apCard(u){
     statsHtml='<div class="ap-stats">'+
       '<div class="ap-stat"><div class="n'+(over?' over':'')+'">'+load+'</div><div class="l">Workload</div></div>'+
       '<div class="ap-stat"><div class="n">'+(st?st.completed||0:0)+'</div><div class="l">Completed</div></div>'+
-      (u.role==='editor'?'<div class="ap-stat"><div class="n">'+(st?(st.overdue||0):0)+'</div><div class="l">Overdue</div></div>':'')+
+      (u.role==='editor'?'<div class="ap-stat"><div class="n">'+(st?(st.overdue||0):0)+'</div><div class="l">Delayed</div></div>':'')+
       '</div>';
   } else if(u.role==='youtuber'){
     statsHtml='<div class="ap-stats">'+
@@ -31405,7 +31409,7 @@ window._personTaskRows=function(tasks){
   if(!tasks||!tasks.length) return '<div style="color:#9c8f6e;padding:12px">No tasks in this category.</div>';
   return tasks.map(function(t){ var lc=(t.lifecycle||'').replace(/_/g,' '); var hrs=(t.editing_hours!=null&&t.editing_hours!=='')?('<span class="st" style="background:rgba(124,79,192,.14);color:#6d3fb0;font-weight:800">'+t.editing_hours+'h \u00b7 '+_ape(lc)+'</span>'):('<span class="st">'+_ape(lc)+'</span>'); return '<div class="ap-prow"><div class="t"><div class="nm">'+_ape(t.title||'Untitled')+'</div><div class="mt">'+_ape(t.ref_code||'')+(t.deadline?(' \u00b7 due '+_ape(t.deadline)):'')+'</div></div>'+hrs+'</div>'; }).join('');
 };
-var _PKEYLBL={active:'Active Tasks',completed:'Completed',this_month:'Completed This Month',overdue:'Overdue Tasks'};
+var _PKEYLBL={active:'Active Tasks',completed:'Completed',this_month:'Completed This Month',overdue:'Delayed Tasks'};
 window.apPersonCard=function(key){
   if(!key) return;
   var cont=document.getElementById('ap-person-cards'); if(cont) cont.querySelectorAll('.pm-card').forEach(function(c){ c.classList.toggle('on', c.getAttribute('data-k')===key); });
@@ -31416,7 +31420,7 @@ window.apPerson=function(kind,pid,name){
   _apModal(_ape(name),'<div class="ap-load" style="padding:16px">Loading profile...</div>');
   api('/api/production/person/'+kind+'/'+pid).then(function(r){
     var s=r.stats||{}; var cards=[];
-    if(kind==='editor'){ cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Overdue',s.overdue,'overdue'],['Active Hrs',s.active_hours,'active'],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%',null]]; }
+    if(kind==='editor'){ cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Delayed',s.overdue,'overdue'],['Active Hrs',s.active_hours,'active'],['On-Time',s.on_time_pct==null?'\u2014':s.on_time_pct+'%',null]]; }
     else if(kind==='graphics'){ cards=[['Active',s.active,'active'],['Completed',s.completed,'completed'],['This Month',s.completed_this_month,'this_month'],['Avg Hrs',s.avg_hours,null]]; }
     else { cards=[['Pending',s.pending,null],['Submitted',s.submitted,null],['In Production',s.in_production,null],['Published',s.published,null],['Total Views',s.total_views,null]]; }
     window._apPersonAll=r.all_tasks||[];
@@ -31711,7 +31715,7 @@ function _apaRender(tab,r){
       _apaCard({icon:'grid',val:h.assigned,label:'Assigned'})+
       _apaCard({icon:'check',val:h.completed,label:'Completed',cls:'good'})+
       _apaCard({icon:'clock',val:h.pending,label:'Pending'})+
-      _apaCard({icon:'alert',val:h.overdue,label:'Overdue',cls:'urgent'})+
+      _apaCard({icon:'alert',val:h.overdue,label:'Delayed',cls:'urgent'})+
       _apaCard({icon:'eye',val:h.pm_review,label:'PM Review',cls:'warn'})+
       _apaCard({icon:'edit',val:h.editing,label:'Editing'})+
       _apaCard({icon:'check',val:h.qc_pending,label:'QC Pending',cls:'warn'})+
@@ -31724,10 +31728,10 @@ function _apaRender(tab,r){
   if(tab==='health'){
     var h=r.task_health||{};
     var bars=[{label:'Assigned',value:h.assigned},{label:'Editing',value:h.editing},{label:'PM Review',value:h.pm_review},
-              {label:'QC',value:h.qc_pending},{label:'Ready',value:h.ready_for_youtube},{label:'Uploaded',value:h.uploaded},{label:'Overdue',value:h.overdue}];
+              {label:'QC',value:h.qc_pending},{label:'Ready',value:h.ready_for_youtube},{label:'Uploaded',value:h.uploaded},{label:'Delayed',value:h.overdue}];
     return '<div class="apa-grid">'+
       _apaCard({icon:'grid',val:h.assigned,label:'Assigned'})+_apaCard({icon:'check',val:h.completed,label:'Completed',cls:'good'})+
-      _apaCard({icon:'clock',val:h.pending,label:'Pending'})+_apaCard({icon:'alert',val:h.overdue,label:'Overdue',cls:'urgent'})+
+      _apaCard({icon:'clock',val:h.pending,label:'Pending'})+_apaCard({icon:'alert',val:h.overdue,label:'Delayed',cls:'urgent'})+
       _apaCard({icon:'eye',val:h.pm_review,label:'PM Review',cls:'warn'})+_apaCard({icon:'edit',val:h.editing,label:'Editing'})+
       _apaCard({icon:'check',val:h.qc_pending,label:'QC Pending',cls:'warn'})+_apaCard({icon:'video',val:h.ready_for_youtube,label:'Ready for YouTube'})+
       _apaCard({icon:'upload',val:h.uploaded,label:'Uploaded',cls:'good'})+'</div>'+
@@ -31735,9 +31739,9 @@ function _apaRender(tab,r){
   }
   if(tab==='delays'){
     var d=r.major_delays||[];
-    if(!d.length) return '<div class="apa-panel"><div class="apa-ph">Major Delays</div><div style="color:#2e9e6b;padding:16px;font-weight:600">No overdue tasks. Everything is on schedule.</div></div>';
+    if(!d.length) return '<div class="apa-panel"><div class="apa-ph">Major Delays</div><div style="color:#2e9e6b;padding:16px;font-weight:600">No delayed tasks. Everything is on schedule.</div></div>';
     return '<div class="apa-sec">Major Delays ('+d.length+')</div>'+d.map(function(x){
-      var od=x.overdue_hours>=48?(Math.round(x.overdue_hours/24)+'d overdue'):(Math.round(x.overdue_hours)+'h overdue');
+      var od=x.overdue_hours>=48?(Math.round(x.overdue_hours/24)+'d delayed'):(Math.round(x.overdue_hours)+'h delayed');
       return '<div class="apa-delay"><div><div style="font-weight:700">'+_ape(x.title||'Untitled')+'</div><div style="font-size:.75rem;color:#8a7d5c">'+_ape(x.ref_code||'')+' \u00b7 '+_ape(x.stage||'')+(x.creator?(' \u00b7 '+_ape(x.creator)):'')+'</div></div><span class="od">'+od+'</span></div>';
     }).join('');
   }
@@ -31746,8 +31750,8 @@ function _apaRender(tab,r){
     var e=r.editors||{}; var t=e.total||{}; var rows=e.rows||[];
     var html='<div class="apa-grid">'+_apaCard({icon:'grid',val:t.assigned,label:'Assigned'})+_apaCard({icon:'edit',val:t.active,label:'Active'})+
       _apaCard({icon:'check',val:t.completed,label:'Completed',cls:'good'})+_apaCard({icon:'edit',val:t.changes,label:'Changes',cls:'warn'})+
-      _apaCard({icon:'alert',val:t.overdue,label:'Overdue',cls:'urgent'})+_apaCard({icon:'check',val:(t.quality||0)+'\u2605',label:'Avg Quality'})+'</div>';
-    html+='<div class="apa-panel"><div class="apa-ph">Editor Ranking</div>'+_apaTable(rows,['name','assigned','active','completed','changes','overdue','quality','turnaround'],['Editor','Assigned','Active','Done','Changes','Overdue','Quality','Turnaround(h)'])+'</div>';
+      _apaCard({icon:'alert',val:t.overdue,label:'Delayed',cls:'urgent'})+_apaCard({icon:'check',val:(t.quality||0)+'\u2605',label:'Avg Quality'})+'</div>';
+    html+='<div class="apa-panel"><div class="apa-ph">Editor Ranking</div>'+_apaTable(rows,['name','assigned','active','completed','changes','overdue','quality','turnaround'],['Editor','Assigned','Active','Done','Changes','Delayed','Quality','Turnaround(h)'])+'</div>';
     html+='<div class="apa-panel"><div class="apa-ph">Completed by Editor</div>'+_apaBar(rows.slice(0,8).map(function(x){return {label:x.name,value:x.completed};}),'#2e9e6b')+'</div>';
     return html;
   }
@@ -32913,7 +32917,7 @@ function _dueBadge(deadline){
   var d=new Date(deadline.replace(' ','T')); if(isNaN(d)) return '';
   var days=Math.ceil((d-new Date())/86400000);
   var cls=days<0?'over':days<=2?'soon':'ok';
-  var txt=days<0?('Overdue '+(-days)+'d'):days===0?'Due today':days===1?'Due tomorrow':('Due in '+days+'d');
+  var txt=days<0?('Delayed '+(-days)+'d'):days===0?'Due today':days===1?'Due tomorrow':('Due in '+days+'d');
   return '<span class="mc-due '+cls+'">'+txt+'</span>';
 }
 
