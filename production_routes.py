@@ -113,9 +113,22 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                "Graphics": kpis["graphics"], "QC": kpis["qc_pending"],
                "Ready for YouTube": kpis["ready_for_youtube"]}
     bottleneck = max(buckets, key=buckets.get) if any(buckets.values()) else "None"
+    # ---- Pending YouTube links: scheduled upload time has passed but the link isn't posted yet.
+    # upload_date is stored as IST-local (naive), so compare against IST "now", not UTC.
+    now_ist = now + timedelta(hours=5, minutes=30)
+    pend_rows = (db.query(VideoTask)
+                 .filter(VideoTask.cancelled == False,
+                         VideoTask.upload_date != None,          # noqa: E711
+                         VideoTask.upload_date <= now_ist,
+                         or_(VideoTask.youtube_url == None, VideoTask.youtube_url == ""),  # noqa: E711
+                         or_(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"]),
+                             VideoTask.lifecycle == None, VideoTask.lifecycle == ""))       # noqa: E711
+                 .order_by(VideoTask.upload_date.asc()).all())
+    pending_yt = [pc.task_out(db, t, light=True) for t in pend_rows]
     return {"greeting_name": me.name, "date": today.isoformat(),
             "kpis": kpis, "secondary": secondary,
             "events": pc.active_events_for(db, "all"),
+            "pending_yt": pending_yt,
             "bottleneck": bottleneck, "buckets": buckets}
 
 
