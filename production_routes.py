@@ -3864,6 +3864,10 @@ def pm_deadline_requests(db: Session = Depends(get_db), me=Depends(get_pm_or_adm
         d = pc.task_out(db, t, light=True)
         d["deadline_req"] = pc._dt(t.deadline_req)
         d["deadline_req_reason"] = t.deadline_req_reason or ""
+        # previous deadline the editor currently has (falls back to the task deadline)
+        _prev = getattr(t, "editor_deadline", None) or t.deadline
+        d["deadline_prev"] = pc._dt(_prev)
+        d["requested_by"] = pc._name_for_staff(db, t.editor_id) if t.editor_id else ""
         out.append(d)
     return {"requests": out, "count": len(out)}
 
@@ -3877,12 +3881,13 @@ def pm_deadline_decision(tid: int, payload: dict = Body(...),
     decision = (payload.get("decision") or "").strip().lower()
     if decision not in ("approve", "reject"):
         raise HTTPException(400, "decision must be approve or reject")
-    old = t.deadline
+    # the request comes from the editor, so it extends the EDITOR's deadline (not the teacher deadline)
+    old = getattr(t, "editor_deadline", None) or t.deadline
     new = t.deadline_req
     if decision == "approve":
-        t.deadline = new
+        t.editor_deadline = new
         t.deadline_req_status = "approved"
-        pc.log_event(db, t, me, "deadline_extended", meta={"note": 'Deadline extended: %s \u2192 %s (old deadline kept in history)' % (
+        pc.log_event(db, t, me, "deadline_extended", meta={"note": 'Editor deadline extended: %s \u2192 %s (old deadline kept in history)' % (
             (old.strftime("%d %b %Y, %I:%M %p") if old else "none"),
             (new.strftime("%d %b %Y, %I:%M %p") if new else "none"))})
         msg = 'Your deadline request for "%s" was approved. New deadline: %s.' % (
