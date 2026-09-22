@@ -2445,6 +2445,30 @@ function startDoubtBadge(role){
 }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Edited-link version history: shows Version 1 / Version 2 ... (each link labelled),
+// used across editor, admin & production. Falls back to the single latest link.
+function _edVerHtml(t){
+  var vers=(t&&t.edited_versions)||[];
+  if(vers.length>1){
+    return '<div class="ed-ver">'+vers.map(function(v){
+      return '<a class="ed-ver-item" href="'+esc(v.link)+'" target="_blank" rel="noopener">'
+        +'<span class="ed-ver-tag">Version '+v.version+'</span>'
+        +'<span class="ed-ver-open">Open link</span>'
+        +(v.at?('<span class="ed-ver-at">'+esc(v.at)+'</span>'):'')+'</a>';
+    }).join('')+'</div>';
+  }
+  if(vers.length===1) return '<a href="'+esc(vers[0].link)+'" target="_blank" rel="noopener">Open link</a>';
+  if(t&&t.edited_link) return '<a href="'+esc(t.edited_link)+'" target="_blank" rel="noopener">Open link</a>';
+  return 'Not submitted';
+}
+(function(){ if(document.getElementById('ed-ver-css'))return; var s=document.createElement('style'); s.id='ed-ver-css';
+  s.textContent='.ed-ver{display:flex;flex-direction:column;gap:6px}'
+   +'.ed-ver-item{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid rgba(22,163,74,.25);background:rgba(22,163,74,.06);border-radius:8px;text-decoration:none;transition:.15s}'
+   +'.ed-ver-item:hover{background:rgba(22,163,74,.12);border-color:rgba(22,163,74,.45)}'
+   +'.ed-ver-tag{font-weight:800;font-size:.7rem;color:#15803d;background:rgba(22,163,74,.14);padding:2px 8px;border-radius:20px;white-space:nowrap}'
+   +'.ed-ver-open{font-weight:600;font-size:.74rem;color:#16a34a;text-decoration:underline}'
+   +'.ed-ver-at{margin-left:auto;font-size:.66rem;color:var(--text-muted,#8a8a8a)}';
+  document.head.appendChild(s); })();
 // Doubt/thread time — backend ab IST offset (+05:30) ke saath ISO bhejta hai.
 // Yahan hamesha Asia/Kolkata me hi dikhao taaki browser timezone koi bhi ho, IST rahe.
 // (Purane bina-offset strings ko UTC maankar convert — safety fallback.)
@@ -26420,15 +26444,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
         '<div class="pd-head"><div class="h-title">Review Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
-          (t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">Open edited video</a>'+(t.revision_count?(' \u00b7 revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>')+
+          (((t.edited_versions&&t.edited_versions.length>1))
+             ?('<div class="p-field"><label>Edited video versions</label>'+_edVerHtml(t)+'</div>')
+             :(t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">'+ic('play')+' Open edited video</a>'+(t.revision_count?(' \u00b7 revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>'))+
           '<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
           '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
           '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results...">'+esc(t.upload_remarks||'')+'</textarea></div>'+
-          '<div class="aw-sechead" style="margin-top:6px">'+ic('edit')+' Changes / Reject</div>'+
-          '<div class="p-field"><label>Remarks (required for changes/reject)</label><textarea class="p-area" id="qc-rem" placeholder="What should change?"></textarea></div>'+
-          '<div class="p-field"><label>Drive reference (optional)</label><input class="p-input" id="qc-ref" placeholder="https://drive..."></div>'+
-          '<div class="gfx-paste" id="qc-paste" tabindex="0"><div class="gfx-paste-i">Paste/upload screenshots (optional)</div><input type="file" id="qc-file" accept="image/*" multiple style="display:none"></div>'+
-          '<div class="gfx-prev" id="qc-prev"></div>'+
+          '<div class="qc-note" style="margin-top:12px;font-size:.82rem;color:var(--muted);background:rgba(180,83,9,.07);border:1px solid rgba(180,83,9,.2);border-radius:10px;padding:10px 12px;line-height:1.5">'+ic('edit')+' <b>Changes Required</b> or <b>Reject</b> \u2014 the editor is notified instantly and you\u2019ll be taken straight to <b>Chat with Editor</b> to explain what to change. No typing needed here.</div>'+
         '</div>'+
         '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">Approve</button>'+
           '<button class="p-btn p-btn-warn" onclick="pmQcDecide(\'changes\')">Changes Required</button>'+
@@ -26436,17 +26458,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
       document.body.appendChild(dr);
-      var pb=document.getElementById('qc-paste'), fi=document.getElementById('qc-file');
-      pb.addEventListener('click',function(){ fi.click(); });
-      fi.addEventListener('change',function(e){ Array.prototype.forEach.call(e.target.files||[],_qcAddFile); });
-      window._qcPasteH=function(e){ var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _qcAddFile(items[i].getAsFile()); e.preventDefault(); } } };
-      document.addEventListener('paste',window._qcPasteH);
     }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
   function _qcAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._qcImgs.length<6){ window._qcImgs.push(rd.result); var box=document.getElementById('qc-prev'); if(box) box.innerHTML=window._qcImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmQcDecide=function(action){
-    var rem=((document.getElementById('qc-rem')||{}).value||'').trim();
-    var ref=((document.getElementById('qc-ref')||{}).value||'').trim();
     var id=window._qcId, ep, body={};
     if(action==='approve'){
       var _ud=((document.getElementById('qc-update')||{}).value||'');
@@ -26454,14 +26469,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!_ud && !_urem){ toast('Set an upload date or remarks to approve',true); var _u=document.getElementById('qc-update'); if(_u) _u.focus(); return; }
       ep='/qc-approve'; body={upload_date:_ud, upload_remarks:_urem};
     }
-    else if(action==='changes'){ if(!rem){ toast('Remarks required',true); return; } ep='/request-edit-changes'; body={remarks:rem,references:ref,images:window._qcImgs}; }
-    else { if(!rem){ toast('Remarks required',true); return; } ep='/qc-reject'; body={remarks:rem,images:window._qcImgs}; }
+    else if(action==='changes'){ ep='/request-edit-changes'; body={remarks:'',references:'',images:[]}; }
+    else { ep='/qc-reject'; body={remarks:'',images:[]}; }
     if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; }
-    prodDismiss(); toast(action==='approve'?'Approving\u2026':'Sending\u2026');
+    prodDismiss(); toast(action==='approve'?'Approving\u2026':(action==='changes'?'Changes requested \u2014 opening chat\u2026':'Rejected \u2014 opening chat\u2026'));
     api(P.production.api+'/tasks/'+id+ep,'POST',body).then(function(){
-      if(action==='approve'){ toast('QC approved'); setTimeout(function(){ pmRateModal(id); },300); }
-      else { toast(action==='changes'?'Changes requested':'Edit rejected'); }
       _apiBust(); _refresh('production');
+      if(action==='approve'){ toast('QC approved'); setTimeout(function(){ pmRateModal(id); },300); }
+      else {
+        // smooth transition: editor ko turant chat pe le jao (changes samjhane ke liye)
+        setTimeout(function(){ try{ prodEdtChat(id); }catch(e){} },250);
+      }
     }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
   };
   // ---- PM: Quality Rating (overall + 7 dimensions + remarks) ----
@@ -26503,7 +26521,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
       var histHtml=reviews.length?('<div class="p-sec">Change History</div><div class="pn-list">'+reviews.map(function(x){ return '<div class="pn-item"><div class="pn-title">'+esc(x.decision)+(x.at?(' \u00b7 '+esc(x.at)):'')+'</div>'+(x.remarks?'<div class="pn-msg">'+esc(x.remarks)+'</div>':'')+'</div>'; }).join('')+'</div>'):'';
-      var subHtml=subs.length?('<div class="p-sec">Previous Submissions</div><div class="pn-list">'+subs.map(function(x){ return '<div class="pn-item"><div class="pn-title">'+esc(x.kind)+(x.at?(' \u00b7 '+esc(x.at)):'')+'</div>'+(x.link?'<div class="pn-msg"><a href="'+esc(x.link)+'" target="_blank" class="p-link">Open</a></div>':'')+'</div>'; }).join('')+'</div>'):'';
+      var _vers=(t.edited_versions||[]);
+      var subHtml=_vers.length?('<div class="p-sec">Your Submitted Versions</div>'+_edVerHtml(t))
+        :(subs.length?('<div class="p-sec">Previous Submissions</div><div class="pn-list">'+subs.map(function(x){ return '<div class="pn-item"><div class="pn-title">'+esc(x.kind)+(x.at?(' \u00b7 '+esc(x.at)):'')+'</div>'+(x.link?'<div class="pn-msg"><a href="'+esc(x.link)+'" target="_blank" class="p-link">Open</a></div>':'')+'</div>'; }).join('')+'</div>'):'');
       var attHtml=atts.length?('<div class="p-field"><label>PM Screenshots</label><div class="gfx-prev">'+atts.map(function(a){ return '<div class="gfx-thumb" style="background-image:url('+esc(a.url)+')" onclick="prodLightbox(\''+esc(a.url)+'\')"></div>'; }).join('')+'</div></div>'):'';
       dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
         '<div class="pd-head"><div class="h-title">Changes Required</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
@@ -29683,7 +29703,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Progress', '<div>'+(t.editing_progress||0)+'%</div><div class="pd-progress"><span style="width:'+(t.editing_progress||0)+'%"></span></div>')+
         _kv('Active Editing Time', _editTimerHtml(t))+
         _kv('Revisions', String(t.revision_count||0))+
-        _kv('Edited Link', t.edited_link?('<a href="'+esc(t.edited_link)+'" target="_blank">Open link</a>'):'Not submitted')+
+        _kv('Edited Link', _edVerHtml(t))+
       '</div>';
     }
     if(tab==='graphics'){

@@ -191,7 +191,8 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     ontime = 0; total_done = 0; ratings = []
     for tk in done_tasks:
         total_done += 1
-        if tk.deadline and tk.editing_done_at and tk.editing_done_at <= tk.deadline:
+        _tkdl = getattr(tk, "editor_deadline", None) or tk.deadline
+        if _tkdl and tk.editing_done_at and tk.editing_done_at <= _tkdl:
             ontime += 1
         if getattr(tk, "quality_rating", None):
             ratings.append(tk.quality_rating)
@@ -219,10 +220,10 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     cards = {
         "assigned_today": base.filter(or_(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]), _legacy_ready)).count(),
         "editing_now": c("editing", "editing_paused"),
-        "due_soon": base.filter(VideoTask.deadline != None, VideoTask.deadline >= now,
-                                VideoTask.deadline <= soon,
+        "due_soon": base.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline >= now,
+                                VideoTask.editor_deadline <= soon,
                                 ~VideoTask.lifecycle.in_(_not_done)).count(),
-        "overdue": base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+        "overdue": base.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline < now,
                                ~VideoTask.lifecycle.in_(_not_done)).count(),
         "submitted": c("qc_pending"),
         "changes": c("qc_changes"),
@@ -243,10 +244,10 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
             "qc_pending": c("qc_pending"),
             "changes": c("qc_changes"),
             "completed": c("ready_for_youtube", "uploaded", "completed"),
-            "due_today": base.filter(VideoTask.deadline != None,
-                                     func.date(VideoTask.deadline) == today,
+            "due_today": base.filter(VideoTask.editor_deadline != None,
+                                     func.date(VideoTask.editor_deadline) == today,
                                      ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube"])).count(),
-            "overdue": base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+            "overdue": base.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline < now,
                                    ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube"])).count(),
         },
         "monthly": {
@@ -293,7 +294,8 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
     elif preset == "assigned":
         q = q.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]))
     elif preset == "overdue":
-        q = q.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+        # editor is judged against the EDITOR deadline, not the teacher deadline
+        q = q.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline < now,
                      ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube", "qc_pending"]))
     if status:
         if status == "editor_assigned":
@@ -304,7 +306,7 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
     # LIKE can over-match (12 vs 120) -> exact membership check
     rows = [t for t in rows if pc.editor_can_access(t, sp.id)]
     _ccm = pc.comment_count_map(db, [t.id for t in rows])
-    _outs = [pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0)) for t in rows]
+    _outs = [pc.task_out(db, t, light=True, viewer="editor", comment_count=_ccm.get(t.id, 0)) for t in rows]
     try:
         from video_tasks import _vtc_unread_bulk
         _un = _vtc_unread_bulk(db, getattr(me, "id", None), [t.id for t in rows])
@@ -519,7 +521,8 @@ def editor_submit(tid: int, payload: dict = Body(...),
                   f'{me.name} submitted the edited "{t.title}" for QC.', "production", link=str(t.id))
     # on-time appreciation (§23) — one positive nudge, only once, only on an on-time submission
     try:
-        if t.deadline and (not is_revision) and (not t.ontime_appreciated) and datetime.utcnow() <= t.deadline:
+        _edl = getattr(t, "editor_deadline", None) or t.deadline
+        if _edl and (not is_revision) and (not t.ontime_appreciated) and datetime.utcnow() <= _edl:
             t.ontime_appreciated = True
             pc.notify(db, me.id, "Great work!",
                       'Your edited "%s" was submitted on time. Keep it up!' % (t.title or ""),
@@ -671,7 +674,7 @@ def editor_performance(db: Session = Depends(get_db), me=Depends(get_editor)):
         approved = sum(1 for t in tasks if t.lifecycle in ["ready_for_youtube", "uploaded", "completed"])
         uploaded = sum(1 for t in tasks if t.lifecycle in _uploaded)
         pending = sum(1 for t in tasks if t.lifecycle in _pending)
-        overdue = sum(1 for t in tasks if t.deadline and t.deadline < now and t.lifecycle not in _uploaded + ["ready_for_youtube"])
+        overdue = sum(1 for t in tasks if (getattr(t, "editor_deadline", None)) and t.editor_deadline < now and t.lifecycle not in _uploaded + ["ready_for_youtube"])
         revisions = sum(int(t.revision_count or 0) for t in tasks)
         views = sum(int(t.yt_views or 0) for t in tasks)
         # turnaround: start -> editing_done
@@ -679,9 +682,9 @@ def editor_performance(db: Session = Depends(get_db), me=Depends(get_editor)):
         for t in tasks:
             if t.editing_started_at and t.editing_done_at and t.editing_done_at >= t.editing_started_at:
                 turns.append((t.editing_done_at - t.editing_started_at).total_seconds() / 3600.0)
-        # on-time: editing_done_at <= deadline
-        done_with_dl = [t for t in tasks if t.editing_done_at and t.deadline]
-        ontime = sum(1 for t in done_with_dl if t.editing_done_at <= t.deadline)
+        # on-time: editing_done_at <= editor deadline (editor judged on their own date)
+        done_with_dl = [t for t in tasks if t.editing_done_at and (getattr(t, "editor_deadline", None) or t.deadline)]
+        ontime = sum(1 for t in done_with_dl if t.editing_done_at <= (getattr(t, "editor_deadline", None) or t.deadline))
         ratings = [t.quality_rating for t in tasks if t.quality_rating]
         return {
             "videos_edited": edited, "videos_approved": approved, "videos_uploaded": uploaded,

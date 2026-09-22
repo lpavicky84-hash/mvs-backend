@@ -717,13 +717,27 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
             "revision_count": (g.revision_count if g else 0),
         },
     }
+    # §38b — the editor is judged against the EDITOR's own deadline, never the
+    # teacher deadline. An editor with no editor_deadline set has no personal
+    # deadline, so nothing is ever shown "delayed" against the teacher's date.
+    if viewer == "editor":
+        _ed = getattr(t, "editor_deadline", None)
+        out["deadline"] = _dt_raw(_ed)
+        out["deadline_iso"] = (_ed.strftime("%Y-%m-%dT%H:%M:%S") if _ed else "")
+        out["deadline_flag"] = (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t, deadline=_ed))
     # live editing timer: seconds keep counting while lifecycle == 'editing'
     _live_secs, _editing_running = editing_time_state(db, t)
     out["live_editing_seconds"] = _live_secs
     out["editing_running"] = _editing_running
+    # edited-link version history (Version 1 / Version 2 ...) — shown in every portal
+    out["edited_versions"] = edited_versions_out(db, t) if t.edited_link else []
     if not light:
         out["thumbnail_link"] = t.thumbnail_link or ""
-        out["deadline_iso"] = (t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "")
+        if viewer == "editor":
+            _ed = getattr(t, "editor_deadline", None)
+            out["deadline_iso"] = (_ed.strftime("%Y-%m-%dT%H:%M") if _ed else "")
+        else:
+            out["deadline_iso"] = (t.deadline.strftime("%Y-%m-%dT%H:%M") if t.deadline else "")
         out["reference"] = t.reference or ""
         # §31 remarks audience: editors don't see PM-only remarks
         _aud = getattr(t, "remarks_audience", "both") or "both"
@@ -795,6 +809,38 @@ def edit_submissions_out(db, t):
                     "kind": ("Revision" if e.event == "revision_submitted" else "Submission")})
     if t.edited_link and (not out or out[0].get("link") != t.edited_link):
         out.insert(0, {"at": "", "link": t.edited_link, "kind": "Current"})
+    return out
+
+
+def edited_versions_out(db, t):
+    """All edited-video links the editor has submitted, oldest first, numbered Version 1..N.
+    Powers the 'Edited Link' view (Version 1 / Version 2 ...) across editor, admin & production."""
+    rows = (db.query(ProductionEvent)
+            .filter(ProductionEvent.task_id == t.id,
+                    ProductionEvent.event.in_(["edited_video_submitted", "revision_submitted"]))
+            .order_by(ProductionEvent.created_at.asc(), ProductionEvent.id.asc()).all())
+    seq = []
+    for e in rows:
+        try:
+            link = (json.loads(e.meta) if e.meta else {}).get("link", "")
+        except Exception:
+            link = ""
+        if link:
+            seq.append({"link": link, "at": _dt(e.created_at)})
+    # make sure the current edited_link is represented (older data without events)
+    if t.edited_link and (not seq or seq[-1]["link"] != t.edited_link):
+        # only append if this exact link isn't already the last one recorded
+        if not any(s["link"] == t.edited_link for s in seq):
+            seq.append({"link": t.edited_link, "at": _dt(getattr(t, "editing_done_at", None))})
+    # collapse consecutive duplicate links, then number
+    out = []
+    last = None
+    for s in seq:
+        if s["link"] == last:
+            out[-1]["at"] = s["at"] or out[-1]["at"]
+            continue
+        out.append({"version": len(out) + 1, "link": s["link"], "at": s["at"]})
+        last = s["link"]
     return out
 
 
@@ -990,15 +1036,19 @@ def mark_read(db, user, nid=None):
 
 
 # ---------------------------------------------------------------- deadline
-def deadline_flag(t):
+def deadline_flag(t, deadline=None):
     """Human-readable deadline signal for cards/filters (spec §38). Canonical UTC stored;
-    labels are plain English, never raw timer text."""
-    if not t.deadline:
+    labels are plain English, never raw timer text.
+
+    ``deadline`` overrides ``t.deadline`` so a role can be judged against its own
+    deadline (e.g. editors against ``editor_deadline``, not the teacher deadline)."""
+    dl = deadline if deadline is not None else t.deadline
+    if not dl:
         return ("none", "No deadline")
     if t.lifecycle in ("uploaded", "completed"):
         return ("done", "Completed")
     now = datetime.utcnow()
-    delta = (t.deadline - now).total_seconds()
+    delta = (dl - now).total_seconds()
     ad = abs(delta)
     d = int(ad // 86400); h = int((ad % 86400) // 3600); m = int((ad % 3600) // 60)
     if delta < 0:
