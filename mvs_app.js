@@ -1272,6 +1272,8 @@ function _setBellUnread(role,on){
 async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   try{ await api(notifEp(role,'/notifications/'+id+'/read'),'PATCH'); }catch(e){}
   const link=decodeURIComponent(encLink||'');
+  // track the click for the sender's notification tracker (students clicking a video link)
+  if(role==='student' && /^https?:\/\//i.test(link)){ try{ api(notifEp(role,'/notifications/'+id+'/click'),'PATCH').catch(function(){}); }catch(e){} }
   try{ refreshNotifBadge(role); }catch(e){}
   // Real URL -> open in a new tab
   if(/^https?:\/\//i.test(link)){ if(link) window.open(link,'_blank','noopener'); openNotifPanel(role); return; }
@@ -29981,6 +29983,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(tab==='youtube'){
       if(!t.youtube_url) return '<div class="pd-empty">Not published yet.</div>';
+      setTimeout(function(){ try{ prodLoadNotifyLog(t.id); }catch(e){} },30);
       return '<div class="pd-kv">'+
         _kv('YouTube URL', '<a href="'+esc(t.youtube_url)+'" target="_blank">Open on YouTube</a>')+
         _kv('Video ID', esc(t.yt_video_id||''))+
@@ -29988,7 +29991,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Published', esc(t.published_at||''))+
         _kv('Current Views', t.yt_views!=null?String(t.yt_views):'\u2014')+
         _kv('Last Updated', esc(t.yt_views_at||''))+
-      '</div>';
+      '</div>'+
+      '<div style="margin-top:8px"><button class="p-btn p-btn-primary" onclick="prodNotifyStudents('+t.id+')">'+ic('send')+' Send to Students</button></div>'+
+      prodNotifyLogHtml(t.id);
     }
     return '';
   }
@@ -30194,11 +30199,149 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/tasks/'+id+'/mark-old','POST',{is_old:!!isOld}).then(function(){ prodDismiss(); toast(isOld?'Marked as Old (won\u2019t count this month)':'Marked as New'); _refresh('production'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
-  window.prodNotifyStudents=function(id){    if(!confirm('Send this video link to all students as a notification?')) return;
-    _pBusy(true);
-    api(P.production.api+'/tasks/'+id+'/notify-students','POST',{}).then(function(r){ _pBusy(false); toast('Sent to '+((r&&r.count)||0)+' students'); })
-      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Could not send',true); });
+  // ===== Send to Students — recipient picker (all / class / subject) + only when YT link exists =====
+  window._pns={mode:'all',classes:{},subjects:{},targets:null,id:0};
+  window.prodNotifyStudents=function(id){
+    _pnsCss();
+    window._pns={mode:'all',classes:{},subjects:{},targets:null,id:id};
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:520px"><div class="pd-head"><div class="h-title">'+ic('send')+' Send to Students</div><button class="pd-x" onclick="_pnsClose()">&times;</button></div>'+
+      '<div class="p-modal-body" id="pns-body"><div class="p-empty">Loading students…</div></div>'+
+      '<div class="pd-foot"><div class="p-acts" style="width:100%;justify-content:space-between"><div class="pns-count" id="pns-count">—</div><button class="p-btn p-btn-primary" id="pns-send" onclick="prodNotifySend('+id+')">'+ic('send')+' Send</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) _pnsClose(); });
+    document.body.appendChild(dr);
+    api(P.production.api+'/tasks/'+id+'/notify-targets').then(function(r){ window._pns.targets=r||{classes:[],subjects:[],all_count:0}; _pnsRender(); })
+      .catch(function(e){ var b=document.getElementById('pns-body'); if(b) b.innerHTML='<div class="p-empty">Could not load students. '+esc(e&&e.message||'')+'</div>'; });
   };
+  window._pnsMode=function(m){ window._pns.mode=m; _pnsRender(); };
+  window._pnsToggle=function(kind,key){ var st=window._pns; var bag=(kind==='class')?st.classes:st.subjects; if(bag[key]) delete bag[key]; else bag[key]=1; _pnsCount(); _pnsMarks(); };
+  function _pnsMarks(){ document.querySelectorAll('#pns-body .pns-opt').forEach(function(el){ var k=el.getAttribute('data-k'), kind=el.getAttribute('data-kind'); var bag=(kind==='class')?window._pns.classes:window._pns.subjects; el.classList.toggle('on',!!bag[k]); }); }
+  function _pnsCount(){
+    var st=window._pns, tg=st.targets||{}, n=0, note='';
+    if(st.mode==='all'){ n=tg.all_count||0; }
+    else if(st.mode==='class'){ (tg.classes||[]).forEach(function(c){ if(st.classes[c.class_level]) n+=c.count; }); }
+    else if(st.mode==='subject'){ (tg.subjects||[]).forEach(function(s){ if(st.subjects[s.key]) n+=s.count; }); note=' (duplicates removed on send)'; }
+    var el=document.getElementById('pns-count'); if(el) el.innerHTML=n?('<b>'+n+'</b> recipient'+(n===1?'':'s')+esc(note)):'<span style="color:var(--muted)">Select recipients</span>';
+    var sb=document.getElementById('pns-send'); if(sb){ sb.disabled=!n; sb.style.opacity=n?'1':'.5'; }
+  }
+  function _pnsRender(){
+    var b=document.getElementById('pns-body'); if(!b) return; var st=window._pns, tg=st.targets||{classes:[],subjects:[],all_count:0};
+    var tab=function(m,lbl){ return '<button class="pns-tab'+(st.mode===m?' on':'')+'" onclick="_pnsMode(\''+m+'\')">'+lbl+'</button>'; };
+    var html='<div class="pns-note">'+ic('play')+' Students will receive the <b>published YouTube link</b> only.</div>'+
+      '<div class="pns-tabs">'+tab('all','All Students')+tab('class','By Class')+tab('subject','By Subject')+'</div>';
+    if(st.mode==='all'){
+      html+='<div class="pns-all">'+ic('users')+' Send to <b>all '+(tg.all_count||0)+'</b> active students.</div>';
+    } else if(st.mode==='class'){
+      html+=(tg.classes||[]).length?('<div class="pns-grid">'+tg.classes.map(function(c){ return '<div class="pns-opt" data-kind="class" data-k="'+esc(c.class_level)+'" onclick="_pnsToggle(\'class\',\''+esc(c.class_level)+'\')"><span class="pns-chk"></span><span class="pns-opt-t">Class '+esc(c.class_level)+'</span><span class="pns-opt-n">'+c.count+'</span></div>'; }).join('')+'</div>'):'<div class="p-empty">No classes found.</div>';
+    } else {
+      html+=(tg.subjects||[]).length?('<div class="pns-grid">'+tg.subjects.map(function(s){ return '<div class="pns-opt" data-kind="subject" data-k="'+esc(s.key)+'" onclick="_pnsToggle(\'subject\',\''+esc(s.key)+'\')"><span class="pns-chk"></span><span class="pns-opt-t">'+esc(s.name)+' <span class="pns-cls">Class '+esc(s.class)+'</span></span><span class="pns-opt-n">'+s.count+'</span></div>'; }).join('')+'</div>'):'<div class="p-empty">No subjects found.</div>';
+    }
+    html+='<div class="p-field" style="margin-top:12px"><label>Message (optional)</label><textarea class="p-area" id="pns-msg" placeholder="Leave blank for an auto message"></textarea></div>';
+    b.innerHTML=html; _pnsMarks(); _pnsCount();
+  }
+  window._pnsClose=function(){ var m=document.getElementById('prod-modal'); if(m) m.remove(); };
+  window.prodNotifySend=function(id){
+    var st=window._pns; var body={mode:st.mode,message:((document.getElementById('pns-msg')||{}).value||'').trim()};
+    if(st.mode==='class') body.classes=Object.keys(st.classes);
+    else if(st.mode==='subject') body.subjects=Object.keys(st.subjects);
+    var sb=document.getElementById('pns-send'); if(sb){ sb.disabled=true; sb.style.opacity='.6'; }
+    api(P.production.api+'/tasks/'+id+'/notify-students','POST',body).then(function(r){
+      _pnsClose(); toast('Sent to '+((r&&r.count)||0)+' student'+(((r&&r.count)===1)?'':'s'));
+      try{ prodLoadNotifyLog(id); }catch(e){}   // refresh the tracker in the drawer if open
+    }).catch(function(e){ if(sb){ sb.disabled=false; sb.style.opacity='1'; } toast((e&&e.message)||'Could not send',true); });
+  };
+  // ---- Tracker: campaigns for a task (reached / viewed / clicked) + recipient lists ----
+  window.prodNotifyLogHtml=function(id){ return '<div id="pns-log" data-tid="'+id+'"><div class="p-empty" style="padding:14px">Loading sent history…</div></div>'; };
+  window.prodLoadNotifyLog=function(id){
+    var box=document.getElementById('pns-log'); if(!box) return;
+    api(P.production.api+'/tasks/'+id+'/notify-log').then(function(r){
+      var camps=(r&&r.campaigns)||[]; if(!camps.length){ box.innerHTML='<div class="pns-empty">'+ic('send')+' Not sent to students yet.</div>'; return; }
+      box.innerHTML='<div class="p-sec">Sent to Students ('+camps.length+')</div>'+camps.map(function(c){
+        return '<div class="pns-camp"><div class="pns-camp-h"><div class="pns-camp-l">'+esc(c.label||'Students')+'</div><div class="pns-camp-at">'+esc(_ytpFmt(c.created_at)||'')+'</div></div>'+
+          '<div class="pns-chips">'+
+            '<span class="pns-chip reach">'+ic('send')+' Reached <b>'+(c.sent||0)+'</b></span>'+
+            '<span class="pns-chip view" onclick="prodNotifyDetail(\''+esc(c.batch_key)+'\',\'viewed\')" title="See who viewed">'+ic('eye')+' Viewed <b>'+(c.viewed||0)+'</b></span>'+
+            '<span class="pns-chip click" onclick="prodNotifyDetail(\''+esc(c.batch_key)+'\',\'clicked\')" title="See who clicked the link">'+ic('play')+' Clicked <b>'+(c.clicked||0)+'</b></span>'+
+            '<span class="pns-chip all" onclick="prodNotifyDetail(\''+esc(c.batch_key)+'\',\'all\')" title="See all recipients">'+ic('users')+' All</span>'+
+          '</div></div>';
+      }).join('');
+    }).catch(function(){ box.innerHTML='<div class="pns-empty">Could not load sent history.</div>'; });
+  };
+  window.prodNotifyDetail=function(batch,filter){
+    _pnsCss();
+    var old=document.getElementById('prod-modal2'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='1200';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">Recipients</div><button class="pd-x" onclick="(document.getElementById(\'prod-modal2\')||{}).remove&&document.getElementById(\'prod-modal2\').remove()">&times;</button></div><div class="p-modal-body" id="pnd-body"><div class="p-empty">Loading…</div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+    document.body.appendChild(dr);
+    window._pndFilter=filter||'all';
+    api(P.production.api+'/notify-log/'+encodeURIComponent(batch)).then(function(r){ window._pndData=r||{}; _pndRender(); })
+      .catch(function(e){ var b=document.getElementById('pnd-body'); if(b) b.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
+  };
+  window._pndTab=function(f){ window._pndFilter=f; _pndRender(); };
+  function _pndRender(){
+    var b=document.getElementById('pnd-body'); if(!b) return; var d=window._pndData||{}; var rows=(d.recipients||[]); var f=window._pndFilter||'all';
+    var list=rows.filter(function(r){ return f==='viewed'?r.read:(f==='clicked'?r.clicked:true); });
+    var tab=function(k,lbl,n){ return '<button class="pnd-tab'+(f===k?' on':'')+'" onclick="_pndTab(\''+k+'\')">'+lbl+' <span>'+n+'</span></button>'; };
+    var head='<div class="pnd-sum">'+esc(d.label||'Students')+'</div>'+
+      '<div class="pnd-tabs">'+tab('all','All',d.sent||0)+tab('viewed','Viewed',d.viewed||0)+tab('clicked','Clicked',d.clicked||0)+'</div>';
+    var body=list.length?('<div class="pnd-list">'+list.map(function(r){
+      var badge=r.clicked?'<span class="pnd-b click">'+ic('play')+' Clicked</span>':(r.read?'<span class="pnd-b view">'+ic('eye')+' Viewed</span>':'<span class="pnd-b sent">Sent</span>');
+      return '<div class="pnd-row"><span class="pnd-av">'+esc((r.name||'?').slice(0,1).toUpperCase())+'</span><div class="pnd-who"><div class="pnd-nm">'+esc(r.name||'Student')+(r.class?' <span class="pnd-cls">Class '+esc(r.class)+'</span>':'')+'</div>'+((r.clicked&&r.clicked_at)?'<div class="pnd-t">'+esc(_ytpFmt(r.clicked_at))+'</div>':((r.read&&r.read_at)?'<div class="pnd-t">'+esc(_ytpFmt(r.read_at))+'</div>':''))+'</div>'+badge+'</div>';
+    }).join('')+'</div>'):'<div class="p-empty" style="padding:20px">No students in this list yet.</div>';
+    b.innerHTML=head+body;
+  }
+  function _pnsCss(){ if(document.getElementById('pns-css')) return; var s=document.createElement('style'); s.id='pns-css'; s.textContent=[
+    '.pns-note{background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.25);color:#b45309;border-radius:10px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:7px}',
+    '.pns-note svg{width:14px;height:14px;flex:0 0 14px}',
+    '.pns-tabs{display:flex;gap:6px;margin-bottom:12px}',
+    '.pns-tab{flex:1;border:1.5px solid var(--border);background:var(--card);color:var(--text-muted);border-radius:10px;padding:8px 6px;font-weight:700;font-size:.8rem;cursor:pointer;transition:.15s}',
+    '.pns-tab.on{border-color:#c99a2e;background:linear-gradient(135deg,#e0b23a,#c99a2e);color:#fff;box-shadow:0 3px 10px -3px rgba(201,154,46,.5)}',
+    '.pns-all{background:var(--surface-2,#f4f1ea);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.86rem;display:flex;align-items:center;gap:8px}',
+    'body.dark .pns-all{background:#241c0d}',
+    '.pns-grid{display:flex;flex-direction:column;gap:7px;max-height:300px;overflow-y:auto}',
+    '.pns-opt{display:flex;align-items:center;gap:10px;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;transition:.15s}',
+    '.pns-opt:hover{border-color:#c99a2e}',
+    '.pns-opt.on{border-color:#c99a2e;background:rgba(201,154,46,.08)}',
+    '.pns-chk{width:20px;height:20px;flex:0 0 20px;border:2px solid var(--border);border-radius:6px;position:relative;transition:.15s}',
+    '.pns-opt.on .pns-chk{background:#c99a2e;border-color:#c99a2e}',
+    '.pns-opt.on .pns-chk:after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}',
+    '.pns-opt-t{flex:1;font-weight:700;font-size:.88rem;color:var(--text)}',
+    '.pns-cls{font-size:.68rem;font-weight:700;color:var(--text-muted);background:var(--surface-2,#eee);padding:1px 7px;border-radius:999px;margin-left:4px}',
+    '.pns-opt-n{font-weight:800;font-size:.82rem;color:#b8891f;background:rgba(201,154,46,.14);padding:2px 10px;border-radius:999px}',
+    '.pns-count{font-size:.84rem;color:var(--text)}',
+    '.pns-camp{border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin-bottom:9px;background:var(--card)}',
+    '.pns-camp-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:9px}',
+    '.pns-camp-l{font-weight:800;font-size:.85rem;color:var(--text)}',
+    '.pns-camp-at{font-size:.68rem;color:var(--text-muted)}',
+    '.pns-chips{display:flex;gap:7px;flex-wrap:wrap}',
+    '.pns-chip{display:inline-flex;align-items:center;gap:5px;font-size:.74rem;font-weight:700;padding:4px 11px;border-radius:999px;border:1px solid var(--border);color:var(--text-muted)}',
+    '.pns-chip svg{width:12px;height:12px}',
+    '.pns-chip.reach{background:rgba(120,120,120,.08)}',
+    '.pns-chip.view{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.28);color:#2563eb;cursor:pointer}',
+    '.pns-chip.click{background:rgba(22,163,74,.1);border-color:rgba(22,163,74,.3);color:#16a34a;cursor:pointer}',
+    '.pns-chip.all{cursor:pointer}',
+    '.pns-chip.view:hover,.pns-chip.click:hover,.pns-chip.all:hover{filter:brightness(.96);transform:translateY(-1px)}',
+    '.pns-empty{color:var(--text-muted);font-size:.82rem;padding:10px 2px;display:flex;align-items:center;gap:7px}',
+    '.pnd-sum{font-weight:800;font-size:.9rem;color:var(--text);margin-bottom:10px}',
+    '.pnd-tabs{display:flex;gap:6px;margin-bottom:12px}',
+    '.pnd-tab{flex:1;border:1.5px solid var(--border);background:var(--card);color:var(--text-muted);border-radius:9px;padding:7px 5px;font-weight:700;font-size:.76rem;cursor:pointer}',
+    '.pnd-tab.on{border-color:#c99a2e;background:rgba(201,154,46,.12);color:#b8891f}',
+    '.pnd-tab span{font-weight:800}',
+    '.pnd-list{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow-y:auto}',
+    '.pnd-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px}',
+    '.pnd-av{width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:linear-gradient(135deg,#e0b23a,#c99a2e);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.82rem}',
+    '.pnd-who{flex:1;min-width:0}',
+    '.pnd-nm{font-weight:700;font-size:.85rem;color:var(--text)}',
+    '.pnd-cls{font-size:.66rem;font-weight:700;color:var(--text-muted)}',
+    '.pnd-t{font-size:.66rem;color:var(--text-muted)}',
+    '.pnd-b{font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}',
+    '.pnd-b svg{width:11px;height:11px}',
+    '.pnd-b.click{background:rgba(22,163,74,.12);color:#16a34a}',
+    '.pnd-b.view{background:rgba(37,99,235,.12);color:#2563eb}',
+    '.pnd-b.sent{background:rgba(120,120,120,.12);color:var(--text-muted)}'
+  ].join(''); document.head.appendChild(s); }
   window.prodRefreshViews=function(){
     var btn=document.getElementById('pv-refresh'); if(btn){ btn.disabled=true; btn.textContent='Refreshing…'; }
     api(P.production.api+'/refresh-views','POST',{}).then(function(r){ toast('Views updated ('+((r&&r.updated)||0)+' videos)'); _refresh('production'); })

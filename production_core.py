@@ -996,6 +996,7 @@ _EVENT_LABELS = {
     "youtube_link_added": "YouTube Link Added",
     "uploaded": "Uploaded",
     "youtube_metrics_updated": "YouTube Metrics Updated",
+    "sent_to_students": "Sent to Students",
 }
 
 

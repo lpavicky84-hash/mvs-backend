@@ -706,6 +706,7 @@ class Notification(Base):
     batch_key   = Column(String(40), nullable=True)   # ek send = ek batch
     batch_label = Column(String(160), nullable=True)  # e.g. "Physics" / "All My Students"
     read_at     = Column(DateTime, nullable=True)     # kab dekha
+    clicked_at  = Column(DateTime, nullable=True)     # kab link pe click kiya (video link tracking)
 
     user = relationship("User", back_populates="notifications")
 

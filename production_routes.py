@@ -2550,22 +2550,166 @@ def prod_refresh_views(db: Session = Depends(get_db), me=Depends(get_pm_or_admin
     return {"ok": True, "updated": n, "fetched": len(got), "total": len(idmap)}
 
 
+def _prod_active_students(db):
+    from models import StudentProfile
+    return (db.query(StudentProfile).join(User, StudentProfile.user_id == User.id)
+            .filter(User.is_active == True, User.role == "student").all())  # noqa: E712
+
+
+@router.get("/tasks/{tid}/notify-targets")
+def prod_notify_targets(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Recipient options for 'Send to Students' — all / by class / by subject, with live counts."""
+    _task(db, tid)
+    students = _prod_active_students(db)
+    cls_ids, subj, all_ids = {}, {}, set()
+    for sp in students:
+        if not sp.user_id:
+            continue
+        all_ids.add(sp.id)
+        cl = str(getattr(sp, "class_level", "") or "").strip() or "?"
+        cls_ids.setdefault(cl, set()).add(sp.id)
+        for s in (sp.subjects or []):
+            nm = str(s or "").strip()
+            if not nm:
+                continue
+            key = nm + "|" + cl
+            d = subj.get(key)
+            if not d:
+                d = {"key": key, "name": nm, "class": cl, "ids": set()}
+                subj[key] = d
+            d["ids"].add(sp.id)
+    classes = [{"class_level": c, "count": len(ids)} for c, ids in sorted(cls_ids.items())]
+    subjects = [{"key": d["key"], "name": d["name"], "class": d["class"], "count": len(d["ids"])}
+                for d in subj.values()]
+    subjects.sort(key=lambda x: (-x["count"], x["name"], x["class"]))
+    return {"classes": classes, "subjects": subjects, "all_count": len(all_ids)}
+
+
 @router.post("/tasks/{tid}/notify-students")
 def prod_notify_students(tid: int, payload: dict = Body(default={}),
                          db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
-    """Send the published video link to all students as a tappable notification."""
+    """Send the PUBLISHED YouTube link to selected students (all / class / subject / custom).
+    Only the YouTube link is ever sent — never the teacher/editor raw upload. Tracked per batch."""
+    import uuid
     t = _task(db, tid)
-    link = (payload.get("link") or t.youtube_url or t.submitted_link or "").strip()
+    link = (t.youtube_url or "").strip()
     if not link:
-        raise HTTPException(400, "No video link is attached to this task yet.")
+        raise HTTPException(400, "Post the YouTube link first — students receive the published video, not the raw upload.")
+    mode = (payload.get("mode") or "all").strip()
+    classes = [str(c).strip() for c in (payload.get("classes") or []) if str(c).strip()]
+    subj_keys = [str(s).strip() for s in (payload.get("subjects") or []) if str(s).strip()]
+    student_ids = set(int(x) for x in (payload.get("student_ids") or []) if str(x).strip().isdigit())
+    students = _prod_active_students(db)
+    picked, label = {}, ""
+    if mode == "classes":
+        cset = set(classes)
+        for sp in students:
+            if (str(getattr(sp, "class_level", "") or "").strip()) in cset:
+                picked[sp.id] = sp
+        label = ("Class " + ", ".join(classes)) if classes else "Selected classes"
+    elif mode == "subjects":
+        kset = set(subj_keys)
+        for sp in students:
+            cl = str(getattr(sp, "class_level", "") or "").strip() or "?"
+            for s in (sp.subjects or []):
+                if (str(s).strip() + "|" + cl) in kset:
+                    picked[sp.id] = sp
+                    break
+        _names = []
+        for k in subj_keys:
+            nm = k.split("|")[0]
+            if nm not in _names:
+                _names.append(nm)
+        label = (", ".join(_names[:3]) + (" +%d more" % (len(_names) - 3) if len(_names) > 3 else "")) or "Selected subjects"
+    elif mode == "custom":
+        for sp in students:
+            if sp.id in student_ids:
+                picked[sp.id] = sp
+        label = "%d selected student%s" % (len(picked), "" if len(picked) == 1 else "s")
+    else:  # all
+        for sp in students:
+            picked[sp.id] = sp
+        label = "All Students"
+    if not picked:
+        raise HTTPException(400, "No students matched your selection.")
     msg = (payload.get("message") or "").strip() or \
-        ('A new video "%s" is now available' % (t.title or "")) + \
-        ((" on %s" % t.channel_name) if t.channel_name else "") + ". Tap to watch."
-    users = db.query(User).filter(User.is_active == True, User.role == "student").all()
-    for u in users:
-        _vt_notify_fn(db, u.id, "New Video: %s" % (t.title or ""), msg, "video_link", link)
+        ('New video "%s" is now live%s. Tap to watch on YouTube.' %
+         (t.title or "", (" on %s" % t.channel_name) if t.channel_name else ""))
+    batch = uuid.uuid4().hex[:24]
+    title = "New Video: %s" % (t.title or "")
+    is_admin = (getattr(me, "role", None) == UserRole.admin)
+    sent = 0
+    for sp in picked.values():
+        if not sp.user_id:
+            continue
+        db.add(Notification(user_id=sp.user_id, title=title, message=msg, notif_type="video_link",
+                            link=link, image_url=None, sender_id=me.id,
+                            sender_role=("admin" if is_admin else "production"),
+                            batch_key=batch, batch_label=label))
+        sent += 1
+    try:
+        pc.log_event(db, t, me, "sent_to_students",
+                     meta={"note": "Sent to %d student%s (%s)" % (sent, "" if sent == 1 else "s", label),
+                           "batch": batch})
+    except Exception:
+        pass
     db.commit()
-    return {"ok": True, "count": len(users)}
+    return {"ok": True, "count": sent, "batch_key": batch, "label": label}
+
+
+@router.get("/tasks/{tid}/notify-log")
+def prod_notify_log(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """All 'Send to Students' batches for this task's published video, with reached/viewed/clicked."""
+    t = _task(db, tid)
+    link = (t.youtube_url or "").strip()
+    if not link:
+        return {"campaigns": []}
+    rows = (db.query(Notification)
+            .filter(Notification.notif_type == "video_link", Notification.link == link,
+                    Notification.batch_key.isnot(None))
+            .order_by(Notification.created_at.desc()).all())
+    batches = {}
+    for n in rows:
+        b = batches.get(n.batch_key)
+        if not b:
+            b = {"batch_key": n.batch_key, "label": n.batch_label or "Students", "title": n.title,
+                 "message": n.message, "sent": 0, "viewed": 0, "clicked": 0,
+                 "created_at": n.created_at.isoformat() if n.created_at else None}
+            batches[n.batch_key] = b
+        b["sent"] += 1
+        if n.is_read:
+            b["viewed"] += 1
+        if n.clicked_at:
+            b["clicked"] += 1
+    out = sorted(batches.values(), key=lambda b: b["created_at"] or "", reverse=True)
+    return {"campaigns": out}
+
+
+@router.get("/notify-log/{batch_key}")
+def prod_notify_log_detail(batch_key: str, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Recipient list for one batch — who it reached, who viewed, who clicked the link."""
+    from models import StudentProfile
+    rows = (db.query(Notification)
+            .filter(Notification.batch_key == batch_key, Notification.notif_type == "video_link")
+            .order_by(Notification.created_at.asc()).all())
+    if not rows:
+        raise HTTPException(404, "Batch not found")
+    uids = list({n.user_id for n in rows if n.user_id})
+    umap, clsmap = {}, {}
+    if uids:
+        for uid, nm in db.query(User.id, User.name).filter(User.id.in_(uids)):
+            umap[uid] = nm or "Student"
+        for sp in db.query(StudentProfile).filter(StudentProfile.user_id.in_(uids)).all():
+            clsmap[sp.user_id] = str(getattr(sp, "class_level", "") or "")
+    out = []
+    for n in rows:
+        out.append({"name": umap.get(n.user_id, "Student"), "class": clsmap.get(n.user_id, ""),
+                    "read": bool(n.is_read), "read_at": n.read_at.isoformat() if n.read_at else None,
+                    "clicked": bool(n.clicked_at), "clicked_at": n.clicked_at.isoformat() if n.clicked_at else None})
+    out.sort(key=lambda r: (r["clicked"], r["read"], r["name"].lower()), reverse=True)
+    return {"batch_key": batch_key, "title": rows[0].title, "label": rows[0].batch_label or "Students",
+            "sent": len(out), "viewed": sum(1 for r in out if r["read"]),
+            "clicked": sum(1 for r in out if r["clicked"]), "recipients": out}
 
 
 # ============================================================ PROPOSALS + URGENT QUEUE

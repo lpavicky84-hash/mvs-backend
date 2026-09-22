@@ -1234,6 +1234,20 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
         db.commit()
     return {"ok": True}
 
+
+@router.patch("/notifications/{notif_id}/click")
+def mark_notif_clicked(notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student ne notification ke link pe click kiya — sender ke tracker ke liye record."""
+    n = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == current_user.id).first()
+    if n:
+        if not n.clicked_at:
+            n.clicked_at = datetime.now()
+        n.is_read = True
+        if not n.read_at:
+            n.read_at = datetime.now()
+        db.commit()
+    return {"ok": True}
+
 # ===== PROFILE & SUBJECT SELECTION =====
 def _session_label(db, sid):
     # oct2026 -> 'October 2026', stream2 -> 'Stream 2'
