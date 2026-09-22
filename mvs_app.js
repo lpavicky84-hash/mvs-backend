@@ -10169,7 +10169,7 @@ function tRenderDoubts(){
     rows+=pendShown.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_doubtFmt(_qOf(d))}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_doubtFmt(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${tAssignRow(d)}</div>`;
+      return `<div class="dbt-card pend">${headOf(d,(d.needs_attention&&d.status==='resolved')?'<span class="dbt-pill open">New Follow-up</span>':'<span class="dbt-pill open">Pending</span>')}<div class="dbt-q" id="tdq-${d.id}">${_doubtFmt(_qOf(d))}</div>${linkPreviews(_qOf(d))}${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_doubtFmt(d.answer)}</span></div>${linkPreviews(d.answer)}`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:12px">${composerHTML('ta'+d.id,'Write your answer\u2026 or send a voice note / file','resolveDoubt('+d.id+')','Resolve')}</div>${tAssignRow(d)}</div>`;
     }).join('');
   }
   if(done.length && (_tab==='all'||_tab==='resolved')){
@@ -10177,7 +10177,7 @@ function tRenderDoubts(){
     rows+=doneShown.map(d=>{
       const media=mediaOf(d);
       const amedia=`${d.has_answer_voice?`<button class="btn btn-ghost btn-sm" onclick="playDoubtVoice(this,'/api/teacher/doubt/${d.id}/answer-voice')">${ic('play')} Your Voice Answer</button>`:''}${d.has_answer_file?doubtAttachHtml('teacher',d.id,d.answer_attach_mime,d.answer_attach_name,true):''}`;
-      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_doubtFmt(_qOf(d))}</div>${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_doubtFmt(d.answer)}</span></div>`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
+      return `<div class="dbt-card res">${headOf(d,'<span class="dbt-pill res">\u2713 Resolved</span>')}<div class="dbt-q" id="tdq-${d.id}">${_doubtFmt(_qOf(d))}</div>${linkPreviews(_qOf(d))}${media?`<div class="dbt-media">${media}</div>`:''}${d.answer?`<div class="dbt-a"><b>Your answer:</b> <span id="tda-${d.id}">${_doubtFmt(d.answer)}</span></div>${linkPreviews(d.answer)}`:''}${amedia?`<div class="dbt-media">${amedia}</div>`:''}${dbtThreadHTML(d)}<div style="margin-top:10px"><button class="btn btn-danger btn-sm" title="Delete your response — the doubt moves back to Pending" onclick="tDelDoubtAnswer(${d.id})">${ic('trash')} Delete Response</button></div></div>`;
     }).join('');
     if(done.length>_dn) rows+=`<div style="text-align:center;margin:10px 0"><button class="btn btn-ghost btn-sm" onclick="tMoreDone()">Show more resolved (${done.length-_dn} more)</button></div>`;
   }
@@ -19663,8 +19663,8 @@ async function loadSDoubts(){
       const ansHead=d.official
         ? `<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#8a6d10">${esc(d.teacher_name||'MVS Foundation')}</div><div style="font-size:.66rem;font-weight:800;color:#a8841a;letter-spacing:.06em">OFFICIAL RESPONSE</div></div>`
         : `<div style="min-width:0"><div style="font-weight:800;font-size:.86rem;color:#166534">${esc(d.teacher_name||'Teacher')}</div><div style="font-size:.66rem;font-weight:700;color:#4d7c5f;letter-spacing:.04em">TEACHER'S REPLY</div></div>`;
-      const ansBlock=d.answer?`<div class="dbt-a"${d.official?' style="border-color:rgba(201,162,39,.55);background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02))"':''}><div class="dbt-a-head">${tAva}${ansHead}</div><div id="dbta-${d.id}">${_doubtFmt(d.answer)}</div></div>`:'';
-      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(fmtDT(d.created_at))}${d.official?' \u00b7 with <b>MVS Foundation</b>':''}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_doubtFmt(d.question||'')}</div>${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}${dbtThreadHTML(d)}${d.status==='resolved'?'<div class="dbt-reask">Is topic par aur samajhna hai? Upar "Ask a Doubt" se ek naya doubt poochho.</div>':''}</div>`;
+      const ansBlock=d.answer?`<div class="dbt-a"${d.official?' style="border-color:rgba(201,162,39,.55);background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(201,162,39,.02))"':''}><div class="dbt-a-head">${tAva}${ansHead}</div><div id="dbta-${d.id}">${_doubtFmt(d.answer)}</div>${linkPreviews(d.answer)}</div>`:'';
+      return `<div class="dbt-card ${d.status==='resolved'?'res':'pend'}"><div class="dbt-head"><div style="min-width:0"><div class="dbt-name">${esc(d.subject)}${d.topic?' \u2014 '+esc(d.topic):''}</div><div class="dbt-meta">${esc(fmtDT(d.created_at))}${d.official?' \u00b7 with <b>MVS Foundation</b>':''}</div></div><div class="dbt-badges"><span class="dbt-pill ${d.status==='resolved'?'res':'open'}">${d.status==='resolved'?'\u2713 Resolved':'Pending'}</span></div></div><div class="dbt-q" id="dbtq-${d.id}">${_doubtFmt(d.question||'')}</div>${linkPreviews(d.question||'')}${media?`<div class="dbt-media">${media}</div>`:''}${ansBlock}${ansv?`<div class="dbt-media">${ansv}</div>`:''}${dbtThreadHTML(d)}${d.status==='resolved'?'<div class="dbt-reask">Is topic par aur samajhna hai? Upar "Ask a Doubt" se ek naya doubt poochho.</div>':''}</div>`;
     }).join('');
     html+=`</div></div></div>`;
     el.innerHTML=html;
@@ -28103,26 +28103,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         body.innerHTML='<div class="p-empty"><h3>No project videos assigned</h3><p>When a PM or admin assigns you a project video or a whole project, it will appear here.</p></div>';
         return;
       }
-      var stCol={assigned:['Assigned','#d97706'],editing:['Editing','#2563eb'],edited:['Edited','#16a34a']};
-      var vcards=vids.map(function(v){
-        var st=stCol[v.edit_state]||stCol.assigned;
-        var srcBtn=v.link?'<a class="pj-btn" href="'+esc(v.link)+'" target="_blank" rel="noopener">Open source video</a>':'';
-        var chatBtn='<button class="pj-btn" onclick="edtProjectChat('+v.project_id+',\''+esc(v.project_title||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button>';
-        var act='';
-        if(v.edit_state==='editing'){
-          act='<button class="pj-btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="edtPvSubmit('+v.chapter_id+')">Submit Edited Video</button>';
-        }else if(v.edit_state==='edited'){
-          act=(v.edited_link?'<a class="pj-btn" href="'+esc(v.edited_link)+'" target="_blank" rel="noopener">Edited video</a>':'')+'<button class="pj-btn" onclick="edtPvReopen('+v.chapter_id+')">Change</button>';
-        }else{
-          act='<button class="pj-btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="edtPvStart('+v.chapter_id+')">Start Editing</button>';
-        }
-        return '<div class="pj-card2" style="--pj0:#1e3a5f;--pj1:#2563eb;margin-bottom:10px"><div class="pj-c-head" style="cursor:default">'+
-          '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+esc(v.project_title||'Project')+'</span><span class="pj-title">'+esc(v.title||'')+'</span>'+
-            '<span style="margin-left:8px;font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:999px;background:'+st[1]+';color:#fff">'+st[0]+'</span></div>'+
-          '<div class="pj-sub">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+'</div></div></div>'+
-          '<div class="pj-c-acts">'+srcBtn+act+chatBtn+'</div>'+
-        '</div>';
-      }).join('');
+      _pjvCss();
+      var vcards=vids.map(_pjvCard).join('');
       var wcards=whole.map(function(w){
         return '<div class="pj-card2" style="--pj0:#3a2c5f;--pj1:#7c3aed;margin-bottom:10px"><div class="pj-c-head" style="cursor:default">'+
           '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">WHOLE PROJECT</span><span class="pj-title">'+esc(w.title||'')+'</span></div>'+
@@ -28135,17 +28117,171 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (vids.length?'<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin:12px 0 6px">Assigned videos ('+vids.length+')</div>'+vcards:'');
     }).catch(function(){ body.innerHTML='<div class="p-empty">Could not load project videos.</div>'; });
   }
+  // ---- Project video card — full task-like experience (start / progress / pause / submit) ----
+  function _pjvState(v){ if((v.edit_state==='edited') && v.review_status==='changes') return 'changes'; return v.edit_state||'assigned'; }
+  function _pjvDl(v){
+    if(!v.deadline_iso) return v.deadline?('Deadline: '+esc(v.deadline)):'';
+    var ms=new Date(String(v.deadline_iso).replace(' ','T')).getTime(); if(isNaN(ms)) return 'Deadline: '+esc(v.deadline||'');
+    var over=(ms<Date.now()) && _pjvState(v)!=='edited';
+    return '<span class="pjv-dl'+(over?' over':'')+'">'+ic('clock')+' '+esc(v.deadline||'')+(over?' · delayed':'')+'</span>';
+  }
+  function _pjvCard(v){
+    var stCol={assigned:['Assigned','#d97706'],editing:['Editing','#2563eb'],paused:['Paused','#9333ea'],edited:['Submitted','#16a34a'],changes:['Changes Required','#dc2626']};
+    var stt=_pjvState(v); var st=stCol[stt]||stCol.assigned; var prog=v.editing_progress||0;
+    var pt=(esc((v.project_title||'').replace(/[\\'"]/g,'')));
+    var thumb=v.thumbnail?('<div class="pjv-thumb" style="background-image:url('+esc(v.thumbnail)+')" onclick="prodLightbox(\''+esc(v.thumbnail)+'\')" title="View thumbnail"></div>')
+      :('<div class="pjv-thumb pjv-thumb-ph">'+ic('video')+'</div>');
+    var srcBtn=v.link?'<a class="pjv-btn ghost" href="'+esc(v.link)+'" target="_blank" rel="noopener">'+ic('play')+' Source</a>':'';
+    var chatBtn='<button class="pjv-btn ghost" onclick="edtProjectChat('+v.project_id+',\''+pt+'\')">'+ic('help')+' Chat</button>';
+    var acts='';
+    if(stt==='assigned'){
+      acts='<button class="pjv-btn primary" onclick="edtPvStart('+v.chapter_id+')">'+ic('play')+' Start Editing</button>';
+    } else if(stt==='editing'){
+      acts='<button class="pjv-btn" onclick="edtPvProgress('+v.chapter_id+','+prog+')">'+ic('edit')+' Update Progress</button>'+
+        '<button class="pjv-btn" onclick="edtPvPause('+v.chapter_id+','+prog+')">'+ic('clock')+' Pause</button>'+
+        '<button class="pjv-btn ok" onclick="edtPvSubmit('+v.chapter_id+')">'+ic('check')+' Submit Edited Video</button>';
+    } else if(stt==='paused'){
+      acts='<button class="pjv-btn primary" onclick="edtPvResume('+v.chapter_id+')">'+ic('play')+' Resume</button>'+
+        '<button class="pjv-btn" onclick="edtPvProgress('+v.chapter_id+','+prog+')">'+ic('edit')+' Update Progress</button>'+
+        '<button class="pjv-btn ok" onclick="edtPvSubmit('+v.chapter_id+')">'+ic('check')+' Submit Edited Video</button>';
+    } else if(stt==='changes'){
+      acts='<button class="pjv-btn" onclick="edtPvProgress('+v.chapter_id+','+prog+')">'+ic('edit')+' Update Progress</button>'+
+        '<button class="pjv-btn ok" onclick="edtPvSubmit('+v.chapter_id+')">'+ic('check')+' Submit Again</button>';
+    } else { // edited
+      acts=(v.edited_link?'<a class="pjv-btn ghost" href="'+esc(v.edited_link)+'" target="_blank" rel="noopener">'+ic('play')+' Edited video</a>':'')+
+        '<button class="pjv-btn" onclick="edtPvReopen('+v.chapter_id+')">'+ic('edit')+' Change</button>';
+    }
+    var meta=[]; if(v.subject)meta.push(esc(v.subject)); if(v.channel_name)meta.push(esc(v.channel_name));
+    var progBar=(stt==='editing'||stt==='paused')?('<div class="pjv-prog"><div class="pjv-prog-bar"><span style="width:'+prog+'%"></span></div><span class="pjv-prog-n">'+prog+'%</span></div>'):'';
+    var noteLine=(stt==='changes'&&v.review_note)?('<div class="pjv-note warn">'+ic('alert')+' Changes required: '+esc(v.review_note)+'</div>')
+      :((stt==='paused'&&v.progress_note)?('<div class="pjv-note">'+ic('clock')+' Paused: '+esc(v.progress_note)+'</div>'):'');
+    return '<div class="pjv-card">'+
+      thumb+
+      '<div class="pjv-body">'+
+        '<div class="pjv-top"><span class="pjv-badge">'+esc(v.project_title||'Project')+'</span><span class="pjv-st" style="background:'+st[1]+'">'+st[0]+'</span></div>'+
+        '<div class="pjv-title">'+esc(v.title||'Untitled')+'</div>'+
+        '<div class="pjv-meta">'+(meta.length?'<span>'+meta.join('</span><span>')+'</span>':'')+'</div>'+
+        '<div class="pjv-meta2">'+_pjvDl(v)+(v.started_at?'<span class="pjv-since">'+ic('play')+' Started '+esc(v.started_at)+'</span>':'')+'</div>'+
+        progBar+noteLine+
+        '<div class="pjv-acts">'+acts+srcBtn+chatBtn+'</div>'+
+      '</div>'+
+    '</div>';
+  }
   window.edtPvStart=function(cid){
     api(P.editor.api+'/project-videos/'+cid+'/start','POST',{}).then(function(){ toast('Editing started'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  window.edtPvSubmit=function(cid){
-    var link=prompt('Paste the edited video drive link:'); if(link===null) return; link=(''+link).trim();
-    if(!link){ toast('Link required',true); return; }
-    api(P.editor.api+'/project-videos/'+cid+'/submit','POST',{edited_link:link}).then(function(){ toast('Edited video submitted'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  window.edtPvResume=function(cid){
+    api(P.editor.api+'/project-videos/'+cid+'/resume','POST',{}).then(function(){ toast('Resumed editing'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.edtPvReopen=function(cid){
     api(P.editor.api+'/project-videos/'+cid+'/reopen','POST',{}).then(function(){ toast('Reopened for editing'); _refresh('editor'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
+  // progress modal (reuses the premium ring/slider — same DOM ids as task modal)
+  window.edtPvProgress=function(cid,cur){
+    cur=parseInt(cur,10)||0;
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:440px"><div class="pd-head"><div class="h-title">Update Progress</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        '<div class="edt-ring" id="edt-ring"><svg viewBox="0 0 120 120"><circle class="edt-ring-bg" cx="60" cy="60" r="52"/><circle class="edt-ring-fg" id="edt-ring-fg" cx="60" cy="60" r="52"/></svg><div class="edt-ring-val" id="edt-ring-val">'+cur+'%</div></div>'+
+        '<input type="range" min="0" max="100" step="5" value="'+cur+'" class="edt-slider" id="edt-slider" oninput="_edtSlide(this.value)">'+
+        '<div class="edt-quick">'+[0,25,50,75,90,100].map(function(p){ return '<button type="button" class="edt-qb" onclick="_edtSlide('+p+',true)">'+p+'%</button>'; }).join('')+'</div>'+
+        '<div class="p-field"><label>Note (optional)</label><input class="p-input" id="edt-note" placeholder="e.g. subtitles & color grading remaining"></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="edtPvProgSubmit('+cid+')">Update Progress</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    window._edtProg=cur; _edtSlide(cur,true);
+  };
+  window.edtPvProgSubmit=function(cid){
+    var v=window._edtProg||0; _pBusy(true);
+    api(P.editor.api+'/project-videos/'+cid+'/progress','POST',{progress:v,remarks:(document.getElementById('edt-note')||{}).value||''})
+      .then(function(){ prodDismiss(); toast('Progress updated'); _refresh('editor'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  // pause modal — % required (preset + custom) + remarks; pause only when % set
+  window.edtPvPause=function(cid,cur){
+    cur=parseInt(cur,10)||0;
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal edtp-modal" style="max-width:470px"><div class="pd-head"><div><div class="h-title">Pause Editing</div><div class="edtp-sub">Kitni editing ho chuki hai — set karke pause karo</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        '<div class="edt-ring" id="edt-ring"><svg viewBox="0 0 120 120"><circle class="edt-ring-bg" cx="60" cy="60" r="52"/><circle class="edt-ring-fg" id="edt-ring-fg" cx="60" cy="60" r="52"/></svg><div class="edt-ring-val" id="edt-ring-val">'+cur+'%</div></div>'+
+        '<input type="range" min="0" max="100" step="1" value="'+cur+'" class="edt-slider" id="edt-slider" oninput="_edtSlide(this.value)">'+
+        '<div class="edt-quick">'+[10,25,50,75,90].map(function(p){ return '<button type="button" class="edt-qb" onclick="_edtSlide('+p+',true)">'+p+'%</button>'; }).join('')+'</div>'+
+        '<div class="p-field"><label>Custom percentage</label><div class="edtp-custom"><input class="p-input" id="edtp-pct" type="number" min="0" max="100" value="'+cur+'" oninput="_edtSlide(this.value,true)"><span class="edtp-pctsign">%</span></div></div>'+
+        '<div class="p-field"><label>Remarks <span style="color:var(--muted);font-weight:600">(what &amp; how much is done)</span></label><textarea class="p-area" id="edtp-rem" placeholder="e.g. rough cut done, color grading &amp; subtitles remaining"></textarea></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="edtPvPauseSubmit('+cid+')">Pause &amp; Save</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    window._edtProg=cur; _edtSlide(cur,true);
+  };
+  window.edtPvPauseSubmit=function(cid){
+    var v=window._edtProg||0; var rem=((document.getElementById('edtp-rem')||{}).value||'').trim();
+    if(!rem){ toast('Please add a short remark about what is done',true); var r=document.getElementById('edtp-rem'); if(r) r.focus(); return; }
+    _pBusy(true);
+    api(P.editor.api+'/project-videos/'+cid+'/pause','POST',{progress:v,remarks:rem})
+      .then(function(){ prodDismiss(); toast('Paused at '+v+'%'); _refresh('editor'); })
+      .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  // submit modal — premium drive-link input (replaces the old prompt)
+  window.edtPvSubmit=function(cid){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:440px"><div class="pd-head"><div class="h-title">Submit Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div class="p-field"><label>Edited video drive link</label><input class="p-input" id="pjv-link" placeholder="https://drive.google.com/..." autocomplete="off"></div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pjv-sub-btn" onclick="edtPvSubmitDo('+cid+')">'+ic('check')+' Submit</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    setTimeout(function(){ var el=document.getElementById('pjv-link'); if(el) el.focus(); },60);
+  };
+  window.edtPvSubmitDo=function(cid){
+    var link=((document.getElementById('pjv-link')||{}).value||'').trim();
+    if(!link){ toast('Please paste the edited video link',true); return; }
+    var b=document.getElementById('pjv-sub-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    api(P.editor.api+'/project-videos/'+cid+'/submit','POST',{edited_link:link})
+      .then(function(){ prodDismiss(); toast('Edited video submitted'); _refresh('editor'); })
+      .catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
+  };
+  function _pjvCss(){ if(document.getElementById('pjv-css')) return; var s=document.createElement('style'); s.id='pjv-css'; s.textContent=[
+    '.pjv-card{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px;margin-bottom:12px;box-shadow:0 4px 16px -12px rgba(0,0,0,.35)}',
+    '.pjv-thumb{width:132px;height:80px;flex:0 0 132px;border-radius:11px;background-size:cover;background-position:center;background-color:#0d0d0d;cursor:zoom-in;border:1px solid var(--border)}',
+    '.pjv-thumb-ph{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1e3a5f,#2563eb);color:rgba(255,255,255,.85);cursor:default}',
+    '.pjv-thumb-ph svg{width:30px;height:30px}',
+    '.pjv-body{flex:1;min-width:0}',
+    '.pjv-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}',
+    '.pjv-badge{font-size:.62rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:#4338ca;background:rgba(99,102,241,.14);padding:3px 10px;border-radius:999px}',
+    '.pjv-st{font-size:.62rem;font-weight:800;color:#fff;padding:3px 10px;border-radius:999px;margin-left:auto}',
+    '.pjv-title{font-weight:800;font-size:1rem;color:var(--text);line-height:1.25;margin-bottom:3px}',
+    '.pjv-meta{font-size:.74rem;color:var(--text-muted);display:flex;gap:6px;flex-wrap:wrap}',
+    '.pjv-meta span:not(:last-child):after{content:"\\00b7";margin-left:6px;opacity:.5}',
+    '.pjv-meta2{display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;font-size:.72rem;color:var(--text-muted)}',
+    '.pjv-dl{display:inline-flex;align-items:center;gap:4px;font-weight:700}',
+    '.pjv-dl svg{width:12px;height:12px}',
+    '.pjv-dl.over{color:#dc2626}',
+    '.pjv-since{display:inline-flex;align-items:center;gap:4px}',
+    '.pjv-since svg{width:11px;height:11px}',
+    '.pjv-prog{display:flex;align-items:center;gap:9px;margin-top:9px}',
+    '.pjv-prog-bar{flex:1;height:7px;border-radius:999px;background:var(--border);overflow:hidden}',
+    '.pjv-prog-bar span{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#1d4ed8);border-radius:999px;transition:width .3s}',
+    '.pjv-prog-n{font-size:.74rem;font-weight:800;color:#2563eb;min-width:36px;text-align:right}',
+    '.pjv-note{margin-top:8px;font-size:.74rem;font-weight:600;color:var(--text-muted);background:var(--surface-2,#f4f1ea);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px}',
+    'body.dark .pjv-note{background:#241c0d}',
+    '.pjv-note svg{width:13px;height:13px;flex:0 0 13px}',
+    '.pjv-note.warn{color:#dc2626;background:rgba(220,38,38,.08)}',
+    '.pjv-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}',
+    '.pjv-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:8px 14px;font-weight:700;font-size:.8rem;cursor:pointer;transition:.15s}',
+    '.pjv-btn svg{width:14px;height:14px}',
+    '.pjv-btn:hover{border-color:#c9a24a;transform:translateY(-1px)}',
+    '.pjv-btn.primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border-color:#1d4ed8}',
+    '.pjv-btn.ok{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-color:#15803d}',
+    '.pjv-btn.ghost{color:var(--text-muted)}',
+    '@media(max-width:560px){.pjv-card{flex-direction:column}.pjv-thumb{width:100%;flex:none;height:150px}}'
+  ].join(''); document.head.appendChild(s); }
   window.edtProjectChat=function(pid,title){
     if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable',true); return; }
     window._ytcOpen({

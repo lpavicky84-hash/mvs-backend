@@ -118,6 +118,8 @@ def _ensure_special_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN thumbnail_link VARCHAR(600) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_refs TEXT NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN deadline DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN editing_progress INTEGER DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN progress_note VARCHAR(400) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN project_editor_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",

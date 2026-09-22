@@ -34,13 +34,24 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
         for c in (db.query(_VC).filter(_VC.task_id.in_(list(pmap.keys())),
                                        _VC.editor_id == sp.id).all()):
             t = pmap.get(c.task_id)
+            _dl = getattr(c, "deadline", None) or (t.deadline if t else None)
+            _sa = getattr(c, "editing_started_at", None)
             vids.append({
                 "chapter_id": c.id, "title": c.title,
                 "project_id": c.task_id, "project_title": (t.title or t.subject or "Project") if t else "Project",
                 "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
+                "channel_name": (getattr(t, "channel_name", "") or "") if t else "",
                 "link": (c.link or ""), "edited_link": (getattr(c, "edited_link", "") or ""),
                 "edit_state": (getattr(c, "edit_state", "") or "") or "assigned",
-                "deadline": pc._dt(getattr(c, "deadline", None) or (t.deadline if t else None)),
+                "editing_progress": int(getattr(c, "editing_progress", 0) or 0),
+                "progress_note": (getattr(c, "progress_note", "") or ""),
+                "review_status": (getattr(c, "review_status", "") or ""),
+                "review_note": (getattr(c, "review_note", "") or ""),
+                "thumbnail": (getattr(c, "thumbnail_link", "") or ""),
+                "started_at": pc._dt(_sa),
+                "started_at_iso": (_sa.strftime("%Y-%m-%dT%H:%M:%S") if _sa else ""),
+                "deadline": pc._dt(_dl),
+                "deadline_iso": (_dl.strftime("%Y-%m-%dT%H:%M:%S") if _dl else ""),
             })
     whole = [{"project_id": t.id, "title": t.title or t.subject or "Project",
               "subject": t.subject or "", "kind": t.kind, "deadline": pc._dt(t.deadline)}
@@ -68,6 +79,63 @@ def editor_pv_start(cid: int, db: Session = Depends(get_db), me=Depends(get_edit
     return {"ok": True, "edit_state": c.edit_state}
 
 
+def _pv_clamp_pct(v):
+    try:
+        v = int(v)
+    except Exception:
+        v = 0
+    return max(0, min(100, v))
+
+
+@router.post("/project-videos/{cid}/progress")
+def editor_pv_progress(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                       me=Depends(get_editor)):
+    """Update editing % for a project video (keeps it in the 'editing' state)."""
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    c.editing_progress = _pv_clamp_pct(payload.get("progress"))
+    _note = (payload.get("remarks") or "").strip()
+    if _note:
+        c.progress_note = _note[:400]
+    if (c.edit_state or "") not in ("editing", "paused"):
+        c.edit_state = "editing"
+    if not c.editing_started_at:
+        c.editing_started_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "editing_progress": c.editing_progress, "edit_state": c.edit_state}
+
+
+@router.post("/project-videos/{cid}/pause")
+def editor_pv_pause(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                    me=Depends(get_editor)):
+    """Pause editing — the editor must set how much % is done + a short remark (like a task)."""
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    if "progress" not in payload or str(payload.get("progress")).strip() == "":
+        raise HTTPException(400, "Set how much editing is done (%) before pausing.")
+    rem = (payload.get("remarks") or "").strip()
+    if not rem:
+        raise HTTPException(400, "Add a short remark about what is done.")
+    c.editing_progress = _pv_clamp_pct(payload.get("progress"))
+    c.progress_note = rem[:400]
+    c.edit_state = "paused"
+    if not c.editing_started_at:
+        c.editing_started_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "edit_state": c.edit_state, "editing_progress": c.editing_progress}
+
+
+@router.post("/project-videos/{cid}/resume")
+def editor_pv_resume(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    c.edit_state = "editing"
+    if not c.editing_started_at:
+        c.editing_started_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "edit_state": c.edit_state}
+
+
 @router.post("/project-videos/{cid}/submit")
 def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
                      me=Depends(get_editor)):
@@ -79,6 +147,7 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
     c.edited_link = link
     c.edit_state = "edited"
     c.edited_at = datetime.utcnow()
+    c.editing_progress = 100
     t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
     proj = (t.title or t.subject or "project") if t else "project"
     try:

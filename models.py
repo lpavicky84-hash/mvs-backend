@@ -644,6 +644,8 @@ class VideoTaskChapter(Base):
     edited_link   = Column(String(600), default="")       # editor-submitted edited video (Phase 4)
     editing_started_at = Column(DateTime, nullable=True)   # when the editor started editing this video
     edited_at     = Column(DateTime, nullable=True)        # when the editor submitted the edited video
+    editing_progress = Column(Integer, default=0)          # % editing done (task-like progress for project videos)
+    progress_note = Column(String(400), default="")        # last progress/pause remark from the editor
     gfx_state     = Column(String(20), default="")        # '' | assigned | done (graphics thumbnail workflow)
     thumbnail_link = Column(String(600), default="")       # graphics-submitted thumbnail for this video
     thumb_refs    = Column(Text, default="")               # JSON list of reference thumbnail URLs (PM -> graphics)
