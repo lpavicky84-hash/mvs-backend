@@ -1146,24 +1146,24 @@ def qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends
 def request_edit_changes(tid: int, payload: dict = Body(...),
                          db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     remarks = (payload.get("remarks") or "").strip()
-    if not remarks:
-        raise HTTPException(400, "Remarks are required for changes")
+    # remarks optional — PM ab chat me changes samjhata hai (smooth transition)
+    _note = remarks or "Changes requested — details in chat with editor."
     t = _task(db, tid)
     if t.lifecycle != "qc_pending":
         raise HTTPException(400, "Task is not in QC")
     t.qc_status = "changes"
     t.revision_count = (t.revision_count or 0) + 1
     rv = TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="changes",
-                    remarks=remarks, revision_no=t.revision_count)
+                    remarks=_note, revision_no=t.revision_count)
     db.add(rv); db.flush()
     pc.save_images(db, t, payload.get("images"), "edit", rv.id, me)
     _refs = (payload.get("references") or payload.get("reference") or "").strip()
     pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested",
-                 meta={"note": remarks[:200], "references": _refs})
+                 meta={"note": _note[:200], "references": _refs})
     if t.editor_id:
         ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ed and ed.user_id:
-            pc.notify(db, ed.user_id, "Changes Required", remarks[:180], "video_task", link=str(t.id))
+            pc.notify(db, ed.user_id, "Changes Required", _note[:180], "video_task", link=str(t.id))
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count}
 
@@ -1174,23 +1174,23 @@ def qc_reject(tid: int, payload: dict = Body(...),
     """Reject the edit outright (redo). Distinct from 'changes' — the edit must be redone.
     Never creates a new task; full revision history is preserved."""
     remarks = (payload.get("remarks") or "").strip()
-    if not remarks:
-        raise HTTPException(400, "Remarks are required for rejection")
+    # remarks optional \u2014 PM chat me redo samjhata hai
+    _note = remarks or "Rejected \u2014 redo. Details in chat with editor."
     t = _task(db, tid)
     if t.lifecycle != "qc_pending":
         raise HTTPException(400, "Task is not in QC")
     t.qc_status = "changes"
     t.revision_count = (t.revision_count or 0) + 1
     rv = TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="rejected",
-                    remarks=remarks, revision_no=t.revision_count)
+                    remarks=_note, revision_no=t.revision_count)
     db.add(rv); db.flush()
     pc.save_images(db, t, payload.get("images"), "edit", rv.id, me)
     pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested",
-                 meta={"note": "Rejected \u2014 redo. " + remarks[:180]})
+                 meta={"note": ("Rejected \u2014 redo. " + _note[:180])})
     if t.editor_id:
         ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ed and ed.user_id:
-            pc.notify(db, ed.user_id, "Edit Rejected \u2014 Redo Required", remarks[:180], "video_task", link=str(t.id))
+            pc.notify(db, ed.user_id, "Edit Rejected \u2014 Redo Required", _note[:180], "video_task", link=str(t.id))
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count}
 
@@ -1490,9 +1490,10 @@ def pm_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                 active = base.filter(VideoTask.lifecycle.in_(
                     ["editor_assigned", "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes"])).count()
                 completed = base.filter(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"])).count()
-                overdue = base.filter(VideoTask.deadline != None, VideoTask.deadline < now,
+                # editor judged on the editor's own deadline, not the teacher deadline
+                overdue = base.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline < now,
                                       ~VideoTask.lifecycle.in_(["uploaded", "completed", "ready_for_youtube"])).count()
-                due_today = base.filter(VideoTask.deadline != None, func.date(VideoTask.deadline) == today).count()
+                due_today = base.filter(VideoTask.editor_deadline != None, func.date(VideoTask.editor_deadline) == today).count()
             else:
                 gbase = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id, GraphicsTask.task_id.in_(db.query(VideoTask.id).filter(VideoTask.cancelled == False)))
                 active = gbase.filter(GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()

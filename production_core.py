@@ -1200,12 +1200,14 @@ def _tt_editor_brief(db, t, now):
     else:
         since = t.editing_started_at
     lc = t.lifecycle or ""
-    overdue = bool(t.deadline and t.deadline < now and lc not in ("ready_for_youtube", "uploaded", "completed"))
+    # editor tracker judges the EDITOR against the editor's own deadline, never the teacher deadline
+    _edl = getattr(t, "editor_deadline", None)
+    overdue = bool(_edl and _edl < now and lc not in ("ready_for_youtube", "uploaded", "completed"))
     return {
         "id": t.id, "title": (t.title or "Untitled"), "ref_code": (t.ref_code or ""),
         "lifecycle": lc, "priority": (t.priority or "normal"),
         "progress": int(t.editing_progress or 0),
-        "deadline": (_dt_raw(t.deadline) if t.deadline else ""),
+        "deadline": (_dt_raw(_edl) if _edl else ""),
         "overdue": overdue,
         "since": (_dt(since) if since else ""),
         "live_seconds": int(live), "running": bool(running),
@@ -1247,7 +1249,7 @@ def build_team_tracker(db):
         paused = [_tt_editor_brief(db, t, now) for t in
                   base.filter(VideoTask.lifecycle == "editing_paused").order_by(VideoTask.updated_at.desc()).all()]
         queue = [_tt_editor_brief(db, t, now) for t in
-                 base.filter(VideoTask.lifecycle.in_(QUEUE)).order_by(VideoTask.deadline.asc()).all()]
+                 base.filter(VideoTask.lifecycle.in_(QUEUE)).order_by(VideoTask.editor_deadline.asc()).all()]
         queue.sort(key=lambda x: 0 if x["priority"] == "urgent" else 1)  # urgent first (stable: keeps deadline order)
         review = [_tt_editor_brief(db, t, now) for t in
                   base.filter(VideoTask.lifecycle.in_(["editing_done", "qc_pending"])).order_by(VideoTask.updated_at.desc()).all()]
@@ -1255,7 +1257,7 @@ def build_team_tracker(db):
                             base.filter(VideoTask.lifecycle.in_(DONE)).order_by(VideoTask.updated_at.desc()).limit(10).all()]
         completed_count = base.filter(VideoTask.lifecycle.in_(DONE)).count()
         completed_month = base.filter(VideoTask.lifecycle.in_(DONE), VideoTask.updated_at >= month_start).count()
-        overdue_count = base.filter(VideoTask.deadline != None, VideoTask.deadline < now,  # noqa: E711
+        overdue_count = base.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline < now,  # noqa: E711
                                     ~VideoTask.lifecycle.in_(DONE)).count()
         active_count = (1 if current else 0) + len(paused) + len(queue) + len(review)
         rec = sp.recommended_load or 5
