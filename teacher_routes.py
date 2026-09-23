@@ -1746,6 +1746,61 @@ def teacher_task_stats(period: str = "month", frm: str = "", to: str = "",
             "done": submitted}
 
 
+def _teacher_real_subject_classes(db, tp):
+    """Subjects for the 'Propose a Video' dropdown, based on the teacher's ACTIVE workspace(s).
+    BUG FIX: moving a teacher to UG-PG / BOSSE deactivates their NIOS category but does NOT clear
+    the old `subject_classes` — so stale NIOS subjects (e.g. 'Political Science · Class 12') leaked
+    into the propose dropdown for college teachers who were never given them. Now the list is built
+    from the teacher's active category assignments, and NIOS subjects show only if the NIOS
+    workspace is still active for that teacher."""
+    stored = tp.subject_classes or []
+    try:
+        from category_models import (Category, TeacherCategory,
+                                     TeacherCategorySubject, CategorySubject)
+    except Exception:
+        return stored
+    tcs = db.query(TeacherCategory).filter(TeacherCategory.teacher_id == tp.id,
+                                           TeacherCategory.status == "active").all()
+    if not tcs:
+        return stored   # legacy pure-NIOS teacher (no category system) — unchanged
+    cat_by_id = {c.id: c for c in db.query(Category).filter(
+        Category.id.in_([t.category_id for t in tcs])).all()}
+    nios_active = any((cat_by_id.get(t.category_id) and (cat_by_id[t.category_id].internal_key or "") == "nios") for t in tcs)
+    noncat_ids = [t.category_id for t in tcs
+                  if cat_by_id.get(t.category_id) and (cat_by_id[t.category_id].internal_key or "") != "nios"]
+    out, seen = [], set()
+    if noncat_ids:
+        rows = db.query(TeacherCategorySubject).filter(
+            TeacherCategorySubject.teacher_id == tp.id,
+            TeacherCategorySubject.category_id.in_(noncat_ids)).all()
+        sid_cat = {r.category_subject_id: r.category_id for r in rows}
+        if sid_cat:
+            subs = db.query(CategorySubject).filter(
+                CategorySubject.id.in_(list(sid_cat.keys())),
+                CategorySubject.status == "active").order_by(
+                CategorySubject.display_order, CategorySubject.name).all()
+            for cs in subs:
+                nm = (cs.name or "").strip()
+                if not nm or nm.lower() in seen:
+                    continue
+                seen.add(nm.lower())
+                c = cat_by_id.get(sid_cat.get(cs.id))
+                lbl = ((getattr(c, "short_name", None) or getattr(c, "display_name", None) or "") if c else "")
+                out.append({"subject": nm, "class": lbl})
+    # NIOS subjects only for a pure-NIOS teacher. If the teacher has ANY non-NIOS workspace
+    # (UG-PG / BOSSE), stale NIOS subjects are never shown — a college teacher sees only their
+    # college subjects (+ the General option added on the frontend).
+    if not noncat_ids:
+        for sc in stored:
+            if not isinstance(sc, dict):
+                continue
+            nm = (sc.get("subject") or "").strip()
+            if nm and nm.lower() not in seen:
+                seen.add(nm.lower())
+                out.append(sc)
+    return out
+
+
 @router.get("/profile")
 def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
@@ -1756,6 +1811,7 @@ def teacher_profile(db: Session = Depends(get_db), current_user=Depends(get_teac
         "gender": tp.gender,
         "subjects": tp.subjects or [],
         "subject_classes": sc,
+        "propose_subjects": _teacher_real_subject_classes(db, tp),
         "phone": tp.phone,
         "batch": tp.batch,
         "has_photo": bool(tp.photo_b64),

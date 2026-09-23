@@ -10951,9 +10951,10 @@ async function openTVTPropose(){
 async function tvtLoadMySubjects(){
   const sel=document.getElementById('tvt-p-subject'); if(!sel) return;
   let sc=window._tvtMySubjClasses;
-  if(!sc){ try{ const p=await api('/api/teacher/profile'); sc=p.subject_classes||[]; window._tvtMySubjClasses=sc; }catch(e){ sc=[]; } }
-  if(!sc.length){ sel.innerHTML='<option value="">— No subjects set —</option>'; return; }
-  sel.innerHTML='<option value="">— Select your subject —</option>'+sc.map(x=>{const s=(x.subject||'').trim(),c=(x.class||x.class_level||'').trim();return `<option value="${esc(s)}||${esc(c)}">${esc(s)}${c?' \u00b7 Class '+esc(c):''}</option>`;}).join('');
+  if(!sc){ try{ const p=await api('/api/teacher/profile'); sc=p.propose_subjects||p.subject_classes||[]; window._tvtMySubjClasses=sc; }catch(e){ sc=[]; } }
+  const gen='<option value="__general__">General / Other update (no specific subject)</option>';
+  if(!sc.length){ sel.innerHTML='<option value="">— Select —</option>'+gen; return; }
+  sel.innerHTML='<option value="">— Select your subject —</option>'+sc.map(x=>{const s=(x.subject||'').trim();let c=(x.class||x.class_level||'').trim();const lbl=(c==='10'||c==='12')?(' \u00b7 Class '+esc(c)):(c?(' \u00b7 '+esc(c)):'');return `<option value="${esc(s)}||${esc(c)}">${esc(s)}${lbl}</option>`;}).join('')+gen;
 }
 function tvtScopeToggle(){
   const sc=(document.getElementById('tvt-p-scope')||{}).value;
@@ -11150,7 +11151,8 @@ async function tvtProposeSave(){
     media_note:(document.getElementById('tvt-p-medianote')?document.getElementById('tvt-p-medianote').value.trim():'') };
   // Subject & class — ab single video + project dono ke liye (admin ko dobara na bharna pade)
   const sv=val('tvt-p-subject')||'';
-  if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
+  if(sv==='__general__'){ body.subject='General Update'; body.class_level=''; }
+  else if(sv){ const i=sv.indexOf('||'); body.subject=(i<0?sv:sv.slice(0,i)).trim(); body.class_level=(i<0?'':sv.slice(i+2)).trim(); }
   // Collab — teacher doosre teachers ke saath propose kar sakta hai
   if((document.getElementById('tvt-p-collab-on')||{}).value==='yes'){
     const ids=_msGet('tvtc');
