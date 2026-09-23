@@ -184,6 +184,7 @@ def ensure_columns():
         "ALTER TABLE notifications ADD COLUMN batch_label VARCHAR(160)",
         "ALTER TABLE notifications ADD COLUMN read_at DATETIME",
         "ALTER TABLE notifications ADD COLUMN clicked_at DATETIME",
+        "ALTER TABLE user_sessions ADD COLUMN last_active DATETIME",
         # v94: restricted sub-admin sections
         "ALTER TABLE users ADD COLUMN allowed_sections JSON",
         # v95: editable monthly target labels + custom targets

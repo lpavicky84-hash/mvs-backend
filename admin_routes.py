@@ -5367,11 +5367,12 @@ def admin_live_users(full: int = 0, db: Session = Depends(get_db), _=Depends(get
     by_user = {uid: {"count": c, "last": last, "live": None} for uid, c, last in agg}
 
     # sirf RECENT (live) sessions ka detail (chhota set — poori table nahi)
-    # ended_at set => logout ho chuka, live me mat dikhao
-    for s in db.query(UserSession).filter(UserSession.last_seen >= cutoff,
+    # ended_at set => logout ho chuka, live me mat dikhao. "Live" ab last_active pe (open tab
+    # nahi, actually active hona chahiye — background/idle ya purana client live nahi ginta).
+    for s in db.query(UserSession).filter(UserSession.last_active != None, UserSession.last_active >= cutoff,  # noqa: E711
                                           UserSession.ended_at == None).all():
         d = by_user.get(s.user_id)
-        if d and (d["live"] is None or (s.last_seen and s.last_seen > (d["live"].last_seen or cutoff))):
+        if d and (d["live"] is None or (s.last_active and s.last_active > (d["live"].last_active or cutoff))):
             d["live"] = s
 
     # sirf un users ko load karo jinke sessions hain (logged-in) — poore 1 lakh users NAHI

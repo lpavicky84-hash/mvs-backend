@@ -458,13 +458,15 @@ def presence_ping(payload: dict = None, request: Request = None,
     s = db.query(UserSession).filter(
         UserSession.user_id == current_user.id,
         UserSession.ended_at == None).order_by(UserSession.last_seen.desc()).first()
+    # this ping only fires while the tab is visible (client guards visibility), so it counts as active
     if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=SESSION_IDLE_MIN):
         s.last_seen = now
+        s.last_active = now
         if page:
             s.current_page = page
     else:
         s = UserSession(user_id=current_user.id, role=role, started_at=now,
-                        last_seen=now, current_page=page,
+                        last_seen=now, last_active=now, current_page=page,
                         ip=(request.client.host if request and request.client else None))
         db.add(s)
     # keep the student's own columns in sync (used elsewhere)

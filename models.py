@@ -993,6 +993,7 @@ class UserSession(Base):
     role         = Column(String(30), index=True)     # student | teacher | admin | production_manager | editor | youtuber | graphics
     started_at   = Column(DateTime, default=func.now(), index=True)
     last_seen    = Column(DateTime, default=func.now(), index=True)
+    last_active  = Column(DateTime, nullable=True, index=True)  # last time the client reported ACTIVE (tab focused + interacting) — "live" uses this, not just an open tab
     current_page = Column(String(40), nullable=True)  # which section they are on
     ip           = Column(String(45), nullable=True)
     ended_at     = Column(DateTime, nullable=True, index=True)  # set on explicit logout -> session closed, no reuse, drops off live, fresh started_at next login

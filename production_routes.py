@@ -305,7 +305,7 @@ def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db)
 @router.post("/heartbeat")
 def pm_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
                  me=Depends(get_pm_or_admin)):
-    pc.touch_session(db, me, (payload or {}).get("page"))
+    pc.touch_session(db, me, (payload or {}).get("page"), bool((payload or {}).get("active")))
     from video_tasks import _chat_touch_global
     _chat_touch_global(db, me)
     return {"ok": True}
@@ -1463,11 +1463,13 @@ def pm_live_team(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     from models import UserSession, User, UserRole
     now = datetime.now()
     cutoff = now - timedelta(minutes=3)
+    # "Live" is judged on last_active (tab focused + interacting), NOT just an open tab.
+    # An idle/backgrounded portal, or an old client that never reports activity, is not counted.
     live_ids = {}
     for uid, last, page, started in db.query(
-            UserSession.user_id, func.max(UserSession.last_seen),
+            UserSession.user_id, func.max(UserSession.last_active),
             func.max(UserSession.current_page), func.max(UserSession.started_at)
-        ).filter(UserSession.last_seen >= cutoff,
+        ).filter(UserSession.last_active != None, UserSession.last_active >= cutoff,  # noqa: E711
                  UserSession.ended_at == None).group_by(UserSession.user_id).all():
         live_ids[uid] = (last, page, started)
     _roles = [UserRole.editor, UserRole.graphics, UserRole.youtuber, UserRole.production_manager]

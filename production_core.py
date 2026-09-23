@@ -210,11 +210,11 @@ def set_state(db, t, new_state, actor=None, event=None, meta=None, force=False):
 
 
 # ---------------------------------------------------------------- presence
-def touch_session(db, user, page=None):
+def touch_session(db, user, page=None, active=False):
     """Record/refresh a UserSession for ANY logged-in user (production team included).
-    Production portals ping their own /heartbeat which earlier only touched chat presence —
-    so editors/graphics/PMs/YouTubers never showed up in Live Users. This makes them appear
-    exactly like students/teachers/admins (same 3-min idle -> new session logic)."""
+    `active` = the client reported it is genuinely active (tab focused + recent interaction).
+    "Live" is judged on last_active, so an open-but-backgrounded/idle tab (or an old client that
+    doesn't report activity) no longer counts as online."""
     try:
         from models import UserSession
         now = datetime.now()
@@ -227,9 +227,12 @@ def touch_session(db, user, page=None):
             s.last_seen = now
             if pg:
                 s.current_page = pg
+            if active:
+                s.last_active = now
         else:
             db.add(UserSession(user_id=user.id, role=role, started_at=now,
-                               last_seen=now, current_page=pg))
+                               last_seen=now, last_active=(now if active else None),
+                               current_page=pg))
         db.commit()
     except Exception:
         try:

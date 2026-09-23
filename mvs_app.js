@@ -26101,7 +26101,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // v-perf/live: production team ki online presence UserSession me record karo taaki
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
     // presence touch hoti thi -> kabhi live nahi dikhte the). Turant + har 40s (_hbTimer).
-    try{ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage='Dashboard'; api(window._hbUrl,'POST',{page:'Dashboard'}).catch(function(){}); }catch(e){}
+    try{ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage='Dashboard'; api(window._hbUrl,'POST',{page:'Dashboard',active:true}).catch(function(){}); }catch(e){}
     if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000);
       try{ _prodLivePoll(); if(window._prodLiveInt) clearInterval(window._prodLiveInt); window._prodLiveInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodLivePoll(); },20000); }catch(e){} }
     return Promise.resolve();
@@ -26783,7 +26783,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(typeof _isUserActive==='function' ? !_isUserActive() : (document.hidden||document.visibilityState!=='visible')) return;
     var url=window._hbUrl;
     if(!url && window._chatPingUrl){ url=window._chatPingUrl; if(url.indexOf('/teacher/')>=0) url='/api/teacher/heartbeat'; else url=url.replace(/\/tasks\/\d+\/chat-ping.*/,'/heartbeat'); window._hbUrl=url; }
-    if(url){ try{ api(url,'POST',{page:(window._hbPage||'')}).catch(function(){}); }catch(e){} }
+    if(url){ try{ api(url,'POST',{page:(window._hbPage||''),active:true}).catch(function(){}); }catch(e){} }
   }, 40000); } }catch(e){}
   window.ytcSend=function(){
     var cfg=window._chatCfg; if(!cfg) return;

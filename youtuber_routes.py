@@ -32,7 +32,7 @@ def _my_task(db, yp, tid):
 @router.post("/heartbeat")
 def yt_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
                  me=Depends(get_youtuber)):
-    pc.touch_session(db, me, (payload or {}).get("page"))
+    pc.touch_session(db, me, (payload or {}).get("page"), bool((payload or {}).get("active")))
     from video_tasks import _chat_touch_global
     _chat_touch_global(db, me)
     return {"ok": True}
