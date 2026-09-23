@@ -10951,7 +10951,24 @@ async function openTVTPropose(){
 async function tvtLoadMySubjects(){
   const sel=document.getElementById('tvt-p-subject'); if(!sel) return;
   let sc=window._tvtMySubjClasses;
-  if(!sc){ try{ const p=await api('/api/teacher/profile'); sc=p.propose_subjects||p.subject_classes||[]; window._tvtMySubjClasses=sc; }catch(e){ sc=[]; } }
+  if(!sc){
+    sc=[];
+    // Primary source = the teacher's ACTUAL assigned subjects (same as the "My Subjects" page).
+    // College (non-NIOS) workspaces ke subjects yahin se aate hain — koi stale NIOS subject nahi.
+    try{
+      const mc=await api('/api/teacher/categories');
+      const cats=(mc&&mc.categories)||[];
+      const noncat=cats.filter(function(c){ return ((c.internal_key||'')!=='nios'); });
+      for(let i=0;i<noncat.length;i++){ const c=noncat[i];
+        try{ const r=await api('/api/teacher/subjects?category_id='+c.id);
+          ((r&&r.subjects)||[]).forEach(function(s){ const nm=(s.name||'').trim(); if(nm) sc.push({subject:nm, class:(c.short_name||c.display_name||'')}); });
+        }catch(e){}
+      }
+      // NIOS teacher (ya category subjects na ho) -> profile se (propose_subjects/subject_classes)
+      if(!sc.length){ const p=await api('/api/teacher/profile'); sc=(p&&(p.propose_subjects||p.subject_classes))||[]; }
+    }catch(e){ try{ const p=await api('/api/teacher/profile'); sc=(p&&(p.propose_subjects||p.subject_classes))||[]; }catch(_e){ sc=[]; } }
+    window._tvtMySubjClasses=sc;
+  }
   const gen='<option value="__general__">General / Other update (no specific subject)</option>';
   if(!sc.length){ sel.innerHTML='<option value="">— Select —</option>'+gen; return; }
   sel.innerHTML='<option value="">— Select your subject —</option>'+sc.map(x=>{const s=(x.subject||'').trim();let c=(x.class||x.class_level||'').trim();const lbl=(c==='10'||c==='12')?(' \u00b7 Class '+esc(c)):(c?(' \u00b7 '+esc(c)):'');return `<option value="${esc(s)}||${esc(c)}">${esc(s)}${lbl}</option>`;}).join('')+gen;
