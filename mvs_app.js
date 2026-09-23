@@ -1119,6 +1119,17 @@ let _auth401=0;
 function _authFail(){ _auth401++; if(_auth401>=2) _sessionExpired(); }
 // wapas tab pe aate hi turant ping — live list mein turant wapas aa jaao
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _pingNow(); });
+// Activity tracker: "live" tabhi jab banda actually active ho (tab visible + recent interaction).
+// Sirf tab khula chhod dena (background ya idle) live nahi maana jayega.
+window._lastAct=Date.now();
+(function(){ var _t=0; function _mark(){ var n=Date.now(); if(n-_t<1500) return; _t=n; window._lastAct=n; }
+  ['mousemove','mousedown','keydown','scroll','touchstart','click','wheel'].forEach(function(ev){
+    try{ window.addEventListener(ev,_mark,{passive:true}); }catch(e){ try{ window.addEventListener(ev,_mark); }catch(_e){} } });
+  try{ window.addEventListener('focus',function(){ window._lastAct=Date.now(); }); }catch(e){}
+  try{ document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') window._lastAct=Date.now(); }); }catch(e){}
+})();
+// active = tab foreground AND interacted within the last 4 minutes
+function _isUserActive(){ try{ if(document.hidden||document.visibilityState!=='visible') return false; return (Date.now()-(window._lastAct||0))<240000; }catch(e){ return true; } }
 // v-perf: tab wapas focus hone par current section ka data khud fresh ho jaaye — manual
 // refresh ki zarurat na pade. Cache stale-mark karke active portal ka silent re-render.
 (function(){
@@ -26766,6 +26777,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // Global heartbeat: while the portal is open, tell the server we're active every ~25s so
   // teammates see us as "Online" even when we don't have a chat open.
   try{ if(!window._hbTimer){ window._hbTimer=setInterval(function(){
+    // Only count as "live" when the person is actually active — tab in focus AND interacted
+    // recently. A backgrounded/minimised OR walked-away (idle) portal must NOT stay online
+    // (warna 9 ghante purana khula tab bhi live dikhta tha).
+    if(typeof _isUserActive==='function' ? !_isUserActive() : (document.hidden||document.visibilityState!=='visible')) return;
     var url=window._hbUrl;
     if(!url && window._chatPingUrl){ url=window._chatPingUrl; if(url.indexOf('/teacher/')>=0) url='/api/teacher/heartbeat'; else url=url.replace(/\/tasks\/\d+\/chat-ping.*/,'/heartbeat'); window._hbUrl=url; }
     if(url){ try{ api(url,'POST',{page:(window._hbPage||'')}).catch(function(){}); }catch(e){} }
