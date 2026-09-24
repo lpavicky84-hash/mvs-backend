@@ -458,6 +458,11 @@ def presence_ping(payload: dict = None, request: Request = None,
     s = db.query(UserSession).filter(
         UserSession.user_id == current_user.id,
         UserSession.ended_at == None).order_by(UserSession.last_seen.desc()).first()
+    # THROTTLE: agar session abhi-abhi (<15s) update hui hai to skip — multiple tabs same row
+    # ko concurrently update karke user_sessions par deadlock (1213) la rahe the. Presence
+    # best-effort hai, isliye skip safe hai.
+    if s and s.last_seen and (now - s.last_seen).total_seconds() < 15 and (now - s.last_seen) <= timedelta(minutes=SESSION_IDLE_MIN):
+        return {"ok": True}
     # this ping only fires while the tab is visible (client guards visibility), so it counts as active
     if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=SESSION_IDLE_MIN):
         s.last_seen = now
@@ -476,7 +481,15 @@ def presence_ping(payload: dict = None, request: Request = None,
             if not sp.session_start or not sp.last_seen or (now - sp.last_seen) > timedelta(minutes=SESSION_IDLE_MIN):
                 sp.session_start = now
             sp.last_seen = now
-    db.commit()
+    # a deadlock / lock-wait on the presence write must NEVER 500 the ping (warna frontend
+    # ise auth-fail samajh ke logout kar deta tha) — best-effort commit.
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
     return {"ok": True}
 
 

@@ -13,7 +13,9 @@ load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "mvs-foundation-change-this")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 24))
+# Staff/teachers/students keep the portal open for days — a 24h token logged them out
+# mid-work ("Token invalid ya expire ho gaya"). 30-day default (env can still override).
+ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 720))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -71,7 +73,18 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    # DB hiccup (deadlock / lock-wait under load) ko kabhi 401 mat banao — warna valid user
+    # galti se logout ho jaata tha. Ek baar retry, phir bhi fail ho to error bubble ho (500),
+    # 401 nahi — taaki frontend token clear na kare.
+    from sqlalchemy.exc import OperationalError
+    try:
+        user = db.query(User).filter(User.id == int(user_id)).first()
+    except OperationalError:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        user = db.query(User).filter(User.id == int(user_id)).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User nahi mila ya inactive hai")
     return user

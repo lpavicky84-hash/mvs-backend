@@ -224,6 +224,14 @@ def touch_session(db, user, page=None, active=False):
                                           UserSession.ended_at == None)
              .order_by(UserSession.last_seen.desc()).first())
         if s and s.last_seen and (now - s.last_seen) <= timedelta(minutes=3):
+            # THROTTLE: agar abhi-abhi (<15s) update hui hai, aur page/active bhi wahi hai, to
+            # dobara mat likho — multiple tabs ek hi session row ko concurrently na thokein
+            # (yahi user_sessions par deadlock 1213 la raha tha). Presence best-effort hai.
+            _fresh = (now - s.last_seen).total_seconds() < 15
+            _same_page = (not pg) or (s.current_page == pg)
+            _active_fresh = (not active) or (s.last_active and (now - s.last_active).total_seconds() < 15)
+            if _fresh and _same_page and _active_fresh:
+                return
             s.last_seen = now
             if pg:
                 s.current_page = pg
@@ -235,6 +243,7 @@ def touch_session(db, user, page=None, active=False):
                                current_page=pg))
         db.commit()
     except Exception:
+        # deadlock / lock-wait / anything — presence write kabhi request na tode
         try:
             db.rollback()
         except Exception:
