@@ -29746,16 +29746,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function renderReports(portal,body){
     try{ if(typeof _repInjectCss==='function') _repInjectCss(); }catch(e){}
     var apiBase=(P[portal]&&P[portal].api)||'/api/production';
-    window._REP={api:apiBase, period:'daily', date:_repToday(), data:null, canvas:null};
+    window._REP={api:apiBase, period:'daily', view:'overall', date:_repToday(), data:null, canvas:null};
+    var views=[['overall','Overall'],['editors','Editors'],['graphics','Graphics'],['uploads','Uploads']];
     body.innerHTML='<div class="p-sec" style="margin-bottom:10px">'+ic('chart')+' Team Reports</div>'+
       '<div class="rep-bar">'+
         '<div class="rep-tabs">'+['daily','weekly','monthly'].map(function(p){ return '<button class="rep-tab'+(p==='daily'?' on':'')+'" data-p="'+p+'" onclick="_repSetPeriod(\''+p+'\')">'+p.charAt(0).toUpperCase()+p.slice(1)+'</button>'; }).join('')+'</div>'+
-        '<input type="date" class="rep-date" id="rep-date" value="'+window._REP.date+'" onchange="_repSetDate(this.value)">'+
         '<span style="flex:1"></span>'+
-        '<button class="p-btn p-btn-primary" onclick="_repDownloadImage()">'+ic('download')+' Download Image</button>'+
-        '<button class="p-btn" onclick="_repDownloadPDF()">'+ic('download')+' Download PDF</button>'+
+        '<button class="p-btn rep-att-btn" onclick="_repAttendance()">'+ic('user')+' Leave / Remarks</button>'+
+        '<input type="date" class="rep-date" id="rep-date" value="'+window._REP.date+'" onchange="_repSetDate(this.value)">'+
       '</div>'+
-      '<div class="rep-hint" style="text-align:left;margin:0 0 12px">Daily → download the image and send it straight to your WhatsApp group. Weekly / Monthly → download the full PDF (with MVS logo).</div>'+
+      '<div class="rep-vtabs">'+views.map(function(v){ return '<button class="rep-vtab v-'+v[0]+(v[0]==='overall'?' on':'')+'" data-v="'+v[0]+'" onclick="_repSetView(\''+v[0]+'\')">'+v[1]+'</button>'; }).join('')+'</div>'+
+      '<div class="rep-hint" style="text-align:left;margin:0 0 12px"><b>Overall</b> → WhatsApp image (channel-wise, simple). <b>Editors / Graphics / Uploads</b> → each its own detailed report. <b>Download PDF (all 3)</b> → all three detailed reports in one file.</div>'+
+      '<div style="display:flex;gap:10px;margin:0 0 12px">'+
+        '<button class="p-btn p-btn-primary" onclick="_repDownloadImage()">'+ic('download')+' Download this Image</button>'+
+        '<button class="p-btn" onclick="_repDownloadPDF()">'+ic('download')+' Download PDF (all 3)</button>'+
+      '</div>'+
       '<div id="rep-preview" class="rep-preview" style="max-height:none"><div class="spinner"></div></div>';
     try{ _repLoad(); }catch(e){ var pv=document.getElementById('rep-preview'); if(pv) pv.innerHTML='<div class="p-empty">Could not load report.</div>'; }
   }
@@ -31873,7 +31878,13 @@ function _repInjectCss(){
     '.rep-att-ctl{flex:1;display:flex;gap:8px;align-items:center;min-width:0}',
     '.rep-att-sel{border:1.5px solid var(--border,#e0d4b3);border-radius:9px;padding:7px 10px;font-weight:700;font-size:.82rem;background:var(--card,#fff);color:var(--text,#2c2415);cursor:pointer}',
     '.rep-att-rem{flex:1;min-width:0;border:1.5px solid var(--border,#e0d4b3);border-radius:9px;padding:7px 11px;font-size:.84rem;background:var(--card,#fff);color:var(--text,#2c2415)}',
-    '.rep-att-save{padding:7px 14px}'
+    '.rep-att-save{padding:7px 14px}',
+    '.rep-vtabs{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 12px}',
+    '.rep-vtab{border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text-muted,#8a7d5c);border-radius:10px;padding:8px 16px;font-weight:800;font-size:.84rem;cursor:pointer;transition:.15s}',
+    '.rep-vtab.v-overall.on{background:#14213d;border-color:#14213d;color:#fff}',
+    '.rep-vtab.v-editors.on{background:#2563eb;border-color:#2563eb;color:#fff}',
+    '.rep-vtab.v-graphics.on{background:#d97706;border-color:#d97706;color:#fff}',
+    '.rep-vtab.v-uploads.on{background:#dc2626;border-color:#dc2626;color:#fff}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -31925,9 +31936,10 @@ function _repLogo(cb){
   img.src='/api/student/logo';
 }
 window.prodOpenReports=function(api){
-  window._REP={api:api||'/api/production', period:'daily', date:_repToday(), data:null, canvas:null};
+  window._REP={api:api||'/api/production', period:'daily', view:'overall', date:_repToday(), data:null, canvas:null};
   var old=document.getElementById('rep-modal'); if(old) old.remove();
   _repInjectCss();
+  var views=[['overall','Overall'],['editors','Editors'],['graphics','Graphics'],['uploads','Uploads']];
   var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='rep-modal'; dr.style.zIndex='200';
   dr.innerHTML='<div class="p-modal rep-modal" style="max-width:900px">'+
     '<div class="pd-head"><div class="h-title">Team Reports</div><button class="pd-x" onclick="document.getElementById(\'rep-modal\').remove()">&times;</button></div>'+
@@ -31939,19 +31951,22 @@ window.prodOpenReports=function(api){
           '<input type="date" class="rep-date" id="rep-date" value="'+window._REP.date+'" onchange="_repSetDate(this.value)">'+
         '</div>'+
       '</div>'+
+      '<div class="rep-vtabs">'+views.map(function(v){ return '<button class="rep-vtab v-'+v[0]+(v[0]==='overall'?' on':'')+'" data-v="'+v[0]+'" onclick="_repSetView(\''+v[0]+'\')">'+v[1]+'</button>'; }).join('')+'</div>'+
       '<div id="rep-preview" class="rep-preview"><div class="spinner"></div></div>'+
-      '<div class="rep-hint">Daily → download the image and send it directly to your WhatsApp group. Weekly / Monthly → download the full PDF (with MVS logo).</div>'+
+      '<div class="rep-hint"><b>Overall</b> → WhatsApp image (channel-wise, simple). <b>Editors / Graphics / Uploads</b> → each its own detailed report. <b>Download PDF</b> → all three in one file.</div>'+
     '</div>'+
     '<div class="pd-foot"><div class="p-acts">'+
       '<button class="p-btn" onclick="document.getElementById(\'rep-modal\').remove()">Close</button>'+
-      '<button class="p-btn p-btn-primary" id="rep-dl-img" onclick="_repDownloadImage()">Download Image</button>'+
-      '<button class="p-btn" id="rep-dl-pdf" onclick="_repDownloadPDF()">Download PDF</button>'+
+      '<button class="p-btn p-btn-primary" id="rep-dl-img" onclick="_repDownloadImage()">Download this Image</button>'+
+      '<button class="p-btn" id="rep-dl-pdf" onclick="_repDownloadPDF()">Download PDF (all 3)</button>'+
     '</div></div></div>';
   dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
   document.body.appendChild(dr);
   _repLoad();
 };
-window._repSetPeriod=function(p){ if(!window._REP) return; window._REP.period=p; document.querySelectorAll('#rep-modal .rep-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-p')===p); }); _repLoad(); };
+window._repSetPeriod=function(p){ if(!window._REP) return; window._REP.period=p; var rt=document.getElementById('rep-modal')||document; rt.querySelectorAll('.rep-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-p')===p); }); _repLoad(); };
+window._repSetView=function(v){ if(!window._REP) return; window._REP.view=v; var rt=document.getElementById('rep-modal')||document; rt.querySelectorAll('.rep-vtab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-v')===v); });
+  if(window._REP.data){ _repLogo(function(logo){ _repRender(window._REP.data, logo); }); } };
 window._repSetDate=function(v){ if(!window._REP) return; window._REP.date=v||_repToday(); _repLoad(); };
 function _repLoad(){
   var pv=document.getElementById('rep-preview'); if(pv) pv.innerHTML='<div class="spinner"></div>';
@@ -31960,9 +31975,16 @@ function _repLoad(){
     R.data=d; _repLogo(function(logo){ _repRender(d, logo); });
   }).catch(function(e){ if(pv) pv.innerHTML='<div style="padding:24px;color:#c1443a">Could not load report. '+esc((e&&e.message)||'')+'</div>'; });
 }
+function _repCanvasFor(view, data, logo){
+  if(view==='editors') return _repCanvasEditors(data,logo);
+  if(view==='graphics') return _repCanvasGraphics(data,logo);
+  if(view==='uploads') return _repCanvasUploads(data,logo);
+  return _repCanvasOverall(data,logo);
+}
 function _repRender(data, logo){
   var pv=document.getElementById('rep-preview'); if(!pv) return;
-  var cv=_repCanvas(data, logo); window._REP.canvas=cv;
+  var R=window._REP; var view=(R&&R.view)||'overall';
+  var cv=_repCanvasFor(view, data, logo); R.canvas=cv;
   var img=document.createElement('img'); img.src=cv.toDataURL('image/png'); img.alt='report';
   pv.innerHTML=''; pv.appendChild(img);
 }
@@ -31973,7 +31995,188 @@ function _repYT(ctx,x,y,w,h){ // premium YouTube badge (red rounded rect + white
   var cx=x+w/2, cy=y+h/2, t=h*0.26; ctx.fillStyle='#fff'; ctx.beginPath();
   ctx.moveTo(cx-t*0.6,cy-t); ctx.lineTo(cx-t*0.6,cy+t); ctx.lineTo(cx+t,cy); ctx.closePath(); ctx.fill();
 }
-function _repCanvas(data, logo){
+// ===== Shared report helpers (premium, themed per report) =====
+var _RF='-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
+var _RTHEME={
+  overall:{label:'Production Report',accent:'#e6ad4e',g0:'#14213d',g1:'#2b2350'},
+  editors:{label:'Editors Report',accent:'#3b82f6',g0:'#122a4d',g1:'#1d4ed8'},
+  graphics:{label:'Graphics Report',accent:'#f59e0b',g0:'#3a2a12',g1:'#d97706'},
+  uploads:{label:'Uploads Report',accent:'#ef4444',g0:'#3a1414',g1:'#dc2626'}
+};
+function _rNum(n){ n=+n||0; if(n>=1e7) return (n/1e7).toFixed(n%1e7?1:0)+'Cr'; if(n>=1e5) return (n/1e5).toFixed(n%1e5?1:0)+'L'; if(n>=1e3) return (n/1e3).toFixed(n%1e3?1:0)+'K'; return String(n); }
+function _rMk(W,H){ var DPR=2; var cv=document.createElement('canvas'); cv.width=W*DPR; cv.height=H*DPR; var ctx=cv.getContext('2d'); ctx.scale(DPR,DPR); ctx.textBaseline='alphabetic'; ctx.fillStyle='#faf9f5'; ctx.fillRect(0,0,W,H); return {cv:cv,ctx:ctx}; }
+function _rHead(ctx,W,pad,data,cfg,logo){
+  var hg=ctx.createLinearGradient(0,0,W,210); hg.addColorStop(0,cfg.g0); hg.addColorStop(1,cfg.g1);
+  ctx.fillStyle=hg; ctx.fillRect(0,0,W,210); ctx.fillStyle=cfg.accent; ctx.fillRect(0,206,W,4);
+  ctx.save(); _rr(ctx,pad,46,96,96,20); ctx.clip(); ctx.fillStyle='#0f1836'; ctx.fillRect(pad,46,96,96);
+  if(logo){ try{ ctx.drawImage(logo,pad,46,96,96); }catch(e){} } else { ctx.fillStyle=cfg.accent; ctx.font='800 30px '+_RF; ctx.textAlign='center'; ctx.fillText('MVS',pad+48,104); ctx.textAlign='left'; }
+  ctx.restore(); var tx=pad+124;
+  ctx.fillStyle='#fff'; ctx.font='800 38px '+_RF; ctx.fillText('MVS Foundation',tx,82);
+  ctx.fillStyle=cfg.accent; ctx.font='800 22px '+_RF; ctx.fillText(cfg.label+' · '+_repPeriodLabel(),tx,116);
+  ctx.fillStyle='rgba(255,255,255,.72)'; ctx.font='500 18px '+_RF; ctx.fillText((data.range_label||'')+'   •   Generated '+(data.generated_at||''),tx,146);
+}
+function _rFoot(ctx,W,H,cfg,text){ ctx.fillStyle=cfg.g0; ctx.fillRect(0,H-52,W,52); ctx.fillStyle=cfg.accent; ctx.fillRect(0,H-52,W,3); ctx.fillStyle='rgba(255,255,255,.85)'; ctx.font='700 15px '+_RF; ctx.textAlign='center'; ctx.fillText(text,W/2,H-20); ctx.textAlign='left'; }
+function _rKpi(ctx,W,pad,y,items){ var n=items.length; var kw=(W-pad*2-16*(n-1))/n; items.forEach(function(k,i){ var kx=pad+i*(kw+16); ctx.fillStyle='#fff'; _rr(ctx,kx,y,kw,110,16); ctx.fill(); ctx.strokeStyle='#ece7d8'; ctx.lineWidth=1; ctx.stroke(); ctx.fillStyle=k[2]; ctx.font='800 40px '+_RF; ctx.textAlign='center'; ctx.fillText(String(k[1]==null?0:k[1]),kx+kw/2,y+56); ctx.fillStyle='#8a8578'; ctx.font='700 13px '+_RF; ctx.fillText(String(k[0]).toUpperCase(),kx+kw/2,y+88); ctx.textAlign='left'; }); return y+110; }
+function _rSec(ctx,W,pad,y,title,count,accent){ ctx.fillStyle='#14213d'; ctx.font='800 24px '+_RF; ctx.fillText(title,pad,y+8); if(count!=null){ var lw=ctx.measureText(title).width; ctx.fillStyle=accent; ctx.font='800 18px '+_RF; ctx.fillText('('+count+')',pad+lw+12,y+7); } ctx.strokeStyle='#e3ddcb'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad,y+24); ctx.lineTo(W-pad,y+24); ctx.stroke(); return y+50; }
+function _rChip(ctx,txt,x,cy,bg,fg){ ctx.font='700 13px '+_RF; var w=ctx.measureText(txt).width+18; ctx.fillStyle=bg; _rr(ctx,x,cy-14,w,22,11); ctx.fill(); ctx.fillStyle=fg; ctx.fillText(txt,x+9,cy+1); return w; }
+function _rLeaveLine(ctx,W,pad,y,names,accent){ if(!names.length) return y; ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,44,12); ctx.fill(); ctx.strokeStyle='#efe1e1'; ctx.lineWidth=1; ctx.stroke(); ctx.fillStyle='#dc2626'; ctx.font='800 14px '+_RF; ctx.fillText('ON LEAVE',pad+16,y+27); var lx=pad+16+ctx.measureText('ON LEAVE').width+14; ctx.fillStyle='#6a6455'; ctx.font='600 16px '+_RF; ctx.fillText(_repEllip(ctx,names.join(',  '),W-pad*2-140),lx,y+27); return y+44+14; }
+function _compByChannel(list){ var m={},o=[]; (list||[]).forEach(function(c){ var ch=c.channel||'No channel'; if(!m[ch]){ m[ch]={channel:ch,count:0}; o.push(m[ch]); } m[ch].count++; }); return o; }
+
+// ===== OVERALL (WhatsApp) — simple: completed = channel only, current = task+channel+% =====
+function _repCanvasOverall(data, logo){
+  var W=1080, pad=48, cfg=_RTHEME.overall, F=_RF;
+  var eds=(data.editors||[]), gfx=(data.graphics||[]), ups=((data.production||{}).uploaded)||[], t=data.totals||{};
+  var active=eds.filter(function(e){ return (!e.status||e.status==='active') && (e.completed_count>0 || (e.working||[]).length); });
+  var leave=eds.filter(function(e){ return e.status && e.status!=='active'; }).map(function(e){ return e.name; })
+    .concat(gfx.filter(function(g){ return g.status&&g.status!=='active'; }).map(function(g){ return g.name; }));
+  function eH(e){ var ch=_compByChannel(e.completed); return 12+30 + (ch.length?28:0) + (e.working||[]).length*30 + 14; }
+  var H=210+30; H+=130+30; H+=50; if(active.length){ active.forEach(function(e){ H+=eH(e)+12; }); } else { H+=50; }
+  H+=50; H+=(ups.length?ups.length*44+ (ups.length)*10:50);
+  if(leave.length) H+=58;
+  H+=64;
+  var o=_rMk(W,H), ctx=o.ctx, cv=o.cv;
+  _rHead(ctx,W,pad,data,cfg,logo); var y=210+30;
+  y=_rKpi(ctx,W,pad,y,[['Completed',t.completed,'#16a34a'],['Assigned',t.assigned,'#2563eb'],['Uploaded',t.uploaded,'#7c3aed'],['Editing',t.editing,'#c98a2e'],['Paused',t.paused,'#dc2626']])+30;
+  y=_rSec(ctx,W,pad,y,'Today’s Work',active.length,cfg.accent);
+  if(!active.length){ ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No editor activity today.',pad,y+10); y+=50; }
+  active.forEach(function(e){
+    var rowH=eH(e); ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,rowH,14); ctx.fill(); ctx.strokeStyle='#ece7d8'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#14213d'; ctx.font='800 21px '+F; ctx.fillText(_repEllip(ctx,e.name,W-pad*2-240),pad+18,y+34);
+    var pill='✓ '+(e.completed_count||0)+' done'; ctx.font='800 15px '+F; var pw=ctx.measureText(pill).width+26; var px=W-pad-18-pw;
+    ctx.fillStyle='rgba(22,163,74,.12)'; _rr(ctx,px,y+13,pw,28,14); ctx.fill(); ctx.fillStyle='#16a34a'; ctx.fillText(pill,px+13,y+32);
+    var yy=y+46+18; var ch=_compByChannel(e.completed);
+    if(ch.length){ ctx.fillStyle='#6a6455'; ctx.font='700 13px '+F; ctx.fillText('CHANNELS',pad+18,yy-2); var cx=pad+18+ctx.measureText('CHANNELS').width+12;
+      ch.forEach(function(c){ var lab=c.channel+(c.count>1?'  ×'+c.count:''); cx+=_rChip(ctx,lab,cx,yy+2,'rgba(124,58,237,.10)','#6d3fb0')+8; }); yy+=28; }
+    (e.working||[]).forEach(function(w){
+      ctx.fillStyle=w.paused?'#dc2626':'#16a34a'; ctx.font='800 15px '+F; ctx.fillText('▶',pad+20,yy+4);
+      ctx.fillStyle='#3a3527'; ctx.font='600 16px '+F; var tt=_repEllip(ctx,w.title,W-pad*2-470); ctx.fillText(tt,pad+42,yy+4); var tw=ctx.measureText(tt).width;
+      _rChip(ctx,w.channel||'No channel',pad+42+tw+10,yy+2,'rgba(124,58,237,.10)','#6d3fb0');
+      ctx.fillStyle=w.paused?'#dc2626':'#16a34a'; ctx.font='800 15px '+F; ctx.textAlign='right'; ctx.fillText((w.pct||0)+'%  '+(w.paused?'PAUSED':'EDITING'),W-pad-20,yy+4); ctx.textAlign='left';
+      yy+=30;
+    });
+    y+=rowH+12;
+  });
+  y=_rSec(ctx,W,pad,y,'Uploaded to Channels',(data.production||{}).total_uploaded||0,cfg.accent);
+  if(ups.length){ ups.forEach(function(u){ ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,44,12); ctx.fill(); ctx.strokeStyle='#f0d9b8'; ctx.lineWidth=1.4; ctx.stroke();
+    _repYT(ctx,pad+14,y+11,28,22); ctx.fillStyle='#14213d'; ctx.font='800 17px '+F; ctx.fillText(_repEllip(ctx,u.channel||'No channel',W-pad*2-240),pad+54,y+28);
+    var lab=(u.count||0)+(u.count===1?' video':' videos'); ctx.font='800 15px '+F; var lw=ctx.measureText(lab).width+24, lx=W-pad-16-lw; ctx.fillStyle='rgba(255,0,0,.10)'; _rr(ctx,lx,y+10,lw,24,12); ctx.fill(); ctx.fillStyle='#c0271f'; ctx.fillText(lab,lx+12,y+27);
+    y+=44+10; });
+  } else { ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No uploads today.',pad,y+10); y+=50; }
+  if(leave.length){ y=_rLeaveLine(ctx,W,pad,y,leave,cfg.accent); }
+  _rFoot(ctx,W,H,cfg,'MVS Foundation — Production Team · '+(data.production?data.production.assigned:0)+' assigned · auto-generated from the portal');
+  return cv;
+}
+
+// ===== EDITORS (detailed, blue) =====
+function _repCanvasEditors(data, logo){
+  var W=1080, pad=48, cfg=_RTHEME.editors, F=_RF, LH=27, WH=36;
+  var all=(data.editors||[]); var active=all.filter(function(e){ return !e.status||e.status==='active'; });
+  var leave=all.filter(function(e){ return e.status && e.status!=='active'; });
+  var t=data.totals||{};
+  function head(e){ return (e.completed_count>0 && (e.ontime_pct!=null||e.avg_hours!=null))?90:66; }
+  function eH(e){ var h=head(e); h+=(e.completed||[]).length*LH; h+=(e.working||[]).length*WH; if(!(e.completed||[]).length && !(e.working||[]).length) h+=26; return h+18; }
+  var H=210+30; H+=130+30; H+=50;
+  if(active.length){ active.forEach(function(e){ H+=eH(e)+12; }); } else { H+=50; }
+  if(leave.length) H+=58;
+  H+=64;
+  var o=_rMk(W,H), ctx=o.ctx, cv=o.cv; _rHead(ctx,W,pad,data,cfg,logo); var y=210+30;
+  y=_rKpi(ctx,W,pad,y,[['Completed',t.completed,'#16a34a'],['Editing',t.editing,'#2563eb'],['Paused',t.paused,'#dc2626'],['Active',active.length,'#7c3aed']])+30;
+  y=_rSec(ctx,W,pad,y,'Editors',active.length,cfg.accent);
+  if(!active.length){ ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No editors worked in this period.',pad,y+10); y+=50; }
+  active.forEach(function(e){
+    var rowH=eH(e), hd=head(e);
+    ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,rowH,14); ctx.fill(); ctx.strokeStyle=e.top?'rgba(230,173,78,.6)':'#ece7d8'; ctx.lineWidth=e.top?2:1; ctx.stroke();
+    if(e.top){ ctx.fillStyle=cfg.g1; _rr(ctx,pad,y,6,rowH,3); ctx.fill(); }
+    ctx.fillStyle='#14213d'; ctx.font='800 21px '+F; var nm=_repEllip(ctx,e.name,W-pad*2-360); ctx.fillText(nm,pad+18,y+36); var nx=pad+18+ctx.measureText(nm).width+12;
+    if(e.top){ var tp='★ TOP PERFORMER'; ctx.font='800 12px '+F; var tw=ctx.measureText(tp).width+18; ctx.fillStyle='rgba(230,173,78,.16)'; _rr(ctx,nx,y+18,tw,22,11); ctx.fill(); ctx.fillStyle='#b8891f'; ctx.fillText(tp,nx+9,y+33); }
+    var pill='✓ '+(e.completed_count||0)+' completed'; ctx.font='800 15px '+F; var pw=ctx.measureText(pill).width+26; var px=W-pad-18-pw;
+    ctx.fillStyle='rgba(22,163,74,.12)'; _rr(ctx,px,y+14,pw,28,14); ctx.fill(); ctx.fillStyle='#16a34a'; ctx.fillText(pill,px+13,y+33);
+    if(hd>66){ var mp=[]; if(e.ontime_pct!=null) mp.push(e.ontime_pct+'% on-time'); if(e.avg_hours!=null) mp.push('avg '+e.avg_hours+'h turnaround'); ctx.fillStyle='#8a8578'; ctx.font='600 14px '+F; ctx.fillText(mp.join('   ·   '),pad+18,y+60); }
+    var yy=y+hd;
+    (e.completed||[]).forEach(function(c){ ctx.fillStyle='#16a34a'; ctx.font='800 15px '+F; ctx.fillText('✓',pad+20,yy+4); ctx.fillStyle='#3a3527'; ctx.font='600 16px '+F; var tt=_repEllip(ctx,c.title,W-pad*2-320); ctx.fillText(tt,pad+40,yy+4); _rChip(ctx,c.channel||'No channel',pad+40+ctx.measureText(tt).width+12,yy+2,'rgba(59,130,246,.10)','#2563eb'); yy+=LH; });
+    (e.working||[]).forEach(function(w){ ctx.fillStyle='#5a5545'; ctx.font='600 16px '+F; var tt=_repEllip(ctx,w.title,W-pad*2-560); ctx.fillText(tt,pad+40,yy+6); _rChip(ctx,w.channel||'No channel',pad+40+ctx.measureText(tt).width+10,yy+4,'rgba(59,130,246,.10)','#2563eb');
+      var barX=W-pad-18-300, barW=210; ctx.fillStyle='#e7edf6'; _rr(ctx,barX,yy-4,barW,12,6); ctx.fill(); ctx.fillStyle=w.paused?'#dc2626':'#2563eb'; _rr(ctx,barX,yy-4,Math.max(6,barW*(w.pct||0)/100),12,6); ctx.fill();
+      ctx.fillStyle=w.paused?'#dc2626':'#2563eb'; ctx.font='800 15px '+F; ctx.fillText((w.pct||0)+'%',barX+barW+12,yy+7); ctx.fillStyle=w.paused?'#dc2626':'#c98a2e'; ctx.font='700 12px '+F; ctx.fillText(w.paused?'PAUSED':'EDITING',barX+barW+58,yy+7); yy+=WH; });
+    if(!(e.completed||[]).length && !(e.working||[]).length){ ctx.fillStyle='#8a8578'; ctx.font='500 15px '+F; ctx.fillText('No completed or in-progress videos.',pad+40,yy+4); }
+    y+=rowH+12;
+  });
+  if(leave.length){ y=_rLeaveLine(ctx,W,pad,y,leave.map(function(e){ return e.name+(e.remark?' ('+e.remark+')':''); }),cfg.accent); }
+  _rFoot(ctx,W,H,cfg,'MVS Foundation — Editors · '+(t.completed||0)+' completed · auto-generated from the portal');
+  return cv;
+}
+
+// ===== GRAPHICS (amber) + channel-wise totals =====
+function _repCanvasGraphics(data, logo){
+  var W=1080, pad=48, cfg=_RTHEME.graphics, F=_RF;
+  var all=(data.graphics||[]); var active=all.filter(function(g){ return !g.status||g.status==='active'; });
+  var leave=all.filter(function(g){ return g.status && g.status!=='active'; });
+  var chs=(data.graphics_channels||[]); var t=data.totals||{};
+  function gH(g){ var h=64; h+=(g.done||[]).length*24; h+=(g.pending_by_channel||[]).length*22; if(!(g.done||[]).length && !(g.pending_by_channel||[]).length) h+=24; return h+18; }
+  var H=210+30; H+=130+30; H+=50;
+  if(active.length){ active.forEach(function(g){ H+=gH(g)+12; }); } else { H+=50; }
+  H+=50; H+=(chs.length?chs.length*40+12:50);
+  if(leave.length) H+=58; H+=64;
+  var o=_rMk(W,H), ctx=o.ctx, cv=o.cv; _rHead(ctx,W,pad,data,cfg,logo); var y=210+30;
+  y=_rKpi(ctx,W,pad,y,[['Thumbnails',t.thumbnails,'#16a34a'],['Pending',all.reduce(function(a,g){return a+(g.pending||0);},0),'#d97706'],['Designers',active.length,'#7c3aed']])+30;
+  y=_rSec(ctx,W,pad,y,'Graphics Designers',active.length,cfg.accent);
+  if(!active.length){ ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No graphics activity in this period.',pad,y+10); y+=50; }
+  active.forEach(function(g){
+    var rowH=gH(g); ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,rowH,12); ctx.fill(); ctx.strokeStyle='#ece7d8'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#14213d'; ctx.font='800 20px '+F; ctx.fillText(_repEllip(ctx,g.name,W-pad*2-320),pad+18,y+34);
+    var s1='Done '+(g.done_count||0), s2='Pending '+(g.pending||0); ctx.font='800 15px '+F; var w2=ctx.measureText(s2).width+24, x2=W-pad-18-w2;
+    ctx.fillStyle='rgba(217,119,6,.12)'; _rr(ctx,x2,y+11,w2,24,12); ctx.fill(); ctx.fillStyle='#b45309'; ctx.fillText(s2,x2+12,y+28);
+    var w1=ctx.measureText(s1).width+24, x1=x2-10-w1; ctx.fillStyle='rgba(22,163,74,.12)'; _rr(ctx,x1,y+11,w1,24,12); ctx.fill(); ctx.fillStyle='#16a34a'; ctx.fillText(s1,x1+12,y+28);
+    var yy=y+48+16;
+    (g.done||[]).forEach(function(d){ ctx.fillStyle='#16a34a'; ctx.font='800 14px '+F; ctx.fillText('✓',pad+20,yy); ctx.fillStyle='#3a3527'; ctx.font='600 15px '+F; var tt=_repEllip(ctx,d.title,W-pad*2-330); ctx.fillText(tt,pad+40,yy); _rChip(ctx,d.channel||'No channel',pad+40+ctx.measureText(tt).width+10,yy-2,'rgba(245,158,11,.12)','#b45309'); yy+=24; });
+    (g.pending_by_channel||[]).forEach(function(p){ ctx.fillStyle='#b45309'; ctx.font='700 14px '+F; ctx.fillText('Pending '+p.count+' — ',pad+40,yy); var tw=ctx.measureText('Pending '+p.count+' — ').width; ctx.fillStyle='#5a5545'; ctx.font='600 15px '+F; ctx.fillText(_repEllip(ctx,p.channel,W-pad*2-260),pad+40+tw,yy); yy+=22; });
+    if(!(g.done||[]).length && !(g.pending_by_channel||[]).length){ ctx.fillStyle='#8a8578'; ctx.font='500 15px '+F; ctx.fillText('No thumbnails.',pad+40,yy); }
+    y+=rowH+12;
+  });
+  y=_rSec(ctx,W,pad,y,'Channel-wise Thumbnails',chs.length,cfg.accent);
+  if(chs.length){ chs.forEach(function(c){ ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,34,10); ctx.fill(); ctx.strokeStyle='#f0e0c0'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#14213d'; ctx.font='700 16px '+F; ctx.fillText(_repEllip(ctx,c.channel,W-pad*2-260),pad+16,y+23);
+    var pd='Pending '+c.pending; ctx.font='800 14px '+F; var pw=ctx.measureText(pd).width+22, pxx=W-pad-16-pw; ctx.fillStyle='rgba(217,119,6,.12)'; _rr(ctx,pxx,y+6,pw,22,11); ctx.fill(); ctx.fillStyle='#b45309'; ctx.fillText(pd,pxx+11,y+22);
+    var dn='Done '+c.done; var dw=ctx.measureText(dn).width+22, dxx=pxx-10-dw; ctx.fillStyle='rgba(22,163,74,.12)'; _rr(ctx,dxx,y+6,dw,22,11); ctx.fill(); ctx.fillStyle='#16a34a'; ctx.fillText(dn,dxx+11,y+22);
+    y+=40; }); y+=12;
+  } else { ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No channel data.',pad,y+10); y+=50; }
+  if(leave.length){ y=_rLeaveLine(ctx,W,pad,y,leave.map(function(g){ return g.name+(g.remark?' ('+g.remark+')':''); }),cfg.accent); }
+  _rFoot(ctx,W,H,cfg,'MVS Foundation — Graphics · '+(t.thumbnails||0)+' thumbnails · auto-generated from the portal');
+  return cv;
+}
+
+// ===== UPLOADS (red / YouTube) + views + top videos =====
+function _repCanvasUploads(data, logo){
+  var W=1080, pad=48, cfg=_RTHEME.uploads, F=_RF;
+  var ups=((data.production||{}).uploaded)||[]; var top=((data.production||{}).top_videos)||[]; var t=data.totals||{};
+  function uH(u){ return 46 + Math.min((u.videos||[]).length,8)*24 + 14; }
+  var H=210+30; H+=130+30; H+=50;
+  if(ups.length){ ups.forEach(function(u){ H+=uH(u)+12; }); } else { H+=50; }
+  H+=50; H+=(top.length?top.length*34+14:0);
+  H+=64;
+  var o=_rMk(W,H), ctx=o.ctx, cv=o.cv; _rHead(ctx,W,pad,data,cfg,logo); var y=210+30;
+  y=_rKpi(ctx,W,pad,y,[['Uploaded',t.uploaded,'#dc2626'],['Total Views',_rNum(t.views),'#7c3aed'],['Channels',ups.length,'#2563eb']])+30;
+  y=_rSec(ctx,W,pad,y,'Uploaded — by Channel',(data.production||{}).total_uploaded||0,cfg.accent);
+  if(ups.length){ ups.forEach(function(u){ var cardH=uH(u); ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,cardH,12); ctx.fill(); ctx.strokeStyle='#f2c9c9'; ctx.lineWidth=1.4; ctx.stroke();
+    _repYT(ctx,pad+16,y+12,30,22); ctx.fillStyle='#14213d'; ctx.font='800 18px '+F; ctx.fillText(_repEllip(ctx,u.channel||'No channel',W-pad*2-320),pad+56,y+29);
+    var vlab=(u.views!=null?(_rNum(u.views)+' views'):''); var clab=(u.count||0)+(u.count===1?' video':' videos');
+    ctx.font='800 14px '+F; var xR=W-pad-16;
+    var vw=ctx.measureText(vlab).width+22; ctx.fillStyle='rgba(124,58,237,.10)'; _rr(ctx,xR-vw,y+10,vw,24,12); ctx.fill(); ctx.fillStyle='#6d3fb0'; ctx.fillText(vlab,xR-vw+11,y+27); xR=xR-vw-10;
+    var cw=ctx.measureText(clab).width+22; ctx.fillStyle='rgba(255,0,0,.10)'; _rr(ctx,xR-cw,y+10,cw,24,12); ctx.fill(); ctx.fillStyle='#c0271f'; ctx.fillText(clab,xR-cw+11,y+27);
+    var vy=y+46+6; (u.videos||[]).slice(0,8).forEach(function(v){ ctx.fillStyle='#dc2626'; ctx.font='800 14px '+F; ctx.fillText('•',pad+56,vy); ctx.fillStyle='#4a4536'; ctx.font='500 15px '+F; var tt=_repEllip(ctx,v.title,W-pad*2-260); ctx.fillText(tt,pad+72,vy); ctx.fillStyle='#7c3aed'; ctx.font='700 13px '+F; ctx.textAlign='right'; ctx.fillText(_rNum(v.views)+' views',W-pad-24,vy); ctx.textAlign='left'; vy+=24; });
+    if((u.videos||[]).length>8){ ctx.fillStyle='#8a8578'; ctx.font='600 13px '+F; ctx.fillText('+'+((u.videos||[]).length-8)+' more',pad+72,vy-2); }
+    y+=cardH+12; });
+  } else { ctx.fillStyle='#8a8578'; ctx.font='500 18px '+F; ctx.fillText('No uploads in this period.',pad,y+10); y+=50; }
+  if(top.length){ y=_rSec(ctx,W,pad,y,(_repPeriodLabel()==='Monthly'?'Top 10 Videos by Views':'Top Videos by Views'),top.length,cfg.accent);
+    top.forEach(function(v,i){ ctx.fillStyle='#fff'; _rr(ctx,pad,y,W-pad*2,30,8); ctx.fill(); ctx.strokeStyle='#efe1e1'; ctx.lineWidth=1; ctx.stroke();
+      ctx.fillStyle=i<3?'#e6ad4e':'#b0a483'; ctx.font='800 15px '+F; ctx.fillText('#'+(i+1),pad+14,y+21);
+      ctx.fillStyle='#3a3527'; ctx.font='600 15px '+F; var tt=_repEllip(ctx,v.title,W-pad*2-360); ctx.fillText(tt,pad+58,y+21); _rChip(ctx,v.channel||'No channel',pad+58+ctx.measureText(tt).width+10,y+19,'rgba(255,0,0,.08)','#c0271f');
+      ctx.fillStyle='#7c3aed'; ctx.font='800 15px '+F; ctx.textAlign='right'; ctx.fillText(_rNum(v.views)+' views',W-pad-16,y+21); ctx.textAlign='left'; y+=34; }); y+=14;
+  }
+  _rFoot(ctx,W,H,cfg,'MVS Foundation — Uploads · '+(t.uploaded||0)+' videos · '+_rNum(t.views)+' views · auto-generated from the portal');
+  return cv;
+}
+
+function _repCanvas_UNUSED(data, logo){
   var DPR=2, W=1080, pad=48, F='-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
   var eds=data.editors||[], gfx=data.graphics||[], ups=(data.production&&data.production.uploaded)||[];
   var t=data.totals||{};
@@ -32127,27 +32330,33 @@ function _repCanvas(data, logo){
 }
 window._repDownloadImage=function(){
   var R=window._REP; if(!R||!R.canvas){ toast('Report not ready',true); return; }
-  try{ R.canvas.toBlob(function(b){ if(!b){ toast('Could not export image',true); return; } var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='MVS-'+R.period+'-report-'+R.date+'.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000); toast('Image downloaded — send it to your WhatsApp group'); },'image/png'); }
+  try{ R.canvas.toBlob(function(b){ if(!b){ toast('Could not export image',true); return; } var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='MVS-'+(R.view||'overall')+'-'+R.period+'-'+R.date+'.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},4000); toast('Image downloaded'+((R.view||'overall')==='overall'?' — send it to your WhatsApp group':'')); },'image/png'); }
   catch(e){ toast('Could not export image',true); }
 };
+function _repPdfAdd(pdf,cv,first){
+  var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
+  var ratio=pw/cv.width, fullH=cv.height*ratio;
+  if(fullH<=ph){ if(!first) pdf.addPage(); pdf.addImage(cv.toDataURL('image/png'),'PNG',0,0,pw,fullH); return; }
+  var sliceCssH=Math.floor(cv.width*(ph/pw)); var sy=0, f=first;
+  while(sy<cv.height){ var sh=Math.min(sliceCssH, cv.height-sy);
+    var c2=document.createElement('canvas'); c2.width=cv.width; c2.height=sh;
+    c2.getContext('2d').drawImage(cv,0,sy,cv.width,sh,0,0,cv.width,sh);
+    if(!f) pdf.addPage(); f=false;
+    pdf.addImage(c2.toDataURL('image/png'),'PNG',0,0,pw,sh*ratio); sy+=sh; }
+}
 window._repDownloadPDF=function(){
-  var R=window._REP; if(!R||!R.canvas){ toast('Report not ready',true); return; }
+  var R=window._REP; if(!R||!R.data){ toast('Report not ready',true); return; }
   var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF; if(!J){ toast('PDF library not loaded',true); return; }
-  try{
-    var cv=R.canvas; var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'});
-    var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
-    var ratio=pw/cv.width, fullH=cv.height*ratio;
-    if(fullH<=ph){ pdf.addImage(cv.toDataURL('image/png'),'PNG',0,0,pw,fullH); }
-    else {
-      var sliceCssH=Math.floor(cv.width*(ph/pw)); var sy=0, first=true;
-      while(sy<cv.height){ var sh=Math.min(sliceCssH, cv.height-sy);
-        var c2=document.createElement('canvas'); c2.width=cv.width; c2.height=sh;
-        c2.getContext('2d').drawImage(cv,0,sy,cv.width,sh,0,0,cv.width,sh);
-        if(!first) pdf.addPage(); first=false;
-        pdf.addImage(c2.toDataURL('image/png'),'PNG',0,0,pw,sh*ratio); sy+=sh; }
-    }
-    pdf.save('MVS-'+R.period+'-report-'+R.date+'.pdf'); toast('PDF downloaded');
-  }catch(e){ toast('Could not export PDF',true); }
+  _repLogo(function(logo){
+    try{
+      var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'});
+      // all three detailed reports, each starting on its own page
+      _repPdfAdd(pdf,_repCanvasEditors(R.data,logo),true);
+      _repPdfAdd(pdf,_repCanvasGraphics(R.data,logo),false);
+      _repPdfAdd(pdf,_repCanvasUploads(R.data,logo),false);
+      pdf.save('MVS-'+R.period+'-report-'+R.date+'.pdf'); toast('PDF downloaded — Editors + Graphics + Uploads');
+    }catch(e){ toast('Could not export PDF',true); }
+  });
 };
 
 function initAdminLiveTracker(){

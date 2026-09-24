@@ -1455,16 +1455,42 @@ def pm_report(period: str = "daily", date: str = "",
         ProductionEvent.created_at >= s, ProductionEvent.created_at < e).count()
     up_by_channel = {}
     tot_uploaded = 0
+    tot_views = 0
+    all_vids = []
+    _seen_up = set()
     for uev in db.query(ProductionEvent).filter(
             ProductionEvent.event == "youtube_link_added",
             ProductionEvent.created_at >= s, ProductionEvent.created_at < e).all():
+        if uev.task_id in _seen_up:   # a video can get the "added" event more than once
+            continue
+        _seen_up.add(uev.task_id)
         t = db.query(VideoTask).filter(VideoTask.id == uev.task_id).first()
         ch = _ch(t)
-        d = up_by_channel.setdefault(ch, {"channel": ch, "count": 0, "videos": []})
+        title = ((t.title if t else "") or "Untitled")[:90]
+        views = int(getattr(t, "yt_views", 0) or 0) if t else 0
+        d = up_by_channel.setdefault(ch, {"channel": ch, "count": 0, "views": 0, "videos": []})
         d["count"] += 1
-        d["videos"].append(((t.title if t else "") or "Untitled")[:90])
+        d["views"] += views
+        d["videos"].append({"title": title, "views": views})
+        all_vids.append({"title": title, "channel": ch, "views": views})
         tot_uploaded += 1
-    uploaded = sorted(up_by_channel.values(), key=lambda x: -x["count"])
+        tot_views += views
+    for d in up_by_channel.values():
+        d["videos"].sort(key=lambda v: -v["views"])
+    uploaded = sorted(up_by_channel.values(), key=lambda x: (-x["views"], -x["count"]))
+    top_videos = sorted(all_vids, key=lambda v: -v["views"])[:(10 if period == "monthly" else 5)]
+
+    # ---- graphics channel-wise totals (thumbnails done + pending per channel) ----
+    gfx_ch = {}
+    for g in graphics:
+        for d in g.get("done", []):
+            c = d.get("channel") or "No channel"
+            gfx_ch.setdefault(c, {"channel": c, "done": 0, "pending": 0})["done"] += 1
+        for p in g.get("pending_by_channel", []):
+            c = p.get("channel") or "No channel"
+            gfx_ch.setdefault(c, {"channel": c, "done": 0, "pending": 0})["pending"] += p.get("count", 0)
+    graphics_channels = sorted(gfx_ch.values(), key=lambda x: (-(x["done"] + x["pending"]), x["channel"]))
+    tot_thumbs = sum(g.get("done_count", 0) for g in graphics)
 
     # currently editing / paused totals
     now_editing = db.query(VideoTask).filter(VideoTask.cancelled.isnot(True),
@@ -1475,11 +1501,13 @@ def pm_report(period: str = "daily", date: str = "",
     return {
         "period": period, "range_label": range_label, "date": day_str, "is_daily": is_daily,
         "generated_at": (datetime.utcnow() + IST).strftime("%d %b %Y, %I:%M %p"),
-        "editors": editors, "graphics": graphics,
+        "editors": editors, "graphics": graphics, "graphics_channels": graphics_channels,
         "production": {"assigned": assigned, "uploaded": uploaded,
-                       "total_uploaded": tot_uploaded},
+                       "total_uploaded": tot_uploaded, "total_views": tot_views,
+                       "top_videos": top_videos},
         "totals": {"completed": tot_completed, "assigned": assigned,
-                   "uploaded": tot_uploaded, "editing": now_editing, "paused": now_paused},
+                   "uploaded": tot_uploaded, "editing": now_editing, "paused": now_paused,
+                   "views": tot_views, "thumbnails": tot_thumbs},
     }
 
 
