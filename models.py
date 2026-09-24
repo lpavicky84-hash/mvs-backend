@@ -1551,6 +1551,20 @@ class EditingSession(Base):
     note             = Column(String(300), default="")
 
 
+class ProductionAttendance(Base):
+    """PM-set attendance override for a production staff member on a given IST day.
+    Used by the daily report: no work + no override = Leave (default); PM can mark
+    'present' with a remark (e.g. did other off-portal work) so it shows as present."""
+    __tablename__ = "production_attendance"
+    id         = Column(Integer, primary_key=True)
+    staff_id   = Column(Integer, index=True)             # ProductionStaffProfile.id
+    day        = Column(String(10), index=True)           # IST date "YYYY-MM-DD"
+    status     = Column(String(12), default="present")    # present | leave
+    remark     = Column(String(400), default="")
+    set_by     = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, default=func.now())
+
+
 class ProductionEvent(Base):
     """Immutable production timeline event. One row per important action."""
     __tablename__ = "production_events"

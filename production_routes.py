@@ -1334,52 +1334,122 @@ def pm_report(period: str = "daily", date: str = "",
     s = start_ist - IST   # UTC bounds (DB stores UTC)
     e = end_ist - IST
 
-    def _nm(role):
-        return {sp.id: (sp.user.name if sp.user else ("#" + str(sp.id)))
-                for sp in db.query(_SP).filter(_SP.staff_role == role).all()}
-    ed_map = _nm("editor")
-    gf_map = _nm("graphics")
+    from models import ProductionAttendance as _ATT
+    day_str = anchor.strftime("%Y-%m-%d")
+    is_daily = (period == "daily")
 
-    # ---- editors: completed (period) + current working (snapshot) ----
+    def _ch(t):
+        return ((t.channel_name if t else "") or "").strip() or "No channel"
+
+    # active staff (name kept even with zero work) + attendance overrides (daily)
+    ed_rows = db.query(_SP).filter(_SP.staff_role == "editor", _SP.is_active == True).all()  # noqa: E712
+    gf_rows = db.query(_SP).filter(_SP.staff_role == "graphics", _SP.is_active == True).all()  # noqa: E712
+    att = {}
+    if is_daily:
+        for a in db.query(_ATT).filter(_ATT.day == day_str).all():
+            att[a.staff_id] = {"status": (a.status or "present"), "remark": (a.remark or "")}
+
+    def _status_for(sid, has_work):
+        """Daily attendance status when a staff member has no work in the period."""
+        if not is_daily or has_work:
+            return ("active", "")
+        o = att.get(sid)
+        if o and o.get("status") == "present":
+            return ("present", o.get("remark") or "")
+        if o and o.get("status") == "leave":
+            return ("leave", o.get("remark") or "")
+        return ("leave", "")   # no work + no override -> Leave (default)
+
+    # ---- editors: completed (period, with channel+title) + current working (snapshot) ----
     editors = []
     tot_completed = 0
-    for eid, enm in ed_map.items():
-        completed = db.query(VideoTask).filter(
+    for sp in ed_rows:
+        eid = sp.id
+        enm = sp.user.name if sp.user else ("#" + str(eid))
+        comp_rows = db.query(VideoTask).filter(
             VideoTask.cancelled.isnot(True),
             or_(VideoTask.editor_id == eid,
                 VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
             VideoTask.editing_done_at != None,
-            VideoTask.editing_done_at >= s, VideoTask.editing_done_at < e).count()
+            VideoTask.editing_done_at >= s, VideoTask.editing_done_at < e).all()
+        completed = [{"title": (t.title or "Untitled")[:90], "channel": _ch(t)} for t in comp_rows]
         working = db.query(VideoTask).filter(
             VideoTask.cancelled.isnot(True),
             or_(VideoTask.editor_id == eid,
                 VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
             VideoTask.lifecycle.in_(["editing", "editing_paused"])).all()
-        wl = [{"title": (t.title or "Untitled")[:80],
+        wl = [{"title": (t.title or "Untitled")[:90], "channel": _ch(t),
                "pct": int(t.editing_progress or 0),
                "paused": (t.lifecycle == "editing_paused")} for t in working]
-        tot_completed += completed
-        if completed or wl:
-            editors.append({"name": enm, "completed": completed, "working": wl})
-    editors.sort(key=lambda x: (-x["completed"], -len(x["working"])))
+        # smart metrics: on-time % (editor deadline) + avg turnaround (start -> done) for the period
+        _ot = 0
+        _dl = 0
+        _turn = []
+        for t in comp_rows:
+            _edl = getattr(t, "editor_deadline", None) or t.deadline
+            if _edl:
+                _dl += 1
+                if t.editing_done_at and t.editing_done_at <= _edl:
+                    _ot += 1
+            if t.editing_started_at and t.editing_done_at and t.editing_done_at >= t.editing_started_at:
+                _turn.append((t.editing_done_at - t.editing_started_at).total_seconds() / 3600.0)
+        ontime_pct = int(round(_ot * 100.0 / _dl)) if _dl else None
+        avg_hours = round(sum(_turn) / len(_turn), 1) if _turn else None
+        tot_completed += len(completed)
+        has_work = bool(completed or wl)
+        st, rem = _status_for(eid, has_work)
+        editors.append({"name": enm, "staff_id": eid, "completed_count": len(completed),
+                        "completed": completed, "working": wl, "status": st, "remark": rem,
+                        "ontime_pct": ontime_pct, "avg_hours": avg_hours, "top": False})
+    editors.sort(key=lambda x: (0 if x["status"] in ("active",) else 1,
+                                -x["completed_count"], -len(x["working"]), x["name"].lower()))
+    # top performer = most completed in the period (only if >0)
+    _best = max((x["completed_count"] for x in editors), default=0)
+    if _best > 0:
+        for x in editors:
+            if x["completed_count"] == _best and x["status"] == "active":
+                x["top"] = True
+                break
 
-    # ---- graphics: submitted (period) + pending (snapshot) ----
+    # ---- graphics: submitted (period, with channel) + pending (snapshot, per channel) ----
     graphics = []
-    _gname_by_actor = {}
+    done_by_uid = {}
     for gev in db.query(ProductionEvent).filter(
             ProductionEvent.event == "thumbnail_submitted",
             ProductionEvent.created_at >= s, ProductionEvent.created_at < e).all():
-        _gname_by_actor[gev.actor_name or ""] = _gname_by_actor.get(gev.actor_name or "", 0) + 1
-    for gid, gnm in gf_map.items():
-        done = _gname_by_actor.get(gnm, 0)
-        pending = db.query(GraphicsTask).filter(
+        t = db.query(VideoTask).filter(VideoTask.id == gev.task_id).first()
+        key = gev.actor_user_id
+        done_by_uid.setdefault(key, []).append({"title": ((t.title if t else "") or "Untitled")[:90],
+                                                "channel": _ch(t), "actor": gev.actor_name or ""})
+    for sp in gf_rows:
+        gid = sp.id
+        gnm = sp.user.name if sp.user else ("#" + str(gid))
+        guid = sp.user_id
+        done = done_by_uid.get(guid, [])
+        if not done:   # fallback: match by name (older events without actor_user_id)
+            for lst in done_by_uid.values():
+                for x in lst:
+                    if (x.get("actor") or "") == gnm:
+                        done.append(x)
+        pend_rows = db.query(GraphicsTask).filter(
             GraphicsTask.graphics_id == gid,
-            GraphicsTask.status.in_(["new", "in_progress", "changes"])).count()
-        if done or pending:
-            graphics.append({"name": gnm, "done": done, "pending": pending})
-    graphics.sort(key=lambda x: (-x["done"], -x["pending"]))
+            GraphicsTask.status.in_(["new", "in_progress", "changes"])).all()
+        pend_by_ch = {}
+        for g in pend_rows:
+            t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+            c = _ch(t)
+            pend_by_ch[c] = pend_by_ch.get(c, 0) + 1
+        has_work = bool(done or pend_rows)
+        st, rem = _status_for(gid, has_work)
+        graphics.append({"name": gnm, "staff_id": gid, "done_count": len(done), "done": done,
+                         "pending": len(pend_rows),
+                         "pending_by_channel": sorted(({"channel": k, "count": v} for k, v in pend_by_ch.items()),
+                                                      key=lambda x: -x["count"]),
+                         "status": st, "remark": rem})
+    graphics.sort(key=lambda x: (0 if x["status"] == "active" else 1,
+                                 -x["done_count"], -x["pending"], x["name"].lower()))
 
-    # ---- production manager: assigned (period) + uploaded per channel (period) ----
+    # ---- production manager: assigned (period) + uploaded per channel (period, with titles) ----
     assigned = db.query(ProductionEvent).filter(
         ProductionEvent.event == "editor_assigned",
         ProductionEvent.created_at >= s, ProductionEvent.created_at < e).count()
@@ -1389,11 +1459,12 @@ def pm_report(period: str = "daily", date: str = "",
             ProductionEvent.event == "youtube_link_added",
             ProductionEvent.created_at >= s, ProductionEvent.created_at < e).all():
         t = db.query(VideoTask).filter(VideoTask.id == uev.task_id).first()
-        ch = (t.channel_name if t else "") or "Other"
-        up_by_channel[ch] = up_by_channel.get(ch, 0) + 1
+        ch = _ch(t)
+        d = up_by_channel.setdefault(ch, {"channel": ch, "count": 0, "videos": []})
+        d["count"] += 1
+        d["videos"].append(((t.title if t else "") or "Untitled")[:90])
         tot_uploaded += 1
-    uploaded = sorted(({"channel": k, "count": v} for k, v in up_by_channel.items()),
-                      key=lambda x: -x["count"])
+    uploaded = sorted(up_by_channel.values(), key=lambda x: -x["count"])
 
     # currently editing / paused totals
     now_editing = db.query(VideoTask).filter(VideoTask.cancelled.isnot(True),
@@ -1402,7 +1473,7 @@ def pm_report(period: str = "daily", date: str = "",
                                             VideoTask.lifecycle == "editing_paused").count()
 
     return {
-        "period": period, "range_label": range_label,
+        "period": period, "range_label": range_label, "date": day_str, "is_daily": is_daily,
         "generated_at": (datetime.utcnow() + IST).strftime("%d %b %Y, %I:%M %p"),
         "editors": editors, "graphics": graphics,
         "production": {"assigned": assigned, "uploaded": uploaded,
@@ -1410,6 +1481,57 @@ def pm_report(period: str = "daily", date: str = "",
         "totals": {"completed": tot_completed, "assigned": assigned,
                    "uploaded": tot_uploaded, "editing": now_editing, "paused": now_paused},
     }
+
+
+@router.get("/report/attendance")
+def pm_report_attendance(date: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """All active editors + graphics with their attendance override for a given IST day (for the PM control)."""
+    from models import ProductionStaffProfile as _SP, ProductionAttendance as _ATT
+    IST = timedelta(hours=5, minutes=30)
+    try:
+        anchor = datetime.fromisoformat(date) if date else (datetime.utcnow() + IST)
+    except Exception:
+        anchor = datetime.utcnow() + IST
+    day_str = anchor.strftime("%Y-%m-%d")
+    att = {a.staff_id: a for a in db.query(_ATT).filter(_ATT.day == day_str).all()}
+    out = []
+    for sp in db.query(_SP).filter(_SP.staff_role.in_(["editor", "graphics"]),
+                                   _SP.is_active == True).all():  # noqa: E712
+        a = att.get(sp.id)
+        out.append({"staff_id": sp.id, "name": (sp.user.name if sp.user else "#" + str(sp.id)),
+                    "role": sp.staff_role,
+                    "status": (a.status if a else ""), "remark": (a.remark if a else "")})
+    out.sort(key=lambda x: (x["role"], x["name"].lower()))
+    return {"date": day_str, "staff": out}
+
+
+@router.post("/report/attendance")
+def pm_set_attendance(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """PM marks a staff member present (+remark) or on leave for a day; '' clears the override."""
+    from models import ProductionAttendance as _ATT
+    IST = timedelta(hours=5, minutes=30)
+    sid = int(payload.get("staff_id") or 0)
+    if not sid:
+        raise HTTPException(400, "staff_id required")
+    day_str = (payload.get("date") or "").strip() or (datetime.utcnow() + IST).strftime("%Y-%m-%d")
+    status = (payload.get("status") or "").strip().lower()
+    remark = (payload.get("remark") or "").strip()[:400]
+    row = db.query(_ATT).filter(_ATT.staff_id == sid, _ATT.day == day_str).first()
+    if status not in ("present", "leave"):
+        # clear override
+        if row:
+            db.delete(row)
+            db.commit()
+        return {"ok": True, "cleared": True}
+    if not row:
+        row = _ATT(staff_id=sid, day=day_str)
+        db.add(row)
+    row.status = status
+    row.remark = remark
+    row.set_by = getattr(me, "id", None)
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "status": status, "remark": remark}
 
 
 @router.post("/tasks/{tid}/complete")
