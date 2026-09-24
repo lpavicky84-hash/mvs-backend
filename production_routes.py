@@ -1341,6 +1341,23 @@ def pm_report(period: str = "daily", date: str = "",
     def _ch(t):
         return ((t.channel_name if t else "") or "").strip() or "No channel"
 
+    def _vt(t):
+        """Normalized short video-type label (Long / Short / One Shot / Strategy / ...)."""
+        raw = ((getattr(t, "video_type", "") if t else "") or "").strip()
+        if not raw:
+            return "Other"
+        low = raw.lower()
+        if "one" in low and "shot" in low:
+            return "One Shot"
+        if "short" in low:
+            return "Short"
+        if "long" in low:
+            return "Long"
+        if "strateg" in low:
+            return "Strategy"
+        # keep it compact for the report chips
+        return raw[:18]
+
     # active staff (name kept even with zero work) + attendance overrides (daily)
     ed_rows = db.query(_SP).filter(_SP.staff_role == "editor", _SP.is_active == True).all()  # noqa: E712
     gf_rows = db.query(_SP).filter(_SP.staff_role == "graphics", _SP.is_active == True).all()  # noqa: E712
@@ -1372,13 +1389,15 @@ def pm_report(period: str = "daily", date: str = "",
                 VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
             VideoTask.editing_done_at != None,
             VideoTask.editing_done_at >= s, VideoTask.editing_done_at < e).all()
-        completed = [{"title": (t.title or "Untitled")[:90], "channel": _ch(t)} for t in comp_rows]
+        completed = [{"title": (t.title or "Untitled")[:90], "channel": _ch(t),
+                      "type": _vt(t)} for t in comp_rows]
         working = db.query(VideoTask).filter(
             VideoTask.cancelled.isnot(True),
             or_(VideoTask.editor_id == eid,
                 VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
             VideoTask.lifecycle.in_(["editing", "editing_paused"])).all()
         wl = [{"title": (t.title or "Untitled")[:90], "channel": _ch(t),
+               "type": _vt(t),
                "pct": int(t.editing_progress or 0),
                "paused": (t.lifecycle == "editing_paused")} for t in working]
         # smart metrics: on-time % (editor deadline) + avg turnaround (start -> done) for the period
