@@ -350,63 +350,31 @@ _ensure_enrollments()
 
 
 def _dedupe_student_batches():
-    """Collapse duplicate batch enrolments so a student has ONE enrolment per real batch.
-    Buggy session-split runs left some students enrolled in several same-named
-    "Lakshya Science" cards. For each student, per base batch NAME, keep a single
-    enrolment — the one matching their primary (StudentProfile.batch_id), else an active
-    card with a session, else the lowest id — and drop the rest. Never moves a student
-    between batches; only removes redundant enrolment rows. Import-time, idempotent, safe."""
+    """Remove ONLY true duplicate enrolment rows: the SAME student in the SAME batch
+    (same batch_id) more than once. A student enrolled in DIFFERENT batches — e.g.
+    "Lakshya Science October 2026" + "Lakshya Science Crash Course", or October + April —
+    is NOT a duplicate and is always kept (batch_id is different). Also drops rows that
+    point at a batch that no longer exists. Import-time, idempotent, safe.
+    NOTE: dedup is by batch_id, NEVER by name, so genuine multi-batch students never lose
+    an enrolment. This matches the DB unique constraint uq_student_batch(student_id,batch_id)."""
     try:
         from database import SessionLocal
-        from models import StudentBatch, Batch, StudentProfile
-        from collections import defaultdict
+        from models import StudentBatch, Batch
         db = SessionLocal()
         try:
-            batches = {b.id: b for b in db.query(Batch).all()}
-
-            def _nm(bid):
-                b = batches.get(bid)
-                return (b.name or "").strip().lower() if b else None
-
-            def _active(bid):
-                b = batches.get(bid)
-                return bool(b) and (b.active is not False)
-
-            def _hassess(bid):
-                b = batches.get(bid)
-                return bool(b and (getattr(b, "session", "") or "").strip())
-
-            prim = dict(db.query(StudentProfile.id, StudentProfile.batch_id)
-                        .filter(StudentProfile.batch_id != None).all())
-            by_student = defaultdict(list)
-            for e in db.query(StudentBatch).all():
-                by_student[e.student_id].append(e)
+            valid_batch = set(bid for (bid,) in db.query(Batch.id).all())
+            seen = {}       # (student_id, batch_id) -> keeper row
             removed = 0
-            for sid, rows in by_student.items():
-                if len(rows) < 2:
-                    continue
-                sp_bid = prim.get(sid)
-                groups = defaultdict(list)
-                for e in rows:
-                    nm = _nm(e.batch_id)
-                    if nm is None:                       # enrolment to a deleted batch -> drop
-                        db.delete(e)
-                        removed += 1
-                        continue
-                    groups[nm].append(e)
-                for nm, grp in groups.items():
-                    if len(grp) < 2:
-                        continue
-                    grp.sort(key=lambda e: (0 if e.batch_id == sp_bid else 1,
-                                            0 if _active(e.batch_id) else 1,
-                                            0 if _hassess(e.batch_id) else 1,
-                                            e.batch_id))
-                    keeper = grp[0]
-                    if any(x.is_primary for x in grp):
-                        keeper.is_primary = True
-                    for e in grp[1:]:
-                        db.delete(e)
-                        removed += 1
+            for e in db.query(StudentBatch).order_by(StudentBatch.id.asc()).all():
+                if e.batch_id not in valid_batch:        # enrolment to a deleted batch -> drop
+                    db.delete(e); removed += 1; continue
+                key = (e.student_id, e.batch_id)
+                if key in seen:
+                    if e.is_primary and not seen[key].is_primary:
+                        seen[key].is_primary = True      # preserve primary flag before dropping
+                    db.delete(e); removed += 1
+                else:
+                    seen[key] = e
             if removed:
                 db.commit()
         finally:
@@ -1329,52 +1297,25 @@ def _consolidate_session_dupes(db):
 
 
 def _dedupe_student_enrollments(db, limit=40000):
-    """Self-heal: collapse a student's duplicate batch enrolments so each distinct ACTIVE
-    batch NAME appears once. Removes exact-duplicate rows, extra same-name rows, and stale
-    rows pointing at archived/deleted batches. Keeps one primary (prefers sp.batch_id).
-    Safe + idempotent — a student is never removed from a genuinely different-named batch."""
-    from models import StudentBatch, Batch, StudentProfile
-    binfo = {b.id: ((b.active is not False), (b.name or "").strip().lower())
-             for b in db.query(Batch).all()}
-    rows_by_stu = {}
-    for sb in db.query(StudentBatch).limit(limit).all():
-        rows_by_stu.setdefault(sb.student_id, []).append(sb)
+    """Self-heal: remove ONLY true duplicate enrolment rows — the SAME student in the SAME
+    batch (same batch_id) more than once — plus rows pointing at a DELETED batch. A student
+    enrolled in DIFFERENT batches (October + April, or a course + its crash course) is NEVER
+    a duplicate and is always kept. Dedup is strictly by batch_id, NEVER by name, so genuine
+    multi-batch students never lose an enrolment. Keeps the primary flag. Idempotent + safe."""
+    from models import StudentBatch, Batch
+    valid_batch = set(bid for (bid,) in db.query(Batch.id).all())
+    seen = {}       # (student_id, batch_id) -> keeper row
     removed = 0
-    for sid, rows in rows_by_stu.items():
-        if len(rows) < 2:
-            continue
-        prim_bid = None
-        sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
-        if sp:
-            prim_bid = getattr(sp, "batch_id", None)
-        kept = {}                       # name -> StudentBatch we keep
-        for sb in rows:
-            info = binfo.get(sb.batch_id)
-            if not info or not info[0]:  # batch gone or archived -> stale enrolment
-                db.delete(sb); removed += 1; continue
-            nm = info[1]
-            if nm in kept:
-                keep = kept[nm]
-                # prefer the row that matches the student's primary batch_id
-                if prim_bid and sb.batch_id == prim_bid:
-                    db.delete(keep); kept[nm] = sb
-                else:
-                    if sb.is_primary:
-                        keep.is_primary = True
-                    db.delete(sb)
-                removed += 1
-            else:
-                kept[nm] = sb
-        # exactly one primary
-        if kept:
-            chosen = None
-            for sb in kept.values():
-                if prim_bid and sb.batch_id == prim_bid:
-                    chosen = sb
-            if not chosen:
-                chosen = list(kept.values())[0]
-            for sb in kept.values():
-                sb.is_primary = (sb is chosen)
+    for sb in db.query(StudentBatch).order_by(StudentBatch.id.asc()).limit(limit).all():
+        if sb.batch_id not in valid_batch:      # enrolment to a deleted batch -> drop junk
+            db.delete(sb); removed += 1; continue
+        key = (sb.student_id, sb.batch_id)
+        if key in seen:
+            if sb.is_primary and not seen[key].is_primary:
+                seen[key].is_primary = True
+            db.delete(sb); removed += 1
+        else:
+            seen[key] = sb
     if removed:
         try:
             db.commit()

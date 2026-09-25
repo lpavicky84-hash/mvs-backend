@@ -14007,6 +14007,7 @@ function _commGroups(){
     b.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">'+
         '<div style="font-weight:800;font-size:1.05rem">Batch Groups <span style="color:var(--muted);font-weight:600">('+gs.length+')</span></div>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          '<button class="cmy-abtn" style="margin:0" onclick="_commAudit()">'+ic('eye')+' Data Check</button>'+
           '<button class="cmy-abtn" style="margin:0" onclick="_commAutoSync()">'+ic('refresh')+' Auto-create from Batches</button>'+
           '<button class="cmy-send" style="margin:0" onclick="_commNewGroup()">'+ic('users')+' New Group</button>'+
         '</div>'+
@@ -14014,6 +14015,29 @@ function _commGroups(){
       (gs.length?'<div class="cmy-grid">'+cards+'</div>':'<div class="cmy-empty">No groups yet. Tap <b>Auto-create from Batches</b> to instantly make a group for every batch (session-wise), plus a “No Session” group for students who haven’t set their exam session.</div>');
   }).catch(function(e){ b.innerHTML='<div class="cmy-empty">Could not load groups.</div>'; });
 }
+window._commAudit=function(){
+  showModal('Batch Data Audit','<div class="spinner"></div>','<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
+  api('/api/admin/community/batch-audit').then(function(r){
+    var t=r.totals||{}; var bs=(r.batches||[]); var ov=(r.overlaps||[]);
+    var warn=(t.duplicate_rows_removed_at_read>0||t.ghost_rows>0||ov.length>0);
+    var head='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+
+      '<div style="flex:1;min-width:120px;background:var(--surface-2,#faf9f5);border:1px solid var(--border);border-radius:12px;padding:12px"><div style="font-size:1.4rem;font-weight:800">'+(t.batches||0)+'</div><div style="font-size:.76rem;color:var(--muted)">BATCHES</div></div>'+
+      '<div style="flex:1;min-width:120px;background:var(--surface-2,#faf9f5);border:1px solid var(--border);border-radius:12px;padding:12px"><div style="font-size:1.4rem;font-weight:800">'+(t.students_with_primary_batch||0)+'</div><div style="font-size:.76rem;color:var(--muted)">STUDENTS (PRIMARY)</div></div>'+
+      '<div style="flex:1;min-width:120px;background:'+(t.duplicate_rows_removed_at_read>0?'rgba(220,38,38,.1)':'var(--surface-2,#faf9f5)')+';border:1px solid var(--border);border-radius:12px;padding:12px"><div style="font-size:1.4rem;font-weight:800;color:'+(t.duplicate_rows_removed_at_read>0?'#dc2626':'inherit')+'">'+(t.duplicate_rows_removed_at_read||0)+'</div><div style="font-size:.76rem;color:var(--muted)">DUPLICATE ROWS</div></div>'+
+      '<div style="flex:1;min-width:120px;background:'+(t.ghost_rows>0?'rgba(217,119,6,.1)':'var(--surface-2,#faf9f5)')+';border:1px solid var(--border);border-radius:12px;padding:12px"><div style="font-size:1.4rem;font-weight:800;color:'+(t.ghost_rows>0?'#d97706':'inherit')+'">'+(t.ghost_rows||0)+'</div><div style="font-size:.76rem;color:var(--muted)">GHOST ROWS</div></div>'+
+    '</div>';
+    var status=warn?'<div style="background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:10px;padding:10px 12px;font-size:.85rem;color:#b45309;margin-bottom:12px">⚠ Kuch issues mile — neeche dekho. Duplicate/ghost rows deploy ke baad auto-clean ho jaate hain (unique constraint laga hai).</div>':'<div style="background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.3);border-radius:10px;padding:10px 12px;font-size:.85rem;color:#16a34a;margin-bottom:12px">✓ Sab clean — koi duplicate ya overlap nahi. Counts unique hain.</div>';
+    var ovH='';
+    if(ov.length){ ovH='<div style="font-weight:800;margin:14px 0 8px;color:#dc2626">Same-name overlap (ek hi student do session cards mein)</div>'+
+      ov.map(function(o){ return '<div style="border:1px solid rgba(220,38,38,.25);border-radius:10px;padding:10px;margin-bottom:8px"><div style="font-weight:800">'+esc(o.name)+' — <span style="color:#dc2626">'+o.overlap+' students dono mein</span></div><div style="font-size:.8rem;color:var(--muted);margin-top:4px">'+o.cards.map(function(c){return esc(c.session||'no session')+': '+c.distinct;}).join('  ·  ')+'</div></div>'; }).join(''); }
+    var rowsH='<div style="font-weight:800;margin:14px 0 8px">Per-batch unique counts</div>'+
+      '<div style="max-height:40vh;overflow-y:auto">'+bs.map(function(b){ return '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(0,0,0,.05)">'+
+        '<div style="flex:1;min-width:0"><div style="font-weight:700">'+esc(b.name)+(b.session?' <span style="color:var(--muted);font-weight:600">— '+esc(b.session)+'</span>':'')+(b.active?'':' <span style="color:#dc2626;font-size:.7rem">(archived)</span>')+'</div></div>'+
+        '<div style="text-align:right"><div style="font-weight:800">'+b.distinct+'</div><div style="font-size:.7rem;color:var(--muted)">'+b.primary+' primary · '+b.addon+' add-on</div></div>'+
+      '</div>'; }).join('')+'</div>';
+    var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML=head+status+ovH+rowsH;
+  }).catch(function(e){ var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML='<div class="cmy-empty">Could not load audit. '+esc((e&&e.message)||'')+'</div>'; });
+};
 window._commAutoSync=function(){
   toast('Creating groups from batches…');
   api('/api/admin/community/groups/auto-sync','POST',{}).then(function(r){

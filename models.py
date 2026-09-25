@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Boolean, DateTime,
-    ForeignKey, Enum, Date, Time, JSON, Float
+    ForeignKey, Enum, Date, Time, JSON, Float, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -142,6 +142,8 @@ class StudentBatch(Base):
     batch_id    = Column(Integer, ForeignKey("batches.id"), index=True)
     is_primary  = Column(Boolean, default=False)
     created_at  = Column(DateTime, default=func.now())
+    # a student can be in a batch only ONCE — prevents duplicate-row count inflation
+    __table_args__ = (UniqueConstraint("student_id", "batch_id", name="uq_student_batch"),)
 
 
 # Which LIVE subjects belong to which batch (Phase 3). Global timetable entries of a mapped

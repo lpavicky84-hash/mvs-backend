@@ -303,6 +303,79 @@ def community_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
     return {"batches": batches, "total_students": total}
 
 
+@router.get("/admin/community/batch-audit", dependencies=[Depends(_admin_guard)])
+def community_batch_audit(name: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Live data-integrity report: unique students per batch, duplicate rows, ghost rows,
+    and same-name cross-session overlap (e.g. a student wrongly in BOTH Oct 2026 & April 2027)."""
+    from collections import defaultdict
+    out = {"batches": [], "overlaps": [], "totals": {}}
+    try:
+        valid_sids = set()
+        sp_user = {}
+        for spid, uid in db.query(StudentProfile.id, StudentProfile.user_id).all():
+            valid_sids.add(spid)
+            sp_user[spid] = uid
+        prim = defaultdict(set)      # batch_id -> set(student_id) via StudentProfile.batch_id
+        prim_of = {}
+        for spid, bid in (db.query(StudentProfile.id, StudentProfile.batch_id)
+                          .filter(StudentProfile.batch_id != None).all()):  # noqa: E711
+            if bid:
+                prim[bid].add(spid); prim_of[spid] = bid
+        # StudentBatch — detect duplicates + ghosts
+        pairs = set(); dup_rows = 0; ghost_rows = 0; enr = defaultdict(set)
+        batch_ids = set(b.id for b in db.query(Batch.id).all())
+        for sid, bid in db.query(StudentBatch.student_id, StudentBatch.batch_id).all():
+            if (sid, bid) in pairs:
+                dup_rows += 1
+                continue
+            pairs.add((sid, bid))
+            if sid not in valid_sids or bid not in batch_ids:
+                ghost_rows += 1
+                continue
+            enr[bid].add(sid)
+        bq = db.query(Batch)
+        if (name or "").strip():
+            bq = bq.filter(Batch.name.like("%" + name.strip() + "%"))
+        blist = bq.order_by(Batch.name.asc(), Batch.session.asc()).all()
+        by_name = defaultdict(list)
+        allsets = {}
+        for b in blist:
+            members = prim.get(b.id, set()) | enr.get(b.id, set())
+            allsets[b.id] = members
+            addon = sum(1 for s in enr.get(b.id, set()) if prim_of.get(s) != b.id)
+            row = {"id": b.id, "name": b.name or "", "session": (getattr(b, "session", "") or ""),
+                   "active": bool(b.active), "distinct": len(members),
+                   "primary": len(prim.get(b.id, set())), "addon": addon,
+                   "sb_rows": len(enr.get(b.id, set()))}
+            out["batches"].append(row)
+            by_name[b.name or ""].append(b)
+        # same-name cross-session overlap
+        for nm, cards in by_name.items():
+            if len(cards) < 2:
+                continue
+            seen = defaultdict(int)
+            for b in cards:
+                for s in allsets.get(b.id, set()):
+                    seen[s] += 1
+            overlap = sum(1 for s, c in seen.items() if c > 1)
+            if overlap:
+                out["overlaps"].append({
+                    "name": nm, "overlap": overlap,
+                    "cards": [{"id": b.id, "session": (getattr(b, "session", "") or ""),
+                               "distinct": len(allsets.get(b.id, set()))} for b in cards]})
+        out["totals"] = {
+            "batches": len(blist),
+            "studentbatch_pairs": len(pairs),
+            "duplicate_rows_removed_at_read": dup_rows,
+            "ghost_rows": ghost_rows,
+            "students_with_primary_batch": len(prim_of),
+        }
+    except Exception as e:
+        out["error"] = str(e)
+    out["overlaps"].sort(key=lambda x: -x["overlap"])
+    return out
+
+
 @router.get("/admin/community/students", dependencies=[Depends(_admin_guard)])
 def community_students(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     qq = (q or "").strip()

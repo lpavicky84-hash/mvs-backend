@@ -218,6 +218,12 @@ def ensure_columns():
          "id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT, seen_at DATETIME NULL, "
          "clicked_at DATETIME NULL, created_at DATETIME NULL, "
          "INDEX ix_cread_post (post_id), INDEX ix_cread_user (user_id))"),
+        # Data integrity: a student can be in a batch only ONCE. Remove any duplicate
+        # (student_id,batch_id) rows (keep the lowest id), THEN enforce it at the DB level
+        # so counts can never inflate again. Order matters: dedup first, unique index after.
+        ("DELETE sb1 FROM student_batches sb1 JOIN student_batches sb2 "
+         "ON sb1.student_id = sb2.student_id AND sb1.batch_id = sb2.batch_id AND sb1.id > sb2.id"),
+        "ALTER TABLE student_batches ADD UNIQUE INDEX uq_student_batch (student_id, batch_id)",
         # v94: restricted sub-admin sections
         "ALTER TABLE users ADD COLUMN allowed_sections JSON",
         # v95: editable monthly target labels + custom targets
