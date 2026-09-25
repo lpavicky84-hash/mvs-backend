@@ -515,6 +515,92 @@ def _session_id_to_batch_label(db, sid):
     return ""
 
 
+def _norm_session_label(db, s):
+    """Kisi bhi session value (id 'apr2027', label 'April 2027', ya free text)
+    ko canonical batch-session label ('April 2027' / 'October 2026') mein badlo.
+    Map na ho (ondemand/blank) -> '' (matlab ye month-bucket nahi, chhod do)."""
+    s = (s or "").strip()
+    if not s:
+        return ""
+    import re as _re
+    if _re.fullmatch(r"[A-Z][a-z]+ 20\d{2}", s):   # already a label like 'April 2027'
+        return s
+    lbl = _session_id_to_batch_label(db, s.lower())  # id -> label
+    if lbl:
+        return lbl
+    sid = _map_session_text(db, s)                   # free text -> id -> label
+    return _session_id_to_batch_label(db, sid) if sid else ""
+
+
+def _scan_realign_session_batch(db, apply=False):
+    """Har student jiska exam_session ek month-session hai (April 2027 / October 2026),
+    uska PRIMARY batch usi session ka hona chahiye. Legacy data mein session April hai par
+    batch October linked hai -> galat access + galat counting. Ye us mismatch ko dhoondhta
+    (apply=False) ya theek karta (apply=True) hai. SAFE: crash-course/add-on kabhi nahi
+    chhedta, koi enrollment delete nahi karta (sirf primary link ko sahi session par le
+    jaata hai), idempotent hai (dobara chalao -> 0 change)."""
+    from models import StudentProfile, Batch, StudentBatch
+    bmap = {b.id: b for b in db.query(Batch).all()}
+    changed = 0
+    skipped_crash = 0
+    samples = []
+    q = (db.query(StudentProfile)
+         .filter(StudentProfile.batch_id.isnot(None),
+                 StudentProfile.exam_session.isnot(None),
+                 StudentProfile.exam_session != ""))
+    for sp in q.yield_per(500):
+        cur = bmap.get(sp.batch_id)
+        if not cur:
+            continue
+        cur_name = (cur.name or "").strip()
+        low = cur_name.lower()
+        if "crash" in low:            # crash course = session-less add-on, never touch
+            skipped_crash += 1
+            continue
+        target_label = _norm_session_label(db, sp.exam_session)
+        if not target_label:          # session not a month bucket (ondemand/unknown)
+            continue
+        cur_ses = (cur.session or "").strip()
+        if cur_ses == target_label:   # already aligned
+            continue
+        base_name = _normalize_batch(cur_name) or cur_name
+        if not base_name:
+            continue
+        changed += 1
+        if len(samples) < 50:
+            try:
+                _nm = sp.user.name if sp.user else ""
+            except Exception:
+                _nm = ""
+            samples.append({"id": sp.id, "name": _nm,
+                            "from": cur_name + (" — " + cur_ses if cur_ses else " — (no session)"),
+                            "to": base_name + " — " + target_label})
+        if apply:
+            correct_id = _resolve_session_batch_id(db, base_name, target_label)
+            if correct_id and correct_id != sp.batch_id:
+                old_bid = sp.batch_id
+                ex = (db.query(StudentBatch)
+                      .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == correct_id).first())
+                old_row = (db.query(StudentBatch)
+                           .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == old_bid).first())
+                if ex:
+                    ex.is_primary = True
+                    if old_row and old_row.id != ex.id:
+                        db.delete(old_row)          # old primary link removed (add-ons untouched)
+                elif old_row:
+                    old_row.batch_id = correct_id
+                    old_row.is_primary = True
+                else:
+                    db.add(StudentBatch(student_id=sp.id, batch_id=correct_id, is_primary=True))
+                sp.batch_id = correct_id
+                sp.batch_name = base_name
+                db.flush()
+    if apply:
+        db.commit()
+    return {"changed": changed, "skipped_crash": skipped_crash,
+            "samples": samples, "applied": bool(apply)}
+
+
 def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
     """Batch.id for (base_name, session_label), never creating a duplicate for the same
     (name, session). Empty session_label -> legacy name-only resolve.
@@ -4075,9 +4161,18 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
     if medium: qy = qy.filter(StudentProfile.medium == medium)
     if batch:
         if batch == "__none__":
-            qy = qy.filter(or_(StudentProfile.batch_name.is_(None), StudentProfile.batch_name == ""))
+            qy = qy.filter(or_(StudentProfile.batch_name.is_(None), StudentProfile.batch_name == ""),
+                           StudentProfile.batch_id.is_(None))
+        elif batch.startswith("id:"):
+            try:
+                _bid = int(batch[3:])
+            except Exception:
+                _bid = -1
+            qy = qy.filter(StudentProfile.batch_id == _bid)
+        elif batch.startswith("nm:"):
+            qy = qy.filter(StudentProfile.batch_name == batch[3:], StudentProfile.batch_id.is_(None))
         else:
-            qy = qy.filter(StudentProfile.batch_name == batch)
+            qy = qy.filter(StudentProfile.batch_name == batch)   # legacy name value
     if q:
         ql = "%" + q.strip() + "%"
         qy = qy.join(User, StudentProfile.user_id == User.id).filter(
@@ -4145,10 +4240,34 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     if medium: base = base.filter(StudentProfile.medium == medium)
     if cls: base = base.filter(StudentProfile.class_level == str(cls))
     total = base.count()
-    batches = []
-    for bn, c in base.with_entities(StudentProfile.batch_name, func.count(StudentProfile.id)).group_by(StudentProfile.batch_name).all():
-        batches.append({"batch": bn or "__none__", "label": bn or "No batch", "count": int(c or 0)})
-    batches.sort(key=lambda x: (-x["count"], x["label"].lower()))
+    # ---- SESSION-SEPARATED batch counts (value = "id:<batch_id>"; label = "Name — Session") ----
+    # Purana bug: sirf batch_name par group hota tha, isliye October 2026 + April 2027 ke
+    # same-name batches MERGE ho jaate the (counting galat). Ab har batch_id (jo session-wise
+    # unique hai) alag option banta hai -> "Lakshya Science — April 2027 · N".
+    from models import Batch as _Batch
+    _bmap = {b.id: b for b in db.query(_Batch).all()}
+    _bagg = {}
+    for bid, bname, c in (base.with_entities(StudentProfile.batch_id, StudentProfile.batch_name,
+                                             func.count(StudentProfile.id))
+                          .group_by(StudentProfile.batch_id, StudentProfile.batch_name).all()):
+        c = int(c or 0)
+        if bid and bid in _bmap:
+            b = _bmap[bid]
+            nm = (b.name or bname or "Batch").strip()
+            ses = (b.session or "").strip()
+            key = "id:%d" % bid
+            label = nm + (" — " + ses if ses else "")
+        elif (bname or "").strip():
+            nm = bname.strip()
+            key = "nm:" + nm
+            label = nm + " (unlinked)"
+            ses = ""
+        else:
+            key = "__none__"; label = "No batch"; ses = ""
+        if key not in _bagg:
+            _bagg[key] = {"batch": key, "label": label, "count": 0, "session": ses}
+        _bagg[key]["count"] += c
+    batches = sorted(_bagg.values(), key=lambda x: (-x["count"], x["label"].lower()))
     classes = sorted([c for (c,) in base.with_entities(StudentProfile.class_level).distinct().all() if c])
     sessions = [s for (s,) in base.with_entities(StudentProfile.exam_session).distinct().all() if s]
     none_session = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == "")).count()
@@ -4170,6 +4289,26 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     res = {"total": total, "batches": batches, "classes": classes, "sessions": sessions, "none_session": none_session, "subjects": subjects}
     _SFC_CACHE[ckey] = (_time.time(), res)
     return res
+
+
+@router.get("/students/session-batch-scan")
+def admin_session_batch_scan(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """PREVIEW only: kitne students ka primary batch unke exam session se mismatch hai.
+    Kuch change nahi karta — sirf report + sample deta hai."""
+    return _scan_realign_session_batch(db, apply=False)
+
+
+@router.post("/students/session-batch-realign")
+def admin_session_batch_realign(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """APPLY: har mismatched student ka primary batch uske exam session wale batch par le
+    jaata hai (add-on/crash course untouched, koi enrollment delete nahi). Idempotent."""
+    res = _scan_realign_session_batch(db, apply=True)
+    try:
+        _SFC_CACHE.clear()
+    except Exception:
+        pass
+    return res
+
 
 @router.post("/students/bulk-phone")
 def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):

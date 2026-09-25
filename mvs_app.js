@@ -16405,7 +16405,7 @@ function aRenderStudents(){
       <button class="pp-btn" onclick="openPortalPending()">${ic('bell')} Portal Pending<span class="pp-n">${ov.portal_reachable?ov.pending_count:'?'}</span></button>
       ${ov.last_upload?`<span title="When you last uploaded a student sheet" style="display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:600;color:#8a5a12;background:rgba(201,150,46,.14);border:1px solid rgba(201,150,46,.3);border-radius:999px;padding:6px 14px">${ic('calendar')} Last sheet upload: <b style="color:#6b4410">${esc(ov.last_upload)}</b></span>`:''}
     </div>`:'';
-  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-success btn-sm" onclick="openFormUpload()">${ic('upload')} Form Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSessionFix()">${ic('calendar')} Fix Session</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
+  el.innerHTML=`<div class="card-header" style="padding:0 4px 12px;border:none"><h3 style="font-size:1.3rem">Students</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success btn-sm" onclick="openBulkPhone()">${ic('users')} Add by Phone</button><button class="btn btn-ghost btn-sm" onclick="openExcelUpload()">${ic('upload')} Excel Upload</button><button class="btn btn-success btn-sm" onclick="openFormUpload()">${ic('upload')} Form Upload</button><button class="btn btn-primary btn-sm" onclick="openAddStudent()">${ic('user')} Add Student</button><button class="btn btn-success btn-sm" onclick="openWhatsApp()">${ic('megaphone')} WhatsApp</button><button class="btn btn-ghost btn-sm" onclick="openPortalSync()">${ic('refresh')} Sync Portal</button><button class="btn btn-ghost btn-sm" onclick="openMediumFix()">${ic('book')} Fix Medium</button><button class="btn btn-ghost btn-sm" onclick="openSessionFix()">${ic('calendar')} Fix Session</button><button class="btn btn-ghost btn-sm" onclick="openBatchAlign()">${ic('shield')} Fix Batch ↔ Session</button><button class="btn btn-ghost btn-sm" onclick="openSsoCheck()">${ic('shield')} Portal Check</button><button class="btn btn-danger btn-sm" onclick="openDeleteAllStudents()">${ic('trash')} Delete All</button></div></div>${srcChips}
     ${cards.join('')}
     <div class="card"><div class="card-body">
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"><input id="a-stu-q" class="form-control" style="flex:1;min-width:180px" placeholder="Search name, phone, ID, email..." value="${esc(_stuSearch)}" oninput="aStuSearch(this.value,this)"><select class="form-control" style="width:auto" onchange="aStuSize(this.value)">${[10,25,50,100].map(n=>`<option value="${n}"${_stuSize===n?' selected':''}>${n} / page</option>`).join('')}</select></div>
@@ -16419,6 +16419,41 @@ function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; _stuReload(); }
 function aStuSess(v){ _stuSess=v; _stuPage=1; _stuReloadCounts().then(_stuReload); }
 function aStuMed(v){ _stuMed=v; _stuPage=1; _stuReloadCounts().then(_stuReload); }
 function aStuBatch(v){ _stuBatch=v; _stuPage=1; _stuReload(); }
+// ---- Fix Batch <-> Session: student ka batch uske exam session se align karo ----
+window.openBatchAlign=function(){
+  showModal('Fix Batch ↔ Session','<div style="padding:22px;text-align:center"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-muted)">Scanning students…</div></div>','<button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>');
+  api('/api/admin/students/session-batch-scan').then(function(r){
+    var n=r.changed||0; var sm=(r.samples||[]);
+    if(!n){
+      showModal('Fix Batch ↔ Session',
+        '<div style="text-align:center;padding:18px 4px"><div style="font-size:2.4rem">✅</div><div style="font-weight:800;font-size:1.05rem;margin-top:8px">All good — every student’s batch matches their session.</div><div style="color:var(--text-muted);margin-top:6px">No changes needed.</div></div>',
+        '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
+      return;
+    }
+    var rowsH=sm.map(function(x){ return '<div style="padding:9px 4px;border-bottom:1px solid rgba(0,0,0,.05)">'+
+      '<div style="font-weight:700">'+esc(x.name||('Student #'+x.id))+'</div>'+
+      '<div style="font-size:.8rem;color:#b91c1c">'+esc(x.from)+'</div>'+
+      '<div style="font-size:.8rem;color:#059669">→ '+esc(x.to)+'</div></div>'; }).join('');
+    var body='<div style="background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:10px;padding:12px 14px;margin-bottom:12px">'+
+        '<div style="font-weight:800;font-size:1.1rem;color:#b45309">'+n+' students have a batch from the wrong session</div>'+
+        '<div style="font-size:.84rem;color:#8a5a12;margin-top:5px;line-height:1.55">After fixing, each student moves to the batch of their own exam session (April 2027 / October 2026). Crash-course & add-on batches stay untouched, and no enrollment is deleted.</div>'+
+      '</div>'+
+      '<div style="font-weight:700;margin-bottom:6px;font-size:.82rem;color:var(--text-muted)">Sample of changes'+(n>sm.length?(' (showing '+sm.length+' of '+n+')'):'')+':</div>'+
+      '<div style="max-height:42vh;overflow-y:auto">'+rowsH+'</div>';
+    showModal('Fix Batch ↔ Session',body,
+      '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button><button class="btn btn-primary btn-sm" onclick="_doBatchAlign('+n+')">Fix all '+n+' now</button>');
+  }).catch(function(e){ var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML='<div class="cmy-empty">Could not scan. '+esc((e&&e.message)||'')+'</div>'; });
+};
+window._doBatchAlign=function(n){
+  var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML='<div style="padding:22px;text-align:center"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-muted)">Fixing '+n+' students… please wait, don’t close.</div></div>';
+  var mf=document.getElementById('modal-footer'); if(mf) mf.innerHTML='';
+  api('/api/admin/students/session-batch-realign','POST',{}).then(function(r){
+    closeModal();
+    toast((r.changed||0)+' students fixed — batches now match their session');
+    if(typeof _stuReloadCounts==='function'){ Promise.resolve(_stuReloadCounts()).then(function(){ if(typeof _stuReload==='function') _stuReload(); }); }
+    else if(typeof _stuReload==='function'){ _stuReload(); }
+  }).catch(function(e){ toast((e&&e.message)||'Fix failed',true); closeModal(); });
+};
 function aStuSearch(q,inp){
   _stuSearch=q; _stuPage=1;
   clearTimeout(window._stuSearchT);
