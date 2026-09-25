@@ -1757,3 +1757,70 @@ class ChatPresence(Base):
     author_name = Column(String(120), default="")
     last_seen = Column(DateTime, nullable=True)
     typing_until = Column(DateTime, nullable=True)
+
+
+# ============================================================ COMMUNITY (admin)
+# Batch-wise student groups + broadcasts + targeted popups, all with attachments
+# (image/pdf/video-link) and per-recipient read/seen/click tracking.
+class CommunityGroup(Base):
+    """A student group. If batch_id is set, members = all students of that batch
+    (dynamic). Extra/explicit members live in community_group_members."""
+    __tablename__ = "community_groups"
+    id          = Column(Integer, primary_key=True)
+    name        = Column(String(160), default="")
+    description = Column(String(600), default="")
+    batch_id    = Column(Integer, nullable=True, index=True)   # batches.id (dynamic membership)
+    icon_color  = Column(String(16), default="")
+    created_by  = Column(Integer, nullable=True)
+    is_active   = Column(Boolean, default=True)
+    created_at  = Column(DateTime, default=func.now())
+
+
+class CommunityGroupMember(Base):
+    """Explicit membership (for custom groups, or extra students on a batch group)."""
+    __tablename__ = "community_group_members"
+    id         = Column(Integer, primary_key=True)
+    group_id   = Column(Integer, index=True)
+    user_id    = Column(Integer, index=True)     # users.id of the student
+    created_at = Column(DateTime, default=func.now())
+
+
+class CommunityPost(Base):
+    """One message/broadcast/popup. kind: group | broadcast | popup."""
+    __tablename__ = "community_posts"
+    id           = Column(Integer, primary_key=True)
+    kind         = Column(String(16), default="group", index=True)  # group | broadcast | popup
+    group_id     = Column(Integer, nullable=True, index=True)       # for kind=group
+    title        = Column(String(240), default="")
+    body         = Column(Text, default="")
+    link         = Column(String(600), default="")                  # video/any URL
+    popup_style  = Column(String(16), default="info")               # info | success | alert (popup)
+    sender_id    = Column(Integer, nullable=True)
+    sender_name  = Column(String(120), default="")
+    target_label = Column(String(200), default="")                  # e.g. "Lakshya Science" / "All students"
+    target_count = Column(Integer, default=0)                       # how many recipients at send time
+    is_active    = Column(Boolean, default=True)
+    created_at   = Column(DateTime, default=func.now(), index=True)
+
+
+class CommunityAttachment(Base):
+    """An attachment on a post — image or pdf (bytes in R2, url here) or a video/link."""
+    __tablename__ = "community_attachments"
+    id       = Column(Integer, primary_key=True)
+    post_id  = Column(Integer, index=True)
+    url      = Column(_B64TEXT, nullable=True)   # R2 url/key or base64 data-uri fallback
+    mime     = Column(String(80), default="")
+    name     = Column(String(240), default="")
+    kind     = Column(String(12), default="image")  # image | pdf | video
+    created_at = Column(DateTime, default=func.now())
+
+
+class CommunityRead(Base):
+    """One row per recipient of a post — delivery + seen + click tracking."""
+    __tablename__ = "community_reads"
+    id         = Column(Integer, primary_key=True)
+    post_id    = Column(Integer, index=True)
+    user_id    = Column(Integer, index=True)   # users.id (student)
+    seen_at    = Column(DateTime, nullable=True)
+    clicked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())

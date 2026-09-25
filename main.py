@@ -190,6 +190,30 @@ def ensure_columns():
          "status VARCHAR(12) DEFAULT 'present', remark VARCHAR(400) DEFAULT '', "
          "set_by INT NULL, updated_at DATETIME NULL, "
          "INDEX ix_prodattn_staff (staff_id), INDEX ix_prodattn_day (day))"),
+        # Community: batch groups + broadcast + popups with read tracking
+        ("CREATE TABLE IF NOT EXISTS community_groups ("
+         "id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(160) DEFAULT '', "
+         "description VARCHAR(600) DEFAULT '', batch_id INT NULL, icon_color VARCHAR(16) DEFAULT '', "
+         "created_by INT NULL, is_active BOOLEAN DEFAULT 1, created_at DATETIME NULL, "
+         "INDEX ix_cgrp_batch (batch_id))"),
+        ("CREATE TABLE IF NOT EXISTS community_group_members ("
+         "id INT AUTO_INCREMENT PRIMARY KEY, group_id INT, user_id INT, created_at DATETIME NULL, "
+         "INDEX ix_cgm_grp (group_id), INDEX ix_cgm_user (user_id))"),
+        ("CREATE TABLE IF NOT EXISTS community_posts ("
+         "id INT AUTO_INCREMENT PRIMARY KEY, kind VARCHAR(16) DEFAULT 'group', group_id INT NULL, "
+         "title VARCHAR(240) DEFAULT '', body MEDIUMTEXT, link VARCHAR(600) DEFAULT '', "
+         "popup_style VARCHAR(16) DEFAULT 'info', sender_id INT NULL, sender_name VARCHAR(120) DEFAULT '', "
+         "target_label VARCHAR(200) DEFAULT '', target_count INT DEFAULT 0, is_active BOOLEAN DEFAULT 1, "
+         "created_at DATETIME NULL, INDEX ix_cpost_kind (kind), INDEX ix_cpost_grp (group_id), "
+         "INDEX ix_cpost_created (created_at))"),
+        ("CREATE TABLE IF NOT EXISTS community_attachments ("
+         "id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, url MEDIUMTEXT, mime VARCHAR(80) DEFAULT '', "
+         "name VARCHAR(240) DEFAULT '', kind VARCHAR(12) DEFAULT 'image', created_at DATETIME NULL, "
+         "INDEX ix_catt_post (post_id))"),
+        ("CREATE TABLE IF NOT EXISTS community_reads ("
+         "id INT AUTO_INCREMENT PRIMARY KEY, post_id INT, user_id INT, seen_at DATETIME NULL, "
+         "clicked_at DATETIME NULL, created_at DATETIME NULL, "
+         "INDEX ix_cread_post (post_id), INDEX ix_cread_user (user_id))"),
         # v94: restricted sub-admin sections
         "ALTER TABLE users ADD COLUMN allowed_sections JSON",
         # v95: editable monthly target labels + custom targets
@@ -769,6 +793,11 @@ app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
 app.include_router(homework_routes.router)
 app.include_router(support_routes.router)
+try:
+    import community_routes
+    app.include_router(community_routes.router)
+except Exception as _e:
+    print("community_routes not loaded:", _e)
 
 # ===== ROOT =====
 # ===== ROOT: serve the portal =====

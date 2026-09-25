@@ -38,6 +38,13 @@ def yt_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db)
     return {"ok": True}
 
 
+@router.get("/chat/inbox")
+def yt_chat_inbox(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from video_tasks import _chat_inbox, _chat_touch_global
+    _chat_touch_global(db, me)
+    return {"conversations": _chat_inbox(db, me, "youtuber")}
+
+
 @router.get("/dashboard")
 def yt_dashboard(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)

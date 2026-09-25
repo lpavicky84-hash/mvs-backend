@@ -311,6 +311,14 @@ def pm_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db)
     return {"ok": True}
 
 
+@router.get("/chat/inbox")
+def pm_chat_inbox(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Manager oversight inbox — every task chat thread (teacher/editor/graphics)."""
+    from video_tasks import _chat_inbox, _chat_touch_global
+    _chat_touch_global(db, me)
+    return {"conversations": _chat_inbox(db, me, "manager")}
+
+
 @router.post("/tasks/{tid}/chat-ping")
 def pm_chat_ping(tid: int, audience: str = "", payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     from video_tasks import _chat_touch, _chat_other_presence
@@ -337,7 +345,7 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
         except Exception:
             _att = ""
     _aud = (payload.get("audience") or "creator").strip().lower()
-    if _aud not in ("creator", "internal", "editor"):
+    if _aud not in ("creator", "internal", "editor", "te_ed", "te_gf", "ed_gf"):
         _aud = "creator"
     _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
     c = _vtc_add(db, tid, me, payload.get("message"), _crole, _att, _aud)
@@ -346,6 +354,18 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
     except Exception: pass
     if not c:
         raise HTTPException(400, "Message cannot be empty")
+    if _aud in ("te_ed", "te_gf", "ed_gf"):
+        # Manager stepping into a direct-pair thread (oversight) — notify both pair members.
+        try:
+            from video_tasks import _pair_members
+            for oid in _pair_members(db, tid, _aud, getattr(me, "id", None)):
+                pc.notify(db, oid, "Manager messaged on a video",
+                          f'{getattr(me, "name", "Manager")} on "{t.title}": {c.message[:110]}',
+                          "pair_chat", link=str(tid))
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "comment": _vtc_out(db, c)}
     if _aud == "editor":
         # PM <-> Editor thread — notify the assigned editor.
         try:

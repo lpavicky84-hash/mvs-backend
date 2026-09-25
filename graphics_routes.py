@@ -270,6 +270,58 @@ def gfx_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db
     return {"ok": True}
 
 
+@router.get("/chat/inbox")
+def gfx_chat_inbox(db: Session = Depends(get_db), me=Depends(get_graphics)):
+    from video_tasks import _chat_inbox, _chat_touch_global
+    _chat_touch_global(db, me)
+    return {"conversations": _chat_inbox(db, me, "graphics")}
+
+
+# ---- Graphics DIRECT-PAIR chats: graphics<->teacher (te_gf), graphics<->editor (ed_gf) ----
+@router.get("/tasks/{tid}/pair-comments")
+def gfx_pair_get(tid: int, audience: str = "", db: Session = Depends(get_db), me=Depends(get_graphics)):
+    import video_tasks as _VT
+    aud = (audience or "").strip().lower()
+    if not _VT._pair_check("graphics", aud):
+        raise HTTPException(400, "Invalid conversation")
+    sp = _me_staff(db, me); _my_gtask(db, sp, tid)
+    _VT._vtc_mark_read(db, me, tid, aud); _VT._chat_touch(db, me, tid, aud)
+    return {"comments": _VT._vtc_list_v(db, tid, aud, getattr(me, "id", None)),
+            "presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, aud)}
+
+
+@router.post("/tasks/{tid}/pair-comments")
+def gfx_pair_add(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_graphics)):
+    import video_tasks as _VT
+    from models import VideoTask
+    aud = (payload.get("audience") or "").strip().lower()
+    if not _VT._pair_check("graphics", aud):
+        raise HTTPException(400, "Invalid conversation")
+    sp = _me_staff(db, me); _my_gtask(db, sp, tid)
+    t = db.query(VideoTask).filter(VideoTask.id == tid).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    _att = _VT._resolve_chat_att(db, t, payload, me)
+    c = _VT._vtc_add(db, tid, me, payload.get("message"), "graphics", attachment_url=_att, audience=aud)
+    if not c:
+        raise HTTPException(400, "Message cannot be empty")
+    try: _VT._chat_touch(db, me, tid, aud, typing=False)
+    except Exception: pass
+    _VT._pair_notify(db, tid, aud, me, c.message)
+    db.commit()
+    return {"ok": True, "comment": _VT._vtc_out(db, c)}
+
+
+@router.post("/tasks/{tid}/pair-ping")
+def gfx_pair_ping(tid: int, audience: str = "", payload: dict = Body(default={}),
+                  db: Session = Depends(get_db), me=Depends(get_graphics)):
+    import video_tasks as _VT
+    aud = (audience or (payload or {}).get("audience") or "").strip().lower()
+    if _VT._pair_check("graphics", aud):
+        _VT._chat_touch(db, me, tid, aud, typing=bool((payload or {}).get("typing")))
+    return {"presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, aud)}
+
+
 @router.post("/tasks/{tid}/chat-ping")
 def gfx_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_graphics)):
     from video_tasks import _chat_touch, _chat_other_presence

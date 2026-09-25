@@ -39,6 +39,7 @@ def _hsafe(_n):
 # Restricted admin ke liye sirf listed sections ke endpoints chalte hain.
 # Map: pehla path segment (/api/admin/<segment>/...) -> sidebar section key.
 ADMIN_SECTION_MAP = {
+    "community": "community",
     "dashboard": "dashboard", "portal-overview": "dashboard", "activity": "dashboard", "my-ip": "dashboard",
     "pending-classes": "approvals", "tt-reschedules": "approvals", "reschedules": "approvals",
     "app-reviews": "approvals", "letter-remarks": "approvals", "class": "approvals",

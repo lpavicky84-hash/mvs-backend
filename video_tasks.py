@@ -1181,6 +1181,9 @@ def _vtc_list(db, task_id, audience=None):
     elif audience == "editor":
         # YouTuber <-> editor channel
         q = q.filter(VideoTaskComment.audience == "editor")
+    elif audience:
+        # any other explicit thread (direct pairs: te_ed / te_gf / ed_gf, project, etc.)
+        q = q.filter(VideoTaskComment.audience == audience)
     rows = q.order_by(VideoTaskComment.id.asc()).all()
     return [_vtc_out(db, c) for c in rows]
 
@@ -1349,8 +1352,54 @@ def _chat_online_uids(db, uids):
     return out
 
 
+_PAIR_AUDS = ("te_ed", "te_gf", "ed_gf")
+
+
+def _pair_members(db, task_id, audience, viewer_id=None):
+    """User-ids of the TWO roles in a direct-pair thread (te_ed/te_gf/ed_gf) — no managers."""
+    ids = set()
+    try:
+        from models import (VideoTask, TeacherProfile, ProductionStaffProfile, GraphicsTask)
+        t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+        if not t:
+            return ids
+        aud = audience or ""
+        # teacher side
+        if aud in ("te_ed", "te_gf"):
+            try:
+                from video_tasks import _collab_all_ids as _cai
+                tids = _cai(t)
+            except Exception:
+                tids = [t.teacher_id] if getattr(t, "teacher_id", None) else []
+            for tid in tids:
+                tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+                if tp and tp.user_id:
+                    ids.add(tp.user_id)
+        # editor side
+        if aud in ("te_ed", "ed_gf") and t.editor_id:
+            sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if sp and sp.user_id:
+                ids.add(sp.user_id)
+        # graphics side
+        if aud in ("te_gf", "ed_gf"):
+            g = db.query(GraphicsTask).filter(GraphicsTask.task_id == task_id).first()
+            if g and g.graphics_id:
+                sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == g.graphics_id).first()
+                if sp and sp.user_id:
+                    ids.add(sp.user_id)
+    except Exception:
+        pass
+    if viewer_id is not None:
+        ids.discard(viewer_id)
+    return ids
+
+
 def _chat_counterparties(db, task_id, audience, viewer_id):
-    """The user_ids on the OTHER side of this thread (specialist for the audience + all managers)."""
+    """The user_ids on the OTHER side of this thread (specialist for the audience + all managers).
+    For direct-pair audiences it returns only the two pair members (managers excluded)."""
+    aud0 = audience or "creator"
+    if aud0 in _PAIR_AUDS:
+        return _pair_members(db, task_id, aud0, viewer_id)
     ids = set()
     try:
         from models import (VideoTask, TeacherProfile, ProductionStaffProfile,
@@ -1386,6 +1435,42 @@ def _chat_counterparties(db, task_id, audience, viewer_id):
         pass
     ids.discard(viewer_id)
     return ids
+
+
+# which pair-audiences each role is allowed to open
+_PAIR_ROLE_AUDS = {"teacher": {"te_ed", "te_gf"}, "editor": {"te_ed", "ed_gf"},
+                   "graphics": {"te_gf", "ed_gf"}, "manager": set(_PAIR_AUDS),
+                   "admin": set(_PAIR_AUDS)}
+
+
+def _pair_check(role, audience):
+    return audience in _PAIR_ROLE_AUDS.get(role, set())
+
+
+def _resolve_chat_att(db, t, payload, user):
+    """Resolve a chat attachment: pre-hosted attachment_url, else save base64 image(s) to R2."""
+    _att = (payload.get("attachment_url") or "").strip()
+    if not _att:
+        _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+        if _imgs:
+            try:
+                import production_core as pc
+                urls = pc.save_images(db, t, _imgs[:1], "chat", None, user, return_urls=True) or []
+                if urls:
+                    _att = urls[0]
+            except Exception:
+                _att = ""
+    return _att
+
+
+def _pair_notify(db, task_id, audience, sender, message):
+    try:
+        nm = getattr(sender, "name", "") or "Someone"
+        for oid in _pair_members(db, task_id, audience, getattr(sender, "id", None)):
+            _vt_notify(db, oid, "New message from " + nm,
+                       (message or "\U0001F4F7 Photo")[:90], "pair_chat", str(task_id))
+    except Exception:
+        pass
 
 
 def _chat_other_presence(db, viewer_id, task_id, audience):
@@ -1430,6 +1515,239 @@ def _chat_other_presence(db, viewer_id, task_id, audience):
     except Exception:
         pass
     return out
+
+
+_AUD_PARTY = {"creator": "Teacher", "internal": "Graphics", "editor": "Editor"}
+
+
+def _chat_last_preview(c):
+    m = (getattr(c, "message", "") or "").strip()
+    if m:
+        return m
+    if (getattr(c, "attachment_url", "") or ""):
+        return "\U0001F4F7 Photo"
+    return ""
+
+
+def _chat_inbox(db, user, role):
+    """WhatsApp-style conversation list for the Chat Manager.
+    role in: manager (PM/admin oversight of ALL threads), editor, graphics, teacher, youtuber.
+    Returns [{task_id, audience, title, channel, party_name, party_role, party_uid,
+              unread, last, last_at, last_at_ts, last_mine, online, last_seen}]."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    from models import (VideoTask, GraphicsTask, TeacherProfile,
+                        ProductionStaffProfile, VideoTaskChatRead, User as _U)
+    uid = getattr(user, "id", None)
+    out = []
+    if not uid:
+        return out
+    try:
+        # 1) candidate (task_ids, audiences) for this viewer
+        task_ids = set()
+        auds = set()
+        if role == "manager":
+            auds = {"creator", "internal", "editor", "te_ed", "te_gf", "ed_gf"}
+            for (tid,) in db.query(VideoTaskComment.task_id).distinct().all():
+                if tid:
+                    task_ids.add(tid)
+        elif role == "editor":
+            auds = {"editor", "te_ed", "ed_gf"}
+            sp = db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.user_id == uid,
+                ProductionStaffProfile.staff_role == "editor").first()
+            if sp:
+                for t in db.query(VideoTask.id).filter(
+                        VideoTask.cancelled.isnot(True),
+                        or_(VideoTask.editor_id == sp.id,
+                            VideoTask.collab_editor_ids.like("%" + str(sp.id) + "%"))).all():
+                    task_ids.add(t.id)
+        elif role == "graphics":
+            auds = {"internal", "te_gf", "ed_gf"}
+            sp = db.query(ProductionStaffProfile).filter(
+                ProductionStaffProfile.user_id == uid,
+                ProductionStaffProfile.staff_role == "graphics").first()
+            if sp:
+                for g in db.query(GraphicsTask.task_id).filter(GraphicsTask.graphics_id == sp.id).all():
+                    if g.task_id:
+                        task_ids.add(g.task_id)
+        elif role == "teacher":
+            auds = {"creator", "te_ed", "te_gf"}
+            tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == uid).first()
+            if tp:
+                for t in db.query(VideoTask.id).filter(
+                        VideoTask.cancelled.isnot(True),
+                        or_(VideoTask.teacher_id == tp.id,
+                            VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%"))).all():
+                    task_ids.add(t.id)
+        elif role == "youtuber":
+            auds = {"creator", "editor"}
+            from models import YoutuberProfile as _YP
+            yp = db.query(_YP).filter(_YP.user_id == uid).first()
+            if yp:
+                for t in db.query(VideoTask.id).filter(
+                        VideoTask.cancelled.isnot(True),
+                        VideoTask.creator_type == "youtuber",
+                        VideoTask.youtuber_id == yp.id).all():
+                    task_ids.add(t.id)
+        if not task_ids:
+            return out
+        task_ids = list(task_ids)
+
+        # 2) task meta
+        tasks = {}
+        for t in db.query(VideoTask).filter(VideoTask.id.in_(task_ids)).all():
+            tasks[t.id] = t
+        # 3) all comments in scope, grouped per (task, aud): last comment
+        def _norm(a):
+            a = a or "creator"
+            return "creator" if a in ("", "creator", None) else a
+        last_by = {}
+        for c in (db.query(VideoTaskComment)
+                  .filter(VideoTaskComment.task_id.in_(task_ids))
+                  .order_by(VideoTaskComment.id.asc()).all()):
+            a = _norm(c.audience)
+            if a not in auds:
+                continue
+            last_by[(c.task_id, a)] = c  # ascending -> ends on latest
+        if not last_by:
+            return out
+        # 4) reads for unread
+        reads = {}
+        for r in (db.query(VideoTaskChatRead)
+                  .filter(VideoTaskChatRead.user_id == uid,
+                          VideoTaskChatRead.task_id.in_(task_ids)).all()):
+            reads[(r.task_id, _norm(r.audience))] = r.last_read_id or 0
+        # unread counts per (task, aud)
+        unread = {}
+        for c in (db.query(VideoTaskComment.id, VideoTaskComment.task_id,
+                           VideoTaskComment.audience, VideoTaskComment.user_id)
+                  .filter(VideoTaskComment.task_id.in_(task_ids)).all()):
+            a = _norm(c.audience)
+            if a not in auds:
+                continue
+            if c.id > reads.get((c.task_id, a), 0) and c.user_id != uid:
+                unread[(c.task_id, a)] = unread.get((c.task_id, a), 0) + 1
+        # 5) specialist name lookups (for manager view: who is on the other side)
+        editor_name = {}
+        teacher_name = {}
+        gfx_name = {}
+        # editors + graphics via ProductionStaffProfile
+        sp_ids = set()
+        for t in tasks.values():
+            if t.editor_id:
+                sp_ids.add(t.editor_id)
+        gtasks = {}
+        for g in db.query(GraphicsTask).filter(GraphicsTask.task_id.in_(task_ids)).all():
+            gtasks[g.task_id] = g
+            if g.graphics_id:
+                sp_ids.add(g.graphics_id)
+        sp_map = {}
+        if sp_ids:
+            for sp in db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id.in_(list(sp_ids))).all():
+                u = db.query(_U).filter(_U.id == sp.user_id).first() if sp.user_id else None
+                sp_map[sp.id] = (u.name if u else ("#" + str(sp.id)), sp.user_id)
+        # teachers
+        tp_ids = set()
+        for t in tasks.values():
+            if getattr(t, "teacher_id", None):
+                tp_ids.add(t.teacher_id)
+        tp_map = {}
+        if tp_ids:
+            for tp in db.query(TeacherProfile).filter(TeacherProfile.id.in_(list(tp_ids))).all():
+                u = db.query(_U).filter(_U.id == tp.user_id).first() if tp.user_id else None
+                tp_map[tp.id] = (u.name if u else ("#" + str(tp.id)), tp.user_id)
+        def _tname(t):
+            return tp_map.get(getattr(t, "teacher_id", None), (None, None))
+        def _ename(t):
+            return sp_map.get(getattr(t, "editor_id", None), (None, None))
+        def _gname(tid):
+            g = gtasks.get(tid)
+            return sp_map.get(g.graphics_id, (None, None)) if g else (None, None)
+        now = _dt.utcnow()
+        for (tid, a), c in last_by.items():
+            t = tasks.get(tid)
+            if not t:
+                continue
+            # party (the label + name of the OTHER side)
+            party_role = "Team"
+            party_name = "Production Team"
+            party_uid = None
+            if a in ("te_ed", "te_gf", "ed_gf"):
+                tn = _tname(t); en = _ename(t); gn = _gname(tid)
+                if role == "manager":
+                    _pm = {"te_ed": (tn, en), "te_gf": (tn, gn), "ed_gf": (en, gn)}
+                    A, B = _pm[a]
+                    party_name = (A[0] or "?") + "  ↔  " + (B[0] or "?")
+                    party_role = "Direct"
+                elif role == "teacher":
+                    if a == "te_ed":
+                        party_name, party_uid = (en[0] or "Editor", en[1]); party_role = "Editor"
+                    elif a == "te_gf":
+                        party_name, party_uid = (gn[0] or "Graphics", gn[1]); party_role = "Graphics"
+                elif role == "editor":
+                    if a == "te_ed":
+                        party_name, party_uid = (tn[0] or "Teacher", tn[1]); party_role = "Teacher"
+                    elif a == "ed_gf":
+                        party_name, party_uid = (gn[0] or "Graphics", gn[1]); party_role = "Graphics"
+                elif role == "graphics":
+                    if a == "te_gf":
+                        party_name, party_uid = (tn[0] or "Teacher", tn[1]); party_role = "Teacher"
+                    elif a == "ed_gf":
+                        party_name, party_uid = (en[0] or "Editor", en[1]); party_role = "Editor"
+            elif role == "manager":
+                if a == "editor" and t.editor_id in sp_map:
+                    party_name, party_uid = sp_map[t.editor_id]
+                    party_role = "Editor"
+                elif a == "internal":
+                    g = gtasks.get(tid)
+                    if g and g.graphics_id in sp_map:
+                        party_name, party_uid = sp_map[g.graphics_id]
+                    party_role = "Graphics"
+                elif a == "creator" and getattr(t, "teacher_id", None) in tp_map:
+                    party_name, party_uid = tp_map[t.teacher_id]
+                    party_role = "Teacher"
+            pres = _chat_other_presence(db, uid, tid, a)
+            _ts = 0
+            try:
+                _ts = int(c.created_at.replace(tzinfo=_tz.utc).timestamp()) if c.created_at else 0
+            except Exception:
+                _ts = 0
+            _atl = ""
+            if c.created_at:
+                try:
+                    _y = c.created_at.replace(tzinfo=_tz.utc).astimezone(_tz(_td(hours=5, minutes=30)))
+                    _atl = _y.strftime("%d %b, %I:%M %p")
+                except Exception:
+                    _atl = ""
+            out.append({
+                "task_id": tid, "audience": a,
+                "title": (t.title or "Untitled"),
+                "channel": (getattr(t, "channel_name", "") or ""),
+                "party_name": party_name, "party_role": party_role, "party_uid": party_uid,
+                "unread": unread.get((tid, a), 0),
+                "last": _chat_last_preview(c),
+                "last_at": _atl, "last_at_ts": _ts,
+                "last_mine": (c.user_id == uid),
+                "online": bool(pres.get("online")),
+                "last_seen": pres.get("last_seen", ""),
+            })
+        out.sort(key=lambda x: x.get("last_at_ts", 0), reverse=True)
+    except Exception:
+        pass
+    return out
+
+
+@router.get("/teacher/chat/inbox")
+def teacher_chat_inbox(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _chat_touch_global(db, current_user)
+    return {"conversations": _chat_inbox(db, current_user, "teacher")}
+
+
+@router.get("/admin/chat/inbox", dependencies=[Depends(_admin_section_guard)])
+def admin_chat_inbox(db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Admin oversight inbox — every task chat thread across the org."""
+    _chat_touch_global(db, current_user)
+    return {"conversations": _chat_inbox(db, current_user, "manager")}
 
 
 @router.get("/teacher/video-tasks/{task_id}/comments")
@@ -1490,6 +1808,49 @@ def vt_teacher_comment_add(task_id: int, payload: dict = Body(...),
                    "video_task", link=str(task_id))
     db.commit()
     return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+# ---- Teacher DIRECT-PAIR chats: teacher<->editor (te_ed), teacher<->graphics (te_gf) ----
+@router.get("/teacher/video-tasks/{task_id}/pair-comments")
+def vt_teacher_pair_get(task_id: int, audience: str = "", db: Session = Depends(get_db),
+                        current_user=Depends(get_teacher)):
+    aud = (audience or "").strip().lower()
+    if not _pair_check("teacher", aud):
+        raise HTTPException(400, "Invalid conversation")
+    _vtc_mark_read(db, current_user, task_id, aud)
+    _chat_touch(db, current_user, task_id, aud)
+    return {"comments": _vtc_list_v(db, task_id, aud, getattr(current_user, "id", None)),
+            "presence": _chat_other_presence(db, getattr(current_user, "id", None), task_id, aud)}
+
+
+@router.post("/teacher/video-tasks/{task_id}/pair-comments")
+def vt_teacher_pair_add(task_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                        current_user=Depends(get_teacher)):
+    aud = (payload.get("audience") or "").strip().lower()
+    if not _pair_check("teacher", aud):
+        raise HTTPException(400, "Invalid conversation")
+    t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    _att = _resolve_chat_att(db, t, payload, current_user)
+    c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher",
+                 attachment_url=_att, audience=aud)
+    if not c:
+        raise HTTPException(400, "Message cannot be empty")
+    try: _chat_touch(db, current_user, task_id, aud, typing=False)
+    except Exception: pass
+    _pair_notify(db, task_id, aud, current_user, c.message)
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+@router.post("/teacher/video-tasks/{task_id}/pair-ping")
+def vt_teacher_pair_ping(task_id: int, audience: str = "", payload: dict = Body(default={}),
+                         db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    aud = (audience or (payload or {}).get("audience") or "").strip().lower()
+    if _pair_check("teacher", aud):
+        _chat_touch(db, current_user, task_id, aud, typing=bool((payload or {}).get("typing")))
+    return {"presence": _chat_other_presence(db, getattr(current_user, "id", None), task_id, aud)}
 
 
 # ============================================================ PROJECT CHAT (Phase 5)
@@ -1627,13 +1988,23 @@ def vt_admin_comment_add(task_id: int, payload: dict = Body(...),
     t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
     if not t:
         raise HTTPException(404, "Task not found")
-    # admin can message anyone on the task: teacher (creator), editor, or graphics (internal)
+    # admin can message anyone on the task: teacher (creator), editor, graphics (internal),
+    # or step into a direct-pair thread (te_ed / te_gf / ed_gf) for oversight.
     _aud = (payload.get("audience") or "creator").strip().lower()
-    if _aud not in ("creator", "editor", "internal"):
+    if _aud not in ("creator", "editor", "internal", "te_ed", "te_gf", "ed_gf"):
         _aud = "creator"
     c = _vtc_add(db, task_id, me, payload.get("message"), "admin", audience=_aud)
     if not c:
         raise HTTPException(400, "Message cannot be empty")
+    if _aud in _PAIR_AUDS:
+        try:
+            for oid in _pair_members(db, task_id, _aud, getattr(me, "id", None)):
+                _vt_notify(db, oid, "Admin messaged on a video",
+                           f'Message on "{t.title}": {c.message[:120]}', "pair_chat", link=str(task_id))
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "comment": _vtc_out(db, c), "audience": _aud}
     try:
         if _aud == "creator":
             # notify the creator (and collaborators) that the manager replied
