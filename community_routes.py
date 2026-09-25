@@ -608,6 +608,7 @@ def community_receipts(pid: int, filter: str = "all", db: Session = Depends(get_
         sp = spmap.get(r.user_id)
         out.append({"user_id": r.user_id, "profile_id": (sp.id if sp else None),
                     "name": (u.name if u else "Student"),
+                    "mvs_id": (u.user_id if u else ""),
                     "class": (sp.class_level if sp else "") or "",
                     "phone": (sp.phone if sp else "") or "",
                     "seen": seen, "seen_at": _ist_str(r.seen_at),

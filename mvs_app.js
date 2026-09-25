@@ -13962,7 +13962,35 @@ function _commCss(){
     '.cmy-seen-b.n{background:rgba(148,148,148,.14);color:#8a8578}',
     '.cmy-seen-b.c{background:rgba(124,58,237,.14);color:#7c3aed}',
     '.cmy-empty{padding:40px 18px;text-align:center;color:var(--muted);font-size:.95rem}',
-    '@media(max-width:600px){.cmy-grid{grid-template-columns:1fr 1fr}.cmy-send{margin-left:0;width:100%}.cmy-actbar{flex-direction:column;align-items:stretch}}',
+    // ---- two-pane WhatsApp-style group chat ----
+    '.cmy-2p{display:flex;gap:14px;height:calc(100vh - 250px);min-height:440px}',
+    '.cmy-glist{width:330px;flex-shrink:0;background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:16px;overflow-y:auto;box-shadow:0 4px 16px rgba(18,20,45,.05)}',
+    '.cmy-grow{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.05);transition:background .12s}',
+    '.cmy-grow:hover{background:rgba(124,58,237,.06)}',
+    '.cmy-grow.on{background:linear-gradient(90deg,rgba(124,58,237,.12),rgba(37,99,235,.06))}',
+    '.cmy-grav{width:44px;height:44px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}',
+    '.cmy-grmid{flex:1;min-width:0}',
+    '.cmy-grn{font-weight:800;font-size:.92rem;color:var(--text,#14213d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.cmy-grl{font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}',
+    '.cmy-grcount{font-size:.7rem;color:var(--muted);font-weight:700;flex-shrink:0}',
+    '.cmy-gchat{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(18,20,45,.05)}',
+    '.cmy-ghead{display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid var(--border,#ece7d8);background:var(--surface-2,#faf9f5)}',
+    '.cmy-ghn{font-weight:800;font-size:1rem}',
+    '.cmy-ghm{font-size:.76rem;color:var(--muted)}',
+    '.cmy-thread{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2,#f7f5ef)}',
+    '.cmy-bub{align-self:flex-end;max-width:78%;background:linear-gradient(135deg,#f5d98a,#e6ad4e);color:#3a2e0e;border-radius:16px 16px 4px 16px;padding:11px 14px;box-shadow:0 2px 8px rgba(180,130,20,.18)}',
+    '.cmy-bub .b-h{font-weight:800;font-size:.9rem;margin-bottom:3px}',
+    '.cmy-bub .b-b{font-size:.92rem;white-space:pre-wrap;line-height:1.55;word-break:break-word}',
+    '.cmy-bub .b-t{font-size:.68rem;opacity:.7;text-align:right;margin-top:5px;display:flex;align-items:center;justify-content:flex-end;gap:5px}',
+    '.cmy-bub .b-seen{cursor:pointer;font-weight:800;color:#1d6f42}',
+    '.cmy-bub .b-img{width:150px;height:110px;border-radius:10px;background-size:cover;background-position:center;cursor:pointer;margin-top:6px;border:1px solid rgba(0,0,0,.1)}',
+    '.cmy-reply{display:flex;gap:8px;align-items:center;padding:11px 12px;border-top:1px solid var(--border,#ece7d8);background:var(--card,#fff);position:relative}',
+    '.cmy-reply input{flex:1;border:1.5px solid var(--border,#e5ddcb);border-radius:22px;padding:10px 16px;font-size:.92rem;outline:none;background:var(--surface-2,#faf9f5);color:var(--text,#14213d)}',
+    '.cmy-rsend{width:44px;height:44px;border-radius:50%;border:none;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#fff;cursor:pointer;font-size:1.1rem;flex-shrink:0;display:flex;align-items:center;justify-content:center}',
+    '.cmy-seenrow{display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid rgba(0,0,0,.05)}',
+    '.cmy-seenrow .tick{color:#2f80ed;font-weight:800;font-size:1rem;flex-shrink:0}',
+    '@media(max-width:600px){.cmy-grid{grid-template-columns:1fr 1fr}.cmy-send{margin-left:0;width:100%}.cmy-actbar{flex-direction:column;align-items:stretch}'+
+      '.cmy-2p{flex-direction:column;height:auto}.cmy-glist{width:100%;max-height:230px}.cmy-gchat{height:64vh}}',
     '@media(max-width:420px){.cmy-grid{grid-template-columns:1fr}}'
   ].join('');
   document.head.appendChild(s);
@@ -13997,12 +14025,11 @@ window._commTab=function(t){
 function _commGroups(){
   var b=document.getElementById('cmy-body'); if(!b) return; b.innerHTML='<div class="spinner"></div>';
   api('/api/admin/community/groups').then(function(r){
-    var gs=(r&&r.groups)||[];
-    var cards=gs.map(function(g){ return '<div class="cmy-gcard" onclick="_commOpenGroup('+g.id+')">'+
-      '<div class="cmy-gav" style="background:'+(g.icon_color||_ccolor(g.name))+'">'+esc((g.name||'G').slice(0,1).toUpperCase())+'</div>'+
-      '<div class="cmy-gname">'+esc(g.name)+'</div>'+
-      '<div class="cmy-gmeta">'+g.members+' student'+(g.members===1?'':'s')+'</div>'+
-      (g.last?'<div class="cmy-glast">'+esc(g.last)+'</div>':'')+
+    var gs=(r&&r.groups)||[]; window._COMM.groupList=gs;
+    var rows=gs.map(function(g){ return '<div class="cmy-grow" id="cmy-grow-'+g.id+'" onclick="_commSelectGroup('+g.id+')">'+
+      '<div class="cmy-grav" style="background:'+(g.icon_color||_ccolor(g.name))+'">'+esc((g.name||'G').slice(0,1).toUpperCase())+'</div>'+
+      '<div class="cmy-grmid"><div class="cmy-grn">'+esc(g.name)+'</div><div class="cmy-grl">'+(g.last?esc(g.last):(g.members+' students'))+'</div></div>'+
+      '<div class="cmy-grcount">'+g.members+'</div>'+
     '</div>'; }).join('');
     b.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">'+
         '<div style="font-weight:800;font-size:1.05rem">Batch Groups <span style="color:var(--muted);font-weight:600">('+gs.length+')</span></div>'+
@@ -14012,9 +14039,62 @@ function _commGroups(){
           '<button class="cmy-send" style="margin:0" onclick="_commNewGroup()">'+ic('users')+' New Group</button>'+
         '</div>'+
       '</div>'+
-      (gs.length?'<div class="cmy-grid">'+cards+'</div>':'<div class="cmy-empty">No groups yet. Tap <b>Auto-create from Batches</b> to instantly make a group for every batch (session-wise), plus a “No Session” group for students who haven’t set their exam session.</div>');
+      (gs.length?('<div class="cmy-2p"><div class="cmy-glist">'+rows+'</div>'+
+        '<div class="cmy-gchat" id="cmy-gchat"><div class="cmy-empty" style="margin:auto">'+ic('chat')+'<div style="margin-top:8px">Select a group to view messages</div></div></div></div>')
+        :'<div class="cmy-empty">No groups yet. Tap <b>Auto-create from Batches</b> to instantly make a group for every batch (session-wise), plus a “No Session” group for students who haven’t set their exam session.</div>');
+    if(gs.length) _commSelectGroup(gs[0].id);
   }).catch(function(e){ b.innerHTML='<div class="cmy-empty">Could not load groups.</div>'; });
 }
+window._commSelectGroup=function(gid){
+  window._COMM.curGroup=gid; window._COMM.images=[]; window._COMM.files=[];
+  document.querySelectorAll('.cmy-grow').forEach(function(n){ n.classList.toggle('on', n.id==='cmy-grow-'+gid); });
+  var pane=document.getElementById('cmy-gchat'); if(!pane) return;
+  pane.innerHTML='<div class="cmy-empty" style="margin:auto"><div class="spinner"></div></div>';
+  api('/api/admin/community/groups/'+gid+'/posts').then(function(r){
+    var g=r.group||{}; var posts=(r.posts||[]);
+    pane.innerHTML='<div class="cmy-ghead"><div class="cmy-grav" style="width:38px;height:38px;background:'+_ccolor(g.name)+'">'+esc((g.name||'G').slice(0,1).toUpperCase())+'</div>'+
+        '<div style="flex:1;min-width:0"><div class="cmy-ghn">'+esc(g.name||'')+'</div><div class="cmy-ghm">'+(g.members||0)+' students</div></div></div>'+
+      '<div class="cmy-thread" id="cmy-thread">'+(posts.length?posts.map(_commBubble).join(''):'<div class="cmy-empty" style="margin:auto">No messages yet. Send the first one below.</div>')+'</div>'+
+      '<div class="cmy-reply">'+
+        '<button type="button" class="cmy-abtn" title="Attach" style="font-size:1.2rem;font-weight:800;padding:7px 13px" onclick="_commAttachMenu(event)">+</button>'+
+        '<div id="cmy-amenu" style="display:none;position:absolute;bottom:56px;left:8px;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:14px;box-shadow:0 12px 32px rgba(18,20,45,.2);padding:6px;flex-direction:column;gap:2px;z-index:20;min-width:196px">'+
+          '<style>.cmy-amenu-opt{display:flex;align-items:center;gap:11px;width:100%;padding:11px 13px;border:none;background:transparent;cursor:pointer;font-weight:700;font-size:.9rem;color:var(--text,#14213d);border-radius:10px;text-align:left}.cmy-amenu-opt:hover{background:rgba(124,58,237,.09)}</style>'+
+          '<button type="button" class="cmy-amenu-opt" onclick="_commPickGallery()"><span style="font-size:1.15rem">🖼️</span> Photos</button>'+
+          '<button type="button" class="cmy-amenu-opt" onclick="_commPickCamera()"><span style="font-size:1.15rem">📷</span> Camera</button>'+
+          '<button type="button" class="cmy-amenu-opt" onclick="_commPickDoc()"><span style="font-size:1.15rem">📄</span> Document / PDF</button>'+
+        '</div>'+
+        '<input id="cmy-reply-in" placeholder="Type a message to this group..." onkeydown="if(event.key===\'Enter\')_commGroupSend()">'+
+        '<button class="cmy-rsend" id="cmy-rsend" onclick="_commGroupSend()">'+ic('chat')+'</button>'+
+        '<input type="file" id="cmy-img" accept="image/*" multiple style="display:none" onchange="_commPickImgs(this)">'+
+        '<input type="file" id="cmy-cam" accept="image/*" capture="environment" style="display:none" onchange="_commPickImgs(this)">'+
+        '<input type="file" id="cmy-pdf" accept="application/pdf,.pdf" multiple style="display:none" onchange="_commPickFiles(this)">'+
+      '</div>'+
+      '<div id="cmy-prev" class="cmy-att" style="padding:0 12px 8px"></div>';
+    _commHydrateImgs(pane);
+    var th=document.getElementById('cmy-thread'); if(th) th.scrollTop=th.scrollHeight;
+  }).catch(function(e){ pane.innerHTML='<div class="cmy-empty" style="margin:auto">Could not open group.</div>'; });
+};
+function _commBubble(p){
+  var imgs=(p.attachments||[]).filter(function(a){return a.kind==='image';});
+  var files=(p.attachments||[]).filter(function(a){return a.kind!=='image';});
+  var imgH=imgs.map(function(a){return '<div class="b-img" data-cimg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"></div>';}).join('');
+  var fileH=files.map(function(a){return '<div class="cmy-fileline" style="margin-top:6px" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
+  var linkH=p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'';
+  var seen='<span class="b-seen" onclick="_commReceipts('+p.id+')">✓✓ '+(p.seen||0)+'/'+(p.sent||0)+'</span>';
+  return '<div class="cmy-bub">'+(p.title?'<div class="b-h">'+esc(p.title)+'</div>':'')+
+    (p.body?'<div class="b-b">'+esc(p.body)+'</div>':'')+imgH+fileH+linkH+
+    '<div class="b-t">'+esc(p.at||'')+' '+seen+'</div></div>';
+}
+window._commGroupSend=function(){
+  var inp=document.getElementById('cmy-reply-in'); var body=inp?(inp.value||'').trim():'';
+  if(!body && !window._COMM.images.length && !window._COMM.files.length){ return; }
+  var btn=document.getElementById('cmy-rsend'); if(btn) btn.disabled=true;
+  var payload={title:'',body:body,link:'',images:window._COMM.images,files:window._COMM.files};
+  api('/api/admin/community/groups/'+window._COMM.curGroup+'/post','POST',payload).then(function(){
+    window._COMM.images=[]; window._COMM.files=[];
+    _commSelectGroup(window._COMM.curGroup);
+  }).catch(function(e){ if(btn) btn.disabled=false; toast((e&&e.message)||'Send failed',true); });
+};
 window._commAudit=function(){
   showModal('Batch Data Audit','<div class="spinner"></div>','<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
   api('/api/admin/community/batch-audit').then(function(r){
@@ -14207,29 +14287,42 @@ function _commLoadLog(kind){
     _commHydrateImgs(el);
   }).catch(function(){ el.innerHTML=''; });
 }
-// ---- Receipts (who saw / clicked) ----
+// ---- Receipts (who saw / clicked) — "Seen by N of M" modal ----
 window._commReceipts=function(pid,filter){
-  showModal('Delivery Report','<div class="spinner"></div>','<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
+  showModal('Delivery Report','<div style="padding:24px;text-align:center"><div class="spinner"></div></div>','<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
   api('/api/admin/community/posts/'+pid+'/receipts?filter=all').then(function(r){
-    window._COMM._rec=r; _commRecRender(pid,filter||'all');
+    window._COMM._rec=r; window._COMM._recPid=pid; _commRecRender(filter||'seen','');
   }).catch(function(e){ var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML='<div class="cmy-empty">Could not load.</div>'; });
 };
-function _commRecRender(pid,filter){
+function _commRecRender(filter,q){
   var r=window._COMM._rec||{}; var recs=(r.recipients||[]);
-  var tabs=[['all','All '+(r.sent||0)],['seen','Seen '+(r.seen||0)],['clicked','Clicked '+(r.clicked||0)],['pending','Pending '+((r.sent||0)-(r.seen||0))]];
-  var filtered=recs.filter(function(x){ if(filter==='seen')return x.seen; if(filter==='clicked')return x.clicked; if(filter==='pending')return !x.seen; return true; });
+  var pid=window._COMM._recPid;
+  var seen=r.seen||0, sent=r.sent||0, clicked=r.clicked||0, pending=Math.max(0,sent-seen);
+  q=(q||'').trim().toLowerCase();
+  var filtered=recs.filter(function(x){
+    if(filter==='seen'&&!x.seen) return false;
+    if(filter==='clicked'&&!x.clicked) return false;
+    if(filter==='pending'&&x.seen) return false;
+    if(q){ var hay=((x.name||'')+' '+(x.mvs_id||'')+' '+(x.phone||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+    return true;
+  });
   var rows=filtered.length?filtered.map(function(x){
-    var badge=x.clicked?'<span class="cmy-seen-b c">Clicked</span>':(x.seen?'<span class="cmy-seen-b y">Seen</span>':'<span class="cmy-seen-b n">Not seen</span>');
-    var t=x.clicked&&x.clicked_at?x.clicked_at:(x.seen&&x.seen_at?x.seen_at:'');
-    return '<div class="cmy-rrow" style="display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid rgba(0,0,0,.05);cursor:pointer" onclick="_commStuCard('+x.user_id+')">'+
+    var tick=x.seen?'<span class="tick" title="Seen">✓✓</span>':'<span style="color:var(--muted);font-size:.9rem;flex-shrink:0">✓</span>';
+    return '<div class="cmy-seenrow" style="cursor:pointer" onclick="_commStuCard('+x.user_id+')">'+
       '<div class="cmy-rav">'+esc((x.name||'?').slice(0,1).toUpperCase())+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.name)+'</div>'+
-        '<div style="font-size:.76rem;color:var(--muted)">'+esc(x.phone||'')+(x.class?' · Class '+esc(x.class):'')+(t?' · '+esc(t):'')+'</div></div>'+
-      badge+'</div>';
-  }).join(''):'<div class="cmy-empty">No students here.</div>';
+      '<div style="flex:1;min-width:0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.name||'Student')+'</div>'+
+        '<div style="font-size:.74rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.mvs_id||x.phone||'')+(x.class?' · Class '+esc(x.class):'')+'</div></div>'+
+      tick+'</div>';
+  }).join(''):'<div class="cmy-empty" style="padding:26px 0;text-align:center;color:var(--muted)">No students here.</div>';
+  var tabs=[['seen','Seen '+seen],['clicked','Clicked '+clicked],['pending','Pending '+pending],['all','All '+sent]];
   var mb=document.getElementById('modal-body');
-  if(mb) mb.innerHTML='<div class="cmy-tgt" style="margin-bottom:12px">'+tabs.map(function(t){return '<button class="cmy-tb'+(filter===t[0]?' on':'')+'" onclick="_commRecRender('+pid+',\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div>'+
-    '<div style="max-height:56vh;overflow-y:auto">'+rows+'</div>';
+  if(!mb) return;
+  mb.innerHTML=
+    '<div style="font-weight:800;font-size:1.05rem;margin:2px 0 4px">Seen by '+seen.toLocaleString()+' of '+sent.toLocaleString()+'</div>'+
+    '<div class="cmy-tgt" style="display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 12px">'+tabs.map(function(t){return '<button class="cmy-tb'+(filter===t[0]?' on':'')+'" onclick="_commRecRender(\''+t[0]+'\',(document.getElementById(\'cmy-seen-q\')||{}).value||\'\')">'+t[1]+'</button>';}).join('')+'</div>'+
+    '<input id="cmy-seen-q" type="text" placeholder="Search name or MVS ID…" value="'+esc(q)+'" oninput="_commRecRender(\''+filter+'\',this.value)" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border,#e5ddcb);border-radius:10px;padding:9px 13px;font-size:.9rem;outline:none;margin-bottom:8px;background:var(--surface-2,#faf9f5);color:var(--text,#14213d)">'+
+    '<div style="max-height:52vh;overflow-y:auto;margin:0 -4px">'+rows+'</div>';
+  var qi=document.getElementById('cmy-seen-q'); if(qi && q){ try{ qi.focus(); qi.setSelectionRange(q.length,q.length); }catch(e){} }
 }
 window._commStuCard=function(uid){
   var r=window._COMM._rec||{}; var x=(r.recipients||[]).filter(function(y){return y.user_id===uid;})[0]; if(!x) return;
@@ -14237,6 +14330,7 @@ window._commStuCard=function(uid){
   showModal('Student',
     '<div style="text-align:center;padding:10px 0"><div class="cmy-rav" style="width:66px;height:66px;font-size:1.5rem;margin:0 auto 12px">'+esc((x.name||'?').slice(0,1).toUpperCase())+'</div>'+
     '<div style="font-weight:800;font-size:1.15rem">'+esc(x.name)+'</div>'+
+    (x.mvs_id?'<div style="color:var(--muted);font-size:.82rem;margin-top:3px">'+esc(x.mvs_id)+'</div>':'')+
     '<div style="color:var(--muted);margin-top:4px">'+esc(x.phone||'')+(x.class?' · Class '+esc(x.class):'')+'</div>'+
     '<div style="margin-top:14px">'+(x.clicked?'<span class="cmy-seen-b c">Clicked '+esc(x.clicked_at||'')+'</span>':(x.seen?'<span class="cmy-seen-b y">Seen '+esc(x.seen_at||'')+'</span>':'<span class="cmy-seen-b n">Not seen yet</span>'))+'</div></div>',
     '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
