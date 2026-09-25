@@ -620,6 +620,34 @@ def community_receipts(pid: int, filter: str = "all", db: Session = Depends(get_
             "sent": len(reads), "seen": seen_n, "clicked": clicked_n, "recipients": out}
 
 
+@router.delete("/admin/community/posts/{pid}", dependencies=[Depends(_admin_guard)])
+def community_post_delete(pid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Delete for everyone: removes the message from the group thread AND every
+    student's bell notification / seen-tracking. Cannot be undone."""
+    p = db.query(CommunityPost).filter(CommunityPost.id == pid).first()
+    if not p:
+        return {"ok": True}
+    # 1) remove the per-recipient bell notifications for this post
+    try:
+        db.query(Notification).filter(Notification.batch_key == ("cp_" + str(pid))).delete(synchronize_session=False)
+    except Exception:
+        db.rollback()
+    # 2) remove read / seen / clicked tracking rows
+    try:
+        db.query(CommunityRead).filter(CommunityRead.post_id == pid).delete(synchronize_session=False)
+    except Exception:
+        db.rollback()
+    # 3) remove attachment rows
+    try:
+        db.query(CommunityAttachment).filter(CommunityAttachment.post_id == pid).delete(synchronize_session=False)
+    except Exception:
+        db.rollback()
+    # 4) soft-delete the post so it disappears from every admin + student thread
+    p.is_active = False
+    db.commit()
+    return {"ok": True}
+
+
 # =========================================================== STUDENT SIDE
 @router.get("/student/community/groups")
 def student_community_groups(db: Session = Depends(get_db), me=Depends(get_student)):

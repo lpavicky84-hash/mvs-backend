@@ -13983,9 +13983,12 @@ function _commCss(){
     '.cmy-bub .b-b{font-size:.92rem;white-space:pre-wrap;line-height:1.55;word-break:break-word}',
     '.cmy-bub .b-t{font-size:.68rem;opacity:.7;text-align:right;margin-top:5px;display:flex;align-items:center;justify-content:flex-end;gap:5px}',
     '.cmy-bub .b-seen{cursor:pointer;font-weight:800;color:#1d6f42}',
+    '.cmy-bub .b-del{cursor:pointer;opacity:.55;display:inline-flex;align-items:center}',
+    '.cmy-bub .b-del:hover{opacity:1;color:#b91c1c}',
+    '.cmy-bub .b-del svg{width:13px;height:13px}',
     '.cmy-bub .b-img{width:150px;height:110px;border-radius:10px;background-size:cover;background-position:center;cursor:pointer;margin-top:6px;border:1px solid rgba(0,0,0,.1)}',
     '.cmy-reply{display:flex;gap:8px;align-items:center;padding:11px 12px;border-top:1px solid var(--border,#ece7d8);background:var(--card,#fff);position:relative}',
-    '.cmy-reply input{flex:1;border:1.5px solid var(--border,#e5ddcb);border-radius:22px;padding:10px 16px;font-size:.92rem;outline:none;background:var(--surface-2,#faf9f5);color:var(--text,#14213d)}',
+    '.cmy-reply textarea{flex:1;border:1.5px solid var(--border,#e5ddcb);border-radius:20px;padding:10px 16px;font-size:.92rem;line-height:1.5;outline:none;background:var(--surface-2,#faf9f5);color:var(--text,#14213d);font-family:inherit;resize:none;max-height:140px;overflow-y:auto}',
     '.cmy-rsend{width:44px;height:44px;border-radius:50%;border:none;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#fff;cursor:pointer;font-size:1.1rem;flex-shrink:0;display:flex;align-items:center;justify-content:center}',
     '.cmy-seenrow{display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid rgba(0,0,0,.05)}',
     '.cmy-seenrow .tick{color:#2f80ed;font-weight:800;font-size:1rem;flex-shrink:0}',
@@ -14063,7 +14066,7 @@ window._commSelectGroup=function(gid){
           '<button type="button" class="cmy-amenu-opt" onclick="_commPickCamera()"><span style="font-size:1.15rem">📷</span> Camera</button>'+
           '<button type="button" class="cmy-amenu-opt" onclick="_commPickDoc()"><span style="font-size:1.15rem">📄</span> Document / PDF</button>'+
         '</div>'+
-        '<input id="cmy-reply-in" placeholder="Type a message to this group..." onkeydown="if(event.key===\'Enter\')_commGroupSend()">'+
+        '<textarea id="cmy-reply-in" rows="1" placeholder="Type a message…  (Shift+Enter for a new line)" oninput="_commRTAgrow(this)" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();_commGroupSend();}"></textarea>'+
         '<button class="cmy-rsend" id="cmy-rsend" onclick="_commGroupSend()">'+ic('chat')+'</button>'+
         '<input type="file" id="cmy-img" accept="image/*" multiple style="display:none" onchange="_commPickImgs(this)">'+
         '<input type="file" id="cmy-cam" accept="image/*" capture="environment" style="display:none" onchange="_commPickImgs(this)">'+
@@ -14081,9 +14084,10 @@ function _commBubble(p){
   var fileH=files.map(function(a){return '<div class="cmy-fileline" style="margin-top:6px" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
   var linkH=p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'';
   var seen='<span class="b-seen" onclick="_commReceipts('+p.id+')">✓✓ '+(p.seen||0)+'/'+(p.sent||0)+'</span>';
+  var del='<span class="b-del" title="Delete for everyone" onclick="_commDeletePost('+p.id+')">'+ic('trash')+'</span>';
   return '<div class="cmy-bub">'+(p.title?'<div class="b-h">'+esc(p.title)+'</div>':'')+
     (p.body?'<div class="b-b">'+esc(p.body)+'</div>':'')+imgH+fileH+linkH+
-    '<div class="b-t">'+esc(p.at||'')+' '+seen+'</div></div>';
+    '<div class="b-t">'+esc(p.at||'')+' '+del+' '+seen+'</div></div>';
 }
 window._commGroupSend=function(){
   var inp=document.getElementById('cmy-reply-in'); var body=inp?(inp.value||'').trim():'';
@@ -14094,6 +14098,22 @@ window._commGroupSend=function(){
     window._COMM.images=[]; window._COMM.files=[];
     _commSelectGroup(window._COMM.curGroup);
   }).catch(function(e){ if(btn) btn.disabled=false; toast((e&&e.message)||'Send failed',true); });
+};
+window._commRTAgrow=function(el){ if(!el) return; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,140)+'px'; };
+window._commDeletePost=function(pid){
+  showModal('Delete message?',
+    '<div style="padding:6px 2px;line-height:1.6">This message will be <b>deleted for everyone</b> — it will be removed from the group chat and from students’ notifications. This cannot be undone.</div>',
+    '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button><button class="btn btn-danger btn-sm" onclick="_commDoDeletePost('+pid+')">Delete for everyone</button>');
+};
+window._commDoDeletePost=function(pid){
+  closeModal();
+  api('/api/admin/community/posts/'+pid,'DELETE').then(function(){
+    toast('Message deleted for everyone');
+    if(window._COMM){
+      if(window._COMM.curGroup) _commSelectGroup(window._COMM.curGroup);
+      var lk=window._COMM.logKind; if(lk) _commLoadLog(lk);
+    }
+  }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
 };
 window._commAudit=function(){
   showModal('Batch Data Audit','<div class="spinner"></div>','<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
@@ -14168,7 +14188,9 @@ function _commMsgHtml(p){
     '</div>':'';
   return '<div class="cmy-msg">'+(p.title?'<div class="cmy-msg-h">'+esc(p.title)+'</div>':'')+
     (p.body?'<div class="cmy-msg-b">'+esc(p.body)+'</div>':'')+imgH+(fileH||'')+linkH+
-    '<div class="cmy-msg-t">'+esc(p.at||'')+'</div>'+stats+'</div>';
+    '<div class="cmy-msg-t" style="display:flex;align-items:center;gap:10px">'+esc(p.at||'')+
+      '<button class="cmy-chip" style="border-color:rgba(185,28,28,.3);color:#b91c1c;cursor:pointer" onclick="_commDeletePost('+p.id+')">'+ic('trash')+' Delete for everyone</button>'+
+    '</div>'+stats+'</div>';
 }
 // ---- Composer (group post / broadcast / popup) ----
 function _commComposer(kind){
@@ -14279,6 +14301,7 @@ window._commSend=function(kind){
 };
 // ---- Broadcast/Popup log ----
 function _commLoadLog(kind){
+  window._COMM.logKind=kind;
   var el=document.getElementById('cmy-log'); if(!el) return;
   api('/api/admin/community/posts?kind='+kind).then(function(r){
     var ps=(r&&r.posts)||[];
