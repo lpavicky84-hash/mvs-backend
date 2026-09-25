@@ -4208,8 +4208,8 @@ function _slistDetail(i){
   const row=(l,v)=>(v!==undefined&&v!==null&&v!=='')?`<div class="sdet-row"><span>${l}</span><b>${esc(String(v))}</b></div>`:'';
   const av=s.has_photo?`<div class="sdet-av" id="sdet-av"></div>`:`<div class="sdet-av">${esc(initials(s.name||'S'))}</div>`;
   showModal('Student Details',
-    `<div class="sdet-head">${av}<div><div class="sdet-name">${esc(s.name||'Student')}</div><div class="sdet-meta">${s.class?'Class '+esc(s.class):''}${s.batch?' · '+esc(s.batch):''}</div></div></div>
-     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}${(_slistRole==='admin')?`<div class="sdet-row"><span>Profile Setup</span><b style="color:${s.setup_done?'#059669':'#d97706'}">${s.setup_done?'Done':'Pending'}</b></div>`:''}${(_slistRole==='admin'&&s.password)?`<div class="sdet-row"><span>Password</span><span style="display:flex;align-items:center;gap:8px"><b style="letter-spacing:3px;font-family:monospace">\u2022\u2022\u2022\u2022\u2022\u2022</b><button class="btn btn-ghost btn-sm" onclick="_copyPw(this,'${esc(String(s.password)).replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">${ic('copy')} Copy</button><button class="btn btn-ghost btn-sm" style="color:#d97706" onclick="_adminResetPw(${s.id},'${esc((s.name||'').replace(/'/g,''))}')">${typeof ic==='function'?ic('shield'):''} Reset</button></span></div>`:''}</div>
+    `<div class="sdet-head">${av}<div><div class="sdet-name">${esc(s.name||'Student')}</div><div class="sdet-meta">${s.class?'Class '+esc(s.class):''}${(s.batch_label||s.batch)?' · '+esc(s.batch_label||s.batch):''}</div></div></div>
+     <div class="sdet-grid">${row('Phone',s.phone)}${row('User ID',s.user_id)}${row('Email',s.email)}${row('Medium',s.medium)}${row('Batch',s.batch_label||s.batch)}${row('Section',s.class_name)}${row('NIOS Ref',s.nios_ref)}${row('Exam Session',s.exam_session_label||s.exam_session)}${row('Stream',s.exam_stream)}${row('Goal',s.goal)}${row('Verified',s.is_verified?'Yes':'')}${row('Last Active',s.last_seen)}${(_slistRole==='admin')?`<div class="sdet-row"><span>Profile Setup</span><b style="color:${s.setup_done?'#059669':'#d97706'}">${s.setup_done?'Done':'Pending'}</b></div>`:''}${(_slistRole==='admin'&&s.password)?`<div class="sdet-row"><span>Password</span><span style="display:flex;align-items:center;gap:8px"><b style="letter-spacing:3px;font-family:monospace">\u2022\u2022\u2022\u2022\u2022\u2022</b><button class="btn btn-ghost btn-sm" onclick="_copyPw(this,'${esc(String(s.password)).replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">${ic('copy')} Copy</button><button class="btn btn-ghost btn-sm" style="color:#d97706" onclick="_adminResetPw(${s.id},'${esc((s.name||'').replace(/'/g,''))}')">${typeof ic==='function'?ic('shield'):''} Reset</button></span></div>`:''}</div>
      <div class="sdet-subs"><div class="sdet-subs-lbl">SUBJECTS</div><div class="slist-chips">${subs||'<span style="color:var(--text-muted);font-size:.8rem">—</span>'}</div></div>`,
     `<button class="btn btn-ghost" onclick="openStudentsListModal(_slistRole,_slistSubject,_slistCls,_slistCode)">&larr; Back to List</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button>`);
   if(s.has_photo){ const pb=_slistRole==='teacher'?'/api/teacher/student/':'/api/admin/student/';
@@ -10087,11 +10087,11 @@ async function openTStudentProfile(sid,encName){
   try{
     const s=await api('/api/teacher/student/'+sid+'/profile');
     const sub=document.getElementById('tsp-sub-'+sid);
-    if(sub) sub.textContent=(s.user_id||'')+(s.batch?(' · '+s.batch):'');
+    if(sub) sub.textContent=(s.user_id||'')+((s.batch_label||s.batch)?(' · '+(s.batch_label||s.batch)):'');
     const subs=(s.subjects||[]).map(x=>`<span class="sp-chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
-    const info=[['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch||'—'],
+    const info=[['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch_label||s.batch||'—'],
       ['Class',s.class_name||(s.class?('Class '+s.class):'—')],['Medium',s.medium||'—'],
-      ['Exam Session',s.exam_session||'—'],['Goal',s.goal||'—'],['Last Seen',s.last_seen||'Never logged in']];
+      ['Exam Session',s.exam_session_label||s.exam_session||'—'],['Goal',s.goal||'—'],['Last Seen',s.last_seen||'Never logged in']];
     const body=document.getElementById('tsp-body-'+sid);
     if(body) body.innerHTML=`<div class="sp-grid">${info.map(function(kv){return '<div class="sp-cell"><div class="sp-k">'+kv[0]+'</div><div class="sp-v">'+esc(kv[1])+'</div></div>';}).join('')}</div>`
       +`<div class="sp-cell" style="margin-top:12px"><div class="sp-k">Subjects (with you)</div><div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">${subs}</div></div>`;
@@ -16396,7 +16396,7 @@ function aRenderStudents(){
   const page=_aStuPageRows;
   const rows=page.length?page.map(s=>{
     const subs=(s.subjects||[]).slice(0,4).map(x=>`<span class="chip">${esc(x)}</span>`).join('');
-    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
+    return `<div class="stu-row" onclick="openStudentProfile(${s.profile_id})"><div class="stu-photo" id="sphoto-${s.profile_id}" onclick="event.stopPropagation();viewPhoto('sphoto-${s.profile_id}','${esc((s.name||'').replace(/'/g,''))}',0)">${esc(initials(s.name||'S'))}</div><div class="stu-info"><div class="stu-name">${esc(s.name)}</div><div class="stu-meta">${esc(s.user_id)} · ${esc(s.phone||'no phone')} · ${esc(s.batch_label||s.batch||'no batch')} · <span class="xm-chip" style="font-size:.6rem;padding:2px 7px;${s.source==='mvs_portal'?'background:rgba(201,150,46,.16);color:#b07f1e':''}">${s.source==='mvs_portal'?'MVS PORTAL':'MVS APP'}</span></div><div class="slist-chips" style="margin-top:4px">${subs}</div></div><div class="stu-act" onclick="event.stopPropagation()"><button class="btn btn-ghost btn-sm" onclick='openEditStudent(${s.profile_id},${JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/'/g,"&#39;")})'>${ic('edit')}</button><button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.profile_id},'${esc((s.name||'').replace(/'/g,''))}')">${ic('trash')}</button></div></div>`;
   }).join(''):`<div class="empty-state"><p>No students match this view.</p>${window._stuLastErr?`<p style="color:#c1443a;font-size:.82rem;margin-top:8px">⚠ ${esc(window._stuLastErr)}</p>`:''}</div>`;
   const ov=window._aPortalOv;
   const segB=(id,label,n)=>`<button class="seg-b ${_stuSrcFilter===id?'active':''}" onclick="aStuSrcFilter('${id}')">${label}<span class="seg-n">${n}</span></button>`;
@@ -16501,11 +16501,11 @@ function openStudentProfile(sid){
   const s=_aStu.find(x=>x.profile_id===sid); if(!s) return;
   _spCss();
   const subs=(s.subjects||[]).map(x=>`<span class="sp-chip">${esc(x)}</span>`).join('')||'<span style="color:var(--text-muted)">None</span>';
-  const info=[['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch||'—'],['Class',s.class_level?('Class '+s.class_level):'—'],['Medium',s.medium||'—'],['Exam Session',s.exam_session||'—']];
+  const info=[['Phone',s.phone||'—'],['Email',s.email||'—'],['Batch',s.batch_label||s.batch||'—'],['Class',s.class_level?('Class '+s.class_level):'—'],['Medium',s.medium||'—'],['Exam Session',s.exam_session_label||s.exam_session||'—']];
   const editData=JSON.stringify({name:s.name,phone:s.phone,email:s.email,batch_name:s.batch_name,class_level:s.class_level,medium:s.medium||'',subjects:s.subjects||[],exam_session:s.exam_session||'',nios_ref:s.nios_ref||''}).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   showModal('Student Profile',
     `<div class="sp-head"><div class="sp-photo" id="spp-${sid}">${esc(initials(s.name||'S'))}</div>`
-    +`<div style="flex:1;min-width:0"><h2 class="sp-name">${esc(s.name)}</h2><div class="sp-sub">${esc(s.user_id||'')}${s.batch?(' · '+esc(s.batch)):''}</div></div></div>`
+    +`<div style="flex:1;min-width:0"><h2 class="sp-name">${esc(s.name)}</h2><div class="sp-sub">${esc(s.user_id||'')}${(s.batch_label||s.batch)?(' · '+esc(s.batch_label||s.batch)):''}</div></div></div>`
     +`<div class="sp-cred"><div class="sp-cred-h">Login Credentials</div>`
       +`<div class="sp-cred-row"><span class="sp-cred-k">Student ID</span><span class="sp-cred-v" id="sp-uid-${sid}">${esc(s.user_id||'—')}</span><button class="sp-icobtn" title="Copy" onclick="_spCopy('${esc((s.user_id||'').replace(/'/g,''))}',this)">${ic('copy')}</button></div>`
       +`<div class="sp-cred-row"><span class="sp-cred-k">Password</span><span class="sp-cred-v" id="sp-pw-${sid}"><span class="sp-dots">••••••••</span></span><button class="sp-icobtn" title="Show / hide" onclick="_spReveal(${sid})">${ic('eye')}</button><button class="sp-icobtn" title="Copy" onclick="_spCopyPw(${sid},this)">${ic('copy')}</button></div>`
@@ -17936,7 +17936,7 @@ async function loadSProfile(){
       ['User ID', p.user_id||'—'],
       ['Phone', p.phone||'—'],
       ['Email', p.email||'—'],
-      ['Batch', p.batch_name||'—'],
+      ['Batch', p.batch_label||p.batch_name||'—'],
       ['Medium', p.medium||'—'],
       ['Class', p.class_level?('Class '+p.class_level):'—'],
       ['Exam Session', (p.exam_session_label||_sylSessName(p.exam_session)||'—')],
@@ -17946,7 +17946,7 @@ async function loadSProfile(){
     el.innerHTML=`<div class="card glass-soft"><div class="card-body">
       <div class="prof-head">
         <div class="prof-photo" id="prof-photo">${esc(initials(p.name||'S'))}</div>
-        <div class="prof-id"><h2>${esc(p.name||'Student')}</h2><span class="chip" style="margin-top:6px">${esc(p.batch_name||'MVS Foundation Student')}</span></div>
+        <div class="prof-id"><h2>${esc(p.name||'Student')}</h2><span class="chip" style="margin-top:6px">${esc(p.batch_label||p.batch_name||'MVS Foundation Student')}</span></div>
         <button class="btn btn-primary btn-sm" onclick="openSetStudentPhoto()">${ic('upload')} Change Photo</button>
         <button class="btn btn-ghost btn-sm" onclick="openEditMyProfile()">${ic('edit')} Edit Details</button>
         <button class="btn btn-ghost btn-sm" onclick="openRequestBatch()">${ic('folder')} Request batch change</button>

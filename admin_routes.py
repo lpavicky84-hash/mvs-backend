@@ -515,6 +515,51 @@ def _session_id_to_batch_label(db, sid):
     return ""
 
 
+def _session_friendly(sid):
+    """Session id -> human label for DISPLAY (never blank if sid present).
+    apr2027->'April 2027', oct2026->'October 2026', stream2->'Stream 2',
+    ondemand->'On Demand'. Unknown -> raw as-is."""
+    sid = (sid or "").strip()
+    if not sid:
+        return ""
+    import re as _re
+    m = _re.fullmatch(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(20\d{2})", sid.lower())
+    if m:
+        return _MONTH_FULL[m.group(1)] + " " + m.group(2)
+    low = sid.lower()
+    if low == "stream2":
+        return "Stream 2"
+    if low == "stream1":
+        return "Stream 1"
+    if low == "ondemand":
+        return "On Demand"
+    return sid
+
+
+def _student_batch_fields(db, sp, bmap=None):
+    """Ek student ke liye batch ka DISPLAY naam + session nikaalta hai — hamesha
+    session ke saath. Pehle linked Batch (batch_id) se session leta hai; na mile to
+    exam_session se derive karta hai. Returns (name, session_label, full_label)."""
+    name = (getattr(sp, "batch_name", "") or "").strip()
+    ses = ""
+    bid = getattr(sp, "batch_id", None)
+    if bid:
+        b = (bmap.get(bid) if bmap is not None else None)
+        if b is None and bmap is None:
+            from models import Batch as _B
+            b = db.query(_B).filter(_B.id == bid).first()
+        if b:
+            if (getattr(b, "name", "") or "").strip():
+                name = b.name.strip()
+            ses = (getattr(b, "session", "") or "").strip()
+    if not ses:
+        ses = _session_id_to_batch_label(db, getattr(sp, "exam_session", "") or "")
+    if not name:
+        return "", ses, ""
+    label = name + (" — " + ses if ses else "")
+    return name, ses, label
+
+
 def _norm_session_label(db, s):
     """Kisi bhi session value (id 'apr2027', label 'April 2027', ya free text)
     ko canonical batch-session label ('April 2027' / 'October 2026') mein badlo.
@@ -4032,6 +4077,13 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
     want_cls = (cls or "").strip()
     want_sess = (session or "").strip()
     want_med = (medium or "").strip().lower()
+    # batch session map (batch name + session har jagah)
+    _lbmap = {}
+    try:
+        from models import Batch as _B
+        _lbmap = {b.id: b for b in db.query(_B).all()}
+    except Exception:
+        _lbmap = {}
     out = []
     for sp in rows:
         nm = _name_map.get(sp.id, "")
@@ -4047,11 +4099,15 @@ def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: 
         if want_med and (sp.medium or "").strip().lower() != want_med:
             continue
         disp_subs = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
+        _bnm, _bses, _blbl = _student_batch_fields(db, sp, _lbmap)
         out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
                     "subjects": disp_subs, "all_subjects": disp_subs, "has_photo": (sp.id in _photo_ids),
-                    "batch": sp.batch_name, "medium": sp.medium, "email": sp.email,
+                    "batch": sp.batch_name, "batch_session": _bses, "batch_label": _blbl,
+                    "medium": sp.medium, "email": sp.email,
                     "class_name": sp.class_name, "nios_ref": sp.nios_ref,
-                    "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+                    "exam_session": sp.exam_session,
+                    "exam_session_label": _session_friendly(sp.exam_session),
+                    "exam_stream": sp.exam_stream,
                     "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
                     "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
                     "is_verified": bool(sp.is_verified),
@@ -4196,18 +4252,31 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
                 StudentProfile.id.in_(_pids), StudentProfile.photo_b64.isnot(None))}
         except Exception:
             _photo_set = set()
+    # batch map for this page (session labels) — ek hi query, per-row lookup nahi
+    _bids = [sp.batch_id for sp in rows if getattr(sp, "batch_id", None)]
+    _bmap = {}
+    if _bids:
+        try:
+            from models import Batch as _B
+            _bmap = {b.id: b for b in db.query(_B).filter(_B.id.in_(set(_bids))).all()}
+        except Exception:
+            _bmap = {}
     students = []
     for sp in rows:
         try:
             ssubs = sp.subjects or []
             disp = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
+            _bnm, _bses, _blbl = _student_batch_fields(db, sp, _bmap)
             students.append({"id": sp.id, "profile_id": sp.id,
                              "name": (sp.user.name if sp.user else "") or "", "phone": sp.phone,
                              "class": sp.class_level, "class_level": sp.class_level,
                              "subjects": disp, "all_subjects": disp, "has_photo": (sp.id in _photo_set),
-                             "batch": sp.batch_name, "batch_name": sp.batch_name, "medium": sp.medium,
+                             "batch": sp.batch_name, "batch_name": sp.batch_name,
+                             "batch_session": _bses, "batch_label": _blbl, "medium": sp.medium,
                              "email": sp.email, "class_name": sp.class_name, "nios_ref": sp.nios_ref,
-                             "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+                             "exam_session": sp.exam_session,
+                             "exam_session_label": _session_friendly(sp.exam_session),
+                             "exam_stream": sp.exam_stream,
                              "source": sp.source or "mvs_app",
                              "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
                              "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,

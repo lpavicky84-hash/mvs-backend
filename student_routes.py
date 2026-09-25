@@ -1267,6 +1267,20 @@ def _session_label(db, sid):
 @router.get("/profile")
 def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
+    # batch ka session — hamesha batch name ke saath dikhana hai
+    _bses = ""
+    try:
+        from models import Batch as _B
+        if sp.batch_id:
+            _bb = db.query(_B).filter(_B.id == sp.batch_id).first()
+            if _bb and (_bb.session or "").strip():
+                _bses = _bb.session.strip()
+    except Exception:
+        _bses = ""
+    if not _bses:
+        _bses = _session_label(db, sp.exam_session) or ""
+    _bnm = (sp.batch_name or "").strip()
+    _blabel = (_bnm + (" — " + _bses if _bses else "")) if _bnm else ""
     return {
         "name": current_user.name,
         "user_id": current_user.user_id,
@@ -1277,6 +1291,8 @@ def get_profile(db: Session = Depends(get_db), current_user=Depends(get_student)
         "subjects": sp.subjects or [],
         "batch": sp.batch,
         "batch_name": sp.batch_name,
+        "batch_session": _bses,
+        "batch_label": _blabel,
         "class_name": sp.class_name,
         "exam_session": sp.exam_session,
         "exam_session_label": _session_label(db, sp.exam_session),

@@ -2877,6 +2877,27 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
         defer(StudentProfile.photo_b64), joinedload(StudentProfile.user)).all()
     # has_photo WITHOUT lazy-loading the heavy base64 per student (bool(sp.photo_b64) did that):
     _photo_ids = {r[0] for r in db.query(StudentProfile.id).filter(func.length(StudentProfile.photo_b64) > 0)}
+    # batch session map (batch name + session har jagah)
+    _lbmap = {}
+    _sfr = _sidlbl = None
+    try:
+        from admin_routes import _session_friendly as _sfr, _session_id_to_batch_label as _sidlbl
+        from models import Batch as _B
+        _lbmap = {b.id: b for b in db.query(_B).all()}
+    except Exception:
+        _lbmap = {}
+    def _batflds(sp):
+        nm = (sp.batch_name or "").strip(); ses = ""
+        b = _lbmap.get(getattr(sp, "batch_id", None))
+        if b:
+            if (getattr(b, "name", "") or "").strip():
+                nm = b.name.strip()
+            ses = (getattr(b, "session", "") or "").strip()
+        if not ses and _sidlbl:
+            ses = _sidlbl(db, getattr(sp, "exam_session", "") or "")
+        lbl = (nm + (" — " + ses if ses else "")) if nm else ""
+        esl = _sfr(getattr(sp, "exam_session", "") or "") if _sfr else (sp.exam_session or "")
+        return nm, ses, lbl, esl
     out = []
     for sp in rows:
         ssubs = sp.subjects or []
@@ -2902,12 +2923,15 @@ def teacher_my_students_list(q: str = "", subject: str = "", cls: str = "", db: 
             # har shabd alag se match ho - "tanu sharma" "TANU  SHARMA" se bhi mile
             if not all(t in hay for t in q_tokens):
                 continue
+        _bnm, _bses, _blbl, _esl = _batflds(sp)
         out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
                     "user_id": (sp.user.user_id if sp.user else None),
-                    "batch": sp.batch_name, "medium": sp.medium,
+                    "batch": sp.batch_name, "batch_session": _bses, "batch_label": _blbl,
+                    "medium": sp.medium,
                     "email": sp.email,
                     "class_name": sp.class_name, "nios_ref": sp.nios_ref,
-                    "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+                    "exam_session": sp.exam_session, "exam_session_label": _esl,
+                    "exam_stream": sp.exam_stream,
                     "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
                     "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
                     "is_verified": bool(sp.is_verified),
@@ -2939,11 +2963,29 @@ def teacher_student_profile(sid: int, db: Session = Depends(get_db),
     if not matched:
         raise HTTPException(status_code=403, detail="This student is not in your subjects.")
     nm = (sp.user.name if sp.user else "") or ""
+    # batch ka session hamesha naam ke saath (linked Batch se, warna exam_session se)
+    _bses, _blabel, _eslabel = "", (sp.batch_name or ""), (sp.exam_session or "")
+    try:
+        from admin_routes import _session_friendly, _session_id_to_batch_label
+        from models import Batch as _B
+        if sp.batch_id:
+            _bb = db.query(_B).filter(_B.id == sp.batch_id).first()
+            if _bb and (_bb.session or "").strip():
+                _bses = _bb.session.strip()
+        if not _bses:
+            _bses = _session_id_to_batch_label(db, sp.exam_session or "")
+        _bnm = (sp.batch_name or "").strip()
+        _blabel = (_bnm + (" — " + _bses if _bses else "")) if _bnm else ""
+        _eslabel = _session_friendly(sp.exam_session or "")
+    except Exception:
+        pass
     return {"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
             "user_id": (sp.user.user_id if sp.user else None),
-            "batch": sp.batch_name, "medium": sp.medium, "email": sp.email,
+            "batch": sp.batch_name, "batch_session": _bses, "batch_label": _blabel,
+            "medium": sp.medium, "email": sp.email,
             "class_name": sp.class_name, "nios_ref": sp.nios_ref,
-            "exam_session": sp.exam_session, "exam_stream": sp.exam_stream,
+            "exam_session": sp.exam_session, "exam_session_label": _eslabel,
+            "exam_stream": sp.exam_stream,
             "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
             "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
             "is_verified": bool(sp.is_verified),
