@@ -126,6 +126,49 @@ def _batch_label(b):
     return (nm + " — " + ss) if ss and ss.lower() not in nm.lower() else nm
 
 
+def _batch_member_uids(db, batch_id):
+    """Student User.id enrolled in a batch — DISTINCT, counted exactly like the admin
+    Batches page: primary link (StudentProfile.batch_id) UNION add-on (StudentBatch)."""
+    sids = set()
+    try:
+        for (sid,) in db.query(StudentProfile.id).filter(StudentProfile.batch_id == batch_id).all():
+            if sid:
+                sids.add(sid)
+        for (sid,) in db.query(StudentBatch.student_id).filter(StudentBatch.batch_id == batch_id).all():
+            if sid:
+                sids.add(sid)
+    except Exception:
+        pass
+    uids = set()
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(list(sids))).all():
+            if sp.user_id:
+                uids.add(sp.user_id)
+    return uids
+
+
+def _batch_count_map(db):
+    """{batch_id: distinct student count} — same definition as the admin Batches page,
+    so Community numbers always match what batch managers see."""
+    from collections import defaultdict
+    prim = defaultdict(set)
+    enr = defaultdict(set)
+    try:
+        for sid, bid in (db.query(StudentProfile.id, StudentProfile.batch_id)
+                         .filter(StudentProfile.batch_id != None).all()):  # noqa: E711
+            if bid:
+                prim[bid].add(sid)
+        for sid, bid in db.query(StudentBatch.student_id, StudentBatch.batch_id).all():
+            if bid and sid:
+                enr[bid].add(sid)
+    except Exception:
+        pass
+    out = {}
+    for bid in set(list(prim.keys()) + list(enr.keys())):
+        out[bid] = len(prim.get(bid, set()) | enr.get(bid, set()))
+    return out
+
+
 def _group_member_uids(db, group):
     """Set of student User.id in a group:
     - source=session: students whose exam_session matches session_key ('__none__' = not set)
@@ -146,12 +189,7 @@ def _group_member_uids(db, group):
                 if sp.user_id:
                     uids.add(sp.user_id)
         elif getattr(group, "batch_id", None):
-            sids = [e.student_id for e in db.query(StudentBatch)
-                    .filter(StudentBatch.batch_id == group.batch_id).all()]
-            if sids:
-                for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
-                    if sp.user_id:
-                        uids.add(sp.user_id)
+            uids |= _batch_member_uids(db, group.batch_id)
         for m in db.query(CommunityGroupMember).filter(CommunityGroupMember.group_id == group.id).all():
             if m.user_id:
                 uids.add(m.user_id)
@@ -174,13 +212,8 @@ def _resolve_targets(db, target):
                     uids.add(u.id)
         elif scope == "batches":
             bids = [int(x) for x in (target.get("batch_ids") or []) if str(x).strip()]
-            if bids:
-                sids = [e.student_id for e in db.query(StudentBatch)
-                        .filter(StudentBatch.batch_id.in_(bids)).all()]
-                if sids:
-                    for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
-                        if sp.user_id:
-                            uids.add(sp.user_id)
+            for bid in bids:
+                uids |= _batch_member_uids(db, bid)
         else:  # all students
             for u in db.query(User).filter(User.role == UserRole.student, User.is_active == True).all():  # noqa: E712
                 uids.add(u.id)
@@ -259,9 +292,7 @@ def _post_out(db, p, with_counts=False):
 def community_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
     batches = []
     try:
-        counts = {}
-        for e in db.query(StudentBatch).all():
-            counts[e.batch_id] = counts.get(e.batch_id, 0) + 1
+        counts = _batch_count_map(db)
         for b in db.query(Batch).filter(Batch.active == True).order_by(Batch.name.asc()).all():  # noqa: E712
             batches.append({"id": b.id, "name": _batch_label(b), "type": b.type or "",
                             "session": (getattr(b, "session", "") or ""),
@@ -522,8 +553,8 @@ def student_community_groups(db: Session = Depends(get_db), me=Depends(get_stude
     if not sp:
         return {"groups": []}
     my_bids = set(e.batch_id for e in db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all())
-    if not my_bids and getattr(sp, "batch_id", None):
-        my_bids.add(sp.batch_id)
+    if getattr(sp, "batch_id", None):
+        my_bids.add(sp.batch_id)   # primary link always counts (sales-imported students)
     my_gids = set(m.group_id for m in db.query(CommunityGroupMember)
                   .filter(CommunityGroupMember.user_id == me.id).all())
     my_sess = (getattr(sp, "exam_session", "") or "").strip()

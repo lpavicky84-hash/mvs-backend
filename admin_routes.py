@@ -1100,6 +1100,18 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         unlinked = int(db.query(_bf.count(StudentProfile.id)).filter(StudentProfile.batch_id == None).scalar() or 0)
     except Exception:
         pass
+    # legacy (batch_id NULL) name-matched students must be credited to ONE card only,
+    # otherwise every same-name session card (e.g. "Lakshya Science" Oct + April) gets the
+    # same legacy count added -> inflated / wrong counts. Credit the first active card per name.
+    _name_credit_card = {}
+    for b in rows:
+        nm = b.name or ""
+        if nm and nm not in _name_credit_card and (b.active is not False):
+            _name_credit_card[nm] = b.id
+    for b in rows:  # names with no active card -> credit the first card seen
+        nm = b.name or ""
+        if nm and nm not in _name_credit_card:
+            _name_credit_card[nm] = b.id
     return {"unlinked": unlinked, "batches": [{
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
         "mode": getattr(b, "mode", "live") or "live",
@@ -1113,7 +1125,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "has_banner": bool(getattr(b, "banner_b64", None)),
         "banner": getattr(b, "banner_b64", "") or "",
         "welcome_message": getattr(b, "welcome_message", "") or "",
-        "usage": int(by_id.get(b.id, 0) or 0) + int(by_name.get(b.name, 0) or 0),
+        "usage": int(by_id.get(b.id, 0) or 0) + (int(by_name.get(b.name, 0) or 0) if _name_credit_card.get(b.name) == b.id else 0),
         "addon": int(addon_by_id.get(b.id, 0) or 0),
     } for b in rows]}
 
