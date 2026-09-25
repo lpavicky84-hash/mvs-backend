@@ -119,11 +119,33 @@ def _att_out(db, post_id):
     return out
 
 
+def _batch_label(b):
+    """Batch display name WITH its session, so duplicate names never mix up."""
+    nm = (b.name or b.code or "Batch").strip()
+    ss = (getattr(b, "session", "") or "").strip()
+    return (nm + " — " + ss) if ss and ss.lower() not in nm.lower() else nm
+
+
 def _group_member_uids(db, group):
-    """Set of student User.id in a group: batch members (dynamic) + explicit members."""
+    """Set of student User.id in a group:
+    - source=session: students whose exam_session matches session_key ('__none__' = not set)
+    - batch group: students enrolled in that batch (dynamic)
+    - plus any explicit members."""
     uids = set()
     try:
-        if getattr(group, "batch_id", None):
+        src = (getattr(group, "source", "") or "").lower()
+        skey = getattr(group, "session_key", None)
+        if src == "session" or skey:
+            if skey == "__none__":
+                q = db.query(StudentProfile).filter(
+                    or_(StudentProfile.exam_session == None,  # noqa: E711
+                        StudentProfile.exam_session == ""))
+            else:
+                q = db.query(StudentProfile).filter(StudentProfile.exam_session == skey)
+            for sp in q.all():
+                if sp.user_id:
+                    uids.add(sp.user_id)
+        elif getattr(group, "batch_id", None):
             sids = [e.student_id for e in db.query(StudentBatch)
                     .filter(StudentBatch.batch_id == group.batch_id).all()]
             if sids:
@@ -179,7 +201,7 @@ def _target_label(db, target):
         try:
             bids = [int(x) for x in (target.get("batch_ids") or [])]
             for b in db.query(Batch).filter(Batch.id.in_(bids)).all():
-                names.append(b.name or b.code)
+                names.append(_batch_label(b))
         except Exception:
             pass
         return ", ".join(names[:4]) + (" +" + str(len(names) - 4) if len(names) > 4 else "") if names else "Selected batches"
@@ -241,7 +263,8 @@ def community_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
         for e in db.query(StudentBatch).all():
             counts[e.batch_id] = counts.get(e.batch_id, 0) + 1
         for b in db.query(Batch).filter(Batch.active == True).order_by(Batch.name.asc()).all():  # noqa: E712
-            batches.append({"id": b.id, "name": b.name or b.code, "type": b.type or "",
+            batches.append({"id": b.id, "name": _batch_label(b), "type": b.type or "",
+                            "session": (getattr(b, "session", "") or ""),
                             "count": counts.get(b.id, 0)})
     except Exception:
         pass
@@ -293,11 +316,12 @@ def community_group_create(payload: dict = Body(...), db: Session = Depends(get_
         batch_id = None
     if batch_id and not name:
         b = db.query(Batch).filter(Batch.id == batch_id).first()
-        name = (b.name or b.code) if b else "Group"
+        name = _batch_label(b) if b else "Group"
     if not name:
         raise HTTPException(400, "Group name required")
     g = CommunityGroup(name=name[:160], description=(payload.get("description") or "")[:600],
-                       batch_id=batch_id, icon_color=(payload.get("icon_color") or "")[:16],
+                       batch_id=batch_id, source=("batch" if batch_id else "custom"),
+                       icon_color=(payload.get("icon_color") or "")[:16],
                        created_by=getattr(me, "id", None), is_active=True)
     db.add(g); db.flush()
     for uid in (payload.get("member_ids") or [])[:2000]:
@@ -307,6 +331,36 @@ def community_group_create(payload: dict = Body(...), db: Session = Depends(get_
             pass
     db.commit()
     return {"ok": True, "id": g.id, "members": len(_group_member_uids(db, g))}
+
+
+@router.post("/admin/community/groups/auto-sync", dependencies=[Depends(_admin_guard)])
+def community_groups_autosync(db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Auto-create a group for every active batch (session in the name), plus a
+    'No Session' group for students who haven't set their exam session yet.
+    Membership is dynamic, so new students auto-join and moving to a session
+    updates their groups automatically. Idempotent — safe to run any time."""
+    created = 0
+    try:
+        existing_bids = set(g.batch_id for g in db.query(CommunityGroup)
+                            .filter(CommunityGroup.batch_id.isnot(None), CommunityGroup.is_active == True).all())  # noqa: E712
+        for b in db.query(Batch).filter(Batch.active == True).all():  # noqa: E712
+            if b.id in existing_bids:
+                continue
+            db.add(CommunityGroup(name=_batch_label(b)[:160], batch_id=b.id, source="batch",
+                                  created_by=getattr(me, "id", None), is_active=True))
+            created += 1
+        # 'No Session' catch-all group
+        has_none = db.query(CommunityGroup).filter(CommunityGroup.session_key == "__none__",
+                                                   CommunityGroup.is_active == True).first()  # noqa: E712
+        if not has_none:
+            db.add(CommunityGroup(name="No Session (setup pending)", source="session",
+                                  session_key="__none__", icon_color="#8a8578",
+                                  created_by=getattr(me, "id", None), is_active=True))
+            created += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True, "created": created}
 
 
 @router.delete("/admin/community/groups/{gid}", dependencies=[Depends(_admin_guard)])
@@ -472,10 +526,18 @@ def student_community_groups(db: Session = Depends(get_db), me=Depends(get_stude
         my_bids.add(sp.batch_id)
     my_gids = set(m.group_id for m in db.query(CommunityGroupMember)
                   .filter(CommunityGroupMember.user_id == me.id).all())
+    my_sess = (getattr(sp, "exam_session", "") or "").strip()
     out = []
     for g in (db.query(CommunityGroup).filter(CommunityGroup.is_active == True)  # noqa: E712
               .order_by(CommunityGroup.id.desc()).all()):
-        if (g.batch_id and g.batch_id in my_bids) or (g.id in my_gids):
+        _in = (g.batch_id and g.batch_id in my_bids) or (g.id in my_gids)
+        if not _in and (getattr(g, "source", "") == "session" or getattr(g, "session_key", None)):
+            sk = getattr(g, "session_key", None)
+            if sk == "__none__":
+                _in = (my_sess == "")
+            elif sk:
+                _in = (my_sess == sk)
+        if _in:
             last = (db.query(CommunityPost).filter(CommunityPost.kind == "group",
                                                    CommunityPost.group_id == g.id, CommunityPost.is_active == True)  # noqa: E712
                     .order_by(CommunityPost.id.desc()).first())
@@ -503,14 +565,21 @@ def _student_in_group(db, me, g):
     if db.query(CommunityGroupMember).filter(CommunityGroupMember.group_id == g.id,
                                              CommunityGroupMember.user_id == me.id).first():
         return True
+    sp = db.query(StudentProfile).filter(StudentProfile.user_id == me.id).first()
+    if not sp:
+        return False
+    if getattr(g, "source", "") == "session" or getattr(g, "session_key", None):
+        sk = getattr(g, "session_key", None)
+        my = (getattr(sp, "exam_session", "") or "").strip()
+        if sk == "__none__":
+            return my == ""
+        return bool(sk) and my == sk
     if g.batch_id:
-        sp = db.query(StudentProfile).filter(StudentProfile.user_id == me.id).first()
-        if sp:
-            if db.query(StudentBatch).filter(StudentBatch.student_id == sp.id,
-                                             StudentBatch.batch_id == g.batch_id).first():
-                return True
-            if getattr(sp, "batch_id", None) == g.batch_id:
-                return True
+        if db.query(StudentBatch).filter(StudentBatch.student_id == sp.id,
+                                         StudentBatch.batch_id == g.batch_id).first():
+            return True
+        if getattr(sp, "batch_id", None) == g.batch_id:
+            return True
     return False
 
 

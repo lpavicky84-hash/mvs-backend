@@ -1770,6 +1770,8 @@ class CommunityGroup(Base):
     name        = Column(String(160), default="")
     description = Column(String(600), default="")
     batch_id    = Column(Integer, nullable=True, index=True)   # batches.id (dynamic membership)
+    source      = Column(String(12), default="batch")         # batch | session | custom
+    session_key = Column(String(60), nullable=True)           # for source=session: exam_session value or '__none__'
     icon_color  = Column(String(16), default="")
     created_by  = Column(Integer, nullable=True)
     is_active   = Column(Boolean, default=True)

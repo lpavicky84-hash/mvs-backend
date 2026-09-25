@@ -195,7 +195,11 @@ def ensure_columns():
          "id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(160) DEFAULT '', "
          "description VARCHAR(600) DEFAULT '', batch_id INT NULL, icon_color VARCHAR(16) DEFAULT '', "
          "created_by INT NULL, is_active BOOLEAN DEFAULT 1, created_at DATETIME NULL, "
+         "source VARCHAR(12) DEFAULT 'batch', session_key VARCHAR(60) NULL, "
          "INDEX ix_cgrp_batch (batch_id))"),
+        # Community v2 (idempotent for already-created table)
+        "ALTER TABLE community_groups ADD COLUMN source VARCHAR(12) DEFAULT 'batch'",
+        "ALTER TABLE community_groups ADD COLUMN session_key VARCHAR(60) NULL",
         ("CREATE TABLE IF NOT EXISTS community_group_members ("
          "id INT AUTO_INCREMENT PRIMARY KEY, group_id INT, user_id INT, created_at DATETIME NULL, "
          "INDEX ix_cgm_grp (group_id), INDEX ix_cgm_user (user_id))"),

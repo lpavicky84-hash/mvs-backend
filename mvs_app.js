@@ -14006,11 +14006,21 @@ function _commGroups(){
     '</div>'; }).join('');
     b.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">'+
         '<div style="font-weight:800;font-size:1.05rem">Batch Groups <span style="color:var(--muted);font-weight:600">('+gs.length+')</span></div>'+
-        '<button class="cmy-send" style="margin:0" onclick="_commNewGroup()">'+ic('users')+' New Group</button>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          '<button class="cmy-abtn" style="margin:0" onclick="_commAutoSync()">'+ic('refresh')+' Auto-create from Batches</button>'+
+          '<button class="cmy-send" style="margin:0" onclick="_commNewGroup()">'+ic('users')+' New Group</button>'+
+        '</div>'+
       '</div>'+
-      (gs.length?'<div class="cmy-grid">'+cards+'</div>':'<div class="cmy-empty">No groups yet. Create a batch group to start.</div>');
+      (gs.length?'<div class="cmy-grid">'+cards+'</div>':'<div class="cmy-empty">No groups yet. Tap <b>Auto-create from Batches</b> to instantly make a group for every batch (session-wise), plus a “No Session” group for students who haven’t set their exam session.</div>');
   }).catch(function(e){ b.innerHTML='<div class="cmy-empty">Could not load groups.</div>'; });
 }
+window._commAutoSync=function(){
+  toast('Creating groups from batches…');
+  api('/api/admin/community/groups/auto-sync','POST',{}).then(function(r){
+    toast((r&&r.created!=null)?(r.created+' new group'+(r.created===1?'':'s')+' created'):'Groups synced');
+    _commGroups();
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
 window._commNewGroup=function(){
   var bs=((window._COMM.targets||{}).batches)||[];
   var opts='<option value="">— Select a batch —</option>'+bs.map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+' ('+x.count+' students)</option>';}).join('');
@@ -14073,7 +14083,7 @@ function _commComposerHtml(kind){
       '<button class="cmy-tb" data-s="students" onclick="_commSetScope(\'students\')">Selected Students</button>'+
     '</div><div id="cmy-pick"></div></div>');
   var styleHtml=isPopup?('<div class="cmy-fld"><label>Popup Style</label><select class="cmy-sel" id="cmy-style"><option value="info">Info (blue)</option><option value="success">Success (green)</option><option value="alert">Alert (red)</option></select></div>'):'';
-  var attachPdf=isPopup?'':'<button class="cmy-abtn" onclick="document.getElementById(\'cmy-pdf\').click()">'+ic('folder')+' PDF</button>';
+  var docItem=isPopup?'':'<button type="button" class="cmy-amenu-opt" onclick="_commPickDoc()"><span style="font-size:1.15rem">📄</span> Document / PDF</button>';
   return '<div class="cmy-card">'+
     '<div style="font-weight:800;font-size:1.02rem;margin-bottom:12px">'+esc(title)+'</div>'+
     tgtHtml+
@@ -14082,13 +14092,19 @@ function _commComposerHtml(kind){
     styleHtml+
     '<div class="cmy-fld"><label>Video / Link (optional)</label><input class="cmy-in" id="cmy-link" placeholder="https://youtube.com/..."></div>'+
     '<div id="cmy-prev" class="cmy-att"></div>'+
-    '<div class="cmy-actbar">'+
-      '<button class="cmy-abtn" onclick="document.getElementById(\'cmy-img\').click()">'+ic('upload')+' Photos</button>'+
-      attachPdf+
+    '<div class="cmy-actbar" style="position:relative">'+
+      '<button type="button" class="cmy-abtn" title="Attach" style="font-size:1.25rem;font-weight:800;padding:8px 15px" onclick="_commAttachMenu(event)">+</button>'+
+      '<div id="cmy-amenu" style="display:none;position:absolute;bottom:52px;left:0;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:14px;box-shadow:0 12px 32px rgba(18,20,45,.2);padding:6px;flex-direction:column;gap:2px;z-index:20;min-width:196px">'+
+        '<style>.cmy-amenu-opt{display:flex;align-items:center;gap:11px;width:100%;padding:11px 13px;border:none;background:transparent;cursor:pointer;font-weight:700;font-size:.9rem;color:var(--text,#14213d);border-radius:10px;text-align:left}.cmy-amenu-opt:hover{background:rgba(124,58,237,.09)}</style>'+
+        '<button type="button" class="cmy-amenu-opt" onclick="_commPickGallery()"><span style="font-size:1.15rem">🖼️</span> Photos</button>'+
+        '<button type="button" class="cmy-amenu-opt" onclick="_commPickCamera()"><span style="font-size:1.15rem">📷</span> Camera</button>'+
+        docItem+
+      '</div>'+
       '<button class="cmy-send" id="cmy-sendbtn" onclick="_commSend(\''+kind+'\')">'+ic('megaphone')+' '+(isGroup?'Send':(isPopup?'Send Popup':'Send Broadcast'))+'</button>'+
     '</div>'+
     '<input type="file" id="cmy-img" accept="image/*" multiple style="display:none" onchange="_commPickImgs(this)">'+
-    '<input type="file" id="cmy-pdf" accept="application/pdf" multiple style="display:none" onchange="_commPickFiles(this)">'+
+    '<input type="file" id="cmy-cam" accept="image/*" capture="environment" style="display:none" onchange="_commPickImgs(this)">'+
+    '<input type="file" id="cmy-pdf" accept="application/pdf,.pdf,application/msword,.doc,.docx" multiple style="display:none" onchange="_commPickFiles(this)">'+
   '</div>';
 }
 window._commSetScope=function(s){
@@ -14120,6 +14136,11 @@ function _commCollectTarget(){
   if(t.scope==='students'){ t.user_ids=Object.keys(window._COMM._selStu||{}).map(function(x){return +x;}); }
   return t;
 }
+window._commAttachMenu=function(e){ if(e){ e.stopPropagation(); } var m=document.getElementById('cmy-amenu'); if(!m) return; var show=(m.style.display==='none'||!m.style.display); m.style.display=show?'flex':'none'; if(show){ setTimeout(function(){ document.addEventListener('click', _commAMClose); },0); } };
+function _commAMClose(ev){ var m=document.getElementById('cmy-amenu'); if(!m){ document.removeEventListener('click',_commAMClose); return; } if(!(ev.target.closest && ev.target.closest('#cmy-amenu')) && !(ev.target.closest && ev.target.closest('.cmy-actbar'))){ m.style.display='none'; document.removeEventListener('click',_commAMClose); } }
+window._commPickGallery=function(){ var m=document.getElementById('cmy-amenu'); if(m)m.style.display='none'; var i=document.getElementById('cmy-img'); if(i)i.click(); };
+window._commPickCamera=function(){ var m=document.getElementById('cmy-amenu'); if(m)m.style.display='none'; var i=document.getElementById('cmy-cam'); if(i)i.click(); };
+window._commPickDoc=function(){ var m=document.getElementById('cmy-amenu'); if(m)m.style.display='none'; var i=document.getElementById('cmy-pdf'); if(i)i.click(); };
 window._commPickImgs=function(inp){
   var fs=inp.files||[]; [].slice.call(fs).slice(0,12).forEach(function(f){ var rd=new FileReader(); rd.onload=function(){ window._COMM.images.push(rd.result); _commRenderPrev(); }; rd.readAsDataURL(f); }); inp.value='';
 };
