@@ -23,6 +23,7 @@ const ICONS={
   help:_S+'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   refresh:_S+'<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
   bell:_S+'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+  pin:_S+'<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>',
   megaphone:_S+'<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>',
   chart:_S+'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
   users:_S+'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
@@ -1374,6 +1375,7 @@ async function pollNotifs(role){
   if(unread.length>prev){ showNotifPop(role,unread); }
   _lastUnread[role]=unread.length;
   if(role==='admin') _avtBadgePoll();   // v115: Task Manager badge bhi saath refresh
+  if(role==='student'){ try{ refreshCommunityBadge(); }catch(e){} }   // Community unread bhi live update
 }
 function _sessionExpired(){
   if(window._sessDead) return; window._sessDead=true;
@@ -13983,6 +13985,12 @@ function _commCss(){
     '.cmy-bub .b-b{font-size:.92rem;white-space:pre-wrap;line-height:1.55;word-break:break-word}',
     '.cmy-bub .b-t{font-size:.68rem;opacity:.7;text-align:right;margin-top:5px;display:flex;align-items:center;justify-content:flex-end;gap:5px}',
     '.cmy-bub .b-seen{cursor:pointer;font-weight:800;color:#1d6f42}',
+    '.cmy-bub.pinned{box-shadow:0 0 0 2px #c98a2e,0 2px 8px rgba(180,130,20,.18)}',
+    '.cmy-bub .b-pin{font-size:.72rem;font-weight:800;color:#8a5a12;display:flex;align-items:center;gap:4px;margin-bottom:5px}',
+    '.cmy-bub .b-pin svg{width:12px;height:12px}',
+    '.cmy-msg.pinned{border:1.5px solid #e6c07a;background:linear-gradient(180deg,rgba(201,150,46,.06),transparent)}',
+    '.cmy-msg .m-pin{font-size:.72rem;font-weight:800;color:#8a5a12;display:flex;align-items:center;gap:4px;margin-bottom:6px}',
+    '.cmy-msg .m-pin svg{width:12px;height:12px}',
     '.cmy-bub .b-del{cursor:pointer;opacity:.55;display:inline-flex;align-items:center}',
     '.cmy-bub .b-del:hover{opacity:1;color:#b91c1c}',
     '.cmy-bub .b-del svg{width:13px;height:13px}',
@@ -14077,6 +14085,14 @@ window._commSelectGroup=function(gid){
     var th=document.getElementById('cmy-thread'); if(th) th.scrollTop=th.scrollHeight;
   }).catch(function(e){ pane.innerHTML='<div class="cmy-empty" style="margin:auto">Could not open group.</div>'; });
 };
+// URLs ko clickable banao — pehle esc, phir http(s) links ko <a> mein wrap
+function _linkify(text){
+  var e=esc(text||'');
+  return e.replace(/(https?:\/\/[^\s<]+)/g, function(u){
+    var clean=u.replace(/[.,;:!?)\]]+$/,''); var tail=u.slice(clean.length);
+    return '<a href="'+clean+'" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:underline;word-break:break-all">'+clean+'</a>'+tail;
+  });
+}
 function _commBubble(p){
   var imgs=(p.attachments||[]).filter(function(a){return a.kind==='image';});
   var files=(p.attachments||[]).filter(function(a){return a.kind!=='image';});
@@ -14085,10 +14101,19 @@ function _commBubble(p){
   var linkH=p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'';
   var seen='<span class="b-seen" onclick="_commReceipts('+p.id+')">✓✓ '+(p.seen||0)+'/'+(p.sent||0)+'</span>';
   var del='<span class="b-del" title="Delete for everyone" onclick="_commDeletePost('+p.id+')">'+ic('trash')+'</span>';
-  return '<div class="cmy-bub">'+(p.title?'<div class="b-h">'+esc(p.title)+'</div>':'')+
-    (p.body?'<div class="b-b">'+esc(p.body)+'</div>':'')+imgH+fileH+linkH+
-    '<div class="b-t">'+esc(p.at||'')+' '+del+' '+seen+'</div></div>';
+  var pinned=!!p.pinned;
+  var pin='<span class="b-del" title="'+(pinned?'Unpin':'Pin to top')+'" style="'+(pinned?'opacity:1;color:#c98a2e':'')+'" onclick="_commPinPost('+p.id+','+(pinned?0:1)+')">'+ic('pin')+'</span>';
+  return '<div class="cmy-bub'+(pinned?' pinned':'')+'">'+(pinned?'<div class="b-pin">'+ic('pin')+' Pinned</div>':'')+
+    (p.title?'<div class="b-h">'+esc(p.title)+'</div>':'')+
+    (p.body?'<div class="b-b">'+_linkify(p.body)+'</div>':'')+imgH+fileH+linkH+
+    '<div class="b-t">'+esc(p.at||'')+' '+pin+' '+del+' '+seen+'</div></div>';
 }
+window._commPinPost=function(pid,val){
+  api('/api/admin/community/posts/'+pid+'/pin','POST',{pinned:!!val}).then(function(){
+    toast(val?'Pinned to top':'Unpinned');
+    if(window._COMM&&window._COMM.curGroup) _commSelectGroup(window._COMM.curGroup);
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
 window._commGroupSend=function(){
   var inp=document.getElementById('cmy-reply-in'); var body=inp?(inp.value||'').trim():'';
   if(!body && !window._COMM.images.length && !window._COMM.files.length){ return; }
@@ -14181,16 +14206,21 @@ function _commMsgHtml(p){
   var imgH=imgs.length?'<div class="cmy-msg-imgs">'+imgs.map(function(a){return '<div class="cmy-msg-img" data-cimg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"></div>';}).join('')+'</div>':'';
   var fileH=files.map(function(a){return '<div class="cmy-fileline" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
   var linkH=p.link?'<a class="cmy-linkline" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'';
-  var stats=(p.sent!=null)?'<div class="cmy-stats">'+
+  var isAdmin=(p.sent!=null);   // admin payload carries sent/seen; student feed does not
+  var pinned=!!p.pinned;
+  var stats=isAdmin?'<div class="cmy-stats">'+
       '<span class="cmy-chip reach">'+ic('users')+' Sent '+(p.sent||0)+'</span>'+
       '<span class="cmy-chip seen" onclick="_commReceipts('+p.id+',\'seen\')">'+ic('eye')+' Seen '+(p.seen||0)+'</span>'+
       (p.clicked?'<span class="cmy-chip click" onclick="_commReceipts('+p.id+',\'clicked\')">'+ic('play')+' Clicked '+p.clicked+'</span>':'')+
     '</div>':'';
-  return '<div class="cmy-msg">'+(p.title?'<div class="cmy-msg-h">'+esc(p.title)+'</div>':'')+
-    (p.body?'<div class="cmy-msg-b">'+esc(p.body)+'</div>':'')+imgH+(fileH||'')+linkH+
-    '<div class="cmy-msg-t" style="display:flex;align-items:center;gap:10px">'+esc(p.at||'')+
+  var adminCtrls=isAdmin?('<div class="cmy-msg-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+esc(p.at||'')+
+      '<button class="cmy-chip" style="cursor:pointer;'+(pinned?'border-color:#e6c07a;color:#8a5a12':'')+'" onclick="_commPinPost('+p.id+','+(pinned?0:1)+')">'+ic('pin')+' '+(pinned?'Unpin':'Pin')+'</button>'+
       '<button class="cmy-chip" style="border-color:rgba(185,28,28,.3);color:#b91c1c;cursor:pointer" onclick="_commDeletePost('+p.id+')">'+ic('trash')+' Delete for everyone</button>'+
-    '</div>'+stats+'</div>';
+    '</div>'):('<div class="cmy-msg-t">'+esc(p.at||'')+'</div>');
+  return '<div class="cmy-msg'+(pinned?' pinned':'')+'">'+(pinned?'<div class="m-pin">'+ic('pin')+' Pinned</div>':'')+
+    (p.title?'<div class="cmy-msg-h">'+esc(p.title)+'</div>':'')+
+    (p.body?'<div class="cmy-msg-b">'+_linkify(p.body)+'</div>':'')+imgH+(fileH||'')+linkH+
+    adminCtrls+stats+'</div>';
 }
 // ---- Composer (group post / broadcast / popup) ----
 function _commComposer(kind){
@@ -14383,9 +14413,10 @@ function initStudentCommunity(){
     var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'notifications'")>=0;})[0]
              || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
     var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"sPage('community',this)");
-    d.innerHTML=ic('megaphone')+'<span>Community</span>';
+    d.innerHTML=ic('megaphone')+'<span>Community</span><span class="badge" id="s-comm-badge" style="display:none"></span>';
     if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
   }
+  try{ refreshCommunityBadge(); }catch(e){}
   var main=app.querySelector('.main');
   if(main && !document.getElementById('s-page-community')){
     var pg=document.createElement('div'); pg.className='page'; pg.id='s-page-community';
@@ -14393,6 +14424,16 @@ function initStudentCommunity(){
     main.appendChild(pg);
   }
 }
+// Community sidebar unread badge — total unread across the student's groups
+window.refreshCommunityBadge=function(){
+  try{
+    api('/api/student/community/groups').then(function(r){
+      var gs=(r&&r.groups)||[]; var n=0; gs.forEach(function(g){ n+=(g.unread||0); });
+      var b=document.getElementById('s-comm-badge');
+      if(b){ if(n>0){ b.style.display='flex'; b.textContent=(n>99?'99+':n); } else { b.style.display='none'; } }
+    }).catch(function(){});
+  }catch(e){}
+};
 function loadSCommunity(){
   var el=document.getElementById('s-community-content'); if(!el) return;
   _commCss(); el.innerHTML='<div class="spinner"></div>';
@@ -14418,6 +14459,7 @@ window._sCommOpen=function(gid){
     _commHydrateImgs(el);
     var f=document.getElementById('s-cmy-feed'); if(f) f.scrollTop=f.scrollHeight;
     try{ refreshNotifBadge('student'); }catch(e){}
+    try{ refreshCommunityBadge(); }catch(e){}
   }).catch(function(e){ el.innerHTML='<div class="cmy-empty">Could not open group.</div>'; });
 };
 // ---- Popup on portal open ----
@@ -14445,7 +14487,7 @@ function _sPopupShow(ps,i){
     '<div style="height:6px;background:'+col+'"></div>'+imgH+
     '<div style="padding:20px">'+
       (p.title?'<div style="font-weight:800;font-size:1.25rem;color:var(--text,#14213d);margin-bottom:8px">'+esc(p.title)+'</div>':'')+
-      (p.body?'<div style="font-size:.95rem;color:#3a3527;line-height:1.6;white-space:pre-wrap">'+esc(p.body)+'</div>':'')+
+      (p.body?'<div style="font-size:.95rem;color:#3a3527;line-height:1.6;white-space:pre-wrap">'+_linkify(p.body)+'</div>':'')+
       fileH+linkH+
       '<button onclick="_sPopupClose('+p.id+')" style="width:100%;margin-top:16px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:12px;padding:12px;font-weight:800;cursor:pointer;color:var(--text,#14213d)">Got it</button>'+
     '</div></div>';

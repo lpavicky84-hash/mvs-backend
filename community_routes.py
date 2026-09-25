@@ -252,11 +252,13 @@ def _fanout(db, post, uids, sender, link=None, image_url=None):
     n = 0
     for uid in uids:
         db.add(CommunityRead(post_id=post.id, user_id=uid, created_at=now))
+        # NOTE: created_at ko override NAHI karna — baaki saari notifications DB default
+        # (func.now()) use karti hain; agar yahan utcnow() daala to community notif ka time
+        # 5.5h peeche chala jaata tha aur newest-20 list se neeche gayab ho jaata tha.
         db.add(Notification(user_id=uid, title=(prefix + ttl)[:190], message=body,
                             notif_type=ntype, link=(link or None), image_url=(image_url or None),
                             sender_id=getattr(sender, "id", None), sender_role="admin",
-                            batch_key="cp_" + str(post.id), batch_label=(post.target_label or "")[:150],
-                            created_at=now))
+                            batch_key="cp_" + str(post.id), batch_label=(post.target_label or "")[:150]))
         n += 1
     post.target_count = n
     return n
@@ -273,6 +275,7 @@ def _post_out(db, p, with_counts=False):
     out = {"id": p.id, "kind": p.kind, "group_id": p.group_id, "title": p.title or "",
            "body": p.body or "", "link": p.link or "", "popup_style": p.popup_style or "info",
            "sender_name": p.sender_name or "", "at": _ist_str(p.created_at),
+           "pinned": bool(getattr(p, "is_pinned", False)),
            "target_label": p.target_label or "", "target_count": p.target_count or 0,
            "attachments": _att_out(db, p.id)}
     if with_counts:
@@ -484,7 +487,7 @@ def community_group_posts_admin(gid: int, db: Session = Depends(get_db), _=Depen
     posts = [_post_out(db, p, with_counts=True) for p in
              (db.query(CommunityPost).filter(CommunityPost.kind == "group",
                                              CommunityPost.group_id == gid, CommunityPost.is_active == True)  # noqa: E712
-              .order_by(CommunityPost.id.asc()).all())]
+              .order_by(CommunityPost.is_pinned.desc(), CommunityPost.id.asc()).all())]
     return {"group": {"id": g.id, "name": g.name, "members": len(_group_member_uids(db, g))},
             "posts": posts}
 
@@ -648,6 +651,17 @@ def community_post_delete(pid: int, db: Session = Depends(get_db), _=Depends(get
     return {"ok": True}
 
 
+@router.post("/admin/community/posts/{pid}/pin", dependencies=[Depends(_admin_guard)])
+def community_post_pin(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Pin/unpin a message so it stays at the TOP of the group for everyone."""
+    p = db.query(CommunityPost).filter(CommunityPost.id == pid).first()
+    if not p:
+        raise HTTPException(404, "Not found")
+    p.is_pinned = bool(payload.get("pinned", True))
+    db.commit()
+    return {"ok": True, "pinned": bool(p.is_pinned)}
+
+
 # =========================================================== STUDENT SIDE
 @router.get("/student/community/groups")
 def student_community_groups(db: Session = Depends(get_db), me=Depends(get_student)):
@@ -724,7 +738,7 @@ def student_community_group_posts(gid: int, db: Session = Depends(get_db), me=De
     posts = [_post_out(db, p) for p in
              (db.query(CommunityPost).filter(CommunityPost.kind == "group",
                                              CommunityPost.group_id == gid, CommunityPost.is_active == True)  # noqa: E712
-              .order_by(CommunityPost.id.asc()).all())]
+              .order_by(CommunityPost.is_pinned.desc(), CommunityPost.id.asc()).all())]
     # mark seen for this student
     _mark_seen(db, me, [p["id"] for p in posts])
     return {"group": {"id": g.id, "name": g.name}, "posts": posts}

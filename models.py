@@ -1804,6 +1804,7 @@ class CommunityPost(Base):
     target_label = Column(String(200), default="")                  # e.g. "Lakshya Science" / "All students"
     target_count = Column(Integer, default=0)                       # how many recipients at send time
     is_active    = Column(Boolean, default=True)
+    is_pinned    = Column(Boolean, default=False, index=True)        # pinned message -> top of the group
     created_at   = Column(DateTime, default=func.now(), index=True)
 
 

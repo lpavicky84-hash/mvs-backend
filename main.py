@@ -200,6 +200,7 @@ def ensure_columns():
         # Community v2 (idempotent for already-created table)
         "ALTER TABLE community_groups ADD COLUMN source VARCHAR(12) DEFAULT 'batch'",
         "ALTER TABLE community_groups ADD COLUMN session_key VARCHAR(60) NULL",
+        "ALTER TABLE community_posts ADD COLUMN is_pinned BOOLEAN DEFAULT 0",
         ("CREATE TABLE IF NOT EXISTS community_group_members ("
          "id INT AUTO_INCREMENT PRIMARY KEY, group_id INT, user_id INT, created_at DATETIME NULL, "
          "INDEX ix_cgm_grp (group_id), INDEX ix_cgm_user (user_id))"),

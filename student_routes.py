@@ -1212,7 +1212,7 @@ def get_progress(
 def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_student)):
     return db.query(Notification).filter(
         Notification.user_id == current_user.id
-    ).order_by(Notification.created_at.desc()).limit(20).all()
+    ).order_by(Notification.created_at.desc()).limit(50).all()
 
 @router.patch("/notifications/read-all")
 def mark_all_read(db: Session = Depends(get_db), current_user=Depends(get_student)):
