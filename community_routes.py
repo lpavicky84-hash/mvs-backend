@@ -242,26 +242,35 @@ def _target_label(db, target):
 
 
 def _fanout(db, post, uids, sender, link=None, image_url=None):
-    """Create a CommunityRead + Notification per recipient. Sets post.target_count."""
-    now = datetime.utcnow()
+    """Create a CommunityRead + Notification per recipient — BULK insert (ek hi INSERT
+    har table ke liye), taaki 2000+ students par bhi broadcast turant ho (pehle per-row
+    add() se 30-40s lagta tha). created_at = DB ka NOW() taaki baaki notifications ke saath
+    exact same time-base rahe aur ordering sahi rahe."""
+    from sqlalchemy import text as _text
+    try:
+        db_now = db.execute(_text("SELECT NOW()")).scalar() or datetime.utcnow()
+    except Exception:
+        db_now = datetime.utcnow()
     ttl = (post.title or "").strip() or ("New broadcast" if post.kind == "broadcast"
                                          else ("Important" if post.kind == "popup" else "New message"))
     body = (post.body or "")[:180]
     ntype = "community_" + (post.kind or "group")
     prefix = "" if post.kind == "group" else "\U0001F4E2 "
-    n = 0
-    for uid in uids:
-        db.add(CommunityRead(post_id=post.id, user_id=uid, created_at=now))
-        # NOTE: created_at ko override NAHI karna — baaki saari notifications DB default
-        # (func.now()) use karti hain; agar yahan utcnow() daala to community notif ka time
-        # 5.5h peeche chala jaata tha aur newest-20 list se neeche gayab ho jaata tha.
-        db.add(Notification(user_id=uid, title=(prefix + ttl)[:190], message=body,
-                            notif_type=ntype, link=(link or None), image_url=(image_url or None),
-                            sender_id=getattr(sender, "id", None), sender_role="admin",
-                            batch_key="cp_" + str(post.id), batch_label=(post.target_label or "")[:150]))
-        n += 1
-    post.target_count = n
-    return n
+    full_title = (prefix + ttl)[:190]
+    blabel = (post.target_label or "")[:150]
+    sid = getattr(sender, "id", None)
+    uids = [u for u in uids if u]
+    if uids:
+        db.bulk_insert_mappings(CommunityRead, [
+            {"post_id": post.id, "user_id": uid, "created_at": db_now} for uid in uids])
+        db.bulk_insert_mappings(Notification, [
+            {"user_id": uid, "title": full_title, "message": body, "notif_type": ntype,
+             "link": (link or None), "image_url": (image_url or None),
+             "sender_id": sid, "sender_role": "admin", "is_read": False,
+             "batch_key": "cp_" + str(post.id), "batch_label": blabel,
+             "created_at": db_now} for uid in uids])
+    post.target_count = len(uids)
+    return len(uids)
 
 
 def _first_image_url(db, post_id):

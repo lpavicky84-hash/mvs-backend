@@ -1361,6 +1361,7 @@ async function notifPopupOnOpen(role){
   const unread=list.filter(n=>!n.is_read);
   _lastUnread[role]=unread.length;
   showNotifPop(role,unread);
+  if(role==='student'){ try{ _maybeCommPopup('student',list); }catch(e){} }
   startNotifPolling(role);
 }
 async function pollNotifs(role){
@@ -1375,7 +1376,7 @@ async function pollNotifs(role){
   if(unread.length>prev){ showNotifPop(role,unread); }
   _lastUnread[role]=unread.length;
   if(role==='admin') _avtBadgePoll();   // v115: Task Manager badge bhi saath refresh
-  if(role==='student'){ try{ refreshCommunityBadge(); }catch(e){} }   // Community unread bhi live update
+  if(role==='student'){ try{ refreshCommunityBadge(); }catch(e){} try{ _maybeCommPopup('student',list); }catch(e){} }
 }
 function _sessionExpired(){
   if(window._sessDead) return; window._sessDead=true;
@@ -14503,6 +14504,43 @@ window._sPopupClose=function(pid){
   if(ni<q.length) setTimeout(function(){ _sPopupShow(q,ni); },300);
 };
 window._sPopupClick=function(pid){ try{ api('/api/student/community/posts/'+pid+'/click','POST').catch(function(){}); }catch(e){} };
+// ---- Center POPUP for a NEW community group/broadcast message (so students turant dekh lein) ----
+window._poppedComm=window._poppedComm||{};
+function _maybeCommPopup(role,list){
+  if(role!=='student') return;
+  try{
+    var comm=(list||[]).filter(function(n){
+      var t=(n.notif_type||''); return !n.is_read && (t==='community_group'||t==='community_broadcast') && !window._poppedComm[n.id];
+    });
+    if(!comm.length) return;
+    if(document.getElementById('cnp-ov')||document.getElementById('scp-ov')) return; // ek time par ek hi popup
+    var n=comm[0]; window._poppedComm[n.id]=1; _showCommNotifPopup(n);
+  }catch(e){}
+}
+function _showCommNotifPopup(n){
+  try{ _commCss(); }catch(e){}
+  var old=document.getElementById('cnp-ov'); if(old) old.remove();
+  var ov=document.createElement('div'); ov.id='cnp-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,12,8,.6);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px';
+  var linkH=n.link?'<a href="'+esc(n.link)+'" target="_blank" rel="noopener" onclick="_cnpClick('+n.id+')" style="display:block;text-align:center;background:#c98a2e;color:#fff;text-decoration:none;padding:12px;border-radius:12px;font-weight:800;margin-top:14px">'+ic('link2')+' Open Link</a>':'';
+  ov.innerHTML='<div style="background:var(--card,#fff);border-radius:20px;max-width:440px;width:100%;box-shadow:0 24px 70px rgba(0,0,0,.4);max-height:88vh;overflow-y:auto">'+
+    '<div style="height:6px;background:#c98a2e"></div>'+
+    '<div style="padding:22px">'+
+      '<div style="font-weight:800;font-size:1.15rem;color:var(--text,#14213d);margin-bottom:10px;display:flex;align-items:center;gap:8px">'+ic('megaphone')+'<span>'+esc(n.title||'New message')+'</span></div>'+
+      (n.message?'<div style="font-size:.94rem;color:#3a3527;line-height:1.6;white-space:pre-wrap;word-break:break-word">'+_linkify(n.message)+'</div>':'')+
+      linkH+
+      '<button onclick="_cnpClose('+n.id+')" style="width:100%;margin-top:16px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:12px;padding:12px;font-weight:800;cursor:pointer;color:var(--text,#14213d)">Got it</button>'+
+    '</div></div>';
+  ov.addEventListener('click',function(e){ if(e.target===ov) _cnpClose(n.id); });
+  document.body.appendChild(ov);
+}
+window._cnpClose=function(id){
+  var o=document.getElementById('cnp-ov'); if(o) o.remove();
+  try{ api('/api/student/notifications/'+id+'/read','PATCH').catch(function(){}); }catch(e){}
+  try{ refreshNotifBadge('student'); }catch(e){}
+  try{ refreshCommunityBadge(); }catch(e){}
+};
+window._cnpClick=function(id){ try{ api('/api/student/notifications/'+id+'/click','PATCH').catch(function(){}); }catch(e){} };
 async function refreshReqBadge(){
   try{ var r=await api('/api/admin/student-requests/count'); var b=document.getElementById('nav-req-badge');
     if(b){ if(r&&r.pending>0){ b.textContent=r.pending; b.style.display='inline-flex'; } else b.style.display='none'; } }catch(e){}

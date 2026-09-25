@@ -825,13 +825,34 @@ _PORTAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # khud set karta hai, isliye update karne par browser naya le lega.
 _APP_JS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mvs_app.js")
 
+# --- True 304 handling: plain FileResponse route return NEVER honours If-None-Match,
+# so har load par poora 3.1MB JS + 599KB HTML dobara jaata tha (bahut bada egress).
+# Ye helper khud ETag check karke 304 (khaali body) return karta hai -> repeat load par
+# egress ~0. Deploy par file badalti hai -> ETag badalta hai -> browser nayi copy le leta hai.
+from fastapi import Request as _Request
+from starlette.responses import Response as _Response
+
+def _file_etag(path):
+    try:
+        st = os.stat(path)
+        return 'W/"%x-%x"' % (int(st.st_mtime), st.st_size)
+    except Exception:
+        return None
+
+def _cached_file(request, path, media_type):
+    et = _file_etag(path)
+    cc = "public, max-age=0, must-revalidate"
+    if et and (request.headers.get("if-none-match") == et):
+        return _Response(status_code=304, headers={"ETag": et, "Cache-Control": cc})
+    headers = {"Cache-Control": cc}
+    if et:
+        headers["ETag"] = et
+    return FileResponse(path, media_type=media_type, headers=headers)
+
 @app.get("/mvs_app.js")
-def _serve_app_js():
+def _serve_app_js(request: _Request):
     if os.path.exists(_APP_JS_FILE):
-        # no-cache + revalidate: har deploy ke baad browser turant nayi JS le (purani cached
-        # version ki wajah se fixes miss na hon). ETag se 304 milega agar file unchanged.
-        return FileResponse(_APP_JS_FILE, media_type="application/javascript",
-                            headers={"Cache-Control": "no-cache, must-revalidate"})
+        return _cached_file(request, _APP_JS_FILE, "application/javascript")
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
 
 
@@ -1360,9 +1381,9 @@ async function run(){
     return HTMLResponse(content=html)
 
 @app.get("/")
-def root():
+def root(request: _Request):
     if os.path.exists(_PORTAL_FILE):
-        return FileResponse(_PORTAL_FILE, media_type="text/html")
+        return _cached_file(request, _PORTAL_FILE, "text/html")
     return {
         "app": "MVS Foundation CRM",
         "version": "1.0.0",
@@ -1372,9 +1393,9 @@ def root():
     }
 
 @app.get("/portal")
-def portal():
+def portal(request: _Request):
     if os.path.exists(_PORTAL_FILE):
-        return FileResponse(_PORTAL_FILE, media_type="text/html")
+        return _cached_file(request, _PORTAL_FILE, "text/html")
     return {"error": "portal file not deployed"}
 
 # Path-based portal entry points — Teacher aur Admin ke liye alag URL. Dono same SPA serve
@@ -1386,9 +1407,9 @@ def portal():
 @app.get("/editor")
 @app.get("/youtuber")
 @app.get("/graphics")
-def portal_entry():
+def portal_entry(request: _Request):
     if os.path.exists(_PORTAL_FILE):
-        return FileResponse(_PORTAL_FILE, media_type="text/html")
+        return _cached_file(request, _PORTAL_FILE, "text/html")
     return {"error": "portal file not deployed"}
 
 @app.get("/health")
