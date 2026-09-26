@@ -1701,9 +1701,11 @@ def _chat_inbox(db, user, role):
             return out
         task_ids = list(task_ids)
 
-        # 2) task meta
+        # 2) task meta — base64 thumbnail load MAT karo (inbox ko sirf title/channel chahiye);
+        # warna comment wale saare tasks ka MBs ka base64 RAM me aata tha -> inbox slow.
+        from sqlalchemy.orm import defer as _defer
         tasks = {}
-        for t in db.query(VideoTask).filter(VideoTask.id.in_(task_ids)).all():
+        for t in db.query(VideoTask).options(_defer(VideoTask.thumbnail_b64)).filter(VideoTask.id.in_(task_ids)).all():
             tasks[t.id] = t
         # 3) all comments in scope, grouped per (task, aud): last comment
         def _norm(a):

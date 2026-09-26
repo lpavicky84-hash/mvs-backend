@@ -65,6 +65,19 @@ window.addEventListener('popstate',e=>{
   _navGuard=true;
   try{ navTo(st.app,st.pg); }finally{ _navGuard=false; }
 });
+// Instant re-visit: agar ye section abhi-abhi (TTL ke andar) load hua tha to dobara
+// spinner + refetch mat karo — persisted DOM turant dikhao. Live pages hamesha fresh.
+window._pgLoadedAt = window._pgLoadedAt || {};
+var _PG_ALWAYS_FRESH = {teacher:{doubts:1,notifications:1,tchatmgr:1},admin:{live:1,notifications:1,chatmgr:1},student:{doubts:1,notifications:1}};
+function _pgSkipLoad(scope,page,ttl){
+  try{
+    if((_PG_ALWAYS_FRESH[scope]||{})[page]) return false;
+    var k=scope+'|'+page, n=Date.now(), prev=window._pgLoadedAt[k];
+    if(prev && (n-prev)<(ttl||25000)) return true;   // recently loaded -> skip (instant)
+    window._pgLoadedAt[k]=n;                          // loading now -> mark time
+    return false;
+  }catch(e){ return false; }
+}
 function navTo(appId,page){
   // Production-family portals (production/editor/graphics/youtuber) -> prodNav
   var _pm=/^(production|editor|graphics|youtuber)-app$/.exec(appId||'');
@@ -806,6 +819,7 @@ function _authReset(){
   _apiBust();
   // account switch par PURANA state clear karo (access + photo leak fix)
   try{ window._adminMe=null; }catch(e){}
+  try{ window._pgCache={}; window._pgLoadedAt={}; }catch(e){}   // section cache + load-time reset (naye user ko purana data na dikhe)
   try{ for(var _k in _apiCache) delete _apiCache[_k]; }catch(e){}
   try{ for(var _u in _imgBlobCache){ try{ URL.revokeObjectURL(_imgBlobCache[_u]); }catch(_){} delete _imgBlobCache[_u]; } }catch(e){}
   try{ window._photoUrls={}; }catch(e){}
@@ -2827,7 +2841,7 @@ function tPage(page,el){
   document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
   _curLoader=function(){ _tLoadPage(page); };
-  _tLoadPage(page);
+  if(!_pgSkipLoad('teacher',page)) _tLoadPage(page);   // recently-loaded -> instant, no reload
 }
 function _tLoadPage(page){
   if(page==='dashboard'){ if(_tIsCatWorkspace()) loadTCatDashboard(); else loadTDashboard(); }
@@ -10535,7 +10549,7 @@ function aPage(page,el){
   _setPage(titles[page]||page);
   document.getElementById('a-title').textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
-  _aLoadPage(page);
+  if(!_pgSkipLoad('admin',page)) _aLoadPage(page);   // recently-loaded -> instant, no reload
 }
 function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
@@ -18006,7 +18020,7 @@ function sPage(page,el){
   document.getElementById('s-title').textContent=titles[page]||page;
   stopCountdown();
   _curLoader=function(){ _sLoadPage(page); };
-  _sLoadPage(page);
+  if(!_pgSkipLoad('student',page)) _sLoadPage(page);   // recently-loaded -> instant, no reload
 }
 function _sLoadPage(page){
   if(page==='dashboard') loadSDashboard();
@@ -27163,7 +27177,23 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodNav=function(portal,page){
     try{ if(portal){ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage=(String(page||'dashboard').replace(/^[a-z]+:/,'').replace(/[_-]+/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();})); } }catch(e){}
     var el=document.getElementById(portal+'-app'); if(!el) return;
-    (window._prodCurPage=window._prodCurPage||{})[portal]=page;
+    // Jo section chhod rahe hain uska poora rendered DOM cache karo -> wapas aane par
+    // TURANT dikhe (koi Loading/spinner nahi). Silent background refresh se data fresh ho jaata hai.
+    // Live/canvas pages (chat, live tracker, live users, reports) ka HTML cache mat karo —
+    // ye har baar fresh mount hone chahiye (warna live-poll/two-pane/canvas toot sakta hai).
+    var _PG_NOCACHE={chatmgr:1, tchatmgr:1, tracker:1, liveteam:1, reports:1};
+    var _prevPage=(window._prodCurPage=window._prodCurPage||{})[portal];
+    try{
+      if(_prevPage && _prevPage!==page && !_PG_NOCACHE[_prevPage]){
+        var _ob=document.getElementById(portal+'-body');
+        if(_ob){ var _oh=_ob.innerHTML||'';
+          if(_oh.length>60 && _oh.indexOf('p-load')<0 && _oh.indexOf('skel')<0){
+            (window._pgCache=window._pgCache||{})[portal+'|'+_prevPage]={html:_oh,ts:Date.now()};
+          }
+        }
+      }
+    }catch(e){}
+    window._prodCurPage[portal]=page;
     // let the SWR background-refresh quietly re-render THIS portal's current page when
     // fresh data arrives (guarded by _swrBlocked so it never disturbs active work).
     try{ _curLoader=function(){ try{ _refresh(portal); }catch(e){} }; }catch(e){}
@@ -27172,7 +27202,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // NOTE: nav groups sirf header click (prodNavGroup) se khulte hain. Yaha auto-open
     // nahi karte -> sidebar load pe fully collapsed rehta hai (user ki request).
     var body=document.getElementById(portal+'-body'); if(!body) return;
-    body.innerHTML='<div class="p-load">Loading...</div>';
+    // cached section ho to TURANT restore karo (spinner nahi), warna Loading dikhao
+    var _ck=portal+'|'+page, _cc=_PG_NOCACHE[page]?null:(window._pgCache||{})[_ck], _restored=false;
+    // NOTE: silent refresh (_prodSilent) ke dauraan cache restore NAHI karna (warna _refresh ->
+    // prodNav fallback -> phir cache restore -> infinite loop). Tab seedha fresh render ho.
+    if(!window._prodSilent && _cc && _cc.html && (Date.now()-_cc.ts)<600000){ body.innerHTML=_cc.html; _restored=true; }
+    else if(!window._prodSilent){ body.innerHTML='<div class="p-load">Loading...</div>'; }
     // Browser back/forward support: har section ek history entry banata hai (teacher/admin jaisa).
     // _navGuard true ho (popstate/restore) to sirf state sync karo, naya entry nahi.
     try{
@@ -27185,6 +27220,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         else { history.pushState({mvs:1,app:portal+'-app',pg:page},'',_hu); }
       }
     }catch(e){}
+    // cache se restore hua -> jo pages silent-refresh safe hain (koi blank nahi), unhe chupchaap
+    // fresh karo; baaki ko sirf turant dikhao (focus/action par apne aap refresh ho jaate hain).
+    if(_restored){
+      var _RS={dashboard:1,tasks:1,videos:1,board:1,thumbboard:1,team:1,views:1,time:1,library:1,creators:1,analytics:1};
+      if(_RS[page] || page.indexOf(':')>=0){ try{ window._prodSilent=true; _refresh(portal); }catch(e){} finally{ window._prodSilent=false; } }
+      return;
+    }
     if(page==='dashboard') return renderDashboard(portal,body);
     if(portal==='youtuber'){
       if(page==='videos') return renderYtMy(portal,body);
@@ -28130,7 +28172,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function renderDashboard(portal,body){
     var d=P[portal];
-    body.innerHTML=_pSkelGrid(8);
+    if(!window._prodSilent) body.innerHTML=_pSkelGrid(8);
     return api(d.api+'/dashboard').then(function(r){
       if(_stale(portal,'dashboard')) return;
       var hi=document.getElementById(portal+'-hi'); if(hi&&r.greeting_name) hi.textContent=_greet()+', '+r.greeting_name;
@@ -28730,7 +28772,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _num(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
   function _ytId(url){ if(!url) return ''; var m=String(url).match(/(?:v=|\/embed\/|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{6,})/); return m?m[1]:''; }
   function renderViews(portal,body){
-    body.innerHTML='<div class="p-load">Loading views...</div>';
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.production.api+'/views').then(function(r){
       if(_stale(portal,'views')) return;
       var comp=(r.by_creator||[]).map(function(c){ var col=c.is_collab||/collab/i.test(c.name||''); return {name:c.name,views:c.views,videos:c.videos,share:c.share,creator_type:c.creator_type,is_collab:col,collab_names:c.collab_names||[]}; });
@@ -29147,7 +29189,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
   function renderYtViews(portal,body){
-    body.innerHTML='<div class="p-load">Loading views...</div>';
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading views...</div>';
     return api(P.youtuber.api+'/views').then(function(r){
       if(_stale(portal,'ytviews')) return;
       var kpis=[['Total Videos',r.total_videos||0],['Uploaded',r.uploaded||0],['Editing',r.editing||0],['Pending',r.pending||0],
@@ -29751,7 +29793,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){ body.innerHTML='<div class="p-empty">Profile unavailable.</div>'; });
   }
   function renderEditorTime(portal,body){
-    body.innerHTML='<div class="p-load">Loading time analytics...</div>';
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading time analytics...</div>';
     return api(P.editor.api+'/time-analytics').then(function(r){
       if(_stale(portal,'time')) return;
       var kpis=[['Total Active Time',r.total_active_hours+'h'],['Videos Completed',r.videos_completed||0],['Avg per Video',r.avg_per_video_hours+'h'],['Longest Edit',r.longest_hours+'h'],['Shortest Edit',r.shortest_hours+'h']];
@@ -29765,7 +29807,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // --- graphics thumbnail library ---
   function renderGraphicsLib(portal,body){
-    body.innerHTML='<div class="p-load">Loading library...</div>';
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading library...</div>';
     return api(P.graphics.api+'/library').then(function(r){
       if(_stale(portal,'library')) return;
       var arr=r.thumbnails||[];
@@ -29779,7 +29821,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- creator performance (teachers / youtubers) ---
   function renderCreators(portal,body){
     if(!window._crTab) window._crTab='teachers';
-    body.innerHTML='<div class="p-load">Loading creator performance...</div>';
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading creator performance...</div>';
     return api(P.production.api+'/creators').then(function(r){
       if(_stale(portal,'creators')) return;
       window._crData=r; _renderCreators();
@@ -30857,7 +30899,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
   function renderThumbBoard(portal,body){
-    body.innerHTML='<div class="p-load">Loading thumbnail board...</div>';
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading thumbnail board...</div>';
     return api(P[portal].api+((portal==='youtuber')?'/videos?size=200':'/tasks?size=200')).then(function(r){
       if(_stale(portal,'thumbboard')) return;
       // only tasks that actually have a graphics/thumbnail task
