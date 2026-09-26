@@ -676,7 +676,9 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "proposal_slides": _pslides_out(t),
         "proposal_media_note": (getattr(t, "proposal_media_note", "") or ""),
         "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%S") if t.deadline else ""),  # LOCAL (IST), no Z — deadlines are already local; a Z made new Date() shift by the tz offset
-        "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t)),
+        # delay badge current STAGE ke deadline se (teacher on-time submit kar chuka to
+        # editing stage me ab editor_deadline lagta hai, teacher wala nahi)
+        "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(deadline_flag(t, deadline=current_stage_deadline(t))),
         "editor_id": t.editor_id,
         "editor_name": _name_for_staff(db, t.editor_id),
         "collab_editor_ids": collab_editor_ids(t),
@@ -1049,13 +1051,46 @@ def mark_read(db, user, nid=None):
 
 
 # ---------------------------------------------------------------- deadline
-def deadline_flag(t, deadline=None):
+# Har stage ka apna deadline hota hai. Delay HAMESHA current stage ke deadline se
+# naapo — teacher ke deadline se nahi. Jaise hi teacher on-time submit kar deta hai,
+# task editor stage me chala jaata hai aur ab editor_deadline lagta hai (teacher wala nahi).
+_STAGE_EDITOR_ACTIVE = {"editor_assigned", "editing_soon", "editing",
+                        "editing_paused", "editing_done", "qc_changes"}
+_STAGE_UPLOAD = {"qc_approved", "ready_for_youtube"}
+# in stages me kisi ka active countdown nahi (kaam submit ho chuka / PM review me hai)
+_STAGE_NO_COUNTDOWN = {"creator_submitted", "pm_review", "approved", "qc_pending",
+                       "uploaded", "completed"}
+
+
+def current_stage_deadline(t):
+    """The deadline actually IN FORCE right now, chosen by lifecycle stage:
+    - editor stages -> editor_deadline
+    - ready/qc_approved -> upload_date
+    - teacher (re)work stages -> teacher deadline
+    - submitted / PM review / done -> None (koi delay nahi)."""
+    lc = (getattr(t, "lifecycle", "") or "")
+    if lc in _STAGE_NO_COUNTDOWN:
+        return None
+    if lc in _STAGE_EDITOR_ACTIVE:
+        return getattr(t, "editor_deadline", None)
+    if lc in _STAGE_UPLOAD:
+        return getattr(t, "upload_date", None)
+    # teacher/creator stages + changes_required/reshoot_required/rejected
+    return getattr(t, "deadline", None)
+
+
+_DL_UNSET = object()
+
+
+def deadline_flag(t, deadline=_DL_UNSET):
     """Human-readable deadline signal for cards/filters (spec §38). Canonical UTC stored;
     labels are plain English, never raw timer text.
 
     ``deadline`` overrides ``t.deadline`` so a role can be judged against its own
-    deadline (e.g. editors against ``editor_deadline``, not the teacher deadline)."""
-    dl = deadline if deadline is not None else t.deadline
+    deadline (e.g. editors against ``editor_deadline``, not the teacher deadline).
+    An EXPLICIT ``None`` means "no active deadline for this stage" -> no delay shown
+    (different from omitting the arg, which falls back to the teacher deadline)."""
+    dl = t.deadline if deadline is _DL_UNSET else deadline
     if not dl:
         return ("none", "No deadline")
     if t.lifecycle in ("uploaded", "completed"):

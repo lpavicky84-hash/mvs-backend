@@ -27126,8 +27126,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var pend=(due && !t.youtube_url);
     var tl=''; try{ if(t.upload_date_iso){ tl=new Date(t.upload_date_iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); } }catch(e){}
     var m=[]; if(t.channel_name) m.push(esc(t.channel_name)); if(tl) m.push(tl); if(t.creator_name) m.push(esc(t.creator_name));
-    return '<div class="ytw-item'+(pend?' usch-pend-item':'')+'" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-      '<div class="ytw-it-t">'+esc(t.title||'Untitled')+'</div>'+
+    return '<div class="ytw-item'+(pend?' usch-pend-item':'')+'" style="position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+      '<button title="Edit upload date" onclick="event.stopPropagation();prodUploadSchedule('+t.id+')" style="position:absolute;top:6px;right:6px;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:3px 6px;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center">'+ic('calendar')+'</button>'+
+      '<div class="ytw-it-t" style="padding-right:26px">'+esc(t.title||'Untitled')+'</div>'+
       (m.length?'<div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div>':'')+
       (t.upload_remarks?'<div class="usch-remline">'+ic('edit')+' '+esc(t.upload_remarks)+'</div>':'')+
       (pend?'<div class="usch-pendline">'+ic('alert')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-liveline">'+ic('check')+' Live</div>':''))+
@@ -28057,7 +28058,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<div class="ytp-warn">'+ic('alert')+' Upload time reached — post the YouTube link</div>'+
           '</div>'+
         '</div>'+
-        '<button class="ytp-post" onclick="event.stopPropagation();_ytpPost('+t.id+')">'+ic('play')+' Post YT link</button>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          '<button class="ytp-post" onclick="event.stopPropagation();_ytpPost('+t.id+')">'+ic('play')+' Post YT link</button>'+
+          '<button class="p-btn" onclick="event.stopPropagation();prodUploadSchedule('+t.id+')" title="Change the upload date">'+ic('calendar')+' Edit date</button>'+
+        '</div>'+
       '</div>'+
     '</div>';
   }
@@ -30368,8 +30372,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodKpiGo=function(portal,key){
     var nav=(KPI_NAV[portal]||{})[key]; if(!nav) return;
-    if(nav.yt){ prodNav('youtuber','videos'); return; }   // youtuber_pending -> YouTuber Tasks section
+    if(nav.yt){   // YouTuber Pending -> production Tasks list, youtuber creators + pending
+      var fy=_flt('production'); fy.creator_type='youtuber'; fy.status='assigned'; fy.deadline='';
+      prodNav('production','tasks'); return;
+    }
     var f=_flt(portal); f.status=nav.status||''; f.deadline=nav.deadline||'';
+    if(portal==='production') f.creator_type='';   // baaki cards par youtuber filter reset
     prodNav(portal,(portal==='youtuber')?'videos':'tasks');
   };
   window.prodClearFilter=function(portal,k){ _flt(portal)[k]=''; if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; } _prodLoadList(portal); };

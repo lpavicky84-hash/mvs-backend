@@ -84,14 +84,33 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                                                   GraphicsTask.task_id.in_(_live)).count(),
         "qc_pending": c("qc_pending"),
         "ready_for_youtube": c("ready_for_youtube"),
-        "due_today": q.filter(VideoTask.deadline != None,
-                              func.date(VideoTask.deadline) == today,
-                              VideoTask.is_old == False,
-                              VideoTask.lifecycle.in_(active_states)).count(),
-        "overdue": q.filter(VideoTask.deadline != None, VideoTask.deadline < now,
-                            VideoTask.is_old == False,
-                            VideoTask.lifecycle.in_(active_states)).count(),
+        "due_today": 0,   # stage-aware, neeche compute hota hai
+        "overdue": 0,     # stage-aware, neeche compute hota hai
     }
+    # ---- DELAYED / DUE TODAY: har task ko uske CURRENT STAGE ke deadline se naapo
+    # (teacher on-time submit kar chuka to editing me editor_deadline lagta hai, teacher wala
+    # nahi). Isliye SQL ki jagah Python me current_stage_deadline se count karte hain.
+    _now_ist = now + timedelta(hours=5, minutes=30)
+    _overdue = 0
+    _due_today = 0
+    for _t in q.filter(VideoTask.is_old == False, VideoTask.lifecycle.in_(active_states)).all():
+        _lc = _t.lifecycle or ""
+        if _lc in pc._STAGE_UPLOAD:
+            _dl = getattr(_t, "upload_date", None); _ref = _now_ist
+        elif _lc in pc._STAGE_NO_COUNTDOWN:
+            _dl = None; _ref = now
+        elif _lc in pc._STAGE_EDITOR_ACTIVE:
+            _dl = getattr(_t, "editor_deadline", None); _ref = now
+        else:
+            _dl = getattr(_t, "deadline", None); _ref = now
+        if not _dl:
+            continue
+        if _dl < _ref:
+            _overdue += 1
+        elif _dl.date() == _ref.date():
+            _due_today += 1
+    kpis["overdue"] = _overdue
+    kpis["due_today"] = _due_today
     # This-month metrics
     month_start = datetime(now.year, now.month, 1)
     created_m = q.filter(VideoTask.created_at >= month_start).count()
