@@ -26387,6 +26387,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;display:flex;flex-direction:column}',
 'body.dark .ptc{border-color:#3a2f14;background:#211a0d}',
 '.ptc:hover{box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateY(-2px)}',
+'.ptc.ptc-opened{box-shadow:0 0 0 2px #b98a2e,0 10px 26px rgba(185,138,46,.22)!important}',
+'.ptc.ptc-opened::after{content:"\\2713 Last opened";position:absolute;top:8px;left:8px;z-index:5;background:#b98a2e;color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(185,138,46,.4)}',
+'body.dark .ptc.ptc-opened{box-shadow:0 0 0 2px #d9a942,0 10px 26px rgba(217,169,66,.25)!important}',
 '.ptc-head{width:100%;height:100%;background-size:cover;background-repeat:no-repeat;background-position:center;background-color:#17130c;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:16px 16px 0 0}',
 '.ptc-hw{position:relative;width:100%;aspect-ratio:16/9}',
 '@keyframes ptcblink{0%,100%{opacity:1}50%{opacity:.35}}',
@@ -27601,6 +27604,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var two=document.querySelector('.cm-2pane'); if(two) two.classList.remove('show-thread');
     var pane=document.getElementById('cm-thread-pane'); if(pane){ pane.classList.remove('has-thread'); pane.innerHTML=_cmThreadPlaceholder(); }
     try{ document.querySelectorAll('.cm-row.active').forEach(function(r){ r.classList.remove('active'); }); }catch(e){}
+    // chat band karte hi inbox list silently refresh -> jo abhi padha uska unread badge turant hate
+    try{ if(typeof _cmLoad==='function') _cmLoad(true); }catch(e){}
   };
   window._chatCloseUnified=function(){
     var pane=document.getElementById('cm-thread-pane');
@@ -27826,9 +27831,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _prodChatBar(id, portal){
     var i=(window._prodTaskInfo||{})[id]||{};
     var title=i.title||('Task #'+id); var ref=i.ref||''; var who=i.creator||'';
-    var open=portal?('<button class="pcb-open" onclick="prodDismiss();prodOpenTask(\''+portal+'\','+id+')">Open task \u203a</button>'):'';
+    var open=portal?('<button class="pcb-open" onclick="_chatOpenTask(\''+portal+'\','+id+')">Open task \u203a</button>'):'';
     return '<div class="pcb"><div class="pcb-i">'+ic('play')+'</div><div class="pcb-t"><div class="pcb-title">'+esc(title)+'</div><div class="pcb-meta">'+(ref?esc(ref):'')+(who?(' \u00b7 '+esc(who)):'')+'</div></div>'+open+'</div>';
   }
+  // "Open task" chat bar se: agar chat two-pane ke thread pane me khuli hai to us open chat ko
+  // TODNA nahi hai \u2014 sirf task drawer upar khol do (pane wesa hi live chalta rahe). Modal (full
+  // screen) chat me purana behavior \u2014 chat band karke task kholo.
+  window._chatOpenTask=function(portal,id){
+    var pane=document.getElementById('cm-thread-pane');
+    var inPane=!!(pane && pane.getClientRects().length && window._chatOpen && window._chatOpen());
+    if(inPane){ try{ prodOpenTask(portal,id); }catch(e){} return; }
+    try{ prodDismiss(); }catch(e){}
+    try{ prodOpenTask(portal,id); }catch(e){}
+  };
   window.prodChatMenu=function(id, tc, gc, ec){
     tc=tc||0; gc=gc||0; ec=ec||0;
     var _b=function(n){ return n>0?' <span class="pcm-badge chat-blink">'+n+'</span>':''; };
@@ -30441,6 +30456,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       chips.map(function(c){ return '<span class="achip">'+esc(c[0])+'<button onclick="prodClearFilter(\''+portal+'\',\''+c[1]+'\')">\u00d7</button></span>'; }).join('')+
       '<button class="clr" onclick="prodClearAll(\''+portal+'\')">Clear all</button></div>';
   }
+  // Kaunsa element scroll hota hai (portal ka active .page ya app) — silent reload par isi ka
+  // scrollTop restore karte hain taaki background refresh se list upar na kudd jaaye.
+  function _prodScrollEl(portal){
+    try{
+      var res=document.getElementById(portal+'-results');
+      var el=res?res.parentNode:null;
+      while(el && el!==document.body){
+        var oy=(window.getComputedStyle?getComputedStyle(el).overflowY:'');
+        if((oy==='auto'||oy==='scroll') && el.scrollHeight>el.clientHeight+4) return el;
+        el=el.parentNode;
+      }
+    }catch(e){}
+    return document.scrollingElement||document.documentElement;
+  }
+  // Last-open task card ko highlight karo taaki refresh ke baad bhi pata rahe kaunsa khola tha.
+  function _prodMarkOpenedCard(){
+    try{
+      document.querySelectorAll('.ptc.ptc-opened').forEach(function(c){ c.classList.remove('ptc-opened'); });
+      var id=window._prodLastTask; if(id==null) return;
+      var card=document.querySelector('.ptc[data-ptc="'+id+'"]'); if(card) card.classList.add('ptc-opened');
+    }catch(e){}
+  }
+  window._prodMarkOpenedCard=_prodMarkOpenedCard;
   function _prodLoadList(portal,silent){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
     var act=document.getElementById(portal+'-active'); if(act) act.innerHTML=_activeChips(portal);
@@ -30450,11 +30488,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       chips.forEach(function(c,i){ var v=views[i]?views[i][0]:''; var on=(v.indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v && !f.deadline); c.classList.toggle('on',on); }); }
     var res=document.getElementById(portal+'-results');
     var hasRows=res && res.children.length && res.textContent.indexOf('Loading')<0;
+    // silent reload par scroll position yaad rakho -> background refresh se page upar nahi jaayega
+    var _scEl=_prodScrollEl(portal); var _scTop=(silent&&_scEl)?_scEl.scrollTop:0;
     if(res && !(silent && hasRows)) res.innerHTML=_pSkelRows(4);
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
       var arr=r[key]||r.tasks||r.videos||[];
       if(!res) return;
       res.innerHTML=arr.length?('<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
+      try{ _prodMarkOpenedCard(); }catch(e){}
+      if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
     }).catch(function(e){ if(res) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); });
   }
   window.prodKpiGo=function(portal,key){
@@ -30672,21 +30714,40 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.cm-sub{font-size:.85rem;color:var(--muted,#8a8578);margin-top:2px}',
       '.cm-search{width:100%;margin-top:12px;padding:11px 15px;border:1.5px solid var(--border,#e5ddcb);border-radius:12px;background:var(--card,#fff);font-size:.92rem;outline:none;color:var(--text,#14213d)}',
       '.cm-search:focus{border-color:#25d366}',
-      '.cm-filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}',
-      '.cm-fbtn{border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--muted,#8a7d5c);border-radius:20px;padding:6px 15px;font-weight:700;font-size:.82rem;cursor:pointer;transition:.15s}',
-      '.cm-fbtn.on{background:#14213d;border-color:#14213d;color:#fff}',
-      '.cm-list{display:flex;flex-direction:column;gap:2px;background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:16px;overflow:hidden;box-shadow:0 6px 22px rgba(18,20,45,.06)}',
-      '.cm-row{display:flex;align-items:center;gap:13px;padding:13px 16px;cursor:pointer;transition:background .12s;border-bottom:1px solid rgba(0,0,0,.04);position:relative}',
-      '.cm-row:last-child{border-bottom:none}',
-      '.cm-row:hover{background:rgba(37,211,102,.06)}',
-      '.cm-row.unread{background:rgba(37,211,102,.05)}',
-      '.cm-av{width:52px;height:52px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.05rem;position:relative}',
-      '.cm-dot{position:absolute;right:1px;bottom:1px;width:13px;height:13px;border-radius:50%;border:2.5px solid var(--card,#fff);background:#c4c9d0}',
-      '.cm-dot.online{background:#25d366}',
+      '.cm-filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0}',
+      /* ---- Role dropdown (All / Teacher / Editor / Graphics) ---- */
+      '.cm-drop{position:relative}',
+      '.cm-drop-btn{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#14213d);border-radius:12px;padding:9px 14px;font-weight:800;font-size:.85rem;cursor:pointer;transition:.16s;box-shadow:0 1px 2px rgba(18,20,45,.04)}',
+      '.cm-drop-btn:hover{border-color:#c98a2e;box-shadow:0 4px 14px rgba(201,138,46,.14)}',
+      '.cm-drop.active .cm-drop-btn{border-color:#c98a2e;color:#8a5e17;background:linear-gradient(180deg,#fff,#fdf6e7)}',
+      'body.dark .cm-drop.active .cm-drop-btn{background:#2a2008;color:#e6c169}',
+      '.cm-drop-chev{transition:transform .18s;opacity:.7}',
+      '.cm-drop.open .cm-drop-chev{transform:rotate(180deg)}',
+      '.cm-drop-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:180px;background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:14px;box-shadow:0 14px 40px rgba(18,20,45,.16);padding:6px;z-index:60;opacity:0;transform:translateY(-6px) scale(.98);pointer-events:none;transition:.16s}',
+      '.cm-drop.open .cm-drop-menu{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}',
+      '.cm-drop-item{display:flex;align-items:center;width:100%;text-align:left;border:none;background:transparent;color:var(--text,#14213d);border-radius:9px;padding:10px 12px;font-weight:700;font-size:.86rem;cursor:pointer;transition:.12s}',
+      '.cm-drop-item:hover{background:rgba(201,138,46,.10)}',
+      '.cm-drop-item.on{background:linear-gradient(90deg,rgba(201,138,46,.16),rgba(201,138,46,.04));color:#8a5e17}',
+      '.cm-drop-item.on::after{content:"\\2713";margin-left:auto;font-weight:900;color:#c98a2e}',
+      'body.dark .cm-drop-item.on{color:#e6c169}',
+      /* ---- Unread chip ---- */
+      '.cm-fchip{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--muted,#8a7d5c);border-radius:12px;padding:9px 15px;font-weight:800;font-size:.85rem;cursor:pointer;transition:.16s;box-shadow:0 1px 2px rgba(18,20,45,.04)}',
+      '.cm-fchip:hover{border-color:#25c15d}',
+      '.cm-fchip-dot{width:8px;height:8px;border-radius:50%;background:#c4c9d0;transition:.16s}',
+      '.cm-fchip.on{background:linear-gradient(180deg,#2fd06f,#22b457);border-color:#22b457;color:#fff;box-shadow:0 5px 16px rgba(37,193,93,.32)}',
+      '.cm-fchip.on .cm-fchip-dot{background:#fff}',
+      '.cm-list{display:flex;flex-direction:column;gap:6px;background:transparent;border:none;border-radius:16px;overflow-y:auto;padding:2px;box-shadow:none}',
+      '.cm-row{display:flex;align-items:center;gap:13px;padding:12px 14px;cursor:pointer;transition:background .14s,box-shadow .14s,transform .14s,border-color .14s;border:1px solid transparent;border-radius:14px;position:relative;background:var(--card,#fff);box-shadow:0 1px 3px rgba(18,20,45,.05)}',
+      '.cm-row:hover{background:var(--card,#fff);border-color:rgba(201,138,46,.35);box-shadow:0 8px 22px rgba(18,20,45,.10);transform:translateY(-1px)}',
+      '.cm-row.unread{border-color:rgba(37,193,93,.35);background:linear-gradient(90deg,rgba(37,193,93,.06),transparent 60%)}',
+      '.cm-row.unread::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:#25c15d}',
+      '.cm-av{width:50px;height:50px;border-radius:15px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.05rem;position:relative;box-shadow:0 4px 12px rgba(18,20,45,.16)}',
+      '.cm-dot{position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;border-radius:50%;border:2.5px solid var(--card,#fff);background:#c4c9d0}',
+      '.cm-dot.online{background:#25d366;box-shadow:0 0 0 3px rgba(37,211,102,.18)}',
       '.cm-mid{flex:1;min-width:0}',
       '.cm-r1{display:flex;align-items:center;gap:8px}',
-      '.cm-name{font-weight:800;font-size:1rem;color:var(--text,#14213d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56%}',
-      '.cm-role{font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:20px;letter-spacing:.3px;text-transform:uppercase;flex-shrink:0}',
+      '.cm-name{font-weight:800;font-size:1.02rem;color:var(--text,#14213d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:52%;letter-spacing:-.1px}',
+      '.cm-role{font-size:.62rem;font-weight:800;padding:3px 9px;border-radius:20px;letter-spacing:.4px;text-transform:uppercase;flex-shrink:0}',
       '.cm-role.r-teacher{background:rgba(124,58,237,.12);color:#6d3fb0}',
       '.cm-role.r-editor{background:rgba(37,99,235,.12);color:#2563eb}',
       '.cm-role.r-graphics{background:rgba(217,119,6,.14);color:#b45309}',
@@ -30700,7 +30761,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.cm-me{color:#9aa0a6;font-weight:600}',
       '.cm-badge{flex-shrink:0;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#25d366;color:#fff;font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center}',
       '.cm-empty{padding:44px 20px;text-align:center;color:var(--muted,#8a8578);font-size:.95rem}',
-      '.cm-row.active{background:linear-gradient(90deg,rgba(201,150,46,.16),rgba(201,150,46,.05))!important;box-shadow:inset 3px 0 0 #c98a2e}',
+      '.cm-row.active{background:linear-gradient(90deg,rgba(201,150,46,.18),rgba(201,150,46,.04))!important;border-color:#c98a2e!important;box-shadow:0 6px 18px rgba(201,138,46,.20)!important}',
+      '.cm-row.active .cm-name{color:#8a5e17}',
+      'body.dark .cm-row.active .cm-name{color:#e6c169}',
       /* ---- TWO-PANE (WhatsApp-style: left list + right thread) ---- */
       '.cm-2pane{display:flex;gap:16px;align-items:stretch;height:calc(100vh - 150px);min-height:520px;max-width:1180px}',
       '.cm-listcol{width:370px;flex-shrink:0;display:flex;flex-direction:column;min-height:0}',
@@ -30724,7 +30787,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   var _CM_COLORS=['#6d3fb0','#2563eb','#b45309','#0e9f6e','#dc2626','#0891b2','#7c3aed','#c2410c','#0d9488','#4f46e5'];
   function _cmColor(name){ var h=0,s=String(name||'?'); for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; } return _CM_COLORS[h%_CM_COLORS.length]; }
+  // avatar gradient ke liye thoda gehra shade
+  function _cmShade(hex){ try{ var c=hex.replace('#',''); var r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16); var f=.72; r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f); return 'rgb('+r+','+g+','+b+')'; }catch(e){ return hex; } }
   function _cmInitials(name){ try{ return initials(name); }catch(e){ var p=String(name||'?').trim().split(/\s+/); return ((p[0]||'')[0]||'?')+((p[1]||'')[0]||''); } }
+  var _CM_ROLE_OPTS=[['all','All chats'],['teacher','Teacher'],['editor','Editor'],['graphics','Graphics']];
+  function _cmRoleLabel(k){ for(var i=0;i<_CM_ROLE_OPTS.length;i++){ if(_CM_ROLE_OPTS[i][0]===k) return _CM_ROLE_OPTS[i][1]; } return 'All chats'; }
+  // Filters: manager ke liye role ka dropdown (All / Teacher / Editor / Graphics) + alag "Unread" chip.
+  // Baaki roles ke liye sirf "Unread" chip.
+  function _cmFiltersHtml(cfg){
+    var chev='<svg class="cm-drop-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+    var drop=cfg.isMgr?(
+      '<div class="cm-drop" id="cm-drop">'+
+        '<button type="button" class="cm-drop-btn" onclick="_cmDropToggle(event)"><span class="cm-drop-lbl" id="cm-drop-lbl">All chats</span>'+chev+'</button>'+
+        '<div class="cm-drop-menu" id="cm-drop-menu">'+
+          _CM_ROLE_OPTS.map(function(o){ return '<button type="button" class="cm-drop-item'+(o[0]==='all'?' on':'')+'" data-r="'+o[0]+'" onclick="_cmRoleFilter(\''+o[0]+'\')">'+o[1]+'</button>'; }).join('')+
+        '</div>'+
+      '</div>'
+    ):'';
+    return '<div class="cm-filters">'+drop+
+      '<button type="button" class="cm-fchip" id="cm-unread-chip" onclick="_cmToggleUnread()"><span class="cm-fchip-dot"></span>Unread</button>'+
+    '</div>';
+  }
   function _cmRow(c, cfg){
     var nm=c.party_name||'Team'; var rl=(c.party_role||'Team').toLowerCase();
     var prev=(c.last_mine?'<span class="cm-me">You: </span>':'')+esc(c.last||'No messages yet');
@@ -30733,7 +30816,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var badge=c.unread>0?'<span class="cm-badge">'+(c.unread>99?'99+':c.unread)+'</span>':'';
     var time=esc(c.online?'online':(c.last_at||''));
     return '<div class="cm-row'+(c.unread>0?' unread':'')+'" data-tid="'+c.task_id+'" data-aud="'+esc(c.audience)+'" data-s="'+esc((nm+' '+task+' '+rl).toLowerCase())+'" onclick="_cmClick(this)">'+
-      '<div class="cm-av" style="background:'+_cmColor(nm)+'">'+esc(_cmInitials(nm))+pres+'</div>'+
+      '<div class="cm-av" style="background:linear-gradient(135deg,'+_cmColor(nm)+','+_cmShade(_cmColor(nm))+')">'+esc(_cmInitials(nm))+pres+'</div>'+
       '<div class="cm-mid">'+
         '<div class="cm-r1"><span class="cm-name">'+esc(nm)+'</span><span class="cm-role r-'+rl+'">'+esc(c.party_role||'Team')+'</span><span class="cm-time">'+time+'</span></div>'+
         '<div class="cm-r2">'+task+'</div>'+
@@ -30744,19 +30827,30 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ document.querySelectorAll('.cm-row.active').forEach(function(r){ r.classList.remove('active'); }); el.classList.add('active'); }catch(e){}
     window._cmActive={tid:tid,aud:aud};
     try{ C.open({task_id:tid, audience:aud}); }catch(e){ toast('Could not open chat',true); } };
-  window._cmFilter=function(f){ var C=window._CM; if(!C) return; C.filter=f; document.querySelectorAll('.cm-filters .cm-fbtn').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-f')===f); }); _cmPaint(); };
+  // Role dropdown open/close
+  window._cmDropToggle=function(e){ try{ if(e) e.stopPropagation(); }catch(_e){} var d=document.getElementById('cm-drop'); if(!d) return;
+    var open=d.classList.toggle('open');
+    if(open){ setTimeout(function(){ document.addEventListener('click', _cmDropClose); },0); } else { document.removeEventListener('click', _cmDropClose); } };
+  function _cmDropClose(){ var d=document.getElementById('cm-drop'); if(d) d.classList.remove('open'); document.removeEventListener('click', _cmDropClose); }
+  window._cmRoleFilter=function(r){ var C=window._CM; if(!C) return; C.roleFilter=r||'all';
+    var lbl=document.getElementById('cm-drop-lbl'); if(lbl) lbl.textContent=_cmRoleLabel(C.roleFilter);
+    try{ document.querySelectorAll('#cm-drop-menu .cm-drop-item').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-r')===C.roleFilter); }); }catch(e){}
+    var d=document.getElementById('cm-drop'); if(d){ d.classList.toggle('active', C.roleFilter!=='all'); d.classList.remove('open'); }
+    document.removeEventListener('click', _cmDropClose);
+    _cmPaint(); };
+  window._cmToggleUnread=function(){ var C=window._CM; if(!C) return; C.unreadOnly=!C.unreadOnly;
+    var chip=document.getElementById('cm-unread-chip'); if(chip) chip.classList.toggle('on', C.unreadOnly); _cmPaint(); };
   window._cmSearch=function(v){ var C=window._CM; if(!C) return; C.q=(v||'').toLowerCase().trim(); _cmPaint(); };
   function _cmPaint(){
     var C=window._CM; if(!C) return; var box=document.getElementById(C.dom+'-list'); if(!box) return;
+    var rf=C.roleFilter||'all';
     var rows=(C.convs||[]).filter(function(c){
-      if(C.filter==='unread' && !(c.unread>0)) return false;
-      if(C.filter==='teacher' && (c.party_role||'').toLowerCase()!=='teacher') return false;
-      if(C.filter==='editor' && (c.party_role||'').toLowerCase()!=='editor') return false;
-      if(C.filter==='graphics' && (c.party_role||'').toLowerCase()!=='graphics') return false;
+      if(C.unreadOnly && !(c.unread>0)) return false;
+      if(rf!=='all' && (c.party_role||'').toLowerCase()!==rf) return false;
       if(C.q){ var s=(c.party_name+' '+c.title+' '+(c.channel||'')+' '+(c.party_role||'')).toLowerCase(); if(s.indexOf(C.q)<0) return false; }
       return true;
     });
-    if(!rows.length){ box.innerHTML='<div class="cm-empty">'+(C.q||C.filter!=='all'?'No matching chats.':'No conversations yet. Chats will appear here once messages are exchanged on a task.')+'</div>'; return; }
+    if(!rows.length){ box.innerHTML='<div class="cm-empty">'+(C.q||rf!=='all'||C.unreadOnly?'No matching chats.':'No conversations yet. Chats will appear here once messages are exchanged on a task.')+'</div>'; return; }
     var _sc=box.scrollTop;   // silent 12s reload par scroll position bani rahe (list jump na kare)
     box.innerHTML=rows.map(function(c){ return _cmRow(c,C); }).join('');
     try{ box.scrollTop=_sc; }catch(e){}
@@ -30767,16 +30861,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._cmCss();
     try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}   // thread pane (bubbles/head/foot) turant styled rahe
     window._cmActive=null;
-    var dom='cm'; window._CM={dom:dom, portal:cfg.portal, inbox:cfg.inbox, open:cfg.open, isMgr:!!cfg.isMgr, convs:[], filter:'all', q:''};
-    var filters=cfg.isMgr
-      ? [['all','All'],['unread','Unread'],['teacher','Teacher'],['editor','Editor'],['graphics','Graphics']]
-      : [['all','All'],['unread','Unread']];
+    var dom='cm'; window._CM={dom:dom, portal:cfg.portal, inbox:cfg.inbox, open:cfg.open, isMgr:!!cfg.isMgr, convs:[], roleFilter:'all', unreadOnly:false, q:''};
     bodyEl.innerHTML='<div class="cm-wrap cm-2pane">'+
       '<div class="cm-listcol">'+
         '<div class="cm-head"><div class="cm-title">'+ic('chat')+' Chat Manager</div>'+
           '<div class="cm-sub">'+(cfg.isMgr?'Every task conversation across the team — tap to open.':'All your task chats in one place — tap to open.')+'</div>'+
           '<input class="cm-search" placeholder="Search name, video or channel..." oninput="_cmSearch(this.value)"></div>'+
-        '<div class="cm-filters">'+filters.map(function(f){ return '<button class="cm-fbtn'+(f[0]==='all'?' on':'')+'" data-f="'+f[0]+'" onclick="_cmFilter(\''+f[0]+'\')">'+f[1]+'</button>'; }).join('')+'</div>'+
+        _cmFiltersHtml(cfg)+
         '<div class="cm-list" id="'+dom+'-list"><div class="cm-empty">Loading conversations…</div></div>'+
       '</div>'+
       '<div class="cm-threadcol" id="cm-thread-pane">'+_cmThreadPlaceholder()+'</div>'+
@@ -30970,6 +31061,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._prodTaskCard=_prodTaskCard;
   window.prodOpenTask=function(portal,id){
     ensureCSS(); // admin YouTuber page may open this without the portal shell's CSS
+    try{ window._prodLastTask=id; _prodMarkOpenedCard(); }catch(e){}   // kaunsa task khola — yaad + highlight
     var d=P[portal]; var ep=(portal==='youtuber')?d.api+'/videos/'+id:d.api+'/tasks/'+id;
     api(ep).then(function(t){
       window._prodTask={portal:portal,t:t};
@@ -31330,6 +31422,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window._prodAutoRefresh=function(){ try{ var pp=_activeProdPortal(); if(pp && typeof _refresh==='function') _refresh(pp); }catch(e){} };
   function _refresh(portal){ try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
+    // === Chat Manager guard ===
+    // Agar Chat Manager ka thread pane khula hai (koi chat open hai us pane me) to poora page
+    // dobara MOUNT mat karo — us se open chat gayab ho jaata tha. Sirf chupchaap inbox list
+    // reload karo taaki unread badge update ho jaaye, open thread waisa ka waisa rahe.
+    try{
+      var _tp=document.getElementById('cm-thread-pane');
+      if(_tp && _tp.getClientRects().length && window._chatOpen && window._chatOpen()){
+        try{ if(typeof _cmLoad==='function') _cmLoad(true); }catch(e){}
+        return;
+      }
+    }catch(e){}
     // Admin apne Task Manager page se production actions (assign/move/create) karta hai ->
     // us page ko bhi turant refresh karo (production body admin me hota nahi).
     try{ var _av=document.getElementById('a-vtasks-content'); if(_av && _av.offsetParent!==null && typeof loadAVTasks==='function'){ _apiBust(); loadAVTasks(); } }catch(e){}
@@ -31343,12 +31446,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!body) return prodNav(portal,page);
     // silent re-render: skip prodNav's full-body "Loading" blank so it doesn't flash after an action
     try{
+      // Chat Manager page: NEVER re-mount (that wipes an open thread + selected row).
+      // Sirf inbox list silently reload karo.
+      if(page==='chatmgr'){ try{ if(typeof _cmLoad==='function') _cmLoad(true); }catch(e){} return; }
       if(page==='dashboard') return renderDashboard(portal,body);
-      if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); if(st==='__overdue'){f.status='';f.deadline='overdue';f._locked=false;}else{f.status=st;f.deadline='';f._locked=true;} f.priority=''; return renderList(portal,body); }
+      if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); if(st==='__overdue'){f.status='';f.deadline='overdue';f._locked=false;}else{f.status=st;f.deadline='';f._locked=true;} f.priority=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
       if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
       if(page==='board') return renderBoard(portal,body);
       if(page==='thumbboard') return renderThumbBoard(portal,body);
-      if(page==='tasks'||page==='videos'){ var _tf=_flt(portal); _tf._locked=false; _tf.status=''; _tf.deadline=''; _tf.epreset=''; _tf.gpreset=''; _tf.ypreset=''; return renderList(portal,body); }
+      // Tasks/Videos: agar list already dikh rahi hai to CHUPCHAAP reload karo (skeleton flash nahi,
+      // filter/scroll/last-open highlight preserve) — poora renderList sirf pehli baar.
+      if(page==='tasks'||page==='videos'){ if(document.getElementById(portal+'-results')) return _prodLoadList(portal,true); var _tf=_flt(portal); _tf._locked=false; _tf.status=''; _tf.deadline=''; _tf.epreset=''; _tf.gpreset=''; _tf.ypreset=''; return renderList(portal,body); }
       if(page==='tracker') return renderTracker(portal,body);
       if(page==='team') return renderTeam(portal,body);
       if(page==='views') return renderViews(portal,body);
