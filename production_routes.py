@@ -259,13 +259,23 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
                                  VideoTask.subject.like(like)))
     now = datetime.utcnow()
     if deadline == "overdue":
-        query = query.filter(VideoTask.deadline != None, VideoTask.deadline < now,
-                             VideoTask.is_old == False,
-                             VideoTask.lifecycle.in_([
-                                 "creator_assigned", "creator_working", "creator_submitted",
-                                 "pm_review", "approved", "editor_assigned", "editing",
-                                 "editing_paused", "editing_done", "qc_pending", "qc_changes",
-                                 "ready_for_youtube", "changes_required"]))
+        # STAGE-AWARE delayed: har stage apne deadline se. Teacher on-time submit ke baad
+        # editing me editor_deadline lagta hai (teacher wala nahi); submitted/PM-review/
+        # QC-pending kabhi delayed nahi. Isliye SQL me OR-of-stages laga rahe hain.
+        _now_ist = now + timedelta(hours=5, minutes=30)
+        _teacher_st = ["created", "creator_assigned", "creator_working",
+                       "changes_required", "reshoot_required", "rejected"]
+        _editor_st = ["editor_assigned", "editing_soon", "editing",
+                      "editing_paused", "editing_done", "qc_changes"]
+        _upload_st = ["qc_approved", "ready_for_youtube"]
+        query = query.filter(VideoTask.is_old == False, or_(
+            and_(VideoTask.lifecycle.in_(_teacher_st),
+                 VideoTask.deadline != None, VideoTask.deadline < now),          # noqa: E711
+            and_(VideoTask.lifecycle.in_(_editor_st),
+                 VideoTask.editor_deadline != None, VideoTask.editor_deadline < now),  # noqa: E711
+            and_(VideoTask.lifecycle.in_(_upload_st),
+                 VideoTask.upload_date != None, VideoTask.upload_date < _now_ist),  # noqa: E711
+        ))
     elif deadline == "today":
         query = query.filter(VideoTask.deadline != None,
                              func.date(VideoTask.deadline) == date.today())

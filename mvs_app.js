@@ -29655,12 +29655,44 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var lbl=over?(body+' delayed'):((kind==='soon'?'Due soon ':(kind==='today'?'Due today ':'Due in '))+body);
     return {kind:kind,label:lbl};
   }
+  // Current-stage deadline (backend current_stage_deadline ka mirror): delay HAMESHA uss
+  // stage ke deadline se jise abhi kaam karna hai. Teacher on-time submit kar chuka to
+  // ab editor_deadline lagta hai — teacher wala nahi. Submitted/PM-review/QC-pending me
+  // koi active countdown nahi.
+  var _STG_EDIT=['editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'];
+  var _STG_UP=['qc_approved','ready_for_youtube'];
+  var _STG_NONE=['creator_submitted','pm_review','approved','qc_pending','uploaded','completed'];
+  function _stageDlIso(t){
+    var lc=t.lifecycle||'';
+    if(_STG_NONE.indexOf(lc)>=0) return '';
+    if(_STG_EDIT.indexOf(lc)>=0) return t.editor_deadline_iso||'';
+    if(_STG_UP.indexOf(lc)>=0) return t.upload_date_iso||'';
+    return t.deadline_iso||'';
+  }
+  function _stageDlNice(t){
+    var lc=t.lifecycle||'';
+    if(_STG_NONE.indexOf(lc)>=0) return '';
+    if(_STG_EDIT.indexOf(lc)>=0) return t.editor_deadline||'';
+    if(_STG_UP.indexOf(lc)>=0) return t.upload_date||'';
+    return t.deadline||'';
+  }
+  function _stageDlWho(t){
+    var lc=t.lifecycle||'';
+    if(_STG_EDIT.indexOf(lc)>=0) return t.editor_name?('Editor '+t.editor_name):'Editor';
+    if(_STG_UP.indexOf(lc)>=0) return 'Upload';
+    return '';   // teacher/creator stage — koi name prefix nahi
+  }
+  function _stageDlLabel(lc){
+    if(_STG_EDIT.indexOf(lc)>=0) return 'Editor deadline: ';
+    if(_STG_UP.indexOf(lc)>=0) return 'Upload: ';
+    return 'Deadline: ';
+  }
   window._dlToggle=function(el){ el.setAttribute('data-dlmode', (el.getAttribute('data-dlmode')==='compact')?'full':'compact'); _dlTick(); };
   function _dlTick(){
     try{
       document.querySelectorAll('.pt-dl[data-dl]').forEach(function(el){
         var live=_dlHuman(el.getAttribute('data-dl'), el.getAttribute('data-dllc'), el.getAttribute('data-dlmode')||'full');
-        if(live){ el.textContent=live.label; el.className='pt-dl pt-dl-tog '+live.kind; }
+        if(live){ var who=el.getAttribute('data-dlwho')||''; el.textContent=live.label+((live.kind==='overdue'&&who)?(' · '+who):''); el.className='pt-dl pt-dl-tog '+live.kind; }
       });
     }catch(e){}
   }
@@ -29749,13 +29781,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!_hasThumb && !g.graphics_name) chips.push('<span class="pw-chip pw-pend">\u26a0 Thumbnail pending</span>');
       if(!t.editor_name && ['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0) chips.push('<span class="pw-chip pw-pend">\u26a0 Editor pending</span>');
     }
-    var meta=[]; var _metaDl=(portal==='editor' && t.editor_deadline)?t.editor_deadline:t.deadline; if(_metaDl) meta.push((portal==='editor'&&t.editor_deadline?'Editor deadline: ':'Deadline: ')+esc(_metaDl));
+    var meta=[];
+    // Deadline meta + delay badge dono CURRENT STAGE ke deadline se (teacher on-time submit
+    // ke baad editing me editor_deadline lagta hai). Editor portal apni editor_deadline dekhta hai.
+    var _dlIso, _dlNice, _dlWho, _dlLblPref;
+    if(portal==='editor'){
+      _dlIso=t.editor_deadline_iso||''; _dlNice=t.editor_deadline||''; _dlWho=''; _dlLblPref='Editor deadline: ';
+    } else {
+      _dlIso=_stageDlIso(t); _dlNice=_stageDlNice(t); _dlWho=_stageDlWho(t); _dlLblPref=_stageDlLabel(t.lifecycle||'');
+    }
+    if(_dlNice) meta.push(_dlLblPref+esc(_dlNice));
     var df=t.deadline_flag||{};
-    // Editor portal: editor ki apni deadline (editor_deadline) dikhao agar set hai, warna task deadline.
-    var _dlIso=t.deadline_iso||'';
-    if(portal==='editor' && t.editor_deadline_iso){ _dlIso=t.editor_deadline_iso; }
     if(_dlIso){ var live=_dlHuman(_dlIso, t.lifecycle); if(live) df=live; }
-    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(df.label)+(portal==='editor'&&t.editor_deadline_iso?' (editor)':'')+'</span>':'';
+    else { df={kind:'none',label:''}; }   // is stage ka koi active deadline nahi -> koi delay nahi
+    var _dlLbl=(df.label||'')+((df.kind==='overdue'&&_dlWho)?(' · '+_dlWho):'');
+    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlwho="'+esc(_dlWho)+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(_dlLbl)+(portal==='editor'&&t.editor_deadline_iso?' (editor)':'')+'</span>':'';
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
