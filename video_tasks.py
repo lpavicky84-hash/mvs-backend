@@ -127,6 +127,8 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN collab_not_completed TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN submitted_by INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN chapter_excludes TEXT NULL",
+        # WhatsApp-style per-message task attach: kis task ke baare me ye message hai
+        "ALTER TABLE video_task_comments ADD COLUMN ref_task_id INTEGER NULL",
     ]
     for ddl in alters:
         try:
@@ -1162,7 +1164,24 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
                         notif_type=ntype, link=link or None))
 
 
-def _vtc_out(db, c):
+def _vtc_ref_snapshot(db, ref_ids):
+    """Bulk: {task_id: {id,title,status,channel}} for the tasks referenced by chat messages.
+    Ek hi query me saare referenced tasks ka chhota snapshot (chip render karne ke liye)."""
+    out = {}
+    ids = [int(x) for x in set(ref_ids) if x]
+    if not ids:
+        return out
+    try:
+        for t in db.query(VideoTask).filter(VideoTask.id.in_(ids)).all():
+            out[t.id] = {"id": t.id, "title": (t.title or ""),
+                         "status": (t.status or ""),
+                         "channel": (t.channel_name or "")}
+    except Exception:
+        pass
+    return out
+
+
+def _vtc_out(db, c, ref_cache=None):
     _at = ""
     if c.created_at:
         try:
@@ -1171,12 +1190,23 @@ def _vtc_out(db, c):
             _at = _y.strftime("%d %b %Y, %I:%M %p")
         except Exception:
             _at = c.created_at.strftime("%d %b %Y, %I:%M %p")
-    return {"id": c.id, "task_id": c.task_id, "user_id": c.user_id,
-            "author": c.author_name or "", "role": c.author_role or "",
-            "message": c.message or "",
-            "attachment_url": getattr(c, "attachment_url", "") or "",
-            "audience": getattr(c, "audience", "creator") or "creator",
-            "at": _at}
+    o = {"id": c.id, "task_id": c.task_id, "user_id": c.user_id,
+         "author": c.author_name or "", "role": c.author_role or "",
+         "message": c.message or "",
+         "attachment_url": getattr(c, "attachment_url", "") or "",
+         "audience": getattr(c, "audience", "creator") or "creator",
+         "at": _at}
+    _rid = getattr(c, "ref_task_id", None)
+    if _rid:
+        o["ref_task_id"] = _rid
+        snap = None
+        if ref_cache is not None:
+            snap = ref_cache.get(_rid)
+        elif db is not None:
+            snap = _vtc_ref_snapshot(db, [_rid]).get(_rid)
+        if snap:
+            o["ref_task"] = snap
+    return o
 
 
 def _vtc_list(db, task_id, audience=None):
@@ -1196,7 +1226,8 @@ def _vtc_list(db, task_id, audience=None):
         # any other explicit thread (direct pairs: te_ed / te_gf / ed_gf, project, etc.)
         q = q.filter(VideoTaskComment.audience == audience)
     rows = q.order_by(VideoTaskComment.id.asc()).all()
-    return [_vtc_out(db, c) for c in rows]
+    ref_cache = _vtc_ref_snapshot(db, [getattr(r, "ref_task_id", None) for r in rows])
+    return [_vtc_out(db, c, ref_cache) for c in rows]
 
 
 def _vtc_list_v(db, task_id, audience=None, viewer_id=None):
@@ -1222,7 +1253,7 @@ def _vtc_list_v(db, task_id, audience=None, viewer_id=None):
     return items
 
 
-def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="creator"):
+def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="creator", ref_task_id=None):
     msg = (message or "").strip()
     att = (attachment_url or "").strip()
     if not msg and not att:
@@ -1235,8 +1266,74 @@ def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="crea
         c.audience = audience or "creator"
     except Exception:
         pass
+    # optional: kis task ke baare me ye message hai (WhatsApp-style attach)
+    try:
+        _rid = int(ref_task_id) if ref_task_id not in (None, "", 0, "0") else None
+        if _rid:
+            c.ref_task_id = _rid
+    except Exception:
+        pass
     db.add(c); db.flush()
     return c
+
+
+def _chat_party_tasks(db, task_id, audience=None):
+    """Is chat ke counterpart (jis worker se baat ho rahi hai) ki active tasks —
+    composer ke 'attach task' dropdown ke liye. audience se worker decide hota hai:
+      creator/te_ed/te_gf -> teacher (task.teacher_id)
+      editor/ed_gf        -> editor  (task.editor_id)
+      internal            -> graphics designer (GraphicsTask.graphics_id)
+    Har entry: {id,title,status,channel}. Current task hamesha list me."""
+    out = []
+    try:
+        t = db.query(VideoTask).filter(VideoTask.id == task_id).first()
+        if not t:
+            return out
+        aud = (audience or "creator").strip().lower()
+        DONE = ("uploaded", "completed")
+        rows = []
+        if aud in ("editor", "ed_gf"):
+            eid = getattr(t, "editor_id", None)
+            if eid:
+                rows = (db.query(VideoTask)
+                        .filter(VideoTask.editor_id == eid)
+                        .order_by(VideoTask.id.desc()).limit(60).all())
+        elif aud == "internal":
+            try:
+                from models import GraphicsTask
+                g = db.query(GraphicsTask).filter(GraphicsTask.task_id == task_id).first()
+                gid = getattr(g, "graphics_id", None) if g else None
+                if gid:
+                    rows = (db.query(VideoTask)
+                            .join(GraphicsTask, GraphicsTask.task_id == VideoTask.id)
+                            .filter(GraphicsTask.graphics_id == gid)
+                            .order_by(VideoTask.id.desc()).limit(60).all())
+            except Exception:
+                rows = []
+        else:
+            tid_owner = getattr(t, "teacher_id", None)
+            if tid_owner:
+                rows = (db.query(VideoTask)
+                        .filter(VideoTask.teacher_id == tid_owner)
+                        .order_by(VideoTask.id.desc()).limit(60).all())
+        seen = set()
+        # current task pehle
+        for tk in ([t] + list(rows)):
+            if not tk or tk.id in seen:
+                continue
+            seen.add(tk.id)
+            st = (tk.status or "")
+            # completed/uploaded tasks skip (current task chhod ke)
+            if tk.id != t.id and st in DONE:
+                continue
+            out.append({"id": tk.id, "title": (tk.title or ""),
+                        "status": st, "channel": (tk.channel_name or ""),
+                        "current": (tk.id == t.id)})
+            if len(out) >= 40:
+                break
+    except Exception:
+        pass
+    return out
 
 
 def _vtc_aud_filter(q, audience):
@@ -1770,6 +1867,11 @@ def vt_teacher_comments(task_id: int, db: Session = Depends(get_db), current_use
             "presence": _chat_other_presence(db, getattr(current_user, "id", None), task_id, "creator")}
 
 
+@router.get("/teacher/video-tasks/{task_id}/party-tasks")
+def vt_teacher_party_tasks(task_id: int, audience: str = "creator", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return {"tasks": _chat_party_tasks(db, task_id, (audience or "creator"))}
+
+
 @router.post("/teacher/heartbeat")
 def teacher_heartbeat(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _chat_touch_global(db, current_user)
@@ -1800,7 +1902,7 @@ def vt_teacher_comment_add(task_id: int, payload: dict = Body(...),
             except Exception:
                 _att = ""
     c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher",
-                 attachment_url=_att, audience="creator")
+                 attachment_url=_att, audience="creator", ref_task_id=payload.get("ref_task_id"))
     try: _chat_touch(db, current_user, task_id, "creator", typing=False)
     except Exception: pass
     if not c:
@@ -1845,7 +1947,7 @@ def vt_teacher_pair_add(task_id: int, payload: dict = Body(...), db: Session = D
         raise HTTPException(404, "Task not found")
     _att = _resolve_chat_att(db, t, payload, current_user)
     c = _vtc_add(db, task_id, current_user, payload.get("message"), "teacher",
-                 attachment_url=_att, audience=aud)
+                 attachment_url=_att, audience=aud, ref_task_id=payload.get("ref_task_id"))
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     try: _chat_touch(db, current_user, task_id, aud, typing=False)
@@ -2004,7 +2106,7 @@ def vt_admin_comment_add(task_id: int, payload: dict = Body(...),
     _aud = (payload.get("audience") or "creator").strip().lower()
     if _aud not in ("creator", "editor", "internal", "te_ed", "te_gf", "ed_gf"):
         _aud = "creator"
-    c = _vtc_add(db, task_id, me, payload.get("message"), "admin", audience=_aud)
+    c = _vtc_add(db, task_id, me, payload.get("message"), "admin", audience=_aud, ref_task_id=payload.get("ref_task_id"))
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     if _aud in _PAIR_AUDS:
