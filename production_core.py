@@ -728,6 +728,8 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "proposal_refs": _prefs_out(t),
         "proposal_slides": _pslides_out(t),
         "proposal_media_note": (getattr(t, "proposal_media_note", "") or ""),
+        "proposal_ok": (getattr(t, "proposal_ok", "") or ""),
+        "is_proposal": ((getattr(t, "proposal_ok", "") or "") == "pending"),
         "deadline_iso": (t.deadline.strftime("%Y-%m-%dT%H:%M:%S") if t.deadline else ""),  # LOCAL (IST), no Z — deadlines are already local; a Z made new Date() shift by the tz offset
         # delay badge current STAGE ke deadline se (teacher on-time submit kar chuka to
         # editing stage me ab editor_deadline lagta hai, teacher wala nahi)

@@ -27173,6 +27173,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!wasOpen){ h.classList.add('open'); var items=h.nextElementSibling; if(items&&items.classList.contains('ps-gitems')) items.classList.add('open'); }
     }catch(e){}
   };
+  // Har section apna filter state DETERMINISTICALLY set kare (cache-restore ke bawajood),
+  // warna pichhle section ka filter (jaise "Ready for YouTube") "Tasks" me leak ho jaata tha.
+  function _prodSetPageFilter(portal, page){
+    var f=_flt(portal); if(!f) return;
+    var _clr=function(){ f.status=''; f.deadline=''; f.priority=''; f.epreset=''; f.gpreset=''; f.ypreset=''; };
+    if(page==='tasks'||page==='videos'){ _clr(); f._locked=false; return; }
+    if(page.indexOf('gfx:')===0){ _clr(); f.gpreset=page.slice(4); f._locked=true; return; }
+    if(page.indexOf('edt:')===0){ _clr(); f.epreset=page.slice(4); f._locked=true; return; }
+    if(page.indexOf('ytb:')===0){ _clr(); f.ypreset=page.slice(4); f._locked=true; return; }
+    if(page.indexOf('q:')===0){ var st=page.slice(2); _clr();
+      if(st==='__overdue'){ f.deadline='overdue'; } else { f.status=st; } f._locked=true; return; }
+    if(page==='urgent'){ _clr(); f.priority='urgent'; f._locked=true; return; }
+  }
   // --- nav dispatch ---
   window.prodNav=function(portal,page){
     try{ if(portal){ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage=(String(page||'dashboard').replace(/^[a-z]+:/,'').replace(/[_-]+/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();})); } }catch(e){}
@@ -27194,6 +27207,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
     }catch(e){}
     window._prodCurPage[portal]=page;
+    // FILTER ISOLATION: is section ka filter yahin set kar do (cache-restore/silent-refresh se pehle),
+    // taaki "Ready for YouTube" jaisa filter "Tasks" me kabhi leak na ho.
+    try{ _prodSetPageFilter(portal, page); }catch(e){}
     // let the SWR background-refresh quietly re-render THIS portal's current page when
     // fresh data arrives (guarded by _swrBlocked so it never disturbs active work).
     try{ _curLoader=function(){ try{ _refresh(portal); }catch(e){} }; }catch(e){}
@@ -27223,6 +27239,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // cache se restore hua -> jo pages silent-refresh safe hain (koi blank nahi), unhe chupchaap
     // fresh karo; baaki ko sirf turant dikhao (focus/action par apne aap refresh ho jaate hain).
     if(_restored){
+      // list pages: cached filter-bar + active chips ko CURRENT (sahi) filter se sync karo,
+      // warna "All Status" dikhta par cards purane filter ke aate the.
+      try{ var _pf=body.querySelector('.p-filter'); if(_pf){ _pf.outerHTML=_filterBar(portal); var _pa=document.getElementById(portal+'-active'); if(_pa) _pa.innerHTML=_activeChips(portal); } }catch(e){}
       var _RS={dashboard:1,tasks:1,videos:1,board:1,thumbboard:1,team:1,views:1,time:1,library:1,creators:1,analytics:1};
       if(_RS[page] || page.indexOf(':')>=0){ try{ window._prodSilent=true; _refresh(portal); }catch(e){} finally{ window._prodSilent=false; } }
       return;
@@ -30131,6 +30150,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
       acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();ytDeleteVideo('+t.id+')">Delete</button>';
     } else {
+    // Teacher/creator ne video PROPOSE ki hai -> ab Tasks section se hi (dashboard jaisa)
+    // Review & Approve / Decline. Tasks = master, sab kuch yahin se.
+    if(t.is_proposal){
+      acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodApproveProposal('+t.id+')"><span class="rev-dot"></span>Review &amp; Approve</button>';
+      acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();prodDeclineProposal('+t.id+')">Decline</button>';
+    }
+    if(!t.is_proposal){
     // PM Review "Checking \u2014 Review" button: lifecycle-based OR legacy/admin-assigned tasks
     // jinka lifecycle blank/legacy hai par status abhi 'submitted' hai (badge bhi "PM REVIEW"
     // yahi status se dikhata hai). Warna move-to-board ke baad wale legacy tasks pe approve
@@ -30159,6 +30185,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _refv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
     if(_refv) acts+='<button class="ptc-btn ptc-refv-blink" onclick="event.stopPropagation();window.open(\''+esc(_refv)+'\',\'_blank\')"><span class="rev-dot"></span>Reference Video</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
+    }
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodVideoNeeds('+t.id+')">Video Needs</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     var _cu=t.unread||{}; var _ctot=t.unread_total||((_cu.teacher||0)+(_cu.graphics||0)+(_cu.editor||0));
@@ -31613,6 +31640,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(g.status==='submitted') b.push(_ab('Awaiting PM Review','prodStatusHistory('+t.id+')'));
       else if(g.status==='approved' && (g.thumbnail_url||g.drive_link)) b.push(_ab('View Thumbnail','prodLightbox(\''+esc(g.thumbnail_url||g.drive_link)+'\')'));
     } else if(portal==='production'){
+      if(t.is_proposal){ b.push(_ab('Review & Approve','prodApproveProposal('+t.id+')','ok'));
+        b.push(_ab('Decline','prodDeclineProposal('+t.id+')','danger')); }
       if(lc==='creator_submitted'||lc==='pm_review'){ b.push(_ab('Approve','prodAct(\'production\','+t.id+',\'/approve-creator\')','ok'));
         b.push(_ab('Resubmit','prodReviewForm('+t.id+',\'resubmit\')'));
         b.push(_ab('Reshoot','prodReviewForm('+t.id+',\'reshoot\')','warn'));
