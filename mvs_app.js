@@ -66,6 +66,9 @@ window.addEventListener('popstate',e=>{
   try{ navTo(st.app,st.pg); }finally{ _navGuard=false; }
 });
 function navTo(appId,page){
+  // Production-family portals (production/editor/graphics/youtuber) -> prodNav
+  var _pm=/^(production|editor|graphics|youtuber)-app$/.exec(appId||'');
+  if(_pm){ try{ if(typeof window.prodNav==='function') window.prodNav(_pm[1],page); }catch(e){} return; }
   let target=null;
   document.querySelectorAll('#'+appId+' .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) target=n; });
   if(appId==='teacher-app') tPage(page,target);
@@ -842,6 +845,13 @@ function goLogin(portal){
   }
   _premiumLogin(portal);
 }
+// Launcher (/portal) ka card -> portal NEW TAB me kholo, taaki launcher wala tab khula rahe
+// aur user ko wapas URL type na karna pade. Fallback: same-tab login.
+function openPortalTab(portal){
+  try{ var w=window.open(_portalPath(portal),'_blank','noopener'); if(w){ return; } }catch(e){}
+  goLogin(portal);
+}
+window.openPortalTab=openPortalTab;
 function logout(){
   // Backend ko batao ki session close ho gayi -> agli login pe live duration 0 se start ho
   // (warna purana started_at reuse hota tha aur "88m" jaisa dikhta rehta tha). keepalive:true
@@ -886,14 +896,17 @@ async function _restoreSession(){
   try{ localStorage.setItem('mvs_sess_'+ROLE_PORTAL(ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); localStorage.removeItem('mvs_sess'); }catch(e){}
   try{ document.getElementById('landing').style.display='none'; }catch(e){}
   try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
+  // refresh se pehle wala section YAAD rakho — open* functions history.state ko dashboard pe
+  // reset kar dete hain, isliye open karne se PEHLE capture karo (warna hamesha dashboard khulta).
+  var _wantSt=null; try{ var _s0=history.state; if(_s0&&_s0.mvs&&_s0.app&&_s0.pg) _wantSt={app:_s0.app,pg:_s0.pg}; }catch(e){}
   try{
     if(ROLE==='teacher') await openTeacher();
     else if(ROLE==='admin') await openAdmin();
     else if(_PROD_PORTALS&&_PROD_PORTALS[ROLE_PORTAL(ROLE)]) await openProdPortal(ROLE_PORTAL(ROLE));
     else await openStudent();
   }catch(e){}
-  // refresh par history.state bacha rehta hai -> wahi page par wapas le jao (dashboard nahi)
-  try{ const st=history.state; if(st&&st.mvs&&st.app&&st.pg) navTo(st.app,st.pg); }catch(e){}
+  // refresh par wahi section par wapas jao (dashboard nahi) — open* ke dashboard reset ke baad.
+  try{ if(_wantSt){ navTo(_wantSt.app,_wantSt.pg); } }catch(e){}
   return true;
 }
 window.addEventListener('DOMContentLoaded', function(){
@@ -27160,7 +27173,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // nahi karte -> sidebar load pe fully collapsed rehta hai (user ki request).
     var body=document.getElementById(portal+'-body'); if(!body) return;
     body.innerHTML='<div class="p-load">Loading...</div>';
-    try{ history.replaceState({mvs:1,app:portal+'-app',pg:page},'', '/'+portal); }catch(e){}
+    // Browser back/forward support: har section ek history entry banata hai (teacher/admin jaisa).
+    // _navGuard true ho (popstate/restore) to sirf state sync karo, naya entry nahi.
+    try{
+      var _hu='/'+portal;
+      if(_navGuard){ history.replaceState({mvs:1,app:portal+'-app',pg:page},'',_hu); }
+      else {
+        var _cs=history.state;
+        if(_cs&&_cs.mvs&&_cs.app===(portal+'-app')&&_cs.pg===page){ /* same page — koi naya entry nahi */ }
+        else if(!_cs||!_cs.mvs){ history.replaceState({mvs:1,app:portal+'-app',pg:page},'',_hu); }
+        else { history.pushState({mvs:1,app:portal+'-app',pg:page},'',_hu); }
+      }
+    }catch(e){}
     if(page==='dashboard') return renderDashboard(portal,body);
     if(portal==='youtuber'){
       if(page==='videos') return renderYtMy(portal,body);
