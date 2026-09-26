@@ -709,6 +709,9 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "remarks": t.remarks or "",
         "comment_count": (comment_count if comment_count is not None else _comment_count(db, t.id)),
         "submitted_link": t.submitted_link or "",
+        "submitted_at": (t.submitted_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "submitted_at", None) else ""),
+        # teacher ki submission on-time thi ya nahi — HAMESHA current deadline se (live)
+        "on_time": (bool(t.submitted_at <= t.deadline) if (getattr(t, "submitted_at", None) and t.deadline) else None),
         "created_at": _dt(t.created_at),
         # card thumbnail: graphics-made thumbnail first, else the one uploaded at assign time
         "thumbnail": (((g.thumbnail_url or "") if (g and (g.status or "") == "approved") else "") if g else (getattr(t, "thumbnail_b64", "") or (t.thumbnail_link or ""))),
@@ -1060,6 +1063,20 @@ _STAGE_UPLOAD = {"qc_approved", "ready_for_youtube"}
 # in stages me kisi ka active countdown nahi (kaam submit ho chuka / PM review me hai)
 _STAGE_NO_COUNTDOWN = {"creator_submitted", "pm_review", "approved", "qc_pending",
                        "uploaded", "completed"}
+
+
+def recompute_on_time(t):
+    """Jab deadline change ho (PM/admin edit, extension approve): agar video PEHLE hi
+    submit ho chuki hai to on_time ko NAYI deadline ke hisaab se dobara set karo.
+    Matlab admin ne submission ke baad deadline aage badha di -> jo 'delayed' tha ab
+    'on time' ho jaaye (aur ulta bhi). Sirf submitted tasks par asar; warna kuch nahi."""
+    try:
+        st = getattr(t, "submitted_at", None)
+        dl = getattr(t, "deadline", None)
+        if st and dl:
+            t.on_time = bool(st <= dl)
+    except Exception:
+        pass
 
 
 def current_stage_deadline(t):

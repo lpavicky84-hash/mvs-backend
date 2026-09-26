@@ -42,6 +42,10 @@ def _apply_new_deadline(t, payload, require=False):
     except Exception:
         raise HTTPException(400, "Invalid new deadline")
     t.deadline = nd
+    try:
+        pc.recompute_on_time(t)   # deadline change ke saath on_time bhi refresh
+    except Exception:
+        pass
     return old_dl, nd.strftime("%d %b %Y, %I:%M %p")
 
 
@@ -3918,6 +3922,8 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                 _dl_changed = True
                 _new_dl_str = _nd.strftime("%d %b %Y, %I:%M %p")
             t.deadline = _nd
+            # submission ke baad deadline change -> on_time dobara compute (delayed auto-hat jaaye)
+            pc.recompute_on_time(t)
         except Exception:
             pass
     for f in ("subject", "video_type", "channel_name", "reference", "reference_video", "remarks", "streaming", "thumbnail_link"):

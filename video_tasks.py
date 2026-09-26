@@ -324,6 +324,17 @@ def _now_ist():
     return datetime.utcnow() + timedelta(hours=5, minutes=30)
 
 
+def _live_on_time(t):
+    """on_time HAMESHA current deadline se compute — admin ne submission ke baad deadline
+    aage kar di ho to stale stored value ki jagah nayi deadline maani jaaye. Submit nahi
+    hui to stored value (None) hi lauta do."""
+    st = getattr(t, "submitted_at", None)
+    dl = getattr(t, "deadline", None)
+    if st and dl:
+        return bool(st <= dl)
+    return t.on_time
+
+
 NOT_SPECIAL = or_(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")
 # Teacher Task Manager ke saare admin/aggregate views SIRF teacher tasks dikhate hain.
 # YouTuber tasks (creator_type='youtuber') alag "YouTuber Tasks" section me jaate hain —
@@ -2261,7 +2272,9 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "is_old": bool(getattr(t, "is_old", False)),
         "submitted_link": t.submitted_link or "",
         "submitted_at": t.submitted_at.strftime("%d %b %Y, %I:%M %p") if t.submitted_at else "",
-        "on_time": t.on_time,
+        # on_time HAMESHA current deadline se — admin ne submission ke baad deadline aage
+        # kar di ho to stale 'delayed' apne aap 'on time' ho jaaye (live compute).
+        "on_time": (bool(t.submitted_at <= t.deadline) if (t.submitted_at and t.deadline) else t.on_time),
         "reviewed": bool(t.reviewed),
         "review_remarks": t.review_remarks or "",
         "reject_count": t.reject_count or 0,
@@ -2497,8 +2510,8 @@ def vt_task_rank_rows(db):
             continue
         subs = [t for t in solo if t.submitted_at]
         done = len(subs)
-        ontime = sum(1 for t in subs if t.on_time)
-        delayed = sum(1 for t in subs if t.on_time is False)
+        ontime = sum(1 for t in subs if _live_on_time(t))
+        delayed = sum(1 for t in subs if _live_on_time(t) is False)
         not_completed = sum(1 for t in solo if t.status == "not_completed")
         pending = sum(1 for t in solo if t.status == "assigned")
         rate = round(100 * ontime / done) if done else 0
@@ -2513,8 +2526,8 @@ def vt_task_rank_rows(db):
     if collab_all:
         subs = [t for t in collab_all if t.submitted_at]
         done = len(subs)
-        ontime = sum(1 for t in subs if t.on_time)
-        delayed = sum(1 for t in subs if t.on_time is False)
+        ontime = sum(1 for t in subs if _live_on_time(t))
+        delayed = sum(1 for t in subs if _live_on_time(t) is False)
         not_completed = sum(1 for t in collab_all if t.status == "not_completed")
         pending = sum(1 for t in collab_all if t.status == "assigned")
         rate = round(100 * ontime / done) if done else 0
@@ -3019,7 +3032,7 @@ def vt_admin_stats(db: Session = Depends(get_db), _=Depends(get_admin)):
     pending = total - done - approval_pending
     # Delayed = cross-cutting overlay (kisi bhi open ya late-submitted task par lag sakta hai)
     delayed = sum(1 for t in tasks
-                  if (t.on_time is False) or
+                  if (_live_on_time(t) is False) or
                   ((t.status or "") in VT_OPEN_STATUSES and t.deadline and t.deadline < now))
     ranks = vt_task_rank_rows(db)
     top = ranks[0] if ranks else None
@@ -3270,6 +3283,9 @@ def vt_edit(task_id: int, payload: dict = Body(...),
             t.deadline = ndl
             t.warned_24h = False
             t.warned_overdue = False
+            # submission ke baad deadline change -> on_time dobara (delayed auto-hat jaaye)
+            if getattr(t, "submitted_at", None):
+                t.on_time = bool(t.submitted_at <= ndl)
     if payload.get("video_type") is not None:
         vt2 = (payload.get("video_type") or "").strip()
         if vt2 != (t.video_type or ""):
@@ -3880,10 +3896,10 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         "pending": _t_pending,          # abhi kaam baaki hai
         "uploaded": sum(1 for t in real if t.status == "uploaded"),  # backward-compat
         "submitted": len(subs),
-        "on_time": sum(1 for t in subs if t.on_time),
-        # Delayed = late-submitted OR open task jiski deadline nikal gayi
+        "on_time": sum(1 for t in subs if _live_on_time(t)),
+        # Delayed = late-submitted (current deadline se) OR open task jiski deadline nikal gayi
         "delayed": sum(1 for t in real
-                       if (t.on_time is False) or
+                       if (_live_on_time(t) is False) or
                        ((t.status or "") in VT_OPEN_STATUSES and t.deadline and t.deadline < now)),
         "not_completed": sum(1 for t in real if t.status == "not_completed"),
         "month_types": month_type,

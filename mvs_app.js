@@ -10782,7 +10782,8 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       const _refBtn=_refVid?`<span class="vt-refvid-btn" onclick="window.open('${esc(_refVid).replace(/'/g,"")}','_blank','noopener')">${ic('play')} Reference Video</span>`:'';
       const _refText=(!_refVid&&(t.reference||'').trim())?`<span>Reference: ${esc(t.reference)}</span>`:'';
       const _needsBtn=((t.remarks||'').trim()||(t.reference_video||'').trim())?`<span class="vt-needs-btn" onclick="tvtOpenNeeds(${t.id})">${ic('alert')} Video Needs</span>`:'';
-      const _chatBtn=`<span class="vt-needs-btn" onclick="tvtChatMenu(${t.id})">${ic('chat')} Chat${t.unread_count?` <b style="background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;margin-left:3px">${t.unread_count}</b>`:''}</span>`;
+      const _hasUnread=(t.unread_count||0)>0;
+      const _chatBtn=`<span class="vt-chat-btn${_hasUnread?' vt-chat-blink':''}" onclick="tvtChatMenu(${t.id})">${ic('chat')} Chat${_hasUnread?` <b class="vt-chat-badge">${t.unread_count}</b>`:''}</span>`;
       const _finalRej=(t.status==='rejected'||t.status==='reshoot')&&t.no_resubmit;
       const _sbHead=(t.status==='reshoot')?`<div class="vt-resh-head">${ic('refresh')} Reshoot needed${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`
         :(t.status==='rejected')?`<div class="vt-resh-head" style="background:rgba(220,38,38,.1);color:#b91c1c;border-color:rgba(220,38,38,.35)">${ic('alert')} Rejected${t.review_remarks?` — ${esc(t.review_remarks)}`:''}</div>`:'';
@@ -11804,6 +11805,13 @@ function _ensureCbpCss(){
     '.vt-thumb-status{margin:10px 0 4px;padding:10px 12px;border-radius:10px;border:1px solid rgba(124,79,192,.3);background:rgba(124,79,192,.07)}',
     '.vt-thumb-status.ready{border-color:rgba(4,120,87,.35);background:rgba(4,120,87,.08)}',
     '.vt-thumb-status.overdue{border-color:rgba(220,38,38,.4);background:rgba(220,38,38,.08)}',
+    // premium chat button (teacher card) — unread par gold blink
+    '.vt-chat-btn{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:800;padding:7px 14px;border-radius:999px;cursor:pointer;background:var(--card,#fffdf7);color:#8a5a12;border:1.5px solid #e6c07a;transition:transform .12s,box-shadow .12s}',
+    '.vt-chat-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(201,150,46,.25)}',
+    '.vt-chat-btn .vt-chat-badge{background:#dc2626;color:#fff;border-radius:999px;padding:1px 7px;font-size:.72rem;font-weight:800;margin-left:2px}',
+    '.vt-chat-btn.vt-chat-blink{background:linear-gradient(135deg,#f5d98a,#e6ad4e);color:#3a2e0e;border-color:#d99a2e;box-shadow:0 3px 12px rgba(201,150,46,.35);animation:vtChatPulse 1.3s ease-in-out infinite}',
+    '@keyframes vtChatPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}',
+    'body.dark .vt-chat-btn{background:#221a0c;color:#f0c883;border-color:#5a4416}',
     '.vt-thumb-status .vts-h{font-size:.82rem;font-weight:800;color:#7c4fc0;display:flex;align-items:center;gap:6px}',
     '.vt-thumb-status.ready .vts-h{color:#047857}',
     '.vt-thumb-status.overdue .vts-h{color:#b91c1c}',
@@ -26484,6 +26492,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-letter{font-size:3rem;font-weight:800;color:rgba(255,255,255,.9)}',
 '.ptc-badge{position:absolute;top:10px;right:10px;color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.05em;padding:4px 10px;border-radius:999px;z-index:4;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)}',
 '.ptc-urgent{position:absolute;top:10px;left:10px;background:#d1443a;color:#fff;font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:999px;z-index:4}',
+'.ptc-hw .pt-badge.review{position:absolute;left:10px;bottom:10px;z-index:4;background:rgba(255,255,255,.94);color:#c23a30;backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(0,0,0,.22)}',
+'body.dark .ptc-hw .pt-badge.review{background:rgba(30,22,10,.9);color:#f0a58f}',
 '.ptc-view{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.64rem;font-weight:800;padding:4px 10px;border-radius:8px;text-decoration:none}',
 '.ptc-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}',
 '.ptc-title{font-weight:800;font-size:1rem;line-height:1.25}',
@@ -29796,6 +29806,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else { df={kind:'none',label:''}; }   // is stage ka koi active deadline nahi -> koi delay nahi
     var _dlLbl=(df.label||'')+((df.kind==='overdue'&&_dlWho)?(' · '+_dlWho):'');
     var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlwho="'+esc(_dlWho)+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(_dlLbl)+(portal==='editor'&&t.editor_deadline_iso?' (editor)':'')+'</span>':'';
+    // Teacher submit kar chuka + ab review/next-stage me hai -> countdown ki jagah submission
+    // ka result dikhao (green "Submitted on time" / red "Submitted delayed") — positive confirm.
+    if(!dl && t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(t.lifecycle||'')>=0){
+      dl=t.on_time?('<span class="pt-dl done">'+ic('check')+' Submitted on time</span>')
+                  :('<span class="pt-dl overdue">'+ic('alert')+' Submitted delayed</span>');
+    }
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
