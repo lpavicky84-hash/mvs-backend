@@ -3422,6 +3422,22 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-prop-note{margin-top:5px;font-size:.79rem;color:var(--text-muted);background:rgba(0,0,0,.03);border-radius:8px;padding:6px 9px}
 .dark .vt-prop-note{background:rgba(255,255,255,.05)}
 .vt-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+/* ---- premium action buttons on the teacher card (Chat / Video Needs / Reference) ---- */
+.vt-chat-btn,.vt-needs-btn,.vt-refvid-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;font-size:.78rem;font-weight:800;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease;white-space:nowrap;align-self:flex-start}
+.vt-chat-btn:hover,.vt-needs-btn:hover,.vt-refvid-btn:hover{transform:translateY(-1px)}
+.vt-chat-btn svg,.vt-needs-btn svg,.vt-refvid-btn svg{width:13px;height:13px}
+.vt-chat-btn{background:var(--card-bg);color:#8a5a12;border:1.5px solid #e6c07a}
+.vt-chat-btn .vt-chat-badge{background:#dc2626;color:#fff;border-radius:999px;padding:1px 7px;font-size:.72rem;font-weight:800;margin-left:2px}
+.vt-chat-btn.vt-chat-blink{background:linear-gradient(135deg,#f5d98a,#e6ad4e);color:#3a2e0e;border-color:#d99a2e;box-shadow:0 3px 12px rgba(201,150,46,.35);animation:vtChatPulse 1.3s ease-in-out infinite}
+@keyframes vtChatPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
+.dark .vt-chat-btn{background:#221a0c;color:#f0c883;border-color:#5a4416}
+.vt-needs-btn{background:linear-gradient(135deg,#f6c65a,#e0a52e);color:#4a3208;border:1.5px solid #d0951f;box-shadow:0 2px 8px rgba(201,150,46,.28);animation:vtNeedsPulse 1.4s ease-in-out infinite}
+@keyframes vtNeedsPulse{0%,100%{box-shadow:0 2px 8px rgba(201,150,46,.28),0 0 0 0 rgba(224,165,46,.5)}50%{box-shadow:0 2px 8px rgba(201,150,46,.28),0 0 0 6px rgba(224,165,46,0)}}
+.vt-refvid-btn{background:linear-gradient(135deg,rgba(8,145,178,.18),rgba(8,145,178,.08));color:#0e7490;border:1.5px solid rgba(8,145,178,.4);animation:vtRefvidPulse 1.4s ease-in-out infinite}
+@keyframes vtRefvidPulse{0%,100%{box-shadow:0 0 0 0 rgba(8,145,178,.4)}50%{box-shadow:0 0 0 6px rgba(8,145,178,0)}}
+/* premium card polish: richer thumbnail gradient + stronger hover lift */
+.vt-thumb{background:linear-gradient(135deg,#4a3809,#7c5c10 60%,#8a6712)}
+.vt-card:hover{box-shadow:0 16px 36px -14px rgba(90,60,10,.4);transform:translateY(-3px)}
 .vt-checking{animation:vtBlink 1.4s ease-in-out infinite}
 .vt-sub-blink{animation:vtCardBlink 1s ease-in-out infinite;border-color:#d97706!important}
 @keyframes vtCardBlink{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.6);border-color:#d97706}50%{box-shadow:0 0 0 7px rgba(217,119,6,.03);border-color:#f59e0b}}
