@@ -574,6 +574,13 @@ def yt_comments(tid: int, audience: str = "creator", db: Session = Depends(get_d
     return {"comments": _VT._vtc_list(db, tid, aud)}
 
 
+@router.get("/videos/{tid}/party-tasks")
+def yt_party_tasks(tid: int, audience: str = "creator", db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    import video_tasks as _VT
+    yp = _me_yt(db, me); _my_task(db, yp, tid)
+    return {"tasks": _VT._chat_party_tasks(db, tid, (audience or "creator"))}
+
+
 @router.post("/videos/{tid}/comments")
 def yt_comment_add(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_youtuber)):
     import video_tasks as _VT
@@ -592,7 +599,7 @@ def yt_comment_add(tid: int, payload: dict = Body(...), db: Session = Depends(ge
                 att = urls[0]
         except Exception:
             pass
-    c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "youtuber", attachment_url=att, audience=aud)
+    c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "youtuber", attachment_url=att, audience=aud, ref_task_id=payload.get("ref_task_id"))
     if not c:
         raise HTTPException(400, "Empty message")
     _snip = (payload.get("message") or "").strip()[:60]

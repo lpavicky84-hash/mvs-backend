@@ -335,6 +335,12 @@ def pm_task_comments(tid: int, audience: str = "", db: Session = Depends(get_db)
     return {"comments": _vtc_list_v(db, tid, (audience or None), getattr(me, "id", None)),
             "presence": _chat_other_presence(db, getattr(me, "id", None), tid, _aud)}
 
+@router.get("/tasks/{tid}/party-tasks")
+def pm_party_tasks(tid: int, audience: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    from video_tasks import _chat_party_tasks
+    return {"tasks": _chat_party_tasks(db, tid, (audience or "creator"))}
+
+
 @router.post("/heartbeat")
 def pm_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
                  me=Depends(get_pm_or_admin)):
@@ -381,7 +387,7 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
     if _aud not in ("creator", "internal", "editor", "te_ed", "te_gf", "ed_gf"):
         _aud = "creator"
     _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
-    c = _vtc_add(db, tid, me, payload.get("message"), _crole, _att, _aud)
+    c = _vtc_add(db, tid, me, payload.get("message"), _crole, _att, _aud, ref_task_id=payload.get("ref_task_id"))
     from video_tasks import _chat_touch as _ct0
     try: _ct0(db, me, tid, _aud, typing=False)
     except Exception: pass

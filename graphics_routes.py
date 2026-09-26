@@ -261,6 +261,13 @@ def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphic
     return {"comments": _vtc_list_v(db, tid, "internal", getattr(me, "id", None)),
             "presence": _chat_other_presence(db, getattr(me, "id", None), tid, "internal")}
 
+@router.get("/tasks/{tid}/party-tasks")
+def gfx_party_tasks(tid: int, audience: str = "internal", db: Session = Depends(get_db), me=Depends(get_graphics)):
+    from video_tasks import _chat_party_tasks
+    sp = _me_staff(db, me); _my_gtask(db, sp, tid)
+    return {"tasks": _chat_party_tasks(db, tid, (audience or "internal"))}
+
+
 @router.post("/heartbeat")
 def gfx_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
                   me=Depends(get_graphics)):
@@ -302,7 +309,7 @@ def gfx_pair_add(tid: int, payload: dict = Body(...), db: Session = Depends(get_
     if not t:
         raise HTTPException(404, "Task not found")
     _att = _VT._resolve_chat_att(db, t, payload, me)
-    c = _VT._vtc_add(db, tid, me, payload.get("message"), "graphics", attachment_url=_att, audience=aud)
+    c = _VT._vtc_add(db, tid, me, payload.get("message"), "graphics", attachment_url=_att, audience=aud, ref_task_id=payload.get("ref_task_id"))
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     try: _VT._chat_touch(db, me, tid, aud, typing=False)
@@ -345,7 +352,7 @@ def gfx_comment_add(tid: int, payload: dict = Body(...),
                 _att = urls[0]
         except Exception:
             _att = ""
-    c = _vtc_add(db, tid, me, payload.get("message"), "graphics", _att, "internal")
+    c = _vtc_add(db, tid, me, payload.get("message"), "graphics", _att, "internal", ref_task_id=payload.get("ref_task_id"))
     from video_tasks import _chat_touch as _ctg
     try: _ctg(db, me, tid, "internal", typing=False)
     except Exception: pass

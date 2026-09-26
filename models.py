@@ -1735,6 +1735,7 @@ class VideoTaskComment(Base):
     message = Column(Text, default="")
     attachment_url = Column(String(600), default="")   # optional image/screenshot in chat (R2 url)
     audience = Column(String(20), default="creator")    # creator (teacher-facing) | internal (PM/graphics/admin only)
+    ref_task_id = Column(Integer, nullable=True)        # optional: which task THIS message is about (WhatsApp-style attach)
     created_at = Column(DateTime, default=func.now())
 
 

@@ -411,6 +411,13 @@ def editor_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
     return {"comments": _VT._vtc_list_v(db, tid, "editor", getattr(me, "id", None)),
             "presence": _VT._chat_other_presence(db, getattr(me, "id", None), tid, "editor")}
 
+@router.get("/tasks/{tid}/party-tasks")
+def editor_party_tasks(tid: int, audience: str = "editor", db: Session = Depends(get_db), me=Depends(get_editor)):
+    import video_tasks as _VT
+    sp = _me_staff(db, me); _my_task(db, sp, tid)
+    return {"tasks": _VT._chat_party_tasks(db, tid, (audience or "editor"))}
+
+
 @router.post("/heartbeat")
 def editor_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
                      me=Depends(get_editor)):
@@ -452,7 +459,7 @@ def editor_pair_add(tid: int, payload: dict = Body(...), db: Session = Depends(g
     if not t:
         raise HTTPException(404, "Task not found")
     _att = _VT._resolve_chat_att(db, t, payload, me)
-    c = _VT._vtc_add(db, tid, me, payload.get("message"), "editor", attachment_url=_att, audience=aud)
+    c = _VT._vtc_add(db, tid, me, payload.get("message"), "editor", attachment_url=_att, audience=aud, ref_task_id=payload.get("ref_task_id"))
     if not c:
         raise HTTPException(400, "Message cannot be empty")
     try: _VT._chat_touch(db, me, tid, aud, typing=False)
@@ -494,7 +501,7 @@ def editor_comment_add(tid: int, payload: dict = Body(...), db: Session = Depend
                 att = urls[0]
         except Exception:
             pass
-    c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "editor", attachment_url=att, audience="editor")
+    c = _VT._vtc_add(db, tid, me, payload.get("message") or "", "editor", attachment_url=att, audience="editor", ref_task_id=payload.get("ref_task_id"))
     try: _VT._chat_touch(db, me, tid, "editor", typing=False)
     except Exception: pass
     if not c:
