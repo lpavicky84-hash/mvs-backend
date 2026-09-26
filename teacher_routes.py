@@ -1735,9 +1735,12 @@ def teacher_task_stats(period: str = "month", frm: str = "", to: str = "",
         assigned += 1
         if t.submitted_at:
             submitted += 1
-            if t.on_time is True:
+            # on_time HAMESHA current deadline se (admin ne submission ke baad deadline aage
+            # kar di ho to stale 'delayed' apne aap 'on time' ho jaaye)
+            _ot = (bool(t.submitted_at <= t.deadline) if t.deadline else t.on_time)
+            if _ot is True:
                 on_time += 1
-            elif t.on_time is False:
+            elif _ot is False:
                 delayed += 1
         else:
             pending += 1
