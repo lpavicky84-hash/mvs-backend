@@ -200,8 +200,11 @@ def file_response(value, media_type="application/octet-stream", filename=None, d
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
-    # Opt-in: R2 object ho to server se proxy na karo -> CDN (custom domain) par redirect.
-    if _direct_media_on():
+    # DEFAULT: R2 object ho to server se proxy NA karo -> CDN (custom domain / mvsdatabase.com)
+    # par 302 redirect. Cloudflare R2 egress FREE hota hai -> Railway ka egress bill ~0.
+    # (serve_url sirf ASAL R2 object par URL deta hai; base64 / Google-Drive link -> None ->
+    #  neeche proxy fallback, kuch tootega nahi.) Emergency me R2_PROXY_FORCE=1 se off.
+    if (os.getenv("R2_PROXY_FORCE") or "").strip().lower() not in ("1", "true", "yes", "on"):
         _su = serve_url(value)
         if _su:
             return _redirect_to(_su)
@@ -333,8 +336,9 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
     from fastapi import HTTPException, Response
     if not value:
         raise HTTPException(status_code=404, detail="Not found")
-    # Opt-in: R2 object ho to CDN (custom domain) par redirect -> server load ~0.
-    if _direct_media_on():
+    # DEFAULT: R2 object -> CDN par 302 redirect (free egress), server se proxy nahi.
+    # base64 / non-R2 -> serve_url None -> neeche proxy fallback. Emergency: R2_PROXY_FORCE=1.
+    if (os.getenv("R2_PROXY_FORCE") or "").strip().lower() not in ("1", "true", "yes", "on"):
         _su = serve_url(value)
         if _su:
             return _redirect_to(_su)

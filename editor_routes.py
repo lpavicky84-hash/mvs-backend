@@ -1,7 +1,7 @@
 """Editor API (/api/editor). Editors only see and act on their own assigned tasks.
 Active editing time is measured from real EditingSession rows (excludes idle/paused)."""
 from fastapi import APIRouter, Depends, HTTPException, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from sqlalchemy import func, or_, and_
 from datetime import datetime, date, timedelta
 
@@ -371,11 +371,12 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
             q = q.filter(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]))
         else:
             q = q.filter(VideoTask.lifecycle == status)
-    rows = q.order_by(VideoTask.updated_at.desc()).all()
+    rows = q.options(defer(VideoTask.thumbnail_b64)).order_by(VideoTask.updated_at.desc()).all()
     # LIKE can over-match (12 vs 120) -> exact membership check
     rows = [t for t in rows if pc.editor_can_access(t, sp.id)]
     _ccm = pc.comment_count_map(db, [t.id for t in rows])
-    _outs = [pc.task_out(db, t, light=True, viewer="editor", comment_count=_ccm.get(t.id, 0)) for t in rows]
+    _tm = pc.thumb_map_for(db, [t.id for t in rows])
+    _outs = [pc.task_out(db, t, light=True, viewer="editor", comment_count=_ccm.get(t.id, 0), thumb_map=_tm) for t in rows]
     try:
         from video_tasks import _vtc_unread_bulk
         _un = _vtc_unread_bulk(db, getattr(me, "id", None), [t.id for t in rows])

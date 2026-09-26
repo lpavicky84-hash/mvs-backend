@@ -2,7 +2,7 @@
 Approval ON/OFF (creator default + per-video override) decides whether a submitted
 video goes to PM review or straight into production."""
 from fastapi import APIRouter, Depends, HTTPException, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from datetime import datetime, timedelta
 
 from database import get_db
@@ -187,9 +187,10 @@ def yt_videos(status: str = "", filter: str = "", db: Session = Depends(get_db),
         q = q.filter(VideoTask.lifecycle == "ready_for_youtube")
     if status:
         q = q.filter(VideoTask.lifecycle == status)
-    rows = q.order_by(VideoTask.updated_at.desc()).all()
+    rows = q.options(defer(VideoTask.thumbnail_b64)).order_by(VideoTask.updated_at.desc()).all()
     _ccm = pc.comment_count_map(db, [t.id for t in rows])
-    return {"videos": [pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0)) for t in rows]}
+    _tm = pc.thumb_map_for(db, [t.id for t in rows])
+    return {"videos": [pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0), thumb_map=_tm) for t in rows]}
 
 
 @router.get("/videos/{tid}")
@@ -205,12 +206,13 @@ def yt_upload_schedule(db: Session = Depends(get_db), me=Depends(get_youtuber)):
     """This youtuber's OWN tasks that have an upload date or are ready/uploaded."""
     from sqlalchemy import or_ as _or
     yp = _me_yt(db, me)
-    rows = (db.query(VideoTask)
+    rows = (db.query(VideoTask).options(defer(VideoTask.thumbnail_b64))
             .filter(VideoTask.cancelled == False, VideoTask.youtuber_id == yp.id,
                     _or(VideoTask.upload_date != None,
                         VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"])))
             .order_by(VideoTask.upload_date.asc()).all())
-    return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
+    _tm = pc.thumb_map_for(db, [t.id for t in rows])
+    return {"tasks": [pc.task_out(db, t, light=True, thumb_map=_tm) for t in rows]}
 
 
 @router.get("/thumbnail-reviews")
@@ -229,8 +231,9 @@ def yt_thumbnail_reviews(db: Session = Depends(get_db), me=Depends(get_youtuber)
     def _out(ids):
         if not ids:
             return []
-        rows = db.query(VideoTask).filter(VideoTask.id.in_(ids)).order_by(VideoTask.updated_at.desc()).all()
-        return [pc.task_out(db, t, light=True) for t in rows]
+        rows = db.query(VideoTask).options(defer(VideoTask.thumbnail_b64)).filter(VideoTask.id.in_(ids)).order_by(VideoTask.updated_at.desc()).all()
+        _tm = pc.thumb_map_for(db, ids)
+        return [pc.task_out(db, t, light=True, thumb_map=_tm) for t in rows]
     return {"pending": _out(pend), "changes": _out(chg)}
 
 

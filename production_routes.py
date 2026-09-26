@@ -5,7 +5,7 @@ is authorised server-side and updates the shared state engine in production_core
 """
 from fastapi import APIRouter, Depends, HTTPException, Body, Response
 import json
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from sqlalchemy import func, or_, and_
 from datetime import datetime, date, timedelta
 
@@ -139,7 +139,7 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     # ---- Pending YouTube links: scheduled upload time has passed but the link isn't posted yet.
     # upload_date is stored as IST-local (naive), so compare against IST "now", not UTC.
     now_ist = now + timedelta(hours=5, minutes=30)
-    pend_rows = (db.query(VideoTask)
+    pend_rows = (db.query(VideoTask).options(defer(VideoTask.thumbnail_b64))
                  .filter(VideoTask.cancelled == False,
                          VideoTask.upload_date != None,          # noqa: E711
                          VideoTask.upload_date <= now_ist,
@@ -147,7 +147,8 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                          or_(VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"]),
                              VideoTask.lifecycle == None, VideoTask.lifecycle == ""))       # noqa: E711
                  .order_by(VideoTask.upload_date.asc()).all())
-    pending_yt = [pc.task_out(db, t, light=True) for t in pend_rows]
+    _pend_tm = pc.thumb_map_for(db, [t.id for t in pend_rows])
+    pending_yt = [pc.task_out(db, t, light=True, thumb_map=_pend_tm) for t in pend_rows]
     return {"greeting_name": me.name, "date": today.isoformat(),
             "kpis": kpis, "secondary": secondary,
             "events": pc.active_events_for(db, "all"),
@@ -288,7 +289,10 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
                              VideoTask.deadline <= now + timedelta(days=7),
                              VideoTask.deadline >= now)
     total = query.count()
-    rows = (query.order_by(VideoTask.updated_at.desc())
+    # base64 thumbnail column ka CONTENT list me load MAT karo (RAM + speed) — thumbnail
+    # ka URL alag se thumb_map se aata hai.
+    rows = (query.options(defer(VideoTask.thumbnail_b64))
+            .order_by(VideoTask.updated_at.desc())
             .offset(max(0, page - 1) * size).limit(size).all())
 
     # Collab info for list cards (parses the task's JSON fields — no extra DB queries).
@@ -298,9 +302,10 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         _cai = _cvm = None
 
     _cc_map = pc.comment_count_map(db, [t.id for t in rows])   # 1 query, was 1 COUNT per task
+    _thumb_map = pc.thumb_map_for(db, [t.id for t in rows])    # thumbnail URLs — base64 load kiye bina
 
     def _task_out_collab(t):
-        o = pc.task_out(db, t, light=True, comment_count=_cc_map.get(t.id, 0))
+        o = pc.task_out(db, t, light=True, comment_count=_cc_map.get(t.id, 0), thumb_map=_thumb_map)
         if _cai:
             try:
                 allids = _cai(t)
@@ -1355,12 +1360,13 @@ def pm_set_upload_schedule(tid: int, payload: dict = Body(...),
 @router.get("/upload-schedule")
 def pm_upload_schedule(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     """All tasks that have an upload date OR are ready/uploaded — for the weekly/monthly calendar."""
-    rows = (db.query(VideoTask)
+    rows = (db.query(VideoTask).options(defer(VideoTask.thumbnail_b64))
             .filter(VideoTask.cancelled == False,
                     or_(VideoTask.upload_date != None,
                         VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"])))
             .order_by(VideoTask.upload_date.asc()).all())
-    return {"tasks": [pc.task_out(db, t, light=True) for t in rows]}
+    _tm = pc.thumb_map_for(db, [t.id for t in rows])
+    return {"tasks": [pc.task_out(db, t, light=True, thumb_map=_tm) for t in rows]}
 
 
 # ============================================================ DAILY / WEEKLY / MONTHLY REPORT

@@ -1,7 +1,7 @@
 """Graphics API (/api/graphics). Thumbnail work is tracked independently of the
 video's editing lifecycle (a video can be Editing while its thumbnail is Approved)."""
 from fastapi import APIRouter, Depends, HTTPException, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from sqlalchemy import func, or_
 from datetime import datetime, date, timedelta
 
@@ -223,14 +223,15 @@ def gfx_tasks(status: str = "", filter: str = "", db: Session = Depends(get_db),
     _tids = [g.task_id for g in gts if g.task_id]
     _vmap = {}                                   # batch the VideoTask lookup (was 1 query per graphics task)
     if _tids:
-        for t in db.query(VideoTask).filter(VideoTask.id.in_(_tids)):
+        for t in db.query(VideoTask).options(defer(VideoTask.thumbnail_b64)).filter(VideoTask.id.in_(_tids)):
             _vmap[t.id] = t
     _ccm = pc.comment_count_map(db, _tids)       # batch comment counts (was 1 COUNT per task)
+    _tm = pc.thumb_map_for(db, _tids)            # thumbnail URLs — base64 load kiye bina
     for g in gts:
         t = _vmap.get(g.task_id)
         if not t or getattr(t, 'cancelled', False):
             continue
-        row = pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0))
+        row = pc.task_out(db, t, light=True, comment_count=_ccm.get(t.id, 0), thumb_map=_tm)
         out.append(row)
     try:
         from video_tasks import _vtc_unread_bulk

@@ -642,7 +642,60 @@ def _pslides_out(t):
     return [{"url": s, "name": getattr(t, "proposal_slide_name", "") or "slide"}] if s else []
 
 
-def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_count=None):
+def _resolve_thumb(t, g, thumb_map=None):
+    """Card thumbnail as a URL — kabhi bhi base64 blob JSON me inline NAHI karta
+    (warna har list response me MBs ka base64 jaata tha -> egress + RAM). base64 ho to
+    /api/vt-thumb/{id} endpoint se serve; R2 URL ho to seedha CDN URL."""
+    if g:
+        return (g.thumbnail_url or "") if ((g.status or "") == "approved") else ""
+    if thumb_map is not None:
+        v = thumb_map.get(t.id, "")
+        return v if v else (t.thumbnail_link or "")
+    tb = getattr(t, "thumbnail_b64", "") or ""
+    if tb.startswith("http"):
+        try:
+            return __import__("r2_storage").to_custom_domain(tb)
+        except Exception:
+            return tb
+    if tb:
+        return "/api/vt-thumb/%d" % t.id
+    return t.thumbnail_link or ""
+
+
+def thumb_map_for(db, ids):
+    """Bulk: {task_id: thumbnail_url_field} — base64 column ka CONTENT load kiye bina.
+    MySQL me CASE se sirf http-URL (chhota) ya '#b64' marker aata hai, 16MB base64 nahi."""
+    out = {}
+    ids = [int(x) for x in set(ids or []) if x]
+    if not ids:
+        return out
+    try:
+        from sqlalchemy import text, bindparam
+        rows = db.execute(text(
+            "SELECT id, "
+            "CASE WHEN thumbnail_b64 LIKE 'http%' THEN thumbnail_b64 "
+            "     WHEN thumbnail_b64 IS NOT NULL AND thumbnail_b64 <> '' THEN '#b64' "
+            "     ELSE '' END AS tb, "
+            "COALESCE(thumbnail_link,'') AS tl "
+            "FROM video_tasks WHERE id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True)), {"ids": ids}).fetchall()
+        r2 = __import__("r2_storage")
+        for rid, tb, tl in rows:
+            if tb and tb != '#b64':
+                try: out[rid] = r2.to_custom_domain(tb)
+                except Exception: out[rid] = tb
+            elif tb == '#b64':
+                out[rid] = "/api/vt-thumb/%d" % rid
+            elif tl:
+                out[rid] = tl
+            else:
+                out[rid] = ""
+    except Exception:
+        out = {}
+    return out
+
+
+def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_count=None, thumb_map=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
         g = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
@@ -714,7 +767,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "on_time": (bool(t.submitted_at <= t.deadline) if (getattr(t, "submitted_at", None) and t.deadline) else None),
         "created_at": _dt(t.created_at),
         # card thumbnail: graphics-made thumbnail first, else the one uploaded at assign time
-        "thumbnail": (((g.thumbnail_url or "") if (g and (g.status or "") == "approved") else "") if g else (getattr(t, "thumbnail_b64", "") or (t.thumbnail_link or ""))),
+        "thumbnail": _resolve_thumb(t, g, thumb_map),
         "graphics": {
             "id": (g.id if g else None),
             "graphics_id": (g.graphics_id if g else None),

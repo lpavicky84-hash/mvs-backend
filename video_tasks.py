@@ -2342,7 +2342,25 @@ def _vt_pslides(t):
     return [{"url": s, "name": getattr(t, "proposal_slide_name", "") or "slide"}] if s else []
 
 
-def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
+def _thumb_id_set(db, ids):
+    """Set of task-ids that HAVE a thumbnail — base64 content load kiye bina (sirf existence)."""
+    out = set()
+    ids = [int(x) for x in set(ids or []) if x]
+    if not ids:
+        return out
+    try:
+        from sqlalchemy import text, bindparam
+        rows = db.execute(text(
+            "SELECT id FROM video_tasks WHERE id IN :ids "
+            "AND thumbnail_b64 IS NOT NULL AND thumbnail_b64 <> ''"
+        ).bindparams(bindparam("ids", expanding=True)), {"ids": ids}).fetchall()
+        out = {r[0] for r in rows}
+    except Exception:
+        out = set()
+    return out
+
+
+def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=None):
     def _tn(tid):
         if tname_map is not None:
             return tname_map.get(tid, "")
@@ -2354,7 +2372,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
         "teacher": _tn(t.teacher_id),
         "channel_id": t.channel_id, "channel": t.channel_name or "",
         "video_type": getattr(t, "video_type", "") or "",
-        "has_thumbnail": bool(t.thumbnail_b64),
+        "has_thumbnail": ((t.id in thumb_set) if thumb_set is not None else bool(t.thumbnail_b64)) or bool(t.thumbnail_link),
         "thumbnail_link": t.thumbnail_link or "",
         "reference": t.reference or "", "remarks": t.remarks or "",
         "proposal_slide": (getattr(t, "proposal_slide", "") or ""),
@@ -2421,7 +2439,8 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None):
     out["submitted_by"] = _sub_by or (t.teacher_id if t.submitted_at else None)
     out["submitted_by_name"] = _tn(out["submitted_by"]) if out["submitted_by"] else ""
     if with_thumb:
-        out["thumb_url"] = ("/api/vt-thumb/%d" % t.id) if (t.thumbnail_b64 or "") else ""
+        _hasb64 = (t.id in thumb_set) if thumb_set is not None else bool(t.thumbnail_b64 or "")
+        out["thumb_url"] = ("/api/vt-thumb/%d" % t.id) if _hasb64 else ""
     # ---- thumbnail (graphics) status so the creator knows if a thumbnail is coming
     out["thumbnail_required"] = bool(getattr(t, "thumbnail_required", False))
     # ---- production assignment info (so admin/PM cards can assign editor & graphics)
@@ -2503,12 +2522,18 @@ def vt_thumb(tid: int, db: Session = Depends(get_db)):
     t = db.query(VideoTask).filter(VideoTask.id == tid).first()
     raw = (getattr(t, "thumbnail_b64", "") or "") if t else ""
     link = (getattr(t, "thumbnail_link", "") or "") if t else ""
+    _cc = {"Cache-Control": "public, max-age=604800"}   # browser 1 week cache -> Railway dobara hit nahi
     if not raw:
         if link:
-            return RedirectResponse(link)
+            try: link = __import__("r2_storage").to_custom_domain(link)
+            except Exception: pass
+            return RedirectResponse(link, headers=_cc)
         return Response(status_code=404)
     if raw.startswith("http"):
-        return RedirectResponse(raw)
+        # R2 object -> custom domain (mvsdatabase.com) par redirect = Cloudflare FREE egress
+        try: raw = __import__("r2_storage").to_custom_domain(raw)
+        except Exception: pass
+        return RedirectResponse(raw, headers=_cc)
     mime = "image/jpeg"; data = raw
     if raw.startswith("data:"):
         try:
@@ -3083,17 +3108,21 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
         q = q.filter(VideoTask.channel_id == channel_id)
     if video_type:
         q = q.filter(VideoTask.video_type == video_type)
-    tasks = q.order_by(VideoTask.created_at.desc()).all()
-    props = (db.query(VideoTask).filter(VideoTask.proposal_ok == "pending", NOT_YOUTUBER,
-                                        VideoTask.cancelled.isnot(True))
+    from sqlalchemy.orm import defer as _defer
+    tasks = q.options(_defer(VideoTask.thumbnail_b64)).order_by(VideoTask.created_at.desc()).all()
+    props = (db.query(VideoTask).options(_defer(VideoTask.thumbnail_b64))
+             .filter(VideoTask.proposal_ok == "pending", NOT_YOUTUBER,
+                     VideoTask.cancelled.isnot(True))
              .order_by(VideoTask.created_at.desc()).all())
-    urgent = (db.query(VideoTask).filter(VideoTask.kind == "urgent", NOT_YOUTUBER,
-                                         VideoTask.cancelled.isnot(True))
+    urgent = (db.query(VideoTask).options(_defer(VideoTask.thumbnail_b64))
+              .filter(VideoTask.kind == "urgent", NOT_YOUTUBER,
+                      VideoTask.cancelled.isnot(True))
               .order_by(VideoTask.created_at.desc()).all())
     _tnm = _all_teacher_names(db)   # ek query — per-task N+1 khatam (fast)
-    return {"tasks": [_task_out(db, t, tname_map=_tnm) for t in tasks],
-            "proposals": [_task_out(db, t, tname_map=_tnm) for t in props],
-            "urgent": [_task_out(db, t, tname_map=_tnm) for t in urgent]}
+    _ts = _thumb_id_set(db, [t.id for t in tasks] + [t.id for t in props] + [t.id for t in urgent])
+    return {"tasks": [_task_out(db, t, tname_map=_tnm, thumb_set=_ts) for t in tasks],
+            "proposals": [_task_out(db, t, tname_map=_tnm, thumb_set=_ts) for t in props],
+            "urgent": [_task_out(db, t, tname_map=_tnm, thumb_set=_ts) for t in urgent]}
 
 
 @router.get("/admin/video-tasks/badge", dependencies=[Depends(_admin_section_guard)])
@@ -3948,8 +3977,9 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     if _tt.time() - _te.get(tp.id, 0) > 180:
         _ensure_special_teacher(db, tp)
         _te[tp.id] = _tt.time()
+    from sqlalchemy.orm import defer as _defer
     try:
-        tasks = (db.query(VideoTask)
+        tasks = (db.query(VideoTask).options(_defer(VideoTask.thumbnail_b64))
                  .filter(or_(VideoTask.teacher_id == tp.id,
                              VideoTask.collab_teacher_ids.like('%' + str(tp.id) + '%')),
                          VideoTask.cancelled.isnot(True),
@@ -3958,7 +3988,7 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
         tasks = [t for t in tasks if tp.id in _collab_all_ids(t)]
     except Exception:
         # models me collab column abhi na ho to sirf primary teacher ke tasks
-        tasks = (db.query(VideoTask)
+        tasks = (db.query(VideoTask).options(_defer(VideoTask.thumbnail_b64))
                  .filter(VideoTask.teacher_id == tp.id,
                          VideoTask.cancelled.isnot(True),
                          or_(NOT_SPECIAL, VideoTask.kind == "urgent"))
@@ -3977,7 +4007,8 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
                                        VideoTaskComment.audience == "creator"))
                            .group_by(VideoTaskComment.task_id)):
             _ccm[_tid] = _cnt
-    out = [_task_out(db, t, tname_map=_tnm2, cc_map=_ccm) for t in active + rest]
+    _ts2 = _thumb_id_set(db, _mtids)
+    out = [_task_out(db, t, tname_map=_tnm2, cc_map=_ccm, thumb_set=_ts2) for t in active + rest]
     nxt = active[0] if active else None
     # teacher ke apne stats: kitni upload hui, pending, on-time, delayed + is mahine type-wise
     now = _now_ist()
