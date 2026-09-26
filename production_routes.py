@@ -14,10 +14,48 @@ from security import get_pm_or_admin
 from models import (
     User, UserRole, VideoTask, GraphicsTask, EditingSession, ProductionEvent,
     TaskReview, YouTuberProfile, ProductionStaffProfile, TeacherProfile, Notification,
+    ist_now,
 )
 import production_core as pc
 
 router = APIRouter(prefix="/api/production", tags=["Production"])
+
+
+def _daterange_utc(date_range: str = "", date_from: str = "", date_to: str = ""):
+    """Date-wise master filter -> (start_utc, end_utc) naive-UTC bounds for created_at, ya (None, None).
+
+    created_at DB me UTC-naive store hota hai. Boundaries IST calendar (ist_now) par nikaal kar
+    UTC me shift (-5:30) karte hain, taaki 'Today/Yesterday/Weekly/Monthly' aur custom range IST
+    ke hisaab se sahi din pakde. end HAMESHA exclusive (< end)."""
+    IST_OFF = timedelta(hours=5, minutes=30)
+    dr = (date_range or "").strip().lower()
+    df = (date_from or "").strip()
+    dt2 = (date_to or "").strip()
+    try:
+        # Custom range: "kab se kab tak" (YYYY-MM-DD). Range set ho ya sirf from/to aaye.
+        if dr == "custom" or df or dt2:
+            s = e = None
+            if df:
+                s = datetime.strptime(df[:10], "%Y-%m-%d") - IST_OFF
+            if dt2:
+                e = (datetime.strptime(dt2[:10], "%Y-%m-%d") + timedelta(days=1)) - IST_OFF
+            return s, e
+        if not dr or dr == "all":
+            return None, None
+        today = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if dr == "today":
+            s, e = today, today + timedelta(days=1)
+        elif dr == "yesterday":
+            s, e = today - timedelta(days=1), today
+        elif dr in ("week", "weekly", "7d"):
+            s, e = today - timedelta(days=6), today + timedelta(days=1)
+        elif dr in ("month", "monthly", "30d"):
+            s, e = today - timedelta(days=29), today + timedelta(days=1)
+        else:
+            return None, None
+        return s - IST_OFF, e - IST_OFF
+    except Exception:
+        return None, None
 
 
 def _task(db, tid):
@@ -161,7 +199,8 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              graphics_id: int = 0, priority: str = "", q: str = "",
              deadline: str = "", teacher_id: int = 0, channel: str = "",
-             video_type: str = "", page: int = 1, size: int = 40,
+             video_type: str = "", date_range: str = "", date_from: str = "",
+             date_to: str = "", page: int = 1, size: int = 40,
              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     # Self-heal: agar legacy Task Manager me admin ne approve/upload kiya (status aage badh gaya)
     # par production lifecycle abhi review/editing me atka hai, to lifecycle ko aage sync kar do —
@@ -288,6 +327,12 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(VideoTask.deadline != None,
                              VideoTask.deadline <= now + timedelta(days=7),
                              VideoTask.deadline >= now)
+    # Date-wise master filter (Today / Yesterday / Weekly / Monthly / Custom) — created_at par.
+    _ds, _de = _daterange_utc(date_range, date_from, date_to)
+    if _ds is not None:
+        query = query.filter(VideoTask.created_at != None, VideoTask.created_at >= _ds)  # noqa: E711
+    if _de is not None:
+        query = query.filter(VideoTask.created_at != None, VideoTask.created_at < _de)   # noqa: E711
     total = query.count()
     # base64 thumbnail column ka CONTENT list me load MAT karo (RAM + speed) — thumbnail
     # ka URL alag se thumb_map se aata hai.
@@ -452,6 +497,27 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
         pass
     db.commit()
     return {"ok": True, "comment": _vtc_out(db, c)}
+
+
+@router.post("/tasks/{tid}/submit-link")
+def pm_submit_link(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                   me=Depends(get_pm_or_admin)):
+    """PM/Admin urgent case me creator (teacher/youtuber) ka drive link khud submit kar sakta hai
+    (jab WhatsApp pe link aa jaata hai). Attribution card pe dikhta hai."""
+    t = _task(db, tid)
+    link = (payload.get("drive_link") or payload.get("link") or "").strip()
+    if not link:
+        raise HTTPException(400, "A Drive link is required")
+    lc = (t.lifecycle or ""); stt = (t.status or "")
+    awaiting = (lc in ("creator_assigned", "creator_working", "changes_required", "reshoot_required")) \
+        or ((not lc) and stt in ("assigned", "reshoot", "rejected", ""))
+    if not awaiting:
+        raise HTTPException(400, "This video is not awaiting submission anymore.")
+    role = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
+    pc.submit_creator_link(db, t, link, actor_name=(getattr(me, "name", "") or role), actor_role=role)
+    db.commit()
+    return {"ok": True, "on_time": t.on_time, "lifecycle": t.lifecycle,
+            "submitted_by_name": t.submitted_by_name or "", "submitted_by_role": t.submitted_by_role or ""}
 
 
 @router.get("/tasks/{tid}")

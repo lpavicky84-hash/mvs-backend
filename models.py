@@ -554,6 +554,8 @@ class VideoTask(Base):
     submitted_link = Column(String(600), default="")
     vintage        = Column(String(10), default="")       # "" unverified | new | old (admin verifies)
     submitted_at   = Column(DateTime, nullable=True)
+    submitted_by_role = Column(String(30), default="")    # teacher | youtuber | production_manager | admin (kisne link submit kiya)
+    submitted_by_name = Column(String(160), default="")   # submit karne wale ka naam (card pe dikhta hai)
     on_time        = Column(Boolean, nullable=True)       # submit ke waqt set
     reviewed       = Column(Boolean, default=False)       # admin check = checking blink off
     review_remarks = Column(Text, default="")             # rejection reason etc.

@@ -8217,6 +8217,153 @@ function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replac
 
 window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''};
 
+/* ============================================================================
+   PREMIUM DATE-WISE MASTER FILTER  (reused across Tasks, Production Board,
+   Thumbnail Board & YouTuber Tasks — sabhi section me ek jaisa)
+   - Presets: Today / Yesterday / Weekly / Monthly
+   - Custom: kab se kab tak (from -> to date picker)
+   Server-side: query me date_range OR date_from/date_to jaata hai (created_at par).
+   State per "scope" string; har section apna scope deta hai + ek apply callback.
+============================================================================ */
+window._pdfState = window._pdfState || {};
+window._pdfApplyFns = window._pdfApplyFns || {};
+window._pdfGet = function(scope){ if(!window._pdfState[scope]) window._pdfState[scope]={range:'',from:'',to:''}; return window._pdfState[scope]; };
+window._pdfId = function(scope){ return 'pdf-'+String(scope).replace(/[^a-z0-9]/gi,'_'); };
+window._pdfLabel = function(scope){
+  var s=window._pdfGet(scope);
+  var M={today:'Today',yesterday:'Yesterday',week:'This Week',month:'This Month'};
+  if(s.range==='custom'){
+    var f=(s.from||'').slice(0,10), t=(s.to||'').slice(0,10);
+    if(f||t){ return (f||'…')+' → '+(t||'…'); }
+    return 'Custom range';
+  }
+  return M[s.range] || 'All dates';
+};
+window._pdfCSS = function(){
+  if(document.getElementById('pdf-css')) return;
+  var s=document.createElement('style'); s.id='pdf-css'; s.textContent=[
+    '.pdf{position:relative;display:inline-block;font-family:inherit;z-index:5}',
+    '.pdf-btn{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#14213d);border-radius:12px;padding:9px 13px;font-weight:800;font-size:.85rem;cursor:pointer;transition:.16s;box-shadow:0 1px 2px rgba(18,20,45,.05);white-space:nowrap;line-height:1}',
+    '.pdf-btn:hover{border-color:#c98a2e;box-shadow:0 5px 16px rgba(201,138,46,.16)}',
+    '.pdf-btn svg{width:15px;height:15px;flex-shrink:0;opacity:.85}',
+    '.pdf-btn.on{border-color:transparent;background:linear-gradient(135deg,#e6ad4e,#d18f28);color:#fff;box-shadow:0 6px 18px rgba(209,143,40,.34)}',
+    '.pdf-btn.on svg{opacity:1}',
+    '.pdf-lbl{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.pdf-chev{transition:transform .18s;opacity:.7}',
+    '.pdf.open .pdf-chev{transform:rotate(180deg)}',
+    '.pdf-x{margin-left:2px;width:16px;height:16px;border-radius:50%;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.28);font-size:.8rem;line-height:1}',
+    '.pdf-btn.on .pdf-x{display:inline-flex}',
+    '.pdf-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:248px;background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:16px;box-shadow:0 18px 48px rgba(18,20,45,.20);padding:8px;opacity:0;transform:translateY(-8px) scale(.97);pointer-events:none;transition:.17s cubic-bezier(.2,.8,.2,1);z-index:70}',
+    '.pdf.open .pdf-menu{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}',
+    '.pdf-menu.rt{left:auto;right:0}',
+    '.pdf-sec{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#9c8f6e);padding:6px 10px 4px}',
+    '.pdf-opt{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:none;background:transparent;color:var(--text,#14213d);border-radius:10px;padding:10px 11px;font-weight:700;font-size:.87rem;cursor:pointer;transition:.12s}',
+    '.pdf-opt:hover{background:rgba(201,138,46,.10)}',
+    '.pdf-opt.on{background:linear-gradient(90deg,rgba(201,138,46,.18),rgba(201,138,46,.04));color:#8a5e17}',
+    '.pdf-opt.on::after{content:"\\2713";margin-left:auto;font-weight:900;color:#c98a2e}',
+    'body.dark .pdf-opt.on{color:#e6c169}',
+    '.pdf-opt .d{width:8px;height:8px;border-radius:50%;background:#c98a2e;opacity:.55;flex-shrink:0}',
+    '.pdf-div{height:1px;background:var(--border,#ece7d8);margin:6px 4px}',
+    '.pdf-cust{padding:4px 6px 6px;display:none}',
+    '.pdf-cust.show{display:block}',
+    '.pdf-crow{display:flex;gap:8px;margin-bottom:8px}',
+    '.pdf-cf{flex:1;min-width:0}',
+    '.pdf-cf label{display:block;font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#9c8f6e);margin:0 0 3px 2px}',
+    '.pdf-cf input{width:100%;box-sizing:border-box;border:1.5px solid var(--border,#e5ddcb);border-radius:10px;padding:8px 10px;font-size:.84rem;font-weight:700;color:var(--text,#14213d);background:var(--surface-2,#faf7ef);outline:none;transition:.14s}',
+    '.pdf-cf input:focus{border-color:#c98a2e;background:var(--card,#fff);box-shadow:0 0 0 3px rgba(201,138,46,.14)}',
+    '.pdf-apply{width:100%;border:none;border-radius:10px;padding:9px;font-weight:800;font-size:.84rem;cursor:pointer;color:#fff;background:linear-gradient(135deg,#e6ad4e,#d18f28);box-shadow:0 5px 14px rgba(209,143,40,.30);transition:.14s}',
+    '.pdf-apply:hover{filter:brightness(1.04)}',
+    '.pdf-apply:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}',
+    'body.dark .pdf-menu{background:#141f30;border-color:#26364d}',
+    'body.dark .pdf-cf input{background:#0d1828;border-color:#26364d;color:#e8eefc}',
+    '@media(max-width:640px){.pdf-menu{min-width:min(248px,86vw)}.pdf-lbl{max-width:120px}}'
+  ].join('\n');
+  document.head.appendChild(s);
+};
+window.premDateFilter = function(scope){
+  window._pdfCSS();
+  var s=window._pdfGet(scope), id=window._pdfId(scope), active=!!s.range;
+  var cal='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+  var chev='<svg class="pdf-chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  var presets=[['today','Today'],['yesterday','Yesterday'],['week','Weekly'],['month','Monthly']];
+  var opts=presets.map(function(o){ return '<button type="button" class="pdf-opt'+(s.range===o[0]?' on':'')+'" onclick="_pdfPick(\''+scope+'\',\''+o[0]+'\')"><span class="d"></span>'+o[1]+'</button>'; }).join('');
+  var custShow=(s.range==='custom');
+  var menu='<div class="pdf-menu" id="'+id+'-menu">'+
+    '<div class="pdf-sec">Quick ranges</div>'+opts+
+    '<div class="pdf-div"></div>'+
+    '<button type="button" class="pdf-opt'+(custShow?' on':'')+'" onclick="_pdfPick(\''+scope+'\',\'custom\')"><span class="d"></span>Custom range</button>'+
+    '<div class="pdf-cust'+(custShow?' show':'')+'" id="'+id+'-cust">'+
+      '<div class="pdf-crow">'+
+        '<div class="pdf-cf"><label>From</label><input type="date" id="'+id+'-from" value="'+esc((s.from||'').slice(0,10))+'"></div>'+
+        '<div class="pdf-cf"><label>To</label><input type="date" id="'+id+'-to" value="'+esc((s.to||'').slice(0,10))+'"></div>'+
+      '</div>'+
+      '<button type="button" class="pdf-apply" onclick="_pdfApplyCustom(\''+scope+'\')">Apply range</button>'+
+    '</div>'+
+    (active?'<div class="pdf-div"></div><button type="button" class="pdf-opt" style="color:#b91c1c" onclick="_pdfClear(\''+scope+'\')">Clear date filter</button>':'')+
+  '</div>';
+  return '<div class="pdf" id="'+id+'">'+
+    '<button type="button" class="pdf-btn'+(active?' on':'')+'" onclick="_pdfToggle(\''+scope+'\')">'+cal+
+      '<span class="pdf-lbl">'+esc(window._pdfLabel(scope))+'</span>'+
+      (active?'<span class="pdf-x" title="Clear" onclick="event.stopPropagation();_pdfClear(\''+scope+'\')">&times;</span>':'')+chev+
+    '</button>'+menu+'</div>';
+};
+window._pdfCloseAll = function(except){
+  document.querySelectorAll('.pdf.open').forEach(function(el){ if(el.id!==except) el.classList.remove('open'); });
+};
+window._pdfToggle = function(scope){
+  var el=document.getElementById(window._pdfId(scope)); if(!el) return;
+  var willOpen=!el.classList.contains('open');
+  window._pdfCloseAll(el.id);
+  el.classList.toggle('open', willOpen);
+  if(willOpen){
+    // right-edge overflow guard -> flip menu to the right
+    try{ var m=el.querySelector('.pdf-menu'); if(m){ m.classList.remove('rt'); var r=m.getBoundingClientRect(); if(r.right>window.innerWidth-8) m.classList.add('rt'); } }catch(e){}
+    if(!window._pdfDocBound){ window._pdfDocBound=true; document.addEventListener('click', window._pdfDocClick, true); }
+  }
+};
+window._pdfDocClick = function(e){ if(!e.target.closest || !e.target.closest('.pdf')) window._pdfCloseAll(''); };
+window._pdfPick = function(scope, range){
+  var s=window._pdfGet(scope);
+  if(range==='custom'){
+    s.range='custom';
+    var el=document.getElementById(window._pdfId(scope));
+    if(el){ var c=el.querySelector('.pdf-cust'); if(c) c.classList.add('show'); el.querySelectorAll('.pdf-opt').forEach(function(b){ b.classList.remove('on'); }); var cb=el.querySelector('.pdf-opt[onclick*="\'custom\'"]'); if(cb) cb.classList.add('on'); }
+    return;
+  }
+  s.range=range; s.from=''; s.to='';
+  window._pdfCloseAll('');
+  window._pdfApply(scope);
+};
+window._pdfApplyCustom = function(scope){
+  var id=window._pdfId(scope);
+  var f=(document.getElementById(id+'-from')||{}).value||'';
+  var t=(document.getElementById(id+'-to')||{}).value||'';
+  if(!f && !t){ toast('Pick a from or to date',true); return; }
+  if(f && t && f>t){ var tmp=f; f=t; t=tmp; }
+  var s=window._pdfGet(scope); s.range='custom'; s.from=f; s.to=t;
+  window._pdfCloseAll('');
+  window._pdfApply(scope);
+};
+window._pdfClear = function(scope){
+  var s=window._pdfGet(scope); s.range=''; s.from=''; s.to='';
+  window._pdfCloseAll('');
+  window._pdfApply(scope);
+};
+window._pdfQS = function(scope){
+  var s=window._pdfGet(scope); var p=[];
+  if(s.range==='custom'){
+    if(s.from) p.push('date_from='+encodeURIComponent(s.from));
+    if(s.to)   p.push('date_to='+encodeURIComponent(s.to));
+  } else if(s.range){
+    p.push('date_range='+encodeURIComponent(s.range));
+  }
+  return p.join('&');
+};
+window._pdfApply = function(scope){
+  var cb=window._pdfApplyFns[scope];
+  if(typeof cb==='function'){ try{ cb(); }catch(e){} }
+};
+
 async function loadAYtTasks(hostId){
   if(hostId) window._ytHost=hostId;
   var HOST=window._ytHost||'a-ytasks-content';
@@ -8224,8 +8371,10 @@ async function loadAYtTasks(hostId){
   el.classList.add('yt-scope');
   softSpin(el);
   try{
+    window._pdfApplyFns['yt']=function(){ loadAYtTasks(); };
+    var _ytDQ=(typeof window._pdfQS==='function')?window._pdfQS('yt'):'';
     var res=await Promise.all([
-      api('/api/production/tasks?creator_type=youtuber&size=200'),
+      api('/api/production/tasks?creator_type=youtuber&size=200'+(_ytDQ?('&'+_ytDQ):'')),
       api('/api/production/channels').catch(function(){return{channels:[]};}),
       api('/api/production/video-types').catch(function(){return{types:[]};}),
       api('/api/production/people?role=youtuber').catch(function(){return{youtubers:[]};})
@@ -8286,6 +8435,7 @@ function _renderAYtTasks(){
     +'<select class="vt-filt-sel" onchange="window._ytF.creator=this.value;_ytClientFilter()">'+cOpt+'</select>'
     +'<select class="vt-filt-sel" onchange="window._ytF.channel=this.value;_ytClientFilter()">'+chOpt+'</select>'
     +'<select class="vt-filt-sel" onchange="window._ytF.video_type=this.value;_ytClientFilter()">'+tyOpt+'</select>'
+    +(typeof window.premDateFilter==='function'?window.premDateFilter('yt'):'')
     +'<button class="vt-filt-clear" onclick="_ytClearFilters()" title="Clear all filters">× Clear</button>'
     +'<div style="flex:1"></div>'
     +'<button class="btn btn-ghost btn-sm" onclick="ytDownloadReport()">'+ic('download')+' Download Report</button>'
@@ -8404,7 +8554,7 @@ function _ytCard(t){
 function _ytRoot(){ return document.getElementById(window._ytHost||'a-ytasks-content'); }
 function _ytBucketFilter(b){ window._ytF.bucket=(window._ytF.bucket===b?'':b); _ytClientFilter(); }
 function _ytTypeFilter(k){ window._ytF.video_type=(window._ytF.video_type===k?'':k); _ytClientFilter(); }
-function _ytClearFilters(){ window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''}; var root=_ytRoot(); if(root){ var sr=root.querySelector('.yt-search'); if(sr)sr.value=''; root.querySelectorAll('.vt-filt-sel').forEach(function(s){s.selectedIndex=0;}); } _ytClientFilter(); }
+function _ytClearFilters(){ window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''}; var root=_ytRoot(); if(root){ var sr=root.querySelector('.yt-search'); if(sr)sr.value=''; root.querySelectorAll('.vt-filt-sel').forEach(function(s){s.selectedIndex=0;}); } var _hadDate=false; try{ var _ds=window._pdfGet('yt'); _hadDate=!!_ds.range; _ds.range='';_ds.from='';_ds.to=''; }catch(e){} if(_hadDate){ loadAYtTasks(); return; } _ytClientFilter(); }
 function _ytClientFilter(){
   var f=window._ytF, root=_ytRoot(); if(!root) return;
   root.querySelectorAll('.vt-stat[data-ytb]').forEach(function(c){ c.classList.toggle('vt-stat-on', !!f.bucket && c.getAttribute('data-ytb')===f.bucket); });
@@ -26219,6 +26369,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pw-thumb{width:74px;height:48px;border-radius:9px;object-fit:cover;border:1px solid #ece2cd;flex:0 0 auto;background:#f4f1e8}',
 '.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
 '.pw-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.14);color:#a9791f;white-space:nowrap}',
+'.pw-subby{display:inline-flex;align-items:center;gap:4px;color:#8a5cd0;font-weight:700}','.pw-subby svg{width:12px;height:12px}',
+'.pb-datebar{display:flex;justify-content:flex-end;margin:0 0 12px}',
+'@media(max-width:640px){.pb-datebar{justify-content:stretch}.pb-datebar .pdf,.pb-datebar .pdf-btn{width:100%}.pb-datebar .pdf-lbl{max-width:none;flex:1;text-align:left}}',
 '.yt-new-blink{display:inline-block;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.05em;animation:ytNewBlink 1.1s ease-in-out infinite}',
 '@keyframes ytNewBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{opacity:.72;box-shadow:0 0 0 5px rgba(220,38,38,.05)}}',
 '.pw-chip.who{background:rgba(60,110,200,.12);color:#3a6ec8}',
@@ -30102,6 +30255,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       dl=t.on_time?('<span class="pt-dl done">'+ic('check')+' Submitted on time</span>')
                   :('<span class="pt-dl overdue">'+ic('alert')+' Submitted delayed</span>');
     }
+    // Kisne drive link submit kiya (teacher / youtuber / PM / admin) — sabko dikhe
+    if(t.submitted_link && t.submitted_by_name){
+      var _sbr={teacher:'Teacher',youtuber:'YouTuber',production_manager:'PM',admin:'Admin'}[t.submitted_by_role||'']||'';
+      meta.push('<span class="pw-subby" title="Who submitted the video link">'+ic('user')+' By '+esc(t.submitted_by_name)+(_sbr?' · '+_sbr:'')+'</span>');
+    }
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
@@ -30155,6 +30313,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.is_proposal){
       acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodApproveProposal('+t.id+')"><span class="rev-dot"></span>Review &amp; Approve</button>';
       acts+='<button class="ptc-btn" style="color:#b91c1c" onclick="event.stopPropagation();prodDeclineProposal('+t.id+')">Decline</button>';
+    }
+    // MASTER submit: video abhi creator (teacher/youtuber) ki submission ka wait kar rahi hai ->
+    // PM/admin urgent case me khud drive link submit kar sake (WhatsApp wala link).
+    var _awaitSub=(!t.is_proposal) && !t.submitted_link && (['creator_assigned','creator_working','changes_required','reshoot_required'].indexOf(lc)>=0 || (!lc && ['assigned','reshoot','rejected'].indexOf(t.status||'')>=0));
+    if(_awaitSub){
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodSubmitLink('+t.id+')">'+ic('upload')+' Submit Video Link</button>';
     }
     if(!t.is_proposal){
     // PM Review "Checking \u2014 Review" button: lifecycle-based OR legacy/admin-assigned tasks
@@ -30230,6 +30394,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     graphics:[['','All'],['new','New'],['in_progress','In Progress'],['changes','Changes']]
   };
   function _flt(portal){ return (window._prodFilter=window._prodFilter||{})[portal]=(window._prodFilter[portal]||{}); }
+  // Date-wise master filter -> production portal (Tasks list, Production Board, Thumbnail Board).
+  try{ window._pdfApplyFns=window._pdfApplyFns||{}; window._pdfApplyFns['prod']=function(){ try{ window._prodAutoRefresh(); }catch(e){} }; }catch(e){}
   function _prodQuery(portal){
     var f=_flt(portal); var p=[];
     if(f.status) p.push('status='+encodeURIComponent(f.status));
@@ -30244,6 +30410,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(f.deadline) p.push('deadline='+encodeURIComponent(f.deadline));
       if(f.priority) p.push('priority='+encodeURIComponent(f.priority));
       if(f.q) p.push('q='+encodeURIComponent(f.q));
+      try{ var _dq=(typeof window._pdfQS==='function')?window._pdfQS('prod'):''; if(_dq) p.push(_dq); }catch(e){}
       p.push('size=100');
     }
     return p.length?('?'+p.join('&')):'';
@@ -30267,6 +30434,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
         ((f._locked&&f.status)?'':'<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>')+
+        ((typeof window.premDateFilter==='function')?window.premDateFilter('prod'):'')+
         '<button class="p-btn pf-clear" onclick="prodClearFilters()">Clear</button>'+
         '<button class="p-mfilter" onclick="prodFilterDrawer()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filters</button>'+
         '<button class="p-btn" onclick="prodDownloadReport()">Download Report</button>'+
@@ -30319,7 +30487,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     setTimeout(function(){ dr.classList.add('open'); },10);
   };
   window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-fdrawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
-  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); var body=document.getElementById('production-body'); if(body) renderList('production',body); };
+  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results">'+_pSkelRows(5)+'</div>';
     return _prodLoadList(portal);
@@ -30906,9 +31074,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     ['editing,editing_paused','Editing'],['qc_pending','QC'],['qc_changes,changes_required','Changes'],
     ['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded']];
   function renderBoard(portal,body){
-    return api(P[portal].api+((portal==='youtuber')?'/videos?size=200':'/tasks?size=200')).then(function(r){
+    var _dq=(portal==='production'&&typeof window._pdfQS==='function')?window._pdfQS('prod'):'';
+    var _url=P[portal].api+((portal==='youtuber')?'/videos?size=200':'/tasks?size=200')+(_dq?('&'+_dq):'');
+    return api(_url).then(function(r){
       if(_stale(portal,'board')) return;
-      var tasks=r.tasks||r.videos||[]; var html=(portal==='youtuber'?'':'<div class="p-toolbar"><button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button></div>')+'<div class="pb-cols">';
+      var _dfBar=(portal==='production'&&typeof window.premDateFilter==='function')?('<div class="pb-datebar">'+window.premDateFilter('prod')+'</div>'):'';
+      var tasks=r.tasks||r.videos||[]; var html=_dfBar+(portal==='youtuber'?'':'<div class="p-toolbar"><button class="p-btn p-btn-primary" onclick="prodNewTask()">+ New Task</button></div>')+'<div class="pb-cols">';
       BOARD_COLS.forEach(function(col){
         var states=col[0].split(','); var items=tasks.filter(function(t){return states.indexOf(t.lifecycle)>=0;});
         html+='<div class="pb-col"><h4><span>'+esc(col[1])+'</span><span>'+items.length+'</span></h4>'+
@@ -30927,11 +31098,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
   function renderThumbBoard(portal,body){
     if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading thumbnail board...</div>';
-    return api(P[portal].api+((portal==='youtuber')?'/videos?size=200':'/tasks?size=200')).then(function(r){
+    var _dq=(portal==='production'&&typeof window._pdfQS==='function')?window._pdfQS('prod'):'';
+    var _url=P[portal].api+((portal==='youtuber')?'/videos?size=200':'/tasks?size=200')+(_dq?('&'+_dq):'');
+    return api(_url).then(function(r){
       if(_stale(portal,'thumbboard')) return;
       // only tasks that actually have a graphics/thumbnail task
       var withG=(r.tasks||r.videos||[]).filter(function(t){ var g=t.graphics; return g && (g.graphics_id || g.thumbnail_url || g.reference_image || (g.thumbnail_candidates&&g.thumbnail_candidates.length) || (g.status&&g.status!=='new')) && (t.creator_type!=='teacher' || true); });
-      var html='<div class="p-sec">Thumbnail Board</div><div class="pb-cols">';
+      var _dfBar=(portal==='production'&&typeof window.premDateFilter==='function')?('<div class="pb-datebar">'+window.premDateFilter('prod')+'</div>'):'';
+      var html=_dfBar+'<div class="p-sec">Thumbnail Board</div><div class="pb-cols">';
       THUMB_COLS.forEach(function(col){
         var items=withG.filter(function(t){ return (t.graphics.status||'new')===col[0]; });
         html+='<div class="pb-col"><h4><span>'+esc(col[1])+'</span><span>'+items.length+'</span></h4>'+
@@ -31642,6 +31816,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     } else if(portal==='production'){
       if(t.is_proposal){ b.push(_ab('Review & Approve','prodApproveProposal('+t.id+')','ok'));
         b.push(_ab('Decline','prodDeclineProposal('+t.id+')','danger')); }
+      var _awaitSubD=(!t.is_proposal) && !t.submitted_link && (['creator_assigned','creator_working','changes_required','reshoot_required'].indexOf(lc)>=0 || (!lc && ['assigned','reshoot','rejected'].indexOf(t.status||'')>=0));
+      if(_awaitSubD){ b.push(_ab('Submit Video Link','prodSubmitLink('+t.id+')','ok')); }
       if(lc==='creator_submitted'||lc==='pm_review'){ b.push(_ab('Approve','prodAct(\'production\','+t.id+',\'/approve-creator\')','ok'));
         b.push(_ab('Resubmit','prodReviewForm('+t.id+',\'resubmit\')'));
         b.push(_ab('Reshoot','prodReviewForm('+t.id+',\'reshoot\')','warn'));
@@ -31995,6 +32171,35 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var full=isYt?(P[portal].api+ep):(P[portal].api+'/tasks/'+id+ep);
     api(full,'POST',body).then(function(){ prodDismiss(); toast('Submitted'); _refresh(portal); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
+  };
+  // ===== MASTER submit: PM/Admin urgent case me creator ka drive link khud submit karein =====
+  window.prodSubmitLink=function(id){
+    var old=document.getElementById('prod-modal2'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
+      '<div class="pd-head"><div class="h-title">Submit Video Drive Link</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        '<div style="font-size:.82rem;color:var(--muted);margin-bottom:12px;line-height:1.5">Urgent case — agar creator ne WhatsApp pe link bhej diya hai to yahin submit kar do. Aapka naam card pe "Submitted by" mein sabko dikhega, aur creator ke portal se submit option hat jaayega.</div>'+
+        '<div class="p-field"><label>Google Drive link</label><input class="p-input" id="psl-link" placeholder="https://drive.google.com/..." autocomplete="off" onkeydown="if(event.key===\'Enter\')prodSubmitLinkSave('+id+')"></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button>'+
+        '<button class="p-btn p-btn-primary" id="psl-btn" onclick="prodSubmitLinkSave('+id+')">'+ic('check')+' Submit Link</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+    document.body.appendChild(dr);
+    setTimeout(function(){ var i=document.getElementById('psl-link'); if(i) i.focus(); },40);
+  };
+  window.prodSubmitLinkSave=function(id){
+    var v=((document.getElementById('psl-link')||{}).value||'').trim();
+    if(!v){ toast('Please paste the drive link',true); return; }
+    var b=document.getElementById('psl-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    api(P.production.api+'/tasks/'+id+'/submit-link','POST',{drive_link:v}).then(function(r){
+      var m=document.getElementById('prod-modal2'); if(m) m.remove();
+      toast((r&&r.on_time===false)?'Submitted (delayed)':'Submitted on time');
+      try{ _apiBust(); }catch(e){}
+      _refresh(_activeProdPortal()||'production');
+      try{ if(document.getElementById(window._ytHost||'a-ytasks-content')) loadAYtTasks(); }catch(e){}
+    }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity=''; } toast((e&&e.message)||'Could not submit',true); });
   };
   // ---- PM: full video review modal (admin-style premium) — Approve / Reshoot / Reject ----
   window.prodReview=function(id){

@@ -317,6 +317,11 @@ def yt_submit(tid: int, payload: dict = Body(...),
         raise HTTPException(400, "This video is not awaiting your submission")
     t.submitted_link = link
     t.submitted_at = datetime.utcnow()
+    try:
+        t.submitted_by_role = "youtuber"
+        t.submitted_by_name = (me.name if getattr(me, "name", None) else "YouTuber")
+    except Exception:
+        pass
     if pc.needs_pm_approval(db, t):
         pc.set_state(db, t, "pm_review", actor=me, event="youtuber_submitted")
         pc.log_event(db, t, me, "approval_requested", new_state="pm_review")

@@ -382,6 +382,49 @@ def creator_info(db, t):
 
 
 # ---------------------------------------------------------------- approval
+def submit_creator_link(db, t, link, actor_name="", actor_role=""):
+    """MASTER submit: teacher/youtuber/PM/admin — koi bhi awaiting video ka drive link submit
+    kar sakta hai. Attribution (role + naam) card pe sabko dikhta hai. Submit hote hi creator/
+    PM/admin sabse option hat jaata hai (lifecycle aage badh jaata hai). on_time/delayed set."""
+    from datetime import datetime, timezone, timedelta
+    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30))).replace(tzinfo=None)
+    t.submitted_link = (link or "").strip()
+    t.submitted_at = now_ist
+    try:
+        t.submitted_by_role = actor_role or ""
+        t.submitted_by_name = actor_name or ""
+    except Exception:
+        pass
+    try:
+        t.on_time = bool(t.deadline and now_ist <= t.deadline)
+    except Exception:
+        t.on_time = None
+    # teacher legacy status bridge (taaki Task Manager me bhi 'submitted' dikhe)
+    if (t.creator_type or "teacher") != "youtuber":
+        try:
+            t.status = "submitted"; t.reviewed = False
+        except Exception:
+            pass
+    # lifecycle: approval on -> PM Review, warna seedha production (graphics start)
+    try:
+        if needs_pm_approval(db, t):
+            set_state(db, t, "pm_review", actor=None, event="link_submitted", force=True)
+        else:
+            set_state(db, t, "approved", actor=None, event="link_submitted", force=True)
+            graphics_task(db, t, create=True)
+    except Exception:
+        pass
+    try:
+        _who = ("%s (%s)" % (actor_name, actor_role.replace("production_manager", "PM").title())) if actor_name else actor_role
+        notify_pms(db, "Video link submitted",
+                   '"%s" ka drive link submit ho gaya%s — %s.'
+                   % (t.title or "video", (" by " + _who) if _who else ""),
+                   "production", link=str(t.id))
+    except Exception:
+        pass
+    return t.on_time
+
+
 def needs_pm_approval(db, t):
     """Per-video override wins; else the creator's default. Teachers always go via PM."""
     if t.approval_required is not None:
@@ -764,6 +807,8 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "remarks": t.remarks or "",
         "comment_count": (comment_count if comment_count is not None else _comment_count(db, t.id)),
         "submitted_link": t.submitted_link or "",
+        "submitted_by_role": (getattr(t, "submitted_by_role", "") or ""),
+        "submitted_by_name": (getattr(t, "submitted_by_name", "") or ""),
         "submitted_at": (t.submitted_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "submitted_at", None) else ""),
         # teacher ki submission on-time thi ya nahi — HAMESHA current deadline se (live)
         "on_time": (bool(t.submitted_at <= t.deadline) if (getattr(t, "submitted_at", None) and t.deadline) else None),

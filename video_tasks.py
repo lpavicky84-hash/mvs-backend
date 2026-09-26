@@ -126,6 +126,8 @@ def _ensure_special_columns():
         "ALTER TABLE video_tasks ADD COLUMN collab_verified TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN collab_not_completed TEXT NULL",
         "ALTER TABLE video_tasks ADD COLUMN submitted_by INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN submitted_by_role VARCHAR(30) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN submitted_by_name VARCHAR(160) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN chapter_excludes TEXT NULL",
         # WhatsApp-style per-message task attach: kis task ke baare me ye message hai
         "ALTER TABLE video_task_comments ADD COLUMN ref_task_id INTEGER NULL",
@@ -4256,6 +4258,11 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
     t.submitted_link = link
     t.submitted_at = now
     t.submitted_by = tp.id
+    try:
+        t.submitted_by_role = "teacher"
+        t.submitted_by_name = (current_user.name if getattr(current_user, "name", None) else "Teacher")
+    except Exception:
+        pass
     t.status = "submitted"
     t.reviewed = False
     t.on_time = bool(t.deadline and now <= t.deadline)
