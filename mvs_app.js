@@ -26124,7 +26124,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // Which KPI cards drill into a filtered list (status/deadline). Others stay static.
   var KPI_NAV={
-    production:{ active:{status:'assigned'}, teacher_pending:{status:'assigned'}, youtuber_pending:{yt:1}, graphics:{status:'thumb_review'},
+    production:{ active:{status:'assigned'}, teacher_pending:{status:'assigned',tch:1}, youtuber_pending:{yt:1}, graphics:{status:'thumb_review'},
                  pm_review:{status:'pm_review'}, thumb_review:{status:'thumb_review'}, thumb_changes:{status:'thumb_changes'}, editing:{status:'editing'}, qc_pending:{status:'qc_pending'},
                  ready_for_youtube:{status:'ready_for_youtube'}, due_today:{deadline:'today'}, overdue:{deadline:'overdue'} },
     editor:{ assigned:{status:'editor_assigned'}, not_started:{status:'editor_assigned'}, editing:{status:'editing'},
@@ -27338,13 +27338,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // warna pichhle section ka filter (jaise "Ready for YouTube") "Tasks" me leak ho jaata tha.
   function _prodSetPageFilter(portal, page){
     var f=_flt(portal); if(!f) return;
-    var _clr=function(){ f.status=''; f.deadline=''; f.priority=''; f.epreset=''; f.gpreset=''; f.ypreset=''; };
+    var _clr=function(){ f.status=''; f.deadline=''; f.priority=''; f.creator_type=''; f.epreset=''; f.gpreset=''; f.ypreset=''; };
     if(page==='tasks'||page==='videos'){ _clr(); f._locked=false; return; }
     if(page.indexOf('gfx:')===0){ _clr(); f.gpreset=page.slice(4); f._locked=true; return; }
     if(page.indexOf('edt:')===0){ _clr(); f.epreset=page.slice(4); f._locked=true; return; }
     if(page.indexOf('ytb:')===0){ _clr(); f.ypreset=page.slice(4); f._locked=true; return; }
     if(page.indexOf('q:')===0){ var st=page.slice(2); _clr();
-      if(st==='__overdue'){ f.deadline='overdue'; } else { f.status=st; } f._locked=true; return; }
+      if(st==='__overdue'){ f.deadline='overdue'; }
+      else if(st==='__today'){ f.deadline='today'; }
+      else if(st==='__ytassigned'){ f.status='assigned'; f.creator_type='youtuber'; }
+      else if(st==='__tchassigned'){ f.status='assigned'; f.creator_type='teacher'; }
+      else { f.status=st; }
+      f._locked=true; return; }
     if(page==='urgent'){ _clr(); f.priority='urgent'; f._locked=true; return; }
   }
   // --- nav dispatch ---
@@ -27428,8 +27433,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page==='uploads') return renderEditorUploads(portal,body);
     if(page==='notifs') return renderProdNotifsPage(portal,body);
     if(page==='profile') return renderProdProfile(portal,body);
-    if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal);
-      if(st==='__overdue'){ f.status=''; f.deadline='overdue'; } else { f.status=st; f.deadline=''; } f.priority='';
+    if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); f.priority='';
+      if(st==='__overdue'){ f.status=''; f.deadline='overdue'; f.creator_type=''; }
+      else if(st==='__today'){ f.status=''; f.deadline='today'; f.creator_type=''; }
+      else if(st==='__ytassigned'){ f.status='assigned'; f.deadline=''; f.creator_type='youtuber'; }
+      else if(st==='__tchassigned'){ f.status='assigned'; f.deadline=''; f.creator_type='teacher'; }
+      else { f.status=st; f.deadline=''; f.creator_type=''; }
       return renderList(portal,body); }
     if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return renderList(portal,body); }
     if(page==='views') return renderViews(portal,body);
@@ -30871,10 +30880,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       try{ _refresh('production'); }catch(e){}
     }).catch(function(e){ toast((e&&e.message)||'Could not move',true); });
   };
-  var _ST_LABEL={pm_review:'PM Review',thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
+  var _ST_LABEL={assigned:'Assigned',pm_review:'PM Review',thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
-    if(f.status && !f._locked) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
+    if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
     if(portal==='production'&&f.creator_type) chips.push(['Creator: '+(f.creator_type==='youtuber'?'YouTuber':'Teacher'),'creator_type']);
     if(f.deadline) chips.push(['Deadline: '+(f.deadline==='overdue'?'Delayed':(f.deadline==='today'?'Due Today':f.deadline)),'deadline']);
     if(portal==='production'&&f.priority) chips.push(['Priority: '+(f.priority==='urgent'?'Urgent':f.priority),'priority']);
@@ -30929,13 +30938,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodKpiGo=function(portal,key){
     var nav=(KPI_NAV[portal]||{})[key]; if(!nav) return;
-    if(nav.yt){   // YouTuber Pending -> production Tasks list, youtuber creators + pending
-      var fy=_flt('production'); fy.creator_type='youtuber'; fy.status='assigned'; fy.deadline='';
-      prodNav('production','tasks'); return;
-    }
-    var f=_flt(portal); f.status=nav.status||''; f.deadline=nav.deadline||'';
-    if(portal==='production') f.creator_type='';   // baaki cards par youtuber filter reset
-    prodNav(portal,(portal==='youtuber')?'videos':'tasks');
+    // Har KPI card ko ek FILTER-PRESERVING "q:" page par bhejo. Pehle 'tasks' page par bhejte
+    // the, par _prodSetPageFilter 'tasks' ka filter clear kar deta tha -> har card pe saare
+    // tasks dikhte the. "q:" page filter ko locked rakhta hai.
+    var page;
+    if(nav.yt){ page='q:__ytassigned'; }               // YouTuber Pending -> youtuber + assigned
+    else if(nav.tch){ page='q:__tchassigned'; }         // Teacher Pending -> teacher + assigned
+    else if(nav.deadline==='overdue'){ page='q:__overdue'; }
+    else if(nav.deadline==='today'){ page='q:__today'; }
+    else if(nav.deadline){ page='q:__'+nav.deadline; }
+    else if(nav.status){ page='q:'+nav.status; }
+    else { page=(portal==='youtuber')?'videos':'tasks'; }
+    prodNav(portal,page);
   };
   window.prodClearFilter=function(portal,k){ _flt(portal)[k]=''; if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; } _prodLoadList(portal); };
   window.prodClearAll=function(portal){ window._prodFilter[portal]={}; var s=document.getElementById('prod-search'); if(s) s.value=''; _prodLoadList(portal); };
