@@ -13,7 +13,7 @@ import json
 from models import (
     User, UserRole, VideoTask, GraphicsTask, EditingSession, ProductionEvent,
     TaskReview, TaskAttachment, YouTuberProfile, ProductionStaffProfile,
-    TeacherProfile, Notification,
+    TeacherProfile, Notification, ist_now,
 )
 
 # ---------------------------------------------------------------- lifecycle
@@ -1205,30 +1205,47 @@ _ACTIVE_PIPELINE = ["creator_assigned", "creator_working", "creator_submitted", 
 def overdue_today_ids(db):
     """SINGLE SOURCE OF TRUTH for stage-aware DELAYED + DUE-TODAY task ids.
 
-    Dashboard KPI (Delayed / Due Today) aur Tasks list ka 'Delayed'/'Due Today' filter DONO
-    isi helper se chalte hain -> count aur list HAMESHA match karte hain (pehle dashboard youtuber
-    bhi ginta tha par list nahi -> 7 vs 5 mismatch). Normal-kind single videos only; teacher +
-    youtuber dono included. Delay hamesha CURRENT STAGE ke deadline se (current_stage_deadline)."""
+    Dashboard KPI (Delayed / Due Today), Tasks list ka 'Delayed'/'Due Today' filter, aur cards —
+    sab isi se chalte hain -> count + list HAMESHA match. Normal-kind single videos only; teacher +
+    youtuber dono. Delay hamesha CURRENT STAGE ke deadline se.
+
+    IMPORTANT fixes:
+    - deadline/editor_deadline/upload_date SAB IST-naive store hote hain (serializer: 'already local'),
+      isliye comparison IST-now se (ist_now) — pehle teacher/editor ke liye utcnow use hota tha (5.5h
+      galat) jisse boundary tasks chhoot jaate the.
+    - Legacy/admin-created tasks ka lifecycle BLANK hota hai -> unhe bhi shaamil karo (status se stage
+      decide karke). Pehle sirf lifecycle.in_(pipeline) tha -> Vicky Verma jaise blank-lifecycle
+      overdue tasks PM par dikhte hi nahi the (admin par dikhte the) -> mismatch."""
     from sqlalchemy import or_ as _or
     from sqlalchemy.orm import defer as _defer
-    now = datetime.utcnow()
-    now_ist = now + timedelta(hours=5, minutes=30)
+    ref = ist_now()   # IST-naive "now" — kyunki deadlines IST-local store hote hain
     _NS = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")  # noqa: E711
+    _LC_OK = _or(VideoTask.lifecycle.in_(_ACTIVE_PIPELINE),
+                 VideoTask.lifecycle == None, VideoTask.lifecycle == "")  # noqa: E711
     overdue, today = [], []
     rows = (db.query(VideoTask)
             .options(_defer(VideoTask.thumbnail_b64))
             .filter(VideoTask.cancelled == False, _NS, VideoTask.is_old == False,   # noqa: E712
-                    VideoTask.lifecycle.in_(_ACTIVE_PIPELINE)).all())
+                    _LC_OK).all())
     for t in rows:
         lc = t.lifecycle or ""
-        if lc in _STAGE_UPLOAD:
-            dl = getattr(t, "upload_date", None); ref = now_ist
+        if not lc:
+            # Legacy/admin task (koi production lifecycle nahi) -> status se stage tay karo.
+            st = (t.status or "").lower()
+            if st in ("uploaded", "completed", "submitted"):
+                dl = None                                   # done ya review me -> active-overdue nahi
+            elif st in ("approved", "editing_soon", "editing_done"):
+                dl = getattr(t, "editor_deadline", None) or getattr(t, "deadline", None)
+            else:
+                dl = getattr(t, "deadline", None)           # assigned/reshoot/rejected/new/in_progress
+        elif lc in _STAGE_UPLOAD:
+            dl = getattr(t, "upload_date", None)
         elif lc in _STAGE_NO_COUNTDOWN:
-            dl = None; ref = now
+            dl = None
         elif lc in _STAGE_EDITOR_ACTIVE:
-            dl = getattr(t, "editor_deadline", None); ref = now
+            dl = getattr(t, "editor_deadline", None)
         else:
-            dl = getattr(t, "deadline", None); ref = now
+            dl = getattr(t, "deadline", None)
         if not dl:
             continue
         if dl < ref:
