@@ -809,8 +809,8 @@ class Material(Base):
     teacher_name  = Column(String(120), nullable=True)
     subject       = Column(String(60))
     class_name    = Column(String(40), nullable=True)
-    chapter       = Column(String(200), nullable=True)
-    part          = Column(String(200), nullable=True)   # which class/part of the chapter
+    chapter       = Column(_Text, nullable=True)   # crash-course multi-chapter (" | " join) VARCHAR(200) me fit nahi hota -> TEXT
+    part          = Column(_Text, nullable=True)   # which class/part of the chapter (multi-part bhi ho sakta hai) -> TEXT
     material_type = Column(String(20))    # notes | dpp | test | answer | other
     category      = Column(String(60), nullable=True)   # for 'other' materials
     title         = Column(String(200), nullable=True)

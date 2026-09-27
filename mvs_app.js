@@ -26763,6 +26763,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-del{color:#d1443a;border-color:rgba(209,68,58,.35)}',
 '.ptc-ok{color:#1f8a54;border-color:rgba(46,158,107,.4);font-weight:800}',
 '.ptc-ok:hover{background:rgba(46,158,107,.12)}',
+/* ---- premium primary action: Submit Video Link (filled gradient pill, full-width row) ---- */
+'.ptc-submit{flex:1 1 100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;font-size:.8rem;font-weight:800;letter-spacing:.01em;padding:11px 16px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#1eb15f 0%,#0f8a45 100%);box-shadow:0 8px 20px rgba(15,138,69,.30),inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer;transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .15s,filter .15s;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
+'.ptc-submit svg{width:16px;height:16px;stroke-width:2.4}',
+'.ptc-submit::after{content:"";position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.38),transparent);transform:skewX(-18deg);transition:left .55s ease}',
+'.ptc-submit:hover{transform:translateY(-1.5px);box-shadow:0 12px 26px rgba(15,138,69,.40),inset 0 1px 0 rgba(255,255,255,.25);filter:brightness(1.03)}',
+'.ptc-submit:hover::after{left:130%}',
+'.ptc-submit:active{transform:translateY(0);box-shadow:0 5px 14px rgba(15,138,69,.32)}',
+'body.dark .ptc-submit{background:linear-gradient(135deg,#20bd66 0%,#12924a 100%);box-shadow:0 8px 22px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.18)}',
 '.pw-chip.pwlive{background:rgba(209,68,58,.14);color:#d1443a}',
 '.p-modal-wrap{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px}',
 '.p-modal{background:var(--card,#fffdf7);border-radius:18px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}',
@@ -30318,7 +30326,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // PM/admin urgent case me khud drive link submit kar sake (WhatsApp wala link).
     var _awaitSub=(!t.is_proposal) && !t.submitted_link && (['creator_assigned','creator_working','changes_required','reshoot_required'].indexOf(lc)>=0 || (!lc && ['assigned','reshoot','rejected'].indexOf(t.status||'')>=0));
     if(_awaitSub){
-      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodSubmitLink('+t.id+')">'+ic('upload')+' Submit Video Link</button>';
+      acts+='<button class="ptc-submit" onclick="event.stopPropagation();prodSubmitLink('+t.id+')">'+ic('upload')+' Submit Video Link</button>';
     }
     if(!t.is_proposal){
     // PM Review "Checking \u2014 Review" button: lifecycle-based OR legacy/admin-assigned tasks

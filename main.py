@@ -56,6 +56,12 @@ def ensure_columns():
         # crash-course multi-chapter (" | " join) VARCHAR(200) me fit nahi hota -> TEXT
         "ALTER TABLE timetable_entries MODIFY COLUMN chapter TEXT",
         "ALTER TABLE timetable_entries MODIFY COLUMN topic_covered TEXT",
+        # SAME fix for materials: teacher crash-course report me chapter/part multi-topic
+        # (" | " join) VARCHAR(200) overflow -> error 1406 -> report submit fail. Widen to TEXT.
+        "ALTER TABLE materials MODIFY COLUMN chapter TEXT",
+        "ALTER TABLE materials MODIFY COLUMN part TEXT",
+        "ALTER TABLE materials MODIFY COLUMN title VARCHAR(400)",
+        "ALTER TABLE materials MODIFY COLUMN filename VARCHAR(400)",
         "ALTER TABLE student_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE teacher_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE teacher_profiles ADD COLUMN payout_passcode VARCHAR(255)",
