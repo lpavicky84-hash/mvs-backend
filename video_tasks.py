@@ -3245,6 +3245,10 @@ def vt_review(task_id: int, payload: dict = Body(...),
         # Urgent video: on-time = teacher ki di hui deadline tak UPLOAD hua ya nahi
         if action == "uploaded" and (getattr(t, "kind", "") or "") == "urgent" and t.deadline:
             t.on_time = (_now_ist() <= t.deadline)
+        # Normal video approve/etc: on_time ko current deadline se refresh rakho — agar admin ne
+        # submission ke baad deadline aage kar di thi to stored 'delayed' bhi hat jaaye.
+        elif getattr(t, "submitted_at", None) and t.deadline:
+            t.on_time = bool(t.submitted_at <= t.deadline)
         label = {"approved": "Approved", "editing_soon": "Editing Soon",
                  "editing_done": "Editing Done", "uploaded": "Uploaded"}[action]
         _hist_add(t, action, remarks)
@@ -3418,9 +3422,15 @@ def vt_edit(task_id: int, payload: dict = Body(...),
             t.deadline = ndl
             t.warned_24h = False
             t.warned_overdue = False
-            # submission ke baad deadline change -> on_time dobara (delayed auto-hat jaaye)
-            if getattr(t, "submitted_at", None):
-                t.on_time = bool(t.submitted_at <= ndl)
+        # submission ke baad on_time HAMESHA current deadline se refresh — chahe deadline same ho
+        # ya badli ho. PM portal (recompute_on_time) bhi aise hi karta hai; isse admin se deadline
+        # aage karte hi 'delayed' apne aap hat jaata hai (pehle sirf change hone par hota tha).
+        if getattr(t, "submitted_at", None) and t.deadline:
+            _new_ot = bool(t.submitted_at <= t.deadline)
+            if _new_ot != t.on_time:
+                t.on_time = _new_ot
+                if "on-time status refreshed" not in changes and not any(c.startswith("deadline") for c in changes):
+                    changes.append("on-time status refreshed")
     if payload.get("video_type") is not None:
         vt2 = (payload.get("video_type") or "").strip()
         if vt2 != (t.video_type or ""):

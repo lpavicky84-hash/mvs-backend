@@ -8218,6 +8218,33 @@ function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replac
 window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''};
 
 /* ============================================================================
+   DEADLINE PICKERS -> time DEFAULT 11:59 PM (23:59)
+   User sirf DATE chunega to time apne aap 11:59 PM set ho jaaye; agar time explicitly
+   change karna ho to kar sakta hai (uski value respect hoti hai). Sirf deadline wale
+   datetime-local inputs par lagta hai (id me 'deadline' ho ya '-dl'/'_dl' se end ho) —
+   upload-time / event-time pickers par asar nahi (wo apna exact time rakhte hain).
+============================================================================ */
+(function(){
+  function _isDeadlineInput(el){
+    if(!el || el.tagName!=='INPUT' || (el.type||'')!=='datetime-local') return false;
+    var id=(el.id||'');
+    return /deadline/i.test(id) || /(^|[-_])dl$/i.test(id);
+  }
+  function _applyDefaultTime(el){
+    try{
+      var v=el.value||'';                      // "YYYY-MM-DDTHH:MM"
+      // Date to chuna par time abhi bhi midnight (00:00) hai -> 11:59 PM kar do.
+      if(v && /T00:00(:00)?$/.test(v)){
+        el.value=v.slice(0,10)+'T23:59';
+        try{ el.dispatchEvent(new Event('input',{bubbles:true})); }catch(_e){}
+      }
+    }catch(e){}
+  }
+  // capture phase -> har jagah (modals dynamically add hote hain) kaam kare
+  document.addEventListener('change', function(e){ if(_isDeadlineInput(e.target)) _applyDefaultTime(e.target); }, true);
+})();
+
+/* ============================================================================
    PREMIUM DATE-WISE MASTER FILTER  (reused across Tasks, Production Board,
    Thumbnail Board & YouTuber Tasks — sabhi section me ek jaisa)
    - Presets: Today / Yesterday / Weekly / Monthly
