@@ -3377,15 +3377,25 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-filters select{padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);
   color:var(--text);font-size:.8rem;font-weight:600;font-family:inherit;max-width:210px}
 .vt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:14px}
-.vt-card{border:1.5px solid var(--border);border-radius:16px;background:var(--card-bg);overflow:hidden;
-  display:flex;flex-direction:column;transition:.18s}
-.vt-card:hover{box-shadow:0 10px 26px -12px rgba(0,0,0,.28);transform:translateY(-2px)}
-.vt-thumb{height:150px;background:linear-gradient(135deg,#3a2c07,#6b4f0c);position:relative;display:flex;
-  align-items:center;justify-content:center;color:#ffe9ad;font-size:2rem;font-weight:800;overflow:hidden}
+.vt-card{border:1px solid var(--border);border-radius:18px;background:var(--card,#fffdf6);overflow:hidden;
+  display:flex;flex-direction:column;transition:box-shadow .18s,transform .18s,border-color .18s;
+  box-shadow:0 1px 2px rgba(18,20,45,.04),0 6px 16px rgba(18,20,45,.05)}
+.dark .vt-card{box-shadow:0 1px 2px rgba(0,0,0,.2),0 8px 22px rgba(0,0,0,.28)}
+.vt-card:hover{box-shadow:0 12px 30px rgba(18,20,45,.13);transform:translateY(-3px);border-color:rgba(224,165,46,.4)}
+.vt-thumb{aspect-ratio:16/9;height:auto;background:linear-gradient(135deg,#3a2c07,#6b4f0c);position:relative;display:flex;
+  align-items:center;justify-content:center;color:#ffe9ad;font-size:2.6rem;font-weight:800;overflow:hidden}
 .vt-thumb img{width:100%;height:100%;object-fit:cover}
 .vt-thumb .vt-status{position:absolute;top:10px;right:10px}
-.vt-body{padding:13px 15px;display:flex;flex-direction:column;gap:8px;flex:1}
-.vt-title{font-weight:800;font-size:.92rem;line-height:1.35}
+.vt-body{padding:15px 16px 16px;display:flex;flex-direction:column;gap:7px;flex:1}
+.vt-title{font-weight:800;font-size:1.02rem;line-height:1.3;letter-spacing:-.01em;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+/* premium action row (match production card): rounded buttons, subtle border, delete distinct */
+.vt-foot{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.vt-foot .btn.btn-sm{border-radius:10px;font-weight:700;padding:8px 13px;border:1px solid var(--border);
+  background:var(--card,#fffdf6);transition:background .14s,border-color .14s,transform .14s,box-shadow .14s}
+.vt-foot .btn.btn-sm:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(18,20,45,.07);border-color:rgba(224,165,46,.45);background:rgba(230,173,78,.10)}
+.vt-foot .btn.btn-primary{border-color:transparent;background:linear-gradient(135deg,#2fa06d,#1f8a54);color:#fff;box-shadow:0 3px 10px rgba(31,138,84,.26)}
+.vt-foot .btn.btn-primary:hover{background:linear-gradient(135deg,#28925f,#1b7a49);color:#fff}
 .vt-req{margin-top:6px;font-size:.74rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.10);border-radius:8px;padding:4px 9px;display:inline-block;white-space:pre-line}
 .dark .vt-req{color:#fbbf24;background:rgba(217,119,6,.16)}
 .vt-chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -3413,7 +3423,9 @@ async function ocrFillQuestion_v1(inp,i){
 .vt-pill.proposal{background:rgba(100,116,139,.12);color:#475569;border:1px solid rgba(100,116,139,.35)}
 .vt-pill.ontime{background:rgba(16,185,129,.12);color:#047857;border:1px solid rgba(16,185,129,.35)}
 .vt-pill.delayed{background:rgba(220,38,38,.1);color:#b91c1c;border:1px solid rgba(220,38,38,.35)}
-.vt-meta{font-size:.72rem;color:var(--text-muted);display:flex;flex-direction:column;gap:3px}
+.vt-meta{font-size:.74rem;color:var(--text-muted);display:flex;flex-direction:column;gap:5px;margin-top:9px;padding:11px 12px;border-radius:13px;background:var(--surface-2,#faf7ef);border:1px solid var(--border)}
+.dark .vt-meta{background:rgba(255,255,255,.03)}
+.vt-meta b{color:var(--text)}
 .vt-proposer{display:inline-flex;align-items:center;gap:5px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-weight:800;padding:3px 11px;border-radius:999px;font-size:.8rem;box-shadow:0 2px 8px -2px rgba(217,119,6,.6);animation:vtProposerBlink 1.4s ease-in-out infinite;align-self:flex-start}
 .vt-proposer svg{width:13px;height:13px}
 @keyframes vtProposerBlink{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.55)}50%{box-shadow:0 0 0 6px rgba(245,158,11,0)}}
