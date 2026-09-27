@@ -26394,9 +26394,74 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 'body.dark .pt-timer.done{background:rgba(46,158,107,.2);color:#5fd39e;border-color:rgba(46,158,107,.34)}',
 '@keyframes ptTimerPulse{0%,100%{box-shadow:0 4px 12px rgba(209,54,43,.30)}50%{box-shadow:0 4px 18px rgba(209,54,43,.55)}}',
 '.pt-timer.overdue{animation:ptTimerPulse 2.2s ease-in-out infinite}',
+/* ================= PREMIUM DEADLINE COMPONENT (card) ================= */
+'.pt-dlbox{display:flex;align-items:center;gap:12px;margin-top:11px;padding:12px 13px;border-radius:14px;border:1px solid transparent;background:var(--surface-2,#faf7ef)}',
+'body.dark .pt-dlbox{background:rgba(255,255,255,.03)}',
+'.pt-dlbox .pdb-ic{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center}',
+'.pt-dlbox .pdb-ic svg{width:19px;height:19px}',
+'.pt-dlbox .pdb-main{flex:1;min-width:0}',
+'.pt-dlbox .pdb-label{font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.1}',
+'.pt-dlbox .pdb-time{font-size:.74rem;color:var(--muted,#8a7d5c);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.pt-dlbox .pdb-subpre{font-weight:600}',
+'.pt-dlbox .pdb-time b{font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}',
+'.pt-dlbox .pdb-who{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-size:.68rem;font-weight:700;color:var(--muted,#8a7d5c)}',
+'.pt-dlbox .pdb-who svg{width:12px;height:12px;opacity:.85}',
+'.pt-dlbox .pdb-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;border:1px solid transparent;background:rgba(0,0,0,.05);color:inherit;font-size:.74rem;font-weight:800;padding:8px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:filter .14s,transform .14s,background .14s}',
+'.pt-dlbox .pdb-btn .pdb-chev{width:14px;height:14px}',
+'.pt-dlbox .pdb-btn:hover{transform:translateX(1px);filter:brightness(1.02)}',
+'body.dark .pt-dlbox .pdb-btn{background:rgba(255,255,255,.08)}',
+/* --- Delayed (red) --- */
+'.pt-dlbox.ov{background:rgba(209,54,43,.07);border-color:rgba(209,54,43,.20)}',
+'.pt-dlbox.ov .pdb-ic{background:rgba(209,54,43,.14);color:#d1362b}',
+'.pt-dlbox.ov .pdb-label{color:#c0322a}',
+'.pt-dlbox.ov .pdb-btn{background:linear-gradient(135deg,#f4574d,#d1362b);color:#fff;box-shadow:0 3px 10px rgba(209,54,43,.28)}',
+'body.dark .pt-dlbox.ov{background:rgba(244,87,77,.12);border-color:rgba(244,87,77,.28)}',
+'body.dark .pt-dlbox.ov .pdb-label{color:#fca5a0}',
+/* --- Deadline Today (amber-strong) --- */
+'.pt-dlbox.td{background:rgba(224,165,46,.09);border-color:rgba(224,165,46,.26)}',
+'.pt-dlbox.td .pdb-ic{background:rgba(224,165,46,.18);color:#b07d12}',
+'.pt-dlbox.td .pdb-label{color:#996c0f}',
+'.pt-dlbox.td .pdb-btn{background:linear-gradient(135deg,#f0c04e,#d69a24);color:#4a370c}',
+'body.dark .pt-dlbox.td .pdb-label{color:#f2c869}',
+/* --- Due Soon (amber-soft) --- */
+'.pt-dlbox.sn{background:rgba(224,165,46,.07);border-color:rgba(224,165,46,.20)}',
+'.pt-dlbox.sn .pdb-ic{background:rgba(224,165,46,.16);color:#b07d12}',
+'.pt-dlbox.sn .pdb-label{color:#996c0f}',
+'.pt-dlbox.sn .pdb-btn{background:rgba(224,165,46,.16);color:#8a6410}',
+'body.dark .pt-dlbox.sn .pdb-label{color:#f2c869}',
+/* --- On Track (green) --- */
+'.pt-dlbox.ok{background:rgba(46,158,107,.06);border-color:rgba(46,158,107,.18)}',
+'.pt-dlbox.ok .pdb-ic{background:rgba(46,158,107,.14);color:#1f8a54}',
+'.pt-dlbox.ok .pdb-label{color:#1f7a48}',
+'.pt-dlbox.ok .pdb-btn{background:rgba(46,158,107,.14);color:#1f7a48}',
+'body.dark .pt-dlbox.ok .pdb-label{color:#5fd39e}',
+/* --- Completed / Submitted on time (green muted) --- */
+'.pt-dlbox.dn{background:rgba(46,158,107,.06);border-color:rgba(46,158,107,.18)}',
+'.pt-dlbox.dn .pdb-ic{background:rgba(46,158,107,.14);color:#1f8a54}',
+'.pt-dlbox.dn .pdb-label{color:#1f7a48}',
+'.pt-dlbox.dn .pdb-btn{background:rgba(46,158,107,.12);color:#1f7a48}',
+'body.dark .pt-dlbox.dn .pdb-label{color:#5fd39e}',
+/* --- Paused (slate) --- */
+'.pt-dlbox.pz{background:rgba(100,116,139,.08);border-color:rgba(100,116,139,.22)}',
+'.pt-dlbox.pz .pdb-ic{background:rgba(100,116,139,.16);color:#546076}',
+'.pt-dlbox.pz .pdb-label{color:#475266}',
+'.pt-dlbox.pz .pdb-btn{background:rgba(100,116,139,.16);color:#475266}',
+'body.dark .pt-dlbox.pz .pdb-label{color:#aebdd4}',
+/* deadline date + video id row */
+'.ptc-idrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#ece2cd)}',
+'body.dark .ptc-idrow{border-color:#2c405e}',
+'.ptc-idrow .pir-i{display:inline-flex;align-items:center;gap:6px;min-width:0;font-size:.73rem;color:var(--muted,#8a7d5c);font-weight:600}',
+'.ptc-idrow .pir-ic{display:inline-flex;flex:0 0 auto;color:var(--muted,#a99a78)}',
+'.ptc-idrow .pir-ic svg{width:14px;height:14px}',
+'.ptc-idrow .pir-tx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.ptc-idrow .pir-id .pir-tx{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em;font-weight:700;color:var(--muted,#9c8f6e)}',
+'.ptc-idrow .pir-id{margin-left:auto}',
+'@media(max-width:440px){.ptc-idrow .pir-id{margin-left:0}',
+'.pt-dlbox{flex-wrap:wrap}.pt-dlbox .pdb-ic{order:1}.pt-dlbox .pdb-main{order:2}.pt-dlbox .pdb-btn{order:3;width:100%;justify-content:center;margin-top:9px}}',
 '.pw-thumb{width:74px;height:48px;border-radius:9px;object-fit:cover;border:1px solid #ece2cd;flex:0 0 auto;background:#f4f1e8}',
-'.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
-'.pw-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.14);color:#a9791f;white-space:nowrap}',
+'.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}',
+'.pw-chip{display:inline-flex;align-items:center;gap:4px;font-size:.68rem;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(230,173,78,.13);color:#a9791f;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis;border:1px solid transparent}',
+'.pw-chip svg{width:12px;height:12px;flex:0 0 auto}',
 '.pw-subby{display:inline-flex;align-items:center;gap:4px;color:#8a5cd0;font-weight:700}','.pw-subby svg{width:12px;height:12px}',
 '.pb-datebar{display:flex;justify-content:flex-end;margin:0 0 12px}',
 '@media(max-width:640px){.pb-datebar{justify-content:stretch}.pb-datebar .pdf,.pb-datebar .pdf-btn{width:100%}.pb-datebar .pdf-lbl{max-width:none;flex:1;text-align:left}}',
@@ -26656,9 +26721,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pf-clear:hover{background:rgba(209,68,58,.08)}',
 '.pt-thumb{width:58px;height:36px;border-radius:8px;object-fit:cover;flex:0 0 58px;background:#efe8d6;margin-right:2px}',
 '.ptc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}',
-'.ptc{background:var(--card,#fffdf7);border:1px solid #e8dfc8;border-radius:16px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;display:flex;flex-direction:column}',
-'body.dark .ptc{border-color:#2c405e;background:#152643}',
-'.ptc:hover{box-shadow:0 8px 24px rgba(0,0,0,.12);transform:translateY(-2px)}',
+'.ptc{background:var(--card,#fffdf7);border:1px solid #ece3d0;border-radius:18px;overflow:hidden;cursor:pointer;transition:box-shadow .18s,transform .18s,border-color .18s;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(18,20,45,.04),0 6px 16px rgba(18,20,45,.05)}',
+'body.dark .ptc{border-color:#25364f;background:#152643;box-shadow:0 1px 2px rgba(0,0,0,.2),0 8px 22px rgba(0,0,0,.28)}',
+'.ptc:hover{box-shadow:0 12px 30px rgba(18,20,45,.13);transform:translateY(-3px);border-color:rgba(224,165,46,.4)}',
 '.ptc.ptc-opened{box-shadow:0 0 0 2px #b98a2e,0 10px 26px rgba(185,138,46,.22)!important}',
 '.ptc.ptc-opened::after{content:"\\2713 Last opened";position:absolute;top:8px;left:8px;z-index:5;background:#b98a2e;color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(185,138,46,.4)}',
 'body.dark .ptc.ptc-opened{box-shadow:0 0 0 2px #d9a942,0 10px 26px rgba(217,169,66,.25)!important}',
@@ -26776,21 +26841,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-hw .pt-badge.review{position:absolute;left:10px;bottom:10px;z-index:4;background:rgba(255,255,255,.94);color:#c23a30;backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(0,0,0,.22)}',
 'body.dark .ptc-hw .pt-badge.review{background:rgba(30,22,10,.9);color:#f0a58f}',
 '.ptc-view{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.64rem;font-weight:800;padding:4px 10px;border-radius:8px;text-decoration:none}',
-'.ptc-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1}',
-'.ptc-title{font-weight:800;font-size:1rem;line-height:1.25}',
-'.ptc-meta{font-size:.76rem;color:#8a7d5c;display:flex;align-items:center;gap:6px;flex-wrap:wrap}',
+'.ptc-body{padding:15px 16px 16px;display:flex;flex-direction:column;gap:7px;flex:1}',
+'.ptc-title{font-weight:800;font-size:1.02rem;line-height:1.3;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}',
+'.ptc-meta{font-size:.75rem;color:#8a7d5c;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}',
 '.ptc-ref{font-size:.68rem;color:#b0a483;font-family:monospace}',
-'.ptc-prog{height:7px;background:#efe8d6;border-radius:99px;overflow:hidden}',
+'.ptc-prog{height:7px;background:#efe8d6;border-radius:99px;overflow:hidden;margin-top:4px}',
 'body.dark .ptc-prog{background:#2c405e}',
 '.ptc-prog>i{display:block;height:100%;background:linear-gradient(90deg,#7c4fc0,#a06fd8);border-radius:99px;transition:width .3s}',
 '.ptc-prog-l{font-size:.72rem;color:#7c4fc0;font-weight:700;margin-top:2px}',
-'.ptc-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:6px}',
-'.ptc-btn{font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:8px;border:1px solid #e0d4b3;background:transparent;color:inherit;cursor:pointer}',
-'body.dark .ptc-btn{border-color:#2c405e}',
-'.ptc-btn:hover{background:rgba(230,173,78,.12)}',
-'.ptc-del{color:#d1443a;border-color:rgba(209,68,58,.35)}',
-'.ptc-ok{color:#1f8a54;border-color:rgba(46,158,107,.4);font-weight:800}',
-'.ptc-ok:hover{background:rgba(46,158,107,.12)}',
+/* ---- premium action row: primary (order 0) · secondary (order 2) · delete last (order 5) ---- */
+'.ptc-acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#ece2cd)}',
+'body.dark .ptc-acts{border-color:#2c405e}',
+'.ptc-btn{order:2;display:inline-flex;align-items:center;gap:6px;font-size:.76rem;font-weight:700;padding:8px 13px;border-radius:10px;border:1px solid var(--border,#e6dcc4);background:var(--card,#fff);color:var(--text,#3a3320);cursor:pointer;line-height:1;transition:background .14s,border-color .14s,transform .14s,box-shadow .14s;-webkit-tap-highlight-color:transparent}',
+'.ptc-btn svg{width:15px;height:15px;flex:0 0 auto}',
+'body.dark .ptc-btn{border-color:#2c405e;background:rgba(255,255,255,.03);color:#dbe4f5}',
+'.ptc-btn:hover{background:rgba(230,173,78,.10);border-color:rgba(224,165,46,.45);transform:translateY(-1px);box-shadow:0 3px 10px rgba(18,20,45,.07)}',
+'.ptc-del{order:5;color:#d1443a;border-color:rgba(209,68,58,.32);background:rgba(209,68,58,.05)}',
+'.ptc-del:hover{background:rgba(209,68,58,.12);border-color:rgba(209,68,58,.5)}',
+'.ptc-ok{order:0;color:#fff;font-weight:800;border-color:transparent;background:linear-gradient(135deg,#2fa06d,#1f8a54);box-shadow:0 3px 10px rgba(31,138,84,.26)}',
+'.ptc-ok svg{color:#fff}',
+'.ptc-ok:hover{color:#fff;background:linear-gradient(135deg,#28925f,#1b7a49);border-color:transparent;box-shadow:0 5px 14px rgba(31,138,84,.36)}',
+/* attention/primary variants sabse pehle (order 0), full-width submit sabse upar (order -1) */
+'.ptc-btn.ptc-review-blink,.ptc-btn.ptc-btn-review,.ptc-btn.ptc-ref-blink,.ptc-btn.ptc-refv-blink{order:0}',
+'.ptc-submit{order:-1}',
 /* ---- premium primary action: Submit Video Link (filled gradient pill, full-width row) ---- */
 '.ptc-submit{flex:1 1 100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;font-size:.8rem;font-weight:800;letter-spacing:.01em;padding:11px 16px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#1eb15f 0%,#0f8a45 100%);box-shadow:0 8px 20px rgba(15,138,69,.30),inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer;transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .15s,filter .15s;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
 '.ptc-submit svg{width:16px;height:16px;stroke-width:2.4}',
@@ -30141,7 +30214,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // --- human-readable deadline (canonical ISO -> user-timezone live label) ---
   function _dlHuman(iso, lifecycle, mode){
     if(!iso) return null;
-    if(lifecycle==='uploaded'||lifecycle==='completed') return {kind:'done',label:'Completed'};
+    if(lifecycle==='uploaded'||lifecycle==='completed') return {kind:'done',label:'Completed',body:'',over:false};
     var dt=new Date(iso); if(isNaN(dt.getTime())) return null;
     var delta=Math.floor((dt.getTime()-Date.now())/1000); var over=delta<0; var ad=Math.abs(delta);
     var d=Math.floor(ad/86400), h=Math.floor((ad%86400)/3600), m=Math.floor((ad%3600)/60), s=ad%60;
@@ -30151,7 +30224,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(mode==='compact'){ body=(d>0?(d+'d '+p(h)+'h'):(h>0?(h+'h '+p(m)+'m'):(p(m)+'m'))); }
     else { body=(d>0?(d+'d '):'')+((d>0||h>0)?(p(h)+'h '):'')+p(m)+'m '+p(s)+'s'; }  // live ticking (default)
     var lbl=over?(body+' delayed'):((kind==='soon'?'Due soon ':(kind==='today'?'Due today ':'Due in '))+body);
-    return {kind:kind,label:lbl};
+    return {kind:kind,label:lbl,body:body,over:over};
   }
   // Current-stage deadline (backend current_stage_deadline ka mirror): delay HAMESHA uss
   // stage ke deadline se jise abhi kaam karna hai. Teacher on-time submit kar chuka to
@@ -30197,13 +30270,31 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return isYt ? {role:'youtuber',label:'YouTuber',name:(t.creator_name||''),icon:'video',title:'YouTuber is shooting/submitting — timer is the creator deadline'}
                 : {role:'teacher',label:'Teacher',name:(t.creator_name||''),icon:'user',title:'Teacher is shooting/submitting — timer is the creator deadline'};
   }
+  // Premium deadline-box ka state -> class + label + sub-prefix + icon. State ke sab variants
+  // (On Track / Due Soon / Deadline Today / Delayed / Completed / Paused) yahin se aate hain.
+  function _dlBoxMeta(kind, lc, paused){
+    if(kind==='done') return {cls:'dn',icon:'check',label:'Completed',sub:''};
+    if(paused) return {cls:'pz',icon:'clock',label:'Editing Paused',sub:(kind==='overdue'?'Delayed by':'Time left')};
+    if(kind==='overdue') return {cls:'ov',icon:'alert',label:'Deadline Delayed',sub:'Delayed by'};
+    if(kind==='today') return {cls:'td',icon:'clock',label:'Deadline Today',sub:'Due in'};
+    if(kind==='soon') return {cls:'sn',icon:'clock',label:'Due Soon',sub:'Due in'};
+    return {cls:'ok',icon:'clock',label:'On Track',sub:'Due in'};   // later
+  }
   window._dlToggle=function(el){ el.setAttribute('data-dlmode', (el.getAttribute('data-dlmode')==='compact')?'full':'compact'); _dlTick(); };
   function _dlTick(){
     try{
-      document.querySelectorAll('.pt-timer[data-dl],.pt-dl[data-dl]').forEach(function(el){
+      document.querySelectorAll('.pt-dlbox[data-dl],.pt-timer[data-dl],.pt-dl[data-dl]').forEach(function(el){
         var live=_dlHuman(el.getAttribute('data-dl'), el.getAttribute('data-dllc'), el.getAttribute('data-dlmode')||'full');
         if(!live) return;
         var txt=el.querySelector('.pt-timer-txt');
+        if(el.classList.contains('pt-dlbox')){
+          var m=_dlBoxMeta(live.kind, el.getAttribute('data-dllc')||'', el.getAttribute('data-dlpaused')==='1');
+          el.className='pt-dlbox '+m.cls;
+          var lb=el.querySelector('.pdb-label'); if(lb) lb.textContent=m.label;
+          var sp=el.querySelector('.pdb-subpre'); if(sp) sp.textContent=m.sub;
+          if(txt) txt.textContent=live.body;
+          return;
+        }
         if(txt){ txt.textContent=live.label; el.className='pt-timer pt-dl-tog '+live.kind; }
         else { var who=el.getAttribute('data-dlwho')||''; el.textContent=live.label+((live.kind==='overdue'&&who)?(' · '+who):''); el.className='pt-dl pt-dl-tog '+live.kind; }
       });
@@ -30283,7 +30374,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _cok=(_ct&&_cv>=_ct);
       chips.push('<span class="pw-chip pw-collab-blink" style="background:'+(_cok?'rgba(46,158,107,.14)':'rgba(124,79,192,.14)')+';color:'+(_cok?'#1f7a44':'#7c4fc0')+';cursor:pointer" onclick="event.stopPropagation();prodCollabPopup('+t.id+')" title="View all collaborating teachers">'+ic('users')+' Collab'+_cstat+'</span>');
     }
-    if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
+    if(t.creator_name) chips.push('<span class="pw-chip who">'+ic('user')+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
     if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
     if(t.streaming) chips.push('<span class="pw-chip'+(/live/i.test(t.streaming)?' pwlive':'')+'">'+esc(t.streaming)+'</span>');
@@ -30303,23 +30394,46 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     } else {
       _dlIso=_stageDlIso(t); _dlNice=_stageDlNice(t); _dlLblPref=_stageDlLabel(t.lifecycle||'');
     }
-    if(_dlNice) meta.push(_dlLblPref+esc(_dlNice));
     var df=t.deadline_flag||{};
     if(_dlIso){ var live=_dlHuman(_dlIso, t.lifecycle); if(live) df=live; }
-    else { df={kind:'none',label:''}; }   // is stage ka koi active deadline nahi -> koi delay nahi
+    else { df={kind:'none',label:'',body:''}; }   // is stage ka koi active deadline nahi -> koi delay nahi
     var _hasTimer=(df.kind&&df.kind!=='none'&&df.kind!=='done');
-    // Premium stage-owner badge (kiska delay/deadline hai — Teacher / Editor / Upload)
+    // ===== PREMIUM DEADLINE COMPONENT (label + sub + big live time + View Details) =====
+    // Timer/logic EXISTING hi hai (_dlHuman + _dlIso + _dlTick). Sirf presentation premium.
     var _own=_hasTimer?_stageOwnerInfo(portal,t):null;
-    var _ownPill=_own?('<span class="pt-owner pto-'+_own.role+'" title="'+esc(_own.title)+'">'+ic(_own.icon)+'<b>'+esc(_own.label)+'</b>'+(_own.name?'<span class="pto-nm">'+esc(_own.name)+'</span>':'')+'</span>'):'';
-    // Premium live timer chip (icon + ticking text; _dlTick sirf text update karta hai)
-    var _timer=_hasTimer?('<span class="pt-timer pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'><span class="ptt-ic">'+ic('clock')+'</span><span class="pt-timer-txt">'+esc(df.label||'')+'</span></span>'):'';
+    var _paused=(t.lifecycle==='editing_paused');
+    var _dlBox='';
+    if(_hasTimer){
+      var _bm=_dlBoxMeta(df.kind, t.lifecycle||'', _paused);
+      var _whoLine=_own?('<div class="pdb-who">'+ic(_own.icon)+'<span>'+esc(_own.label)+(_own.name?(' · '+esc(_own.name)):'')+'</span></div>'):'';
+      _dlBox='<div class="pt-dlbox '+_bm.cls+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" data-dlpaused="'+(_paused?'1':'0')+'"'):'')+'>'+
+        '<div class="pdb-ic">'+ic(_bm.icon)+'</div>'+
+        '<div class="pdb-main"><div class="pdb-label">'+esc(_bm.label)+'</div>'+
+          '<div class="pdb-time"><span class="pdb-subpre">'+esc(_bm.sub)+'</span> <b class="pt-timer-txt">'+esc(df.body||'')+'</b></div>'+
+          _whoLine+'</div>'+
+        '<button class="pdb-btn" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">View Details'+'<svg class="pdb-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'+'</button>'+
+      '</div>';
+    }
+    // Uploaded / Completed -> green "Completed" box (koi active countdown nahi).
+    else if(['uploaded','completed'].indexOf(t.lifecycle||'')>=0){
+      _dlBox='<div class="pt-dlbox dn">'+
+        '<div class="pdb-ic">'+ic('check')+'</div>'+
+        '<div class="pdb-main"><div class="pdb-label">Completed</div>'+
+          '<div class="pdb-time"><span class="pdb-subpre">'+(t.published_at?('Published '+esc(t.published_at)):'Live on YouTube')+'</span></div></div>'+
+        '<button class="pdb-btn" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">View Details'+'<svg class="pdb-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'+'</button>'+
+      '</div>';
+    }
     // Teacher submit kar chuka + ab review/next-stage me hai -> countdown ki jagah submission
     // ka result dikhao (green "Submitted on time" / red "Submitted delayed") — positive confirm.
-    if(!_timer && t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(t.lifecycle||'')>=0){
-      _timer=t.on_time?('<span class="pt-timer done"><span class="ptt-ic">'+ic('check')+'</span><span class="pt-timer-txt">Submitted on time</span></span>')
-                      :('<span class="pt-timer overdue"><span class="ptt-ic">'+ic('alert')+'</span><span class="pt-timer-txt">Submitted delayed</span></span>');
+    else if(t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(t.lifecycle||'')>=0){
+      _dlBox='<div class="pt-dlbox '+(t.on_time?'dn':'ov')+'">'+
+        '<div class="pdb-ic">'+ic(t.on_time?'check':'alert')+'</div>'+
+        '<div class="pdb-main"><div class="pdb-label">'+(t.on_time?'Submitted On Time':'Submitted Delayed')+'</div>'+
+          '<div class="pdb-time"><span class="pdb-subpre">'+(t.submitted_at?esc(t.submitted_at):'Awaiting review')+'</span></div></div>'+
+        '<button class="pdb-btn" onclick="event.stopPropagation();prodOpenTask(\''+portal+'\','+t.id+')">View Details'+'<svg class="pdb-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'+'</button>'+
+      '</div>';
     }
-    var _dlRow=(_ownPill||_timer)?('<div class="pt-dlrow">'+_ownPill+_timer+'</div>'):'';
+    var _dlRow=_dlBox;
     // Kisne drive link submit kiya (teacher / youtuber / PM / admin) — sabko dikhe
     if(t.submitted_link && t.submitted_by_name){
       var _sbr={teacher:'Teacher',youtuber:'YouTuber',production_manager:'PM',admin:'Admin'}[t.submitted_by_role||'']||'';
@@ -30328,6 +30442,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
     if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
+    // Deadline date + Video ID — ek clean row, icons ke saath (reference #5)
+    var _idParts=[];
+    if(_dlNice) _idParts.push('<span class="pir-i"><span class="pir-ic">'+ic('calendar')+'</span><span class="pir-tx">'+esc((_dlLblPref||'').replace(/:\s*$/,''))+': '+esc(_dlNice)+'</span></span>');
+    if(t.ref_code) _idParts.push('<span class="pir-i pir-id"><span class="pir-ic">'+ic('list')+'</span><span class="pir-tx">'+esc(t.ref_code)+'</span></span>');
+    var _idrow=_idParts.length?('<div class="ptc-idrow">'+_idParts.join('')+'</div>'):'';
     var acts='';
     if(portal==='editor'){
       if(_elc==='editor_assigned'||_elc==='editing_soon'||_elc==='approved') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
@@ -30431,9 +30550,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return '<div class="ptc'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="border-left:5px solid '+(st[1]||'#8a7d5c')+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
       '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
-      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+_dlRow+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+_dlRow+_idrow+
       (meta.length?'<div class="ptc-meta">'+meta.join(' \u00b7 ')+'</div>':'')+
-      '<div class="ptc-ref">'+esc(t.ref_code||'')+'</div>'+
       '<div class="ptc-acts">'+acts+'</div></div></div>';
   }
   function _taskRow(portal,t){
