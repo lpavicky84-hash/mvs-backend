@@ -129,30 +129,11 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
         "due_today": 0,   # stage-aware, neeche compute hota hai
         "overdue": 0,     # stage-aware, neeche compute hota hai
     }
-    # ---- DELAYED / DUE TODAY: har task ko uske CURRENT STAGE ke deadline se naapo
-    # (teacher on-time submit kar chuka to editing me editor_deadline lagta hai, teacher wala
-    # nahi). Isliye SQL ki jagah Python me current_stage_deadline se count karte hain.
-    _now_ist = now + timedelta(hours=5, minutes=30)
-    _overdue = 0
-    _due_today = 0
-    for _t in q.filter(VideoTask.is_old == False, VideoTask.lifecycle.in_(active_states)).all():
-        _lc = _t.lifecycle or ""
-        if _lc in pc._STAGE_UPLOAD:
-            _dl = getattr(_t, "upload_date", None); _ref = _now_ist
-        elif _lc in pc._STAGE_NO_COUNTDOWN:
-            _dl = None; _ref = now
-        elif _lc in pc._STAGE_EDITOR_ACTIVE:
-            _dl = getattr(_t, "editor_deadline", None); _ref = now
-        else:
-            _dl = getattr(_t, "deadline", None); _ref = now
-        if not _dl:
-            continue
-        if _dl < _ref:
-            _overdue += 1
-        elif _dl.date() == _ref.date():
-            _due_today += 1
-    kpis["overdue"] = _overdue
-    kpis["due_today"] = _due_today
+    # ---- DELAYED / DUE TODAY: shared stage-aware helper (Tasks list ka 'Delayed' filter bhi
+    # yahi helper use karta hai -> KPI count aur list HAMESHA barabar).
+    _ovd_ids, _tod_ids = pc.overdue_today_ids(db)
+    kpis["overdue"] = len(_ovd_ids)
+    kpis["due_today"] = len(_tod_ids)
     # This-month metrics
     month_start = datetime(now.year, now.month, 1)
     created_m = q.filter(VideoTask.created_at >= month_start).count()
@@ -225,7 +206,19 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     # project) live in their own Projects section. BUT the YouTuber Tasks section has NO separate
     # projects area, so for creator_type=youtuber we show EVERY kind (warna youtuber ke
     # one-shot/rapid/project tasks kahin nahi dikhte).
-    if (creator_type or "").strip().lower() != "youtuber":
+    _ct = (creator_type or "").strip().lower()
+    # Delayed / Due-Today drill = CROSS-CUTTING view: youtuber ke delayed videos bhi dikhne
+    # chahiye (dashboard KPI unhe ginta hai). Isliye in drills me youtuber ko exclude MAT karo,
+    # sirf normal-kind rakho (dashboard se exactly match). Baaki har general list me youtuber
+    # apni "YouTuber Tasks" section me hi rehta hai.
+    _deadline_drill = deadline in ("overdue", "today")
+    if _ct == "youtuber":
+        pass  # YouTuber section: har kind dikhao
+    elif _deadline_drill:
+        # normal-kind only, par youtuber included (id.in_ filter neeche exact match dega)
+        query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
+                                 VideoTask.kind == "normal"))
+    else:
         # YouTuber tasks live in their own "YouTuber Tasks" section — never in the general list.
         query = query.filter(or_(VideoTask.creator_type == None,
                                  VideoTask.creator_type != "youtuber"))
@@ -302,27 +295,11 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
                                  VideoTask.ref_code.like(like),
                                  VideoTask.subject.like(like)))
     now = datetime.utcnow()
-    if deadline == "overdue":
-        # STAGE-AWARE delayed: har stage apne deadline se. Teacher on-time submit ke baad
-        # editing me editor_deadline lagta hai (teacher wala nahi); submitted/PM-review/
-        # QC-pending kabhi delayed nahi. Isliye SQL me OR-of-stages laga rahe hain.
-        _now_ist = now + timedelta(hours=5, minutes=30)
-        _teacher_st = ["created", "creator_assigned", "creator_working",
-                       "changes_required", "reshoot_required", "rejected"]
-        _editor_st = ["editor_assigned", "editing_soon", "editing",
-                      "editing_paused", "editing_done", "qc_changes"]
-        _upload_st = ["qc_approved", "ready_for_youtube"]
-        query = query.filter(VideoTask.is_old == False, or_(
-            and_(VideoTask.lifecycle.in_(_teacher_st),
-                 VideoTask.deadline != None, VideoTask.deadline < now),          # noqa: E711
-            and_(VideoTask.lifecycle.in_(_editor_st),
-                 VideoTask.editor_deadline != None, VideoTask.editor_deadline < now),  # noqa: E711
-            and_(VideoTask.lifecycle.in_(_upload_st),
-                 VideoTask.upload_date != None, VideoTask.upload_date < _now_ist),  # noqa: E711
-        ))
-    elif deadline == "today":
-        query = query.filter(VideoTask.deadline != None,
-                             func.date(VideoTask.deadline) == date.today())
+    if deadline in ("overdue", "today"):
+        # Dashboard KPI ke SAME stage-aware helper se — count aur list ab HAMESHA barabar.
+        _ovd_ids, _tod_ids = pc.overdue_today_ids(db)
+        _ids = _ovd_ids if deadline == "overdue" else _tod_ids
+        query = query.filter(VideoTask.id.in_(_ids or [-1]))
     elif deadline == "week":
         query = query.filter(VideoTask.deadline != None,
                              VideoTask.deadline <= now + timedelta(days=7),

@@ -26366,6 +26366,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pt-dl.soon{background:rgba(224,165,74,.18);color:#a9791f}',
 '.pt-dl.later{background:rgba(120,120,120,.12);color:#6b6152}',
 'body.dark .pt-dl.later{background:rgba(255,255,255,.08);color:#b0a483}',
+/* ===== Premium stage-owner badge + live timer chip (Tasks / boards cards) ===== */
+'.pt-dlrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:9px}',
+'.pt-owner{display:inline-flex;align-items:center;gap:5px;font-size:.68rem;font-weight:700;padding:4px 10px 4px 8px;border-radius:999px;line-height:1;white-space:nowrap;border:1px solid transparent}',
+'.pt-owner svg{width:12px;height:12px;flex:0 0 auto}',
+'.pt-owner b{font-weight:800;letter-spacing:.01em}',
+'.pt-owner .pto-nm{font-weight:600;opacity:.85;max-width:120px;overflow:hidden;text-overflow:ellipsis}',
+'.pt-owner .pto-nm::before{content:"·";margin:0 4px;opacity:.5}',
+'.pto-teacher{background:rgba(124,58,237,.12);color:#6d3fb0;border-color:rgba(124,58,237,.22)}',
+'.pto-youtuber{background:rgba(192,38,211,.12);color:#a21caf;border-color:rgba(192,38,211,.22)}',
+'.pto-editor{background:rgba(37,99,235,.12);color:#2563eb;border-color:rgba(37,99,235,.22)}',
+'.pto-upload{background:rgba(8,145,178,.12);color:#0e7490;border-color:rgba(8,145,178,.22)}',
+'body.dark .pto-teacher{background:rgba(139,92,246,.20);color:#c4b5fd;border-color:rgba(139,92,246,.34)}',
+'body.dark .pto-youtuber{background:rgba(217,70,239,.20);color:#f0abfc;border-color:rgba(217,70,239,.34)}',
+'body.dark .pto-editor{background:rgba(59,130,246,.22);color:#93c5fd;border-color:rgba(59,130,246,.36)}',
+'body.dark .pto-upload{background:rgba(6,182,212,.22);color:#67e8f9;border-color:rgba(6,182,212,.36)}',
+'.pt-timer{display:inline-flex;align-items:center;gap:5px;font-size:.69rem;font-weight:800;padding:4px 11px 4px 9px;border-radius:999px;line-height:1;white-space:nowrap;cursor:pointer;user-select:none;letter-spacing:.01em;border:1px solid transparent;box-shadow:0 1px 2px rgba(18,20,45,.05);transition:filter .14s,transform .14s}',
+'.pt-timer:hover{filter:brightness(1.03);transform:translateY(-1px)}',
+'.pt-timer .ptt-ic{display:inline-flex}',
+'.pt-timer .ptt-ic svg{width:12px;height:12px;display:block}',
+'.pt-timer.overdue{background:linear-gradient(135deg,#f4574d,#d1362b);color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(209,54,43,.32)}',
+'.pt-timer.today{background:linear-gradient(135deg,#f7d98a,#eab543);color:#6b4f14;border-color:rgba(224,165,46,.45)}',
+'.pt-timer.soon{background:linear-gradient(135deg,#f7d98a,#eab543);color:#6b4f14;border-color:rgba(224,165,46,.45)}',
+'.pt-timer.later{background:rgba(46,158,107,.13);color:#1f7a48;border-color:rgba(46,158,107,.28);box-shadow:none}',
+'.pt-timer.done{background:rgba(46,158,107,.13);color:#1f7a48;border-color:rgba(46,158,107,.28);box-shadow:none}',
+'body.dark .pt-timer.later{background:rgba(46,158,107,.2);color:#5fd39e;border-color:rgba(46,158,107,.34)}',
+'body.dark .pt-timer.done{background:rgba(46,158,107,.2);color:#5fd39e;border-color:rgba(46,158,107,.34)}',
+'@keyframes ptTimerPulse{0%,100%{box-shadow:0 4px 12px rgba(209,54,43,.30)}50%{box-shadow:0 4px 18px rgba(209,54,43,.55)}}',
+'.pt-timer.overdue{animation:ptTimerPulse 2.2s ease-in-out infinite}',
 '.pw-thumb{width:74px;height:48px;border-radius:9px;object-fit:cover;border:1px solid #ece2cd;flex:0 0 auto;background:#f4f1e8}',
 '.pw-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
 '.pw-chip{font-size:.66rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(230,173,78,.14);color:#a9791f;white-space:nowrap}',
@@ -30157,12 +30185,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(_STG_UP.indexOf(lc)>=0) return 'Upload: ';
     return 'Deadline: ';
   }
+  // Kis stage ka countdown chal raha hai + kiska kaam hai -> premium owner badge ke liye.
+  function _stageOwnerInfo(portal,t){
+    var lc=t.lifecycle||'';
+    if(portal==='editor' || _STG_EDIT.indexOf(lc)>=0)
+      return {role:'editor',label:'Editor',name:(t.editor_name||''),icon:'edit',title:'Editor is on this — timer is the editor deadline'};
+    if(_STG_UP.indexOf(lc)>=0)
+      return {role:'upload',label:'Upload',name:'',icon:'upload',title:'Waiting for YouTube upload — timer is the scheduled upload time'};
+    if(_STG_NONE.indexOf(lc)>=0) return null;   // is stage me koi active countdown nahi
+    var isYt=(t.creator_type==='youtuber');
+    return isYt ? {role:'youtuber',label:'YouTuber',name:(t.creator_name||''),icon:'video',title:'YouTuber is shooting/submitting — timer is the creator deadline'}
+                : {role:'teacher',label:'Teacher',name:(t.creator_name||''),icon:'user',title:'Teacher is shooting/submitting — timer is the creator deadline'};
+  }
   window._dlToggle=function(el){ el.setAttribute('data-dlmode', (el.getAttribute('data-dlmode')==='compact')?'full':'compact'); _dlTick(); };
   function _dlTick(){
     try{
-      document.querySelectorAll('.pt-dl[data-dl]').forEach(function(el){
+      document.querySelectorAll('.pt-timer[data-dl],.pt-dl[data-dl]').forEach(function(el){
         var live=_dlHuman(el.getAttribute('data-dl'), el.getAttribute('data-dllc'), el.getAttribute('data-dlmode')||'full');
-        if(live){ var who=el.getAttribute('data-dlwho')||''; el.textContent=live.label+((live.kind==='overdue'&&who)?(' · '+who):''); el.className='pt-dl pt-dl-tog '+live.kind; }
+        if(!live) return;
+        var txt=el.querySelector('.pt-timer-txt');
+        if(txt){ txt.textContent=live.label; el.className='pt-timer pt-dl-tog '+live.kind; }
+        else { var who=el.getAttribute('data-dlwho')||''; el.textContent=live.label+((live.kind==='overdue'&&who)?(' · '+who):''); el.className='pt-dl pt-dl-tog '+live.kind; }
       });
     }catch(e){}
   }
@@ -30254,24 +30297,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var meta=[];
     // Deadline meta + delay badge dono CURRENT STAGE ke deadline se (teacher on-time submit
     // ke baad editing me editor_deadline lagta hai). Editor portal apni editor_deadline dekhta hai.
-    var _dlIso, _dlNice, _dlWho, _dlLblPref;
+    var _dlIso, _dlNice, _dlLblPref;
     if(portal==='editor'){
-      _dlIso=t.editor_deadline_iso||''; _dlNice=t.editor_deadline||''; _dlWho=''; _dlLblPref='Editor deadline: ';
+      _dlIso=t.editor_deadline_iso||''; _dlNice=t.editor_deadline||''; _dlLblPref='Editor deadline: ';
     } else {
-      _dlIso=_stageDlIso(t); _dlNice=_stageDlNice(t); _dlWho=_stageDlWho(t); _dlLblPref=_stageDlLabel(t.lifecycle||'');
+      _dlIso=_stageDlIso(t); _dlNice=_stageDlNice(t); _dlLblPref=_stageDlLabel(t.lifecycle||'');
     }
     if(_dlNice) meta.push(_dlLblPref+esc(_dlNice));
     var df=t.deadline_flag||{};
     if(_dlIso){ var live=_dlHuman(_dlIso, t.lifecycle); if(live) df=live; }
     else { df={kind:'none',label:''}; }   // is stage ka koi active deadline nahi -> koi delay nahi
-    var _dlLbl=(df.label||'')+((df.kind==='overdue'&&_dlWho)?(' · '+_dlWho):'');
-    var dl=(df.kind&&df.kind!=='none'&&df.kind!=='done')?'<span class="pt-dl pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlwho="'+esc(_dlWho)+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'>'+esc(_dlLbl)+(portal==='editor'&&t.editor_deadline_iso?' (editor)':'')+'</span>':'';
+    var _hasTimer=(df.kind&&df.kind!=='none'&&df.kind!=='done');
+    // Premium stage-owner badge (kiska delay/deadline hai — Teacher / Editor / Upload)
+    var _own=_hasTimer?_stageOwnerInfo(portal,t):null;
+    var _ownPill=_own?('<span class="pt-owner pto-'+_own.role+'" title="'+esc(_own.title)+'">'+ic(_own.icon)+'<b>'+esc(_own.label)+'</b>'+(_own.name?'<span class="pto-nm">'+esc(_own.name)+'</span>':'')+'</span>'):'';
+    // Premium live timer chip (icon + ticking text; _dlTick sirf text update karta hai)
+    var _timer=_hasTimer?('<span class="pt-timer pt-dl-tog '+df.kind+'"'+(_dlIso?(' data-dl="'+esc(_dlIso)+'" data-dllc="'+esc(t.lifecycle||'')+'" data-dlmode="full" onclick="event.stopPropagation();_dlToggle(this)" title="Tap to switch timer format"'):'')+'><span class="ptt-ic">'+ic('clock')+'</span><span class="pt-timer-txt">'+esc(df.label||'')+'</span></span>'):'';
     // Teacher submit kar chuka + ab review/next-stage me hai -> countdown ki jagah submission
     // ka result dikhao (green "Submitted on time" / red "Submitted delayed") — positive confirm.
-    if(!dl && t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(t.lifecycle||'')>=0){
-      dl=t.on_time?('<span class="pt-dl done">'+ic('check')+' Submitted on time</span>')
-                  :('<span class="pt-dl overdue">'+ic('alert')+' Submitted delayed</span>');
+    if(!_timer && t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(t.lifecycle||'')>=0){
+      _timer=t.on_time?('<span class="pt-timer done"><span class="ptt-ic">'+ic('check')+'</span><span class="pt-timer-txt">Submitted on time</span></span>')
+                      :('<span class="pt-timer overdue"><span class="ptt-ic">'+ic('alert')+'</span><span class="pt-timer-txt">Submitted delayed</span></span>');
     }
+    var _dlRow=(_ownPill||_timer)?('<div class="pt-dlrow">'+_ownPill+_timer+'</div>'):'';
     // Kisne drive link submit kiya (teacher / youtuber / PM / admin) — sabko dikhe
     if(t.submitted_link && t.submitted_by_name){
       var _sbr={teacher:'Teacher',youtuber:'YouTuber',production_manager:'PM',admin:'Admin'}[t.submitted_by_role||'']||'';
@@ -30383,8 +30431,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return '<div class="ptc'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="border-left:5px solid '+(st[1]||'#8a7d5c')+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
       '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
-      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+
-      (meta.length||dl?'<div class="ptc-meta">'+dl+(dl&&meta.length?' ':'')+meta.join(' \u00b7 ')+'</div>':'')+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+_dlRow+
+      (meta.length?'<div class="ptc-meta">'+meta.join(' \u00b7 ')+'</div>':'')+
       '<div class="ptc-ref">'+esc(t.ref_code||'')+'</div>'+
       '<div class="ptc-acts">'+acts+'</div></div></div>';
   }

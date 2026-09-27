@@ -1196,6 +1196,48 @@ def current_stage_deadline(t):
     return getattr(t, "deadline", None)
 
 
+# Active pipeline stages jinme koi na koi countdown chal raha ho sakta hai (single-video).
+_ACTIVE_PIPELINE = ["creator_assigned", "creator_working", "creator_submitted", "pm_review",
+                    "approved", "editor_assigned", "editing", "editing_paused", "editing_done",
+                    "qc_pending", "qc_changes", "ready_for_youtube", "changes_required"]
+
+
+def overdue_today_ids(db):
+    """SINGLE SOURCE OF TRUTH for stage-aware DELAYED + DUE-TODAY task ids.
+
+    Dashboard KPI (Delayed / Due Today) aur Tasks list ka 'Delayed'/'Due Today' filter DONO
+    isi helper se chalte hain -> count aur list HAMESHA match karte hain (pehle dashboard youtuber
+    bhi ginta tha par list nahi -> 7 vs 5 mismatch). Normal-kind single videos only; teacher +
+    youtuber dono included. Delay hamesha CURRENT STAGE ke deadline se (current_stage_deadline)."""
+    from sqlalchemy import or_ as _or
+    from sqlalchemy.orm import defer as _defer
+    now = datetime.utcnow()
+    now_ist = now + timedelta(hours=5, minutes=30)
+    _NS = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")  # noqa: E711
+    overdue, today = [], []
+    rows = (db.query(VideoTask)
+            .options(_defer(VideoTask.thumbnail_b64))
+            .filter(VideoTask.cancelled == False, _NS, VideoTask.is_old == False,   # noqa: E712
+                    VideoTask.lifecycle.in_(_ACTIVE_PIPELINE)).all())
+    for t in rows:
+        lc = t.lifecycle or ""
+        if lc in _STAGE_UPLOAD:
+            dl = getattr(t, "upload_date", None); ref = now_ist
+        elif lc in _STAGE_NO_COUNTDOWN:
+            dl = None; ref = now
+        elif lc in _STAGE_EDITOR_ACTIVE:
+            dl = getattr(t, "editor_deadline", None); ref = now
+        else:
+            dl = getattr(t, "deadline", None); ref = now
+        if not dl:
+            continue
+        if dl < ref:
+            overdue.append(t.id)
+        elif dl.date() == ref.date():
+            today.append(t.id)
+    return overdue, today
+
+
 _DL_UNSET = object()
 
 
