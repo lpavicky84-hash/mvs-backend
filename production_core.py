@@ -1230,14 +1230,15 @@ def overdue_today_ids(db):
     for t in rows:
         lc = t.lifecycle or ""
         if not lc:
-            # Legacy/admin task (koi production lifecycle nahi) -> status se stage tay karo.
+            # Legacy/admin task (koi production lifecycle nahi): admin ki tarah SIRF genuinely-open
+            # statuses (assigned/reshoot/rejected) ko delayed gino — jinme teacher ko abhi kaam
+            # karna hai. approved/editing_soon/editing_done/uploaded = DONE (admin inhe delayed nahi
+            # ginta), submitted = review me. Warna purane legacy tasks se count phoot jaata hai (97!).
             st = (t.status or "").lower()
-            if st in ("uploaded", "completed", "submitted"):
-                dl = None                                   # done ya review me -> active-overdue nahi
-            elif st in ("approved", "editing_soon", "editing_done"):
-                dl = getattr(t, "editor_deadline", None) or getattr(t, "deadline", None)
+            if st in ("assigned", "reshoot", "rejected"):
+                dl = getattr(t, "deadline", None)
             else:
-                dl = getattr(t, "deadline", None)           # assigned/reshoot/rejected/new/in_progress
+                dl = None
         elif lc in _STAGE_UPLOAD:
             dl = getattr(t, "upload_date", None)
         elif lc in _STAGE_NO_COUNTDOWN:
