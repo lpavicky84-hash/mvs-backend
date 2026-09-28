@@ -22256,20 +22256,32 @@ function initResponsiveCss(){
     '.chat-atp-x{flex:0 0 auto;width:30px;height:30px;border-radius:8px;border:none;background:transparent;color:#a9791f;font-size:1.3rem;line-height:1;cursor:pointer}',
     '.chat-atp-x:hover{background:rgba(201,138,46,.14)}',
     /* task picker dropdown */
-    '.chat-task-menu{position:absolute;bottom:54px;left:44px;width:290px;max-width:78vw;max-height:320px;display:flex;flex-direction:column;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:16px;box-shadow:0 16px 40px rgba(18,20,45,.24);z-index:9;overflow:hidden}',
-    '.ctm-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;font-weight:800;font-size:.82rem;color:var(--text,#14213d);border-bottom:1px solid var(--border,#eee5d3)}',
+    '.chat-task-menu{position:absolute;bottom:54px;left:44px;width:300px;max-width:82vw;max-height:min(58vh,400px);display:flex;flex-direction:column;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:16px;box-shadow:0 18px 44px rgba(18,20,45,.26);z-index:9;overflow:hidden}',
+    '.ctm-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;font-weight:800;font-size:.82rem;color:var(--text,#14213d);border-bottom:1px solid var(--border,#eee5d3);flex:0 0 auto}',
     '.ctm-x{border:none;background:transparent;font-size:1.35rem;line-height:1;color:var(--muted);cursor:pointer}',
-    '.ctm-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px}',
+    '.ctm-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 6px 10px;scroll-padding-block:8px;overscroll-behavior:contain}',
     '.ctm-empty{padding:22px 14px;text-align:center;color:var(--muted);font-size:.85rem}',
     '.ctm-row{display:flex;align-items:center;gap:11px;width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:11px;padding:10px 11px;cursor:pointer;transition:.12s}',
     '.ctm-row:hover{background:rgba(201,138,46,.09);border-color:rgba(201,138,46,.25)}',
     '.ctm-row.current{background:rgba(37,193,93,.07);border-color:rgba(37,193,93,.28)}',
     '.ctm-ic{flex:0 0 auto;width:34px;height:34px;border-radius:9px;background:rgba(201,138,46,.14);color:#a9791f;display:inline-flex;align-items:center;justify-content:center}',
-    '.ctm-mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}',
+    '.ctm-mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}',
     '.ctm-title{font-weight:700;font-size:.88rem;color:var(--text,#14213d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.ctm-cur{font-size:.6rem;font-weight:800;color:#1f9a4d;background:rgba(37,193,93,.14);padding:1px 6px;border-radius:6px;vertical-align:middle}',
-    '.ctm-meta{font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '.ctm-st{font-weight:700;color:#8a6d1f}',
+    '.ctm-meta{display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted);min-width:0}',
+    '.ctm-ch{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
+    /* premium status badge */
+    '.ctm-badge{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;font-size:.62rem;font-weight:800;letter-spacing:.02em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid transparent;line-height:1.5}',
+    '.ctm-badge .cbd{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto}',
+    '.ctm-badge.s-assigned{background:rgba(8,145,178,.12);color:#0e7490;border-color:rgba(8,145,178,.28)}',
+    '.ctm-badge.s-editing{background:rgba(124,58,237,.12);color:#6d28d9;border-color:rgba(124,58,237,.28)}',
+    '.ctm-badge.s-paused{background:rgba(217,119,6,.13);color:#b45309;border-color:rgba(217,119,6,.30)}',
+    '.ctm-badge.s-done{background:rgba(16,185,129,.13);color:#047857;border-color:rgba(16,185,129,.30)}',
+    '.ctm-badge.s-qc{background:rgba(224,165,46,.15);color:#a9791f;border-color:rgba(224,165,46,.32)}',
+    '.ctm-badge.s-changes{background:rgba(220,38,38,.10);color:#b91c1c;border-color:rgba(220,38,38,.28)}',
+    '.ctm-badge.s-review{background:rgba(224,165,46,.15);color:#a9791f;border-color:rgba(224,165,46,.32)}',
+    '.ctm-badge.s-neutral{background:rgba(120,113,108,.14);color:#78716c;border-color:rgba(120,113,108,.28)}',
+    'body.dark .ctm-badge.s-assigned{color:#67d9ef}body.dark .ctm-badge.s-editing{color:#c4b5fd}body.dark .ctm-badge.s-paused{color:#f5b45e}body.dark .ctm-badge.s-done{color:#5fd39e}body.dark .ctm-badge.s-qc,body.dark .ctm-badge.s-review{color:#e6c169}body.dark .ctm-badge.s-changes{color:#fca5a0}',
     /* attached-task card inside a chat bubble (WhatsApp reply style) */
     '.chat-ref{display:flex;align-items:stretch;gap:0;margin:2px 0 6px;background:rgba(0,0,0,.045);border-radius:9px;overflow:hidden;cursor:pointer;transition:background .12s}',
     '.chat-bub.mine .chat-ref{background:rgba(255,255,255,.4)}',
@@ -28218,20 +28230,44 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window._chatTaskMenuClose=function(ev){ var m=document.getElementById('chat-task-menu'); if(!m){ document.removeEventListener('click',window._chatTaskMenuClose); return; }
     if(m.style.display==='block' && !(ev.target.closest && (ev.target.closest('#chat-task-menu')||ev.target.closest('.chat-task-mini')))){ m.style.display='none'; document.removeEventListener('click',window._chatTaskMenuClose); } };
+  // Video done/finalized ho gayi (QC approved / ready for youtube / uploaded / completed) to
+  // ab active nahi -> chat attach-list me na dikhe. Active tasks (QC submit, changes tak) dikhein.
+  var _CTM_DONE={ready_for_youtube:1,qc_approved:1,uploaded:1,completed:1};
   function _chatPaintPartyTasks(){
     var box=document.getElementById('chat-task-list'); if(!box) return;
-    var arr=window._chatPartyTasks||[];
-    if(!arr.length){ box.innerHTML='<div class="ctm-empty">No active tasks found for this person.</div>'; return; }
+    var arr=(window._chatPartyTasks||[]).filter(function(t){
+      if(t.current) return true;   // is chat ka apna task hamesha dikhe
+      var s=(t.status||'').toLowerCase(), lc=(t.lifecycle||'').toLowerCase();
+      return !(_CTM_DONE[s]||_CTM_DONE[lc]);
+    });
+    if(!arr.length){ box.innerHTML='<div class="ctm-empty">No active tasks for this person.</div>'; return; }
     box.innerHTML=arr.map(function(t){
-      var stt=_chatTaskStatusLabel(t.status);
+      var st=_chatTaskStatus(t.lifecycle||t.status);
       return '<button type="button" class="ctm-row'+(t.current?' current':'')+'" onclick="_chatPickTask('+t.id+')">'+
         '<span class="ctm-ic">'+_CHAT_IC_TASK+'</span>'+
         '<span class="ctm-mid"><span class="ctm-title">'+esc(t.title||('Task #'+t.id))+(t.current?' <span class="ctm-cur">this chat</span>':'')+'</span>'+
-        '<span class="ctm-meta">'+(stt?('<span class="ctm-st">'+esc(stt)+'</span>'):'')+(t.channel?(' · '+esc(t.channel)):'')+'</span></span>'+
+        '<span class="ctm-meta">'+(st.label?('<span class="ctm-badge '+st.cls+'"><span class="cbd"></span>'+esc(st.label)+'</span>'):'')+(t.channel?('<span class="ctm-ch">'+esc(t.channel)+'</span>'):'')+'</span></span>'+
       '</button>';
     }).join('');
   }
-  function _chatTaskStatusLabel(s){ s=(s||'').toLowerCase(); var m={assigned:'Assigned',approved:'Approved',editing_soon:'To edit',editing:'Editing',editing_done:'Edited',qc_pending:'In QC',ready_for_youtube:'Ready',uploaded:'Uploaded',reshoot:'Reshoot',rejected:'Rejected',pm_review:'In review',creator_submitted:'Submitted'}; return m[s]||(s?s.replace(/_/g,' '):''); }
+  // status -> premium badge {label, cls}
+  function _chatTaskStatus(s){
+    s=(s||'').toLowerCase();
+    var M={
+      assigned:['Assigned','s-assigned'], creator_assigned:['Assigned','s-assigned'],
+      creator_working:['Shooting','s-editing'], editing_soon:['To edit','s-assigned'],
+      editor_assigned:['To edit','s-assigned'], editing:['Processing','s-editing'],
+      editing_paused:['Paused','s-paused'], editing_done:['Edited','s-done'],
+      qc_pending:['In QC','s-qc'], qc_changes:['Changes','s-changes'], changes:['Changes','s-changes'],
+      pm_review:['In review','s-review'], creator_submitted:['Submitted','s-review'],
+      submitted:['Submitted','s-review'], reshoot:['Reshoot','s-changes'], rejected:['Rejected','s-changes'],
+      approved:['Approved','s-done'], ready_for_youtube:['Ready','s-done'],
+      qc_approved:['Ready','s-done'], uploaded:['Uploaded','s-done'], completed:['Done','s-done']
+    };
+    var v=M[s]; if(v) return {label:v[0],cls:v[1]};
+    return {label:(s?s.replace(/_/g,' '):''),cls:'s-neutral'};
+  }
+  function _chatTaskStatusLabel(s){ return _chatTaskStatus(s).label; }
   function _chatLoadPartyTasks(force){
     var meta=window._chatMeta||{};
     if(window._chatPartyTasks && !force){ _chatPaintPartyTasks(); return; }

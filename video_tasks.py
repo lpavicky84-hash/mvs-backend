@@ -1293,6 +1293,9 @@ def _chat_party_tasks(db, task_id, audience=None):
             return out
         aud = (audience or "creator").strip().lower()
         DONE = ("uploaded", "completed")
+        # Video done/finalized (QC approved / ready for youtube / uploaded / completed) -> ab
+        # active nahi, attach-list me na dikhe. Lifecycle production ka sahi source hai.
+        DONE_LC = ("ready_for_youtube", "qc_approved", "uploaded", "completed")
         rows = []
         if aud in ("editor", "ed_gf"):
             eid = getattr(t, "editor_id", None)
@@ -1325,11 +1328,12 @@ def _chat_party_tasks(db, task_id, audience=None):
                 continue
             seen.add(tk.id)
             st = (tk.status or "")
-            # completed/uploaded tasks skip (current task chhod ke)
-            if tk.id != t.id and st in DONE:
+            lc = (getattr(tk, "lifecycle", "") or "")
+            # done/finalized tasks skip (current task chhod ke) — status YA lifecycle se
+            if tk.id != t.id and (st in DONE or lc in DONE_LC):
                 continue
             out.append({"id": tk.id, "title": (tk.title or ""),
-                        "status": st, "channel": (tk.channel_name or ""),
+                        "status": st, "lifecycle": lc, "channel": (tk.channel_name or ""),
                         "current": (tk.id == t.id)})
             if len(out) >= 40:
                 break
