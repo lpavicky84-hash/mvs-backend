@@ -65,6 +65,46 @@ def _task(db, tid):
     return t
 
 
+def _apply_pause_request(db, urgent_task, editor_id, payload, me):
+    """PM/admin ne urgent editor-task dete waqt editor ke ek ACTIVE task ko pause + naya deadline
+    set kiya. Us active task par pause_req flag laga do + editor ko notify. assign-editor AUR
+    edit-task DONO isko call karte hain — kahi se bhi editor assign karo, same premium behaviour."""
+    try:
+        _pause_tid = int(payload.get("pause_task_id") or 0)
+    except Exception:
+        _pause_tid = 0
+    if not _pause_tid or not editor_id or _pause_tid == getattr(urgent_task, "id", 0):
+        return
+    _pt = db.query(VideoTask).filter(VideoTask.id == _pause_tid,
+                                     VideoTask.editor_id == editor_id).first()
+    if not _pt:
+        return
+    _pdl_raw = (payload.get("pause_deadline") or payload.get("pause_new_deadline") or "").strip()
+    _pdl = None
+    if _pdl_raw:
+        try:
+            _pdl = datetime.fromisoformat(_pdl_raw.replace("Z", ""))
+        except Exception:
+            _pdl = None
+    _pt.pause_req = True
+    _pt.pause_req_deadline = _pdl
+    _pt.pause_req_by = (getattr(me, "name", "") or ("Admin" if getattr(me, "role", "") == "admin" else "Production Manager"))
+    _pt.pause_req_urgent_id = urgent_task.id
+    _pt.pause_req_at = datetime.utcnow()
+    try:
+        pc.log_event(db, _pt, me, "pause_requested", new_state=_pt.lifecycle,
+                     meta={"note": "Pause requested for urgent task", "urgent_id": urgent_task.id,
+                           "new_deadline": (_pdl.strftime("%d %b %Y, %I:%M %p") if _pdl else "")})
+    except Exception:
+        pass
+    _ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == editor_id).first()
+    if _ed and _ed.user_id:
+        _dlmsg = (f' New deadline: {_pdl.strftime("%d %b %Y, %I:%M %p")}.' if _pdl else "")
+        pc.notify(db, _ed.user_id, "⚡ Urgent — pause your current task",
+                  f'Please PAUSE "{_pt.title}" and start the urgent video "{urgent_task.title}".{_dlmsg}',
+                  "video_task", link=str(_pt.id))
+
+
 def _apply_new_deadline(t, payload, require=False):
     """Set a new deadline while PRESERVING the old one (returned for the timeline).
     History is never overwritten — the previous deadline is recorded in the event meta."""
@@ -1024,38 +1064,8 @@ def assign_editor(tid: int, payload: dict = Body(...),
     # teacher sees updated status
     _notify_task_teacher(db, t, "Editor Assigned",
                          f'Your video "{t.title}" was approved and assigned to an editor.', link=str(t.id))
-    # ---- URGENT PAUSE-REQUEST: PM/admin urgent task de raha hai + editor ke ek active task ko
-    # pause karne ko keh raha hai + naya editor deadline set kar raha hai. Editor ko urgent popup
-    # dikhega (pause button + naya deadline). Ye sirf pause_task_id aane par lagta hai.
-    _pause_tid = int(payload.get("pause_task_id") or 0)
-    if _pause_tid and _pause_tid != t.id:
-        _pt = db.query(VideoTask).filter(VideoTask.id == _pause_tid,
-                                         VideoTask.editor_id == eid).first()
-        if _pt:
-            _pdl_raw = (payload.get("pause_deadline") or payload.get("pause_new_deadline") or "").strip()
-            _pdl = None
-            if _pdl_raw:
-                try:
-                    from datetime import datetime as _dtp
-                    _pdl = _dtp.fromisoformat(_pdl_raw.replace("Z", ""))
-                except Exception:
-                    _pdl = None
-            _pt.pause_req = True
-            _pt.pause_req_deadline = _pdl
-            _pt.pause_req_by = (getattr(me, "name", "") or ("Admin" if getattr(me, "role", "") == "admin" else "Production Manager"))
-            _pt.pause_req_urgent_id = t.id
-            _pt.pause_req_at = datetime.utcnow()
-            try:
-                pc.log_event(db, _pt, me, "pause_requested", new_state=_pt.lifecycle,
-                             meta={"note": "Pause requested for urgent task", "urgent_id": t.id,
-                                   "new_deadline": (_pdl.strftime("%d %b %Y, %I:%M %p") if _pdl else "")})
-            except Exception:
-                pass
-            if ed.user_id:
-                _dlmsg = (f' New deadline: {_pdl.strftime("%d %b %Y, %I:%M %p")}.' if _pdl else "")
-                pc.notify(db, ed.user_id, "⚡ Urgent — pause your current task",
-                          f'Please PAUSE "{_pt.title}" and start the urgent video "{t.title}".{_dlmsg}',
-                          "video_task", link=str(_pt.id))
+    # ---- URGENT PAUSE-REQUEST (shared helper): editor ke ek active task ko pause + new deadline ----
+    _apply_pause_request(db, t, eid, payload, me)
     db.commit()
     return {"ok": True, "editor": ed.user.name if ed.user else "", "lifecycle": t.lifecycle}
 
@@ -4274,6 +4284,8 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                          meta={"note": "Edited by " + (getattr(me, "name", "") or "production manager")})
     except Exception:
         pass
+    # ---- URGENT PAUSE-REQUEST: Edit Task flow se bhi editor ke active task ko pause + new deadline ----
+    _apply_pause_request(db, t, (t.editor_id or 0), payload, me)
     db.commit()
     return {"ok": True, "id": t.id}
 

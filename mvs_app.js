@@ -26942,6 +26942,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pasf-pausebox input{width:100%;box-sizing:border-box}',
 '.pasf-pb-hint{font-size:.68rem;color:var(--muted,#8a7d5c);margin-top:5px}',
 '.pasf-pb-clear{margin-top:7px;border:none;background:transparent;color:#b91c1c;font-size:.72rem;font-weight:700;cursor:pointer;padding:2px 0}',
+/* default (upfront) skip note + premium skip button */
+'.pasf-skip-note{display:flex;align-items:center;gap:7px;margin:0 0 9px;padding:8px 11px;border-radius:11px;background:rgba(46,158,107,.09);border:1px solid rgba(46,158,107,.26);color:#1f7a48;font-size:.78rem;font-weight:700}',
+'.pasf-skip-note svg{width:15px;height:15px;flex:0 0 auto}',
+'.pasf-skip-note>span:first-of-type{flex:1;min-width:0}',
+'.pasf-skip-tag{flex:0 0 auto;font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;background:rgba(46,158,107,.18);color:#1f7a48}',
+'body.dark .pasf-skip-note{background:rgba(46,158,107,.16);color:#5fd39e;border-color:rgba(46,158,107,.34)}',
+'.pasf-skip-btn{display:inline-flex;align-items:center;gap:6px;margin-top:9px;padding:8px 13px;border-radius:10px;border:1px solid rgba(46,158,107,.3);background:var(--card,#fff);color:#1f7a48;font-size:.76rem;font-weight:800;cursor:pointer;transition:background .14s,border-color .14s}',
+'.pasf-skip-btn svg{width:14px;height:14px}',
+'.pasf-skip-btn:hover{background:rgba(46,158,107,.1);border-color:rgba(46,158,107,.5)}',
+'body.dark .pasf-skip-btn{background:rgba(255,255,255,.03);color:#5fd39e;border-color:rgba(46,158,107,.36)}',
 /* ===== editor card: pause-request blinking banner ===== */
 '@keyframes ptcPauseBlink{0%,100%{box-shadow:0 4px 12px rgba(209,54,43,.28)}50%{box-shadow:0 4px 20px rgba(209,54,43,.6)}}',
 '.ptc-pausereq{order:-1;flex:1 1 100%;display:inline-flex;align-items:center;gap:8px;justify-content:center;box-sizing:border-box;font-size:.78rem;font-weight:800;letter-spacing:.01em;padding:10px 14px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#f4574d,#d1362b);cursor:pointer;animation:ptcPauseBlink 1.15s ease-in-out infinite}',
@@ -32765,7 +32775,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var arr=(r&&r.tasks)||[];
       if(!arr.length){ box.innerHTML='<div class="pasf-a-empty">'+ic('check')+' This editor has no other active tasks — free to take the new one.</div>'; return; }
       var _lbl={editor_assigned:'To edit',editing_soon:'To edit',editing:'Editing',editing_paused:'Paused',editing_done:'Edited',qc_changes:'Changes'};
-      var head='<div class="pasf-a-head">'+ic('alert')+' <b>Editor’s active tasks</b><span class="pasf-a-sub">Pick one to <b>pause &amp; extend</b> if this new task is urgent</span></div>';
+      var head='<div class="pasf-a-head">'+ic('alert')+' <b>Editor’s active tasks</b><span class="pasf-a-sub">Bas assign karo — kuch pause nahi hoga. Urgent ho to hi neeche se ek task <b>pause &amp; extend</b> chuno.</span></div>';
+      // Default (upfront) skip note — clearly batata hai ki kuch pause nahi ho raha
+      var skipnote='<div class="pasf-skip-note" id="'+pfx+'-skipnote">'+ic('check')+'<span>No task will be paused</span><span class="pasf-skip-tag">Default</span></div>';
       var rows=arr.map(function(t){
         var dfk=(t.deadline_flag&&t.deadline_flag.kind)||'';
         var dcls=(dfk==='overdue'?'ov':(dfk==='today'||dfk==='soon'?'sn':'ok'));
@@ -32778,8 +32790,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }).join('');
       var picker='<div id="'+pfx+'-pausebox" class="pasf-pausebox" style="display:none"><div class="pasf-pb-h">'+ic('calendar')+' New deadline for the paused task</div>'+
         '<input class="p-input input" id="'+pfx+'-pausedl" type="datetime-local"><div class="pasf-pb-hint">Editor ko ye new deadline mil jayega — dobara extension request nahi karni padegi.</div>'+
-        '<button type="button" class="pasf-pb-clear" onclick="_pasfPauseClear(\''+pfx+'\')">× Don’t pause any task</button></div>';
-      box.innerHTML=head+'<div class="pasf-a-list">'+rows+'</div>'+picker;
+        '<button type="button" class="pasf-skip-btn" onclick="_pasfPauseClear(\''+pfx+'\')">'+ic('check')+' Skip — don’t pause any task</button></div>';
+      box.innerHTML=head+skipnote+'<div class="pasf-a-list">'+rows+'</div>'+picker;
     }).catch(function(){ box.innerHTML='<div class="pasf-a-empty">Could not load active tasks.</div>'; });
   };
   window._pasfEditorSel=function(taskId,editorId){ window._editorActivePanel('pasf-activebox', editorId, taskId, 'pasf'); };
@@ -32787,6 +32799,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     pfx=pfx||'pasf';
     window._pasfPause={task_id:tid, dlInputId:pfx+'-pausedl'};
     var pb=document.getElementById(pfx+'-pausebox'); if(pb) pb.style.display='block';
+    var sn=document.getElementById(pfx+'-skipnote'); if(sn) sn.style.display='none';   // ab pause ho raha hai
     var inp=document.getElementById(pfx+'-pausedl');
     if(inp && !inp.value){ var v=dlIso||'';
       if(!v){ var d=new Date(Date.now()+86400000); v=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)+'T23:59'; }
@@ -32795,6 +32808,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ document.querySelectorAll('.pasf-a-row').forEach(function(el){ el.classList.toggle('on', el.getAttribute('data-tid')==String(tid)); }); }catch(e){}
   };
   window._pasfPauseClear=function(pfx){ pfx=pfx||'pasf'; window._pasfPause=null; var pb=document.getElementById(pfx+'-pausebox'); if(pb) pb.style.display='none';
+    var sn=document.getElementById(pfx+'-skipnote'); if(sn) sn.style.display='';   // wapas default: kuch pause nahi
     try{ document.querySelectorAll('input[name='+pfx+'-pause]').forEach(function(r){ r.checked=false; }); document.querySelectorAll('.pasf-a-row').forEach(function(el){ el.classList.remove('on'); }); }catch(e){} };
   window.prodAssignPick=function(id,role,pid,btn){
     if(btn){ try{ btn.disabled=true; btn.style.opacity='.6'; }catch(e){} }
@@ -32914,6 +32928,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodNewTask=function(){ if((typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL==='youtuber')){ ytNewTask(); return; } prodAssignWork(); };
   window.prodAssignWork=function(preCreator, editId){
     ensureCSS(); // admin may open this without the portal shell ever loading its CSS
+    window._pasfPause=null;   // fresh — pichli pause-request state carry na ho
     editId = editId || null;
     var resume=false;
     if(editId){
@@ -33395,18 +33410,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '</div>'+
           '<div class="p-opt" id="aw-editor-collab-note">'+(_eall.length>=2?(_eall.length+' editors selected \u2014 dono ko ye task dikhega aur dono edit kar sakte hain.'):'Pick 2 or more editors.')+'</div></div>';
       } else {
-        html+='<div class="p-field"><label>Editor <span style="color:var(--muted);font-weight:600">(optional \u2014 can also assign after PM review)</label><select class="p-select" id="aw-editor"><option value="">Assign later</option>'+
-          edList.map(function(ed){ return '<option value="'+ed.id+'"'+(d.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+(ed.active!==undefined?(' \u00b7 '+ed.active+' active'):'')+'</option>'; }).join('')+'</select></div>';
+        html+='<div class="p-field"><label>Editor <span style="color:var(--muted);font-weight:600">(optional \u2014 can also assign after PM review)</label><select class="p-select" id="aw-editor" onchange="_awEditorSel(this.value)"><option value="">Assign later</option>'+
+          edList.map(function(ed){ return '<option value="'+ed.id+'"'+(d.editor_id===ed.id?' selected':'')+'>'+esc(ed.name)+(ed.active!==undefined?(' \u00b7 '+ed.active+' active'):'')+'</option>'; }).join('')+'</select></div>'+
+          '<div id="aw-activebox" class="pasf-active" style="display:none"></div>';
       }
       html+='<div class="p-field"><label>Editor deadline <span style="color:var(--muted);font-weight:600">(editor must finish by)</span></label><input class="p-input" id="aw-editor-deadline" type="datetime-local" value="'+esc(d.editor_deadline||'')+'"></div>'+
         '<div class="p-field"><label>Instructions for the editor <span style="color:var(--muted);font-weight:600">(editor will see this)</span></label><textarea class="p-area" id="aw-editor-instructions" placeholder="e.g. cut the first 30s, add intro, background music, captions...">'+esc(d.editor_instructions||'')+'</textarea></div>'+
         '<div class="p-field"><label>Reference for the editor <span style="color:var(--muted);font-weight:600">(link or notes)</span></label><input class="p-input" id="aw-editor-reference" placeholder="Drive/YouTube reference link (optional)" value="'+esc(d.editor_reference||'')+'"></div>';
     }
     body.innerHTML=html;
+    // Editor step: agar editor pehle se selected hai (ya user ne chuna) to uske active tasks panel load karo
+    try{ if(aw.step===3 && !d.editor_collab_on && d.editor_id){ setTimeout(function(){ _awEditorSel(d.editor_id); },0); } }catch(e){}
     var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodAwCancel()">Cancel</button>';
     var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">'+(aw.editId?'Save Changes':'Create Production Task')+'</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
+  window._awEditorSel=function(editorId){ try{ var eid=(window._aw&&window._aw.editId)||0; window._editorActivePanel('aw-activebox', editorId, eid, 'aw'); }catch(e){} };
   window.awPickCreator=function(){ _awSave();
     var d=window._aw.data;
     // if the new primary is in the collab list, remove it from there
@@ -33570,6 +33589,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       eb.editor_deadline=d.editor_deadline||'';
       eb.editor_instructions=d.editor_instructions||'';
       eb.editor_reference=d.editor_reference||'';
+      // Urgent pause-request: Edit Task flow se editor ke ek active task ko pause + new deadline
+      if(eb.editor_id && window._pasfPause && window._pasfPause.task_id){
+        eb.pause_task_id=window._pasfPause.task_id;
+        var _awpdl=((document.getElementById(window._pasfPause.dlInputId||'aw-pausedl')||{}).value||'').trim();
+        if(_awpdl) eb.pause_deadline=_awpdl;
+      }
       var _collab=(d.creator_type==='teacher' && d.collab_on)?((d.collab_all_ids&&d.collab_all_ids.length?d.collab_all_ids.slice(1):(d.collab_teacher_ids||[]))):null;
       window._awResume=false;
       try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){}
