@@ -28223,13 +28223,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._chatTaskPickerClose=function(){ var m=document.getElementById('chat-task-menu'); if(m) m.style.display='none'; document.removeEventListener('click',window._chatTaskMenuClose); };
   window._chatTaskPicker=function(e){ if(e){ e.stopPropagation(); }
     var m=document.getElementById('chat-task-menu'); if(!m) return;
-    if(m.style.display==='block'){ _chatTaskPickerClose(); return; }
-    m.style.display='block';
+    if(m.style.display && m.style.display!=='none'){ _chatTaskPickerClose(); return; }
+    // NOTE: 'flex' zaruri hai (block NAHI) — warna .ctm-list ka flex-scroll toot jaata hai
+    // aur lambi list scroll nahi hoti (menu content ke saath badh jaata / cut ho jaata hai).
+    m.style.display='flex';
     setTimeout(function(){ document.addEventListener('click',window._chatTaskMenuClose); },0);
     _chatLoadPartyTasks();
   };
   window._chatTaskMenuClose=function(ev){ var m=document.getElementById('chat-task-menu'); if(!m){ document.removeEventListener('click',window._chatTaskMenuClose); return; }
-    if(m.style.display==='block' && !(ev.target.closest && (ev.target.closest('#chat-task-menu')||ev.target.closest('.chat-task-mini')))){ m.style.display='none'; document.removeEventListener('click',window._chatTaskMenuClose); } };
+    if(m.style.display && m.style.display!=='none' && !(ev.target.closest && (ev.target.closest('#chat-task-menu')||ev.target.closest('.chat-task-mini')))){ m.style.display='none'; document.removeEventListener('click',window._chatTaskMenuClose); } };
   // Video done/finalized ho gayi (QC approved / ready for youtube / uploaded / completed) to
   // ab active nahi -> chat attach-list me na dikhe. Active tasks (QC submit, changes tak) dikhein.
   var _CTM_DONE={ready_for_youtube:1,qc_approved:1,uploaded:1,completed:1};
