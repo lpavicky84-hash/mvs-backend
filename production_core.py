@@ -846,6 +846,15 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
     _live_secs, _editing_running = editing_time_state(db, t)
     out["live_editing_seconds"] = _live_secs
     out["editing_running"] = _editing_running
+    # ---- Urgent pause-request (PM -> editor) ----
+    _prq = bool(getattr(t, "pause_req", False))
+    out["pause_req"] = _prq
+    if _prq:
+        _prd = getattr(t, "pause_req_deadline", None)
+        out["pause_req_by"] = getattr(t, "pause_req_by", "") or ""
+        out["pause_req_deadline"] = _dt_raw(_prd)
+        out["pause_req_deadline_iso"] = (_prd.strftime("%Y-%m-%dT%H:%M") if _prd else "")
+        out["pause_req_urgent_id"] = getattr(t, "pause_req_urgent_id", None)
     # edited-link version history (Version 1 / Version 2 ...) — shown in every portal
     out["edited_versions"] = edited_versions_out(db, t) if t.edited_link else []
     if not light:

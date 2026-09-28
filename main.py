@@ -292,6 +292,12 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN collab_editor_ids TEXT",
         "ALTER TABLE video_tasks ADD COLUMN upload_date DATETIME NULL",
         "ALTER TABLE video_tasks ADD COLUMN upload_remarks TEXT",
+        # Urgent pause-request (PM se editor ko pause + new deadline)
+        "ALTER TABLE video_tasks ADD COLUMN pause_req BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN pause_req_deadline DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN pause_req_by VARCHAR(120) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN pause_req_urgent_id INTEGER NULL",
+        "ALTER TABLE video_tasks ADD COLUMN pause_req_at DATETIME NULL",
     ]
     for s in stmts:
         try:

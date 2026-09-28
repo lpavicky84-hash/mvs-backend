@@ -596,6 +596,13 @@ class VideoTask(Base):
     editor_instructions = Column(Text, default="")           # PM ka editor ke liye brief
     editor_reference    = Column(Text, default="")           # editor ke liye reference link/notes
     collab_editor_ids   = Column(Text, default="")           # JSON list of ADDITIONAL editor ids (collab edit)
+    # ---- Urgent PAUSE REQUEST: PM/admin ne urgent task dete waqt is active task ko pause karne
+    # ko bola + naya editor deadline set kiya. Editor ko urgent popup dikhta hai. Pause hote hi clear.
+    pause_req          = Column(Boolean, default=False)      # PM ne is task ko pause karne ko bola
+    pause_req_deadline = Column(DateTime, nullable=True)     # naya editor_deadline jo pause par lagega
+    pause_req_by       = Column(String(120), default="")     # kisne bola (PM/Admin ka naam)
+    pause_req_urgent_id = Column(Integer, nullable=True)     # jis urgent task ki wajah se (view details)
+    pause_req_at       = Column(DateTime, nullable=True)     # kab bola
     upload_date         = Column(DateTime, nullable=True)     # tentative YouTube upload date (PM sets after edit approved)
     upload_remarks      = Column(Text, default="")           # upload note (jab fixed date na pata ho)
     thumbnail_required  = Column(Boolean, default=False)   # PM wants a thumbnail for this task

@@ -11917,15 +11917,18 @@ async function aAssignProd(id, role){
     const opts=list.map(p=>`<option value="${p.id}">${esc(p.name)}${p.active!=null?` · ${p.active} active`:''}</option>`).join('');
     let extra='';
     if(role==='editor'){
-      extra=`<div class="form-group"><label>Instructions / brief for editor <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— editor apne portal me "Reference / Brief" me dekhega</span></label><textarea id="aap-ins" class="input" rows="3" placeholder="e.g. Intro cut rakho, captions add karo, 10 min ke andar..."></textarea></div>
+      extra=`<div id="aap-activebox" class="pasf-active" style="display:none"></div>
+        <div class="form-group"><label>Instructions / brief for editor <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— editor apne portal me "Reference / Brief" me dekhega</span></label><textarea id="aap-ins" class="input" rows="3" placeholder="e.g. Intro cut rakho, captions add karo, 10 min ke andar..."></textarea></div>
         <div class="form-group"><label>Editing deadline (optional)</label><input id="aap-deadline" type="datetime-local" class="input"></div>`;
     } else {
       extra=`<div class="form-group"><label>Reference thumbnail link (optional) <span style="font-weight:500;color:var(--text-muted);font-size:.72rem;text-transform:none">— Drive/image URL jise dekh kar designer banaye</span></label><input id="aap-ref" class="input" placeholder="https://drive.google.com/... or image URL"></div>
         <div class="form-group"><label>Instructions for graphics (optional)</label><textarea id="aap-ins" class="input" rows="3" placeholder="e.g. Bold red '95 SCORE' badge, student face left side, MVS logo..."></textarea></div>
         <div class="form-group"><label>Thumbnail deadline (optional)</label><input id="aap-deadline" type="datetime-local" class="input"></div>`;
     }
+    const _selOn=(role==='editor')?` onchange="_editorActivePanel('aap-activebox',this.value,${id},'aap')"`:'';
+    window._pasfPause=null;
     showModal(`Assign ${label}`,
-      `<div class="form-group"><label>Choose ${label.toLowerCase()}</label><select id="aap-sel" class="input"><option value="">Select...</option>${opts}</select></div>${extra}`,
+      `<div class="form-group"><label>Choose ${label.toLowerCase()}</label><select id="aap-sel" class="input"${_selOn}><option value="">Select...</option>${opts}</select></div>${extra}`,
       `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="aAssignProdSave(${id},'${role}')">${ic('check')} Assign</button>`);
   }catch(e){ toast((e&&e.message)||'Could not load team',true); }
 }
@@ -11939,6 +11942,11 @@ async function aAssignProdSave(id, role){
     body={editor_id:parseInt(val,10)};
     if(ins) body.instructions=ins;
     if(dl) body.deadline=dl;
+    if(window._pasfPause && window._pasfPause.task_id){
+      body.pause_task_id=window._pasfPause.task_id;
+      const pdl=((document.getElementById(window._pasfPause.dlInputId||'aap-pausedl')||{}).value||'').trim();
+      if(pdl) body.pause_deadline=pdl;
+    }
   } else {
     body={graphics_id:parseInt(val,10)};
     const ref=((document.getElementById('aap-ref')||{}).value||'').trim();
@@ -11949,7 +11957,8 @@ async function aAssignProdSave(id, role){
   const path=(role==='editor')?`/api/production/tasks/${id}/assign-editor`:`/api/production/tasks/${id}/assign-graphics`;
   try{
     await api(path,'POST',body);
-    closeModal(); toast((role==='editor'?'Editor':'Graphics designer')+' assigned');
+    window._pasfPause=null;
+    closeModal(); toast((role==='editor'?'Editor':'Graphics designer')+' assigned'+(body.pause_task_id?' · pause request sent to editor':''));
     if(typeof loadAVTasks==='function') loadAVTasks();
   }catch(e){ toast((e&&e.message)||'Could not assign',true); }
 }
@@ -26903,6 +26912,66 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 /* attention/primary variants sabse pehle (order 0), full-width submit sabse upar (order -1) */
 '.ptc-btn.ptc-review-blink,.ptc-btn.ptc-btn-review,.ptc-btn.ptc-ref-blink,.ptc-btn.ptc-refv-blink{order:0}',
 '.ptc-submit{order:-1}',
+/* ===== PM assign: editor ke active tasks + pause & extend ===== */
+'.pasf-active{margin:4px 0 10px;border:1px solid var(--border,#ece2cd);border-radius:14px;background:var(--surface-2,#faf7ef);padding:10px 11px}',
+'body.dark .pasf-active{background:rgba(255,255,255,.03);border-color:#2c405e}',
+'.pasf-a-load,.pasf-a-empty{font-size:.8rem;color:var(--muted,#8a7d5c);display:flex;align-items:center;gap:7px;padding:4px 2px}',
+'.pasf-a-empty svg,.pasf-a-load svg{width:15px;height:15px}',
+'.pasf-a-head{display:flex;flex-direction:column;gap:1px;font-size:.82rem;color:#b45309;margin-bottom:8px}',
+'.pasf-a-head>b{display:inline-flex;align-items:center}',
+'.pasf-a-head svg{width:15px;height:15px;margin-right:5px;vertical-align:-2px}',
+'.pasf-a-sub{font-size:.7rem;color:var(--muted,#8a7d5c);font-weight:600}',
+'.pasf-a-list{display:flex;flex-direction:column;gap:7px}',
+'.pasf-a-row{display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border:1px solid var(--border,#e6dcc4);border-radius:11px;background:var(--card,#fff);cursor:pointer;transition:border-color .14s,box-shadow .14s}',
+'body.dark .pasf-a-row{background:rgba(255,255,255,.02);border-color:#2c405e}',
+'.pasf-a-row:hover{border-color:rgba(224,165,46,.5)}',
+'.pasf-a-row.on{border-color:#d1443a;box-shadow:0 0 0 2px rgba(209,68,58,.16)}',
+'.pasf-a-row input{margin-top:3px;flex:0 0 auto;accent-color:#d1443a}',
+'.pasf-a-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}',
+'.pasf-a-title{font-weight:700;font-size:.86rem;color:var(--text,#2a2313);line-height:1.25;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}',
+'.pasf-a-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+'.pasf-a-dl{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:700}',
+'.pasf-a-dl svg{width:12px;height:12px}',
+'.pasf-a-dl.ov{color:#d1443a}.pasf-a-dl.sn{color:#b07d12}.pasf-a-dl.ok{color:#1f8a54}',
+'.pasf-a-ch{font-size:.7rem;color:var(--muted,#8a7d5c)}',
+'.pasf-a-st{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:rgba(120,113,108,.14);color:#78716c}',
+'.pasf-a-st.st-ov{background:rgba(209,68,58,.12);color:#c0322a}.pasf-a-st.st-sn{background:rgba(224,165,46,.16);color:#a9791f}.pasf-a-st.st-ok{background:rgba(46,158,107,.14);color:#1f7a48}',
+'.pasf-pausebox{margin-top:9px;padding:10px 11px;border-radius:12px;background:rgba(209,68,58,.06);border:1px solid rgba(209,68,58,.24)}',
+'.pasf-pb-h{font-size:.74rem;font-weight:800;color:#c0322a;display:flex;align-items:center;gap:6px;margin-bottom:7px}',
+'.pasf-pb-h svg{width:14px;height:14px}',
+'.pasf-pausebox input{width:100%;box-sizing:border-box}',
+'.pasf-pb-hint{font-size:.68rem;color:var(--muted,#8a7d5c);margin-top:5px}',
+'.pasf-pb-clear{margin-top:7px;border:none;background:transparent;color:#b91c1c;font-size:.72rem;font-weight:700;cursor:pointer;padding:2px 0}',
+/* ===== editor card: pause-request blinking banner ===== */
+'@keyframes ptcPauseBlink{0%,100%{box-shadow:0 4px 12px rgba(209,54,43,.28)}50%{box-shadow:0 4px 20px rgba(209,54,43,.6)}}',
+'.ptc-pausereq{order:-1;flex:1 1 100%;display:inline-flex;align-items:center;gap:8px;justify-content:center;box-sizing:border-box;font-size:.78rem;font-weight:800;letter-spacing:.01em;padding:10px 14px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#f4574d,#d1362b);cursor:pointer;animation:ptcPauseBlink 1.15s ease-in-out infinite}',
+'.ptc-pausereq svg{width:15px;height:15px;flex:0 0 auto}',
+'.ptc-pausereq:hover{filter:brightness(1.05)}',
+/* ===== editor urgent pause-request POPUP ===== */
+'.edtu-modal{max-width:460px;overflow:hidden}',
+'@keyframes edtuPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,255,255,.4)}50%{transform:scale(1.06);box-shadow:0 0 0 10px rgba(255,255,255,0)}}',
+'.edtu-top{display:flex;align-items:center;gap:13px;padding:18px 20px;background:linear-gradient(135deg,#f4574d,#c62a20);color:#fff}',
+'.edtu-pulse{flex:0 0 auto;width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;animation:edtuPulse 1.2s ease-in-out infinite}',
+'.edtu-pulse svg{width:24px;height:24px}',
+'.edtu-h{font-size:1.08rem;font-weight:800;line-height:1.1}',
+'.edtu-sub{font-size:.78rem;opacity:.92;margin-top:2px}',
+'.edtu-modal .p-modal-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}',
+'.edtu-task{padding:14px;border-radius:14px;background:rgba(209,54,43,.06);border:1px solid rgba(209,54,43,.22)}',
+'body.dark .edtu-task{background:rgba(244,87,77,.12);border-color:rgba(244,87,77,.3)}',
+'.edtu-lbl{font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#c0322a}',
+'.edtu-title{font-size:1.02rem;font-weight:800;color:var(--text,#2a2313);margin-top:4px;line-height:1.3}',
+'.edtu-dl{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:.82rem;color:var(--text,#2a2313);background:var(--card,#fff);border:1px solid var(--border,#e6dcc4);padding:6px 11px;border-radius:10px}',
+'.edtu-dl svg{width:14px;height:14px;color:#b07d12}',
+'.edtu-pausebtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;font-size:.92rem;font-weight:800;padding:13px;border:none;border-radius:13px;color:#fff;background:linear-gradient(135deg,#f4574d,#d1362b);box-shadow:0 8px 20px rgba(209,54,43,.32);cursor:pointer;transition:transform .14s,filter .14s}',
+'.edtu-pausebtn:hover{transform:translateY(-1px);filter:brightness(1.04)}',
+'.edtu-pausebtn svg{width:18px;height:18px}',
+'.edtu-next{border-top:1px dashed var(--border,#e6dcc4);padding-top:13px}',
+'.edtu-next-h{display:flex;align-items:center;gap:7px;font-size:.78rem;font-weight:800;color:var(--muted,#8a7d5c);margin-bottom:9px}',
+'.edtu-next-h svg{width:14px;height:14px}',
+'@keyframes edtuBlink{0%,100%{box-shadow:0 4px 14px rgba(46,158,107,.3)}50%{box-shadow:0 4px 22px rgba(46,158,107,.6)}}',
+'.edtu-nextbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;font-size:.88rem;font-weight:800;padding:12px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#2fa06d,#1f8a54);cursor:pointer}',
+'.edtu-nextbtn.edtu-blink{animation:edtuBlink 1.15s ease-in-out infinite}',
+'.edtu-nextbtn svg{width:16px;height:16px}',
 /* ---- premium primary action: Submit Video Link (filled gradient pill, full-width row) ---- */
 '.ptc-submit{flex:1 1 100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;font-size:.8rem;font-weight:800;letter-spacing:.01em;padding:11px 16px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#1eb15f 0%,#0f8a45 100%);box-shadow:0 8px 20px rgba(15,138,69,.30),inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer;transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .15s,filter .15s;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
 '.ptc-submit svg{width:16px;height:16px;stroke-width:2.4}',
@@ -27802,6 +27871,37 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .then(function(){ prodDismiss(); toast('Paused at '+v+'%'); _refresh('editor'); })
       .catch(function(e){ _pBusy(false); toast((e&&e.message)||'Failed',true); });
   };
+  // ===== EDITOR: URGENT PAUSE-REQUEST POPUP (PM ne is task ko pause karne ko bola) =====
+  window._edtPauseSeen=window._edtPauseSeen||{};
+  window._edtPauseReqPopup=function(tasks){
+    try{
+      var list=(tasks||[]).filter(function(t){ return t && t.pause_req; });
+      if(!list.length) return;
+      var t=null; for(var i=0;i<list.length;i++){ if(!window._edtPauseSeen[list[i].id]){ t=list[i]; break; } }
+      if(!t) return;
+      if(document.getElementById('edt-urgent-modal')) return;
+      var dline=t.pause_req_deadline?esc(t.pause_req_deadline):'';
+      var by=esc(t.pause_req_by||'Production Manager');
+      var urgentId=t.pause_req_urgent_id||0;
+      var dr=document.createElement('div'); dr.className='p-modal-wrap edtu-wrap'; dr.id='edt-urgent-modal';
+      dr.innerHTML='<div class="p-modal edtu-modal">'+
+        '<div class="edtu-top"><span class="edtu-pulse">'+ic('alert')+'</span><div><div class="edtu-h">Urgent — Pause this task</div><div class="edtu-sub">'+by+' sent you a request</div></div></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="edtu-task"><div class="edtu-lbl">Please pause</div><div class="edtu-title">'+esc(t.title||('Task #'+t.id))+'</div>'+
+            (dline?'<div class="edtu-dl">'+ic('calendar')+' New deadline: <b>'+dline+'</b></div>':'')+'</div>'+
+          '<button class="edtu-pausebtn" onclick="_edtDoPauseFromReq('+t.id+')">'+ic('clock')+' Pause Now &amp; set %</button>'+
+          (urgentId?('<div class="edtu-next"><div class="edtu-next-h">'+ic('play')+' Then start the urgent task</div>'+
+            '<button class="edtu-nextbtn edtu-blink" onclick="_edtOpenUrgent('+urgentId+')">'+ic('eye')+' View Details</button></div>'):'')+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="_edtPauseReqLater('+t.id+')">Later</button></div></div>'+
+      '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) _edtPauseReqLater(t.id); });
+      document.body.appendChild(dr);
+    }catch(e){}
+  };
+  window._edtDoPauseFromReq=function(id){ var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); try{ edtPauseModal(id); }catch(e){} };
+  window._edtOpenUrgent=function(id){ try{ prodOpenTask('editor',id); }catch(e){} };
+  window._edtPauseReqLater=function(id){ window._edtPauseSeen[id]=1; var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); };
   // ---- Editor: rich submit modal (drive link + remarks + attachments) ----
   window._edtImgs=[];
   window.edtSubmitModal=function(id){
@@ -29061,9 +29161,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     wrap.innerHTML='<div class="p-sec">'+_workTitle(portal)+'</div><div class="p-load" style="padding:14px">Loading...</div>';
     api(ep).then(function(r){
       if(_stale(portal,'dashboard')) return;
-      var arr=_workFilter(portal, r.videos||r.tasks||[]);
+      var _all=r.videos||r.tasks||[];
+      var arr=_workFilter(portal, _all);
       wrap.innerHTML='<div class="p-sec">'+_workTitle(portal)+'</div>'+
         (arr.length?arr.map(function(t){ return _workCard(portal,t); }).join(''):'<div class="p-empty" style="padding:22px">All clear \u2014 nothing needs your attention right now.</div>');
+      if(portal==='editor'){ try{ window._edtPauseReqPopup(_all); }catch(e){} }
     }).catch(function(){ if(wrap) wrap.innerHTML=''; });
   }
   function _workCard(portal,t){
@@ -30514,6 +30616,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _idrow=_idParts.length?('<div class="ptc-idrow">'+_idParts.join('')+'</div>'):'';
     var acts='';
     if(portal==='editor'){
+      // Urgent pause-request banner (PM ne is task ko pause karne ko bola) — blink + direct pause
+      if(t.pause_req){ acts+='<button class="ptc-pausereq" onclick="event.stopPropagation();_edtDoPauseFromReq('+t.id+')">'+ic('alert')+'<span>PM asks: PAUSE now'+(t.pause_req_deadline?(' · new deadline '+esc(t.pause_req_deadline)):'')+'</span></button>'; }
       if(_elc==='editor_assigned'||_elc==='editing_soon'||_elc==='approved') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();prodAct(\'editor\','+t.id+',\'/start\')">Start Editing</button>';
       else if(_elc==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'progress\','+t.id+')">Update Progress</button>';
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPauseModal('+t.id+')">Pause</button>';
@@ -31164,6 +31268,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!res) return;
       res.innerHTML=arr.length?('<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
       try{ _prodMarkOpenedCard(); }catch(e){}
+      if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} }
       if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
     }).catch(function(e){ if(res) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); });
   }
@@ -32640,10 +32745,57 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         extra='<div class="p-field"><label>Instructions / brief for editor (optional)</label><textarea class="p-area" id="pasf-ins" placeholder="e.g. intro cut, captions, keep under 10 min\u2026"></textarea></div>'+
               '<div class="p-field"><label>Editing deadline (optional)</label><input class="p-input" id="pasf-dl" type="datetime-local"></div>';
       }
-      box.innerHTML='<div class="p-field"><label>Choose '+role+'</label><select class="p-select" id="pasf-sel">'+opts+'</select></div>'+extra+
+      window._pasfPause=null;
+      var _selOn=(role==='editor')?(' onchange="_pasfEditorSel('+id+',this.value)"'):'';
+      box.innerHTML='<div class="p-field"><label>Choose '+role+'</label><select class="p-select" id="pasf-sel"'+_selOn+'>'+opts+'</select></div>'+
+        ((role==='editor')?'<div id="pasf-activebox" class="pasf-active" style="display:none"></div>':'')+extra+
         '<div style="display:flex;gap:8px;margin-top:10px"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAssignSubmit('+id+',\''+role+'\')">Assign</button></div>';
     }).catch(function(e){ box.innerHTML='<div class="p-empty" style="padding:16px">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   };
+  // Editor select hote hi uske active tasks + deadlines dikhao (PM/admin decide kare kaunsa pause karna hai)
+  // GENERIC panel — PM (pfx='pasf') aur Admin (pfx='aap') dono use karte hain.
+  window._editorActivePanel=function(boxId, editorId, excludeTaskId, pfx){
+    window._pasfPause=null;
+    var box=document.getElementById(boxId); if(!box) return;
+    editorId=parseInt(editorId,10)||0;
+    if(!editorId){ box.style.display='none'; box.innerHTML=''; return; }
+    box.style.display='block';
+    box.innerHTML='<div class="pasf-a-load">'+ic('clock')+' Loading this editor’s active tasks…</div>';
+    api('/api/production/editors/'+editorId+'/active-tasks?exclude='+(excludeTaskId||0)).then(function(r){
+      var arr=(r&&r.tasks)||[];
+      if(!arr.length){ box.innerHTML='<div class="pasf-a-empty">'+ic('check')+' This editor has no other active tasks — free to take the new one.</div>'; return; }
+      var _lbl={editor_assigned:'To edit',editing_soon:'To edit',editing:'Editing',editing_paused:'Paused',editing_done:'Edited',qc_changes:'Changes'};
+      var head='<div class="pasf-a-head">'+ic('alert')+' <b>Editor’s active tasks</b><span class="pasf-a-sub">Pick one to <b>pause &amp; extend</b> if this new task is urgent</span></div>';
+      var rows=arr.map(function(t){
+        var dfk=(t.deadline_flag&&t.deadline_flag.kind)||'';
+        var dcls=(dfk==='overdue'?'ov':(dfk==='today'||dfk==='soon'?'sn':'ok'));
+        var dl=t.editor_deadline?esc(t.editor_deadline):'No deadline set';
+        return '<label class="pasf-a-row" data-tid="'+t.id+'">'+
+          '<input type="radio" name="'+pfx+'-pause" value="'+t.id+'" onchange="_pasfPausePick('+t.id+',\''+esc(t.editor_deadline_iso||'')+'\',\''+pfx+'\')">'+
+          '<span class="pasf-a-main"><span class="pasf-a-title">'+esc(t.title||('Task #'+t.id))+'</span>'+
+            '<span class="pasf-a-meta"><span class="pasf-a-dl '+dcls+'">'+ic('clock')+' '+dl+'</span>'+(t.channel?'<span class="pasf-a-ch">'+esc(t.channel)+'</span>':'')+'<span class="pasf-a-st st-'+dcls+'">'+esc(_lbl[t.lifecycle]||t.lifecycle||'')+'</span></span></span>'+
+        '</label>';
+      }).join('');
+      var picker='<div id="'+pfx+'-pausebox" class="pasf-pausebox" style="display:none"><div class="pasf-pb-h">'+ic('calendar')+' New deadline for the paused task</div>'+
+        '<input class="p-input input" id="'+pfx+'-pausedl" type="datetime-local"><div class="pasf-pb-hint">Editor ko ye new deadline mil jayega — dobara extension request nahi karni padegi.</div>'+
+        '<button type="button" class="pasf-pb-clear" onclick="_pasfPauseClear(\''+pfx+'\')">× Don’t pause any task</button></div>';
+      box.innerHTML=head+'<div class="pasf-a-list">'+rows+'</div>'+picker;
+    }).catch(function(){ box.innerHTML='<div class="pasf-a-empty">Could not load active tasks.</div>'; });
+  };
+  window._pasfEditorSel=function(taskId,editorId){ window._editorActivePanel('pasf-activebox', editorId, taskId, 'pasf'); };
+  window._pasfPausePick=function(tid,dlIso,pfx){
+    pfx=pfx||'pasf';
+    window._pasfPause={task_id:tid, dlInputId:pfx+'-pausedl'};
+    var pb=document.getElementById(pfx+'-pausebox'); if(pb) pb.style.display='block';
+    var inp=document.getElementById(pfx+'-pausedl');
+    if(inp && !inp.value){ var v=dlIso||'';
+      if(!v){ var d=new Date(Date.now()+86400000); v=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)+'T23:59'; }
+      inp.value=v.slice(0,16);
+    }
+    try{ document.querySelectorAll('.pasf-a-row').forEach(function(el){ el.classList.toggle('on', el.getAttribute('data-tid')==String(tid)); }); }catch(e){}
+  };
+  window._pasfPauseClear=function(pfx){ pfx=pfx||'pasf'; window._pasfPause=null; var pb=document.getElementById(pfx+'-pausebox'); if(pb) pb.style.display='none';
+    try{ document.querySelectorAll('input[name='+pfx+'-pause]').forEach(function(r){ r.checked=false; }); document.querySelectorAll('.pasf-a-row').forEach(function(el){ el.classList.remove('on'); }); }catch(e){} };
   window.prodAssignPick=function(id,role,pid,btn){
     if(btn){ try{ btn.disabled=true; btn.style.opacity='.6'; }catch(e){} }
     var body={}; body[role+'_id']=parseInt(pid,10);
@@ -32658,7 +32810,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(ins) body.instructions=ins;
     if(dl) body.deadline=dl;
     if(role==='graphics'){ var ref=((document.getElementById('pasf-ref')||{}).value||'').trim(); if(ref) body.reference_image=ref; }
-    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ prodDismiss(); toast(role.charAt(0).toUpperCase()+role.slice(1)+' assigned'); _refresh('production'); })
+    // Urgent pause-request: PM ne editor ke ek active task ko pause + new deadline chuna hai
+    if(role==='editor' && window._pasfPause && window._pasfPause.task_id){
+      body.pause_task_id=window._pasfPause.task_id;
+      var pdl=((document.getElementById(window._pasfPause.dlInputId||'pasf-pausedl')||{}).value||'').trim();
+      if(pdl) body.pause_deadline=pdl;
+    }
+    api(P.production.api+'/tasks/'+id+'/assign-'+role,'POST',body).then(function(){ prodDismiss(); window._pasfPause=null; toast(role.charAt(0).toUpperCase()+role.slice(1)+' assigned'+(body.pause_task_id?' · pause request sent to editor':'')); _refresh('production'); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
 

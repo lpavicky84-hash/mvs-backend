@@ -948,6 +948,35 @@ def reshoot_creator(tid: int, payload: dict = Body(...),
 
 
 # ============================================================ EDITOR ASSIGN
+@router.get("/editors/{eid}/active-tasks")
+def editor_active_tasks(eid: int, exclude: int = 0,
+                        db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Ek editor ke abhi active editing tasks + unke editor-deadline — PM/admin ko assign karte
+    waqt dikhta hai (kis task ko pause karna hai decide karne ke liye). Sirf editing-stage tasks."""
+    _active_lc = ["editor_assigned", "editing_soon", "editing", "editing_paused",
+                  "editing_done", "qc_changes"]
+    rows = (db.query(VideoTask)
+            .options(defer(VideoTask.thumbnail_b64))
+            .filter(VideoTask.editor_id == eid, VideoTask.cancelled == False,   # noqa: E712
+                    VideoTask.lifecycle.in_(_active_lc))
+            .order_by(VideoTask.editor_deadline.asc()).all())
+    out = []
+    for t in rows:
+        if exclude and t.id == exclude:
+            continue
+        _edl = getattr(t, "editor_deadline", None)
+        out.append({
+            "id": t.id, "title": t.title or "", "ref_code": t.ref_code or "",
+            "lifecycle": t.lifecycle or "", "channel": t.channel_name or "",
+            "editor_deadline": (_edl.strftime("%d %b %Y, %I:%M %p") if _edl else ""),
+            "editor_deadline_iso": (_edl.strftime("%Y-%m-%dT%H:%M") if _edl else ""),
+            "progress": (t.editing_progress or 0),
+            "pause_req": bool(getattr(t, "pause_req", False)),
+            "deadline_flag": (lambda f: {"kind": f[0], "label": f[1]})(pc.deadline_flag(t, deadline=_edl)),
+        })
+    return {"tasks": out}
+
+
 @router.post("/tasks/{tid}/assign-editor")
 def assign_editor(tid: int, payload: dict = Body(...),
                   db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
@@ -995,6 +1024,38 @@ def assign_editor(tid: int, payload: dict = Body(...),
     # teacher sees updated status
     _notify_task_teacher(db, t, "Editor Assigned",
                          f'Your video "{t.title}" was approved and assigned to an editor.', link=str(t.id))
+    # ---- URGENT PAUSE-REQUEST: PM/admin urgent task de raha hai + editor ke ek active task ko
+    # pause karne ko keh raha hai + naya editor deadline set kar raha hai. Editor ko urgent popup
+    # dikhega (pause button + naya deadline). Ye sirf pause_task_id aane par lagta hai.
+    _pause_tid = int(payload.get("pause_task_id") or 0)
+    if _pause_tid and _pause_tid != t.id:
+        _pt = db.query(VideoTask).filter(VideoTask.id == _pause_tid,
+                                         VideoTask.editor_id == eid).first()
+        if _pt:
+            _pdl_raw = (payload.get("pause_deadline") or payload.get("pause_new_deadline") or "").strip()
+            _pdl = None
+            if _pdl_raw:
+                try:
+                    from datetime import datetime as _dtp
+                    _pdl = _dtp.fromisoformat(_pdl_raw.replace("Z", ""))
+                except Exception:
+                    _pdl = None
+            _pt.pause_req = True
+            _pt.pause_req_deadline = _pdl
+            _pt.pause_req_by = (getattr(me, "name", "") or ("Admin" if getattr(me, "role", "") == "admin" else "Production Manager"))
+            _pt.pause_req_urgent_id = t.id
+            _pt.pause_req_at = datetime.utcnow()
+            try:
+                pc.log_event(db, _pt, me, "pause_requested", new_state=_pt.lifecycle,
+                             meta={"note": "Pause requested for urgent task", "urgent_id": t.id,
+                                   "new_deadline": (_pdl.strftime("%d %b %Y, %I:%M %p") if _pdl else "")})
+            except Exception:
+                pass
+            if ed.user_id:
+                _dlmsg = (f' New deadline: {_pdl.strftime("%d %b %Y, %I:%M %p")}.' if _pdl else "")
+                pc.notify(db, ed.user_id, "⚡ Urgent — pause your current task",
+                          f'Please PAUSE "{_pt.title}" and start the urgent video "{t.title}".{_dlmsg}',
+                          "video_task", link=str(_pt.id))
     db.commit()
     return {"ok": True, "editor": ed.user.name if ed.user else "", "lifecycle": t.lifecycle}
 

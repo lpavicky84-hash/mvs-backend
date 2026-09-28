@@ -548,7 +548,10 @@ def editor_pause(tid: int, payload: dict = Body(default={}),
                  db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     t = _my_task(db, sp, tid)
-    if t.lifecycle != "editing":
+    # Normally pause tabhi jab actively editing ho. LEKIN agar PM ne is task ko pause karne ko
+    # bola hai (pause_req) to kisi bhi editing-stage se pause allow karo (urgent flow).
+    _has_req = bool(getattr(t, "pause_req", False))
+    if t.lifecycle != "editing" and not (_has_req and t.lifecycle in ("editor_assigned", "editing_soon", "editing_paused", "approved")):
         raise HTTPException(400, "Editing is not currently active")
     payload = payload or {}
     # progress % at pause time (optional but nudged in the UI)
@@ -561,7 +564,26 @@ def editor_pause(tid: int, payload: dict = Body(default={}),
             _pct = None
     _rem = (payload.get("remarks") or "").strip()[:300]
     _close_open_session(db, sp, t)
-    pc.set_state(db, t, "editing_paused", actor=me, event="editing_paused")
+    pc.set_state(db, t, "editing_paused", actor=me, event="editing_paused", force=True)
+    # ---- Urgent pause-request fulfil: PM ka diya naya editor deadline lagao + request clear ----
+    if getattr(t, "pause_req", False):
+        try:
+            if getattr(t, "pause_req_deadline", None):
+                t.editor_deadline = t.pause_req_deadline
+                t.warned_24h = False
+                t.warned_overdue = False
+            _urgent_id = getattr(t, "pause_req_urgent_id", None)
+            t.pause_req = False
+            t.pause_req_deadline = None
+            t.pause_req_by = ""
+            t.pause_req_urgent_id = None
+            t.pause_req_at = None
+            pc.notify_pms(db, "Task paused (urgent)",
+                          f'Editor paused "{t.title}" for the urgent task.'
+                          + (f' New deadline: {t.editor_deadline.strftime("%d %b %Y, %I:%M %p")}.' if t.editor_deadline else ""),
+                          link=str(t.id))
+        except Exception:
+            pass
     # log the pause with progress + remarks so it shows in the progress history / timeline
     try:
         _meta = {}
