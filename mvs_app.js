@@ -26952,6 +26952,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pasf-skip-btn svg{width:14px;height:14px}',
 '.pasf-skip-btn:hover{background:rgba(46,158,107,.1);border-color:rgba(46,158,107,.5)}',
 'body.dark .pasf-skip-btn{background:rgba(255,255,255,.03);color:#5fd39e;border-color:rgba(46,158,107,.36)}',
+/* assign form inside footer: scrollable body + pinned action row (Back / Assign) so buttons never disappear */
+'.pasf-form-scroll{max-height:min(46vh,430px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;margin:-2px -2px 0;padding:2px 2px 2px}',
+'.pasf-form-scroll::-webkit-scrollbar{width:7px}',
+'.pasf-form-scroll::-webkit-scrollbar-thumb{background:rgba(140,125,92,.28);border-radius:6px}',
+'.pasf-form-actions{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(140,125,92,.16)}',
+'.pasf-form-actions .p-btn{flex:1 1 auto;min-width:110px}',
+'.pasf-back-btn{flex:0 0 auto!important;min-width:96px!important;display:inline-flex;align-items:center;justify-content:center;gap:5px}',
+'.pasf-back-btn svg{width:15px;height:15px}',
 /* ===== editor card: pause-request blinking banner ===== */
 '@keyframes ptcPauseBlink{0%,100%{box-shadow:0 4px 12px rgba(209,54,43,.28)}50%{box-shadow:0 4px 20px rgba(209,54,43,.6)}}',
 '.ptc-pausereq{order:-1;flex:1 1 100%;display:inline-flex;align-items:center;gap:8px;justify-content:center;box-sizing:border-box;font-size:.78rem;font-weight:800;letter-spacing:.01em;padding:10px 14px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#f4574d,#d1362b);cursor:pointer;animation:ptcPauseBlink 1.15s ease-in-out infinite}',
@@ -31855,6 +31863,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._prodTaskCard=_prodTaskCard;
   window.prodOpenTask=function(portal,id){
     ensureCSS(); // admin YouTuber page may open this without the portal shell's CSS
+    try{ window._pasfPrevActs=null; window._pasfPause=null; }catch(e){}   // fresh drawer → assign-form back-state reset
     try{ window._prodLastTask=id; _prodMarkOpenedCard(); }catch(e){}   // kaunsa task khola — yaad + highlight
     var d=P[portal]; var ep=(portal==='youtuber')?d.api+'/videos/'+id:d.api+'/tasks/'+id;
     api(ep).then(function(t){
@@ -32007,7 +32016,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodCloseTask=function(){ _stopEditTimer(); var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
-  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
+  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){} try{ window._pasfPrevActs=null; window._pasfPause=null; }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
     try{ if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; } }catch(e){}
     try{ if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; } }catch(e){}
     try{ if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; } }catch(e){}
@@ -32736,6 +32745,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.prodAssignForm=function(id,role){
     var box=_actsBox(); if(!box) return;
+    // Original footer action buttons yaad rakho taaki "Back" wapas laa sake (poora detail band na ho)
+    if(window._pasfPrevActs==null) window._pasfPrevActs=box.innerHTML;
     box.innerHTML='<div class="p-load" style="padding:16px">Loading '+role+'s...</div>';
     Promise.all([ api(P.production.api+'/people?role='+role), api(P.production.api+'/team').catch(function(){return {};}) ]).then(function(res){
       var r=res[0]||{}, team=res[1]||{};
@@ -32757,9 +32768,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       window._pasfPause=null;
       var _selOn=(role==='editor')?(' onchange="_pasfEditorSel('+id+',this.value)"'):'';
-      box.innerHTML='<div class="p-field"><label>Choose '+role+'</label><select class="p-select" id="pasf-sel"'+_selOn+'>'+opts+'</select></div>'+
-        ((role==='editor')?'<div id="pasf-activebox" class="pasf-active" style="display:none"></div>':'')+extra+
-        '<div style="display:flex;gap:8px;margin-top:10px"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodAssignSubmit('+id+',\''+role+'\')">Assign</button></div>';
+      box.innerHTML='<div class="pasf-form-scroll">'+
+          '<div class="p-field"><label>Choose '+role+'</label><select class="p-select" id="pasf-sel"'+_selOn+'>'+opts+'</select></div>'+
+          ((role==='editor')?'<div id="pasf-activebox" class="pasf-active" style="display:none"></div>':'')+extra+
+        '</div>'+
+        '<div class="pasf-form-actions"><button class="p-btn pasf-back-btn" onclick="_pasfBack()">‹ Back</button><button class="p-btn p-btn-primary" onclick="prodAssignSubmit('+id+',\''+role+'\')">Assign</button></div>';
     }).catch(function(e){ box.innerHTML='<div class="p-empty" style="padding:16px">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   };
   // Editor select hote hi uske active tasks + deadlines dikhao (PM/admin decide kare kaunsa pause karna hai)
@@ -32795,6 +32808,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){ box.innerHTML='<div class="pasf-a-empty">Could not load active tasks.</div>'; });
   };
   window._pasfEditorSel=function(taskId,editorId){ window._editorActivePanel('pasf-activebox', editorId, taskId, 'pasf'); };
+  // "Back" — assign form band karke wapas task ke original footer buttons dikhao (poora detail band nahi hota)
+  window._pasfBack=function(){
+    var box=_actsBox(); if(!box) return;
+    window._pasfPause=null;
+    if(window._pasfPrevActs!=null){ box.innerHTML=window._pasfPrevActs; window._pasfPrevActs=null; }
+    else { prodDismiss(); }
+  };
   window._pasfPausePick=function(tid,dlIso,pfx){
     pfx=pfx||'pasf';
     window._pasfPause={task_id:tid, dlInputId:pfx+'-pausedl'};
