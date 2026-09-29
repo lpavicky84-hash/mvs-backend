@@ -419,15 +419,35 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400,
                             detail="This batch is not available for your class/session. Please pick one of the shown batches.")
     name = st["name"] or ("Student " + phone[-4:])
-    i = 1
-    while True:
-        cand = f"MVSS{i:04d}"
-        if not db.query(User).filter(User.user_id == cand).first():
+    # Collision-safe user_id allotment: agar ek se zyada students ek saath onboard karein
+    # to bhi 'Duplicate entry ... user_id' par kabhi 500 na aaye. Highest MVSS id NUMERICALLY
+    # nikaalo (length pehle taaki 5-digit id 4-digit se bada gine), phir savepoint-retry ke
+    # saath insert — race me next free number apne-aap try ho jaata hai.
+    from sqlalchemy.exc import IntegrityError as _IErr
+    from sqlalchemy import func as _func
+    import re as _re
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(_func.length(User.user_id).desc(), User.user_id.desc()).first())
+    _ctr = 1
+    if _mx and _mx[0]:
+        _m = _re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr = int(_m.group(1)) + 1
+    u = None; cand = None
+    for _try in range(20):
+        cand = "MVSS%04d" % _ctr; _ctr += 1
+        _sp = db.begin_nested()
+        try:
+            u = User(name=name, user_id=cand, password=hash_password(phone),
+                     role=UserRole.student, is_active=True)
+            db.add(u); db.flush()
+            _sp.commit()
             break
-        i += 1
-    u = User(name=name, user_id=cand, password=hash_password(phone),
-             role=UserRole.student, is_active=True)
-    db.add(u); db.flush()
+        except _IErr:
+            _sp.rollback(); u = None
+    if u is None:
+        raise HTTPException(status_code=503,
+                            detail="Could not allocate a student ID right now. Please try again.")
     db.add(StudentProfile(user_id=u.id, phone=phone,
                           subjects=st["subjects"] or [],
                           class_level=st["class_level"] or STUDENT_BATCHES[batch_name][0],

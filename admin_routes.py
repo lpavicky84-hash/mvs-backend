@@ -4388,7 +4388,7 @@ def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get
     created, skipped = 0, 0
     # next MVSS id -> max EK BAAR, phir counter (no per-row scan = no N+1)
     _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
-           .order_by(User.user_id.desc()).first())
+           .order_by(func.length(User.user_id).desc(), User.user_id.desc()).first())
     _ctr = [1]
     if _mx and _mx[0]:
         _m = _re.match(r"MVSS(\d+)", _mx[0])
@@ -4519,7 +4519,7 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
 
     # 2) next MVSS id -> max EK BAAR, phir sirf counter (no per-row scan)
     _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
-           .order_by(User.user_id.desc()).first())
+           .order_by(func.length(User.user_id).desc(), User.user_id.desc()).first())
     _ctr = [1]
     if _mx and _mx[0]:
         _m = re.match(r"MVSS(\d+)", _mx[0])
@@ -4718,7 +4718,7 @@ def admin_bulk_import_basic(payload: dict, db: Session = Depends(get_db), _=Depe
 
     # next MVSS id -> max EK BAAR, phir sirf counter (per-row scan nahi)
     _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
-           .order_by(User.user_id.desc()).first())
+           .order_by(func.length(User.user_id).desc(), User.user_id.desc()).first())
     _ctr = [1]
     if _mx and _mx[0]:
         _m = re.match(r"MVSS(\d+)", _mx[0])
