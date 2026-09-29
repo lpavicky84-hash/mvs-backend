@@ -7472,11 +7472,41 @@ function _resetAllQ(){
   _examQs=[]; addExamQ(); renderExamQs(); _clearQDraft();
   var b=document.getElementById('qdraft-banner'); if(b) b.remove();
 }
+// RECOVERY: browser me bacha koi bhi draft dhoondo — sirf exact key nahi. Purane deploy/alag
+// state me saved draft bhi is se mil jaata hai. Har wo localStorage key jisme 'draft' ho aur
+// usme questions ka array (qs/questions) ho, use padho + normalise karo.
+function _allQDrafts(){
+  var out=[];
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i); if(!k||!/draft/i.test(k)) continue;
+      var v; try{ v=JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ continue; }
+      if(!v) continue;
+      var qs=v.qs||v.questions||(Array.isArray(v)?v:null);
+      if(qs && _qCount(qs)>=1){
+        out.push({ts:v.ts||0, dpp:!!v.dpp, type:v.type||'', qs:qs, form:v.form||{}, noimg:!!v.noimg, __key:k});
+      }
+    }
+  }catch(e){}
+  out.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });   // sabse naya pehle
+  return out;
+}
 function _maybeShowQDraft(){
   try{
-    var raw=localStorage.getItem(_qDraftKey()); if(!raw) return;
-    var dr=JSON.parse(raw); var n=_qCount(dr.qs); if(n<1) return;
     var cont=document.getElementById('ex-qs'); if(!cont) return;
+    // 1) exact current key
+    var dr=null;
+    try{ var raw=localStorage.getItem(_qDraftKey()); if(raw){ var d0=JSON.parse(raw); if(d0&&_qCount(d0.qs)>=1){ dr=d0; } } }catch(e){}
+    // 2) fallback: browser me koi bhi draft (same mode preferred) — RECOVERY
+    if(!dr){
+      var all=_allQDrafts();
+      var wantDpp=!!window._dppMode;
+      var pick=null;
+      for(var j=0;j<all.length;j++){ if(!!all[j].dpp===wantDpp){ pick=all[j]; break; } }
+      dr=pick||all[0]||null;
+    }
+    if(!dr) return;
+    var n=_qCount(dr.qs); if(n<1) return;
     var when=new Date(dr.ts||Date.now()).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
     var bn=document.createElement('div'); bn.id='qdraft-banner'; bn.className='alert alert-info';
     bn.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px';
@@ -7487,7 +7517,8 @@ function _maybeShowQDraft(){
       +'</span>';
     cont.parentNode.insertBefore(bn,cont);
     document.getElementById('qdraft-cont').onclick=function(){ _restoreQDraft(dr); };
-    document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); bn.remove(); };
+    // "Start fresh" ab sirf current key clear karta hai + is banner ka source key (agar alag ho)
+    document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); try{ if(dr.__key) localStorage.removeItem(dr.__key); }catch(e){} bn.remove(); };
   }catch(e){}
 }
 function renderExamQs(){
