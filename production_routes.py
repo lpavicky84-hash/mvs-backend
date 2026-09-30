@@ -237,6 +237,13 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
                 VideoTask.lifecycle.isnot(None), VideoTask.lifecycle != "",
                 ~VideoTask.lifecycle.in_(["uploaded", "completed"])).all()):
             s.lifecycle = "uploaded"; _healed = True
+        # Self-heal: agar kisi task ka youtuber_id set hai par creator_type "youtuber" nahi hai
+        # (kisi edit/legacy ki wajah se), to wo YouTuber Tasks section se gayab ho jaata tha.
+        # creator_type ko theek kar do taaki wo hamesha sahi section me dikhe.
+        for s in (db.query(VideoTask).filter(
+                VideoTask.youtuber_id.isnot(None),
+                or_(VideoTask.creator_type == None, VideoTask.creator_type != "youtuber")).all()):
+            s.creator_type = "youtuber"; _healed = True
         if _healed:
             db.commit()
     except Exception:
@@ -260,8 +267,10 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
                                  VideoTask.kind == "normal"))
     else:
         # YouTuber tasks live in their own "YouTuber Tasks" section — never in the general list.
+        # youtuber_id set ho to bhi general list se bahar rakho (creator_type kharab ho tab bhi).
         query = query.filter(or_(VideoTask.creator_type == None,
                                  VideoTask.creator_type != "youtuber"))
+        query = query.filter(VideoTask.youtuber_id == None)
         # Projects / one-shot / rapid-revision ki apni "Projects" section hai — general Tasks
         # list (PM Review, Editing, Uploaded, sab) me kabhi na dikhein. Pehle sirf no-status
         # view me hide hote the, isliye PM Review filter par project bhi aa jaata tha.
@@ -322,7 +331,14 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         if conds:
             query = query.filter(or_(*conds))
     if creator_type:
-        query = query.filter(VideoTask.creator_type == creator_type)
+        if creator_type == "youtuber":
+            # Bulletproof: creator_type ya youtuber_id — dono me se koi bhi youtuber ho to YouTuber
+            # Tasks section me dikhe (kisi task ka creator_type kharab ho tab bhi gayab na ho).
+            query = query.filter(or_(VideoTask.creator_type == "youtuber",
+                                     VideoTask.youtuber_id != None))
+        else:
+            query = query.filter(VideoTask.creator_type == creator_type,
+                                 VideoTask.youtuber_id == None)
     if editor_id:
         query = query.filter(VideoTask.editor_id == editor_id)
     if graphics_id:
