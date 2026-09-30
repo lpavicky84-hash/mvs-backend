@@ -337,6 +337,67 @@ def yt_submit(tid: int, payload: dict = Body(...),
     return {"ok": True, "lifecycle": t.lifecycle, "approval_required": pc.needs_pm_approval(db, t)}
 
 
+@router.post("/videos/{tid}/qc-approve")
+def yt_qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """YouTuber apni hi video ka edit review karke approve kar sakta hai (PM/admin ki tarah).
+    Koi bhi ek (PM/Admin/YouTuber) approve karde -> sabke liye done (shared task state)."""
+    from models import TaskReview, ProductionStaffProfile
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    if t.lifecycle != "qc_pending":
+        raise HTTPException(400, "Task is not in QC")
+    t.qc_status = "approved"
+    db.add(TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="approved",
+                      revision_no=t.revision_count or 0))
+    pc.set_state(db, t, "ready_for_youtube", actor=me, event="qc_approved")
+    _ud = (payload.get("upload_date") or "").strip()
+    if _ud:
+        try:
+            t.upload_date = datetime.fromisoformat(_ud.replace("Z", ""))
+        except Exception:
+            pass
+    if "upload_remarks" in payload:
+        t.upload_remarks = (payload.get("upload_remarks") or "").strip()
+    if t.editor_id:
+        ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+        if ed and ed.user_id:
+            pc.notify(db, ed.user_id, "QC Approved", f'Your edit of "{t.title}" passed QC.', "video_task", link=str(t.id))
+    pc.notify_pms(db, "Edit Approved by YouTuber",
+                  f'{me.name} reviewed & approved the edit of "{t.title}".', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle}
+
+
+@router.post("/videos/{tid}/qc-changes")
+def yt_qc_changes(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    """YouTuber edit me changes maang sakta hai -> editor ko turant notify."""
+    from models import TaskReview, ProductionStaffProfile
+    yp = _me_yt(db, me)
+    t = _my_task(db, yp, tid)
+    if t.lifecycle != "qc_pending":
+        raise HTTPException(400, "Task is not in QC")
+    _note = (payload.get("remarks") or "").strip() or "Changes requested — details in chat with editor."
+    t.qc_status = "changes"
+    t.revision_count = (t.revision_count or 0) + 1
+    rv = TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="changes",
+                    remarks=_note, revision_no=t.revision_count)
+    db.add(rv); db.flush()
+    try:
+        pc.save_images(db, t, payload.get("images"), "edit", rv.id, me)
+    except Exception:
+        pass
+    pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested",
+                 meta={"note": _note[:200], "references": (payload.get("references") or "").strip()})
+    if t.editor_id:
+        ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+        if ed and ed.user_id:
+            pc.notify(db, ed.user_id, "Changes Required", _note[:180], "video_task", link=str(t.id))
+    pc.notify_pms(db, "Edit Changes by YouTuber",
+                  f'{me.name} requested changes on the edit of "{t.title}".', "production", link=str(t.id))
+    db.commit()
+    return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count}
+
+
 @router.delete("/videos/{tid}")
 def yt_delete_video(tid: int, db: Session = Depends(get_db), me=Depends(get_youtuber)):
     yp = _me_yt(db, me)

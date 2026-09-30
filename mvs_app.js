@@ -8270,30 +8270,35 @@ function initAdminYtTasks(){
   }
 }
 
-var _YT_DONE=['uploaded','completed'];
-var _YT_PROD=['approved','editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_pending','qc_approved','qc_changes','ready_for_youtube'];
-var _YT_REVIEW=['creator_submitted','pm_review'];
-function _ytBucket(t){ var lc=t.lifecycle||''; if(_YT_DONE.indexOf(lc)>=0)return'done'; if(_YT_PROD.indexOf(lc)>=0)return'prod'; if(_YT_REVIEW.indexOf(lc)>=0)return'review'; return 'assigned'; }
-// Brand-new / just-arrived tasks that need the PM's attention (blink red under "New Task").
-// YouTuber videos are usually auto-approved, so an 'approved' task with no editor yet is still
-// "new" for the PM; submissions awaiting review count too.
-var _YT_NEW_LC=['','created','creator_assigned','creator_working'];
-function _ytIsNew(t){
-  if(t && t.is_old) return false;                    // PM ne "Mark Old" kar diya -> new nahi
+var _YT_DONE=['uploaded','completed'];                       // Published
+var _YT_EDITDONE=['qc_pending'];                             // Editing Done — editor ne edit karke submit kiya, review chahiye
+var _YT_PROD=['editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_approved','qc_changes','ready_for_youtube']; // In Production (editor kaam kar raha)
+var _YT_TOSHOOT=['creator_assigned','creator_working'];      // youtuber ko shoot karni hai
+function _ytHasEditor(t){ return !!(t && (t.editor_id || t.editor_name)); }
+function _ytBucket(t){
   var lc=(t&&t.lifecycle)||'';
-  if(_YT_NEW_LC.indexOf(lc)>=0) return true;
-  if(lc==='creator_submitted'||lc==='pm_review') return true;
-  if(lc==='approved' && !t.editor_name && !t.editor_id) return true;
-  // gap-fill: koi bhi fresh task jo abhi "to-shoot/assigned" bucket me hai (production/review/done
-  // me nahi) -> PM ke liye new hai (warna kuch lifecycles New count me miss ho jaate the).
-  if(_YT_DONE.indexOf(lc)<0 && _YT_PROD.indexOf(lc)<0 && _YT_REVIEW.indexOf(lc)<0) return true;
-  return false;
+  if(_YT_DONE.indexOf(lc)>=0) return 'done';                 // Published
+  if(_YT_EDITDONE.indexOf(lc)>=0) return 'editdone';         // Editing Done (review)
+  if(_YT_PROD.indexOf(lc)>=0) return 'prod';                 // In Production
+  if(lc==='approved' && _ytHasEditor(t)) return 'prod';      // editor assign ho gaya -> production
+  if(_YT_TOSHOOT.indexOf(lc)>=0) return 'toshoot';           // youtuber shoot karega
+  return 'new';                                              // submitted / approved-no-editor / created
 }
+// New Task = PM ke action ka intezaar (youtuber ne abhi diya ya humne assign kiya, editor abhi
+// tak assign nahi hua). Purane/handled (editor lag chuka, production me, old-marked) NEW nahi.
+function _ytIsNew(t){
+  if(t && t.is_old) return false;                            // PM ne "Mark Old" kar diya -> new nahi
+  return _ytBucket(t)==='new';
+}
+// New-task card jise editor assign karna baaki hai -> blink (PM/admin bhool na jaaye)
+function _ytNeedsEditor(t){ return _ytIsNew(t) && !_ytHasEditor(t); }
 function _ytDelayed(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
+// Status dropdown (image-4 jaisa) — value = lifecycle
+var _YT_STATUS_OPTS=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editing_soon','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending — Review'],['qc_changes','Changes'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['completed','Completed']];
 function _ytNum(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
 function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replace(/"/g,'%22'):''; }
 
-window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''};
+window._ytF={q:'',creator:'',channel:'',video_type:'',status:'',bucket:''};
 
 /* ============================================================================
    DEADLINE PICKERS -> time DEFAULT 11:59 PM (23:59)
@@ -8496,8 +8501,10 @@ function _renderAYtTasks(){
   var el=document.getElementById(window._ytHost||'a-ytasks-content'); if(!el) return;
   el.classList.add('yt-scope');
   var all=window._ytTasks||[], f=window._ytF;
-  var total=all.length,done=0,prod=0,review=0,assigned=0,overdue=0,newcnt=0;
-  all.forEach(function(t){ var b=_ytBucket(t); if(b==='done')done++;else if(b==='prod')prod++;else if(b==='review')review++;else assigned++; if(_ytDelayed(t))overdue++; if(_ytIsNew(t))newcnt++; });
+  var total=all.length,done=0,prod=0,editdone=0,toshoot=0,overdue=0,newcnt=0;
+  all.forEach(function(t){ var b=_ytBucket(t);
+    if(b==='done')done++; else if(b==='editdone')editdone++; else if(b==='prod')prod++; else if(b==='toshoot')toshoot++;
+    if(_ytIsNew(t))newcnt++; if(_ytDelayed(t))overdue++; });
   function stat(l,n,color,icn,bucket,blink){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+((blink&&n>0)?' vt-ap-blink':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
   var byType={}; all.forEach(function(t){ var k=(t.video_type||'').trim()||'Uncategorized'; byType[k]=(byType[k]||0)+1; });
   var creators=[]; all.forEach(function(t){ var c=(t.creator_name||'').trim(); if(c&&creators.indexOf(c)<0)creators.push(c); }); creators.sort();
@@ -8525,9 +8532,10 @@ function _renderAYtTasks(){
   // build stat row cleanly
   var statRow=''
     +stat('Total Assigned',total,'#8a6d10','clipboard','all')
-    +stat('To Shoot',assigned,'#0891b2','clock','assigned')
+    +stat('To Shoot',toshoot,'#0891b2','clock','toshoot')
     +stat('New Task',newcnt,'#dc2626','bell','new',true)
     +stat('In Production',prod,'#7c4fc0','play','prod')
+    +stat('Editing Done',editdone,'#0d9488','check','editdone',true)
     +stat('Published',done,'#059669','check','done')
     +stat('Delayed',overdue,'#dc2626','alert','over');
   el.querySelector('.vt-cards').innerHTML=statRow;
@@ -8540,6 +8548,7 @@ function _renderAYtTasks(){
     +'<select class="vt-filt-sel" onchange="window._ytF.creator=this.value;_ytClientFilter()">'+cOpt+'</select>'
     +'<select class="vt-filt-sel" onchange="window._ytF.channel=this.value;_ytClientFilter()">'+chOpt+'</select>'
     +'<select class="vt-filt-sel" onchange="window._ytF.video_type=this.value;_ytClientFilter()">'+tyOpt+'</select>'
+    +'<select class="vt-filt-sel vt-filt-status" onchange="window._ytF.status=this.value;_ytClientFilter()">'+_YT_STATUS_OPTS.map(function(o){return '<option value="'+o[0]+'"'+(f.status===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('')+'</select>'
     +(typeof window.premDateFilter==='function'?window.premDateFilter('yt'):'')
     +'<button class="vt-filt-clear" onclick="_ytClearFilters()" title="Clear all filters">× Clear</button>'
     +'<div style="flex:1"></div>'
@@ -8659,7 +8668,7 @@ function _ytCard(t){
 function _ytRoot(){ return document.getElementById(window._ytHost||'a-ytasks-content'); }
 function _ytBucketFilter(b){ window._ytF.bucket=(window._ytF.bucket===b?'':b); _ytClientFilter(); }
 function _ytTypeFilter(k){ window._ytF.video_type=(window._ytF.video_type===k?'':k); _ytClientFilter(); }
-function _ytClearFilters(){ window._ytF={q:'',creator:'',channel:'',video_type:'',bucket:''}; var root=_ytRoot(); if(root){ var sr=root.querySelector('.yt-search'); if(sr)sr.value=''; root.querySelectorAll('.vt-filt-sel').forEach(function(s){s.selectedIndex=0;}); } var _hadDate=false; try{ var _ds=window._pdfGet('yt'); _hadDate=!!_ds.range; _ds.range='';_ds.from='';_ds.to=''; }catch(e){} if(_hadDate){ loadAYtTasks(); return; } _ytClientFilter(); }
+function _ytClearFilters(){ window._ytF={q:'',creator:'',channel:'',video_type:'',status:'',bucket:''}; window._ytF.status=''; var root=_ytRoot(); if(root){ var sr=root.querySelector('.yt-search'); if(sr)sr.value=''; root.querySelectorAll('.vt-filt-sel').forEach(function(s){s.selectedIndex=0;}); } var _hadDate=false; try{ var _ds=window._pdfGet('yt'); _hadDate=!!_ds.range; _ds.range='';_ds.from='';_ds.to=''; }catch(e){} if(_hadDate){ loadAYtTasks(); return; } _ytClientFilter(); }
 function _ytClientFilter(){
   var f=window._ytF, root=_ytRoot(); if(!root) return;
   root.querySelectorAll('.vt-stat[data-ytb]').forEach(function(c){ c.classList.toggle('vt-stat-on', !!f.bucket && c.getAttribute('data-ytb')===f.bucket); });
@@ -8672,6 +8681,7 @@ function _ytClientFilter(){
       if(f.creator && (t.creator_name||'')!==f.creator) show=false;
       if(show && f.channel && (t.channel_name||'')!==f.channel) show=false;
       if(show && f.video_type && (t.video_type||'')!==f.video_type) show=false;
+      if(show && f.status && (t.lifecycle||'')!==f.status) show=false;
       if(show && f.bucket){ if(f.bucket==='over'){ show=_ytDelayed(t); } else if(f.bucket==='new'){ show=_ytIsNew(t); } else if(f.bucket!=='all'){ show=_ytBucket(t)===f.bucket; } }
       if(show && f.q){ var txt=((t.title||'')+' '+(t.creator_name||'')+' '+(t.channel_name||'')+' '+(t.subject||'')+' '+(t.video_type||'')+' '+(t.ref_code||'')).toLowerCase(); show=txt.indexOf(f.q)>=0; }
     } else {
@@ -28317,6 +28327,35 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.ytChatEditor=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=editor',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'editor',mineRole:'youtuber',title:'Chat with Editor'}); };
   window.ytChatGraphics=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=graphics',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'graphics',mineRole:'youtuber',title:'Chat with Graphics'}); };
+  // YouTuber: apni edited video review karo (Approve / Changes). PM/Admin/YouTuber koi bhi karde -> done.
+  window.ytQcReview=function(id){
+    api(P.youtuber.api+'/videos/'+id).then(function(t){
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      var _vid=(t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">'+ic('play')+' Open edited video</a>'+(t.revision_count?(' · revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>');
+      dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
+        '<div class="pd-head"><div class="h-title">Review Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+_vid+
+          '<div class="p-field"><label>Tentative upload date &amp; time <span style="color:var(--muted);font-weight:600">(optional)</span></label><input class="p-input" id="ytqc-date" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
+          '<div class="qc-note" style="margin-top:10px;font-size:.82rem;color:var(--muted);background:rgba(180,83,9,.07);border:1px solid rgba(180,83,9,.2);border-radius:10px;padding:10px 12px;line-height:1.5">'+ic('edit')+' <b>Request Changes</b> — editor ko turant pata chal jayega aur aap seedhe <b>Chat with Editor</b> pe chale jayenge.</div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-ok" onclick="ytQcDecide('+id+',\'approve\')">Approve</button>'+
+          '<button class="p-btn p-btn-warn" onclick="ytQcDecide('+id+',\'changes\')">Request Changes</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  window.ytQcDecide=function(id,action){
+    if(action==='approve'){
+      var _d=((document.getElementById('ytqc-date')||{}).value||'');
+      prodDismiss(); toast('Approving…');
+      api(P.youtuber.api+'/videos/'+id+'/qc-approve','POST',{upload_date:_d}).then(function(){ toast('Edit approved ✓'); _apiBust(); _refresh('youtuber'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    } else {
+      prodDismiss(); toast('Changes requested — opening chat…');
+      api(P.youtuber.api+'/videos/'+id+'/qc-changes','POST',{remarks:''}).then(function(){ _apiBust(); _refresh('youtuber'); setTimeout(function(){ try{ ytChatEditor(id); }catch(e){} },250); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    }
+  };
   // One "Chat" button for the youtuber -> menu with PM / Editor / Graphics (jitne assigned hain).
   window.ytChatMenu=function(id, hasEditor, hasGraphics){
     var old=document.getElementById('prod-modal'); if(old) old.remove();
@@ -29609,6 +29648,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="ytf">'+
         '<div class="ytf-search">'+_YT_SVG_SEARCH+'<input id="yt-q" placeholder="Search by title, channel, type..." oninput="_ytMyApply()"></div>'+
         '<select id="yt-ch" onchange="_ytMyApply()"><option value="">All channels</option></select>'+
+        '<select id="yt-st" onchange="_ytMyApply()">'+_YT_STATUS_OPTS.map(function(o){return '<option value="'+o[0]+'">'+esc(o[1])+'</option>';}).join('')+'</select>'+
         '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Delayed</option><option value="nodl">No deadline</option></select>'+
         '<button class="ytf-add" onclick="ytAddChannel()">+ Channel</button>'+
         '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div><div id="yt-my-grid"></div>';
@@ -29616,18 +29656,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       _ytMyApply();
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
-  window._ytMyClear=function(){ ['yt-q','yt-ch','yt-dt'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); _ytMyApply(); };
+  window._ytMyClear=function(){ ['yt-q','yt-ch','yt-st','yt-dt'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); _ytMyApply(); };
   window._ytMyApply=function(){
     var grid=document.getElementById('yt-my-grid'); if(!grid) return;
     var tasks=window._ytMyRaw||[];
     var q=(((document.getElementById('yt-q')||{}).value)||'').trim().toLowerCase();
     var ch=((document.getElementById('yt-ch')||{}).value)||'';
+    var st=((document.getElementById('yt-st')||{}).value)||'';
     var dt=((document.getElementById('yt-dt')||{}).value)||'';
     var now=Date.now(), day=86400000, t0=new Date(); t0.setHours(0,0,0,0);
     var ts=t0.getTime(), te=ts+day, tw=ts+7*day;
     var out=tasks.filter(function(t){
       if(q){ var hay=((t.title||'')+' '+(t.channel_name||'')+' '+(t.video_type||'')+' '+(t.creator_name||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
       if(ch && (t.channel_name||'')!==ch) return false;
+      if(st && (t.lifecycle||'')!==st) return false;
       if(dt){ var ms=_ytDlMs(t);
         if(dt==='nodl'){ if(ms!=null) return false; }
         else if(ms==null) return false;
@@ -30743,6 +30785,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
     } else if(portal==='youtuber'){
       if(['uploaded','completed'].indexOf(lc)<0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytEditTask('+t.id+')">Edit</button>';
+      // Editing Done -> YouTuber apni edited video khud review kar sakta hai (PM/admin ki tarah)
+      if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();ytQcReview('+t.id+')"><span class="rev-dot"></span>Review Edit</button>';
       // Thumbnail review: graphics ne submit kiya ho (blink) YA approved bhi ho to youtuber
       // dobara dekh/badal sake (pehle PM approve kar deta to youtuber ko button milta hi nahi tha).
       var _gst=(t.graphics&&t.graphics.status)||'';
@@ -30781,7 +30825,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodReview('+t.id+')"><span class="rev-dot"></span>Checking \u2014 Review</button>';
     }
     if((lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube') && !t.editor_name)
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')">'+(t.editor_id?'Reassign Editor':'Assign Editor')+'</button>';
+      // editor abhi assign nahi hua -> blink (PM/admin bhool na jaaye ki editor lagana hai)
+      acts+='<button class="ptc-btn ptc-review-blink" onclick="event.stopPropagation();prodCardForm(\'assign-editor\','+t.id+')"><span class="rev-dot"></span>'+(t.editor_id?'Reassign Editor':'Assign Editor')+'</button>';
     // ---- Thumbnail / Graphics (single smart control) ----
     // Thumbnail already made -> credit who made it + rating (no "Assign Graphics").
     // No thumbnail yet -> assign a designer (name shown once assigned), or the PM can
