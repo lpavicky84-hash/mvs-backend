@@ -1728,7 +1728,9 @@ def _chat_inbox(db, user, role):
             if a not in auds:
                 continue
             last_by[(c.task_id, a)] = c  # ascending -> ends on latest
-        if not last_by:
+        # NOTE: yahan early-return MAT karo agar last_by khaali ho — teacher/editor/graphics ke
+        # liye neeche "seed" (assigned counterpart ka naam bina message ke) add hota hai.
+        if not last_by and role in ("manager", "youtuber"):
             return out
         # 4) reads for unread
         reads = {}
@@ -1783,7 +1785,34 @@ def _chat_inbox(db, user, role):
             g = gtasks.get(tid)
             return sp_map.get(g.graphics_id, (None, None)) if g else (None, None)
         now = _dt.utcnow()
-        for (tid, a), c in last_by.items():
+        # SEED empty conversations: viewer ko apne assigned counterparts ka naam Chat Manager me
+        # message se PEHLE hi dikhe (jaise hi editor/graphics assign ho), taaki wahin se chat
+        # shuru kar sake. Sirf allowed pairs + jab doosri party actually assigned ho.
+        seed = {}
+        if role == "teacher":
+            for _tid in task_ids:
+                _t = tasks.get(_tid)
+                if _t and getattr(_t, "editor_id", None) and "te_ed" in auds:
+                    seed[(_tid, "te_ed")] = None
+        elif role == "editor":
+            for _tid in task_ids:
+                _t = tasks.get(_tid)
+                if not _t:
+                    continue
+                if getattr(_t, "teacher_id", None) and "te_ed" in auds:
+                    seed[(_tid, "te_ed")] = None
+                _g = gtasks.get(_tid)
+                if _g and getattr(_g, "graphics_id", None) and "ed_gf" in auds:
+                    seed[(_tid, "ed_gf")] = None
+        elif role == "graphics":
+            for _tid in task_ids:
+                _t = tasks.get(_tid)
+                if _t and getattr(_t, "editor_id", None) and "ed_gf" in auds:
+                    seed[(_tid, "ed_gf")] = None
+        # merge: jahan message hai wo win kare, seeds sirf gaps bharein
+        conv_all = dict(seed)
+        conv_all.update(last_by)
+        for (tid, a), c in conv_all.items():
             t = tasks.get(tid)
             if not t:
                 continue
@@ -1827,12 +1856,12 @@ def _chat_inbox(db, user, role):
                     party_role = "Teacher"
             pres = _chat_other_presence(db, uid, tid, a)
             _ts = 0
-            try:
-                _ts = int(c.created_at.replace(tzinfo=_tz.utc).timestamp()) if c.created_at else 0
-            except Exception:
-                _ts = 0
             _atl = ""
-            if c.created_at:
+            if c is not None and c.created_at:
+                try:
+                    _ts = int(c.created_at.replace(tzinfo=_tz.utc).timestamp())
+                except Exception:
+                    _ts = 0
                 try:
                     _y = c.created_at.replace(tzinfo=_tz.utc).astimezone(_tz(_td(hours=5, minutes=30)))
                     _atl = _y.strftime("%d %b, %I:%M %p")
@@ -1844,9 +1873,9 @@ def _chat_inbox(db, user, role):
                 "channel": (getattr(t, "channel_name", "") or ""),
                 "party_name": party_name, "party_role": party_role, "party_uid": party_uid,
                 "unread": unread.get((tid, a), 0),
-                "last": _chat_last_preview(c),
+                "last": (_chat_last_preview(c) if c is not None else "Tap to start the chat"),
                 "last_at": _atl, "last_at_ts": _ts,
-                "last_mine": (c.user_id == uid),
+                "last_mine": (c.user_id == uid if c is not None else False),
                 "online": bool(pres.get("online")),
                 "last_seen": pres.get("last_seen", ""),
             })
