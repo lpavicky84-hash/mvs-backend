@@ -232,11 +232,12 @@ def _auto_under_review(db, m):
 @router.get("/api/student/hw/teachers")
 def student_hw_teachers(db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Student ke subjects + har subject ka teacher (auto-fill ke liye)."""
-    from student_routes import _teacher_for_subject
+    from student_routes import _teacher_for_subject, _student_cls
     sp = _sp(db, current_user)
     out, seen = [], set()
+    _scls = _student_cls(sp)
     for s in (sp.subjects or []):
-        tp = _teacher_for_subject(db, s)
+        tp = _teacher_for_subject(db, s, _scls)
         if s in seen:
             continue
         seen.add(s)
@@ -252,9 +253,10 @@ async def student_create_homework(subject: str = Form(...), title: str = Form(..
                                   description: str = Form(""), file: UploadFile = File(...),
                                   db: Session = Depends(get_db), current_user=Depends(get_student)):
     from homework_models import HomeworkSubmission
-    from student_routes import _teacher_for_subject
+    from student_routes import _teacher_for_subject, _student_cls
     sp = _sp(db, current_user)
-    tp = _teacher_for_subject(db, subject)
+    # CLASS-AWARE: student ki class ke hisaab se SAHI teacher (English 202 vs 302 mix na ho)
+    tp = _teacher_for_subject(db, subject, _student_cls(sp))
     if not tp:
         raise HTTPException(status_code=400, detail="No teacher is assigned for this subject. Please contact the admin.")
     m = HomeworkSubmission(student_id=sp.id, teacher_id=tp.id, subject=subject,

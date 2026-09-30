@@ -832,50 +832,134 @@ def _norm_subj(s):
     return (s or "").strip().lower()
 
 
+def _cls_digits(v):
+    """Kisi bhi value se '10'/'12' nikaalo (jaise 'Class 12', '12A', 'UDAAN 10th')."""
+    d = "".join(ch for ch in str(v or "") if ch.isdigit())
+    for token in ("12", "10"):
+        if token in d:
+            return token
+    return None
+
+def _student_cls(sp):
+    """Student ki class '10'/'12' — ek field khaali ho to doosre se (bulletproof):
+    class_level -> batch_name -> class_name. Isse routing kabhi class ke bina na chale."""
+    if sp is None:
+        return None
+    for v in (getattr(sp, "class_level", None), getattr(sp, "batch_name", None), getattr(sp, "class_name", None)):
+        c = _cls_digits(v)
+        if c:
+            return c
+    return None
+
+def _tp_subject_match(tp, want, want_code_key):
+    """Ek teacher ke against: (code_key_match, name_match, classes_set).
+    code_key_match = teacher ka koi (subject,class) EXACT code-key (jaise c302) se match kare.
+    classes_set = jin classes me teacher ye subject-naam padhata hai (ambiguity resolve ke liye)."""
+    key_match = False
+    name_match = False
+    classes = set()
+    # 1) subject_classes: [{subject, class}] — sacchai yahin hoti hai
+    for scp in (tp.subject_classes or []):
+        try:
+            nm = (scp.get("subject") or "").strip()
+            c = _cls_digits(scp.get("class") or scp.get("class_level") or "")
+        except Exception:
+            continue
+        if not nm:
+            continue
+        if _norm_subj(_SR.raw_clean(nm) if _SR else nm) == want or _norm_subj(nm) == want:
+            name_match = True
+            if c:
+                classes.add(c)
+        if want_code_key and _SR is not None:
+            try:
+                if _SR.canon_key(nm, c) == want_code_key:
+                    key_match = True
+            except Exception:
+                pass
+    # 2) flat subjects (naam me code/class embedded ho sakta hai, jaise "English (302)")
+    subs = tp.subjects or []
+    if isinstance(subs, str):
+        subs = [p for chunk in subs.split(",") for p in chunk.split("|")]
+    for sname in subs:
+        sname = (sname or "").strip()
+        if not sname:
+            continue
+        if _norm_subj(_SR.raw_clean(sname) if _SR else sname) == want or _norm_subj(sname) == want:
+            name_match = True
+        if want_code_key and _SR is not None:
+            try:
+                if _SR.canon_key(sname, None) == want_code_key:   # naam me code ho to milega
+                    key_match = True
+            except Exception:
+                pass
+    return key_match, name_match, classes
+
 def _teacher_for_subject(db, subject, cls=None):
-    """Subject ka teacher. Ab CLASS-AWARE: English (Class 12, code 302) aur English
-    (Class 10, code 202) ALAG hain -> student ki class ke hisaab se SAHI teacher milta
-    hai (naam same ho tab bhi mixing nahi). Class-specific match na mile to naam-only
-    fallback (purana behaviour, taaki doubt kahin to route ho)."""
-    want = _norm_subj(subject)
+    """Subject ka SAHI teacher — CLASS-AWARE & bulletproof.
+    - English Class-12 (code 302) aur English Class-10 (code 202) ALAG teachers.
+    - Priority: (1) class+code exact match -> wahi teacher (authoritative).
+    - Agar subject sirf EK teacher padhata hai -> wahi (naam-only, safe).
+    - Agar ek hi naam ko MULTIPLE teachers alag class me padhate hain (jaise English) to
+      naam-only guess NAHI karte (warna Class-12 ka doubt Class-10 teacher ko chala jaata) —
+      student ki class ka teacher hi, warna None (admin handle kare — galat class se behtar)."""
+    want = _norm_subj(_SR.raw_clean(subject) if (_SR and subject) else subject)
+    if not want:
+        want = _norm_subj(subject)
     if not want:
         return None
-    cls_d = "".join(ch for ch in str(cls or "") if ch.isdigit())[:2] or None
-    want_key = None
+    cls_d = _cls_digits(cls)
+    # want_code_key sirf tab class-authoritative jab wo CODE-based ho (jaise 'c302')
+    want_code_key = None
     if _SR is not None and cls_d:
         try:
-            want_key = _SR.canon_key(subject, cls_d)
+            k = _SR.canon_key(subject, cls_d)
+            if k and str(k).startswith("c"):
+                want_code_key = k
         except Exception:
-            want_key = None
-    fallback = None
+            want_code_key = None
+    name_cands = []   # [(tp, classes_set)] jo is subject-naam ko padhate hain
     for tp in db.query(TeacherProfile).all():
-        # 1) class-aware: teacher ke subject_classes me se uski APNI class ke saath match
-        if want_key and _SR is not None:
-            for scp in (tp.subject_classes or []):
-                try:
-                    nm = (scp.get("subject") or "").strip()
-                    c = str(scp.get("class") or scp.get("class_level") or "").strip()
-                except Exception:
-                    continue
-                if nm and c:
-                    try:
-                        if _SR.canon_key(nm, c) == want_key:
-                            return tp
-                    except Exception:
-                        pass
-        # 2) naam-only fallback (pehla match yaad rakho — class data blank ho tab)
-        if fallback is None:
-            subs = tp.subjects or []
-            if isinstance(subs, str):
-                subs = [p for chunk in subs.split(",") for p in chunk.split("|")]
-            if want in {_norm_subj(x) for x in subs}:
-                fallback = tp
-    return fallback
+        km, nm_match, classes = _tp_subject_match(tp, want, want_code_key)
+        if want_code_key and km:
+            return tp                         # perfect class+code match — authoritative
+        if nm_match:
+            name_cands.append((tp, classes))
+    if not name_cands:
+        return None
+    # distinct teachers
+    uniq = []
+    for tp, classes in name_cands:
+        found = None
+        for i, (t2, c2) in enumerate(uniq):
+            if t2.id == tp.id:
+                found = i
+                break
+        if found is None:
+            uniq.append([tp, set(classes)])
+        else:
+            uniq[found][1] |= set(classes)
+    if len(uniq) == 1:
+        return uniq[0][0]                     # sirf ek teacher — safe (non-shared subject)
+    # multiple teachers (class-shared subject jaise English): class match ZAROORI
+    if cls_d:
+        for tp, classes in uniq:
+            if cls_d in classes:
+                return tp
+        # kisi ke subject_classes me class blank ho sakti hai -> agar sirf ek aisa teacher hai
+        # jiski koi class hi set nahi, aur baaki sab doosri class ke hain, to use cls do
+        no_class = [tp for tp, classes in uniq if not classes]
+        if len(no_class) == 1:
+            other_has_cls = any(classes and cls_d not in classes for tp, classes in uniq if tp.id != no_class[0].id)
+            if other_has_cls:
+                return no_class[0]
+    # class nahi pata ya match nahi -> galat teacher se behtar unassigned (admin inbox)
+    return None
 
 @router.get("/teacher-for-subject")
 def teacher_for_subject(subject: str, db: Session = Depends(get_db), current_user=Depends(get_student)):
     _sp = get_student_profile(current_user, db)
-    tp = _teacher_for_subject(db, subject, getattr(_sp, "class_level", None))
+    tp = _teacher_for_subject(db, subject, _student_cls(_sp))
     if not tp or not tp.user:
         return {"found": False, "teacher_name": None, "teacher_id": None}
     return {"found": True, "teacher_name": tp.user.name, "teacher_user_id": tp.user.user_id, "teacher_id": tp.id, "has_photo": bool(tp.photo_b64)}
@@ -999,12 +1083,12 @@ async def ask_doubt(
         else:
             msg = "You have reached the daily limit of %d doubts. You can ask again in %s." % (_rl["per_day"], wait)
         raise HTTPException(status_code=429, detail=msg)
-    # auto-resolve teacher by subject if not provided
-    tp = None
-    if teacher_id:
+    # CLASS-AWARE authoritative routing: is subject+class ka teacher hamesha SAHI class ko jaaye.
+    # Frontend galti se galat teacher_id bhej de (English 202 vs 302) to bhi class ka teacher
+    # override karega. Class-teacher na mile (ambiguous) tabhi student ke chune teacher_id pe.
+    tp = _teacher_for_subject(db, subject, _student_cls(sp))
+    if tp is None and teacher_id:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
-    if not tp:
-        tp = _teacher_for_subject(db, subject, getattr(sp, "class_level", None))
     img_b64 = attach_mime = attach_name = None
     if file is not None:
         raw = await file.read()
@@ -1992,7 +2076,7 @@ def student_my_teachers(db: Session = Depends(get_db), current_user=Depends(get_
     out = []
     seen = set()
     for s in subs:
-        tp = _teacher_for_subject(db, s, getattr(sp, "class_level", None))
+        tp = _teacher_for_subject(db, s, _student_cls(sp))
         if tp and tp.user:
             key = (tp.id, s)
             if key in seen:
