@@ -7235,7 +7235,13 @@ async function openCreateExam(type,editData){
   addExamQ();
   // AUTO-DRAFT: har 2.5s me draft save (hang/close pe questions na udein). Edit pe nahi.
   try{ if(window._qDraftTimer) clearInterval(window._qDraftTimer); }catch(e){}
-  window._qDraftTimer=setInterval(_saveQDraft,2500);
+  window._qDraftSig='';   // fresh open -> pehla asli save allow ho
+  // Autosave: browser ke idle time me chalao taaki typing/scroll kabhi block na ho. Change na
+  // hone par _saveQDraft turant return kar deta hai (cheap signature check), isliye 48 questions
+  // pe bhi freeze nahi hoga.
+  window._qDraftTimer=setInterval(function(){
+    try{ if(window.requestIdleCallback){ window.requestIdleCallback(_saveQDraft,{timeout:1500}); } else { _saveQDraft(); } }catch(e){ try{ _saveQDraft(); }catch(e2){} }
+  },4000);
   if(editData){
     const ex=editData.ex||{};
     const sel=document.getElementById('ex-sub');
@@ -7436,22 +7442,51 @@ function _qCount(qs){
   return (qs||[]).filter(function(q){ return q && ((q.q||'').trim()||(q.model||'').trim()||q.image_b64
     ||q.model_answer_image||(q.opts||[]).some(function(o){return (o||'').trim();})||(q.expl||'').trim()); }).length;
 }
+// CHEAP change-detect: poora JSON stringify kiye bina batao ki kuch badla ya nahi. 48 questions
+// (base64 images ke saath) ko har baar stringify karna main-thread ko freeze kar deta tha —
+// isliye pehle ek chhoti signature (sirf lengths + flags) banate hain.
+var _qDraftSig='';
+function _qDraftSignature(){
+  try{
+    var q=_examQs||[]; var s=(_examType||'')+'|'+(window._dppMode?'d':'t')+'|'+q.length+'|';
+    for(var i=0;i<q.length;i++){ var x=q[i]||{};
+      s+=(x.q||'').length+','+(x.q_hi||'').length+','+(x.model||'').length+','+(x.model_hi||'').length+','
+        +(x.expl||'').length+','+(x.expl_hi||'').length+','+((x.opts||[]).join('\u0001')).length+','
+        +((x.opts_hi||[]).join('\u0001')).length+','
+        +(x.image_b64?'I':'')+(x.alt_image_b64?'A':'')+(x.model_answer_image?'M':'')+(x.correct||0)+(x.marks||'')+';';
+    }
+    s+='|'+val('ex-sub')+'\u0001'+val('ex-cls-test')+'\u0001'+val('ex-dur')+'\u0001'+val('ex-medium')
+      +'\u0001'+val('ex-sched')+'\u0001'+val('ex-title')+'\u0001'+val('ex-ch');
+    return s;
+  }catch(e){ return 'x'+Date.now(); }
+}
 function _saveQDraft(){
   try{
     if(window._editExamId||window._dppEditId) return;              // edit mode -> draft nahi
     if(!document.getElementById('ex-qs')) return;                  // panel band -> skip
     if(_qCount(_examQs)<1) return;                                 // koi content nahi -> skip
+    var sig=_qDraftSignature();
+    if(sig===_qDraftSig) return;                                   // kuch nahi badla -> koi kaam nahi (no freeze)
+    // TEXT-ONLY draft: base64 images bahut bhaari hote hain (freeze + localStorage quota me fit hi
+    // nahi hote). Text hamesha turant, chhota aur reliable bach jaaye. Images crash-recovery me
+    // restore nahi hote (banner ye bata deta hai) — wo submit ke waqt normally chali jaati hain.
+    var hadImg=(_examQs||[]).some(function(q){ return q&&(q.image_b64||q.alt_image_b64||q.model_answer_image); });
+    var light=(_examQs||[]).map(function(q){ var c=Object.assign({},q);
+      delete c.image_b64; delete c.alt_image_b64; delete c.model_answer_image; return c; });
     var form={sub:val('ex-sub'),cls:val('ex-cls-test'),dur:val('ex-dur'),medium:val('ex-medium'),
               sched:val('ex-sched'),title:val('ex-title'),ch:val('ex-ch')};
-    try{ localStorage.setItem(_qDraftKey(),JSON.stringify({ts:Date.now(),dpp:!!window._dppMode,type:_examType,qs:_examQs,form:form})); }
+    var payload=JSON.stringify({ts:Date.now(),dpp:!!window._dppMode,type:_examType,qs:light,form:form,noimg:hadImg});
+    try{ localStorage.setItem(_qDraftKey(),payload); _qDraftSig=sig; }
     catch(e){
-      // quota (bade images) -> images hata ke text/structure bacha lo (kam se kam mehnat na jaye)
-      var light=(_examQs||[]).map(function(q){var c=Object.assign({},q);delete c.image_b64;delete c.alt_image_b64;delete c.model_answer_image;return c;});
-      try{ localStorage.setItem(_qDraftKey(),JSON.stringify({ts:Date.now(),dpp:!!window._dppMode,type:_examType,qs:light,form:form,noimg:true})); }catch(e2){}
+      // quota bhar gaya -> apne purane draft keys hata ke jagah banao, phir dobara
+      try{
+        for(var j=localStorage.length-1;j>=0;j--){ var k=localStorage.key(j); if(k&&/qdraft/i.test(k)&&k!==_qDraftKey()) localStorage.removeItem(k); }
+        localStorage.setItem(_qDraftKey(),payload); _qDraftSig=sig;
+      }catch(e2){}
     }
   }catch(e){}
 }
-function _clearQDraft(){ try{ localStorage.removeItem(_qDraftKey()); }catch(e){} }
+function _clearQDraft(){ try{ localStorage.removeItem(_qDraftKey()); _qDraftSig=''; }catch(e){} }
 function _restoreQDraft(dr){
   try{
     _examQs=(dr.qs&&dr.qs.length)?dr.qs:[]; if(!_examQs.length) addExamQ();
@@ -7565,15 +7600,27 @@ function renderExamQs(){
     }
     return `<div class="ex-qcard">${head}${tabs}${sp}${qsec}${mid}</div>`;
   }).join('');
-  _examQs.forEach((q,i)=>{
+  // Previews + math bhaari ho sakte hain (jaise 48 questions ka restore). Sab ek saath karne se
+  // page freeze/"unresponsive" ho jaata tha. Chhote test turant; bade test chhote chunks me
+  // (requestAnimationFrame) — page kabhi block nahi hoga. Token se stale render guard.
+  const _rtok=(window._examRenderTok=(window._examRenderTok||0)+1);
+  const _fillOne=(i)=>{
+    const q=_examQs[i]; if(!q) return;
     const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
     const pq=document.getElementById('pv-q-'+i); if(pq){pq.innerHTML=_fmtRich(isHi?(q.q_hi||''):(q.q||''));renderMath(pq);}
     const pa=document.getElementById('pv-a-'+i); if(pa){pa.innerHTML=_fmtRich(isHi?(q.model_hi||''):(q.model||''));renderMath(pa);}
     const pe=document.getElementById('pv-e-'+i); if(pe){pe.innerHTML=_fmtRich(isHi?(q.expl_hi||''):(q.expl||''));renderMath(pe);}
-    // v124: khuli hui options ke previews bhi bharo (edit mode / re-render pe)
     const _ol=isHi?(q.opts_hi||[]):(q.opts||[]);
     _ol.forEach((ov,j)=>{ const ip=document.getElementById((isHi?'oxh-':'exo-')+i+'-'+j); if(ip) examOptPrev(ip,(isHi?'pv-oh-':'pv-o-')+i+'-'+j); });
-  });
+  };
+  if(_examQs.length<=8){ _examQs.forEach((q,i)=>_fillOne(i)); }
+  else {
+    let _p=0; const _raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
+    const _chunk=()=>{ if(window._examRenderTok!==_rtok) return;   // naya render aa gaya -> purana chhodo
+      const end=Math.min(_p+6,_examQs.length); for(;_p<end;_p++) _fillOne(_p);
+      if(_p<_examQs.length) _raf(_chunk); };
+    _chunk();
+  }
   // Header ke "Translate All" pe kitne question abhi Hindi me baaki hain
   const trAll=document.getElementById('ex-tr-all');
   if(trAll){
