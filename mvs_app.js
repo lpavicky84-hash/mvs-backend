@@ -31638,6 +31638,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.cm-role.r-direct{background:rgba(13,148,136,.14);color:#0d9488}',
       '.cm-time{margin-left:auto;font-size:.72rem;color:var(--muted,#9aa0a6);flex-shrink:0;font-weight:600}',
       '.cm-r2{font-size:.8rem;color:var(--muted,#8a8578);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}',
+      '.cm-taskcount{display:inline-block;font-size:.66rem;font-weight:800;color:#8a5e17;background:rgba(201,138,46,.14);border-radius:999px;padding:1px 7px;vertical-align:1px}',
+      'body.dark .cm-taskcount{color:#e6c169;background:rgba(201,138,46,.2)}',
       '.cm-r3{display:flex;align-items:center;gap:8px;margin-top:3px}',
       '.cm-prev{flex:1;min-width:0;font-size:.88rem;color:#5a6270;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.cm-row.unread .cm-prev{color:var(--text,#14213d);font-weight:700}',
@@ -31695,6 +31697,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var nm=c.party_name||'Team'; var rl=(c.party_role||'Team').toLowerCase();
     var prev=(c.last_mine?'<span class="cm-me">You: </span>':'')+esc(c.last||'No messages yet');
     var task=esc(c.title||'')+(c.channel?('  ·  '+esc(c.channel)):'');
+    if(c.task_count>1) task+='  ·  <span class="cm-taskcount">'+c.task_count+' videos</span>';   // ek person ke multiple video
     var pres=c.online?'<span class="cm-dot online"></span>':'<span class="cm-dot"></span>';
     var badge=c.unread>0?'<span class="cm-badge">'+(c.unread>99?'99+':c.unread)+'</span>':'';
     var time=esc(c.online?'online':(c.last_at||''));
@@ -31775,7 +31778,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _cmLoad(silent){
     var C=window._CM; if(!C) return;
-    api(C.inbox).then(function(r){ C.convs=(r&&r.conversations)||[]; _cmPaint(); })
+    api(C.inbox).then(function(r){ C.convs=(r&&r.conversations)||[];
+      // chat ke task-bar me asli video ka NAAM dikhe (teacher/editor sab ko) — inbox se populate
+      try{ window._prodTaskInfo=window._prodTaskInfo||{}; C.convs.forEach(function(c){ if(c.task_id) window._prodTaskInfo[c.task_id]={title:(c.title||''),ref:'',creator:(c.party_name||''),ctype:''}; }); }catch(e){}
+      _cmPaint(); })
       .catch(function(e){ if(!silent){ var box=document.getElementById(C.dom+'-list'); if(box) box.innerHTML='<div class="cm-empty">Could not load chats. '+esc((e&&e.message)||'')+'</div>'; } });
   }
   // PM/Admin oversight open of ANY thread (incl. direct pairs) via the production endpoints

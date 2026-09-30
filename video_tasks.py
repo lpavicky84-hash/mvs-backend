@@ -1879,6 +1879,34 @@ def _chat_inbox(db, user, role):
                 "online": bool(pres.get("online")),
                 "last_seen": pres.get("last_seen", ""),
             })
+        # WhatsApp-style: ek counterpart PERSON = ek hi row (chahe uske paas kitne bhi task ho).
+        # Sabse recent task representative banta hai, unread add hote hain, task_count set hota hai.
+        # Manager/Admin oversight per-task hi rehta hai (collapse nahi).
+        if role != "manager":
+            grouped = {}
+            singles = []
+            order = []
+            for row in out:
+                puid = row.get("party_uid")
+                if not puid:
+                    singles.append(row)
+                    continue
+                key = (puid, row.get("audience"))
+                g = grouped.get(key)
+                if g is None:
+                    row = dict(row)
+                    row["task_count"] = 1
+                    grouped[key] = row
+                    order.append(key)
+                else:
+                    g["task_count"] = g.get("task_count", 1) + 1
+                    g["unread"] = g.get("unread", 0) + row.get("unread", 0)
+                    # representative = jiski activity sabse recent
+                    if row.get("last_at_ts", 0) > g.get("last_at_ts", 0):
+                        for _k in ("task_id", "title", "channel", "last", "last_at",
+                                   "last_at_ts", "last_mine", "online", "last_seen"):
+                            g[_k] = row.get(_k)
+            out = singles + [grouped[k] for k in order]
         out.sort(key=lambda x: x.get("last_at_ts", 0), reverse=True)
     except Exception:
         pass
