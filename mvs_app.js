@@ -10985,7 +10985,8 @@ function tvtChatGraphics(id){ _tvtPairOpen(id,'te_gf','Chat with Graphics'); }
 window.tvtChatEditor=tvtChatEditor; window.tvtChatGraphics=tvtChatGraphics; window.tvtChatPM=tvtChatPM;
 function tvtChatMenu(id){
   var old=document.getElementById('modal'); // teacher uses showModal system
-  var opts=[['users','Chat with PM','tvtChatPM'],['play','Chat with Editor','tvtChatEditor'],['image','Chat with Graphics','tvtChatGraphics']];
+  // Teacher sirf PM aur Editor se baat karega (Graphics se direct chat band — graphics only PM).
+  var opts=[['users','Chat with PM','tvtChatPM'],['play','Chat with Editor','tvtChatEditor']];
   var rows=opts.map(function(o){ return '<button class="pcm-opt" onclick="closeModal();'+o[2]+'('+id+')" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1px solid var(--border,#e5ddcb);border-radius:12px;background:#fff;cursor:pointer;font-weight:700;margin-bottom:8px">'+ic(o[0])+'<span style="flex:1;text-align:left">'+o[1]+'</span><span style="color:#b0a483">›</span></button>'; }).join('');
   showModal('Chat about this video', rows, '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
 }
@@ -28633,13 +28634,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // Editor DIRECT pairs: editor<->teacher (te_ed), editor<->graphics (ed_gf)
   window.edtChatTeacher=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=te_ed',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=te_ed',audience:'te_ed',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor'}); };
   window.edtChatGraphics=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'editor',title:'Chat with Graphics',taskId:id,barPortal:'editor'}); };
+  // Editor: PM + Teacher + Graphics se baat kar sakta hai.
   window.edtChatMenu=function(id){ _prodChatChooser(id,'Chat about this video',[
     ['users','Chat with PM','edtChatPM'],['team','Chat with Teacher','edtChatTeacher'],['image','Chat with Graphics','edtChatGraphics']]); };
   // Graphics DIRECT pairs: graphics<->teacher (te_gf), graphics<->editor (ed_gf)
   window.gfxChatTeacher=function(id){ _ytcOpen({getUrl:P.graphics.api+'/tasks/'+id+'/pair-comments?audience=te_gf',postUrl:P.graphics.api+'/tasks/'+id+'/pair-comments',pingUrl:P.graphics.api+'/tasks/'+id+'/pair-ping?audience=te_gf',audience:'te_gf',mineRole:'graphics',title:'Chat with Teacher',taskId:id,barPortal:'graphics'}); };
   window.gfxChatEditor=function(id){ _ytcOpen({getUrl:P.graphics.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.graphics.api+'/tasks/'+id+'/pair-comments',pingUrl:P.graphics.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'graphics',title:'Chat with Editor',taskId:id,barPortal:'graphics'}); };
+  // Graphics: PM + Editor se baat karega (Teacher se nahi).
   window.gfxChatMenu=function(id){ _prodChatChooser(id,'Chat about this video',[
-    ['users','Chat with PM','gfxChat'],['team','Chat with Teacher','gfxChatTeacher'],['play','Chat with Editor','gfxChatEditor']]); };
+    ['users','Chat with PM','gfxChat'],['play','Chat with Editor','gfxChatEditor']]); };
   // shared chooser modal (premium) for role -> pair options
   function _prodChatChooser(id, title, opts){
     var old=document.getElementById('prod-modal'); if(old) old.remove();
@@ -31706,6 +31709,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._cmClick=function(el){ var C=window._CM; if(!C) return; var tid=+el.getAttribute('data-tid'); var aud=el.getAttribute('data-aud');
     try{ document.querySelectorAll('.cm-row.active').forEach(function(r){ r.classList.remove('active'); }); el.classList.add('active'); }catch(e){}
     window._cmActive={tid:tid,aud:aud};
+    // REALTIME: chat kholte hi is row ka unread turant 0 + badge hatao (server GET bhi read mark
+    // karta hai). Isse reply/seen ke baad count wahin ka wahin nahi rehta.
+    try{
+      (C.convs||[]).forEach(function(c){ if(+c.task_id===tid && String(c.audience||'')===String(aud||'')){ c.unread=0; } });
+      el.classList.remove('unread');
+      var _b=el.querySelector('.cm-badge'); if(_b) _b.remove();
+      if(typeof _cmSyncNavBadge==='function') _cmSyncNavBadge();
+    }catch(e){}
     try{ C.open({task_id:tid, audience:aud}); }catch(e){ toast('Could not open chat',true); } };
   // Role dropdown open/close
   window._cmDropToggle=function(e){ try{ if(e) e.stopPropagation(); }catch(_e){} var d=document.getElementById('cm-drop'); if(!d) return;

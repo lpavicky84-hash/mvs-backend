@@ -1552,8 +1552,11 @@ def _chat_counterparties(db, task_id, audience, viewer_id):
 
 
 # which pair-audiences each role is allowed to open
-_PAIR_ROLE_AUDS = {"teacher": {"te_ed", "te_gf"}, "editor": {"te_ed", "ed_gf"},
-                   "graphics": {"te_gf", "ed_gf"}, "manager": set(_PAIR_AUDS),
+# Policy: Teacher <-> Editor, aur Editor <-> Graphics direct chat allowed. Teacher <-> Graphics
+# band (teacher sirf PM + Editor se). Graphics teacher se nahi, par PM + Editor se baat karega.
+# Manager/Admin oversight ke liye sab dekh sakte hain.
+_PAIR_ROLE_AUDS = {"teacher": {"te_ed"}, "editor": {"te_ed", "ed_gf"},
+                   "graphics": {"ed_gf"}, "manager": set(_PAIR_AUDS),
                    "admin": set(_PAIR_AUDS)}
 
 
@@ -1665,7 +1668,7 @@ def _chat_inbox(db, user, role):
                 if tid:
                     task_ids.add(tid)
         elif role == "editor":
-            auds = {"editor", "te_ed", "ed_gf"}
+            auds = {"editor", "te_ed", "ed_gf"}   # PM + Teacher + Graphics
             sp = db.query(ProductionStaffProfile).filter(
                 ProductionStaffProfile.user_id == uid,
                 ProductionStaffProfile.staff_role == "editor").first()
@@ -1676,7 +1679,7 @@ def _chat_inbox(db, user, role):
                             VideoTask.collab_editor_ids.like("%" + str(sp.id) + "%"))).all():
                     task_ids.add(t.id)
         elif role == "graphics":
-            auds = {"internal", "te_gf", "ed_gf"}
+            auds = {"internal", "ed_gf"}   # PM + Editor (teacher se nahi)
             sp = db.query(ProductionStaffProfile).filter(
                 ProductionStaffProfile.user_id == uid,
                 ProductionStaffProfile.staff_role == "graphics").first()
@@ -1685,7 +1688,7 @@ def _chat_inbox(db, user, role):
                     if g.task_id:
                         task_ids.add(g.task_id)
         elif role == "teacher":
-            auds = {"creator", "te_ed", "te_gf"}
+            auds = {"creator", "te_ed"}   # PM + Editor (graphics se direct chat band)
             tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == uid).first()
             if tp:
                 for t in db.query(VideoTask.id).filter(
