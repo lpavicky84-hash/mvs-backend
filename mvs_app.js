@@ -6413,15 +6413,23 @@ function _stashMathSegs(seg, stash){
   return res+pw.trail;
 }
 function _stashPlain(s, stash){
-  const parts=String(s).split(/(\u0001\d+\u0002)/);
-  for(let i=0;i<parts.length;i++){
-    const part=parts[i];
-    if(!part||/^\u0001\d+\u0002$/.test(part)) continue;
-    if(!(_MSIG.test(part)||/(->|→|⟶|⇌|⇋)/.test(part)||/[A-Z][a-z]?\d/.test(part))) continue;
-    const c=_tryChem(part, stash);
-    parts[i]=(c!=null)?c:_stashMathSegs(part, stash);
-  }
-  return parts.join('');
+  // LINE-BY-LINE: _stashMathSegs splits on \s+ (which eats \n) and rejoins with spaces,
+  // so a plain-text math/chem token on a question line (e.g. "Q1.") used to swallow every
+  // following option/OR line break and collapse the whole block onto one line. Processing
+  // each line on its own makes a segment unable to span — and therefore collapse — a newline.
+  // Real multi-line math (\begin{array}, $$..$$, \[..\]) is already stashed as single-token
+  // placeholders before this runs, so nothing math is broken.
+  return String(s).split('\n').map(function(line){
+    const parts=line.split(/(\u0001\d+\u0002)/);
+    for(let i=0;i<parts.length;i++){
+      const part=parts[i];
+      if(!part||/^\u0001\d+\u0002$/.test(part)) continue;
+      if(!(_MSIG.test(part)||/(->|→|⟶|⇌|⇋)/.test(part)||/[A-Z][a-z]?\d/.test(part))) continue;
+      const c=_tryChem(part, stash);
+      parts[i]=(c!=null)?c:_stashMathSegs(part, stash);
+    }
+    return parts.join('');
+  }).join('\n');
 }
 // _ceTex: mhchem na load ho to bhi chem equation decent render ho (fallback)
 function _ceTex(c){
