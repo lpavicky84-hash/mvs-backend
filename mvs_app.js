@@ -7164,11 +7164,18 @@ function renderMath(el){
 }
 function insertTex(snip){ const t=_lastField; if(!t){ toast('Tip: click inside a question or answer box first, then tap a tool.',true); return; } const s=t.selectionStart||0,e=t.selectionEnd||0; t.value=t.value.slice(0,s)+snip+t.value.slice(e); const p=s+snip.length; t.selectionStart=t.selectionEnd=p; t.focus(); t.dispatchEvent(new Event('input',{bubbles:true})); }
 function insertTexKey(k){ insertTex('$'+TEX[k]+'$'); }
+// DEBOUNCED live preview: every keystroke only arms a short timer instead of running
+// _fmtRich + KaTeX synchronously — so typing stays smooth even in a 100-question test.
 function examPrev(inp,prevId){
+  const p=document.getElementById(prevId); if(!p) return;
+  try{ clearTimeout(p._pvT); }catch(e){}
+  p._pvT=setTimeout(function(){ _examPrevNow(inp,prevId); }, 180);
+}
+function _examPrevNow(inp,prevId){
   const p=document.getElementById(prevId); if(!p) return;
   p.innerHTML=_fmtRich(inp.value||'');
   renderMath(p);
-  if(p.querySelector('.rt-msrc')&&!window.katex){ const n=+(p.dataset.kx||0)+1; p.dataset.kx=n; if(n<10) setTimeout(()=>examPrev(inp,prevId),600); }
+  if(p.querySelector('.rt-msrc')&&!window.katex){ const n=+(p.dataset.kx||0)+1; p.dataset.kx=n; if(n<10) setTimeout(()=>_examPrevNow(inp,prevId),600); }
   else p.dataset.kx='0';
 }
 // v124: option boxes ka live rendered preview — question/answer jaisa hi.
@@ -7565,19 +7572,47 @@ function _maybeShowQDraft(){
     document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); try{ if(dr.__key) localStorage.removeItem(dr.__key); }catch(e){} bn.remove(); };
   }catch(e){}
 }
+function _examUpdateTrAll(){
+  const trAll=document.getElementById('ex-tr-all');
+  if(!trAll) return;
+  if(_examMedium!=='Bilingual'){ trAll.textContent='Translate All to Hindi'; trAll.classList.remove('tr-done'); }
+  else{
+    const pend=_examQs.filter(q=>_qTransState(q)!=='done').length;
+    trAll.textContent=pend?('Translate All to Hindi ('+pend+' pending)'):'All Questions Translated';
+    trAll.classList.toggle('tr-done',!pend);
+  }
+}
+// BULLETPROOF full render: never builds all cards in one shot (that froze big restores).
+// Cards are inserted in small batches across animation frames, previews filled per batch,
+// and a render token cancels a superseded render — 100+ questions stay smooth, no freeze.
 function renderExamQs(){
   const el=document.getElementById('ex-qs'); if(!el) return;
-  el.innerHTML=_examQs.map((q,i)=>_examCardHtml(i)).join('');
-  _examFillPreviews();
-  const trAll=document.getElementById('ex-tr-all');
-  if(trAll){
-    if(_examMedium!=='Bilingual'){ trAll.textContent='Translate All to Hindi'; trAll.classList.remove('tr-done'); }
-    else{
-      const pend=_examQs.filter(q=>_qTransState(q)!=='done').length;
-      trAll.textContent=pend?('Translate All to Hindi ('+pend+' pending)'):'All Questions Translated';
-      trAll.classList.toggle('tr-done',!pend);
-    }
+  const n=_examQs.length;
+  const rtok=(window._examRenderTok=(window._examRenderTok||0)+1);
+  const CHUNK=4;
+  // Small forms: do it in one pass (instant, no visible chunking).
+  if(n<=CHUNK){
+    let html=''; for(let k=0;k<n;k++){ try{ html+=_examCardHtml(k); }catch(e){} }
+    el.innerHTML=html;
+    for(let k=0;k<n;k++){ try{ _examFillOne(k); }catch(e){} }
+    _examUpdateTrAll();
+    return;
   }
+  // Big forms: clear, then append in rAF batches so the main thread never blocks.
+  el.innerHTML='';
+  const raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
+  let i=0;
+  const step=()=>{
+    if(window._examRenderTok!==rtok || !document.getElementById('ex-qs')) return;  // superseded / panel gone
+    const end=Math.min(i+CHUNK,n);
+    let html='';
+    for(let k=i;k<end;k++){ try{ html+=_examCardHtml(k); }catch(e){} }
+    el.insertAdjacentHTML('beforeend',html);
+    for(let k=i;k<end;k++){ try{ _examFillOne(k); }catch(e){} }
+    i=end;
+    if(i<n) raf(step); else _examUpdateTrAll();
+  };
+  step();
 }
 // Previews (rich + KaTeX) for one card — called for a single card on partial updates.
 function _examFillOne(i){
