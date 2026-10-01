@@ -7582,91 +7582,93 @@ function _examUpdateTrAll(){
     trAll.classList.toggle('tr-done',!pend);
   }
 }
-// Off-screen question cards cost ~0 to lay out/paint (content-visibility) -> a 500-question
-// test scrolls and types smoothly instead of re-flowing the whole giant DOM on every keystroke.
+// ====================================================================
+// VIRTUALIZED (windowed) question list — THE permanent fix for freezing.
+// Only the cards near the viewport are "mounted" (full form + KaTeX). Every other card is a
+// tiny fixed-height PLACEHOLDER with no inputs. So whether a test has 48 or 500 questions, the
+// browser only ever holds ~10-20 heavy cards -> restore is instant, scrolling and typing stay
+// smooth, and the "page unresponsive" dialog can't happen.
+// ====================================================================
 function _examEnsureCss(){
   if(document.getElementById('ex-cv-css')) return;
   var s=document.createElement('style'); s.id='ex-cv-css';
-  // `contain:layout` isolates each card's layout: typing in one card (its preview growing) no
-  // longer forces a re-layout of the other 47 cards' internals. Safe — cards keep their real
-  // height, the caret/editing/scroll all behave normally (unlike content-visibility).
-  s.textContent='.ex-qcard{contain:layout}';
+  s.textContent='.ex-qcard{contain:layout}'+
+    '.ex-qcard.ex-ph{display:flex;align-items:center;justify-content:flex-start;padding:16px 18px;color:var(--text-muted,#9a8f73);opacity:.55}'+
+    '.ex-ph-in{font-size:.82rem;font-weight:800;letter-spacing:.02em}';
   document.head.appendChild(s);
 }
-// Fill ONE card's heavy previews (_fmtRich + KaTeX) — but only once per card.
-function _examFillCard(cardEl){
-  if(!cardEl || cardEl.dataset.pv==='1') return;
-  var qi=parseInt(cardEl.getAttribute('data-qi'),10);
-  if(isNaN(qi)) return;
-  cardEl.dataset.pv='1';
-  try{ _examFillOne(qi); }catch(e){}
+function _examEstH(i){ var h=(window._exVH&&window._exVH[i]); return (h&&h>60)?h:480; }
+// A lightweight placeholder card — reserves height, holds no inputs/previews.
+function _examPlaceholder(i){
+  return '<div class="ex-qcard ex-ph" data-qi="'+i+'" style="min-height:'+_examEstH(i)+'px"><div class="ex-ph-in">Question '+(i+1)+'</div></div>';
 }
-// TIME-BUDGETED preview queue: even if 50 cards scroll into view at once, we render at most
-// ~6ms worth of KaTeX per animation frame and defer the rest — so a fast scroll can NEVER
-// block the main thread. This is what stops the "page unresponsive" while scrolling.
-var _examPvQ=[], _examPvRun=false;
-function _examPvNow(){ try{ return performance.now(); }catch(e){ return Date.now(); } }
-function _examQueueCard(cardEl){
-  if(!cardEl || cardEl.dataset.pv==='1' || cardEl.dataset.pvq==='1') return;
-  cardEl.dataset.pvq='1';
-  _examPvQ.push(cardEl);
-  if(!_examPvRun){ _examPvRun=true; (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examPvDrain); }
+// Mount: placeholder -> full card (build inner + fill previews + record height).
+function _examMountCard(card){
+  if(!card) return;
+  var i=parseInt(card.getAttribute('data-qi'),10); if(isNaN(i)) return;
+  if(card.dataset.full==='1') return;
+  card.dataset.full='1'; card.classList.remove('ex-ph'); card.style.minHeight='';
+  try{ card.innerHTML=_examCardInner(i); }catch(e){}
+  try{ _examFillOne(i); }catch(e){}
+  try{ (window._exVH=window._exVH||[])[i]=card.offsetHeight||480; }catch(e){}
 }
-function _examPvDrain(){
-  var t0=_examPvNow();
-  while(_examPvQ.length){
-    var c=_examPvQ.shift();
-    try{ if(c && document.body.contains(c)) _examFillCard(c); }catch(e){}
-    if(_examPvNow()-t0>6) break;   // hard per-frame budget -> never a long task
+// Unmount: full card -> placeholder (keep last height so nothing jumps). Never unmount the
+// card the user is typing in.
+function _examUnmountCard(card){
+  if(!card || card.dataset.full!=='1') return;
+  try{ if(card.contains(document.activeElement)) return; }catch(e){}
+  var i=parseInt(card.getAttribute('data-qi'),10); if(isNaN(i)) return;
+  try{ (window._exVH=window._exVH||[])[i]=card.offsetHeight||_examEstH(i); }catch(e){}
+  card.dataset.full=''; card.classList.add('ex-ph');
+  card.style.minHeight=_examEstH(i)+'px';
+  card.innerHTML='<div class="ex-ph-in">Question '+(i+1)+'</div>';
+}
+// TIME-BUDGETED mount queue: even if 40 cards enter the window on a fast scroll, we mount at
+// most ~6ms worth per frame -> a scroll can NEVER block the main thread.
+var _examMQ=[], _examMRun=false;
+function _examNow(){ try{ return performance.now(); }catch(e){ return Date.now(); } }
+function _examQueueMount(card){
+  if(!card || card.dataset.full==='1' || card.dataset.mq==='1') return;
+  card.dataset.mq='1'; _examMQ.push(card);
+  if(!_examMRun){ _examMRun=true; (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examMDrain); }
+}
+function _examMDrain(){
+  var t0=_examNow();
+  while(_examMQ.length){
+    var c=_examMQ.shift(); if(c) c.dataset.mq='';
+    try{ if(c && document.body.contains(c)) _examMountCard(c); }catch(e){}
+    if(_examNow()-t0>6) break;
   }
-  if(_examPvQ.length){ (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examPvDrain); }
-  else _examPvRun=false;
+  if(_examMQ.length){ (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examMDrain); }
+  else _examMRun=false;
 }
-// LAZY previews: cards near the viewport are QUEUED (not rendered inline) — the queue above
-// spreads the work across frames. 48 or 500 cards restore instantly; scrolling stays smooth.
-function _examSetupLazyPreviews(el){
+// Observe every card: mount when within ~1200px of the viewport, unmount when it moves away.
+function _examSetupWindow(el){
   try{ if(window._examPvObs){ window._examPvObs.disconnect(); window._examPvObs=null; } }catch(e){}
-  _examPvQ=[];   // drop any stale queued cards from a previous render
+  _examMQ=[];
   var cards=el.querySelectorAll('.ex-qcard');
-  if(!('IntersectionObserver' in window)){
-    for(var i=0;i<cards.length;i++) _examQueueCard(cards[i]);
-    return;
-  }
+  if(!('IntersectionObserver' in window)){ for(var i=0;i<cards.length;i++) _examQueueMount(cards[i]); return; }
   var obs=new IntersectionObserver(function(ents){
-    ents.forEach(function(en){ if(en.isIntersecting){ _examQueueCard(en.target); obs.unobserve(en.target); } });
-  },{root:null, rootMargin:'300px 0px', threshold:0});
+    ents.forEach(function(en){
+      if(en.isIntersecting) _examQueueMount(en.target);
+      else _examUnmountCard(en.target);
+    });
+  },{root:null, rootMargin:'1200px 0px', threshold:0});
   window._examPvObs=obs;
-  cards.forEach(function(c){ if(c.dataset.pv!=='1') obs.observe(c); });
+  cards.forEach(function(c){ obs.observe(c); });
 }
-// BULLETPROOF full render: build the card DOM in rAF batches (no previews inline), then fill
-// previews lazily for visible cards only. A render token cancels a superseded render.
+// Full render = lay down lightweight placeholders for ALL questions (instant, even at 500),
+// then let the window observer mount only the ones near the viewport.
 function renderExamQs(){
   const el=document.getElementById('ex-qs'); if(!el) return;
   _examEnsureCss();
+  window._exVH=window._exVH||[];
+  window._examRenderTok=(window._examRenderTok||0)+1;
   const n=_examQs.length;
-  const rtok=(window._examRenderTok=(window._examRenderTok||0)+1);
-  const CHUNK=6;
-  if(n<=CHUNK){
-    let html=''; for(let k=0;k<n;k++){ try{ html+=_examCardHtml(k); }catch(e){} }
-    el.innerHTML=html;
-    _examSetupLazyPreviews(el);
-    _examUpdateTrAll();
-    return;
-  }
-  el.innerHTML='';
-  const raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
-  let i=0;
-  const step=()=>{
-    if(window._examRenderTok!==rtok || !document.getElementById('ex-qs')) return;  // superseded / panel gone
-    const end=Math.min(i+CHUNK,n);
-    let html='';
-    for(let k=i;k<end;k++){ try{ html+=_examCardHtml(k); }catch(e){} }
-    el.insertAdjacentHTML('beforeend',html);
-    i=end;
-    if(i<n) raf(step);
-    else { _examSetupLazyPreviews(el); _examUpdateTrAll(); }
-  };
-  step();
+  let html=''; for(let k=0;k<n;k++){ try{ html+=_examPlaceholder(k); }catch(e){} }
+  el.innerHTML=html;
+  _examSetupWindow(el);
+  _examUpdateTrAll();
 }
 // Previews (rich + KaTeX) for one card — called for a single card on partial updates.
 function _examFillOne(i){
@@ -7688,9 +7690,9 @@ function _examFillPreviews(){
     if(_p<_examQs.length) _raf(_chunk); };
   _chunk();
 }
-// HTML for ONE question card — reused by the full render AND by partial single-card updates
-// (add / tab switch / translate) so a 49-question test never rebuilds every card.
-function _examCardHtml(i){
+// INNER HTML for ONE question card (everything inside .ex-qcard). The outer card is a cheap
+// placeholder until it scrolls into view, then this heavy content is mounted on demand.
+function _examCardInner(i){
     const q=_examQs[i]; if(!q) return '';
     const biling=(_examMedium==='Bilingual');
     const isHi=biling&&q._tab==='hi';
@@ -7731,23 +7733,29 @@ function _examCardHtml(i){
       const aId=`exa-${i}`;
       mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}${isHi?'':`<div style="margin:2px 0 6px"><button type="button" class="btn btn-sm ex-ocr" title="Upload/paste a screenshot of the answer — AI reads it into text" onclick="document.getElementById('ex-aocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-aocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillAnswer(this,${i})"></div>`}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
-    return `<div class="ex-qcard" data-qi="${i}">${head}${tabs}${sp}${qsec}${mid}</div>`;
+    return `${head}${tabs}${sp}${qsec}${mid}`;
 }
-// Replace ONE card in place (no full-list rebuild) — used by tab switch / translate.
+// Full card element (used by small forms / direct inserts).
+function _examCardHtml(i){ return `<div class="ex-qcard" data-qi="${i}">${_examCardInner(i)}</div>`; }
+// Find the card element for question i (works with the virtualized list).
+function _examCardEl(i){ var el=document.getElementById('ex-qs'); return el?el.querySelector('.ex-qcard[data-qi="'+i+'"]'):null; }
+// Replace ONE card in place (tab switch / translate) — rebuild its inner + previews.
 function _examReplaceCard(i){
-  const el=document.getElementById('ex-qs'); if(!el) return;
-  const card=el.children[i];
+  var card=_examCardEl(i);
   if(!card){ renderExamQs(); return; }
-  const tmp=document.createElement('div'); tmp.innerHTML=_examCardHtml(i);
-  const fresh=tmp.firstElementChild;
-  if(fresh){ card.replaceWith(fresh); fresh.dataset.pv='1'; _examFillOne(i); }
+  card.dataset.full='';     // force a fresh mount
+  _examMountCard(card);
 }
-// Append ONE new card at the end (no full-list rebuild) — used by addExamQ.
+// Append ONE new card at the end (addExamQ) — mount it right away (user is adding here).
 function _examAppendCard(i){
   const el=document.getElementById('ex-qs'); if(!el){ renderExamQs(); return; }
-  el.insertAdjacentHTML('beforeend', _examCardHtml(i));
-  const fresh=el.lastElementChild; if(fresh) fresh.dataset.pv='1';
-  _examFillOne(i);
+  el.insertAdjacentHTML('beforeend', _examPlaceholder(i));
+  const card=el.lastElementChild;
+  _examMountCard(card);
+  try{ if(window._examPvObs) window._examPvObs.observe(card); }catch(e){}
+  // focus the new question's first box so it stays mounted + cursor is ready
+  try{ var ta=card&&card.querySelector('textarea'); if(ta){ ta.focus({preventScroll:true}); } }catch(e){}
+  try{ if(card&&card.scrollIntoView) card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
 }
 
 /* ================= OFFLINE SMART FORMATTER ================= */
