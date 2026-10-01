@@ -435,6 +435,79 @@ def needs_pm_approval(db, t):
     return True   # teacher submissions default to PM review
 
 
+# ------------------------------------------------- attendance / work detection
+def ist_day_bounds_utc(day_str=None):
+    """(start_utc, end_utc, 'YYYY-MM-DD') for an IST calendar day (default: today IST).
+    DB stores UTC, so callers compare timestamps against these UTC bounds."""
+    IST = timedelta(hours=5, minutes=30)
+    try:
+        anchor = datetime.fromisoformat(day_str) if day_str else (datetime.utcnow() + IST)
+    except Exception:
+        anchor = datetime.utcnow() + IST
+    anchor = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
+    s = anchor - IST
+    e = anchor + timedelta(days=1) - IST
+    return s, e, anchor.strftime("%Y-%m-%d")
+
+
+def editor_worked_today(db, sp, s=None, e=None):
+    """True if this editor did REAL work in the IST window [s,e): an editing session,
+    a VideoTask currently editing/paused or finished in the window, OR a project video
+    (chapter) they are editing / paused / started / finished in the window.
+    PM/admin actions are NOT counted — this is the editor's own-portal activity."""
+    from sqlalchemy import or_ as _or, and_ as _and
+    from models import VideoTaskChapter as _VC
+    if s is None or e is None:
+        s, e, _ = ist_day_bounds_utc()
+    eid = sp.id
+    if db.query(EditingSession.id).filter(
+            EditingSession.editor_id == eid,
+            EditingSession.started_at >= s, EditingSession.started_at < e).first():
+        return True
+    if db.query(VideoTask.id).filter(
+            VideoTask.cancelled.isnot(True),
+            _or(VideoTask.editor_id == eid, VideoTask.collab_editor_ids.like("%" + str(eid) + "%")),
+            _or(VideoTask.lifecycle.in_(["editing", "editing_paused"]),
+                _and(VideoTask.editing_done_at != None,  # noqa: E711
+                     VideoTask.editing_done_at >= s, VideoTask.editing_done_at < e))).first():
+        return True
+    if db.query(_VC.id).filter(
+            _VC.editor_id == eid,
+            _or(_VC.edit_state.in_(["editing", "paused"]),
+                _and(_VC.editing_started_at != None,  # noqa: E711
+                     _VC.editing_started_at >= s, _VC.editing_started_at < e),
+                _and(_VC.edited_at != None,  # noqa: E711
+                     _VC.edited_at >= s, _VC.edited_at < e))).first():
+        return True
+    return False
+
+
+def graphics_worked_today(db, sp, s=None, e=None):
+    """True if this designer SUBMITTED a thumbnail from their OWN portal in [s,e).
+    A PM/admin crediting a pre-made thumbnail does NOT count (that logs a credit event,
+    not 'thumbnail_submitted'), so an absent designer stays a leave candidate."""
+    if s is None or e is None:
+        s, e, _ = ist_day_bounds_utc()
+    uid = getattr(sp, "user_id", None)
+    base = db.query(ProductionEvent.id).filter(
+        ProductionEvent.event == "thumbnail_submitted",
+        ProductionEvent.created_at >= s, ProductionEvent.created_at < e)
+    if uid and base.filter(ProductionEvent.actor_user_id == uid).first():
+        return True
+    nm = (sp.user.name if getattr(sp, "user", None) else "")
+    if nm and base.filter(ProductionEvent.actor_name == nm).first():
+        return True
+    return False
+
+
+def staff_worked_today(db, sp, s=None, e=None):
+    """Role-aware own-portal work check for a production staff member (editor/graphics)."""
+    role = getattr(sp, "staff_role", "")
+    if role == "graphics":
+        return graphics_worked_today(db, sp, s, e)
+    return editor_worked_today(db, sp, s, e)
+
+
 # ---------------------------------------------------------------- next action
 def next_action(db, t, g=None):
     """A clear, human 'what happens next' for the current state."""

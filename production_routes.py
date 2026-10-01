@@ -1685,6 +1685,23 @@ def pm_report(period: str = "daily", date: str = "",
                "type": _vt(t),
                "pct": int(t.editing_progress or 0),
                "paused": (t.lifecycle == "editing_paused")} for t in working]
+        # ---- project videos (chapters) this editor is editing / finished in the window ----
+        # (Jannat etc. edit project videos via start/pause — these must show, not read as Leave.)
+        from models import VideoTaskChapter as _VC
+        for c in db.query(_VC).filter(_VC.editor_id == eid).all():
+            pt = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+            if pt is not None and getattr(pt, "cancelled", False):
+                continue
+            ptitle = ((pt.title if pt else "") or (pt.subject if pt else "") or "Project")
+            lbl = (ptitle + (" — " + c.title if c.title else "")).strip()[:90]
+            pch = _ch(pt)
+            est = (c.edit_state or "")
+            if est in ("editing", "paused"):
+                wl.append({"title": lbl, "channel": pch, "type": "Project",
+                           "pct": int(getattr(c, "editing_progress", 0) or 0),
+                           "paused": (est == "paused")})
+            elif getattr(c, "edited_at", None) and s <= c.edited_at < e:
+                completed.append({"title": lbl, "channel": pch, "type": "Project"})
         # smart metrics: on-time % (editor deadline) + avg turnaround (start -> done) for the period
         _ot = 0
         _dl = 0
@@ -1700,7 +1717,9 @@ def pm_report(period: str = "daily", date: str = "",
         ontime_pct = int(round(_ot * 100.0 / _dl)) if _dl else None
         avg_hours = round(sum(_turn) / len(_turn), 1) if _turn else None
         tot_completed += len(completed)
-        has_work = bool(completed or wl)
+        # Own-portal work today (editing sessions / project edits / completions) decides Leave —
+        # PM actions never count. If nothing, _status_for falls back to the attendance override.
+        has_work = bool(completed or wl) or pc.editor_worked_today(db, sp, s, e)
         st, rem = _status_for(eid, has_work)
         editors.append({"name": enm, "staff_id": eid, "completed_count": len(completed),
                         "completed": completed, "working": wl, "status": st, "remark": rem,
@@ -1715,26 +1734,28 @@ def pm_report(period: str = "daily", date: str = "",
                 x["top"] = True
                 break
 
-    # ---- graphics: submitted (period, with channel) + pending (snapshot, per channel) ----
+    # ---- graphics: thumbnails produced (period, with channel) + pending (snapshot, per channel) ----
     graphics = []
-    done_by_uid = {}
-    for gev in db.query(ProductionEvent).filter(
-            ProductionEvent.event == "thumbnail_submitted",
-            ProductionEvent.created_at >= s, ProductionEvent.created_at < e).all():
-        t = db.query(VideoTask).filter(VideoTask.id == gev.task_id).first()
-        key = gev.actor_user_id
-        done_by_uid.setdefault(key, []).append({"title": ((t.title if t else "") or "Untitled")[:90],
-                                                "channel": _ch(t), "actor": gev.actor_name or ""})
     for sp in gf_rows:
         gid = sp.id
         gnm = sp.user.name if sp.user else ("#" + str(gid))
         guid = sp.user_id
-        done = done_by_uid.get(guid, [])
-        if not done:   # fallback: match by name (older events without actor_user_id)
-            for lst in done_by_uid.values():
-                for x in lst:
-                    if (x.get("actor") or "") == gnm:
-                        done.append(x)
+        # DONE = thumbnails produced/credited in the window (own submissions AND PM-credited
+        # pre-made thumbnails). Counted off GraphicsTask.submitted_at so nothing "freezes".
+        done = []
+        _seen_dt = set()
+        for g in db.query(GraphicsTask).filter(
+                GraphicsTask.graphics_id == gid,
+                GraphicsTask.status.in_(["submitted", "approved"]),
+                GraphicsTask.submitted_at != None,  # noqa: E711
+                GraphicsTask.submitted_at >= s, GraphicsTask.submitted_at < e).all():
+            if g.task_id in _seen_dt:
+                continue
+            _seen_dt.add(g.task_id)
+            t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+            if t is not None and getattr(t, "cancelled", False):
+                continue
+            done.append({"title": ((t.title if t else "") or "Untitled")[:90], "channel": _ch(t)})
         pend_rows = db.query(GraphicsTask).filter(
             GraphicsTask.graphics_id == gid,
             GraphicsTask.status.in_(["new", "in_progress", "changes"])).all()
@@ -1743,7 +1764,9 @@ def pm_report(period: str = "daily", date: str = "",
             t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
             c = _ch(t)
             pend_by_ch[c] = pend_by_ch.get(c, 0) + 1
-        has_work = bool(done or pend_rows)
+        # Leave is decided ONLY by the designer's OWN-portal work today (a thumbnail they
+        # submitted themselves). Pending tasks or PM-credited thumbnails do NOT count as present.
+        has_work = pc.graphics_worked_today(db, sp, s, e)
         st, rem = _status_for(gid, has_work)
         graphics.append({"name": gnm, "staff_id": gid, "done_count": len(done), "done": done,
                          "pending": len(pend_rows),
@@ -1757,6 +1780,36 @@ def pm_report(period: str = "daily", date: str = "",
     assigned = db.query(ProductionEvent).filter(
         ProductionEvent.event == "editor_assigned",
         ProductionEvent.created_at >= s, ProductionEvent.created_at < e).count()
+    # LIVE VIEWS REFRESH: report 6 PM se pehle dikhta hai -> is period ke uploaded videos ki
+    # views abhi refresh kar do taaki number current rahe. Batched, best-effort (fail -> purani
+    # value). Jinki views pichhle ~5 min me already refresh hui, unhe skip (rapid reload guard).
+    try:
+        from video_tasks import _yt_get_key, _yt_fetch_views
+        _up_tids = [row[0] for row in db.query(ProductionEvent.task_id).filter(
+            ProductionEvent.event == "youtube_link_added",
+            ProductionEvent.created_at >= s, ProductionEvent.created_at < e).distinct().all()]
+        if _up_tids:
+            _now_utc = datetime.utcnow()
+            _vid_map = {}   # yt_video_id -> task
+            for _t in db.query(VideoTask).filter(VideoTask.id.in_(_up_tids)).all():
+                _vid = (getattr(_t, "yt_video_id", "") or "").strip()
+                if not _vid:
+                    continue
+                _va = getattr(_t, "yt_views_at", None)
+                if _va and (_now_utc - _va).total_seconds() < 300:
+                    continue   # refreshed very recently
+                _vid_map[_vid] = _t
+            if _vid_map:
+                _key = _yt_get_key(db)
+                _got = _yt_fetch_views(list(_vid_map.keys()), _key)
+                for _vid, _views in _got.items():
+                    _tt = _vid_map.get(_vid)
+                    if _tt is not None:
+                        _tt.yt_views = _views
+                        _tt.yt_views_at = _now_utc
+                db.commit()
+    except Exception:
+        db.rollback()
     up_by_channel = {}
     tot_uploaded = 0
     tot_views = 0

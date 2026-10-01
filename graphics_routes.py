@@ -20,6 +20,44 @@ def _me_staff(db, me):
     return sp
 
 
+_OFFICE_CLOSE_HOUR = 18   # IST; daily report is sent after this, so prompt only before it
+
+
+@router.get("/attendance/today")
+def gfx_attendance_today(db: Session = Depends(get_db), me=Depends(get_graphics)):
+    """needs_prompt = designer submitted NO thumbnail from their own portal today AND has not
+    answered yet AND office still open. (PM crediting a pre-made thumbnail does NOT count.)"""
+    sp = _me_staff(db, me)
+    from models import ProductionAttendance as _ATT
+    s, e, day_str = pc.ist_day_bounds_utc()
+    worked = pc.graphics_worked_today(db, sp, s, e)
+    row = db.query(_ATT).filter(_ATT.staff_id == sp.id, _ATT.day == day_str).first()
+    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    before_close = now_ist.hour < _OFFICE_CLOSE_HOUR
+    needs_prompt = (not worked) and (row is None) and before_close
+    return {"needs_prompt": needs_prompt, "worked": worked,
+            "status": (row.status if row else ""), "day": day_str}
+
+
+@router.post("/attendance")
+def gfx_set_attendance(payload: dict = Body(...), db: Session = Depends(get_db),
+                       me=Depends(get_graphics)):
+    """Designer self-marks today: on_leave=true -> Leave, false -> Present."""
+    sp = _me_staff(db, me)
+    from models import ProductionAttendance as _ATT
+    _s, _e, day_str = pc.ist_day_bounds_utc()
+    on_leave = bool(payload.get("on_leave"))
+    row = db.query(_ATT).filter(_ATT.staff_id == sp.id, _ATT.day == day_str).first()
+    if not row:
+        row = _ATT(staff_id=sp.id, day=day_str)
+        db.add(row)
+    row.status = "leave" if on_leave else "present"
+    row.remark = "Marked by staff: " + ("on leave" if on_leave else "present")
+    row.set_by = getattr(me, "id", None)
+    db.commit()
+    return {"ok": True, "status": row.status}
+
+
 def _my_gfx_chapter(db, sp, cid):
     from models import VideoTaskChapter as _VC
     c = db.query(_VC).filter(_VC.id == int(cid or 0)).first()

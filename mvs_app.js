@@ -27485,6 +27485,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dt=document.getElementById(portal+'-date'); if(dt) dt.textContent=_today();
     prodNav(portal,'dashboard');
     try{ prodLoadProfilePhoto(portal); }catch(e){}
+    // Editor/Graphics: agar aaj apne portal se koi kaam nahi dikha to ek baar leave check-in popup.
+    if(portal==='editor'||portal==='graphics'){ try{ setTimeout(function(){ _attSelfCheck(portal); },900); }catch(e){} }
     prodStartNotifPoll(portal);
     // v-perf/live: production team ki online presence UserSession me record karo taaki
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
@@ -27493,6 +27495,52 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000);
       try{ _prodLivePoll(); if(window._prodLiveInt) clearInterval(window._prodLiveInt); window._prodLiveInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodLivePoll(); },20000); }catch(e){} }
     return Promise.resolve();
+  };
+
+  // ===== Daily self check-in (leave) for Editor / Graphics =====
+  // Agar aaj apne portal se koi kaam nahi dikha -> office close (6 PM) se pehle ek popup:
+  // "working today" / "on leave today". Jawab na dein to report me by-default Leave lagega.
+  window._attSelfCheck=function(portal){
+    try{
+      var apiBase=(P[portal]&&P[portal].api)||('/api/'+portal);
+      api(apiBase+'/attendance/today').then(function(d){
+        if(!d||!d.needs_prompt) return;
+        if(document.getElementById('att-self')) return;
+        window._attSelfApi=apiBase;
+        _attSelfModal();
+      }).catch(function(){});
+    }catch(e){}
+  };
+  function _attSelfModal(){
+    var dark=document.body.classList.contains('dark');
+    var ov=document.createElement('div'); ov.id='att-self';
+    ov.style.cssText='position:fixed;inset:0;z-index:4000;background:rgba(10,12,26,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px';
+    var card=(dark?'#171a2b':'#fffdf8'), ink=(dark?'#f3f0e8':'#15213a'), sub=(dark?'#aab':'#6a6455');
+    ov.innerHTML='<div style="width:100%;max-width:420px;background:'+card+';border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);animation:attPop .22s cubic-bezier(.2,.8,.3,1.2)">'+
+        '<div style="background:linear-gradient(135deg,#0e1836,#2a2070 60%,#3c2a72);padding:22px 22px 18px;color:#fff">'+
+          '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">👋</span><div style="font-size:1.22rem;font-weight:800">Quick check-in</div></div>'+
+          '<div style="font-size:.86rem;opacity:.9;margin-top:6px;line-height:1.45">We haven’t seen any work from your portal today.</div>'+
+        '</div>'+
+        '<div style="padding:20px 22px 22px">'+
+          '<div style="font-size:1.02rem;font-weight:700;color:'+ink+';margin-bottom:4px">Are you working today?</div>'+
+          '<div style="font-size:.84rem;color:'+sub+';line-height:1.5;margin-bottom:18px">If you’re working, your admin-assigned tasks will show in today’s report. If you don’t respond by <b>6:00 PM</b>, you’ll be marked <b>On Leave</b> by default.</div>'+
+          '<div style="display:flex;flex-direction:column;gap:10px">'+
+            '<button onclick="_attSelfAnswer(false)" style="width:100%;padding:14px;border:0;border-radius:12px;background:linear-gradient(135deg,#2e9e6b,#1f7a44);color:#fff;font-size:1rem;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(46,158,107,.3)">✓ Yes, I’m working today</button>'+
+            '<button onclick="_attSelfAnswer(true)" style="width:100%;padding:13px;border:1.5px solid '+(dark?'#3a3f55':'#e3dcc9')+';border-radius:12px;background:transparent;color:'+ink+';font-size:.96rem;font-weight:700;cursor:pointer">I’m on leave today</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    if(!document.getElementById('att-self-kf')){ var st=document.createElement('style'); st.id='att-self-kf'; st.textContent='@keyframes attPop{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:none}}'; document.head.appendChild(st); }
+    // Click outside = dismiss without answering (report will default to Leave).
+    ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+  window._attSelfAnswer=function(onLeave){
+    var apiBase=window._attSelfApi||'/api/editor';
+    var e=document.getElementById('att-self'); if(e) e.remove();
+    api(apiBase+'/attendance','POST',{on_leave:!!onLeave})
+      .then(function(){ toast(onLeave?'Marked on leave for today':'Thanks — marked present for today'); })
+      .catch(function(err){ toast((err&&err.message)||'Could not save',true); });
   };
   function _prodNavBadges(){
     api(P.production.api+'/dashboard').then(function(r){

@@ -20,6 +20,47 @@ def _me_staff(db, me):
     return sp
 
 
+# Office closes (IST) at this hour — after it the daily report is sent, so the
+# self-attendance prompt only appears before it.
+_OFFICE_CLOSE_HOUR = 18
+
+
+@router.get("/attendance/today")
+def editor_attendance_today(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Does this editor need the daily 'are you on leave?' prompt right now?
+    needs_prompt = did NO own-portal work today AND has not answered yet AND office still open."""
+    sp = _me_staff(db, me)
+    from models import ProductionAttendance as _ATT
+    s, e, day_str = pc.ist_day_bounds_utc()
+    worked = pc.editor_worked_today(db, sp, s, e)
+    row = db.query(_ATT).filter(_ATT.staff_id == sp.id, _ATT.day == day_str).first()
+    now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    before_close = now_ist.hour < _OFFICE_CLOSE_HOUR
+    needs_prompt = (not worked) and (row is None) and before_close
+    return {"needs_prompt": needs_prompt, "worked": worked,
+            "status": (row.status if row else ""), "day": day_str}
+
+
+@router.post("/attendance")
+def editor_set_attendance(payload: dict = Body(...), db: Session = Depends(get_db),
+                          me=Depends(get_editor)):
+    """Editor self-marks today: on_leave=true -> Leave, false -> Present (admin-credited work
+    then shows in the report instead of Leave)."""
+    sp = _me_staff(db, me)
+    from models import ProductionAttendance as _ATT
+    _s, _e, day_str = pc.ist_day_bounds_utc()
+    on_leave = bool(payload.get("on_leave"))
+    row = db.query(_ATT).filter(_ATT.staff_id == sp.id, _ATT.day == day_str).first()
+    if not row:
+        row = _ATT(staff_id=sp.id, day=day_str)
+        db.add(row)
+    row.status = "leave" if on_leave else "present"
+    row.remark = "Marked by staff: " + ("on leave" if on_leave else "present")
+    row.set_by = getattr(me, "id", None)
+    db.commit()
+    return {"ok": True, "status": row.status}
+
+
 @router.get("/project-videos")
 def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor)):
     """Project videos assigned to this editor (single videos + whole projects). Phase 3 is a
