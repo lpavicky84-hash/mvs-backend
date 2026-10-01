@@ -7587,7 +7587,10 @@ function _examUpdateTrAll(){
 function _examEnsureCss(){
   if(document.getElementById('ex-cv-css')) return;
   var s=document.createElement('style'); s.id='ex-cv-css';
-  s.textContent='.ex-qcard{content-visibility:auto;contain-intrinsic-size:auto 520px}';
+  // `contain:layout` isolates each card's layout: typing in one card (its preview growing) no
+  // longer forces a re-layout of the other 47 cards' internals. Safe — cards keep their real
+  // height, the caret/editing/scroll all behave normally (unlike content-visibility).
+  s.textContent='.ex-qcard{contain:layout}';
   document.head.appendChild(s);
 }
 // Fill ONE card's heavy previews (_fmtRich + KaTeX) — but only once per card.
@@ -7598,20 +7601,40 @@ function _examFillCard(cardEl){
   cardEl.dataset.pv='1';
   try{ _examFillOne(qi); }catch(e){}
 }
-// LAZY previews: the costly _fmtRich + KaTeX render runs ONLY for cards near the viewport.
-// 48 (or 500) cards restore instantly because off-screen cards never pay that cost until seen.
+// TIME-BUDGETED preview queue: even if 50 cards scroll into view at once, we render at most
+// ~6ms worth of KaTeX per animation frame and defer the rest — so a fast scroll can NEVER
+// block the main thread. This is what stops the "page unresponsive" while scrolling.
+var _examPvQ=[], _examPvRun=false;
+function _examPvNow(){ try{ return performance.now(); }catch(e){ return Date.now(); } }
+function _examQueueCard(cardEl){
+  if(!cardEl || cardEl.dataset.pv==='1' || cardEl.dataset.pvq==='1') return;
+  cardEl.dataset.pvq='1';
+  _examPvQ.push(cardEl);
+  if(!_examPvRun){ _examPvRun=true; (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examPvDrain); }
+}
+function _examPvDrain(){
+  var t0=_examPvNow();
+  while(_examPvQ.length){
+    var c=_examPvQ.shift();
+    try{ if(c && document.body.contains(c)) _examFillCard(c); }catch(e){}
+    if(_examPvNow()-t0>6) break;   // hard per-frame budget -> never a long task
+  }
+  if(_examPvQ.length){ (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examPvDrain); }
+  else _examPvRun=false;
+}
+// LAZY previews: cards near the viewport are QUEUED (not rendered inline) — the queue above
+// spreads the work across frames. 48 or 500 cards restore instantly; scrolling stays smooth.
 function _examSetupLazyPreviews(el){
   try{ if(window._examPvObs){ window._examPvObs.disconnect(); window._examPvObs=null; } }catch(e){}
+  _examPvQ=[];   // drop any stale queued cards from a previous render
   var cards=el.querySelectorAll('.ex-qcard');
   if(!('IntersectionObserver' in window)){
-    var rtok=(window._examRenderTok||0), p=0;
-    var raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
-    var chunk=function(){ if(window._examRenderTok!==rtok) return; var e2=Math.min(p+3,cards.length); for(;p<e2;p++) _examFillCard(cards[p]); if(p<cards.length) raf(chunk); };
-    chunk(); return;
+    for(var i=0;i<cards.length;i++) _examQueueCard(cards[i]);
+    return;
   }
   var obs=new IntersectionObserver(function(ents){
-    ents.forEach(function(en){ if(en.isIntersecting){ _examFillCard(en.target); obs.unobserve(en.target); } });
-  },{root:null, rootMargin:'800px 0px', threshold:0});
+    ents.forEach(function(en){ if(en.isIntersecting){ _examQueueCard(en.target); obs.unobserve(en.target); } });
+  },{root:null, rootMargin:'300px 0px', threshold:0});
   window._examPvObs=obs;
   cards.forEach(function(c){ if(c.dataset.pv!=='1') obs.observe(c); });
 }
