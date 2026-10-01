@@ -868,6 +868,53 @@ def _serve_app_js(request: _Request):
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
 
 
+# ===== CACHE-BUSTING portal HTML =====
+# Problem: browser/proxy purani cached mvs_app.js serve kar deta tha -> deploy ke baad bhi
+# purana UI dikhta (admin pe purane KPI, youtuber refresh pe purana layout). Fix: portal HTML
+# ko serve karte waqt /mvs_app.js ko ?v=<js-version> ke saath stamp karo. Har deploy par JS ki
+# mtime/size badalti hai -> ?v= badalta hai -> browser GUARANTEED nayi JS fetch karta hai.
+_PORTAL_HTML_CACHE = {"ver": None, "html": None}
+
+def _js_version():
+    try:
+        st = os.stat(_APP_JS_FILE)
+        return "%x-%x" % (int(st.st_mtime), st.st_size)
+    except Exception:
+        return "0"
+
+def _portal_html_versioned():
+    ver = _js_version()
+    c = _PORTAL_HTML_CACHE
+    if c["ver"] == ver and c["html"] is not None:
+        return c["html"], ver
+    try:
+        with open(_PORTAL_FILE, "r", encoding="utf-8") as f:
+            html = f.read()
+    except Exception:
+        return None, ver
+    html = html.replace('src="/mvs_app.js"', 'src="/mvs_app.js?v=' + ver + '"')
+    c["ver"] = ver
+    c["html"] = html
+    return html, ver
+
+def _cached_portal(request):
+    """Serve the portal HTML with a cache-busted app-JS URL. ETag combines the portal file and
+    the JS version, so any deploy (HTML or JS) forces a fresh load — no stale UI ever."""
+    html, ver = _portal_html_versioned()
+    if html is None:
+        return None
+    try:
+        pst = os.stat(_PORTAL_FILE)
+        et = 'W/"p%x-%x-%s"' % (int(pst.st_mtime), pst.st_size, ver)
+    except Exception:
+        et = 'W/"p-%s"' % ver
+    cc = "public, max-age=0, must-revalidate"
+    if request.headers.get("if-none-match") == et:
+        return _Response(status_code=304, headers={"ETag": et, "Cache-Control": cc})
+    from fastapi.responses import HTMLResponse as _HTMLResp
+    return _HTMLResp(content=html, headers={"ETag": et, "Cache-Control": cc})
+
+
 # ===== Notification image serve (admin-attached image) — koi bhi logged-in user (jise
 # notif mila) load kar sake, isliye admin router ke bahar app-level route. =====
 @app.get("/api/notif-image")
@@ -1395,7 +1442,7 @@ async function run(){
 @app.get("/")
 def root(request: _Request):
     if os.path.exists(_PORTAL_FILE):
-        return _cached_file(request, _PORTAL_FILE, "text/html")
+        return _cached_portal(request) or _cached_file(request, _PORTAL_FILE, "text/html")
     return {
         "app": "MVS Foundation CRM",
         "version": "1.0.0",
@@ -1407,7 +1454,7 @@ def root(request: _Request):
 @app.get("/portal")
 def portal(request: _Request):
     if os.path.exists(_PORTAL_FILE):
-        return _cached_file(request, _PORTAL_FILE, "text/html")
+        return _cached_portal(request) or _cached_file(request, _PORTAL_FILE, "text/html")
     return {"error": "portal file not deployed"}
 
 # Path-based portal entry points — Teacher aur Admin ke liye alag URL. Dono same SPA serve
@@ -1421,7 +1468,7 @@ def portal(request: _Request):
 @app.get("/graphics")
 def portal_entry(request: _Request):
     if os.path.exists(_PORTAL_FILE):
-        return _cached_file(request, _PORTAL_FILE, "text/html")
+        return _cached_portal(request) or _cached_file(request, _PORTAL_FILE, "text/html")
     return {"error": "portal file not deployed"}
 
 @app.get("/health")

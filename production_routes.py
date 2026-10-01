@@ -291,8 +291,10 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(VideoTask.channel_name == channel)
     if video_type:
         query = query.filter(VideoTask.video_type == video_type)
-    if not status:
+    if not status and _ct != "youtuber":
         # Default Tasks view me uploaded/completed nahi — wo alag "Uploaded Videos" section me hain.
+        # LEKIN YouTuber Tasks section me poora pipeline dikhta hai (Published/uploaded bhi) taaki
+        # "Published" count aur uploaded videos wahin dikhein.
         query = query.filter(or_(VideoTask.lifecycle == None, ~VideoTask.lifecycle.in_(["uploaded", "completed"])),
                              or_(VideoTask.status == None, ~VideoTask.status.in_(["uploaded", "completed"])))
     if status == "thumb_changes":
