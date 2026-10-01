@@ -7180,7 +7180,7 @@ function examOptPrev(inp,prevId){
   p.style.display='';
   examPrev(inp,prevId);
 }
-function _setExamImg(i,d){ _examQs[i].image_b64=d; renderExamQs(); }
+function _setExamImg(i,d){ _examQs[i].image_b64=d; _syncImgSec(i); }
 async function _examReadImg(f){
   // Phone photos 5-10MB raw hote hain — compress karke JPEG dataURL (~200-400KB)
   // do, warna bada payload server ko crash/error de sakta hai.
@@ -7190,7 +7190,7 @@ async function _examReadImg(f){
 async function examImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamImg(i, await _examReadImg(f)); }
 function examImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _examReadImg(f).then(d=>_setExamImg(i,d)); }
 function examImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _examReadImg(f).then(d=>_setExamImg(i,d)); e.preventDefault(); } break; } } }
-function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=null; renderExamQs(); }
+function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=null; _syncImgSec(i); }
 async function openCreateExam(type,editData){
   window._dppMode=(window._dppMode==='pending');
   _examType=type; _examQs=[]; _lastField=null; _examMedium='English';
@@ -7278,7 +7278,12 @@ function _examFillTestCls(auto){
   else if(cls.length===1) csel.value=cls[0];
   else if(auto&&cls.length>1) csel.value=cls[0];
 }
-function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,alt_image_b64:null,_ipart:'a',_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,alt_image_b64:null,_ipart:'a',model_answer_image:null,qtype:'general',_tab:'en'}); renderExamQs(); }
+function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,alt_image_b64:null,_ipart:'a',_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,alt_image_b64:null,_ipart:'a',model_answer_image:null,qtype:'general',_tab:'en'});
+  // Append only the new card (big tests: never rebuild all cards -> no "page unresponsive").
+  if(_examQs.length>1 && document.getElementById('ex-qs')){ _examAppendCard(_examQs.length-1);
+    try{ var _nc=document.getElementById('ex-qs').lastElementChild; if(_nc&&_nc.scrollIntoView) _nc.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  } else { renderExamQs(); }
+}
 
 /* ===================== MCQ BULK UPLOAD (Excel) ===================== */
 function _mcqBulkCss(){
@@ -7379,16 +7384,20 @@ async function _mcqBulkImport(){
     setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },900);
   }catch(e){ toast((e&&e.message)||'Import failed',true); if(imp){ imp.disabled=false; imp.textContent='Import & Create Test'; } if(prog)prog.classList.remove('show'); }
 }
-function setExamTab(i,tab){ _examQs[i]._tab=tab; renderExamQs(); }
+function setExamTab(i,tab){ _examQs[i]._tab=tab; _examReplaceCard(i); }
 function examMediumChange(){ _examMedium=val('ex-medium')||'English'; renderExamQs(); }
-function _setExamAnsImg(i,d){ _examQs[i].model_answer_image=d; renderExamQs(); }
+function _setExamAnsImg(i,d){ _examQs[i].model_answer_image=d; _syncAnsImgSec(i); }
 async function examAnsImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAnsImg(i, await _examReadImg(f)); }
 function examAnsImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _examReadImg(f).then(d=>_setExamAnsImg(i,d)); }
 function examAnsImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _examReadImg(f).then(d=>_setExamAnsImg(i,d)); e.preventDefault(); } break; } } }
-function examAnsImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].model_answer_image=null; renderExamQs(); }
+function examAnsImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].model_answer_image=null; _syncAnsImgSec(i); }
 function _ansImgZone(i){ const q=_examQs[i]; return q.model_answer_image
   ? `<div class="ex-img has" onclick="document.getElementById('ex-aimgf-${i}').click()"><img loading="lazy" src="${q.model_answer_image}"><button type="button" class="ex-img-x" onclick="examAnsImgRemove(${i},event)">&times;</button></div>`
   : `<div class="ex-img ex-img-ans" tabindex="0" onpaste="examAnsImgPaste(event,${i})" ondragover="event.preventDefault()" ondrop="examAnsImgDrop(event,${i})" onclick="document.getElementById('ex-aimgf-${i}').click()"><span>Attach diagram (optional)</span></div>`; }
+// Answer-image section (zone + its file input) — rebuilt in isolation so attaching an image
+// NEVER re-renders the whole question list (that froze big Mission-75 tests).
+function _ansImgSection(i){ return _ansImgZone(i)+`<input type="file" id="ex-aimgf-${i}" accept="image/*" style="display:none" onchange="examAnsImgFile(this,${i})">`; }
+function _syncAnsImgSec(i){ const el=document.getElementById('ex-ansimgsec-'+i); if(el) el.innerHTML=_ansImgSection(i); }
 function removeExamQ(i){ _examQs.splice(i,1); renderExamQs(); }
 function _splitOr(t){
   // Question ko "OR" line pe do hisso me todta hai: {a, b}. OR na ho to b=null.
@@ -7400,9 +7409,9 @@ function _splitOr(t){
           tok:(/^\u092f\u093e$/.test(m[2])?'\u092f\u093e':'OR')};
 }
 function _hasOr(t){ return _splitOr(t).b!==null; }
-function setExamImgPart(i,part){ _examQs[i]._ipart=part; renderExamQs(); }
-function examAltImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].alt_image_b64=null; renderExamQs(); }
-function _setExamAltImg(i,d){ _examQs[i].alt_image_b64=d; renderExamQs(); }
+function setExamImgPart(i,part){ _examQs[i]._ipart=part; _syncImgSec(i); }
+function examAltImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].alt_image_b64=null; _syncImgSec(i); }
+function _setExamAltImg(i,d){ _examQs[i].alt_image_b64=d; _syncImgSec(i); }
 async function examAltImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAltImg(i, await compressIfImage(await _fileB64(f),1400,0.72)); }
 function examAltImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _fileB64(f).then(d=>compressIfImage(d,1400,0.72)).then(d=>_setExamAltImg(i,d)); }
 function examAltImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let k=0;k<items.length;k++){ if(items[k].type&&items[k].type.indexOf('image')===0){ const f=items[k].getAsFile(); if(f){ _fileB64(f).then(d=>compressIfImage(d,1400,0.72)).then(d=>_setExamAltImg(i,d)); e.preventDefault(); } break; } } }
@@ -7558,8 +7567,43 @@ function _maybeShowQDraft(){
 }
 function renderExamQs(){
   const el=document.getElementById('ex-qs'); if(!el) return;
-  const biling=(_examMedium==='Bilingual');
-  el.innerHTML=_examQs.map((q,i)=>{
+  el.innerHTML=_examQs.map((q,i)=>_examCardHtml(i)).join('');
+  _examFillPreviews();
+  const trAll=document.getElementById('ex-tr-all');
+  if(trAll){
+    if(_examMedium!=='Bilingual'){ trAll.textContent='Translate All to Hindi'; trAll.classList.remove('tr-done'); }
+    else{
+      const pend=_examQs.filter(q=>_qTransState(q)!=='done').length;
+      trAll.textContent=pend?('Translate All to Hindi ('+pend+' pending)'):'All Questions Translated';
+      trAll.classList.toggle('tr-done',!pend);
+    }
+  }
+}
+// Previews (rich + KaTeX) for one card — called for a single card on partial updates.
+function _examFillOne(i){
+  const q=_examQs[i]; if(!q) return;
+  const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
+  const pq=document.getElementById('pv-q-'+i); if(pq){pq.innerHTML=_fmtRich(isHi?(q.q_hi||''):(q.q||''));renderMath(pq);}
+  const pa=document.getElementById('pv-a-'+i); if(pa){pa.innerHTML=_fmtRich(isHi?(q.model_hi||''):(q.model||''));renderMath(pa);}
+  const pe=document.getElementById('pv-e-'+i); if(pe){pe.innerHTML=_fmtRich(isHi?(q.expl_hi||''):(q.expl||''));renderMath(pe);}
+  const _ol=isHi?(q.opts_hi||[]):(q.opts||[]);
+  _ol.forEach((ov,j)=>{ const ip=document.getElementById((isHi?'oxh-':'exo-')+i+'-'+j); if(ip) examOptPrev(ip,(isHi?'pv-oh-':'pv-o-')+i+'-'+j); });
+}
+// Fill ALL previews — small tests instantly, big tests in rAF chunks so the page never blocks.
+function _examFillPreviews(){
+  const _rtok=(window._examRenderTok=(window._examRenderTok||0)+1);
+  if(_examQs.length<=8){ _examQs.forEach((q,i)=>_examFillOne(i)); return; }
+  let _p=0; const _raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
+  const _chunk=()=>{ if(window._examRenderTok!==_rtok) return;
+    const end=Math.min(_p+6,_examQs.length); for(;_p<end;_p++) _examFillOne(_p);
+    if(_p<_examQs.length) _raf(_chunk); };
+  _chunk();
+}
+// HTML for ONE question card — reused by the full render AND by partial single-card updates
+// (add / tab switch / translate) so a 49-question test never rebuilds every card.
+function _examCardHtml(i){
+    const q=_examQs[i]; if(!q) return '';
+    const biling=(_examMedium==='Bilingual');
     const isHi=biling&&q._tab==='hi';
     const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Upload a screenshot of the question — AI reads it into text (best for PYQ integrals/fractions where copy-paste breaks)" onclick="document.getElementById('ex-ocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
     const _ts=_qTransState(q);
@@ -7593,44 +7637,27 @@ function renderExamQs(){
     } else {
       const aval=isHi?(q.model_hi||''):(q.model||'');
       const abind=isHi?`_examQs[${i}].model_hi=this.value`:`_examQs[${i}].model=this.value`;
-      const aImg=isHi?'':(_ansImgZone(i)+`<input type="file" id="ex-aimgf-${i}" accept="image/*" style="display:none" onchange="examAnsImgFile(this,${i})">`);
+      const aImg=isHi?'':`<div id="ex-ansimgsec-${i}">${_ansImgSection(i)}</div>`;
       const marks=isHi||window._dppMode?'':`<div class="ex-marks"><label>Max Marks</label><input type="number" class="form-control" style="width:80px" value="${q.marks}" oninput="_examQs[${i}].marks=this.value"></div>`;
       const aId=`exa-${i}`;
       mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}${isHi?'':`<div style="margin:2px 0 6px"><button type="button" class="btn btn-sm ex-ocr" title="Upload/paste a screenshot of the answer — AI reads it into text" onclick="document.getElementById('ex-aocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-aocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillAnswer(this,${i})"></div>`}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
     return `<div class="ex-qcard">${head}${tabs}${sp}${qsec}${mid}</div>`;
-  }).join('');
-  // Previews + math bhaari ho sakte hain (jaise 48 questions ka restore). Sab ek saath karne se
-  // page freeze/"unresponsive" ho jaata tha. Chhote test turant; bade test chhote chunks me
-  // (requestAnimationFrame) — page kabhi block nahi hoga. Token se stale render guard.
-  const _rtok=(window._examRenderTok=(window._examRenderTok||0)+1);
-  const _fillOne=(i)=>{
-    const q=_examQs[i]; if(!q) return;
-    const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
-    const pq=document.getElementById('pv-q-'+i); if(pq){pq.innerHTML=_fmtRich(isHi?(q.q_hi||''):(q.q||''));renderMath(pq);}
-    const pa=document.getElementById('pv-a-'+i); if(pa){pa.innerHTML=_fmtRich(isHi?(q.model_hi||''):(q.model||''));renderMath(pa);}
-    const pe=document.getElementById('pv-e-'+i); if(pe){pe.innerHTML=_fmtRich(isHi?(q.expl_hi||''):(q.expl||''));renderMath(pe);}
-    const _ol=isHi?(q.opts_hi||[]):(q.opts||[]);
-    _ol.forEach((ov,j)=>{ const ip=document.getElementById((isHi?'oxh-':'exo-')+i+'-'+j); if(ip) examOptPrev(ip,(isHi?'pv-oh-':'pv-o-')+i+'-'+j); });
-  };
-  if(_examQs.length<=8){ _examQs.forEach((q,i)=>_fillOne(i)); }
-  else {
-    let _p=0; const _raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
-    const _chunk=()=>{ if(window._examRenderTok!==_rtok) return;   // naya render aa gaya -> purana chhodo
-      const end=Math.min(_p+6,_examQs.length); for(;_p<end;_p++) _fillOne(_p);
-      if(_p<_examQs.length) _raf(_chunk); };
-    _chunk();
-  }
-  // Header ke "Translate All" pe kitne question abhi Hindi me baaki hain
-  const trAll=document.getElementById('ex-tr-all');
-  if(trAll){
-    if(_examMedium!=='Bilingual'){ trAll.textContent='Translate All to Hindi'; trAll.classList.remove('tr-done'); }
-    else{
-      const pend=_examQs.filter(q=>_qTransState(q)!=='done').length;
-      trAll.textContent=pend?('Translate All to Hindi ('+pend+' pending)'):'All Questions Translated';
-      trAll.classList.toggle('tr-done',!pend);
-    }
-  }
+}
+// Replace ONE card in place (no full-list rebuild) — used by tab switch / translate.
+function _examReplaceCard(i){
+  const el=document.getElementById('ex-qs'); if(!el) return;
+  const card=el.children[i];
+  if(!card){ renderExamQs(); return; }
+  const tmp=document.createElement('div'); tmp.innerHTML=_examCardHtml(i);
+  const fresh=tmp.firstElementChild;
+  if(fresh){ card.replaceWith(fresh); _examFillOne(i); }
+}
+// Append ONE new card at the end (no full-list rebuild) — used by addExamQ.
+function _examAppendCard(i){
+  const el=document.getElementById('ex-qs'); if(!el){ renderExamQs(); return; }
+  el.insertAdjacentHTML('beforeend', _examCardHtml(i));
+  _examFillOne(i);
 }
 
 /* ================= OFFLINE SMART FORMATTER ================= */
@@ -7803,7 +7830,7 @@ async function examTranslate(i,btn,silent){
   if(!((q.expl_hi||'').trim())) await put(()=>q.expl,v=>{q.expl_hi=v;});
   if(!((q.model_hi||'').trim())) await put(()=>q.model,v=>{q.model_hi=v;});
   if(!silent){
-    if(n){ q._tab='hi'; renderExamQs(); toast('Hindi translation done (free) — please review once'); }
+    if(n){ q._tab='hi'; _examReplaceCard(i); toast('Hindi translation done (free) — please review once'); }
     else if(att) toast('Translation service unreachable right now — try again in a moment',true);
     else toast('Nothing to translate — English empty or Hindi already filled');
   }
@@ -19973,18 +20000,21 @@ function examSolPick(id){
 }
 /* student paper/solutions PDF — built on-device from portal data (no answers unless window over) */
 async function examPdfStudent(id,medium,withSol){
+  var w=window.open('','_blank');
+  if(!w){ toast('Popup blocked. Please allow popups.',true); return; }
+  try{ w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing</title></head><body style="margin:0;font:16px -apple-system,Segoe UI,Roboto,sans-serif;color:#334;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><div style="font-weight:800">Preparing your PDF...</div><div style="opacity:.6;margin-top:6px">This tab will open it automatically.</div></div></body></html>'); w.document.close(); }catch(e){}
   try{
     toast('Preparing PDF\u2026');
     const ex=await api('/api/student/exam/'+id);
     const qs=ex.questions||[];
-    if(!qs.length){ toast('No questions found.',true); return; }
-    if(withSol&&!ex.expired){ toast('Solutions will be available after the test window ends.',true); return; }
+    if(!qs.length){ toast('No questions found.',true); try{w.close();}catch(_){} return; }
+    if(withSol&&!ex.expired){ toast('Solutions will be available after the test window ends.',true); try{w.close();}catch(_){} return; }
     const isM=(ex.test_type==='mcq');
     let logo=null;
     try{ if(ex.teacher_id){ const lr=await fetch(API+'/api/student/teacher/'+ex.teacher_id+'/photo',{headers:{'Authorization':'Bearer '+TOKEN}}); if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(lb);}); } } }catch(e){}
     const qLbl=medium==='hi'?'\u092a\u094d\u0930\u0936\u094d\u0928':'Question';
     const mkLbl=m=>medium==='hi'?('[ '+(m||1)+' \u0905\u0902\u0915 ]'):('[ '+(m||1)+' mark'+((m||1)>1?'s':'')+' ]');
-    const body=qs.map((q,qi)=>{
+    const _one=(q,qi)=>{
       const qno=q.q_no||qi+1;
       const en=q.question_text||'', hi=q.question_text_hi||'';
       const qMain=medium==='hi'?(hi.trim()?hi:en):en;
@@ -20008,12 +20038,16 @@ async function examPdfStudent(id,medium,withSol){
         h+='<div class="sol"><div class="sol-l">'+(medium==='hi'?'\u0939\u0932':'Solution')+'</div><div class="sol-t">'+_fmtRich(q.model_answer)+'</div>'+(q.model_answer_image?'<img loading="lazy" class="qimg" src="'+q.model_answer_image+'">':'')+'</div>';
       }
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div>'+_pdfQHTML(qMain,q.image_b64,q.alt_image_b64,'q-t')+h+'</div>';
-    }).join('');
-    const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo));
-    w.document.close();
-  }catch(e){ toast(e.message,true); }
+    };
+    // Build the paper in small chunks, yielding to the event loop so the page never freezes.
+    const parts=new Array(qs.length);
+    for(let qi=0;qi<qs.length;qi++){ parts[qi]=_one(qs[qi],qi); if((qi%8)===7) await new Promise(r=>setTimeout(r,0)); }
+    const html=buildPdfDoc(ex,parts.join(''),withSol,isM,medium==='hi'?'hi':'en',logo);
+    // Hand the finished doc to the tab via a Blob URL (no blocking document.write of a huge string).
+    let handed=false;
+    try{ const blob=new Blob([html],{type:'text/html'}); const url=URL.createObjectURL(blob); w.location.href=url; handed=true; setTimeout(function(){ try{URL.revokeObjectURL(url);}catch(_){} },60000); }catch(e){ handed=false; }
+    if(!handed){ try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){} }
+  }catch(e){ toast(e.message,true); try{w.close();}catch(_){} }
 }
 function examCardHTML(e){
   const isM=e.test_type==='mcq';
