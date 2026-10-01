@@ -462,6 +462,7 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
     from models import ProductionStaffProfile
     yp = _me_yt(db, me)
     mode = (payload.get("mode") or "ready").strip().lower()
+    shoot_status = (payload.get("shoot_status") or "done").strip().lower()
     title = (payload.get("title") or "").strip()
     if not title:
         raise HTTPException(400, "A video title / topic is required")
@@ -470,6 +471,15 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
     if raw:
         try:
             dl = datetime.fromisoformat(raw.replace("Z", ""))
+        except Exception:
+            pass
+    # graphics-specific deadline (Need Thumbnail mode: when the designer must finish by).
+    # The VideoTask deadline above stays the youtuber's own (tentative shoot) date.
+    gdl = None
+    graw = (payload.get("graphics_deadline") or "").strip()
+    if graw:
+        try:
+            gdl = datetime.fromisoformat(graw.replace("Z", ""))
         except Exception:
             pass
     t = VideoTask(title=title, creator_type="youtuber", youtuber_id=yp.id,
@@ -505,6 +515,8 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
         # topic + reference thumbnail -> assign graphics; youtuber submits the video link later
         g = pc.graphics_task(db, t, create=True)
         g.status = "new"
+        if gdl:
+            g.deadline = gdl   # designer ki apni deadline (youtuber ki shoot date se alag)
         g.instructions = (payload.get("instructions") or payload.get("remarks") or "").strip()
         _ref = payload.get("reference_thumbnail") or payload.get("images")
         if _ref:
@@ -537,6 +549,56 @@ def yt_new_task(payload: dict = Body(...), db: Session = Depends(get_db), me=Dep
         pc.set_state(db, t, "creator_working", actor=me, event="youtuber_task_created", force=True)
         pc.notify_pms(db, "YouTuber Task Created",
                       f'{me.name} started "{t.title}" — thumbnail in progress.', "production", link=str(t.id))
+    elif shoot_status == "pending":
+        # Video Ready mode + "Shoot Pending": youtuber ne abhi tak shoot nahi kiya hai.
+        # Thumbnail designer ne pehle se bana di hai -> upload + designer ko rating.
+        # Koi drive link nahi. Task "To Shoot" me jaata hai (creator_working), youtuber ki
+        # shoot date (deadline) uske schedule me; production/admin ko notification jaata hai.
+        _th = payload.get("thumbnail_upload") or payload.get("thumbnail") or payload.get("images")
+        if _th:
+            try:
+                urls = pc.save_images(db, t, _th if isinstance(_th, list) else [_th],
+                                      "thumbnail", None, me, return_urls=True) or []
+                if urls:
+                    t.thumbnail_link = urls[0]
+            except Exception:
+                pass
+        _gid = payload.get("graphics_id")
+        if _gid:
+            try:
+                gr = db.query(ProductionStaffProfile).filter(
+                    ProductionStaffProfile.id == int(_gid),
+                    ProductionStaffProfile.staff_role == "graphics").first()
+                if gr:
+                    g = pc.graphics_task(db, t, create=True)
+                    g.graphics_id = gr.id
+                    t.graphics_id = gr.id
+                    if t.thumbnail_link:
+                        g.thumbnail_url = t.thumbnail_link   # designer ki bani thumbnail = final
+                    g.status = "approved"
+                    try:
+                        g.submitted_at = datetime.utcnow()
+                        g.approved_at = datetime.utcnow()
+                    except Exception:
+                        pass
+                    _r = payload.get("thumbnail_rating")
+                    if _r:
+                        try:
+                            g.quality_rating = int(_r)
+                            g.quality_note = f"Rated by {me.name} (YouTuber)"
+                        except Exception:
+                            pass
+                    if gr.user_id:
+                        pc.notify(db, gr.user_id, "Thumbnail used",
+                                  f'{me.name} used your thumbnail for "{t.title}".'
+                                  + ((" Rated %s/5." % int(_r)) if _r else ""),
+                                  "graphics_task", link=str(t.id))
+            except Exception:
+                pass
+        pc.set_state(db, t, "creator_working", actor=me, event="youtuber_task_created", force=True)
+        pc.notify_pms(db, "New Task — Shoot Pending",
+                      f'{me.name} created "{t.title}" — thumbnail ready, shoot still pending.',
+                      "production", link=str(t.id))
     else:
         # ready: video shot + thumbnail -> submit directly
         link = (payload.get("drive_link") or "").strip()

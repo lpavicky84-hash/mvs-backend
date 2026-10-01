@@ -27730,7 +27730,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(page==='dashboard') return renderDashboard(portal,body);
     if(portal==='youtuber'){
-      if(page==='videos') return renderYtMy(portal,body);
+      // My Tasks hamesha naya header (renderYtMy) use kare — refresh/restore par kabhi-kabhi
+      // page 'tasks' aa jaata tha jo neeche generic renderList (purana tabs header) chala deta tha.
+      if(page==='videos'||page==='tasks') return renderYtMy(portal,body);
       if(page==='yttoday') return renderYtToday(portal,body);
       if(page==='ytweekly') return renderYtWeekly(portal,body);
       if(page==='ytthumbs') return renderYtThumbReviews(portal,body,'pending');
@@ -30692,6 +30694,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(t.creator_type==='youtuber'){
       if(!_hasThumb && !g.graphics_name) chips.push('<span class="pw-chip pw-pend">\u26a0 Thumbnail pending</span>');
       if(!t.editor_name && ['creator_working','pm_review','approved','editor_assigned','editing','editing_paused','editing_done','qc_pending','ready_for_youtube'].indexOf(t.lifecycle)>=0) chips.push('<span class="pw-chip pw-pend">\u26a0 Editor pending</span>');
+      // Not shot yet -> the VideoTask deadline IS the youtuber's planned shoot date.
+      // Show it on the card so graphics/admin/PM know when the youtuber will shoot.
+      if(['creator_assigned','creator_working'].indexOf(lc)>=0 && t.deadline){
+        chips.push('<span class="pw-chip" style="background:rgba(245,166,35,.14);color:#9a6b00;font-weight:800">'+ic('calendar')+' Shoot: '+esc(t.deadline)+'</span>');
+      }
     }
     var meta=[];
     // Deadline meta + delay badge dono CURRENT STAGE ke deadline se (teacher on-time submit
@@ -32397,6 +32404,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       // Chat Manager page: NEVER re-mount (that wipes an open thread + selected row).
       // Sirf inbox list silently reload karo.
       if(page==='chatmgr'){ try{ if(typeof _cmLoad==='function') _cmLoad(true); }catch(e){} return; }
+      // YouTuber My Tasks silent-refresh par bhi naya header (renderYtMy) — kabhi purana tabs wala
+      // renderList na chale (refresh/restore par page 'tasks'/'videos' dono ho sakta hai).
+      if(portal==='youtuber' && (page==='videos'||page==='tasks')) return renderYtMy(portal,body);
       if(page==='dashboard') return renderDashboard(portal,body);
       if(page.indexOf('q:')===0){ var st=page.slice(2); var f=_flt(portal); if(st==='__overdue'){f.status='';f.deadline='overdue';f._locked=false;}else{f.status=st;f.deadline='';f._locked=true;} f.priority=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
       if(page==='urgent'){ var fu=_flt(portal); fu.priority='urgent'; fu.status=''; fu.deadline=''; return document.getElementById(portal+'-results')?_prodLoadList(portal,true):renderList(portal,body); }
@@ -32997,6 +33007,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // ---- PM: create new task ----
   window.ytNewTask=function(){
     window._ytMode='ready'; window._ytThumb=''; window._ytRefs=[]; window._ytEd=''; window._ytGx=''; window._ytKeep=null;
+    window._ytShoot='done'; window._ytRating=0;
     Promise.all([
       api('/api/youtuber/editors').catch(function(){return {editors:[]};}),
       api('/api/youtuber/graphics').catch(function(){return {graphics:[]};}),
@@ -33020,20 +33031,45 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _chOpts=function(sel){ var l=window._ytChs||[]; return '<option value="">— No channel —</option>'+l.map(function(x){return '<option value="'+esc(x)+'"'+(sel===x?' selected':'')+'>'+esc(x)+'</option>';}).join(''); };
     var common='<div class="p-field"><label>Video Title / Topic</label><input id="yt-title" class="p-input" placeholder="e.g. Why NIOS students fail — 3 mistakes"></div>'+
       '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Video Type</label><select id="yt-vtype" class="p-input">'+_tyOpts('')+'</select></div>'+
-      '<div class="p-field"><label>Channel</label><select id="yt-channel" class="p-input">'+_chOpts('')+'</select></div></div>'+
-      '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr"><div class="p-field"><label>Deadline</label><input id="yt-deadline" type="datetime-local" class="p-input"></div>'+
-      '<div class="p-field"><label>Priority <span class="vt-hint">(optional)</span></label><select id="yt-priority" class="p-input"><option value="">\u2014 Normal (no priority) \u2014</option><option value="urgent">Urgent</option></select></div></div>';
+      '<div class="p-field"><label>Channel</label><select id="yt-channel" class="p-input">'+_chOpts('')+'</select></div></div>';
+    var priField='<div class="p-field"><label>Priority <span class="vt-hint">(optional)</span></label><select id="yt-priority" class="p-input"><option value="">\u2014 Normal (no priority) \u2014</option><option value="urgent">Urgent</option></select></div>';
+    var _dlField=function(label,hint){ return '<div class="p-field"><label>'+label+(hint?' <span class="vt-hint">'+hint+'</span>':'')+'</label><input id="yt-deadline" type="datetime-local" class="p-input"></div>'; };
+    var _thumbField=function(hint){ return '<div class="p-field"><label>Thumbnail <span class="vt-hint">'+hint+'</span></label>'+
+        '<div id="yt-thumb-drop" class="yt-drop" onclick="document.getElementById(\'yt-thumb-file\').click()">'+(window._ytThumb?'<img loading="lazy" src="'+window._ytThumb+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
+        '<input type="file" id="yt-thumb-file" accept="image/*" style="display:none">'+(window._ytThumb?'<button class="p-btn" style="margin-top:6px;color:#b91c1c" onclick="ytClearImg(\'thumb\')">Remove thumbnail</button>':'')+'</div>'; };
+    var _rt=window._ytRating||0;
+    var _starRow=function(){ var s=''; for(var n=1;n<=5;n++){ s+='<span onclick="ytSetRating('+n+')" style="cursor:pointer;font-size:26px;line-height:1;margin-right:2px;color:'+(n<=_rt?'#f5a623':'#d8d2c4')+';transition:color .15s">\u2605</span>'; } return s; };
+    var ratingField='<div class="p-field"><label>Rate the Designer <span class="vt-hint">(for this thumbnail)</span></label>'+
+      '<div style="display:flex;align-items:center;gap:10px">'+_starRow()+'<span style="font-size:.82rem;font-weight:700;color:var(--muted)">'+(_rt?(_rt+'/5'):'Tap to rate')+'</span></div></div>';
     var edSel='<div class="p-field"><label>Assign Editor <span class="vt-hint">(optional — PM/editor can also assign later)</span></label><select id="yt-editor" class="p-input">'+_ytOpts(window._ytEds,window._ytEd)+'</select></div>';
     var body;
     if(m==='ready'){
-      body=toggle+common+
-        '<div class="p-field"><label>Video Drive Link</label><input id="yt-link" class="p-input" placeholder="https://drive.google.com/file/d/..."></div>'+
-        '<div class="p-field"><label>Thumbnail <span class="vt-hint">(paste / upload — optional; PM can add later)</span></label>'+
-          '<div id="yt-thumb-drop" class="yt-drop" onclick="document.getElementById(\'yt-thumb-file\').click()">'+(window._ytThumb?'<img loading="lazy" src="'+window._ytThumb+'" style="max-width:100%;border-radius:8px">':'<span>Click, drop, or paste (Ctrl+V)</span>')+'</div>'+
-          '<input type="file" id="yt-thumb-file" accept="image/*" style="display:none">'+(window._ytThumb?'<button class="p-btn" style="margin-top:6px;color:#b91c1c" onclick="ytClearImg(\'thumb\')">Remove thumbnail</button>':'')+'</div>'+
-        edSel;
+      var ss=window._ytShoot||'done';
+      var shootSel='<div class="p-field"><label>Shoot Status</label><select id="yt-shoot" class="p-input" onchange="ytShootMode(this.value)">'+
+        '<option value="done"'+(ss==='done'?' selected':'')+'>Shoot Done &mdash; I already have the video</option>'+
+        '<option value="pending"'+(ss==='pending'?' selected':'')+'>Shoot Pending &mdash; not shot yet</option></select></div>';
+      if(ss==='done'){
+        body=toggle+common+shootSel+
+          '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr">'+_dlField('Deadline','')+priField+'</div>'+
+          '<div class="p-field"><label>Video Drive Link</label><input id="yt-link" class="p-input" placeholder="https://drive.google.com/file/d/..."></div>'+
+          _thumbField('(paste / upload &mdash; optional; PM can add later)')+
+          edSel;
+      } else {
+        body=toggle+common+shootSel+
+          '<div class="yt-pend-note" style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.35);border-radius:10px;padding:10px 12px;margin:2px 0 10px;font-size:.82rem;color:#8a5a00;line-height:1.4">This creates a new task in <b>To Shoot</b>. Production &amp; admin are notified that a new task is in &mdash; shoot still pending. No video link needed yet.</div>'+
+          '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr">'+_dlField('Shooting Date','(the day you&rsquo;ll shoot &mdash; your deadline)')+priField+'</div>'+
+          _thumbField('(the ready thumbnail your designer already made &mdash; upload it)')+
+          '<div class="p-field"><label>Graphics Designer <span class="vt-hint">(who made this thumbnail)</span></label><select id="yt-graphics" class="p-input">'+_ytOpts(window._ytGfx,window._ytGx)+'</select></div>'+
+          ratingField+
+          edSel;
+      }
     } else {
       body=toggle+common+
+        '<div class="form-grid vt-form" style="grid-template-columns:1fr 1fr">'+
+          '<div class="p-field"><label>Thumbnail Deadline <span class="vt-hint">(designer must finish by)</span></label><input id="yt-gfx-dl" type="datetime-local" class="p-input"></div>'+
+          _dlField('Tentative Shooting Date','(your deadline &mdash; shown to the designer)')+
+        '</div>'+
+        priField+
         '<div class="p-field"><label>Reference Thumbnails <span class="vt-hint">(paste / upload multiple — for the designer)</span></label>'+
           '<div class="thumb-gal" id="yt-ref-gal">'+(window._ytRefs||[]).map(function(u,i){ return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="ytRemoveRef('+i+')">Remove</button></div>'; }).join('')+'</div>'+
           '<div id="yt-ref-drop" class="yt-drop" onclick="document.getElementById(\'yt-ref-file\').click()"><span>+ Add reference (click / drop / paste Ctrl+V) — multiple allowed</span></div>'+
@@ -33043,7 +33079,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         edSel;
     }
     showModal(m==='ready'?'Submit Your Video':'New Video — Get Thumbnail', body,
-      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ytNewTaskSubmit()">'+(m==='ready'?'Submit to Production':'Create & Assign Graphics')+'</button>');
+      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="ytNewTaskSubmit()">'+(m==='ready'?((window._ytShoot==='pending')?'Create Task (Shoot Pending)':'Submit to Production'):'Create & Assign Graphics')+'</button>');
     setTimeout(_ytWireNew,40);
   }
   function _ytReadImg(file,which){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ _ytCapture(); if(which==='ref'){window._ytRef=rd.result;}else{window._ytThumb=rd.result;} _ytRenderNew(); }; rd.readAsDataURL(file); }
@@ -33054,7 +33090,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ytCapture(){
     if(!document.getElementById('yt-title')) return; // form not on screen — keep last snapshot
     var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
-    window._ytKeep={title:g('yt-title'),vtype:g('yt-vtype'),channel:g('yt-channel'),deadline:g('yt-deadline'),link:g('yt-link'),instr:g('yt-instr'),ed:g('yt-editor'),gx:g('yt-graphics'),pri:g('yt-priority')};
+    window._ytKeep={title:g('yt-title'),vtype:g('yt-vtype'),channel:g('yt-channel'),deadline:g('yt-deadline'),gfxdl:g('yt-gfx-dl'),link:g('yt-link'),instr:g('yt-instr'),ed:g('yt-editor'),gx:g('yt-graphics'),pri:g('yt-priority')};
   }
   function _ytWireNew(){
     // Wire handlers, then RESTORE the captured values. Do NOT re-capture here —
@@ -33066,23 +33102,39 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._ytPaste=function(e){ if(!document.getElementById('yt-title')){document.removeEventListener('paste',window._ytPaste);return;} var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ if(window._ytMode==='thumbnail'){ _ytAddRef(items[i].getAsFile()); } else { _ytReadImg(items[i].getAsFile(),'thumb'); } e.preventDefault(); } } };
     document.addEventListener('paste',window._ytPaste);
     // restore kept values
-    var k=window._ytKeep; if(k){ var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}; set('yt-title',k.title);set('yt-vtype',k.vtype);set('yt-channel',k.channel);set('yt-deadline',k.deadline);set('yt-link',k.link);set('yt-instr',k.instr);set('yt-editor',k.ed);set('yt-graphics',k.gx);set('yt-priority',k.pri); }
+    var k=window._ytKeep; if(k){ var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}; set('yt-title',k.title);set('yt-vtype',k.vtype);set('yt-channel',k.channel);set('yt-deadline',k.deadline);set('yt-gfx-dl',k.gfxdl);set('yt-link',k.link);set('yt-instr',k.instr);set('yt-editor',k.ed);set('yt-graphics',k.gx);set('yt-priority',k.pri); }
   }
   window.ytMode=function(m){ _ytCapture(); window._ytMode=m; if(window._ytKeep){window._ytEd=window._ytKeep.ed;window._ytGx=window._ytKeep.gx;} _ytRenderNew(); };
+  window.ytShootMode=function(s){ _ytCapture(); window._ytShoot=(s==='pending'?'pending':'done'); if(window._ytKeep){window._ytEd=window._ytKeep.ed;window._ytGx=window._ytKeep.gx;} _ytRenderNew(); };
+  window.ytSetRating=function(n){ _ytCapture(); window._ytRating=(parseInt(n,10)||0); _ytRenderNew(); };
   window.ytClearImg=function(which){ _ytCapture(); if(which==='ref')window._ytRef='';else window._ytThumb=''; _ytRenderNew(); };
   window.ytNewTaskSubmit=function(){
     _ytCapture(); var k=window._ytKeep||{};
     var title=(k.title||'').trim(); if(!title){ toast('Title/topic required',true); return; }
     var body={mode:window._ytMode,title:title,video_type:(k.vtype||''),channel:(k.channel||''),deadline:(k.deadline||''),editor_id:(k.ed||''),priority:(k.pri||'normal')};
+    var okMsg;
     if(window._ytMode==='ready'){
-      if(!(k.link||'').trim()){ toast('Drive link required',true); return; }
-      body.drive_link=(k.link||'').trim();
-      if(window._ytThumb) body.thumbnail=[window._ytThumb];
+      var ss=(window._ytShoot==='pending')?'pending':'done';
+      body.shoot_status=ss;
+      if(ss==='pending'){
+        if(!(k.deadline||'').trim()){ toast('Pick the shooting date',true); return; }
+        if(window._ytThumb) body.thumbnail_upload=window._ytThumb;
+        body.graphics_id=(k.gx||'');
+        if(window._ytRating) body.thumbnail_rating=window._ytRating;
+        okMsg='Task created — shoot pending';
+      } else {
+        if(!(k.link||'').trim()){ toast('Drive link required',true); return; }
+        body.drive_link=(k.link||'').trim();
+        if(window._ytThumb) body.thumbnail=[window._ytThumb];
+        okMsg='Video submitted';
+      }
     } else {
       body.instructions=(k.instr||''); body.graphics_id=(k.gx||'');
+      if((k.gfxdl||'').trim()) body.graphics_deadline=(k.gfxdl||'').trim();
       if(window._ytRefs && window._ytRefs.length) body.reference_thumbnail=window._ytRefs;
+      okMsg='Task created — graphics assigned';
     }
-    api('/api/youtuber/new-task','POST',body).then(function(){ closeModal(); toast(window._ytMode==='ready'?'Video submitted':'Task created — graphics assigned'); try{ prodNav('youtuber','videos'); }catch(e){} })
+    api('/api/youtuber/new-task','POST',body).then(function(){ closeModal(); toast(okMsg||'Done'); try{ prodNav('youtuber','videos'); }catch(e){} })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodNewTask=function(){ if((typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL==='youtuber')){ ytNewTask(); return; } prodAssignWork(); };
