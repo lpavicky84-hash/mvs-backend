@@ -7582,23 +7582,54 @@ function _examUpdateTrAll(){
     trAll.classList.toggle('tr-done',!pend);
   }
 }
-// BULLETPROOF full render: never builds all cards in one shot (that froze big restores).
-// Cards are inserted in small batches across animation frames, previews filled per batch,
-// and a render token cancels a superseded render — 100+ questions stay smooth, no freeze.
+// Off-screen question cards cost ~0 to lay out/paint (content-visibility) -> a 500-question
+// test scrolls and types smoothly instead of re-flowing the whole giant DOM on every keystroke.
+function _examEnsureCss(){
+  if(document.getElementById('ex-cv-css')) return;
+  var s=document.createElement('style'); s.id='ex-cv-css';
+  s.textContent='.ex-qcard{content-visibility:auto;contain-intrinsic-size:auto 520px}';
+  document.head.appendChild(s);
+}
+// Fill ONE card's heavy previews (_fmtRich + KaTeX) — but only once per card.
+function _examFillCard(cardEl){
+  if(!cardEl || cardEl.dataset.pv==='1') return;
+  var qi=parseInt(cardEl.getAttribute('data-qi'),10);
+  if(isNaN(qi)) return;
+  cardEl.dataset.pv='1';
+  try{ _examFillOne(qi); }catch(e){}
+}
+// LAZY previews: the costly _fmtRich + KaTeX render runs ONLY for cards near the viewport.
+// 48 (or 500) cards restore instantly because off-screen cards never pay that cost until seen.
+function _examSetupLazyPreviews(el){
+  try{ if(window._examPvObs){ window._examPvObs.disconnect(); window._examPvObs=null; } }catch(e){}
+  var cards=el.querySelectorAll('.ex-qcard');
+  if(!('IntersectionObserver' in window)){
+    var rtok=(window._examRenderTok||0), p=0;
+    var raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
+    var chunk=function(){ if(window._examRenderTok!==rtok) return; var e2=Math.min(p+3,cards.length); for(;p<e2;p++) _examFillCard(cards[p]); if(p<cards.length) raf(chunk); };
+    chunk(); return;
+  }
+  var obs=new IntersectionObserver(function(ents){
+    ents.forEach(function(en){ if(en.isIntersecting){ _examFillCard(en.target); obs.unobserve(en.target); } });
+  },{root:null, rootMargin:'800px 0px', threshold:0});
+  window._examPvObs=obs;
+  cards.forEach(function(c){ if(c.dataset.pv!=='1') obs.observe(c); });
+}
+// BULLETPROOF full render: build the card DOM in rAF batches (no previews inline), then fill
+// previews lazily for visible cards only. A render token cancels a superseded render.
 function renderExamQs(){
   const el=document.getElementById('ex-qs'); if(!el) return;
+  _examEnsureCss();
   const n=_examQs.length;
   const rtok=(window._examRenderTok=(window._examRenderTok||0)+1);
-  const CHUNK=4;
-  // Small forms: do it in one pass (instant, no visible chunking).
+  const CHUNK=6;
   if(n<=CHUNK){
     let html=''; for(let k=0;k<n;k++){ try{ html+=_examCardHtml(k); }catch(e){} }
     el.innerHTML=html;
-    for(let k=0;k<n;k++){ try{ _examFillOne(k); }catch(e){} }
+    _examSetupLazyPreviews(el);
     _examUpdateTrAll();
     return;
   }
-  // Big forms: clear, then append in rAF batches so the main thread never blocks.
   el.innerHTML='';
   const raf=window.requestAnimationFrame||function(f){return setTimeout(f,16);};
   let i=0;
@@ -7608,9 +7639,9 @@ function renderExamQs(){
     let html='';
     for(let k=i;k<end;k++){ try{ html+=_examCardHtml(k); }catch(e){} }
     el.insertAdjacentHTML('beforeend',html);
-    for(let k=i;k<end;k++){ try{ _examFillOne(k); }catch(e){} }
     i=end;
-    if(i<n) raf(step); else _examUpdateTrAll();
+    if(i<n) raf(step);
+    else { _examSetupLazyPreviews(el); _examUpdateTrAll(); }
   };
   step();
 }
@@ -7677,7 +7708,7 @@ function _examCardHtml(i){
       const aId=`exa-${i}`;
       mid=`<div class="ex-sec ex-sec-a"><div class="ex-sec-lbl">Model Answer${isHi?' \u00b7 Hindi':''}</div>${_rtBar(aId)}${isHi?'':`<div style="margin:2px 0 6px"><button type="button" class="btn btn-sm ex-ocr" title="Upload/paste a screenshot of the answer — AI reads it into text" onclick="document.getElementById('ex-aocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-aocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillAnswer(this,${i})"></div>`}<textarea id="${aId}" class="form-control" rows="2" placeholder="${isHi?'\u0906\u0926\u0930\u094d\u0936 \u0909\u0924\u094d\u0924\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 (\u0935\u093f\u0915\u0932\u094d\u092a\u093f\u0915)':'Type the ideal/model answer here'}" onfocus="_lastField=this" oninput="${abind};examPrev(this,'pv-a-${i}')">${esc(aval)}</textarea><div class="ex-prev" id="pv-a-${i}"></div>${autoHint}${aImg}${marks}</div>`;
     }
-    return `<div class="ex-qcard">${head}${tabs}${sp}${qsec}${mid}</div>`;
+    return `<div class="ex-qcard" data-qi="${i}">${head}${tabs}${sp}${qsec}${mid}</div>`;
 }
 // Replace ONE card in place (no full-list rebuild) — used by tab switch / translate.
 function _examReplaceCard(i){
@@ -7686,12 +7717,13 @@ function _examReplaceCard(i){
   if(!card){ renderExamQs(); return; }
   const tmp=document.createElement('div'); tmp.innerHTML=_examCardHtml(i);
   const fresh=tmp.firstElementChild;
-  if(fresh){ card.replaceWith(fresh); _examFillOne(i); }
+  if(fresh){ card.replaceWith(fresh); fresh.dataset.pv='1'; _examFillOne(i); }
 }
 // Append ONE new card at the end (no full-list rebuild) — used by addExamQ.
 function _examAppendCard(i){
   const el=document.getElementById('ex-qs'); if(!el){ renderExamQs(); return; }
   el.insertAdjacentHTML('beforeend', _examCardHtml(i));
+  const fresh=el.lastElementChild; if(fresh) fresh.dataset.pv='1';
   _examFillOne(i);
 }
 
@@ -22941,32 +22973,50 @@ function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<
     if(tx===null) return; var dx=e.changedTouches[0].clientX-tx; tx=null;
     if(dx<-60 && document.querySelector('.sidebar.open')) closeSidebar();
   },{passive:true});
-  // wrap every table (present + future renders) in a horizontal-scroll shell
-  function wrapTables(){
-    document.querySelectorAll('table').forEach(function(t){
-      if(t.closest('.tbl-scroll')) return;
-      var w=document.createElement('div'); w.className='tbl-scroll';
-      t.parentNode.insertBefore(w,t); w.appendChild(t);
-    });
-    markScrollables();
+  // Wrap tables (horizontal-scroll shell) + measure. Measuring scrollWidth forces a reflow, so
+  // we ONLY ever do it for genuinely-new tables within a given root — never a whole-document
+  // rescan on every DOM change. (That rescan + mass reflow froze the 48-question test builder:
+  // every keystroke updated a preview -> MutationObserver fired -> whole doc was re-measured.)
+  function _wrapOne(t){
+    if(!t||t.closest('.tbl-scroll')) return;
+    var w=document.createElement('div'); w.className='tbl-scroll';
+    t.parentNode.insertBefore(w,t); w.appendChild(t);
+    var can=w.scrollWidth>w.clientWidth+6;
+    w.classList.toggle('can-scroll',can);
+    if(can&&!w.dataset.hintBound){
+      w.dataset.hintBound='1';
+      w.addEventListener('scroll',function(){ w.classList.add('scrolled'); },{passive:true,once:true});
+    }
   }
+  function wrapTablesIn(root){
+    try{
+      if(root&&root.tagName==='TABLE'){ _wrapOne(root); return; }
+      var list=(root&&root.querySelectorAll)?root.querySelectorAll('table'):[];
+      for(var i=0;i<list.length;i++) _wrapOne(list[i]);
+    }catch(e){}
+  }
+  function wrapTables(){ wrapTablesIn(document); }
   function markScrollables(){
     document.querySelectorAll('.tbl-scroll').forEach(function(w){
       var can=w.scrollWidth>w.clientWidth+6;
       w.classList.toggle('can-scroll',can);
-      if(can&&!w.dataset.hintBound){
-        w.dataset.hintBound='1';
-        w.addEventListener('scroll',function(){ w.classList.add('scrolled'); },{passive:true,once:true});
-      }
     });
   }
   window.addEventListener('resize',function(){ requestAnimationFrame(markScrollables); });
   wrapTables();
-  var pending=false;
+  // Only react to added nodes that are (or contain) a TABLE — typing plain text / math spans
+  // adds no tables, so the observer does effectively nothing and the builder stays smooth.
+  var _pendRoots=[], _pend=false;
   new MutationObserver(function(muts){
-    for(var i=0;i<muts.length;i++){ if(muts[i].addedNodes.length){ 
-      if(!pending){ pending=true; requestAnimationFrame(function(){ pending=false; wrapTables(); }); }
-      break; } }
+    for(var i=0;i<muts.length;i++){
+      var an=muts[i].addedNodes; if(!an||!an.length) continue;
+      for(var j=0;j<an.length;j++){ var nd=an[j];
+        if(nd.nodeType===1 && (nd.tagName==='TABLE' || (nd.querySelector&&nd.querySelector('table')))) _pendRoots.push(nd);
+      }
+    }
+    if(_pendRoots.length && !_pend){ _pend=true; requestAnimationFrame(function(){
+      _pend=false; var rs=_pendRoots; _pendRoots=[]; for(var k=0;k<rs.length;k++) wrapTablesIn(rs[k]);
+    }); }
   }).observe(document.body,{childList:true,subtree:true});
 })();
 
