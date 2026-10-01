@@ -7236,12 +7236,13 @@ async function openCreateExam(type,editData){
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div id="mbf-slot"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
-    +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. Every question is imported at once. The test uses the Subject, Class, Medium, Title, Chapter, Batch, Duration and Schedule set above.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Import &amp; Create Test</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
-    +((type==='subjective'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — Question &amp; Model Answer in English, with optional Hindi) and upload. Every question is imported at once. The test uses the Subject, Class, Medium, Title, Chapter, Batch, Duration and Schedule set above.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_subjBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-subjbulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_subjBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-subjbulk-import" onclick="_subjBulkImport()" style="display:none">Import &amp; Create Test</button></div><div id="ex-subjbulk-out" style="margin-top:8px"></div></div>`:'')
+    +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. Every question loads into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Load into editor</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
+    +((type==='subjective'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — Question &amp; Model Answer in English, with optional Hindi) and upload. Works for every type — MCQ, fill in the blanks, match the following, passage, short &amp; long answers, and numericals. Questions load into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_subjBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-subjbulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_subjBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-subjbulk-import" onclick="_subjBulkImport()" style="display:none">Load into editor</button></div><div id="ex-subjbulk-out" style="margin-top:8px"></div></div>`:'')
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
     +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
+  if(!editData){ try{ _mcqBulkCss(); }catch(e){} }   // style the bulk box immediately (not only after file pick)
   (function(){ var slot=document.getElementById('mbf-slot'); if(!slot) return;
     var _isEdit=!!editData||!!window._dppEditId;
     slot.innerHTML=_isEdit?_singleBatchField(editData&&editData.ex?editData.ex.batch_id:null):_multiBatchField();
@@ -7308,12 +7309,15 @@ function _mcqBulkCss(){
   if(document.getElementById('mcq-bulk-css')) return;
   var s=document.createElement('style'); s.id='mcq-bulk-css';
   s.textContent=[
-    '.ex-bulk{border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(37,99,235,.01))}',
-    '.ex-bulk-h{font-weight:800;font-size:.95rem;margin-bottom:5px}',
-    '.ex-bulk-p{font-size:.78rem;color:var(--text-muted,#8a7f66);margin-bottom:11px;line-height:1.5}',
-    '.ex-bulk-row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}',
-    '.ex-bulk-row .btn{border-radius:10px;font-weight:700}',
-    '@media (max-width:560px){ .ex-bulk-row .btn,.ex-bulk-row label{flex:1 1 100%;justify-content:center;text-align:center} }'
+    '.ex-bulk{position:relative;border:1px solid var(--border,#e8e0cf);border-radius:16px;padding:16px 17px;margin:8px 0 16px;background:linear-gradient(135deg,rgba(184,148,31,.08),rgba(184,148,31,.015));box-shadow:0 2px 12px rgba(120,90,10,.06)}',
+    '.ex-bulk:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;background:linear-gradient(180deg,#d4a72c,#b8941f)}',
+    '.ex-bulk-h{font-weight:800;font-size:1rem;margin-bottom:6px;color:var(--text,#2a2313);letter-spacing:.01em}',
+    '.ex-bulk-p{font-size:.8rem;color:var(--text-muted,#8a7f66);margin-bottom:13px;line-height:1.6}',
+    '.ex-bulk-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}',
+    '.ex-bulk-row .btn,.ex-bulk-row label{border-radius:11px;font-weight:700;min-height:40px;display:inline-flex;align-items:center;gap:6px}',
+    '.ex-bulk-row .btn-primary{box-shadow:0 3px 10px rgba(184,148,31,.3)}',
+    '.ex-bulk .alert{border-radius:11px}',
+    '@media (max-width:560px){ .ex-bulk{padding:14px 14px 14px 16px} .ex-bulk-row{gap:8px} .ex-bulk-row .btn,.ex-bulk-row label{flex:1 1 100%;justify-content:center;text-align:center;min-height:46px;font-size:.92rem} }'
   ].join('');
   document.head.appendChild(s);
 }
@@ -7366,8 +7370,8 @@ async function _mcqBulkPick(){
     if(!parsed.ok.length){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question, all 4 options and a Correct Answer (A/B/C/D).</div>'; if(imp)imp.style.display='none'; return; }
     var hi=parsed.ok.filter(function(q){return q.question_text_hi;}).length;
     var badHtml=parsed.bad.length?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
-    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'.</div>'+badHtml;
-    if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Import & Create Test'; }
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'. Load them below to review &amp; edit, then press Create Test.</div>'+badHtml;
+    if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Load into editor'; }
   }catch(e){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">File read error: '+esc(e.message)+'</div>'; if(imp)imp.style.display='none'; }
 }
 function _mcqXhrPost(url,bodyObj,onprog){
@@ -7380,27 +7384,40 @@ function _mcqXhrPost(url,bodyObj,onprog){
     xhr.send(JSON.stringify(bodyObj));
   });
 }
-async function _mcqBulkImport(){
-  var qs=window._mcqBulk||[]; if(!qs.length){ toast('No questions to import',true); return; }
-  var title=(val('ex-title')||'').trim(); if(!title){ toast('Please enter a Test Title above first.',true); var t=document.getElementById('ex-title'); if(t)t.focus(); return; }
-  var hasHi=qs.some(function(q){return q.question_text_hi;});
-  var medium=hasHi?'Bilingual':(val('ex-medium')||'English');
-  var _sched=(val('ex-sched')||'').trim(); var _chRaw=(val('ex-ch')||'').trim();
-  var body={subject:(val('ex-sub')||''), class_name:(val('ex-cls-test')||''), title:title,
-    chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw), test_type:'mcq', medium:medium,
-    duration_min:(parseInt(val('ex-dur'))||0), scheduled_at:(_sched||null), questions:qs, batch_ids:_multiBatchIds()};
-  var imp=document.getElementById('ex-bulk-import'); if(imp){ imp.disabled=true; imp.textContent='Importing...'; }
-  var prog=document.getElementById('ex-prog'); var pl=document.getElementById('ex-prog-label'), pp=document.getElementById('ex-prog-pct'), pf=document.getElementById('ex-prog-fill');
-  if(prog) prog.classList.add('show');
-  function _p(pct,lbl){ if(pf)pf.style.width=pct+'%'; if(pp)pp.textContent=pct+'%'; if(pl&&lbl)pl.textContent=lbl; }
-  _p(5,'Preparing '+qs.length+' questions\u2026');
-  try{
-    var r=await _mcqXhrPost('/api/teacher/exam',body,function(pct){ _p(Math.max(10,Math.min(90,pct)),'Uploading '+qs.length+' questions\u2026'); });
-    _p(100,'Done \u2014 '+(r.questions||qs.length)+' questions imported');
-    toast('Test created with '+(r.questions||qs.length)+' questions \u2705');
-    _clearQDraft&&_clearQDraft(); _examQs=[];
-    setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },900);
-  }catch(e){ toast((e&&e.message)||'Import failed',true); if(imp){ imp.disabled=false; imp.textContent='Import & Create Test'; } if(prog)prog.classList.remove('show'); }
+// Shared: drop mapped bulk questions into the editor so the teacher reviews & edits the
+// live previews, then presses the normal "Create Test". Virtualized render => no freeze
+// even for 400-500 questions. Keeps any questions already typed; else replaces the empty
+// starter. Auto-switches medium to Bilingual when Hindi is present.
+function _examLoadBulk(mapped, hasHi){
+  if(!mapped||!mapped.length){ toast('No questions to load',true); return; }
+  if(hasHi){ _examMedium='Bilingual'; var ms=document.getElementById('ex-medium'); if(ms) ms.value='Bilingual'; }
+  var hasReal=(_examQs||[]).some(function(q){
+    return (q.q||'').trim() || (q.model||'').trim() || (q.opts&&q.opts.some(function(o){return (o||'').trim();}));
+  });
+  _examQs = hasReal ? _examQs.concat(mapped) : mapped;
+  renderExamQs();
+  // Collapse both bulk boxes — the editor is now the focus.
+  ['ex-bulk-out','ex-subjbulk-out'].forEach(function(id){ var e=document.getElementById(id); if(e)e.innerHTML=''; });
+  ['ex-bulk-import','ex-subjbulk-import'].forEach(function(id){ var e=document.getElementById(id); if(e)e.style.display='none'; });
+  ['ex-bulk-file','ex-subjbulk-file'].forEach(function(id){ var e=document.getElementById(id); if(e)e.value=''; });
+  // Jump to the first loaded card so the teacher sees the previews right away.
+  try{ var el=document.getElementById('ex-qs'); if(el&&el.firstElementChild&&el.firstElementChild.scrollIntoView) el.firstElementChild.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+  try{ _saveQDraft&&_saveQDraft(); }catch(e){}
+  toast(mapped.length+' questions loaded — review & edit below, then press Create Test ✅');
+}
+// LOAD (not create): parsed MCQ rows -> editor cards for review/edit. Teacher presses
+// "Create Test" after checking. (Earlier this created directly; now it previews first.)
+function _mcqBulkImport(){
+  var qs=window._mcqBulk||[]; if(!qs.length){ toast('No questions to load',true); return; }
+  var mapped=qs.map(function(q){
+    var opts=(q.options||[]).slice(0,4); while(opts.length<4) opts.push('');
+    var ohi=(q.options_hi||[]).map(function(o){return o?String(o):'';}).slice(0,4); while(ohi.length<4) ohi.push('');
+    var ci=opts.findIndex(function(o){ return o&&q.correct_option&&String(o).trim()===String(q.correct_option).trim(); });
+    return {q:(q.question_text||''), q_hi:(q.question_text_hi||''), opts:opts, opts_hi:ohi,
+            correct:(ci>=0?ci:0), marks:(q.max_marks||1), expl:(q.explanation||''), expl_hi:(q.explanation_hi||''),
+            image_b64:null, alt_image_b64:null, _ipart:'a', _tab:'en'};
+  });
+  _examLoadBulk(mapped, qs.some(function(q){return q.question_text_hi;}));
 }
 
 /* ============ MISSION 75 (SUBJECTIVE) BULK UPLOAD (Excel) ============ */
@@ -7445,31 +7462,22 @@ async function _subjBulkPick(){
     if(!parsed.ok.length){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question (English) and a Model Answer (English). Hindi columns are optional.</div>'; if(imp)imp.style.display='none'; return; }
     var hi=parsed.ok.filter(function(q){return q.question_text_hi;}).length;
     var badHtml=parsed.bad.length?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
-    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'.</div>'+badHtml;
-    if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Import & Create Test'; }
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'. Load them below to review &amp; edit, then press Create Test.</div>'+badHtml;
+    if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Load into editor'; }
   }catch(e){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">File read error: '+esc(e.message)+'</div>'; if(imp)imp.style.display='none'; }
 }
-async function _subjBulkImport(){
-  var qs=window._subjBulk||[]; if(!qs.length){ toast('No questions to import',true); return; }
-  var title=(val('ex-title')||'').trim(); if(!title){ toast('Please enter a Test Title above first.',true); var t=document.getElementById('ex-title'); if(t)t.focus(); return; }
-  var hasHi=qs.some(function(q){return q.question_text_hi;});
-  var medium=hasHi?'Bilingual':(val('ex-medium')||'English');
-  var _sched=(val('ex-sched')||'').trim(); var _chRaw=(val('ex-ch')||'').trim();
-  var body={subject:(val('ex-sub')||''), class_name:(val('ex-cls-test')||''), title:title,
-    chapter:(_sched?(_chRaw+' ⟦S:'+_sched+'⟧'):_chRaw), test_type:'subjective', medium:medium,
-    duration_min:(parseInt(val('ex-dur'))||0), scheduled_at:(_sched||null), questions:qs, batch_ids:_multiBatchIds()};
-  var imp=document.getElementById('ex-subjbulk-import'); if(imp){ imp.disabled=true; imp.textContent='Importing...'; }
-  var prog=document.getElementById('ex-prog'); var pl=document.getElementById('ex-prog-label'), pp=document.getElementById('ex-prog-pct'), pf=document.getElementById('ex-prog-fill');
-  if(prog) prog.classList.add('show');
-  function _p(pct,lbl){ if(pf)pf.style.width=pct+'%'; if(pp)pp.textContent=pct+'%'; if(pl&&lbl)pl.textContent=lbl; }
-  _p(5,'Preparing '+qs.length+' questions…');
-  try{
-    var r=await _mcqXhrPost('/api/teacher/exam',body,function(pct){ _p(Math.max(10,Math.min(90,pct)),'Uploading '+qs.length+' questions…'); });
-    _p(100,'Done — '+(r.questions||qs.length)+' questions imported');
-    toast('Mission 75 test created with '+(r.questions||qs.length)+' questions ✅');
-    _clearQDraft&&_clearQDraft(); _examQs=[];
-    setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },900);
-  }catch(e){ toast((e&&e.message)||'Import failed',true); if(imp){ imp.disabled=false; imp.textContent='Import & Create Test'; } if(prog)prog.classList.remove('show'); }
+// LOAD (not create): parsed Mission 75 rows -> editor cards for review/edit. Teacher
+// presses "Create Test" after checking. Handles every question type (MCQ-as-text,
+// fill-in-the-blanks, match, passage, very-short/short/long, numerical) — each is just
+// question text + model answer, so one shape covers all subjects, Hindi & English.
+function _subjBulkImport(){
+  var qs=window._subjBulk||[]; if(!qs.length){ toast('No questions to load',true); return; }
+  var mapped=qs.map(function(q){
+    return {q:(q.question_text||''), q_hi:(q.question_text_hi||''), model:(q.model_answer||''), model_hi:(q.model_answer_hi||''),
+            marks:(q.max_marks||5), image_b64:null, alt_image_b64:null, model_answer_image:null,
+            _ipart:'a', qtype:'general', _tab:'en'};
+  });
+  _examLoadBulk(mapped, qs.some(function(q){return q.question_text_hi;}));
 }
 function setExamTab(i,tab){ _examQs[i]._tab=tab; _examReplaceCard(i); }
 function examMediumChange(){ _examMedium=val('ex-medium')||'English'; renderExamQs(); }
