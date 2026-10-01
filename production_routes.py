@@ -685,6 +685,74 @@ def prod_create_youtuber_series(payload: dict = Body(...), db: Session = Depends
     return {"ok": True, "series": series, "count": len(created), "ids": created}
 
 
+def _apply_upload_done(db, t, payload, me):
+    """Assign Work / Edit Task ke 'Upload' section ka handler.
+    Agar video already edit + YouTube pe live hai (video_status=='done') to seedha publish:
+    lifecycle -> uploaded, live views fetch, aur jis editor ne edit kiya usko credit + rating.
+    Returns True agar upload-done apply hua (warna normal flow chalta rahe)."""
+    vs = (payload.get("video_status") or "").strip().lower()
+    if vs != "done":
+        return False
+    url = (payload.get("youtube_url") or "").strip()
+    if not url:
+        return False
+    from video_tasks import _yt_extract_id, _yt_get_key, _yt_fetch_views
+    vid = _yt_extract_id(url)
+    if not vid:
+        raise HTTPException(400, "Could not read a valid YouTube video id from that URL")
+    # editor who actually edited this video (credit) — optional, overrides assigned editor
+    try:
+        ueid = int(payload.get("upload_editor_id") or 0)
+    except Exception:
+        ueid = 0
+    if ueid:
+        ep = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.id == ueid,
+            ProductionStaffProfile.staff_role == "editor").first()
+        if ep:
+            t.editor_id = ueid
+    # publish (same trigger as add_youtube)
+    t.youtube_url = url
+    t.yt_video_id = vid
+    t.published_at = datetime.utcnow()
+    pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added", force=True)
+    pc.log_event(db, t, me, "uploaded", new_state="uploaded")
+    # editor rating (optional)
+    try:
+        rt = int(payload.get("upload_rating") or 0)
+    except Exception:
+        rt = 0
+    if rt and 1 <= rt <= 5:
+        t.quality_rating = rt
+    # notify editor + (youtuber) creator that it's live
+    try:
+        if t.editor_id:
+            ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ed and ed.user_id:
+                _msg = f'"{t.title}" you edited is now live on YouTube.'
+                if rt:
+                    _msg += " Rated %d/5." % rt
+                pc.notify(db, ed.user_id, "Your video is live", _msg,
+                          "appreciation" if (rt or 0) >= 4 else "video_task", link=str(t.id))
+        if (t.creator_type or "") == "youtuber" and t.youtuber_id:
+            yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+            if yp and yp.user_id:
+                pc.notify(db, yp.user_id, "Your video is live",
+                          f'"{t.title}" was uploaded to YouTube.', "video_request", link=str(t.id))
+    except Exception:
+        pass
+    # initial live views (best-effort)
+    try:
+        key = _yt_get_key(db)
+        got = _yt_fetch_views([vid], key)
+        if vid in got:
+            t.yt_views = got[vid]
+            t.yt_views_at = datetime.utcnow()
+    except Exception:
+        pass
+    return True
+
+
 @router.post("/tasks")
 def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                    me=Depends(get_pm_or_admin)):
@@ -896,6 +964,14 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
         if yp and yp.user_id:
             pc.notify(db, yp.user_id, "New Video Request", f'A new video has been requested: "{title}".',
                       "video_request", link=str(t.id))
+    # Upload section: agar PM/admin ne "Upload done" chuna (video already edited + live) to
+    # seedha publish + editor credit/rating (editor-assign flow skip).
+    try:
+        _apply_upload_done(db, t, payload, me)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "id": t.id, "ref_code": t.ref_code}
 
@@ -4304,6 +4380,13 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
         pass
     # ---- URGENT PAUSE-REQUEST: Edit Task flow se bhi editor ke active task ko pause + new deadline ----
     _apply_pause_request(db, t, (t.editor_id or 0), payload, me)
+    # ---- UPLOAD section: video already edited + live -> publish + editor credit/rating ----
+    try:
+        _apply_upload_done(db, t, payload, me)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "id": t.id}
 

@@ -33243,6 +33243,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _cei=(t.collab_editor_ids||[]).slice();
     if(_cei.length){ d.editor_collab_on=true; d.collab_editor_ids=_cei.slice(); d.editor_all_ids=(t.editor_id?[t.editor_id]:[]).concat(_cei); }
     else { d.editor_collab_on=false; d.collab_editor_ids=[]; d.editor_all_ids=[]; }
+    // upload section prefill
+    d.youtube_url=t.youtube_url||'';
+    d.video_status=(t.youtube_url||['uploaded','completed'].indexOf(t.lifecycle||'')>=0)?'done':'pending';
+    d.upload_editor_id=t.editor_id||0;
+    d.upload_rating=t.quality_rating||0;
     // collab teachers
     var pid=t.teacher_id; var ids=[]; if(pid) ids.push(pid);
     (t.collab_teacher_ids||[]).forEach(function(x){ if(x&&ids.indexOf(x)<0) ids.push(x); });
@@ -33256,7 +33261,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/channels','POST',{name:n}).then(function(r){ (window._aw.channels=window._aw.channels||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.channel_name=r.name;} _awRender(); toast('Channel added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.prodAwAddType=function(){ _awSave(); var n=prompt('New video type name:'); if(!n||!n.trim())return; n=n.trim();
     api(P.production.api+'/video-types','POST',{name:n}).then(function(r){ (window._aw.types=window._aw.types||[]).push({id:r.id,name:r.name}); if(window._aw){window._aw.data.video_type=r.name;} _awRender(); toast('Type added'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
-  var _AW_STEPS=['Teacher','Graphics','Editor'];
+  var _AW_STEPS=['Teacher','Graphics','Editor','Upload'];
   function _awSave(){
     var aw=window._aw; if(!aw) return; var g=function(id){ var e=document.getElementById(id); return e?e.value:undefined; };
     var s=aw.step, d=aw.data;
@@ -33300,6 +33305,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(g('aw-editor-deadline')!==undefined)d.editor_deadline=g('aw-editor-deadline');
       if(g('aw-editor-instructions')!==undefined)d.editor_instructions=g('aw-editor-instructions').trim();
       if(g('aw-editor-reference')!==undefined)d.editor_reference=g('aw-editor-reference').trim();
+    }
+    else if(s===4){
+      // Upload section
+      var vst=document.getElementById('aw-video-status'); if(vst)d.video_status=(vst.value==='done'?'done':'pending');
+      if(g('aw-youtube-url')!==undefined)d.youtube_url=g('aw-youtube-url').trim();
+      if(g('aw-upload-editor')!==undefined)d.upload_editor_id=g('aw-upload-editor')?parseInt(g('aw-upload-editor'),10):0;
+      if(g('aw-upload-rating')!==undefined)d.upload_rating=g('aw-upload-rating')?parseInt(g('aw-upload-rating'),10):0;
     }
   }
   // ---- Assign Work draft persistence (survives accidental close / page reload) ----
@@ -33381,7 +33393,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       if(!d.graphics_id){ toast('Select a graphics designer',true); return; }
     }
-    if(aw.step<3){ aw.step++; _awRender(); }
+    if(aw.step===4 && (d.video_status==='done')){
+      if(!(d.youtube_url||'').trim()){ toast('Paste the uploaded YouTube link (or switch to "Upload pending")',true); return; }
+    }
+    if(aw.step<4){ aw.step++; _awRender(); }
   };
   window.awBack=function(){ _awSave(); if(window._aw.step>1){ window._aw.step--; _awRender(); } };
   window.prodAwMode=function(m){ if(!window._aw) return; window._aw.mode=m; if(m==='project'&&!window._aw.proj){ window._aw.proj={connect:true,chapter_scope:'pe',class_level:'12'}; } _awRender(); };
@@ -33605,7 +33620,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
               ((d.graphics_reference_uploads&&d.graphics_reference_uploads.length)?('<div class="aw-refgrid">'+d.graphics_reference_uploads.map(function(u,i){ return '<div class="aw-refcell"><span class="aw-refn">New '+(i+1)+'</span><img loading="lazy" src="'+esc(u)+'" onclick="awRefView('+i+')" title="Click to view full"><button type="button" class="aw-x" onclick="event.stopPropagation();awRefRemove('+i+')">&times;</button></div>'; }).join('')+'</div>'):'')+'</div>';
         }
       }
-    } else {
+    } else if(aw.step===3){
       // ===== EDITOR section =====
       var ppl3=aw.people||{}; var edList=ppl3.editors||[];
       var edOn=!!d.editor_collab_on;
@@ -33629,12 +33644,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       html+='<div class="p-field"><label>Editor deadline <span style="color:var(--muted);font-weight:600">(editor must finish by)</span></label><input class="p-input" id="aw-editor-deadline" type="datetime-local" value="'+esc(d.editor_deadline||'')+'"></div>'+
         '<div class="p-field"><label>Instructions for the editor <span style="color:var(--muted);font-weight:600">(editor will see this)</span></label><textarea class="p-area" id="aw-editor-instructions" placeholder="e.g. cut the first 30s, add intro, background music, captions...">'+esc(d.editor_instructions||'')+'</textarea></div>'+
         '<div class="p-field"><label>Reference for the editor <span style="color:var(--muted);font-weight:600">(link or notes)</span></label><input class="p-input" id="aw-editor-reference" placeholder="Drive/YouTube reference link (optional)" value="'+esc(d.editor_reference||'')+'"></div>';
+    } else {
+      // ===== UPLOAD section (step 4) =====
+      // Video already edited + uploaded? PM/admin can skip the whole editor flow and just
+      // paste the live YouTube link + credit/rate the editor who did it.
+      var ppl4=aw.people||{}; var edList4=ppl4.editors||[];
+      var vstat=(d.video_status==='done')?'done':'pending';
+      d.video_status=vstat;
+      html+='<div class="aw-sechead">'+ic('upload')+' Upload</div>'+
+        '<div class="p-field"><label>Video Status</label><select class="p-select" id="aw-video-status" onchange="awVideoStatusToggle(this.value)">'+
+          '<option value="pending"'+(vstat!=='done'?' selected':'')+'>Upload pending — not uploaded yet</option>'+
+          '<option value="done"'+(vstat==='done'?' selected':'')+'>Upload done — already live on YouTube</option></select></div>';
+      if(vstat==='done'){
+        html+='<div class="aw-note" style="background:rgba(46,158,107,.1);border:1px solid rgba(46,158,107,.32);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.82rem;color:#1f7a44;line-height:1.45">Marking <b>Upload done</b> publishes this video — status becomes <b>Uploaded</b> and live views are fetched automatically. No editor assignment needed.</div>'+
+          '<div class="p-field"><label>Uploaded YouTube video link</label><input class="p-input" id="aw-youtube-url" placeholder="https://www.youtube.com/watch?v=..." value="'+esc(d.youtube_url||'')+'"></div>'+
+          '<div class="p-field"><label>Editor who edited this video <span style="color:var(--muted);font-weight:600">(optional — credit + rate)</span></label><select class="p-select" id="aw-upload-editor"><option value="">— Not set —</option>'+
+            edList4.map(function(ed){ return '<option value="'+ed.id+'"'+((d.upload_editor_id||d.editor_id)===ed.id?' selected':'')+'>'+esc(ed.name)+'</option>'; }).join('')+'</select></div>'+
+          '<div class="p-field"><label>Rate the editor <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-upload-rating"><option value="">No rating</option><option value="5"'+(d.upload_rating==5?' selected':'')+'>5 - Excellent</option><option value="4"'+(d.upload_rating==4?' selected':'')+'>4 - Good</option><option value="3"'+(d.upload_rating==3?' selected':'')+'>3 - Average</option><option value="2"'+(d.upload_rating==2?' selected':'')+'>2 - Below average</option><option value="1"'+(d.upload_rating==1?' selected':'')+'>1 - Poor</option></select></div>';
+      } else {
+        html+='<div class="aw-note" style="background:rgba(140,125,92,.1);border:1px solid rgba(140,125,92,.28);border-radius:10px;padding:10px 12px;margin:2px 0 4px;font-size:.82rem;color:#7a6f52;line-height:1.45"><b>Upload pending</b> — everything stays as is. The normal assign / edit / review flow continues; you can post the YouTube link later from the task card.</div>';
+      }
     }
     body.innerHTML=html;
     // Editor step: agar editor pehle se selected hai (ya user ne chuna) to uske active tasks panel load karo
     try{ if(aw.step===3 && !d.editor_collab_on && d.editor_id){ setTimeout(function(){ _awEditorSel(d.editor_id); },0); } }catch(e){}
     var back=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodAwCancel()">Cancel</button>';
-    var next=aw.step<3?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">'+(aw.editId?'Save Changes':'Create Production Task')+'</button>';
+    var next=aw.step<4?'<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>':'<button class="p-btn p-btn-primary" onclick="awCreate()">'+(aw.editId?'Save Changes':'Create Production Task')+'</button>';
     if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+back+next+'</div>';
   }
   window._awEditorSel=function(editorId){ try{ var eid=(window._aw&&window._aw.editId)||0; window._editorActivePanel('aw-activebox', editorId, eid, 'aw'); }catch(e){} };
@@ -33753,6 +33788,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awCollabAll=function(){ /* legacy no-op — replaced by awCollabTapTeacher */ };
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); if(v==='yes'&&!window._aw.data.graphics_status) window._aw.data.graphics_status='pending'; _awRender(); };
   window.awGfxStatusToggle=function(v){ _awSave(); window._aw.data.graphics_status=(v==='done'?'done':'pending'); _awRender(); };
+  window.awVideoStatusToggle=function(v){ _awSave(); window._aw.data.video_status=(v==='done'?'done':'pending'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
   function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ var d=window._aw.data; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(d.graphics_reference_uploads.length>=6){ toast('Up to 6 reference images',true); return; } d.graphics_reference_uploads.push(r.result); _awRender(); }; r.readAsDataURL(file); }
   window.awThumbFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadImg(f); };
@@ -33775,6 +33811,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
     if(d.thumbnail_required && !d.graphics_id){ toast('Select a graphics designer (thumbnail is required)',true); window._aw.step=2; _awRender(); return; }
     if(d.editor_collab_on && (d.editor_all_ids||[]).length===1){ toast('Pick 2 editors for a collab (or switch to Single editor)',true); window._aw.step=3; _awRender(); return; }
+    if(d.video_status==='done' && !(d.youtube_url||'').trim()){ toast('Paste the uploaded YouTube link (or switch to "Upload pending")',true); window._aw.step=4; _awRender(); return; }
     // ---- EDIT MODE: existing task update (create nahi) ----
     if(aw.editId){
       var eid=aw.editId;
@@ -33801,6 +33838,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       eb.editor_deadline=d.editor_deadline||'';
       eb.editor_instructions=d.editor_instructions||'';
       eb.editor_reference=d.editor_reference||'';
+      // Upload section: mark video live + credit/rate editor
+      eb.video_status=(d.video_status==='done'?'done':'pending');
+      if(d.video_status==='done'){
+        eb.youtube_url=(d.youtube_url||'').trim();
+        if(d.upload_editor_id) eb.upload_editor_id=d.upload_editor_id;
+        if(d.upload_rating) eb.upload_rating=d.upload_rating;
+      }
       // Urgent pause-request: Edit Task flow se editor ke ek active task ko pause + new deadline
       if(eb.editor_id && window._pasfPause && window._pasfPause.task_id){
         eb.pause_task_id=window._pasfPause.task_id;
@@ -33843,6 +33887,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(d.editor_deadline) body.editor_deadline=d.editor_deadline;
     if(d.editor_instructions) body.editor_instructions=d.editor_instructions;
     if(d.editor_reference) body.editor_reference=d.editor_reference;
+    // Upload section: create the task already uploaded (video edited + live) + credit/rate editor
+    if(d.video_status==='done'){
+      body.video_status='done';
+      body.youtube_url=(d.youtube_url||'').trim();
+      if(d.upload_editor_id) body.upload_editor_id=d.upload_editor_id;
+      if(d.upload_rating) body.upload_rating=d.upload_rating;
+    }
     // Optimistic: close the drawer NOW and create in the background — no blocking 10s wait.
     var _wasCollab=((d.collab_teacher_ids||[]).length>0);
     window._awResume=false;
