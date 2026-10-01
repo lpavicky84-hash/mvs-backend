@@ -711,19 +711,31 @@ def _apply_upload_done(db, t, payload, me):
             ProductionStaffProfile.staff_role == "editor").first()
         if ep:
             t.editor_id = ueid
-    # publish (same trigger as add_youtube)
-    t.youtube_url = url
-    t.yt_video_id = vid
-    t.published_at = datetime.utcnow()
-    pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added", force=True)
-    pc.log_event(db, t, me, "uploaded", new_state="uploaded")
-    # editor rating (optional)
+    # IDEMPOTENCY: har edit par video_status='done' + wahi prefilled URL dubara aata hai.
+    # Agar video pehle se isi URL par LIVE hai to publish ke side-effects (timeline event,
+    # editor/creator notification, views re-fetch) DOBARA mat chalao -> warna har unrelated
+    # edit par editor ko "your video is live" spam jaata aur timeline me duplicate events bante.
+    _url_changed = ((t.youtube_url or "").strip() != url)
+    _was_live = ((t.lifecycle or "") in ("uploaded", "completed")) and bool((t.youtube_url or "").strip())
+    _fresh_publish = _url_changed or not _was_live
+    # editor rating (optional) — idempotent assignment, safe to re-apply
     try:
         rt = int(payload.get("upload_rating") or 0)
     except Exception:
         rt = 0
     if rt and 1 <= rt <= 5:
         t.quality_rating = rt
+    t.youtube_url = url
+    t.yt_video_id = vid
+    if not _fresh_publish:
+        # already live on the same link — lifecycle ensure karo, baaki kuch mat chhedo
+        if (t.lifecycle or "") not in ("uploaded", "completed"):
+            pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added", force=True)
+        return True
+    # ---- genuine publish (naya link ya pehli baar) ----
+    t.published_at = datetime.utcnow()
+    pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added", force=True)
+    pc.log_event(db, t, me, "uploaded", new_state="uploaded")
     # notify editor + (youtuber) creator that it's live
     try:
         if t.editor_id:
