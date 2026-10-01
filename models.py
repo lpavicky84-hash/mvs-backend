@@ -1576,6 +1576,18 @@ class ProductionAttendance(Base):
     updated_at = Column(DateTime, default=func.now())
 
 
+class ExamDraft(Base):
+    """Server-side backup of an in-progress test / DPP draft, so clearing the browser cache or
+    switching device never loses a teacher's work. One row per (user, kind). Text-only (no
+    base64 images) — kept small."""
+    __tablename__ = "exam_drafts"
+    id         = Column(Integer, primary_key=True)
+    user_id    = Column(Integer, index=True)
+    kind       = Column(String(40), index=True, default="test")   # e.g. test_subjective / test_mcq / dpp_x
+    data       = Column(Text, default="")                          # JSON string (same shape as the local draft)
+    updated_at = Column(DateTime, default=func.now())
+
+
 class ProductionEvent(Base):
     """Immutable production timeline event. One row per important action."""
     __tablename__ = "production_events"

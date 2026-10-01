@@ -2039,6 +2039,49 @@ def _exam_ranking_rows(db, exam_id):
                      "test_type": exam.test_type},
             "graded": len(rows), "rows": rows}
 
+# ===== Server-side test/DPP draft backup (survives browser cache clears / device switch) =====
+@router.get("/exam-draft")
+def teacher_get_exam_draft(kind: str = "", db: Session = Depends(get_db), me=Depends(get_teacher)):
+    from models import ExamDraft
+    k = ((kind or "test").strip() or "test")[:40]
+    row = db.query(ExamDraft).filter(ExamDraft.user_id == me.id, ExamDraft.kind == k).first()
+    return {"kind": k, "data": (row.data if row else ""),
+            "updated_at": (row.updated_at.isoformat() if (row and row.updated_at) else "")}
+
+
+@router.post("/exam-draft")
+def teacher_save_exam_draft(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_teacher)):
+    from models import ExamDraft
+    k = ((payload.get("kind") or "test").strip() or "test")[:40]
+    data = payload.get("data")
+    if data is None:
+        data = ""
+    if not isinstance(data, str):
+        try:
+            data = json.dumps(data)
+        except Exception:
+            data = ""
+    if len(data) > 3_000_000:   # text-only drafts are small; guard against abuse
+        raise HTTPException(status_code=400, detail="Draft too large")
+    row = db.query(ExamDraft).filter(ExamDraft.user_id == me.id, ExamDraft.kind == k).first()
+    if not row:
+        row = ExamDraft(user_id=me.id, kind=k)
+        db.add(row)
+    row.data = data
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/exam-draft")
+def teacher_delete_exam_draft(kind: str = "", db: Session = Depends(get_db), me=Depends(get_teacher)):
+    from models import ExamDraft
+    k = ((kind or "test").strip() or "test")[:40]
+    db.query(ExamDraft).filter(ExamDraft.user_id == me.id, ExamDraft.kind == k).delete()
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/exam/{exam_id}/ranking")
 def teacher_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)

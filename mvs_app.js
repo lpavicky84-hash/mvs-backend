@@ -7502,9 +7502,20 @@ function _saveQDraft(){
         localStorage.setItem(_qDraftKey(),payload); _qDraftSig=sig;
       }catch(e2){}
     }
+    // SERVER BACKUP (text-only) — survives cache clears / device switch. Throttled so we don't
+    // hammer the API: at most once ~12s. Fire-and-forget; local draft is the fast path.
+    try{
+      var _now=Date.now();
+      if(!window._qSrvLast || (_now-window._qSrvLast)>12000){
+        window._qSrvLast=_now;
+        api('/api/teacher/exam-draft','POST',{kind:_qDraftKind(),data:payload}).catch(function(){ window._qSrvLast=0; });
+      }
+    }catch(e){}
   }catch(e){}
 }
-function _clearQDraft(){ try{ localStorage.removeItem(_qDraftKey()); _qDraftSig=''; }catch(e){} }
+function _qDraftKind(){ return (window._dppMode?'dpp':'test')+'_'+(_examType||'x'); }
+function _clearQDraft(){ try{ localStorage.removeItem(_qDraftKey()); _qDraftSig=''; }catch(e){}
+  try{ api('/api/teacher/exam-draft?kind='+encodeURIComponent(_qDraftKind()),'DELETE').catch(function(){}); }catch(e){} }
 function _restoreQDraft(dr){
   try{
     _examQs=(dr.qs&&dr.qs.length)?dr.qs:[]; if(!_examQs.length) addExamQ();
@@ -7544,6 +7555,24 @@ function _allQDrafts(){
   out.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });   // sabse naya pehle
   return out;
 }
+function _showQDraftBanner(dr, fromServer){
+  try{
+    var cont=document.getElementById('ex-qs'); if(!cont) return;
+    if(!dr) return; var n=_qCount(dr.qs); if(n<1) return;
+    var old=document.getElementById('qdraft-banner'); if(old) old.remove();
+    var when=new Date(dr.ts||Date.now()).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
+    var bn=document.createElement('div'); bn.id='qdraft-banner'; bn.className='alert alert-info';
+    bn.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px';
+    bn.innerHTML='<div style="flex:1;min-width:200px;line-height:1.5">An unsaved '+(window._dppMode?'DPP':'test')+' draft was found'+(fromServer?' (backed up on the server)':'')+' &mdash; <b>'+n+' question'+(n>1?'s':'')+'</b> <span style="opacity:.75">('+esc(when)+')</span>'+(dr.noimg?'<br><small style="opacity:.75">Images will not be restored.</small>':'')+'</div>'
+      +'<span style="display:flex;gap:10px;flex:none">'
+      +'<button id="qdraft-cont" style="white-space:nowrap;background:#b8941f;color:#fff;border:none;padding:9px 20px;border-radius:9px;font-weight:700;font-size:.86rem;cursor:pointer">Continue</button>'
+      +'<button id="qdraft-new" style="white-space:nowrap;background:#fff;color:#5a4a20;border:1px solid #ddc98f;padding:9px 20px;border-radius:9px;font-weight:600;font-size:.86rem;cursor:pointer">Start fresh</button>'
+      +'</span>';
+    cont.parentNode.insertBefore(bn,cont);
+    document.getElementById('qdraft-cont').onclick=function(){ _restoreQDraft(dr); };
+    document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); try{ if(dr.__key) localStorage.removeItem(dr.__key); }catch(e){} bn.remove(); };
+  }catch(e){}
+}
 function _maybeShowQDraft(){
   try{
     var cont=document.getElementById('ex-qs'); if(!cont) return;
@@ -7558,20 +7587,18 @@ function _maybeShowQDraft(){
       for(var j=0;j<all.length;j++){ if(!!all[j].dpp===wantDpp){ pick=all[j]; break; } }
       dr=pick||all[0]||null;
     }
-    if(!dr) return;
-    var n=_qCount(dr.qs); if(n<1) return;
-    var when=new Date(dr.ts||Date.now()).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
-    var bn=document.createElement('div'); bn.id='qdraft-banner'; bn.className='alert alert-info';
-    bn.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px';
-    bn.innerHTML='<div style="flex:1;min-width:200px;line-height:1.5">An unsaved '+(window._dppMode?'DPP':'test')+' draft was found &mdash; <b>'+n+' question'+(n>1?'s':'')+'</b> <span style="opacity:.75">('+esc(when)+')</span>'+(dr.noimg?'<br><small style="opacity:.75">Images will not be restored.</small>':'')+'</div>'
-      +'<span style="display:flex;gap:10px;flex:none">'
-      +'<button id="qdraft-cont" style="white-space:nowrap;background:#b8941f;color:#fff;border:none;padding:9px 20px;border-radius:9px;font-weight:700;font-size:.86rem;cursor:pointer">Continue</button>'
-      +'<button id="qdraft-new" style="white-space:nowrap;background:#fff;color:#5a4a20;border:1px solid #ddc98f;padding:9px 20px;border-radius:9px;font-weight:600;font-size:.86rem;cursor:pointer">Start fresh</button>'
-      +'</span>';
-    cont.parentNode.insertBefore(bn,cont);
-    document.getElementById('qdraft-cont').onclick=function(){ _restoreQDraft(dr); };
-    // "Start fresh" ab sirf current key clear karta hai + is banner ka source key (agar alag ho)
-    document.getElementById('qdraft-new').onclick=function(){ _clearQDraft(); try{ if(dr.__key) localStorage.removeItem(dr.__key); }catch(e){} bn.remove(); };
+    if(dr){ _showQDraftBanner(dr,false); return; }
+    // 3) LOCAL khali -> SERVER backup se laane ki koshish (cache clear / dusra device).
+    try{
+      api('/api/teacher/exam-draft?kind='+encodeURIComponent(_qDraftKind())).then(function(r){
+        if(!r||!r.data) return;
+        var sd=null; try{ sd=JSON.parse(r.data); }catch(e){ return; }
+        if(sd&&_qCount(sd.qs)>=1 && !document.getElementById('qdraft-banner')){
+          try{ localStorage.setItem(_qDraftKey(), r.data); }catch(e){}   // local cache dobara bhar do
+          _showQDraftBanner(sd,true);
+        }
+      }).catch(function(){});
+    }catch(e){}
   }catch(e){}
 }
 function _examUpdateTrAll(){
