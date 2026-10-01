@@ -7173,7 +7173,9 @@ function examPrev(inp,prevId){
 }
 function _examPrevNow(inp,prevId){
   const p=document.getElementById(prevId); if(!p) return;
-  p.innerHTML=_fmtRich(inp.value||'');
+  const v=inp.value||'';
+  p.innerHTML=_fmtRich(v);
+  if(typeof _hasMathSig==='function' && !_hasMathSig(v)){ p.dataset.kx='0'; return; }  // plain text -> skip KaTeX
   renderMath(p);
   if(p.querySelector('.rt-msrc')&&!window.katex){ const n=+(p.dataset.kx||0)+1; p.dataset.kx=n; if(n<10) setTimeout(()=>_examPrevNow(inp,prevId),600); }
   else p.dataset.kx='0';
@@ -7670,13 +7672,26 @@ function renderExamQs(){
   _examSetupWindow(el);
   _examUpdateTrAll();
 }
+// Does this text contain any maths / symbol signals? If not, we skip the expensive KaTeX pass.
+function _hasMathSig(v){
+  return /[$\\]|[_^][{0-9A-Za-z]|[°′″±×÷√∫πθ≤≥≠≈∞→∠∴∵½⅓¼¾]|[α-ωΑ-Ω]|\b(?:frac|sqrt|theta|alpha|beta|gamma|delta|lambda|pi|circ|times|div|pm|leq|geq|neq|infty|angle|triangle|therefore|prime|begin|matrix|array)\b/i.test(String(v||''));
+}
+// Fill ONE preview box: _fmtRich for formatting, and KaTeX ONLY when the text actually has
+// maths. Mission-75 answers are long Hindi paragraphs with no maths -> they skip KaTeX entirely,
+// so mounting a text card is near-instant (this is what was still choking long-answer tests).
+function _examPv(id, text){
+  var p=document.getElementById(id); if(!p) return;
+  var t=String(text||'');
+  p.innerHTML=_fmtRich(t);
+  if(_hasMathSig(t)){ try{ renderMath(p); }catch(e){} }
+}
 // Previews (rich + KaTeX) for one card — called for a single card on partial updates.
 function _examFillOne(i){
   const q=_examQs[i]; if(!q) return;
   const isHi=(_examMedium==='Bilingual')&&q._tab==='hi';
-  const pq=document.getElementById('pv-q-'+i); if(pq){pq.innerHTML=_fmtRich(isHi?(q.q_hi||''):(q.q||''));renderMath(pq);}
-  const pa=document.getElementById('pv-a-'+i); if(pa){pa.innerHTML=_fmtRich(isHi?(q.model_hi||''):(q.model||''));renderMath(pa);}
-  const pe=document.getElementById('pv-e-'+i); if(pe){pe.innerHTML=_fmtRich(isHi?(q.expl_hi||''):(q.expl||''));renderMath(pe);}
+  _examPv('pv-q-'+i, isHi?(q.q_hi||''):(q.q||''));
+  _examPv('pv-a-'+i, isHi?(q.model_hi||''):(q.model||''));
+  _examPv('pv-e-'+i, isHi?(q.expl_hi||''):(q.expl||''));
   const _ol=isHi?(q.opts_hi||[]):(q.opts||[]);
   _ol.forEach((ov,j)=>{ const ip=document.getElementById((isHi?'oxh-':'exo-')+i+'-'+j); if(ip) examOptPrev(ip,(isHi?'pv-oh-':'pv-o-')+i+'-'+j); });
 }
@@ -9308,7 +9323,7 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-console.log('MVS Smart Paste build 2026-07-20 v5 + scheduling + premium PDF v2');
+console.log('%cMVS build: VIRTUAL-WINDOW v8 (freeze-fix) — if you do NOT see this line, you are on OLD cached JS','color:#0a7;font-weight:800;font-size:14px');
 const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','·':'\\cdot ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
 const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
 const spSUB={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','ₓ':'x'};
