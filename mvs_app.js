@@ -7229,6 +7229,7 @@ async function openCreateExam(type,editData){
     +`<div id="mbf-slot"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. Every question is imported at once. The test uses the Subject, Class, Medium, Title, Chapter, Batch, Duration and Schedule set above.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Import &amp; Create Test</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
+    +((type==='subjective'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — Question &amp; Model Answer in English, with optional Hindi) and upload. Every question is imported at once. The test uses the Subject, Class, Medium, Title, Chapter, Batch, Duration and Schedule set above.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_subjBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-subjbulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_subjBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-subjbulk-import" onclick="_subjBulkImport()" style="display:none">Import &amp; Create Test</button></div><div id="ex-subjbulk-out" style="margin-top:8px"></div></div>`:'')
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
     +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
@@ -7389,6 +7390,75 @@ async function _mcqBulkImport(){
     var r=await _mcqXhrPost('/api/teacher/exam',body,function(pct){ _p(Math.max(10,Math.min(90,pct)),'Uploading '+qs.length+' questions\u2026'); });
     _p(100,'Done \u2014 '+(r.questions||qs.length)+' questions imported');
     toast('Test created with '+(r.questions||qs.length)+' questions \u2705');
+    _clearQDraft&&_clearQDraft(); _examQs=[];
+    setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },900);
+  }catch(e){ toast((e&&e.message)||'Import failed',true); if(imp){ imp.disabled=false; imp.textContent='Import & Create Test'; } if(prog)prog.classList.remove('show'); }
+}
+
+/* ============ MISSION 75 (SUBJECTIVE) BULK UPLOAD (Excel) ============ */
+function _subjBulkTemplate(){
+  try{
+    var head=['Q.No','Question (English)','Question (Hindi)','Model Answer (English)','Model Answer (Hindi)','Marks'];
+    var r1=['1','Explain the importance of Public Interest Litigation (PIL).','लोक हित याचिका (PIL) का महत्व समझाइए।','PIL allows any citizen to approach the court for the protection of public interest. It makes justice accessible to the poor and weaker sections, and holds the government accountable.','जनहित याचिका किसी भी नागरिक को जनहित की रक्षा के लिए न्यायालय में जाने की अनुमति देती है। यह गरीब और कमजोर वर्ग तक न्याय पहुंचाती है।','3'];
+    var r2=['2','Describe the role of the Prime Minister of India.','भारत के प्रधानमंत्री की भूमिका का वर्णन कीजिए।','The Prime Minister is the head of government and leader of the Council of Ministers. He/she advises the President, allocates portfolios, coordinates between ministries and represents the nation.','प्रधानमंत्री सरकार का प्रमुख और मंत्रिपरिषद का नेता होता है। वह राष्ट्रपति को सलाह देता है और मंत्रालयों में समन्वय करता है।','6'];
+    var ws=XLSX.utils.aoa_to_sheet([head,r1,r2]);
+    ws['!cols']=[{wch:7},{wch:46},{wch:46},{wch:56},{wch:56},{wch:7}];
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Mission 75 Questions');
+    XLSX.writeFile(wb,'MVS_Mission75_Bulk_Template.xlsx');
+    toast('Template downloaded');
+  }catch(e){ toast('Could not generate template',true); }
+}
+function _subjParseRows(rows){
+  var ok=[], bad=[];
+  (rows||[]).forEach(function(row,idx){
+    var rn=idx+2;
+    var qEn=_pickCol(row,['Question (English)','Question English','Question','Q']);
+    var qHi=_pickCol(row,['Question (Hindi)','Question Hindi','Hindi Question']);
+    var aEn=_pickCol(row,['Model Answer (English)','Model Answer English','Model Answer','Answer (English)','Answer English','Answer','Model']);
+    var aHi=_pickCol(row,['Model Answer (Hindi)','Model Answer Hindi','Answer (Hindi)','Answer Hindi','Hindi Answer']);
+    var marks=parseInt(_pickCol(row,['Marks','Mark','Max Marks']),10)||1;
+    qEn=(qEn||'').trim(); qHi=(qHi||'').trim(); aEn=(aEn||'').trim(); aHi=(aHi||'').trim();
+    if(!qEn){ if(qHi||aEn||aHi) bad.push({row:rn,reason:'missing question'}); return; }
+    if(!aEn){ bad.push({row:rn,reason:'model answer (English) required'}); return; }
+    ok.push({question_text:qEn,max_marks:marks,model_answer:aEn,
+             image_b64:null,alt_image_b64:null,model_answer_image:null,
+             question_text_hi:(qHi||null),model_answer_hi:(aHi||null)});
+  });
+  return {ok:ok,bad:bad};
+}
+async function _subjBulkPick(){
+  _mcqBulkCss();
+  var fi=document.getElementById('ex-subjbulk-file'); var out=document.getElementById('ex-subjbulk-out'); var imp=document.getElementById('ex-subjbulk-import');
+  if(!fi||!fi.files.length){ if(out)out.innerHTML=''; if(imp)imp.style.display='none'; return; }
+  try{
+    var data=await fi.files[0].arrayBuffer(); var wb=XLSX.read(data,{type:'array'});
+    var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    var parsed=_subjParseRows(rows); window._subjBulk=parsed.ok;
+    if(!parsed.ok.length){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question (English) and a Model Answer (English). Hindi columns are optional.</div>'; if(imp)imp.style.display='none'; return; }
+    var hi=parsed.ok.filter(function(q){return q.question_text_hi;}).length;
+    var badHtml=parsed.bad.length?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'.</div>'+badHtml;
+    if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Import & Create Test'; }
+  }catch(e){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">File read error: '+esc(e.message)+'</div>'; if(imp)imp.style.display='none'; }
+}
+async function _subjBulkImport(){
+  var qs=window._subjBulk||[]; if(!qs.length){ toast('No questions to import',true); return; }
+  var title=(val('ex-title')||'').trim(); if(!title){ toast('Please enter a Test Title above first.',true); var t=document.getElementById('ex-title'); if(t)t.focus(); return; }
+  var hasHi=qs.some(function(q){return q.question_text_hi;});
+  var medium=hasHi?'Bilingual':(val('ex-medium')||'English');
+  var _sched=(val('ex-sched')||'').trim(); var _chRaw=(val('ex-ch')||'').trim();
+  var body={subject:(val('ex-sub')||''), class_name:(val('ex-cls-test')||''), title:title,
+    chapter:(_sched?(_chRaw+' ⟦S:'+_sched+'⟧'):_chRaw), test_type:'subjective', medium:medium,
+    duration_min:(parseInt(val('ex-dur'))||0), scheduled_at:(_sched||null), questions:qs, batch_ids:_multiBatchIds()};
+  var imp=document.getElementById('ex-subjbulk-import'); if(imp){ imp.disabled=true; imp.textContent='Importing...'; }
+  var prog=document.getElementById('ex-prog'); var pl=document.getElementById('ex-prog-label'), pp=document.getElementById('ex-prog-pct'), pf=document.getElementById('ex-prog-fill');
+  if(prog) prog.classList.add('show');
+  function _p(pct,lbl){ if(pf)pf.style.width=pct+'%'; if(pp)pp.textContent=pct+'%'; if(pl&&lbl)pl.textContent=lbl; }
+  _p(5,'Preparing '+qs.length+' questions…');
+  try{
+    var r=await _mcqXhrPost('/api/teacher/exam',body,function(pct){ _p(Math.max(10,Math.min(90,pct)),'Uploading '+qs.length+' questions…'); });
+    _p(100,'Done — '+(r.questions||qs.length)+' questions imported');
+    toast('Mission 75 test created with '+(r.questions||qs.length)+' questions ✅');
     _clearQDraft&&_clearQDraft(); _examQs=[];
     setTimeout(function(){ closeModal(); if(typeof loadTTests==='function') loadTTests(); },900);
   }catch(e){ toast((e&&e.message)||'Import failed',true); if(imp){ imp.disabled=false; imp.textContent='Import & Create Test'; } if(prog)prog.classList.remove('show'); }
