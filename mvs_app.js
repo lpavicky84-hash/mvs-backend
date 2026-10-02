@@ -9488,8 +9488,66 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-window.MVS_BUILD='v9 (edit/delete-safe)';
+window.MVS_BUILD='v10 (hang-detector)';
 console.log('%cMVS build: '+window.MVS_BUILD+' — if you do NOT see this line (or the badge in the Create Test box), you are on OLD cached JS. Hard-refresh: Ctrl+Shift+R','color:#0a7;font-weight:800;font-size:14px');
+
+/* ================= MAIN-THREAD HANG DETECTOR (diagnostic) =================
+   Wraps the heavy builder actions. BEFORE each runs, its name is written to
+   localStorage; AFTER it finishes, the marker is cleared. If an action hangs the
+   page (RESULT_CODE_HUNG / "Page Unresponsive"), the marker STAYS, so on the next
+   page load we can show exactly which function was stuck when it froze. It also
+   records any single call that takes >500ms. Near-zero overhead (these actions are
+   infrequent, not per-keystroke). */
+(function(){
+  function _perf(){ try{ return performance.now(); }catch(e){ return Date.now(); } }
+  window._mvsHang=window._mvsHang||'';
+  window.mvsWrap=function(name, fn){
+    if(typeof fn!=='function') return fn;
+    return function(){
+      try{ localStorage.setItem('mvs_busy', name); }catch(e){}
+      var t0=_perf();
+      try{ return fn.apply(this, arguments); }
+      finally{
+        var dt=_perf()-t0;
+        try{ localStorage.removeItem('mvs_busy'); }catch(e){}
+        if(dt>500){
+          window._mvsHang=name+' took '+Math.round(dt)+'ms';
+          try{ console.warn('%cMVS SLOW: '+window._mvsHang,'color:#c0392b;font-weight:800;font-size:13px'); }catch(e){}
+          try{ localStorage.setItem('mvs_slow', window._mvsHang+' @ '+new Date().toLocaleTimeString()); }catch(e){}
+          if(dt>1200){ try{ toast('Heavy step: '+window._mvsHang+' — please screenshot this',true); }catch(e){} }
+        }
+      }
+    };
+  };
+  // Wrap the coarse builder actions (all are hoisted global function declarations).
+  try{ renderExamQs      = mvsWrap('renderExamQs', renderExamQs); }catch(e){}
+  try{ _examMountCard    = mvsWrap('_examMountCard', _examMountCard); }catch(e){}
+  try{ _examReplaceCard  = mvsWrap('_examReplaceCard', _examReplaceCard); }catch(e){}
+  try{ setExamTab        = mvsWrap('setExamTab', setExamTab); }catch(e){}
+  try{ _examPrevNow      = mvsWrap('_examPrevNow', _examPrevNow); }catch(e){}
+  try{ _saveQDraft       = mvsWrap('_saveQDraft', _saveQDraft); }catch(e){}
+  try{ removeExamQ       = mvsWrap('removeExamQ', removeExamQ); }catch(e){}
+  try{ addExamQ          = mvsWrap('addExamQ', addExamQ); }catch(e){}
+  try{ renderMath        = mvsWrap('renderMath', renderMath); }catch(e){}
+  try{ examTranslate     = mvsWrap('examTranslate', examTranslate); }catch(e){}
+  try{ examTranslateAll  = mvsWrap('examTranslateAll', examTranslateAll); }catch(e){}
+  try{ mcqSmartPasteApply= mvsWrap('mcqSmartPasteApply', mcqSmartPasteApply); }catch(e){}
+  try{ _autoFixField     = mvsWrap('_autoFixField', _autoFixField); }catch(e){}
+  // On load: if a previous session froze mid-action, surface which one.
+  function _mvsReport(){
+    try{
+      var busy=localStorage.getItem('mvs_busy');
+      if(busy){
+        var msg='Last freeze happened inside: '+busy;
+        window._mvsLastFreeze=msg;
+        try{ console.warn('%c'+msg,'color:#c0392b;font-weight:800;font-size:15px'); }catch(e){}
+        try{ toast(msg+' — bhai ye screenshot bhej do',true); }catch(e){}
+        localStorage.removeItem('mvs_busy');
+      }
+    }catch(e){}
+  }
+  try{ if(document.readyState!=='loading') setTimeout(_mvsReport,2500); else document.addEventListener('DOMContentLoaded',function(){ setTimeout(_mvsReport,2500); }); }catch(e){}
+})();
 const spUMAP={'∫':'\\int ','π':'\\pi ','θ':'\\theta ','Δ':'\\Delta ','δ':'\\delta ','λ':'\\lambda ','μ':'\\mu ','α':'\\alpha ','β':'\\beta ','γ':'\\gamma ','ω':'\\omega ','Σ':'\\sum ','σ':'\\sigma ','×':'\\times ','·':'\\cdot ','÷':'\\div ','±':'\\pm ','∞':'\\infty ','≈':'\\approx ','≠':'\\ne ','≤':'\\le ','≥':'\\ge ','→':'\\to ','←':'\\leftarrow ','−':'-','–':'-','η':'\\eta ','Ω':'\\Omega ','ε':'\\epsilon ','ρ':'\\rho ','ν':'\\nu ','°':'^\\circ '};
 const spSUP={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','ⁿ':'n','⁻':'-'};
 const spSUB={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','ₓ':'x'};
