@@ -11683,6 +11683,18 @@ function _reviewEnsureCss(){
     '.p-btn-locked{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:not-allowed;border:1px dashed rgba(201,154,46,.5);background:rgba(201,154,46,.08);color:#9a7418}'+
     '.p-btn-locked svg{width:15px;height:15px;opacity:.85}'+
     'body.dark .p-btn-locked{background:rgba(201,154,46,.12);color:#e0b864;border-color:rgba(201,154,46,.4)}'+
+    // premium back arrow in chat headers
+    '.chat-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#14213d);cursor:pointer;flex:0 0 auto;transition:background .15s,box-shadow .15s}'+
+    '.chat-back:hover{background:var(--surface-2,#f0ead9);box-shadow:0 2px 8px rgba(18,20,45,.08)}'+
+    'body.dark .chat-back{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
+    // deadline choice (keep same / set new) in the Request Changes modal
+    '.pmc-dlopts{display:flex;flex-direction:column;gap:8px}'+
+    '.pmc-opt{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--border,#e5ddcb);border-radius:11px;cursor:pointer;font-size:.86rem;font-weight:700;color:var(--text,#14213d);transition:border-color .15s,background .15s}'+
+    '.pmc-opt:hover{background:var(--surface-2,#f0ead9)}'+
+    '.pmc-opt input{margin-top:3px;accent-color:#c98a2e;flex:0 0 auto}'+
+    '.pmc-opt:has(input:checked){border-color:#c98a2e;background:rgba(201,154,46,.08)}'+
+    '.pmc-sub{font-weight:700;color:var(--text-muted,#6b7280);font-size:.78rem}'+
+    'body.dark .pmc-opt{border-color:#2c405e}'+
     '@media(max-width:600px){.trv-grid{grid-template-columns:1fr}.trv-acts .btn{flex:1 1 100%}}';
   document.head.appendChild(s);
 }
@@ -11725,7 +11737,7 @@ async function loadTReview(){
   };
   wrap.innerHTML=`<div class="trv-sec">
     <div class="trv-sec-head">${ic('video')} Video Review ${pend.length?`<span class="trv-count">${pend.length}</span>`:''}
-      <span class="trv-sub">Edited videos waiting for your check — watch, then Approve or ask for Changes</span></div>
+      <span class="trv-sub">Watch each edited video, then Approve or request changes</span></div>
     <div class="trv-grid">${vids.map(card).join('')}</div>
   </div>`;
 }
@@ -11744,11 +11756,10 @@ window.tReviewChanges=function(id){
   dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
     '<div class="pd-head"><div class="h-title">Request Changes</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
     '<div class="p-modal-body">'+
-      '<div style="font-size:.84rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Editor ko kya change karna hai likho. Screenshots chat me paste kar sakte ho. Video QC me hi rahegi — PM final decide karega.</div>'+
-      '<div class="p-field"><label>What should change?</label><textarea class="p-area" id="trv-chg-note" rows="4" placeholder="e.g. 02:15 par audio clip ho raha hai, intro chhota karo..."></textarea></div>'+
+      '<div class="p-field"><label>What should change?</label><textarea class="p-area" id="trv-chg-note" rows="4" placeholder="Describe the changes for the editor"></textarea></div>'+
     '</div>'+
-    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+
-      '<button class="p-btn p-btn-warn" onclick="tReviewChangesSubmit('+id+')">Send to Editor &amp; open chat</button></div></div>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">'+(window._BACKIC||'')+' Back</button>'+
+      '<button class="p-btn p-btn-warn" onclick="tReviewChangesSubmit('+id+')">Send to editor</button></div></div>'+
     '</div>';
   dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
   document.body.appendChild(dr);
@@ -11769,10 +11780,9 @@ window.tReviewApprove=function(id){
   dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
     '<div class="pd-head"><div class="h-title">Approve Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
     '<div class="p-modal-body">'+
-      '<div style="font-size:.84rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Approve karne se pehle editing ke baare me likhna <b>zaroori</b> hai — kya accha laga, kuch note. Iske baad PM ko aapka approval + note dikh jayega aur voh upload date set kar payega.</div>'+
-      '<div class="p-field"><label>Your note about the editing <span style="color:#dc2626">*</span></label><textarea class="p-area" id="trv-app-note" rows="4" placeholder="e.g. Editing badhiya hai, cuts clean hain, intro perfect. Approve."></textarea></div>'+
+      '<div class="p-field"><label>Your note about the editing <span style="color:#dc2626">*</span></label><textarea class="p-area" id="trv-app-note" rows="4" placeholder="Share your feedback on the editing before approving"></textarea></div>'+
     '</div>'+
-    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">'+(window._BACKIC||'')+' Back</button>'+
       '<button class="p-btn p-btn-ok" onclick="tReviewApproveSubmit('+id+')">Approve Video</button></div></div>'+
     '</div>';
   dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -11781,10 +11791,10 @@ window.tReviewApprove=function(id){
 };
 window.tReviewApproveSubmit=function(id){
   const note=((document.getElementById('trv-app-note')||{}).value||'').trim();
-  if(!note){ toast('Approve karne se pehle kuch likhna zaroori hai',true); var t=document.getElementById('trv-app-note'); if(t) t.focus(); return; }
+  if(!note){ toast('Please write a note about the editing before approving',true); var t=document.getElementById('trv-app-note'); if(t) t.focus(); return; }
   prodDismiss(); toast('Approving…');
   api('/api/teacher/tasks/'+id+'/review-approve','POST',{note:note}).then(function(){
-    toast('Approved ✓ — PM ko bhej diya'); _apiBust(); try{ loadTReview(); }catch(e){}
+    toast('Approved — sent to the manager'); _apiBust(); try{ loadTReview(); }catch(e){}
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
 };
 async function openTVTPropose(){
@@ -28718,36 +28728,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/tasks/'+id).then(function(t){
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-      // Teacher (creator/collab) must approve the edited video before PM can approve.
-      // Youtuber videos skip this gate.
+      // Teacher review is INFORMATIONAL only \u2014 PM/Admin can always approve.
       var _trReq=(t.teacher_review_required!==false);
       var _trSt=(t.teacher_review_status||'');
       var _trApproved=(_trSt==='approved');
-      var _gate=(_trReq && !_trApproved);
       var _trBlock='';
       var _chatBtn='<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button>';
       if(_trReq){
         if(_trApproved){
           var _by=[]; if(t.teacher_reviewer_name) _by.push(esc(t.teacher_reviewer_name)); if(t.teacher_reviewed_at) _by.push(esc(t.teacher_reviewed_at));
           _trBlock='<div class="qc-tr ok">'+
-            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('check')+'</span>Teacher approved'+(_by.length?('<span class="qc-tr-by">'+_by.join(' \u00b7 ')+'</span>'):'')+'</div>'+
+            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('check')+'</span>Approved by teacher'+(_by.length?('<span class="qc-tr-by">'+_by.join(' \u00b7 ')+'</span>'):'')+'</div>'+
             (t.teacher_review_note?('<div class="qc-tr-note">\u201c'+esc(t.teacher_review_note)+'\u201d</div>'):'')+
             _chatBtn+'</div>';
         } else if(_trSt==='changes'){
           _trBlock='<div class="qc-tr chg">'+
-            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('edit')+'</span>Teacher ne changes maange hain</div>'+
-            '<div class="qc-tr-tx">Editor ke saath chat chal rahi hai. Teacher ke approve karne ke baad hi aap approve kar paoge.</div>'+
+            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('edit')+'</span>Teacher requested changes</div>'+
+            '<div class="qc-tr-tx">The teacher is discussing changes with the editor.</div>'+
             _chatBtn+'</div>';
         } else {
           _trBlock='<div class="qc-tr wait">'+
-            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('clock')+'</span>Waiting for teacher approval</div>'+
-            '<div class="qc-tr-tx">Creator / collab teacher ke approve karne ke baad hi aap approve + upload date set kar paoge.</div>'+
+            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('clock')+'</span>Teacher review pending</div>'+
+            '<div class="qc-tr-tx">The teacher has not reviewed this yet. You can still approve.</div>'+
             _chatBtn+'</div>';
         }
       }
-      var _apprBtn=_gate
-        ? '<button class="p-btn-locked" disabled title="Teacher approval pending">'+ic('lock')+' Teacher approval pending</button>'
-        : '<button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">'+ic('check')+' Approve</button>';
+      var _apprBtn='<button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">'+ic('check')+' Approve</button>';
       dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
         '<div class="pd-head"><div class="h-title">Review Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -28755,14 +28761,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
              ?('<div class="p-field"><label>Edited video versions</label>'+_edVerHtml(t)+'</div>')
              :(t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">'+ic('play')+' Open edited video</a>'+(t.revision_count?(' \u00b7 revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>'))+
           _trBlock+
-          (_gate ? '' :
-            ('<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
-            '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
-            '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results...">'+esc(t.upload_remarks||'')+'</textarea></div>'))+
-          '<div class="qc-note" style="margin-top:12px;font-size:.82rem;color:var(--muted);background:rgba(180,83,9,.07);border:1px solid rgba(180,83,9,.2);border-radius:10px;padding:10px 12px;line-height:1.5">'+ic('edit')+' <b>Changes Required</b> or <b>Reject</b> \u2014 the editor is notified instantly and you\u2019ll be taken straight to <b>Chat with Editor</b> to explain what to change. No typing needed here.</div>'+
+          '<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
+          '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
+          '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(optional)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results">'+esc(t.upload_remarks||'')+'</textarea></div>'+
         '</div>'+
         '<div class="pd-foot"><div class="p-acts">'+_apprBtn+
-          '<button class="p-btn p-btn-warn" onclick="pmQcDecide(\'changes\')">Changes Required</button>'+
+          '<button class="p-btn p-btn-warn" onclick="pmQcDecide(\'changes\')">'+ic('edit')+' Request Changes</button>'+
           '<button class="p-btn p-btn-danger" onclick="pmQcDecide(\'reject\')">Reject</button></div></div>'+
         '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -28771,24 +28775,89 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _qcAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._qcImgs.length<6){ window._qcImgs.push(rd.result); var box=document.getElementById('qc-prev'); if(box) box.innerHTML=window._qcImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmQcDecide=function(action){
-    var id=window._qcId, ep, body={};
+    var id=window._qcId;
     if(action==='approve'){
       var _ud=((document.getElementById('qc-update')||{}).value||'');
       var _urem=((document.getElementById('qc-uprem')||{}).value||'').trim();
       if(!_ud && !_urem){ toast('Set an upload date or remarks to approve',true); var _u=document.getElementById('qc-update'); if(_u) _u.focus(); return; }
-      ep='/qc-approve'; body={upload_date:_ud, upload_remarks:_urem};
+      if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; }
+      prodDismiss(); toast('Approving\u2026');
+      api(P.production.api+'/tasks/'+id+'/qc-approve','POST',{upload_date:_ud, upload_remarks:_urem}).then(function(){
+        _apiBust(); _refresh('production'); toast('QC approved'); setTimeout(function(){ pmRateModal(id); },300);
+      }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
+      return;
     }
-    else if(action==='changes'){ ep='/request-edit-changes'; body={remarks:'',references:'',images:[]}; }
-    else { ep='/qc-reject'; body={remarks:'',images:[]}; }
+    if(action==='changes'){ pmChangesConfirm(id); return; }
+    // reject \u2014 straight to chat so the PM can explain the redo
     if(window._qcPasteH){ document.removeEventListener('paste',window._qcPasteH); window._qcPasteH=null; }
-    prodDismiss(); toast(action==='approve'?'Approving\u2026':(action==='changes'?'Changes requested \u2014 opening chat\u2026':'Rejected \u2014 opening chat\u2026'));
-    api(P.production.api+'/tasks/'+id+ep,'POST',body).then(function(){
-      _apiBust(); _refresh('production');
-      if(action==='approve'){ toast('QC approved'); setTimeout(function(){ pmRateModal(id); },300); }
-      else {
-        // smooth transition: editor ko turant chat pe le jao (changes samjhane ke liye)
-        setTimeout(function(){ try{ prodEdtChat(id); }catch(e){} },250);
-      }
+    prodDismiss(); toast('Rejected \u2014 opening chat\u2026');
+    api(P.production.api+'/tasks/'+id+'/qc-reject','POST',{remarks:'',images:[]}).then(function(){
+      _apiBust(); _refresh('production'); setTimeout(function(){ try{ prodEdtChat(id); }catch(e){} },250);
+    }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
+  };
+  // ---- PM: Request Changes flow (confirm \u2192 details + mandatory new deadline \u2192 chat) ----
+  window.pmChangesConfirm=function(id){
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:440px">'+
+      '<div class="pd-head"><div class="h-title">Request Changes?</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body"><div style="font-size:.9rem;color:var(--text,#14213d);line-height:1.55">Are you sure you want to request changes for this video? The editor will be notified, and you can add the details and set a deadline next.</div></div>'+
+      '<div class="pd-foot"><div class="p-acts">'+
+        '<button class="p-btn" onclick="pmQcReview('+id+')">'+_BACKIC+' Back</button>'+
+        '<button class="p-btn p-btn-warn" onclick="pmChangesModal('+id+')">Yes, request changes</button></div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  window.pmChangesModal=function(id){
+    try{ _reviewEnsureCss(); }catch(e){}
+    api(P.production.api+'/tasks/'+id).then(function(t){
+      var old=document.getElementById('prod-modal'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      // current editor deadline (shown as the "keep same" option)
+      var curIso=(t.editor_deadline_iso||'').slice(0,16);
+      var curNice=(t.editor_deadline||'');
+      // default new deadline: 2 days from now, 06:00 PM (or current, if any)
+      var _d=new Date(Date.now()+2*24*3600*1000); _d.setHours(18,0,0,0);
+      var _dv=curIso || (_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0')+'T18:00');
+      // if there's a current deadline, default to keeping it; else force "new"
+      window._pmcDlModeVal=curNice?'same':'new';
+      var _opts=
+        (curNice?('<label class="pmc-opt"><input type="radio" name="pmc-dlm" value="same" '+(window._pmcDlModeVal==='same'?'checked':'')+' onchange="pmcDlMode(\'same\')"><span><b>Keep current deadline</b><br><span class="pmc-sub">'+esc(curNice)+'</span></span></label>'):'')+
+        '<label class="pmc-opt"><input type="radio" name="pmc-dlm" value="new" '+(window._pmcDlModeVal==='new'?'checked':'')+' onchange="pmcDlMode(\'new\')"><span><b>Set a new deadline</b></span></label>';
+      dr.innerHTML='<div class="p-modal" style="max-width:480px">'+
+        '<div class="pd-head"><div class="h-title">Request Changes</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="p-field"><label>What needs to change? <span style="color:#d1443a">*</span></label><textarea class="p-area" id="pmc-note" rows="4" placeholder="Describe the changes for the editor"></textarea></div>'+
+          '<div class="p-field"><label>Deadline for the editor</label><div class="pmc-dlopts">'+_opts+'</div>'+
+            '<div id="pmc-dlwrap" style="margin-top:8px;'+(window._pmcDlModeVal==='new'?'':'display:none')+'"><input class="p-input" id="pmc-dl" type="datetime-local" value="'+esc(_dv)+'"></div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts">'+
+          '<button class="p-btn" onclick="pmChangesConfirm('+id+')">'+_BACKIC+' Back</button>'+
+          '<button class="p-btn p-btn-warn" onclick="pmChangesSubmit('+id+')">'+ic('send')+' Send to editor</button></div></div>'+
+        '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+      document.body.appendChild(dr);
+      setTimeout(function(){ var n=document.getElementById('pmc-note'); if(n) n.focus(); },60);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  window.pmcDlMode=function(m){ window._pmcDlModeVal=m; var w=document.getElementById('pmc-dlwrap'); if(w) w.style.display=(m==='new')?'block':'none'; };
+  window.pmChangesSubmit=function(id){
+    var note=((document.getElementById('pmc-note')||{}).value||'').trim();
+    var mode=window._pmcDlModeVal||'same';
+    if(!note){ toast('Please describe the changes',true); var n=document.getElementById('pmc-note'); if(n) n.focus(); return; }
+    var body={remarks:note};
+    if(mode==='new'){
+      var dl=((document.getElementById('pmc-dl')||{}).value||'');
+      if(!dl){ toast('Please set a new deadline for the editor',true); var d=document.getElementById('pmc-dl'); if(d) d.focus(); return; }
+      body.editor_deadline=dl;
+    }
+    // mode==='same' -> omit editor_deadline; backend keeps the existing one
+    prodDismiss(); toast('Sending to editor\u2026');
+    api(P.production.api+'/tasks/'+id+'/request-edit-changes','POST',body).then(function(){
+      _apiBust(); _refresh('production'); toast(mode==='new'?'Changes sent \u2014 new deadline set':'Changes sent to editor');
+      setTimeout(function(){ try{ prodEdtChat(id); }catch(e){} },250);
     }).catch(function(e){ toast((e&&e.message)||'Failed \u2014 try again',true); });
   };
   // ---- PM: Quality Rating (overall + 7 dimensions + remarks) ----
@@ -28976,11 +29045,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else { prodDismiss(); }
   };
   function _ytcRender(comments, presence){
+    try{ _reviewEnsureCss(); }catch(e){}
     var cfg=window._chatCfg||{};
     var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:120px;overflow-y:auto;padding:4px 2px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet \u2014 start the conversation below.</div>')+'</div>';
     var _hdr=(cfg._adminPills && window._vtAdminHead)?window._vtAdminHead(cfg._adminAud):('<div class="h-title">'+esc(cfg.title||'Chat')+'</div>');
     var _pills=(cfg._adminPills && window._vtAdminPills)?window._vtAdminPills(cfg._adminAud):'';
-    var inner='<div class="pd-head"><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
+    var inner='<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatCloseUnified()">'+_BACKIC+'</button><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
     _chatShow(inner);
     _chatWireInputs();
     _chatPresenceBar(presence);
@@ -29135,6 +29205,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var _CHAT_IC_CAM='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.6"/></svg>';
   var _CHAT_IC_TASK='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
   var _CHAT_IC_SEND='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
+  var _BACKIC='<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+  try{ window._BACKIC=_BACKIC; }catch(e){}
   function _chatFootInner(sendExpr){
     var optS='display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:transparent;cursor:pointer;font-weight:700;font-size:.9rem;color:var(--text,#14213d);border-radius:9px';
     return '<div id="chat-attach-prev">'+_chatAttachPrevHtml()+'</div>'+
@@ -29345,9 +29417,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       title:'Video Review (Teacher ↔ Editor)',taskId:id,barPortal:'production',multiTray:true});
   };
   function _peChatRender(id, aud, title, comments, sendFn, presence){
+    try{ _reviewEnsureCss(); }catch(e){}
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation.</div>';
     var inner=(
-      '<div class="pd-head"><div><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div>'+
+      '<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatCloseUnified()">'+_BACKIC+'</button><div><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,sendFn));
     _chatShow(inner);

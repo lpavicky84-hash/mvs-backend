@@ -1430,11 +1430,8 @@ def qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends
     t = _task(db, tid)
     if t.lifecycle != "qc_pending":
         raise HTTPException(400, "Task is not in QC")
-    # GATE: a teacher/collab video must be approved by the creator (or any collab teacher)
-    # before the PM can approve. Youtuber videos skip this gate.
-    if (getattr(t, "creator_type", "") or "teacher") != "youtuber":
-        if (getattr(t, "teacher_review_status", "") or "") != "approved":
-            raise HTTPException(400, "Teacher ne abhi video approve nahi ki — pehle teacher approval zaroori hai.")
+    # NOTE: teacher review is informational only — PM/Admin can approve at any time.
+    # (The teacher's approval + note is surfaced in the QC modal, but never blocks the PM.)
     t.qc_status = "approved"
     db.add(TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="approved",
                       revision_no=t.revision_count or 0))
@@ -1469,26 +1466,49 @@ def qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends
 def request_edit_changes(tid: int, payload: dict = Body(...),
                          db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     remarks = (payload.get("remarks") or "").strip()
-    # remarks optional — PM ab chat me changes samjhata hai (smooth transition)
     _note = remarks or "Changes requested — details in chat with editor."
     t = _task(db, tid)
     if t.lifecycle != "qc_pending":
         raise HTTPException(400, "Task is not in QC")
+    # a fresh deadline for the editor to finish the changes (mandatory from the new flow)
+    _new_dl = None
+    _dl_raw = (payload.get("editor_deadline") or payload.get("new_deadline") or "").strip()
+    if _dl_raw:
+        try:
+            _new_dl = datetime.fromisoformat(_dl_raw.replace("Z", ""))
+        except Exception:
+            _new_dl = None
     t.qc_status = "changes"
     t.revision_count = (t.revision_count or 0) + 1
+    if _new_dl:
+        t.editor_deadline = _new_dl
     rv = TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="changes",
                     remarks=_note, revision_no=t.revision_count)
     db.add(rv); db.flush()
     pc.save_images(db, t, payload.get("images"), "edit", rv.id, me)
     _refs = (payload.get("references") or payload.get("reference") or "").strip()
     pc.set_state(db, t, "qc_changes", actor=me, event="changes_requested",
-                 meta={"note": _note[:200], "references": _refs})
+                 meta={"note": _note[:200], "references": _refs,
+                       "new_deadline": (_new_dl.strftime("%d %b %Y, %I:%M %p") if _new_dl else "")})
+    # post the change details (+ new deadline) into the editor chat so there's a clear record
+    try:
+        from video_tasks import _vtc_add
+        _dl_line = ("\nNew deadline: " + _new_dl.strftime("%d %b %Y, %I:%M %p")) if _new_dl else ""
+        _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
+        _vtc_add(db, t.id, me, "Changes required in this video. Details below:\n" + _note + _dl_line,
+                 _crole, "", "editor")
+    except Exception:
+        pass
     if t.editor_id:
         ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ed and ed.user_id:
-            pc.notify(db, ed.user_id, "Changes Required", _note[:180], "video_task", link=str(t.id))
+            _msg = _note[:160]
+            if _new_dl:
+                _msg += " — New deadline: " + _new_dl.strftime("%d %b %Y, %I:%M %p")
+            pc.notify(db, ed.user_id, "Changes Required", _msg, "video_task", link=str(t.id))
     db.commit()
-    return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count}
+    return {"ok": True, "lifecycle": t.lifecycle, "revision": t.revision_count,
+            "editor_deadline": (t.editor_deadline.strftime("%d %b %Y, %I:%M %p") if t.editor_deadline else "")}
 
 
 @router.post("/tasks/{tid}/qc-reject")

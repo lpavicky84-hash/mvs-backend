@@ -3368,7 +3368,7 @@ def _teacher_review_task(db, tp, tid):
     except Exception:
         ids = [t.teacher_id]
     if tp.id not in ids:
-        raise HTTPException(403, "Ye video aapki nahi hai")
+        raise HTTPException(403, "This video is not assigned to you")
     return t
 
 
@@ -3471,7 +3471,7 @@ def teacher_review_changes(tid: int, payload: dict = Body(default={}),
     tp = get_teacher_profile(current_user, db)
     t = _teacher_review_task(db, tp, tid)
     if t.lifecycle != "qc_pending":
-        raise HTTPException(400, "Video abhi review ke liye available nahi hai")
+        raise HTTPException(400, "This video is not available for review right now")
     note = (payload.get("message") or payload.get("note") or "").strip()
     imgs = payload.get("images") or []
     t.teacher_review_status = "changes"
@@ -3480,7 +3480,7 @@ def teacher_review_changes(tid: int, payload: dict = Body(default={}),
     t.teacher_reviewed_by = None
     # seed the review chat with the teacher's change note + screenshots (if any)
     if note or imgs:
-        _review_chat_add(db, current_user, tid, (note or "Changes chahiye — details chat me."),
+        _review_chat_add(db, current_user, tid, (note or "Changes requested — details in chat."),
                          imgs, "teacher")
     try:
         _pc.set_state(db, t, t.lifecycle, actor=current_user, event="teacher_review_changes",
@@ -3515,10 +3515,10 @@ def teacher_review_approve(tid: int, payload: dict = Body(...),
     tp = get_teacher_profile(current_user, db)
     t = _teacher_review_task(db, tp, tid)
     if t.lifecycle != "qc_pending":
-        raise HTTPException(400, "Video abhi review ke liye available nahi hai")
+        raise HTTPException(400, "This video is not available for review right now")
     note = (payload.get("note") or payload.get("message") or "").strip()
     if not note:
-        raise HTTPException(400, "Approve karne se pehle video ke baare me likhna zaroori hai")
+        raise HTTPException(400, "Please write a note about the editing before approving")
     t.teacher_review_status = "approved"
     t.teacher_review_note = note
     t.teacher_reviewed_at = datetime.utcnow()
