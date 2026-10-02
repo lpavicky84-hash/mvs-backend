@@ -6301,7 +6301,13 @@ function _isChemTok(tok){
 function _chemAsc(m){
   return String(m).replace(/[→⟶]/g,'->').replace(/[←⟵]/g,'<-').replace(/[⇌⇋]/g,'<=>').replace(/[−‐‑‒]/g,'-').replace(/\s+/g,' ').trim();
 }
-const _WTOK='(?<![A-Za-z0-9])(?!(?:cosec|sinh|cosh|tanh|sin|cos|tan|cot|sec|csc|log|ln|lim|max|min|mod|arg|deg|det|exp)\\b)(?!(?:[A-Z][a-z]?\\d*){2,}(?![A-Za-z0-9]))(?:[a-zA-Z]{2,}(?![A-Za-z0-9])|[\\u0900-\\u097F]+)';
+// v11 ReDoS fix: the Devanagari branch had NO trailing boundary, so inside the repeated
+// group (?:WTOK sep*)+ a single Hindi word of N chars could be split 2^(N-1) ways. A long
+// Hindi sentence containing one math-ish char (e.g. the degree in "6.5 °C") made the
+// $-anchored peel fail and backtrack exponentially -> hard page freeze (RESULT_CODE_HUNG).
+// Adding (?![ऀ-ॿ]) forces each Hindi run to be consumed whole (atomic), exactly
+// like the ascii branch's (?![A-Za-z0-9]); matches on normal text are unchanged.
+const _WTOK='(?<![A-Za-z0-9])(?!(?:cosec|sinh|cosh|tanh|sin|cos|tan|cot|sec|csc|log|ln|lim|max|min|mod|arg|deg|det|exp)\\b)(?!(?:[A-Z][a-z]?\\d*){2,}(?![A-Za-z0-9]))(?:[a-zA-Z]{2,}(?![A-Za-z0-9])|[\\u0900-\\u097F]+(?![\\u0900-\\u097F]))';
 // v163 ReDoS fix: the old lead/trail peel regexes had \s* at the START of the
 // repeated unit AND [ ,;:.'"]* at the END. Both consume spaces, so the spaces
 // between words could be split many ways -> catastrophic backtracking. On a long
@@ -9488,7 +9494,7 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-window.MVS_BUILD='v10 (hang-detector)';
+window.MVS_BUILD='v11 (hindi-redos-fix)';
 console.log('%cMVS build: '+window.MVS_BUILD+' — if you do NOT see this line (or the badge in the Create Test box), you are on OLD cached JS. Hard-refresh: Ctrl+Shift+R','color:#0a7;font-weight:800;font-size:14px');
 
 /* ================= MAIN-THREAD HANG DETECTOR (diagnostic) =================
