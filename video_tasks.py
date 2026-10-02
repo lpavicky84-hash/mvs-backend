@@ -1279,6 +1279,40 @@ def _vtc_add(db, task_id, user, message, role, attachment_url="", audience="crea
     return c
 
 
+def _review_chat_add(db, user, task_id, message, images, role, attachment_url=""):
+    """Add message(s) to a task's teacher<->editor REVIEW thread (audience='review').
+    Supports MULTIPLE pasted screenshots: the text rides on the first image (or alone),
+    each extra image becomes its own image-only bubble so the whole thread renders cleanly.
+    Returns the list of created comment dicts (via _vtc_out)."""
+    import production_core as _pc
+    t = db.query(VideoTask).filter(VideoTask.id == int(task_id)).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    urls = []
+    _direct = (attachment_url or "").strip()
+    if _direct:
+        urls = [_direct]
+    elif images:
+        try:
+            urls = _pc.save_images(db, t, list(images)[:8], "review", None, user, return_urls=True) or []
+        except Exception:
+            urls = []
+    msg = (message or "").strip()
+    out = []
+    if not msg and not urls:
+        return out
+    if not urls:
+        c = _vtc_add(db, task_id, user, msg, role, "", "review")
+        if c:
+            out.append(_vtc_out(db, c))
+    else:
+        for i, u in enumerate(urls):
+            c = _vtc_add(db, task_id, user, (msg if i == 0 else ""), role, u, "review")
+            if c:
+                out.append(_vtc_out(db, c))
+    return out
+
+
 def _chat_party_tasks(db, task_id, audience=None):
     """Is chat ke counterpart (jis worker se baat ho rahi hai) ki active tasks —
     composer ke 'attach task' dropdown ke liye. audience se worker decide hota hai:

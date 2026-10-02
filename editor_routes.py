@@ -257,6 +257,60 @@ def _my_task(db, sp, tid):
     return t
 
 
+# ===== EDITOR: VIDEO REVIEW CHAT (teacher checks the edited video, editor replies) =====
+@router.get("/tasks/{tid}/review-chat")
+def editor_review_chat_get(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    _my_task(db, sp, tid)
+    from video_tasks import _vtc_list_v, _vtc_mark_read, _chat_touch, _chat_other_presence
+    _vtc_mark_read(db, me, tid, "review")
+    _chat_touch(db, me, tid, "review")
+    return {"comments": _vtc_list_v(db, tid, "review", getattr(me, "id", None)),
+            "presence": _chat_other_presence(db, getattr(me, "id", None), tid, "review")}
+
+
+@router.post("/tasks/{tid}/review-chat")
+def editor_review_chat_add(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                           me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    from video_tasks import _review_chat_add, _chat_touch, _collab_all_ids
+    msg = (payload.get("message") or "").strip()
+    imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+    att = (payload.get("attachment_url") or "").strip()
+    comments = _review_chat_add(db, me, tid, msg, imgs, "editor", attachment_url=att)
+    if not comments:
+        raise HTTPException(400, "Message cannot be empty")
+    try: _chat_touch(db, me, tid, "review", typing=False)
+    except Exception: pass
+    # notify teachers (creator + collab) and PMs — the review chat is PM/admin visible
+    try:
+        from models import TeacherProfile as _TP
+        _snip = (msg or "📷 screenshot")[:110]
+        for teach_id in _collab_all_ids(t):
+            tp = db.query(_TP).filter(_TP.id == teach_id).first()
+            if tp and tp.user_id:
+                pc.notify(db, tp.user_id, "Editor replied on your video review",
+                          f'Reply on "{t.title}": {_snip}', "video_review", link=str(tid))
+        pc.notify_pms(db, "Editor replied on video review",
+                      f'{getattr(me, "name", "Editor")} on "{t.title}": {_snip}',
+                      "video_review", link=str(tid))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "comments": comments}
+
+
+@router.post("/tasks/{tid}/review-chat-ping")
+def editor_review_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                            me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    _my_task(db, sp, tid)
+    from video_tasks import _chat_touch, _chat_other_presence
+    _chat_touch(db, me, tid, "review", typing=bool((payload or {}).get("typing")))
+    return {"presence": _chat_other_presence(db, getattr(me, "id", None), tid, "review")}
+
+
 def _open_session(db, sp, tid):
     return (db.query(EditingSession)
             .filter(EditingSession.task_id == tid, EditingSession.editor_id == sp.id,

@@ -9553,7 +9553,7 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-window.MVS_BUILD='v14 (ui-responsive)';
+window.MVS_BUILD='v15 (teacher-review)';
 console.log('%cMVS build: '+window.MVS_BUILD+' — if you do NOT see this line (or the badge in the Create Test box), you are on OLD cached JS. Hard-refresh: Ctrl+Shift+R','color:#0a7;font-weight:800;font-size:14px');
 
 /* ================= MAIN-THREAD HANG DETECTOR (diagnostic) =================
@@ -11604,7 +11604,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].filter(([k])=>!k||spec.some(t=>t.kind===k)).map(([k,l])=>`<option value="${k}" ${_tvtSpecKind===k?'selected':''}>${l}</option>`).join('')}
       </select>
     </div>`:'';
-    el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}
+    el.innerHTML=`${hero}${statCards}<div id="t-review-wrap"></div>${mtHtml}${masterCards}
       <div class="vtm-actions" style="display:flex;gap:10px;margin:0 0 16px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
         ${urgentEnabled?`<button class="btn vt-urgent-btn" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>`:''}
@@ -11625,8 +11625,147 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       const neg=s<0; sp.textContent=_vtCdText(s);
       sp.style.color=neg?'#b91c1c':(s<86400?'#b45309':'#047857'); }); };
     tick(); _tvtTimer=setInterval(tick,1000);
+    try{ loadTReview(); }catch(e){}
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+// ===== VIDEO REVIEW — styles (one-time inject) =====
+function _reviewEnsureCss(){
+  if(document.getElementById('mvs-review-css')) return;
+  var s=document.createElement('style'); s.id='mvs-review-css';
+  s.textContent=
+    '.trv-sec{margin:0 0 16px;border:1px solid rgba(180,83,9,.28);background:linear-gradient(180deg,rgba(201,154,46,.09),rgba(201,154,46,.03));border-radius:16px;padding:14px 15px}'+
+    '.trv-sec-head{font-weight:900;font-size:1rem;color:var(--text,#14213d);display:flex;align-items:center;gap:8px;flex-wrap:wrap}'+
+    '.trv-sec-head svg{width:19px;height:19px}'+
+    '.trv-count{background:#d1443a;color:#fff;font-size:.72rem;font-weight:900;border-radius:999px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}'+
+    '.trv-sub{flex-basis:100%;font-size:.76rem;font-weight:600;color:var(--text-muted,#6b7280);margin-top:2px}'+
+    '.trv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}'+
+    '.trv-card{background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:14px;padding:12px 13px;display:flex;flex-direction:column;gap:9px;box-shadow:0 2px 8px rgba(18,20,45,.05)}'+
+    '.trv-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:3px}'+
+    '.trv-pill{font-size:.68rem;font-weight:800;border-radius:999px;padding:3px 9px;display:inline-flex;align-items:center;gap:4px}'+
+    '.trv-pill svg{width:13px;height:13px}'+
+    '.trv-pill.ok{background:rgba(5,150,105,.14);color:#047857}'+
+    '.trv-pill.chg{background:rgba(220,38,38,.12);color:#b91c1c}'+
+    '.trv-pill.new{background:rgba(201,154,46,.18);color:#92700f}'+
+    '.trv-ch{font-size:.68rem;font-weight:700;color:var(--text-muted);background:var(--surface-2,#f0ead9);border-radius:999px;padding:3px 9px}'+
+    '.trv-title{font-weight:800;font-size:.95rem;color:var(--text,#14213d);line-height:1.3}'+
+    '.trv-meta{font-size:.76rem;color:var(--text-muted)}'+
+    '.trv-watch{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:.82rem;color:#2563eb;text-decoration:none;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);border-radius:9px;padding:7px 11px}'+
+    '.trv-watch svg{width:16px;height:16px}'+
+    '.trv-empty{font-size:.78rem;color:var(--text-muted);font-style:italic}'+
+    '.trv-note{font-size:.78rem;color:var(--text);background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.2);border-radius:9px;padding:7px 10px;line-height:1.45}'+
+    '.trv-acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}'+
+    '.trv-acts .btn{flex:1 1 auto;white-space:nowrap}'+
+    '.btn-warn{background:rgba(201,154,46,.16);color:#92700f;border:1px solid rgba(201,154,46,.4)}'+
+    '.btn-warn:hover{background:rgba(201,154,46,.26)}'+
+    '.qc-tr{margin:10px 0 4px;border-radius:11px;padding:10px 12px;font-size:.82rem;line-height:1.5}'+
+    '.qc-tr.ok{background:rgba(5,150,105,.09);border:1px solid rgba(5,150,105,.26);color:#065f46}'+
+    '.qc-tr.chg{background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.26);color:#991b1b}'+
+    '.qc-tr.wait{background:rgba(201,154,46,.09);border:1px solid rgba(201,154,46,.3);color:#92700f}'+
+    '.qc-tr svg{width:15px;height:15px;vertical-align:-2px}'+
+    '.qc-tr-note{margin-top:5px;font-style:italic;font-weight:600}'+
+    '.qc-tr-chat{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:8px;padding:5px 10px;color:var(--text,#14213d)}'+
+    '.qc-tr-chat svg{width:14px;height:14px}'+
+    '@media(max-width:600px){.trv-grid{grid-template-columns:1fr}.trv-acts .btn{flex:1 1 100%}}';
+  document.head.appendChild(s);
+}
+// ===== TEACHER: VIDEO REVIEW — check the EDITED video before PM approves =====
+async function loadTReview(){
+  _reviewEnsureCss();
+  const wrap=document.getElementById('t-review-wrap'); if(!wrap) return;
+  let vids=[];
+  try{ const d=await api('/api/teacher/review-videos'); vids=(d&&d.videos)||[]; }catch(e){ wrap.innerHTML=''; return; }
+  window._trevMap={}; vids.forEach(v=>window._trevMap[v.id]=v);
+  if(!vids.length){ wrap.innerHTML=''; return; }
+  const pend=vids.filter(v=>(v.teacher_review_status||'')!=='approved');
+  const card=v=>{
+    const st=(v.teacher_review_status||'');
+    const approved=(st==='approved');
+    const wantChg=(st==='changes');
+    const rev=v.revision_count?` · revision ${v.revision_count}`:'';
+    const _unread=(v.review_unread||0);
+    const statusPill=approved
+      ? `<span class="trv-pill ok">${ic('check')} You approved</span>`
+      : wantChg
+        ? `<span class="trv-pill chg">${ic('edit')} Changes requested</span>`
+        : `<span class="trv-pill new">${ic('clock')} Needs your check</span>`;
+    const noteBox=approved&&v.teacher_review_note?`<div class="trv-note">${ic('check')} Your note: <b>${esc(v.teacher_review_note)}</b></div>`:'';
+    const acts=approved
+      ? `<button class="btn btn-sm trv-chat" onclick="tReviewChat(${v.id})">${ic('chat')} Chat with Editor</button>`
+      : `<button class="btn btn-sm trv-chat" onclick="tReviewChat(${v.id})">${ic('chat')} Chat with Editor${_unread?` <b class="vt-chat-badge">${_unread}</b>`:''}</button>
+         <button class="btn btn-sm btn-warn" onclick="tReviewChanges(${v.id})">${ic('edit')} Changes</button>
+         <button class="btn btn-sm btn-primary" onclick="tReviewApprove(${v.id})">${ic('check')} Approve</button>`;
+    return `<div class="trv-card">
+      <div class="trv-top">
+        <div class="trv-chips">${statusPill}${v.channel?`<span class="trv-ch">${esc(v.channel)}</span>`:''}</div>
+        <div class="trv-title">${esc(v.title||('Task #'+v.id))}${rev}</div>
+        ${v.editor_name?`<div class="trv-meta">${ic('edit')} Editor: <b>${esc(v.editor_name)}</b></div>`:''}
+      </div>
+      ${v.edited_link?`<a class="trv-watch" href="${esc(v.edited_link)}" target="_blank" rel="noopener">${ic('play')} Watch edited video</a>`:'<div class="trv-empty">No edited link yet</div>'}
+      ${noteBox}
+      <div class="trv-acts">${acts}</div>
+    </div>`;
+  };
+  wrap.innerHTML=`<div class="trv-sec">
+    <div class="trv-sec-head">${ic('video')} Video Review ${pend.length?`<span class="trv-count">${pend.length}</span>`:''}
+      <span class="trv-sub">Edited videos waiting for your check — watch, then Approve or ask for Changes</span></div>
+    <div class="trv-grid">${vids.map(card).join('')}</div>
+  </div>`;
+}
+window.tReviewChat=function(id){
+  _ytcOpen({getUrl:'/api/teacher/tasks/'+id+'/review-chat',postUrl:'/api/teacher/tasks/'+id+'/review-chat',
+    pingUrl:'/api/teacher/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'teacher',
+    title:'Chat with Editor',taskId:id,barPortal:'teacher',multiTray:true});
+};
+window.tReviewChanges=function(id){
+  const v=(window._trevMap||{})[id]||{};
+  const old=document.getElementById('prod-modal'); if(old) old.remove();
+  const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+  dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
+    '<div class="pd-head"><div class="h-title">Request Changes</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+    '<div class="p-modal-body">'+
+      '<div style="font-size:.84rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Editor ko kya change karna hai likho. Screenshots chat me paste kar sakte ho. Video QC me hi rahegi — PM final decide karega.</div>'+
+      '<div class="p-field"><label>What should change?</label><textarea class="p-area" id="trv-chg-note" rows="4" placeholder="e.g. 02:15 par audio clip ho raha hai, intro chhota karo..."></textarea></div>'+
+    '</div>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+
+      '<button class="p-btn p-btn-warn" onclick="tReviewChangesSubmit('+id+')">Send to Editor &amp; open chat</button></div></div>'+
+    '</div>';
+  dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+  document.body.appendChild(dr);
+  setTimeout(function(){ var t=document.getElementById('trv-chg-note'); if(t) t.focus(); },60);
+};
+window.tReviewChangesSubmit=function(id){
+  const note=((document.getElementById('trv-chg-note')||{}).value||'').trim();
+  prodDismiss(); toast('Sending to editor…');
+  api('/api/teacher/tasks/'+id+'/review-changes','POST',{message:note}).then(function(){
+    _apiBust(); try{ loadTReview(); }catch(e){}
+    setTimeout(function(){ try{ tReviewChat(id); }catch(e){} },250);
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+window.tReviewApprove=function(id){
+  const v=(window._trevMap||{})[id]||{};
+  const old=document.getElementById('prod-modal'); if(old) old.remove();
+  const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+  dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
+    '<div class="pd-head"><div class="h-title">Approve Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+    '<div class="p-modal-body">'+
+      '<div style="font-size:.84rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Approve karne se pehle editing ke baare me likhna <b>zaroori</b> hai — kya accha laga, kuch note. Iske baad PM ko aapka approval + note dikh jayega aur voh upload date set kar payega.</div>'+
+      '<div class="p-field"><label>Your note about the editing <span style="color:#dc2626">*</span></label><textarea class="p-area" id="trv-app-note" rows="4" placeholder="e.g. Editing badhiya hai, cuts clean hain, intro perfect. Approve."></textarea></div>'+
+    '</div>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+
+      '<button class="p-btn p-btn-ok" onclick="tReviewApproveSubmit('+id+')">Approve Video</button></div></div>'+
+    '</div>';
+  dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+  document.body.appendChild(dr);
+  setTimeout(function(){ var t=document.getElementById('trv-app-note'); if(t) t.focus(); },60);
+};
+window.tReviewApproveSubmit=function(id){
+  const note=((document.getElementById('trv-app-note')||{}).value||'').trim();
+  if(!note){ toast('Approve karne se pehle kuch likhna zaroori hai',true); var t=document.getElementById('trv-app-note'); if(t) t.focus(); return; }
+  prodDismiss(); toast('Approving…');
+  api('/api/teacher/tasks/'+id+'/review-approve','POST',{note:note}).then(function(){
+    toast('Approved ✓ — PM ko bhej diya'); _apiBust(); try{ loadTReview(); }catch(e){}
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
 async function openTVTPropose(){
   let types=window._vtTypesT;
   if(!types){ try{ types=((await api('/api/teacher/video-types')).types)||[]; window._vtTypesT=types; }catch(e){ types=[]; } }
@@ -28554,21 +28693,46 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._qcImgs=[];
   window.pmQcReview=function(id){
     window._qcImgs=[]; window._qcId=id;
+    try{ _reviewEnsureCss(); }catch(e){}
     api(P.production.api+'/tasks/'+id).then(function(t){
       var old=document.getElementById('prod-modal'); if(old) old.remove();
       var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+      // Teacher (creator/collab) must approve the edited video before PM can approve.
+      // Youtuber videos skip this gate.
+      var _trReq=(t.teacher_review_required!==false);
+      var _trSt=(t.teacher_review_status||'');
+      var _trApproved=(_trSt==='approved');
+      var _gate=(_trReq && !_trApproved);
+      var _trBlock='';
+      if(_trReq){
+        if(_trApproved){
+          _trBlock='<div class="qc-tr ok">'+ic('check')+' <b>Teacher approved</b>'+(t.teacher_reviewer_name?(' \u2014 '+esc(t.teacher_reviewer_name)):'')+(t.teacher_reviewed_at?(' \u00b7 '+esc(t.teacher_reviewed_at)):'')+
+            (t.teacher_review_note?('<div class="qc-tr-note">\u201c'+esc(t.teacher_review_note)+'\u201d</div>'):'')+
+            '<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button></div>';
+        } else if(_trSt==='changes'){
+          _trBlock='<div class="qc-tr chg">'+ic('edit')+' <b>Teacher ne changes maange hain</b> \u2014 editor ke saath chat chal rahi hai. Teacher ke approve karne ke baad hi aap approve kar paoge.'+
+            '<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button></div>';
+        } else {
+          _trBlock='<div class="qc-tr wait">'+ic('clock')+' <b>Waiting for teacher approval</b> \u2014 creator/collab teacher ke approve karne ke baad hi aap approve + upload date set kar paoge.'+
+            '<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button></div>';
+        }
+      }
+      var _apprBtn=_gate
+        ? '<button class="p-btn" disabled title="Teacher approval pending" style="opacity:.5;cursor:not-allowed">'+ic('lock')+' Approve (teacher pending)</button>'
+        : '<button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">Approve</button>';
       dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
         '<div class="pd-head"><div class="h-title">Review Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
           (((t.edited_versions&&t.edited_versions.length>1))
              ?('<div class="p-field"><label>Edited video versions</label>'+_edVerHtml(t)+'</div>')
              :(t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">'+ic('play')+' Open edited video</a>'+(t.revision_count?(' \u00b7 revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>'))+
+          _trBlock+
           '<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
           '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
           '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results...">'+esc(t.upload_remarks||'')+'</textarea></div>'+
           '<div class="qc-note" style="margin-top:12px;font-size:.82rem;color:var(--muted);background:rgba(180,83,9,.07);border:1px solid rgba(180,83,9,.2);border-radius:10px;padding:10px 12px;line-height:1.5">'+ic('edit')+' <b>Changes Required</b> or <b>Reject</b> \u2014 the editor is notified instantly and you\u2019ll be taken straight to <b>Chat with Editor</b> to explain what to change. No typing needed here.</div>'+
         '</div>'+
-        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">Approve</button>'+
+        '<div class="pd-foot"><div class="p-acts">'+_apprBtn+
           '<button class="p-btn p-btn-warn" onclick="pmQcDecide(\'changes\')">Changes Required</button>'+
           '<button class="p-btn p-btn-danger" onclick="pmQcDecide(\'reject\')">Reject</button></div></div>'+
         '</div>';
@@ -28799,7 +28963,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._chatMeta={portal:portal||'', taskId:taskId||0, audience:audience||'creator', ptUrl:ptUrl||''};
     window._chatAttachTask=null; window._chatPartyTasks=null;
   }
-  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||'';
+  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; window._chatImgs=[]; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||'';
     var _ptu=(cfg.getUrl||'').replace('/pair-comments','/party-tasks').replace('/comments','/party-tasks');
     _chatSetMeta(cfg.barPortal||'', cfg.taskId||0, cfg.audience||'creator', _ptu);
     api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[], r&&r.presence); _chatLivePoll(function(){ api(cfg.getUrl).then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[], cfg.mineRole, rr&&rr.presence); }); }); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
@@ -28820,9 +28984,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.ytcSend=function(){
     var cfg=window._chatCfg; if(!cfg) return;
     var inp=document.getElementById('chat-msg'); var msg=(inp&&inp.value||'').trim();
-    if(!msg && !window._chatImg) return;
-    var body={message:msg, audience:cfg.audience}; if(window._chatImg) body.images=[window._chatImg]; body.ref_task_id=window._chatTakeRef();
-    api(cfg.postUrl,'POST',body).then(function(){ window._chatImg=null; api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[]); }); }).catch(function(e){ toast((e&&e.message)||'Send failed',true); });
+    var tray=(cfg.multiTray && (window._chatImgs||[]).length)?window._chatImgs.slice():null;
+    if(!msg && !window._chatImg && !tray) return;
+    var body={message:msg, audience:cfg.audience};
+    if(tray) body.images=tray; else if(window._chatImg) body.images=[window._chatImg];
+    body.ref_task_id=window._chatTakeRef();
+    if(inp) inp.value=''; var keep=window._chatImg, keepT=tray, keepMsg=msg; window._chatImg=null; if(cfg.multiTray){ window._chatImgs=[]; _chatTrayRender(); }
+    api(cfg.postUrl,'POST',body).then(function(){ api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[]); }); }).catch(function(e){ toast((e&&e.message)||'Send failed',true); window._chatImg=keep; var i2=document.getElementById('chat-msg'); if(i2&&!i2.value) i2.value=keepMsg; if(cfg.multiTray && keepT){ window._chatImgs=keepT; _chatTrayRender(); } });
   };
   window.ytChatPM=function(id){ _ytcOpen({getUrl:P.youtuber.api+'/videos/'+id+'/comments?audience=creator',postUrl:P.youtuber.api+'/videos/'+id+'/comments',audience:'creator',mineRole:'youtuber',title:'Chat with PM'}); };
   window.ytDeleteVideo=function(id){
@@ -28921,6 +29089,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return '<div class="chat-bub'+(mine?' mine':' them')+'" style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:rgba(46,158,107,.14);border:1px solid rgba(46,158,107,.3)':'align-self:flex-start;background:var(--surface-2,#f0ead9);border:1px solid var(--border)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author||'')+' \u00b7 '+who+'</div>'+_chatRefHtml(c)+(c.message?'<div>'+_msgHtml(c.message)+'</div>':'')+img+'<div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at||'')+tick+'</div></div>';
   }
   function _chatReadImg(file, prevId){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._chatImg=rd.result; var p=document.getElementById(prevId); if(p) p.innerHTML='<div style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px"><img loading="lazy" src="'+rd.result+'" style="height:34px;border-radius:4px"><button class="p-btn" style="padding:2px 8px" onclick="window._chatImg=null;var e=document.getElementById(\''+prevId+'\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; }; rd.readAsDataURL(file); }
+  // ===== MULTI-IMAGE TRAY (opt-in via cfg.multiTray) \u2014 paste/attach several screenshots, send together =====
+  window._chatImgs=window._chatImgs||[];
+  function _chatTrayRender(){ var p=document.getElementById('chat-prev'); if(!p) return;
+    var arr=window._chatImgs||[];
+    if(!arr.length){ p.innerHTML=''; return; }
+    p.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'+arr.map(function(s,i){
+      return '<div style="position:relative;display:inline-block"><img loading="lazy" src="'+s+'" style="height:46px;width:46px;object-fit:cover;border-radius:7px;border:1px solid var(--border)"><button type="button" title="Remove" onclick="_chatTrayRemove('+i+')" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#d1443a;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">\u00d7</button></div>';
+    }).join('')+'<span style="font-size:.7rem;color:var(--muted);font-weight:700">'+arr.length+' screenshot'+(arr.length>1?'s':'')+'</span></div>';
+  }
+  window._chatTrayRemove=function(i){ try{ window._chatImgs.splice(i,1); }catch(e){} _chatTrayRender(); };
+  function _chatTrayAdd(file){ if(!file) return; if((window._chatImgs||[]).length>=8){ toast('Max 8 screenshots at a time',true); return; } var rd=new FileReader(); rd.onload=function(){ window._chatImgs.push(rd.result); _chatTrayRender(); }; rd.readAsDataURL(file); }
+  window._chatTrayAddFile=_chatTrayAdd;
   // emoji-free clean line icons for the attach menu
   var _CHAT_IC_IMG='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>';
   var _CHAT_IC_CAM='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.6"/></svg>';
@@ -29048,12 +29228,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return '<div class="pd-foot" style="display:block">'+_chatFootInner(sendFn+'('+id+')')+'</div>';
   }
   function _chatWireInputs(){
-    var fi=document.getElementById('chat-file'); if(fi) fi.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'chat-prev'); });
-    var fm=document.getElementById('chat-file-multi'); if(fm) fm.addEventListener('change',function(e){ var fs=e.target.files||[]; if(fs.length>1 && window._chatCfg && window._chatCfg.postUrl){ _chatSendMulti(fs); } else if(fs[0]){ _chatReadImg(fs[0],'chat-prev'); } e.target.value=''; });
-    var fc=document.getElementById('chat-file-cam'); if(fc) fc.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f) _chatReadImg(f,'chat-prev'); e.target.value=''; });
+    var _mt=function(){ return !!(window._chatCfg && window._chatCfg.multiTray); };
+    var fi=document.getElementById('chat-file'); if(fi) fi.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f){ if(_mt()) _chatTrayAdd(f); else _chatReadImg(f,'chat-prev'); } });
+    var fm=document.getElementById('chat-file-multi'); if(fm) fm.addEventListener('change',function(e){ var fs=e.target.files||[]; if(_mt()){ [].slice.call(fs).forEach(_chatTrayAdd); } else if(fs.length>1 && window._chatCfg && window._chatCfg.postUrl){ _chatSendMulti(fs); } else if(fs[0]){ _chatReadImg(fs[0],'chat-prev'); } e.target.value=''; });
+    var fc=document.getElementById('chat-file-cam'); if(fc) fc.addEventListener('change',function(e){ var f=(e.target.files||[])[0]; if(f){ if(_mt()) _chatTrayAdd(f); else _chatReadImg(f,'chat-prev'); } e.target.value=''; });
     window._chatMenuClose=function(ev){ var m=document.getElementById('chat-attach-menu'); if(!m){ document.removeEventListener('click',window._chatMenuClose); return; } if(m.style.display==='flex' && !(ev.target.closest && ev.target.closest('#chat-attach-menu'))){ m.style.display='none'; } };
     document.addEventListener('click',window._chatMenuClose);
-    window._chatPasteH=function(e){ if(!document.getElementById('chat-msg')){ document.removeEventListener('paste',window._chatPasteH); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chatReadImg(items[i].getAsFile(),'chat-prev'); e.preventDefault(); } } };
+    window._chatPasteH=function(e){ if(!document.getElementById('chat-msg')){ document.removeEventListener('paste',window._chatPasteH); return; } var items=(e.clipboardData||{}).items||[]; var mt=!!(window._chatCfg && window._chatCfg.multiTray); for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ if(mt) _chatTrayAdd(items[i].getAsFile()); else _chatReadImg(items[i].getAsFile(),'chat-prev'); e.preventDefault(); } } };
     document.addEventListener('paste',window._chatPasteH);
     var mi=document.getElementById('chat-msg'); if(mi){ mi.addEventListener('input',_chatTypingPing);
       if(window._chatPendingMsg){ mi.value=window._chatPendingMsg; window._chatPendingMsg=null; }
@@ -29128,6 +29309,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodEdtChat(id); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
   };
+  // PM/Admin: teacher<->editor VIDEO REVIEW thread (oversight — PM can read + message too)
+  window.prodReviewChat=function(id){
+    _ytcOpen({getUrl:P.production.api+'/tasks/'+id+'/comments?audience=review',postUrl:P.production.api+'/tasks/'+id+'/comments',
+      pingUrl:P.production.api+'/tasks/'+id+'/chat-ping?audience=review',audience:'review',mineRole:'production_manager',
+      title:'Video Review (Teacher ↔ Editor)',taskId:id,barPortal:'production',multiTray:true});
+  };
   function _peChatRender(id, aud, title, comments, sendFn, presence){
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation.</div>';
     var inner=(
@@ -29177,9 +29364,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // Editor DIRECT pairs: editor<->teacher (te_ed), editor<->graphics (ed_gf)
   window.edtChatTeacher=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=te_ed',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=te_ed',audience:'te_ed',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor'}); };
   window.edtChatGraphics=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'editor',title:'Chat with Graphics',taskId:id,barPortal:'editor'}); };
+  // Editor <-> Teacher VIDEO REVIEW thread (PM/admin bhi dekh sakte hain) — edited video ke baare me.
+  window.edtReviewChat=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/review-chat',postUrl:P.editor.api+'/tasks/'+id+'/review-chat',pingUrl:P.editor.api+'/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'editor',title:'Video Review (Teacher)',taskId:id,barPortal:'editor',multiTray:true}); };
   // Editor: PM + Teacher + Graphics se baat kar sakta hai.
   window.edtChatMenu=function(id){ _prodChatChooser(id,'Chat about this video',[
-    ['users','Chat with PM','edtChatPM'],['team','Chat with Teacher','edtChatTeacher'],['image','Chat with Graphics','edtChatGraphics']]); };
+    ['users','Chat with PM','edtChatPM'],['team','Chat with Teacher','edtChatTeacher'],['video','Video Review (Teacher)','edtReviewChat'],['image','Chat with Graphics','edtChatGraphics']]); };
   // Graphics DIRECT pairs: graphics<->teacher (te_gf), graphics<->editor (ed_gf)
   window.gfxChatTeacher=function(id){ _ytcOpen({getUrl:P.graphics.api+'/tasks/'+id+'/pair-comments?audience=te_gf',postUrl:P.graphics.api+'/tasks/'+id+'/pair-comments',pingUrl:P.graphics.api+'/tasks/'+id+'/pair-ping?audience=te_gf',audience:'te_gf',mineRole:'graphics',title:'Chat with Teacher',taskId:id,barPortal:'graphics'}); };
   window.gfxChatEditor=function(id){ _ytcOpen({getUrl:P.graphics.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.graphics.api+'/tasks/'+id+'/pair-comments',pingUrl:P.graphics.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'graphics',title:'Chat with Editor',taskId:id,barPortal:'graphics'}); };

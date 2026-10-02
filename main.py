@@ -281,6 +281,12 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN edited_link VARCHAR(600) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN qc_status VARCHAR(20) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN revision_count INTEGER DEFAULT 0",
+        # teacher (creator/collab) review of the edited video before PM approves
+        "ALTER TABLE video_tasks ADD COLUMN teacher_review_status VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN teacher_review_note TEXT",
+        "ALTER TABLE video_tasks ADD COLUMN teacher_reviewed_at DATETIME NULL",
+        "ALTER TABLE video_tasks ADD COLUMN teacher_reviewed_by INTEGER",
+        "ALTER TABLE video_tasks ADD COLUMN teacher_reviewer_name VARCHAR(120) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN on_hold BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN cancelled BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN published_at DATETIME NULL",

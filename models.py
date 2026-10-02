@@ -613,6 +613,12 @@ class VideoTask(Base):
     edited_link     = Column(String(600), default="")      # editor-submitted final drive link
     qc_status       = Column(String(20), default="")       # "" | pending | approved | changes
     revision_count  = Column(Integer, default=0)
+    # TEACHER REVIEW of the edited video (creator / collab teacher checks before PM approves).
+    teacher_review_status = Column(String(20), default="")  # "" | approved | changes
+    teacher_review_note   = Column(Text, default="")        # mandatory note the teacher writes on approve
+    teacher_reviewed_at   = Column(DateTime, nullable=True)
+    teacher_reviewed_by   = Column(Integer, nullable=True)  # users.id of the teacher who approved
+    teacher_reviewer_name = Column(String(120), default="")
     # deadline extension request (editor -> PM approval)
     deadline_req        = Column(DateTime, nullable=True)     # requested new deadline
     deadline_req_reason = Column(String(400), default="")     # editor's reason

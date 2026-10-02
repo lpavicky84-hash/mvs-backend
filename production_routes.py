@@ -469,7 +469,7 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
         except Exception:
             _att = ""
     _aud = (payload.get("audience") or "creator").strip().lower()
-    if _aud not in ("creator", "internal", "editor", "te_ed", "te_gf", "ed_gf"):
+    if _aud not in ("creator", "internal", "editor", "te_ed", "te_gf", "ed_gf", "review"):
         _aud = "creator"
     _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
     c = _vtc_add(db, tid, me, payload.get("message"), _crole, _att, _aud, ref_task_id=payload.get("ref_task_id"))
@@ -500,6 +500,27 @@ def pm_task_comment_add(tid: int, payload: dict = Body(...),
                     pc.notify(db, sp.user_id, "PM messaged you on a video",
                               f'{getattr(me, "name", "PM")} on "{t.title}": {c.message[:110]}',
                               "editor_chat", link=str(tid))
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "comment": _vtc_out(db, c)}
+    if _aud == "review":
+        # Teacher <-> Editor review thread (PM/admin oversight) — notify editor AND teachers.
+        try:
+            from models import ProductionStaffProfile, TeacherProfile as _TP
+            from video_tasks import _collab_all_ids as _cai
+            if t.editor_id:
+                sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+                if sp and sp.user_id:
+                    pc.notify(db, sp.user_id, "Message on video review",
+                              f'{getattr(me, "name", "PM")} on "{t.title}": {c.message[:110]}',
+                              "video_review", link=str(tid))
+            for teach_id in _cai(t):
+                tp = db.query(_TP).filter(_TP.id == teach_id).first()
+                if tp and tp.user_id:
+                    pc.notify(db, tp.user_id, "Message on your video review",
+                              f'{getattr(me, "name", "PM")} on "{t.title}": {c.message[:110]}',
+                              "video_review", link=str(tid))
         except Exception:
             pass
         db.commit()
@@ -1409,6 +1430,11 @@ def qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends
     t = _task(db, tid)
     if t.lifecycle != "qc_pending":
         raise HTTPException(400, "Task is not in QC")
+    # GATE: a teacher/collab video must be approved by the creator (or any collab teacher)
+    # before the PM can approve. Youtuber videos skip this gate.
+    if (getattr(t, "creator_type", "") or "teacher") != "youtuber":
+        if (getattr(t, "teacher_review_status", "") or "") != "approved":
+            raise HTTPException(400, "Teacher ne abhi video approve nahi ki — pehle teacher approval zaroori hai.")
     t.qc_status = "approved"
     db.add(TaskReview(task_id=t.id, kind="edit", reviewer_user_id=me.id, decision="approved",
                       revision_no=t.revision_count or 0))

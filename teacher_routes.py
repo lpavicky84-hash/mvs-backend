@@ -3354,6 +3354,193 @@ def teacher_video_contribution(db: Session = Depends(get_db), current_user=Depen
     return _pe.video_contribution(db, tp)
 
 
+# ===== TEACHER: VIDEO REVIEW (check the EDITED video before PM approves) =====
+def _teacher_review_task(db, tp, tid):
+    """Fetch a video task the teacher may review — must be creator OR a collab teacher."""
+    from models import VideoTask as _VT
+    from sqlalchemy import or_ as _or
+    t = db.query(_VT).filter(_VT.id == int(tid)).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    try:
+        from video_tasks import _collab_all_ids as _cai
+        ids = _cai(t)
+    except Exception:
+        ids = [t.teacher_id]
+    if tp.id not in ids:
+        raise HTTPException(403, "Ye video aapki nahi hai")
+    return t
+
+
+@router.get("/review-videos")
+def teacher_review_videos(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Edited videos waiting for THIS teacher (creator/collab) to check before PM approval.
+    Shows tasks in QC with an edited link, so the teacher can watch + approve or ask changes."""
+    from models import VideoTask as _VT
+    from sqlalchemy import or_ as _or
+    import production_core as _pc
+    tp = get_teacher_profile(current_user, db)
+    try:
+        from video_tasks import _collab_all_ids as _cai
+    except Exception:
+        _cai = None
+    cand = db.query(_VT).filter(
+        _or(_VT.teacher_id == tp.id,
+            _VT.collab_teacher_ids.like("%" + str(tp.id) + "%")),
+        _VT.lifecycle == "qc_pending",
+        _VT.cancelled == False).all()
+    out = []
+    for t in cand:
+        try:
+            if _cai and tp.id not in _cai(t):
+                continue
+        except Exception:
+            if t.teacher_id != tp.id:
+                continue
+        if not (getattr(t, "edited_link", "") or ""):
+            continue
+        d = _pc.task_out(db, t)
+        out.append(d)
+    # pending (not yet approved) first, then most recent
+    out.sort(key=lambda d: ((d.get("teacher_review_status") == "approved"), -(d.get("id") or 0)))
+    return {"videos": out}
+
+
+@router.get("/tasks/{tid}/review-chat")
+def teacher_review_chat_get(tid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    from video_tasks import _vtc_list_v, _vtc_mark_read, _chat_touch, _chat_other_presence
+    tp = get_teacher_profile(current_user, db)
+    _teacher_review_task(db, tp, tid)
+    _vtc_mark_read(db, current_user, tid, "review")
+    _chat_touch(db, current_user, tid, "review")
+    return {"comments": _vtc_list_v(db, tid, "review", getattr(current_user, "id", None)),
+            "presence": _chat_other_presence(db, getattr(current_user, "id", None), tid, "review")}
+
+
+@router.post("/tasks/{tid}/review-chat")
+def teacher_review_chat_add(tid: int, payload: dict = Body(...),
+                            db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import production_core as _pc
+    from video_tasks import _review_chat_add, _chat_touch
+    tp = get_teacher_profile(current_user, db)
+    t = _teacher_review_task(db, tp, tid)
+    msg = (payload.get("message") or "").strip()
+    imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+    att = (payload.get("attachment_url") or "").strip()
+    comments = _review_chat_add(db, current_user, tid, msg, imgs, "teacher", attachment_url=att)
+    if not comments:
+        raise HTTPException(400, "Message cannot be empty")
+    try: _chat_touch(db, current_user, tid, "review", typing=False)
+    except Exception: pass
+    # notify the editor + PMs (teacher chat must be visible to PM/admin)
+    try:
+        from models import ProductionStaffProfile as _PSP
+        _snip = (msg or "📷 screenshot")[:110]
+        if t.editor_id:
+            sp = db.query(_PSP).filter(_PSP.id == t.editor_id).first()
+            if sp and sp.user_id:
+                _pc.notify(db, sp.user_id, "Teacher message on video review",
+                           f'{getattr(current_user, "name", "Teacher")} on "{t.title}": {_snip}',
+                           "video_review", link=str(tid))
+        _pc.notify_pms(db, "Teacher message on video review",
+                       f'{getattr(current_user, "name", "Teacher")} on "{t.title}": {_snip}',
+                       "video_review", link=str(tid))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "comments": comments}
+
+
+@router.post("/tasks/{tid}/review-chat-ping")
+def teacher_review_chat_ping(tid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                             current_user=Depends(get_teacher)):
+    from video_tasks import _chat_touch, _chat_other_presence
+    tp = get_teacher_profile(current_user, db)
+    _teacher_review_task(db, tp, tid)
+    _chat_touch(db, current_user, tid, "review", typing=bool((payload or {}).get("typing")))
+    return {"presence": _chat_other_presence(db, getattr(current_user, "id", None), tid, "review")}
+
+
+@router.post("/tasks/{tid}/review-changes")
+def teacher_review_changes(tid: int, payload: dict = Body(default={}),
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher wants changes in the edited video. Marks the review as 'changes' and opens the
+    chat with the editor. The video STAYS in QC — the PM formally decides the send-back."""
+    import production_core as _pc
+    from video_tasks import _review_chat_add
+    tp = get_teacher_profile(current_user, db)
+    t = _teacher_review_task(db, tp, tid)
+    if t.lifecycle != "qc_pending":
+        raise HTTPException(400, "Video abhi review ke liye available nahi hai")
+    note = (payload.get("message") or payload.get("note") or "").strip()
+    imgs = payload.get("images") or []
+    t.teacher_review_status = "changes"
+    # drop any earlier approval stamp — teacher now wants changes
+    t.teacher_reviewed_at = None
+    t.teacher_reviewed_by = None
+    # seed the review chat with the teacher's change note + screenshots (if any)
+    if note or imgs:
+        _review_chat_add(db, current_user, tid, (note or "Changes chahiye — details chat me."),
+                         imgs, "teacher")
+    try:
+        _pc.set_state(db, t, t.lifecycle, actor=current_user, event="teacher_review_changes",
+                      meta={"note": (note or "")[:200]})
+    except Exception:
+        pass
+    # notify editor + PMs
+    try:
+        from models import ProductionStaffProfile as _PSP
+        _snip = (note or "Changes requested")[:140]
+        if t.editor_id:
+            sp = db.query(_PSP).filter(_PSP.id == t.editor_id).first()
+            if sp and sp.user_id:
+                _pc.notify(db, sp.user_id, "Teacher wants changes",
+                           f'{getattr(current_user, "name", "Teacher")} on "{t.title}": {_snip}',
+                           "video_review", link=str(tid))
+        _pc.notify_pms(db, "Teacher wants changes in a video",
+                       f'{getattr(current_user, "name", "Teacher")} on "{t.title}": {_snip}',
+                       "video_review", link=str(tid))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "teacher_review_status": t.teacher_review_status}
+
+
+@router.post("/tasks/{tid}/review-approve")
+def teacher_review_approve(tid: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher approves the edited video. A note about the edit is MANDATORY. This unlocks
+    the PM's approve+date step (any one creator/collab teacher's approval is enough)."""
+    import production_core as _pc
+    tp = get_teacher_profile(current_user, db)
+    t = _teacher_review_task(db, tp, tid)
+    if t.lifecycle != "qc_pending":
+        raise HTTPException(400, "Video abhi review ke liye available nahi hai")
+    note = (payload.get("note") or payload.get("message") or "").strip()
+    if not note:
+        raise HTTPException(400, "Approve karne se pehle video ke baare me likhna zaroori hai")
+    t.teacher_review_status = "approved"
+    t.teacher_review_note = note
+    t.teacher_reviewed_at = datetime.utcnow()
+    t.teacher_reviewed_by = getattr(current_user, "id", None)
+    t.teacher_reviewer_name = getattr(current_user, "name", "") or ""
+    try:
+        _pc.set_state(db, t, t.lifecycle, actor=current_user, event="teacher_review_approved",
+                      meta={"note": note[:200]})
+    except Exception:
+        pass
+    try:
+        _pc.notify_pms(db, "Teacher approved a video",
+                       f'{getattr(current_user, "name", "Teacher")} approved "{t.title}": {note[:120]}',
+                       "video_review", link=str(tid))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "teacher_review_status": t.teacher_review_status,
+            "teacher_review_note": t.teacher_review_note,
+            "teacher_reviewer_name": t.teacher_reviewer_name}
+
+
 @router.get("/perf-history")
 def teacher_perf_history(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Phase 8: available months (current + frozen past) — leaderboard month selector."""

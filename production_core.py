@@ -864,6 +864,13 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "edited_link": t.edited_link or "",
         "qc_status": t.qc_status or "",
         "revision_count": t.revision_count or 0,
+        # teacher (creator / collab) review of the edited video, BEFORE PM approves
+        "teacher_review_status": (getattr(t, "teacher_review_status", "") or ""),
+        "teacher_review_note": (getattr(t, "teacher_review_note", "") or ""),
+        "teacher_reviewer_name": (getattr(t, "teacher_reviewer_name", "") or ""),
+        "teacher_reviewed_at": (t.teacher_reviewed_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "teacher_reviewed_at", None) else ""),
+        # youtuber videos skip the teacher gate; teacher/collab videos need it
+        "teacher_review_required": ((getattr(t, "creator_type", "") or "teacher") != "youtuber"),
         "approval_required": needs_pm_approval(db, t),
         "on_hold": bool(t.on_hold),
         "cancelled": bool(t.cancelled),
