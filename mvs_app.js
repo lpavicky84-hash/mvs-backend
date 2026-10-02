@@ -28733,7 +28733,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _trSt=(t.teacher_review_status||'');
       var _trApproved=(_trSt==='approved');
       var _trBlock='';
-      var _chatBtn='<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button>';
+      var _chatBtn='<button class="qc-tr-chat" onclick="prodReviewChat('+id+',true)">'+ic('chat')+' View teacher\u2013editor chat</button>';
       if(_trReq){
         if(_trApproved){
           var _by=[]; if(t.teacher_reviewer_name) _by.push(esc(t.teacher_reviewer_name)); if(t.teacher_reviewed_at) _by.push(esc(t.teacher_reviewed_at));
@@ -29044,13 +29044,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(pane && pane.getClientRects().length && pane.classList.contains('has-thread')){ window._cmClosePane(); }
     else { prodDismiss(); }
   };
+  // Back arrow: if a chat was opened from another screen (e.g. the QC review modal),
+  // return to THAT screen instead of closing to the board. Otherwise behave like close.
+  window._chatBack=function(){
+    var f=window._chatBackFn; window._chatBackFn=null;
+    // stop live-poll for the chat we're leaving
+    try{ if(window._chatPollTimer){ clearInterval(window._chatPollTimer); window._chatPollTimer=null; } }catch(e){}
+    if(typeof f==='function'){ try{ f(); return; }catch(e){} }
+    window._chatCloseUnified();
+  };
   function _ytcRender(comments, presence){
     try{ _reviewEnsureCss(); }catch(e){}
     var cfg=window._chatCfg||{};
     var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:120px;overflow-y:auto;padding:4px 2px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet \u2014 start the conversation below.</div>')+'</div>';
     var _hdr=(cfg._adminPills && window._vtAdminHead)?window._vtAdminHead(cfg._adminAud):('<div class="h-title">'+esc(cfg.title||'Chat')+'</div>');
     var _pills=(cfg._adminPills && window._vtAdminPills)?window._vtAdminPills(cfg._adminAud):'';
-    var inner='<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatCloseUnified()">'+_BACKIC+'</button><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
+    var inner='<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatBack()">'+_BACKIC+'</button><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
     _chatShow(inner);
     _chatWireInputs();
     _chatPresenceBar(presence);
@@ -29062,7 +29071,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._chatMeta={portal:portal||'', taskId:taskId||0, audience:audience||'creator', ptUrl:ptUrl||''};
     window._chatAttachTask=null; window._chatPartyTasks=null;
   }
-  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; window._chatImgs=[]; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||'';
+  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; window._chatImgs=[]; window._chatBackFn=cfg.onBack||null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||'';
     var _ptu=(cfg.getUrl||'').replace('/pair-comments','/party-tasks').replace('/comments','/party-tasks');
     _chatSetMeta(cfg.barPortal||'', cfg.taskId||0, cfg.audience||'creator', _ptu);
     api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[], r&&r.presence); _chatLivePoll(function(){ api(cfg.getUrl).then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[], cfg.mineRole, rr&&rr.presence); }); }); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
@@ -29396,7 +29405,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // PM <-> Editor chat (audience=editor; editor reads/writes the same via their portal)
   window.prodEdtChat=function(id){
-    window._chatImg=null;
+    window._chatImg=null; window._chatBackFn=null;
     window._chatPingUrl=P.production.api+'/tasks/'+id+'/chat-ping?audience=editor';
     _chatSetMeta('production', id, 'editor', P.production.api+'/tasks/'+id+'/party-tasks?audience=editor');
     api(P.production.api+'/tasks/'+id+'/comments?audience=editor').then(function(r){ window._chatDirty='production'; _peChatRender(id,'editor','Chat with Editor',(r&&r.comments)||[],'prodEdtChatSend',r&&r.presence); _chatLivePoll(function(){ api(P.production.api+'/tasks/'+id+'/comments?audience=editor').then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[],'production_manager',rr&&rr.presence); }); }); })
@@ -29411,16 +29420,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
   };
   // PM/Admin: teacher<->editor VIDEO REVIEW thread (oversight — PM can read + message too)
-  window.prodReviewChat=function(id){
+  window.prodReviewChat=function(id, fromQc){
     _ytcOpen({getUrl:P.production.api+'/tasks/'+id+'/comments?audience=review',postUrl:P.production.api+'/tasks/'+id+'/comments',
       pingUrl:P.production.api+'/tasks/'+id+'/chat-ping?audience=review',audience:'review',mineRole:'production_manager',
-      title:'Video Review (Teacher ↔ Editor)',taskId:id,barPortal:'production',multiTray:true});
+      title:'Video Review (Teacher ↔ Editor)',taskId:id,barPortal:'production',multiTray:true,
+      onBack:(fromQc?function(){ try{ pmQcReview(id); }catch(e){} }:null)});
   };
   function _peChatRender(id, aud, title, comments, sendFn, presence){
     try{ _reviewEnsureCss(); }catch(e){}
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation.</div>';
     var inner=(
-      '<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatCloseUnified()">'+_BACKIC+'</button><div><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div>'+
+      '<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatBack()">'+_BACKIC+'</button><div><div class="h-title">'+esc(title)+' <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,sendFn));
     _chatShow(inner);
