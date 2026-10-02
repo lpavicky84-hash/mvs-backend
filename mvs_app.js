@@ -31903,10 +31903,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(portal==='editor'){
       _edtEnsureCss();
+      var _eopts=(SAVED.editor||[]).map(function(v){ return '<option value="'+v[0]+'"'+((f.status||'')===v[0]?' selected':'')+'>'+esc(v[1])+'</option>'; }).join('');
       return '<div class="p-filter p-filter-edt">'+
         '<div class="pf-search edt-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="edt-search" placeholder="Search your tasks — title, ref, subject..." value="'+esc(f.q||'')+'" oninput="edtSearch(this.value)"></div>'+
-        '<div class="edt-chips">'+_savedChips(portal)+'</div>'+
-        '<button class="p-btn pf-clear" onclick="edtClearFilters()">Clear</button>'+
+        '<div class="edt-selwrap"><span class="edt-sellbl">Filter</span><select class="edt-statsel" onchange="prodView(\'editor\',this.value)">'+_eopts+'</select><svg class="edt-selcar" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'+
+        '<button class="p-btn pf-clear edt-clear" onclick="edtClearFilters()">Clear</button>'+
       '</div>';
     }
     return '<div class="p-filter">'+_savedChips(portal)+'</div>';
@@ -31915,10 +31916,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(document.getElementById('edt-filt-css')) return;
     var s=document.createElement('style'); s.id='edt-filt-css';
     s.textContent='.p-filter-edt{display:flex;flex-wrap:wrap;gap:10px;align-items:center}'+
-      '.p-filter-edt .edt-search{flex:1 1 240px;min-width:200px}'+
-      '.p-filter-edt .edt-chips{display:flex;gap:8px;flex-wrap:wrap;flex:1 1 auto}'+
-      '.p-filter-edt .pf-clear{flex:0 0 auto}'+
-      '@media(max-width:640px){.p-filter-edt .edt-search{flex-basis:100%}.p-filter-edt .edt-chips{overflow-x:auto;flex-wrap:nowrap}}';
+      '.p-filter-edt .edt-search{flex:1 1 240px;min-width:180px}'+
+      '.edt-selwrap{position:relative;display:inline-flex;align-items:center;flex:0 0 auto}'+
+      '.edt-selwrap .edt-sellbl{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.64rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#998);pointer-events:none}'+
+      '.edt-statsel{appearance:none;-webkit-appearance:none;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#2a2313);font-weight:800;font-size:.9rem;border-radius:12px;padding:11px 40px 11px 62px;cursor:pointer;min-width:210px;box-shadow:0 1px 2px rgba(18,20,45,.04);transition:border-color .15s,box-shadow .15s}'+
+      '.edt-statsel:hover{border-color:#c98a2e}'+
+      '.edt-statsel:focus{outline:none;border-color:#c98a2e;box-shadow:0 0 0 3px rgba(201,138,46,.18)}'+
+      'body.dark .edt-statsel{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
+      '.edt-selwrap .edt-selcar{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-muted,#998);pointer-events:none}'+
+      '.p-filter-edt .edt-clear{flex:0 0 auto}'+
+      '@media(max-width:640px){.p-filter-edt{gap:8px}.p-filter-edt .edt-search{flex-basis:100%}.edt-selwrap{flex:1 1 auto}.edt-statsel{width:100%;min-width:0;flex:1 1 auto}.p-filter-edt .edt-clear{flex:0 0 auto}}';
     document.head.appendChild(s);
   }
   window.edtSearch=function(v){ _flt('editor').q=v; _edtApplySearch(); };
