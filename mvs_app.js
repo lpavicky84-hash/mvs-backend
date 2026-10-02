@@ -11464,6 +11464,7 @@ async function tvtSendNeeds(id){
 }
 let _tvtTimer=null;
 async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catch(e){}
+  try{ _reviewEnsureCss(); }catch(e){}
   const el=document.getElementById('t-vtasks-content');
   softSpin(el);
   if(_tvtTimer){ clearInterval(_tvtTimer); _tvtTimer=null; }
@@ -11472,6 +11473,10 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
     const tasks=d.tasks||[];
     window._tvtMap={}; tasks.forEach(t=>window._tvtMap[t.id]=t);
     (d.special||[]).forEach(t=>window._tvtMap[t.id]=t);
+    // edited videos awaiting this teacher's review — merged ONTO the task cards (no separate card)
+    let _revs=[]; try{ const _rd=await api('/api/teacher/review-videos'); _revs=(_rd&&_rd.videos)||[]; }catch(e){}
+    window._trevMap={}; _revs.forEach(v=>{ window._trevMap[v.id]=v; });
+    const _revPending=_revs.filter(v=>(v.teacher_review_status||'')!=='approved').length;
     const active=tasks.filter(t=>t.status==='assigned'||t.status==='reshoot'||t.status==='rejected');
     const badge=document.getElementById('t-vt-badge');
     if(badge){ badge.style.display=active.length?'inline-block':'none'; badge.textContent=active.length; }
@@ -11480,14 +11485,15 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       <div class="vt-hero"><div><h3>${esc(nxt.title)}</h3><p>${nxt.video_type?esc(nxt.video_type)+' · ':''}${nxt.channel?esc(nxt.channel)+' · ':''}Deadline: ${esc(nxt.deadline_nice)}</p></div><div class="vt-sp"></div>
         <div class="vt-count" id="tvt-hero-cd" data-secs="${nxt.seconds_left||0}"></div></div>`:'';
     const st=d.stats||{};
-    const stat=(l,n,color,icn,bucket)=>`<div class="vt-stat${bucket?' vt-stat-click':''}"${bucket?` data-bucket="${bucket}" onclick="_vtBucketFilter('${bucket}')"`:''}><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
+    const stat=(l,n,color,icn,bucket,blink)=>`<div class="vt-stat vt-stat-click${blink&&n?' vt-stat-blink':''}" data-tbucket="${bucket}" onclick="_tvtStatFilter('${bucket}')"><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
     const statCards=`<div class="vt-cards">
-      ${stat('Assigned',st.assigned||0,'#8a6d10','clipboard')}
-      ${stat('Completed',st.completed||0,'#059669','check')}
-      ${stat('Under Review',st.under_review||0,'#c99a2e','clock')}
-      ${stat('Pending',st.pending||0,'#0891b2','clipboard')}
-      ${stat('On Time',st.on_time||0,'#047857','star')}
-      ${stat('Delayed',st.delayed||0,'#dc2626','alert')}
+      ${stat('Assigned',st.assigned||0,'#8a6d10','clipboard','assigned')}
+      ${stat('Editing Done',_revPending,'#b45309','video','review',true)}
+      ${stat('Completed',st.completed||0,'#059669','check','completed')}
+      ${stat('Under Review',st.under_review||0,'#c99a2e','clock','underreview')}
+      ${stat('Pending',st.pending||0,'#0891b2','clipboard','pending')}
+      ${stat('On Time',st.on_time||0,'#047857','star','ontime')}
+      ${stat('Delayed',st.delayed||0,'#dc2626','alert','delayed')}
     </div>`;
     const mt=Object.entries(st.month_types||{});
     const mtHtml=mt.length?`<div class="card" style="margin-bottom:16px"><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px"><span style="font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">${ic('chart')} This month you shot</span>${mt.map(([k,v])=>`<span class="vt-type">${esc(k)} · ${v}</span>`).join('')}</div></div>`:'';
@@ -11539,7 +11545,21 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
         <div class="vt-thumb-status pending${_thObj.overdue?' overdue':''}">
           <div class="vts-h vts-blink">${ic('image')} Thumbnail pending${_thObj.designer?` — ${esc(_thObj.designer)} is designing it`:''}</div>${_thObj.deadline?`<div class="vts-sub">Expected by <b>${esc(_thObj.deadline)}</b>${_thObj.overdue?' <span class="vts-late">· delayed</span>':''}</div>`:`<div class="vts-sub">A thumbnail will be provided for this video.</div>`}
         </div>`:'';
-      return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}">${_vtThumb(t,'t')}<div class="vt-body">
+      // EDITED VIDEO REVIEW — shown on the card itself (no separate card)
+      const _rev=(window._trevMap||{})[t.id];
+      const _revApproved=!!(_rev&&(_rev.teacher_review_status||'')==='approved');
+      let reviewBox='';
+      if(_rev){
+        if(_revApproved){
+          const _rn=_rev.teacher_reviewer_name?esc(_rev.teacher_reviewer_name):'you';
+          const _ra=_rev.teacher_reviewed_at?(' · '+esc(_rev.teacher_reviewed_at)):'';
+          reviewBox=`<button class="vt-rev-btn done" onclick="tReviewOpen(${t.id})">${ic('check')} Approved by ${_rn}${_ra}</button>`;
+        } else {
+          const _ru=(_rev.review_unread||0);
+          reviewBox=`<button class="vt-rev-btn blink" onclick="tReviewOpen(${t.id})">${ic('video')} Review Edited Video${_ru?` <b class="vt-chat-badge">${_ru}</b>`:''}</button>`;
+        }
+      }
+      return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <div class="vt-meta">
@@ -11554,7 +11574,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
-        ${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}
+        ${reviewBox}${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}
       </div></div>`;
     };
     // ---- v73: master Task/Project cards + subject & type filters ----
@@ -11604,7 +11624,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       ${[['','All Types'],['one_shot','One Shot'],['rapid_revision','Rapid Revision'],['project','Projects']].filter(([k])=>!k||spec.some(t=>t.kind===k)).map(([k,l])=>`<option value="${k}" ${_tvtSpecKind===k?'selected':''}>${l}</option>`).join('')}
       </select>
     </div>`:'';
-    el.innerHTML=`${hero}${statCards}<div id="t-review-wrap"></div>${mtHtml}${masterCards}
+    el.innerHTML=`${hero}${statCards}${mtHtml}${masterCards}
       <div class="vtm-actions" style="display:flex;gap:10px;margin:0 0 16px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-primary" onclick="openTVTPropose()">${ic('plus')} Propose a Video</button>
         ${urgentEnabled?`<button class="btn vt-urgent-btn" onclick="openTVTUrgent()">${ic('alert')} Urgent Video</button>`:''}
@@ -11625,8 +11645,33 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       const neg=s<0; sp.textContent=_vtCdText(s);
       sp.style.color=neg?'#b91c1c':(s<86400?'#b45309':'#047857'); }); };
     tick(); _tvtTimer=setInterval(tick,1000);
-    try{ loadTReview(); }catch(e){}
+    try{ if(window._tvtStat) _applyTvtStatFilter(); }catch(e){}
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+// Teacher stat-chip filter — click a stat to filter the task grid; click again to clear.
+function _tvtStatFilter(bucket){
+  window._tvtStat=(window._tvtStat===bucket)?null:bucket;
+  // ensure the Tasks view is open so the grid is visible, then apply the filter
+  if(window._tvtStat && _tvtView!=='tasks'){ _tvtView='tasks'; loadTVTasks(); return; }
+  _applyTvtStatFilter();
+}
+function _applyTvtStatFilter(){
+  const b=window._tvtStat;
+  document.querySelectorAll('.vt-stat[data-tbucket]').forEach(c=>c.classList.toggle('vt-stat-on', !!b && c.dataset.tbucket===b));
+  document.querySelectorAll('.vt-grid > .vt-card').forEach(c=>{
+    let show=true;
+    if(b){
+      const st=(c.dataset.fstatus||''), sub=(c.dataset.fsub==='1'), ot=c.dataset.fontime, rev=(c.dataset.treview||'');
+      if(b==='review') show=!!rev;
+      else if(b==='assigned') show=(st==='assigned'||st==='reshoot'||st==='rejected');
+      else if(b==='completed') show=(st==='uploaded'||st==='completed'||(sub&&st!=='assigned'&&st!=='submitted'));
+      else if(b==='underreview') show=(st==='submitted');
+      else if(b==='pending') show=(st==='assigned'&&!sub);
+      else if(b==='ontime') show=(ot==='1');
+      else if(b==='delayed') show=(ot==='0');
+    }
+    c.style.display=show?'':'none';
+  });
 }
 // ===== VIDEO REVIEW — styles (one-time inject) =====
 function _reviewEnsureCss(){
@@ -11683,6 +11728,21 @@ function _reviewEnsureCss(){
     '.p-btn-locked{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:not-allowed;border:1px dashed rgba(201,154,46,.5);background:rgba(201,154,46,.08);color:#9a7418}'+
     '.p-btn-locked svg{width:15px;height:15px;opacity:.85}'+
     'body.dark .p-btn-locked{background:rgba(201,154,46,.12);color:#e0b864;border-color:rgba(201,154,46,.4)}'+
+    // review button ON the task card (blinking until reviewed; green when approved)
+    '@keyframes trvPulse{0%,100%{box-shadow:0 0 0 0 rgba(180,83,9,.45)}50%{box-shadow:0 0 0 6px rgba(180,83,9,0)}}'+
+    '.vt-rev-btn{display:inline-flex;align-items:center;gap:8px;width:100%;justify-content:center;margin:10px 0 2px;padding:11px 14px;border-radius:11px;font-weight:800;font-size:.86rem;cursor:pointer;border:1px solid transparent;transition:filter .15s,box-shadow .15s}'+
+    '.vt-rev-btn svg{width:16px;height:16px}'+
+    '.vt-rev-btn.blink{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;animation:trvPulse 1.7s ease-out infinite}'+
+    '.vt-rev-btn.blink:hover{filter:brightness(1.03)}'+
+    '.vt-rev-btn.done{background:rgba(5,150,105,.12);border-color:rgba(5,150,105,.35);color:#0b5c46;animation:none}'+
+    '.vt-rev-btn.done:hover{background:rgba(5,150,105,.18)}'+
+    '.vt-rev-btn .vt-chat-badge{background:#d1443a;color:#fff;border-radius:999px;padding:0 6px;font-size:.7rem}'+
+    // blinking "Editing Done" stat + active stat highlight
+    '@keyframes vtStatPulse{0%,100%{box-shadow:0 0 0 0 rgba(180,83,9,.4)}50%{box-shadow:0 0 0 5px rgba(180,83,9,0)}}'+
+    '.vt-stat-click{cursor:pointer;transition:transform .12s,box-shadow .15s}'+
+    '.vt-stat-click:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(18,20,45,.1)}'+
+    '.vt-stat-blink{animation:vtStatPulse 1.7s ease-out infinite;border:1px solid rgba(180,83,9,.35)}'+
+    '.vt-stat-on{outline:2px solid #c98a2e;outline-offset:1px}'+
     // premium back arrow in chat headers
     '.chat-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#14213d);cursor:pointer;flex:0 0 auto;transition:background .15s,box-shadow .15s}'+
     '.chat-back:hover{background:var(--surface-2,#f0ead9);box-shadow:0 2px 8px rgba(18,20,45,.08)}'+
@@ -11698,56 +11758,52 @@ function _reviewEnsureCss(){
     '@media(max-width:600px){.trv-grid{grid-template-columns:1fr}.trv-acts .btn{flex:1 1 100%}}';
   document.head.appendChild(s);
 }
-// ===== TEACHER: VIDEO REVIEW — check the EDITED video before PM approves =====
-async function loadTReview(){
-  _reviewEnsureCss();
-  const wrap=document.getElementById('t-review-wrap'); if(!wrap) return;
-  let vids=[];
-  try{ const d=await api('/api/teacher/review-videos'); vids=(d&&d.videos)||[]; }catch(e){ wrap.innerHTML=''; return; }
-  window._trevMap={}; vids.forEach(v=>window._trevMap[v.id]=v);
-  if(!vids.length){ wrap.innerHTML=''; return; }
-  const pend=vids.filter(v=>(v.teacher_review_status||'')!=='approved');
-  const card=v=>{
-    const st=(v.teacher_review_status||'');
-    const approved=(st==='approved');
-    const wantChg=(st==='changes');
-    const rev=v.revision_count?` · revision ${v.revision_count}`:'';
-    const _unread=(v.review_unread||0);
-    const statusPill=approved
-      ? `<span class="trv-pill ok">${ic('check')} You approved</span>`
-      : wantChg
-        ? `<span class="trv-pill chg">${ic('edit')} Changes requested</span>`
-        : `<span class="trv-pill new">${ic('clock')} Needs your check</span>`;
-    const noteBox=approved&&v.teacher_review_note?`<div class="trv-note">${ic('check')} Your note: <b>${esc(v.teacher_review_note)}</b></div>`:'';
-    const acts=approved
-      ? `<button class="btn btn-sm trv-chat" onclick="tReviewChat(${v.id})">${ic('chat')} Chat with Editor</button>`
-      : `<button class="btn btn-sm trv-chat" onclick="tReviewChat(${v.id})">${ic('chat')} Chat with Editor${_unread?` <b class="vt-chat-badge">${_unread}</b>`:''}</button>
-         <button class="btn btn-sm btn-warn" onclick="tReviewChanges(${v.id})">${ic('edit')} Changes</button>
-         <button class="btn btn-sm btn-primary" onclick="tReviewApprove(${v.id})">${ic('check')} Approve</button>`;
-    return `<div class="trv-card">
-      <div class="trv-top">
-        <div class="trv-chips">${statusPill}${v.channel?`<span class="trv-ch">${esc(v.channel)}</span>`:''}</div>
-        <div class="trv-title">${esc(v.title||('Task #'+v.id))}${rev}</div>
-        ${v.editor_name?`<div class="trv-meta">${ic('edit')} Editor: <b>${esc(v.editor_name)}</b></div>`:''}
-      </div>
-      ${v.edited_link?`<a class="trv-watch" href="${esc(v.edited_link)}" target="_blank" rel="noopener">${ic('play')} Watch edited video</a>`:'<div class="trv-empty">No edited link yet</div>'}
-      ${noteBox}
-      <div class="trv-acts">${acts}</div>
-    </div>`;
-  };
-  wrap.innerHTML=`<div class="trv-sec">
-    <div class="trv-sec-head">${ic('video')} Video Review ${pend.length?`<span class="trv-count">${pend.length}</span>`:''}
-      <span class="trv-sub">Watch each edited video, then Approve or request changes</span></div>
-    <div class="trv-grid">${vids.map(card).join('')}</div>
-  </div>`;
-}
+// ===== TEACHER: VIDEO REVIEW — review action lives ON the task card now =====
+// loadTReview simply refreshes the task list so the card's review button updates.
+async function loadTReview(){ try{ if(typeof loadTVTasks==='function') return loadTVTasks(); }catch(e){} }
+// Open the review for an edited video (Watch / Chat / Approve / Changes) as a premium modal.
+window.tReviewOpen=function(id){
+  try{ _reviewEnsureCss(); }catch(e){}
+  const v=(window._trevMap||{})[id]||{};
+  const st=(v.teacher_review_status||'');
+  const approved=(st==='approved');
+  const wantChg=(st==='changes');
+  const rev=v.revision_count?` · revision ${v.revision_count}`:'';
+  const _unread=(v.review_unread||0);
+  const statusPill=approved
+    ? `<span class="trv-pill ok">${ic('check')} Approved by you</span>`
+    : wantChg ? `<span class="trv-pill chg">${ic('edit')} Changes requested</span>`
+      : `<span class="trv-pill new">${ic('clock')} Needs your check</span>`;
+  const by=[]; if(v.teacher_reviewer_name) by.push(esc(v.teacher_reviewer_name)); if(v.teacher_reviewed_at) by.push(esc(v.teacher_reviewed_at));
+  const noteBox=(approved&&v.teacher_review_note)?`<div class="trv-note">${ic('check')} <b>${by.length?by.join(' · '):'Approved'}</b><div style="margin-top:4px">“${esc(v.teacher_review_note)}”</div></div>`:'';
+  const acts=approved
+    ? `<button class="p-btn trv-chat" onclick="tReviewChat(${id})">${ic('chat')} Chat with Editor</button>`
+    : `<button class="p-btn trv-chat" onclick="tReviewChat(${id})">${ic('chat')} Chat with Editor${_unread?` <b class="vt-chat-badge">${_unread}</b>`:''}</button>
+       <button class="p-btn p-btn-warn" onclick="tReviewChanges(${id})">${ic('edit')} Changes</button>
+       <button class="p-btn p-btn-ok" onclick="tReviewApprove(${id})">${ic('check')} Approve</button>`;
+  const old=document.getElementById('prod-modal'); if(old) old.remove();
+  const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+  dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
+    '<div class="pd-head"><div><div class="h-title">Review Edited Video</div><div style="margin-top:4px">'+statusPill+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+    '<div class="p-modal-body">'+
+      '<div class="trv-title" style="margin-bottom:4px">'+esc(v.title||('Task #'+id))+rev+'</div>'+
+      (v.editor_name?('<div class="trv-meta" style="margin-bottom:10px">'+ic('edit')+' Editor: <b>'+esc(v.editor_name)+'</b></div>'):'')+
+      (v.edited_link?('<a class="trv-watch" href="'+esc(v.edited_link)+'" target="_blank" rel="noopener">'+ic('play')+' Watch edited video</a>'):'<div class="trv-empty">No edited link yet</div>')+
+      noteBox+
+    '</div>'+
+    '<div class="pd-foot"><div class="p-acts">'+acts+'</div></div>'+
+    '</div>';
+  dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+  document.body.appendChild(dr);
+};
 window.tReviewChat=function(id){
   // teacher portal doesn't ship the production chat CSS by default — inject it first
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
   try{ var v=(window._trevMap||{})[id]||{}; window._prodTaskInfo=window._prodTaskInfo||{}; window._prodTaskInfo[id]={title:v.title||'',ref:'',creator:(v.editor_name?('Editor: '+v.editor_name):'Editor'),ctype:''}; }catch(e){}
   _ytcOpen({getUrl:'/api/teacher/tasks/'+id+'/review-chat',postUrl:'/api/teacher/tasks/'+id+'/review-chat',
     pingUrl:'/api/teacher/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'teacher',
-    title:'Chat with Editor',taskId:id,barPortal:'',multiTray:true});
+    title:'Chat with Editor',taskId:id,barPortal:'',multiTray:true,
+    onBack:function(){ try{ tReviewOpen(id); }catch(e){} }});
 };
 window.tReviewChanges=function(id){
   const v=(window._trevMap||{})[id]||{};
