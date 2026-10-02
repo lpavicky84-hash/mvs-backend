@@ -1197,7 +1197,7 @@ const NOTIF_GO={
   teacher:{class_request:'timetable',class_approved:'timetable',class_rejected:'timetable',new_class:'timetable',timetable:'timetable',
     reschedule_approved:'timetable',reschedule_rejected:'timetable',reschedule_request:'timetable',leave:'attendance',
     doubt:'doubts',new_doubt:'doubts',admin_message:'notifications',admin_broadcast:'notifications',broadcast:'notifications',
-    video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
+    video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',video_review:'vtasks',
     payout:'payout',attendance:'attendance',dpp:'dpp',test:'tests',warning:'dashboard'},
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
     reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
@@ -11730,9 +11730,12 @@ async function loadTReview(){
   </div>`;
 }
 window.tReviewChat=function(id){
+  // teacher portal doesn't ship the production chat CSS by default — inject it first
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  try{ var v=(window._trevMap||{})[id]||{}; window._prodTaskInfo=window._prodTaskInfo||{}; window._prodTaskInfo[id]={title:v.title||'',ref:'',creator:(v.editor_name?('Editor: '+v.editor_name):'Editor'),ctype:''}; }catch(e){}
   _ytcOpen({getUrl:'/api/teacher/tasks/'+id+'/review-chat',postUrl:'/api/teacher/tasks/'+id+'/review-chat',
     pingUrl:'/api/teacher/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'teacher',
-    title:'Chat with Editor',taskId:id,barPortal:'teacher',multiTray:true});
+    title:'Chat with Editor',taskId:id,barPortal:'',multiTray:true});
 };
 window.tReviewChanges=function(id){
   const v=(window._trevMap||{})[id]||{};

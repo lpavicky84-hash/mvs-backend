@@ -765,6 +765,24 @@ def editor_submit(tid: int, payload: dict = Body(...),
                  meta={"link": link, "note": _rem[:200]})
     pc.notify_pms(db, "Edited Video Submitted",
                   f'{me.name} submitted the edited "{t.title}" for QC.', "production", link=str(t.id))
+    # teacher (creator/collab) ko batao ki edited video review ke liye ready hai.
+    # fresh/revised cut -> purana teacher review reset, taaki nayi video dubara check ho.
+    try:
+        if (getattr(t, "creator_type", "") or "teacher") != "youtuber":
+            t.teacher_review_status = ""
+            t.teacher_reviewed_at = None
+            t.teacher_reviewed_by = None
+            from models import TeacherProfile as _TP
+            from video_tasks import _collab_all_ids as _cai
+            _word = "revised" if is_revision else "edited"
+            for teach_id in _cai(t):
+                tp = db.query(_TP).filter(_TP.id == teach_id).first()
+                if tp and tp.user_id:
+                    pc.notify(db, tp.user_id, "Video ready for your review",
+                              f'The {_word} "{t.title}" is ready — please check and Approve or ask for Changes.',
+                              "video_review", link=str(t.id))
+    except Exception:
+        pass
     # on-time appreciation (§23) — one positive nudge, only once, only on an on-time submission
     try:
         _edl = getattr(t, "editor_deadline", None) or t.deadline
