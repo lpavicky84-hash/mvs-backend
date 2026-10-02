@@ -5792,7 +5792,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo,opts){
   +'.meta span{display:block;font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8a7c55;margin-bottom:2px}'
   +'.meta b{font-size:12.5px;color:#4a3c12}'
   +'.ins{font-size:11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 12px;margin-bottom:14px}'
-  +'.q-or,.q-t .rt-or,.q-hi .rt-or{display:block;text-align:center;font-weight:800;letter-spacing:.14em;margin:7px 0;color:#6b5d33;font-size:11.5px}'
+  +'.q-or,.rt-or{display:block;text-align:center;font-weight:800;letter-spacing:.14em;margin:7px 0;color:#6b5d33;font-size:11.5px}'
   +'.math-block{display:block;margin:5px 0;overflow-x:auto;max-width:100%;font-size:1.08em}.math-block .katex-display{margin:0}.rt-m{font-size:1.07em}'
   +'.rt-ul,.rt-ol{margin:3px 0 5px;padding-left:20px}.rt-ul li,.rt-ol li{margin:1px 0;line-height:1.45}.rt-h{font-weight:800;font-size:1.02em;margin:6px 0 3px}.rt-bq{border-left:3px solid #b8941f;padding:2px 10px;margin:4px 0;color:#6b5d33}.rt-tw{overflow-x:auto;margin:6px 0;max-width:100%}.rt-t{border-collapse:collapse;font-size:.88em}.rt-t th,.rt-t td{border:1px solid #e8e3d3;padding:4px 9px;text-align:left}.rt-t th{background:#f4f1e8}'
   +'.q-t b,.q-hi b,.sol-t b{font-weight:800}.q-t u,.q-hi u,.sol-t u{text-decoration:underline}'
@@ -5856,7 +5856,7 @@ function buildPdfDoc(ex,body,withSol,isM,lang,logo,opts){
   +'});'
   +'if(node.parentNode)node.parentNode.replaceChild(frag,node);'
   +'});});'
-  +'setTimeout(function(){window.print();},600);});</scr'+'ipt>'
+  +((opts&&opts.view)?'':'setTimeout(function(){window.print();},600);')+'});</scr'+'ipt>'
   +'</body></html>';
 }
 function _pdfQHTML(text, img, altImg, cls){
@@ -5868,10 +5868,10 @@ function _pdfQHTML(text, img, altImg, cls){
     +'<div class="q-or">'+(sp.tok||'OR')+'</div>'
     +'<div class="'+cls+'">'+_fmtRich(sp.b)+'</div>'+im(altImg);
 }
-async function examPdfPremium(id,mode,medium){
+async function examPdfPremium(id,mode,medium,view){
   try{
     medium=medium||'en';
-    toast('Preparing premium PDF\u2026');
+    toast(view?'Opening preview\u2026':'Preparing premium PDF\u2026');
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     const ex=d.exam||{}, qs=d.questions||[];
     if(!qs.length){ toast('No questions found for this test yet.',true); return; }
@@ -5950,7 +5950,7 @@ async function examPdfPremium(id,mode,medium){
     }).join('');
     const w=window.open('','_blank');
     if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo));
+    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo,{view:!!view}));
     w.document.close();
   }catch(e){ toast(e.message,true); }
 }
@@ -6193,7 +6193,8 @@ async function loadTTests(){
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
             ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
-            <button class="btn btn-primary btn-sm tst-pdfbtn" title="Premium formatted PDF download" onclick="examPdfHub(${e.id})">${ic('download')} Download PDF</button>`}
+            <button class="btn btn-ghost btn-sm" title="View the formatted test (no download)" onclick="examPdfHub(${e.id},1)">${ic('eye')} View</button>
+            <button class="btn btn-primary btn-sm tst-pdfbtn" title="Download the formatted PDF" aria-label="Download PDF" onclick="examPdfHub(${e.id})">${ic('download')}</button>`}
           </div>
         </div></div>`;
       }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
@@ -7033,8 +7034,8 @@ function _fmtRichCore(t){
   s=esc(s);
   // ---- 3) OR marker (purana behavior) ----
   s=s.split('\n').map(ln=>{
-    const om=ln.match(/^\s*(?:\*\*)?\s*(OR|or|Or|oR|या)\s*(?:\*\*)?\s*$/);
-    return om?'@@OR:'+(/^या$/.test(om[1])?'या':'OR')+'@@':ln;
+    const om=ln.match(/^\s*(?:\*\*)?\s*(OR|or|Or|oR|या|अथवा)\s*(?:\*\*)?\s*$/);
+    return om?'@@OR:'+(/^(?:या|अथवा)$/.test(om[1])?om[1]:'OR')+'@@':ln;
   }).join('\n');
   s=s.replace(/\n*@@OR:([^@]*)@@\n*/g,'@@OR:$1@@').replace(/\n{3,}/g,'\n\n');
   s=s.replace(/@@OR:([^@]*)@@/g,'<span class="rt-or">$1</span>');
@@ -7314,11 +7315,42 @@ function _examFillTestCls(auto){
   else if(cls.length===1) csel.value=cls[0];
   else if(auto&&cls.length>1) csel.value=cls[0];
 }
-function addExamQ(){ _examQs.push(_examType==='mcq'?{q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,alt_image_b64:null,_ipart:'a',_tab:'en'}:{q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,alt_image_b64:null,_ipart:'a',model_answer_image:null,qtype:'general',_tab:'en'});
+// One blank question object for the current test type.
+function _blankExamQ(){
+  return _examType==='mcq'
+    ? {q:'',q_hi:'',opts:['','','',''],opts_hi:['','','',''],correct:0,marks:1,expl:'',expl_hi:'',image_b64:null,alt_image_b64:null,_ipart:'a',_tab:'en'}
+    : {q:'',q_hi:'',model:'',model_hi:'',marks:5,image_b64:null,alt_image_b64:null,_ipart:'a',model_answer_image:null,qtype:'general',_tab:'en'};
+}
+function addExamQ(){ _examQs.push(_blankExamQ());
   // Append only the new card (big tests: never rebuild all cards -> no "page unresponsive").
   if(_examQs.length>1 && document.getElementById('ex-qs')){ _examAppendCard(_examQs.length-1);
     try{ var _nc=document.getElementById('ex-qs').lastElementChild; if(_nc&&_nc.scrollIntoView) _nc.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
   } else { renderExamQs(); }
+}
+// INSERT a blank question at position `at` (0-based), pushing `at` and everything after it down
+// by one. Mirrors the targeted-delete re-index: no full rebuild, numbers auto-shift, and every
+// card's baked index stays correct. Works for both Objective (MCQ) and Mission 75.
+function insertExamQ(at){
+  at=parseInt(at,10); if(isNaN(at)) at=_examQs.length;
+  at=Math.max(0, Math.min(at, _examQs.length));
+  _examQs.splice(at, 0, _blankExamQ());
+  var el=document.getElementById('ex-qs');
+  if(!el){ renderExamQs(); return; }
+  // Drop a placeholder node at `at`, then re-index every card from `at` onward.
+  var cards=el.querySelectorAll('.ex-qcard');
+  if(at>=cards.length){ el.insertAdjacentHTML('beforeend', _examPlaceholder(at)); }
+  else { cards[at].insertAdjacentHTML('beforebegin', _examPlaceholder(at)); }
+  var rest=el.querySelectorAll('.ex-qcard');
+  for(var k=at;k<rest.length;k++){
+    var c=rest[k]; c.setAttribute('data-qi',k);
+    if(k===at){ c.dataset.full=''; _examMountCard(c); try{ if(window._examPvObs) window._examPvObs.observe(c); }catch(e){} }
+    else if(c.dataset.full==='1'){ try{ c.innerHTML=_examCardInner(k); _examFillOne(k); }catch(e){} }
+    else { c.style.minHeight=_examEstH(k)+'px'; c.innerHTML='<div class="ex-ph-in">Question '+(k+1)+'</div>'; }
+  }
+  try{ _examUpdateTrAll(); }catch(e){}
+  // Focus + scroll to the new card so the teacher can type right away.
+  try{ var nc=el.querySelectorAll('.ex-qcard')[at]; if(nc){ if(nc.scrollIntoView) nc.scrollIntoView({behavior:'smooth',block:'center'}); var ta=nc.querySelector('textarea'); if(ta) ta.focus(); } }catch(e){}
+  try{ if(_saveQDraft) _saveQDraft(); }catch(e){}
 }
 
 /* ===================== MCQ BULK UPLOAD (Excel) ===================== */
@@ -7546,7 +7578,7 @@ function removeExamQ(i){
 function _splitOr(t){
   // Question ko "OR" line pe do hisso me todta hai: {a, b}. OR na ho to b=null.
   const s=String(t==null?'':t);
-  const m=s.match(/(^|\n)[ \t]*(?:\*\*)?\s*(OR|or|Or|oR|\u092f\u093e)\s*(?:\*\*)?[ \t]*(?=\n|$)/);
+  const m=s.match(/(^|\n)[ \t]*(?:\*\*)?\s*(OR|or|Or|oR|\u092f\u093e|\u0905\u0925\u0935\u093e)\s*(?:\*\*)?[ \t]*(?=\n|$)/);
   if(!m) return {a:s,b:null,tok:null};
   const at=s.indexOf(m[0]);
   return {a:s.slice(0,at).replace(/\s+$/,''), b:s.slice(at+m[0].length).replace(/^\s+/,''),
@@ -7892,7 +7924,7 @@ function _examCardInner(i){
     const q=_examQs[i]; if(!q) return '';
     const biling=(_examMedium==='Bilingual');
     const isHi=biling&&q._tab==='hi';
-    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Upload a screenshot of the question — AI reads it into text (best for PYQ integrals/fractions where copy-paste breaks)" onclick="document.getElementById('ex-ocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})">${_examQs.length>1?`<button class="btn btn-danger btn-sm" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
+    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Upload a screenshot of the question — AI reads it into text (best for PYQ integrals/fractions where copy-paste breaks)" onclick="document.getElementById('ex-ocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})"><button type="button" class="btn btn-ghost btn-sm ex-ins" title="Insert a new blank question right below this one (numbers shift automatically)" onclick="insertExamQ(${i}+1)">${ic('plus')||'+'} Insert below</button>${_examQs.length>1?`<button class="btn btn-danger btn-sm" title="Delete this question (numbers shift automatically)" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
     const _ts=_qTransState(q);
     const _tsLbl=_ts==='done'?'Hindi Added':(_ts==='part'?'Finish Hindi':'Translate to Hindi');
     const _tsTitle=_ts==='done'?'Hindi is filled for this question. Click to translate anything still empty.'
@@ -8143,13 +8175,14 @@ async function examTranslateAll(btn){
   toast(done?('Translated '+done+' field(s) to Hindi.'):'Nothing translated — Hindi already filled or English empty.');
 }
 /* ---- PDF medium chooser ---- */
-function examPdfChoose(id,mode){
+function examPdfChoose(id,mode,view){
+  view=view?1:0;
   const lbl=(mode==='solutions')?'Question Paper + Solutions':'Question Paper';
-  showModal('Download PDF — '+lbl,
+  showModal((view?'View':'Download PDF')+' — '+lbl,
   `<div class="pm-grid">`
-  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','en')"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Full paper in English medium</small></span></button>`
-  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','hi')"><span class="pm-ic">\u0905</span><span class="pm-tx"><b>\u0939\u093f\u0902\u0926\u0940</b><small>\u092a\u0942\u0930\u093e \u092a\u094d\u0930\u0936\u094d\u0928\u092a\u0924\u094d\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902 \u2014 \u0905\u0928\u0941\u0935\u093e\u0926 \u0905\u092a\u0928\u0947 \u0906\u0906\u092a, free</small></span></button>`
-  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','both')"><span class="pm-ic">A\u0905</span><span class="pm-tx"><b>English + \u0939\u093f\u0902\u0926\u0940</b><small>Bilingual \u2014 \u0926\u094b\u0928\u094b\u0902 \u092e\u093e\u0927\u094d\u092f\u092e \u090f\u0915 \u0938\u093e\u0925</small></span></button>`
+  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','en',${view})"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Full paper in English medium</small></span></button>`
+  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','hi',${view})"><span class="pm-ic">\u0905</span><span class="pm-tx"><b>\u0939\u093f\u0902\u0926\u0940</b><small>\u092a\u0942\u0930\u093e \u092a\u094d\u0930\u0936\u094d\u0928\u092a\u0924\u094d\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902</small></span></button>`
+  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','both',${view})"><span class="pm-ic">A\u0905</span><span class="pm-tx"><b>English + \u0939\u093f\u0902\u0926\u0940</b><small>Bilingual \u2014 \u0926\u094b\u0928\u094b\u0902 \u092e\u093e\u0927\u094d\u092f\u092e \u090f\u0915 \u0938\u093e\u0925</small></span></button>`
   +`</div>`);
 }
 
@@ -8309,11 +8342,12 @@ async function examRecreate(){
   }catch(e){ toast('Save failed: '+e.message,true); }
 }
 /* teacher: Download PDF hub — mode pick, then medium, then download */
-function examPdfHub(id){
-  showModal('Download PDF',
+function examPdfHub(id, view){
+  view=view?1:0;
+  showModal(view?'View test':'Download PDF',
   `<div class="pm-grid">`
-  +`<button class="pm-opt" onclick="examPdfChoose(${id},'paper')"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>`
-  +`<button class="pm-opt" onclick="examPdfChoose(${id},'solutions')"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>`
+  +`<button class="pm-opt" onclick="examPdfChoose(${id},'paper',${view})"><span class="pm-ic">Q</span><span class="pm-tx"><b>Question Paper</b><small>Questions only — student copy</small></span></button>`
+  +`<button class="pm-opt" onclick="examPdfChoose(${id},'solutions',${view})"><span class="pm-ic">A</span><span class="pm-tx"><b>Ques. with Answer</b><small>Questions + solutions — teacher copy</small></span></button>`
   +`</div>`);
 }
 /* map saved exam questions back into the create-form structure (for editing) */
@@ -9504,7 +9538,7 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-window.MVS_BUILD='v12 (fast-pdf)';
+window.MVS_BUILD='v13 (insert-view-or)';
 console.log('%cMVS build: '+window.MVS_BUILD+' — if you do NOT see this line (or the badge in the Create Test box), you are on OLD cached JS. Hard-refresh: Ctrl+Shift+R','color:#0a7;font-weight:800;font-size:14px');
 
 /* ================= MAIN-THREAD HANG DETECTOR (diagnostic) =================
