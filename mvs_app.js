@@ -1337,6 +1337,8 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   const tid=parseInt(link,10);
   if(tid && (''+tid)===link.trim()){
     closeModal();
+    // edited video ready for the teacher's review -> My Tasks, Editing Done filter, open it
+    if(role==='teacher' && (ntype||'')==='video_review'){ try{ tGotoReview(tid); return; }catch(e){} }
     const page=_notifResolvePage(role,ntype||'video_task',fbPage||'vtasks');
     if(page){
       const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
@@ -3045,13 +3047,32 @@ async function loadTDashboard(){
  if((d.unresolved_doubts||0)>0) _naT.push({label:d.unresolved_doubts+' student doubt'+(d.unresolved_doubts>1?'s':'')+' waiting for your answer',cta:'Answer',urgent:true,onclick:"navTo('teacher-app','doubts')"});
  if((d.total_pending||0)>0) _naT.push({label:d.total_pending+' class'+(d.total_pending>1?'es':'')+' still pending today',cta:'Open',onclick:"navTo('teacher-app','today')"});
  setTimeout(function(){ _mountWhatsNew('teacher'); }, 60);
- el.innerHTML=`${greetingCard(NAME,_tSuffix)}${_nextActionHTML(_naT,'No pending classes or doubts right now.')}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',d.total_pending,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
+ el.innerHTML=`${greetingCard(NAME,_tSuffix)}<div id="t-rev-banner"></div>${_nextActionHTML(_naT,'No pending classes or doubts right now.')}<div class="card"><div class="card-header"><h3> Today's Classes</h3></div><div class="card-body"><div id="t-today-wrap"><div class="spinner"></div></div></div></div><div id="t-punch-wrap"></div><div class="stats-grid">${statCard('Classes Done',d.total_done,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',d.total_pending,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('DPPs',d.total_dpps,'clipboard','indigo',"navTo('teacher-app','dpp')")}${statCard('Tests',d.total_tests,'edit','teal',"navTo('teacher-app','tests')")}${statCard('Unresolved Doubts',d.unresolved_doubts,'help','red',"navTo('teacher-app','doubts')",true)}</div>`;
  const badge=document.getElementById('t-doubt-badge');
  if(d.unresolved_doubts>0){ badge.style.display='inline-block'; badge.textContent=d.unresolved_doubts; } else badge.style.display='none';
  renderPunchCard('t-punch-wrap');
  loadVTBanner();
+ loadTReviewBanner();
  loadTeacherToday();
   }catch(e){ el.innerHTML=errHtml(e); }
+}
+// Dashboard blinking banner: edited videos waiting for THIS teacher to review.
+async function loadTReviewBanner(){
+  try{ _reviewEnsureCss(); }catch(e){}
+  const wrap=document.getElementById('t-rev-banner'); if(!wrap) return;
+  let vids=[];
+  try{ const d=await api('/api/teacher/review-videos'); vids=(d&&d.videos)||[]; }catch(e){ wrap.innerHTML=''; return; }
+  const pend=vids.filter(v=>(v.teacher_review_status||'')!=='approved');
+  if(!pend.length){ wrap.innerHTML=''; return; }
+  const first=pend[0];
+  const many=pend.length>1;
+  const main=many?`${pend.length} edited videos are ready for your review`:`Please check your edited video`;
+  const sub=many?`Watch, then Approve or request changes`:`“${esc(first.title||('Task #'+first.id))}”${first.editor_name?` · submitted by ${esc(first.editor_name)}`:''}`;
+  wrap.innerHTML=`<div class="trev-banner" onclick="tGotoReview(${first.id})">
+    <div class="tb-ic">${ic('video')}</div>
+    <div class="tb-body"><div class="tb-k">Edited video ready</div><div class="tb-main">${main}</div><div class="tb-sub">${sub}</div></div>
+    <button class="tb-cta" onclick="event.stopPropagation();tGotoReview(${first.id})">${ic('play')} Review now →</button>
+  </div>`;
 }
 // ---- Per-teacher targets editor (individual): auto (timetable) ya manual ----
 const TT_ACTS=[['classes','Classes'],['dpp','DPP'],['videos','Videos'],['shorts','Shorts'],['live','YouTube Live'],['tests','Weekly Tests']];
@@ -11488,7 +11509,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
     const stat=(l,n,color,icn,bucket,blink)=>`<div class="vt-stat vt-stat-click${blink&&n?' vt-stat-blink':''}" data-tbucket="${bucket}" onclick="_tvtStatFilter('${bucket}')"><div class="vs-ic" style="background:${color}1f;color:${color}">${ic(icn)}</div><div><div class="vs-n" style="color:${color}">${n}</div><div class="vs-l">${l}</div></div></div>`;
     const statCards=`<div class="vt-cards">
       ${stat('Assigned',st.assigned||0,'#8a6d10','clipboard','assigned')}
-      ${stat('Editing Done',_revPending,'#b45309','video','review',true)}
+      ${stat('Editing Done',_revPending,'#dc2626','video','review',true)}
       ${stat('Completed',st.completed||0,'#059669','check','completed')}
       ${stat('Under Review',st.under_review||0,'#c99a2e','clock','underreview')}
       ${stat('Pending',st.pending||0,'#0891b2','clipboard','pending')}
@@ -11646,6 +11667,8 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       sp.style.color=neg?'#b91c1c':(s<86400?'#b45309':'#047857'); }); };
     tick(); _tvtTimer=setInterval(tick,1000);
     try{ if(window._tvtStat) _applyTvtStatFilter(); }catch(e){}
+    // deep-link: open a specific review (from the dashboard banner / notification)
+    try{ if(window._tvtPendingReviewOpen){ const _pid=window._tvtPendingReviewOpen; window._tvtPendingReviewOpen=null; setTimeout(function(){ try{ if((window._trevMap||{})[_pid]) tReviewOpen(_pid); }catch(e){} }, 120); } }catch(e){}
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 // Teacher stat-chip filter — click a stat to filter the task grid; click again to clear.
@@ -11672,6 +11695,16 @@ function _applyTvtStatFilter(){
     }
     c.style.display=show?'':'none';
   });
+}
+// Jump straight to My Tasks, filter to Editing Done, and open the review for a task.
+// Used by the dashboard banner and the "video ready for review" notification.
+function tGotoReview(id){
+  try{ _tvtView='tasks'; }catch(e){}
+  window._tvtStat='review';
+  window._tvtPendingReviewOpen=id||null;
+  try{ if(typeof navTo==='function') navTo('teacher-app','vtasks'); }catch(e){}
+  // fallback in case navTo didn't trigger the loader
+  setTimeout(function(){ try{ if(document.getElementById('t-vtasks-content') && !document.querySelector('.vt-grid')) loadTVTasks(); }catch(e){} }, 120);
 }
 // ===== VIDEO REVIEW — styles (one-time inject) =====
 function _reviewEnsureCss(){
@@ -11739,12 +11772,25 @@ function _reviewEnsureCss(){
     '.vt-rev-btn .vt-rev-ttl{display:inline-flex;align-items:center;gap:7px;font-weight:900}'+
     '.vt-rev-btn .vt-rev-sub{font-size:.74rem;font-weight:700;opacity:.85}'+
     '.vt-rev-btn .vt-chat-badge{background:#d1443a;color:#fff;border-radius:999px;padding:0 6px;font-size:.7rem}'+
-    // blinking "Editing Done" stat + active stat highlight
-    '@keyframes vtStatPulse{0%,100%{box-shadow:0 0 0 0 rgba(180,83,9,.4)}50%{box-shadow:0 0 0 5px rgba(180,83,9,0)}}'+
+    // blinking "Editing Done" stat (RED, attention) + active stat highlight
+    '@keyframes vtStatPulseRed{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}'+
     '.vt-stat-click{cursor:pointer;transition:transform .12s,box-shadow .15s}'+
     '.vt-stat-click:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(18,20,45,.1)}'+
-    '.vt-stat-blink{animation:vtStatPulse 1.7s ease-out infinite;border:1px solid rgba(180,83,9,.35)}'+
-    '.vt-stat-on{outline:2px solid #c98a2e;outline-offset:1px}'+
+    '.vt-stat-blink{animation:vtStatPulseRed 1.3s ease-out infinite;border:1.5px solid rgba(220,38,38,.55)!important;background:rgba(220,38,38,.06)!important}'+
+    '.vt-stat-on{outline:2px solid #dc2626;outline-offset:1px}'+
+    // full-width BLINKING dashboard banner — edited video ready for teacher review
+    '@keyframes trevBanner{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}50%{box-shadow:0 0 0 7px rgba(220,38,38,0)}}'+
+    '.trev-banner{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:15px 18px;border-radius:16px;border:1.5px solid rgba(220,38,38,.45);background:linear-gradient(135deg,rgba(220,38,38,.1),rgba(220,38,38,.02));margin-bottom:18px;cursor:pointer;animation:trevBanner 1.4s ease-out infinite}'+
+    '.trev-banner:hover{filter:brightness(1.02)}'+
+    '.trev-banner .tb-ic{width:44px;height:44px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#dc2626;color:#fff}'+
+    '.trev-banner .tb-ic svg{width:22px;height:22px}'+
+    '.trev-banner .tb-body{flex:1;min-width:180px}'+
+    '.trev-banner .tb-k{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#b91c1c}'+
+    '.trev-banner .tb-main{font-size:1.02rem;font-weight:900;color:var(--text,#2a2418);margin-top:2px}'+
+    '.trev-banner .tb-sub{font-size:.82rem;color:var(--text-muted,#998);font-weight:600;margin-top:1px}'+
+    '.trev-banner .tb-cta{flex:none;white-space:nowrap;background:#dc2626;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:800;font-size:.86rem;cursor:pointer}'+
+    '.trev-banner .tb-cta:hover{filter:brightness(1.05)}'+
+    '@media(max-width:560px){.trev-banner .tb-cta{flex-basis:100%}}'+
     // premium back arrow in chat headers
     '.chat-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#14213d);cursor:pointer;flex:0 0 auto;transition:background .15s,box-shadow .15s}'+
     '.chat-back:hover{background:var(--surface-2,#f0ead9);box-shadow:0 2px 8px rgba(18,20,45,.08)}'+
@@ -11819,7 +11865,7 @@ window.tReviewChanges=function(id){
     '<div class="p-modal-body">'+
       '<div class="p-field"><label>What should change?</label><textarea class="p-area" id="trv-chg-note" rows="4" placeholder="Describe the changes for the editor"></textarea></div>'+
     '</div>'+
-    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">'+(window._BACKIC||'')+' Back</button>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="tReviewOpen('+id+')">'+(window._BACKIC||'')+' Back</button>'+
       '<button class="p-btn p-btn-warn" onclick="tReviewChangesSubmit('+id+')">Send to editor</button></div></div>'+
     '</div>';
   dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -11845,7 +11891,7 @@ window.tReviewApprove=function(id){
     '<div class="p-modal-body">'+
       '<div class="p-field"><label>Your note about the editing <span style="color:#dc2626">*</span></label><textarea class="p-area" id="trv-app-note" rows="4" placeholder="Share your feedback on the editing before approving"></textarea></div>'+
     '</div>'+
-    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">'+(window._BACKIC||'')+' Back</button>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="tReviewOpen('+id+')">'+(window._BACKIC||'')+' Back</button>'+
       '<button class="p-btn p-btn-ok" onclick="tReviewApproveSubmit('+id+')">Approve Video</button></div></div>'+
     '</div>';
   dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
