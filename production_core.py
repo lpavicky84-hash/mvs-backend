@@ -1198,6 +1198,8 @@ _EVENT_LABELS = {
     "thumbnail_changes_requested": "Thumbnail Changes Requested",
     "thumbnail_rejected": "Thumbnail Rejected",
     "qc_approved": "QC Approved",
+    "teacher_review_approved": "Teacher Approved Edited Video",
+    "teacher_review_changes": "Teacher Requested Changes",
     "revision_submitted": "Revision Submitted",
     "youtube_link_added": "YouTube Link Added",
     "uploaded": "Uploaded",

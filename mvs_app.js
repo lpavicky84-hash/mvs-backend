@@ -11552,8 +11552,8 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       if(_rev){
         if(_revApproved){
           const _rn=_rev.teacher_reviewer_name?esc(_rev.teacher_reviewer_name):'you';
-          const _ra=_rev.teacher_reviewed_at?(' · '+esc(_rev.teacher_reviewed_at)):'';
-          reviewBox=`<button class="vt-rev-btn done" onclick="tReviewOpen(${t.id})">${ic('check')} Approved by ${_rn}${_ra}</button>`;
+          const _ra=_rev.teacher_reviewed_at?esc(_rev.teacher_reviewed_at):'';
+          reviewBox=`<button class="vt-rev-btn done" onclick="tReviewOpen(${t.id})"><span class="vt-rev-ttl">${ic('check')} Edited Video Approved</span><span class="vt-rev-sub">by ${_rn}${_ra?` · ${_ra}`:''}</span></button>`;
         } else {
           const _ru=(_rev.review_unread||0);
           reviewBox=`<button class="vt-rev-btn blink" onclick="tReviewOpen(${t.id})">${ic('video')} Review Edited Video${_ru?` <b class="vt-chat-badge">${_ru}</b>`:''}</button>`;
@@ -11734,8 +11734,10 @@ function _reviewEnsureCss(){
     '.vt-rev-btn svg{width:16px;height:16px}'+
     '.vt-rev-btn.blink{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;animation:trvPulse 1.7s ease-out infinite}'+
     '.vt-rev-btn.blink:hover{filter:brightness(1.03)}'+
-    '.vt-rev-btn.done{background:rgba(5,150,105,.12);border-color:rgba(5,150,105,.35);color:#0b5c46;animation:none}'+
+    '.vt-rev-btn.done{flex-direction:column;gap:2px;background:rgba(5,150,105,.12);border-color:rgba(5,150,105,.35);color:#0b5c46;animation:none;padding:10px 14px}'+
     '.vt-rev-btn.done:hover{background:rgba(5,150,105,.18)}'+
+    '.vt-rev-btn .vt-rev-ttl{display:inline-flex;align-items:center;gap:7px;font-weight:900}'+
+    '.vt-rev-btn .vt-rev-sub{font-size:.74rem;font-weight:700;opacity:.85}'+
     '.vt-rev-btn .vt-chat-badge{background:#d1443a;color:#fff;border-radius:999px;padding:0 6px;font-size:.7rem}'+
     // blinking "Editing Done" stat + active stat highlight
     '@keyframes vtStatPulse{0%,100%{box-shadow:0 0 0 0 rgba(180,83,9,.4)}50%{box-shadow:0 0 0 5px rgba(180,83,9,0)}}'+
@@ -11763,6 +11765,7 @@ function _reviewEnsureCss(){
 async function loadTReview(){ try{ if(typeof loadTVTasks==='function') return loadTVTasks(); }catch(e){} }
 // Open the review for an edited video (Watch / Chat / Approve / Changes) as a premium modal.
 window.tReviewOpen=function(id){
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
   try{ _reviewEnsureCss(); }catch(e){}
   const v=(window._trevMap||{})[id]||{};
   const st=(v.teacher_review_status||'');
@@ -11806,6 +11809,8 @@ window.tReviewChat=function(id){
     onBack:function(){ try{ tReviewOpen(id); }catch(e){} }});
 };
 window.tReviewChanges=function(id){
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  try{ _reviewEnsureCss(); }catch(e){}
   const v=(window._trevMap||{})[id]||{};
   const old=document.getElementById('prod-modal'); if(old) old.remove();
   const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
@@ -11830,6 +11835,8 @@ window.tReviewChangesSubmit=function(id){
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
 };
 window.tReviewApprove=function(id){
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  try{ _reviewEnsureCss(); }catch(e){}
   const v=(window._trevMap||{})[id]||{};
   const old=document.getElementById('prod-modal'); if(old) old.remove();
   const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';

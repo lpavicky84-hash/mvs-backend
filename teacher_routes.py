@@ -3483,8 +3483,8 @@ def teacher_review_changes(tid: int, payload: dict = Body(default={}),
         _review_chat_add(db, current_user, tid, (note or "Changes requested — details in chat."),
                          imgs, "teacher")
     try:
-        _pc.set_state(db, t, t.lifecycle, actor=current_user, event="teacher_review_changes",
-                      meta={"note": (note or "")[:200]})
+        # lifecycle stays qc_pending, so log the event directly (set_state skips same-state)
+        _pc.log_event(db, t, current_user, "teacher_review_changes", meta={"note": (note or "")[:200]})
     except Exception:
         pass
     # notify editor + PMs
@@ -3525,8 +3525,8 @@ def teacher_review_approve(tid: int, payload: dict = Body(...),
     t.teacher_reviewed_by = getattr(current_user, "id", None)
     t.teacher_reviewer_name = getattr(current_user, "name", "") or ""
     try:
-        _pc.set_state(db, t, t.lifecycle, actor=current_user, event="teacher_review_approved",
-                      meta={"note": note[:200]})
+        # lifecycle stays qc_pending, so log the event directly (set_state skips same-state)
+        _pc.log_event(db, t, current_user, "teacher_review_approved", meta={"note": note[:200]})
     except Exception:
         pass
     try:
