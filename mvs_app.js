@@ -7493,7 +7493,39 @@ function _ansImgZone(i){ const q=_examQs[i]; return q.model_answer_image
 // NEVER re-renders the whole question list (that froze big Mission-75 tests).
 function _ansImgSection(i){ return _ansImgZone(i)+`<input type="file" id="ex-aimgf-${i}" accept="image/*" style="display:none" onchange="examAnsImgFile(this,${i})">`; }
 function _syncAnsImgSec(i){ const el=document.getElementById('ex-ansimgsec-'+i); if(el) el.innerHTML=_ansImgSection(i); }
-function removeExamQ(i){ _examQs.splice(i,1); renderExamQs(); }
+// TARGETED delete — never wipes/rebuilds the whole list (that full re-render on every
+// delete, repeated, was the "Page Unresponsive" freeze). We remove just the one card's DOM
+// node, then re-point every following card to its new index. Mounted cards (only the few
+// near the viewport) are rebuilt so their inline handlers carry the correct index — this
+// also fixes the old bug where a card mounted at index 19 kept deleting Q19 after shifts.
+function removeExamQ(i){
+  i=parseInt(i,10); if(isNaN(i)||i<0||i>=_examQs.length) return;
+  _examQs.splice(i,1);
+  var el=document.getElementById('ex-qs');
+  // Edge cases (0 or 1 left) — a trivial full render is cheap and keeps the "last question"
+  // trash button correct.
+  if(!el || _examQs.length<=1){ if(!_examQs.length) addExamQ(); else renderExamQs(); return; }
+  var cards=el.querySelectorAll('.ex-qcard');
+  var gone=cards[i];
+  if(gone){ try{ if(window._examPvObs) window._examPvObs.unobserve(gone); }catch(e){} gone.remove(); }
+  // Re-index every card from i onward (DOM order now matches the spliced array).
+  var rest=el.querySelectorAll('.ex-qcard');
+  for(var k=i;k<rest.length;k++){
+    var c=rest[k];
+    c.setAttribute('data-qi',k);
+    if(c.dataset.full==='1'){
+      // Mounted -> rebuild inner with the new index, then refill its previews. Only the
+      // handful of on-screen cards hit this, so it stays well under one frame.
+      try{ c.innerHTML=_examCardInner(k); _examFillOne(k); }catch(e){}
+    } else {
+      // Placeholder -> just relabel + keep a sensible reserved height. No heavy work.
+      c.style.minHeight=_examEstH(k)+'px';
+      c.innerHTML='<div class="ex-ph-in">Question '+(k+1)+'</div>';
+    }
+  }
+  try{ _examUpdateTrAll(); }catch(e){}
+  try{ if(_saveQDraft) _saveQDraft(); }catch(e){}
+}
 function _splitOr(t){
   // Question ko "OR" line pe do hisso me todta hai: {a, b}. OR na ho to b=null.
   const s=String(t==null?'':t);
@@ -7757,16 +7789,35 @@ function _examMDrain(){
   if(_examMQ.length){ (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examMDrain); }
   else _examMRun=false;
 }
+// TIME-BUDGETED unmount queue (mirror of mount): a big list-shift or fast scroll can push many
+// cards out of the window at once; running innerHTML writes + offsetHeight reads for all of them
+// synchronously inside the observer callback was a layout-thrash storm. Budget it like mounting.
+var _examUQ=[], _examURun=false;
+function _examQueueUnmount(card){
+  if(!card || card.dataset.full!=='1' || card.dataset.uq==='1') return;
+  card.dataset.uq='1'; _examUQ.push(card);
+  if(!_examURun){ _examURun=true; (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examUDrain); }
+}
+function _examUDrain(){
+  var t0=_examNow();
+  while(_examUQ.length){
+    var c=_examUQ.shift(); if(c) c.dataset.uq='';
+    try{ if(c && document.body.contains(c)) _examUnmountCard(c); }catch(e){}
+    if(_examNow()-t0>6) break;
+  }
+  if(_examUQ.length){ (window.requestAnimationFrame||function(f){return setTimeout(f,16);})(_examUDrain); }
+  else _examURun=false;
+}
 // Observe every card: mount when within ~1200px of the viewport, unmount when it moves away.
 function _examSetupWindow(el){
   try{ if(window._examPvObs){ window._examPvObs.disconnect(); window._examPvObs=null; } }catch(e){}
-  _examMQ=[];
+  _examMQ=[]; _examUQ=[];
   var cards=el.querySelectorAll('.ex-qcard');
   if(!('IntersectionObserver' in window)){ for(var i=0;i<cards.length;i++) _examQueueMount(cards[i]); return; }
   var obs=new IntersectionObserver(function(ents){
     ents.forEach(function(en){
       if(en.isIntersecting) _examQueueMount(en.target);
-      else _examUnmountCard(en.target);
+      else _examQueueUnmount(en.target);
     });
   },{root:null, rootMargin:'1200px 0px', threshold:0});
   window._examPvObs=obs;
