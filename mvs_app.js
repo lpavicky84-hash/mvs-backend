@@ -11657,14 +11657,32 @@ function _reviewEnsureCss(){
     '.trv-acts .btn{flex:1 1 auto;white-space:nowrap}'+
     '.btn-warn{background:rgba(201,154,46,.16);color:#92700f;border:1px solid rgba(201,154,46,.4)}'+
     '.btn-warn:hover{background:rgba(201,154,46,.26)}'+
-    '.qc-tr{margin:10px 0 4px;border-radius:11px;padding:10px 12px;font-size:.82rem;line-height:1.5}'+
-    '.qc-tr.ok{background:rgba(5,150,105,.09);border:1px solid rgba(5,150,105,.26);color:#065f46}'+
-    '.qc-tr.chg{background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.26);color:#991b1b}'+
-    '.qc-tr.wait{background:rgba(201,154,46,.09);border:1px solid rgba(201,154,46,.3);color:#92700f}'+
-    '.qc-tr svg{width:15px;height:15px;vertical-align:-2px}'+
-    '.qc-tr-note{margin-top:5px;font-style:italic;font-weight:600}'+
-    '.qc-tr-chat{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:.76rem;font-weight:800;cursor:pointer;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:8px;padding:5px 10px;color:var(--text,#14213d)}'+
+    '.qc-tr{position:relative;margin:12px 0 6px;border-radius:14px;padding:13px 15px 13px 16px;font-size:.82rem;line-height:1.5;overflow:hidden}'+
+    '.qc-tr::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px}'+
+    '.qc-tr.ok{background:linear-gradient(180deg,rgba(5,150,105,.11),rgba(5,150,105,.04));border:1px solid rgba(5,150,105,.28);color:#0b5c46}'+
+    '.qc-tr.ok::before{background:#059669}'+
+    '.qc-tr.chg{background:linear-gradient(180deg,rgba(220,38,38,.09),rgba(220,38,38,.03));border:1px solid rgba(220,38,38,.26);color:#991b1b}'+
+    '.qc-tr.chg::before{background:#dc2626}'+
+    '.qc-tr.wait{background:linear-gradient(180deg,rgba(201,154,46,.12),rgba(201,154,46,.04));border:1px solid rgba(201,154,46,.32);color:#8a6410}'+
+    '.qc-tr.wait::before{background:#d6a434}'+
+    '.qc-tr-h{display:flex;align-items:center;gap:9px;font-weight:900;font-size:.9rem}'+
+    '.qc-tr-ic{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;flex:0 0 auto;background:rgba(255,255,255,.6)}'+
+    '.qc-tr.ok .qc-tr-ic{background:rgba(5,150,105,.16)}'+
+    '.qc-tr.chg .qc-tr-ic{background:rgba(220,38,38,.14)}'+
+    '.qc-tr.wait .qc-tr-ic{background:rgba(201,154,46,.2)}'+
+    '.qc-tr-ic svg{width:15px;height:15px}'+
+    '.qc-tr-by{margin-left:auto;font-size:.72rem;font-weight:700;opacity:.8;white-space:nowrap}'+
+    '.qc-tr-tx{margin-top:6px;font-weight:600;opacity:.92}'+
+    '.qc-tr-note{margin-top:8px;padding:8px 11px;background:rgba(255,255,255,.55);border-radius:9px;font-style:italic;font-weight:700;color:var(--text,#14213d);line-height:1.45}'+
+    'body.dark .qc-tr-note{background:rgba(0,0,0,.18)}'+
+    '.qc-tr-chat{display:inline-flex;align-items:center;gap:7px;margin-top:10px;font-size:.77rem;font-weight:800;cursor:pointer;background:var(--card,#fff);border:1px solid rgba(140,125,92,.3);border-radius:9px;padding:7px 12px;color:var(--text,#14213d);transition:background .15s,box-shadow .15s}'+
+    '.qc-tr-chat:hover{box-shadow:0 3px 10px rgba(18,20,45,.1)}'+
+    'body.dark .qc-tr-chat{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
     '.qc-tr-chat svg{width:14px;height:14px}'+
+    // premium LOCKED approve button (shown until teacher approves)
+    '.p-btn-locked{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border-radius:10px;font-size:.86rem;font-weight:800;cursor:not-allowed;border:1px dashed rgba(201,154,46,.5);background:rgba(201,154,46,.08);color:#9a7418}'+
+    '.p-btn-locked svg{width:15px;height:15px;opacity:.85}'+
+    'body.dark .p-btn-locked{background:rgba(201,154,46,.12);color:#e0b864;border-color:rgba(201,154,46,.4)}'+
     '@media(max-width:600px){.trv-grid{grid-template-columns:1fr}.trv-acts .btn{flex:1 1 100%}}';
   document.head.appendChild(s);
 }
@@ -28704,22 +28722,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _trApproved=(_trSt==='approved');
       var _gate=(_trReq && !_trApproved);
       var _trBlock='';
+      var _chatBtn='<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button>';
       if(_trReq){
         if(_trApproved){
-          _trBlock='<div class="qc-tr ok">'+ic('check')+' <b>Teacher approved</b>'+(t.teacher_reviewer_name?(' \u2014 '+esc(t.teacher_reviewer_name)):'')+(t.teacher_reviewed_at?(' \u00b7 '+esc(t.teacher_reviewed_at)):'')+
+          var _by=[]; if(t.teacher_reviewer_name) _by.push(esc(t.teacher_reviewer_name)); if(t.teacher_reviewed_at) _by.push(esc(t.teacher_reviewed_at));
+          _trBlock='<div class="qc-tr ok">'+
+            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('check')+'</span>Teacher approved'+(_by.length?('<span class="qc-tr-by">'+_by.join(' \u00b7 ')+'</span>'):'')+'</div>'+
             (t.teacher_review_note?('<div class="qc-tr-note">\u201c'+esc(t.teacher_review_note)+'\u201d</div>'):'')+
-            '<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button></div>';
+            _chatBtn+'</div>';
         } else if(_trSt==='changes'){
-          _trBlock='<div class="qc-tr chg">'+ic('edit')+' <b>Teacher ne changes maange hain</b> \u2014 editor ke saath chat chal rahi hai. Teacher ke approve karne ke baad hi aap approve kar paoge.'+
-            '<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button></div>';
+          _trBlock='<div class="qc-tr chg">'+
+            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('edit')+'</span>Teacher ne changes maange hain</div>'+
+            '<div class="qc-tr-tx">Editor ke saath chat chal rahi hai. Teacher ke approve karne ke baad hi aap approve kar paoge.</div>'+
+            _chatBtn+'</div>';
         } else {
-          _trBlock='<div class="qc-tr wait">'+ic('clock')+' <b>Waiting for teacher approval</b> \u2014 creator/collab teacher ke approve karne ke baad hi aap approve + upload date set kar paoge.'+
-            '<button class="qc-tr-chat" onclick="prodReviewChat('+id+')">'+ic('chat')+' View teacher\u2013editor chat</button></div>';
+          _trBlock='<div class="qc-tr wait">'+
+            '<div class="qc-tr-h"><span class="qc-tr-ic">'+ic('clock')+'</span>Waiting for teacher approval</div>'+
+            '<div class="qc-tr-tx">Creator / collab teacher ke approve karne ke baad hi aap approve + upload date set kar paoge.</div>'+
+            _chatBtn+'</div>';
         }
       }
       var _apprBtn=_gate
-        ? '<button class="p-btn" disabled title="Teacher approval pending" style="opacity:.5;cursor:not-allowed">'+ic('lock')+' Approve (teacher pending)</button>'
-        : '<button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">Approve</button>';
+        ? '<button class="p-btn-locked" disabled title="Teacher approval pending">'+ic('lock')+' Teacher approval pending</button>'
+        : '<button class="p-btn p-btn-ok" onclick="pmQcDecide(\'approve\')">'+ic('check')+' Approve</button>';
       dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
         '<div class="pd-head"><div class="h-title">Review Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
@@ -28727,9 +28752,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
              ?('<div class="p-field"><label>Edited video versions</label>'+_edVerHtml(t)+'</div>')
              :(t.edited_link?('<div class="p-field"><a href="'+esc(t.edited_link)+'" target="_blank" class="p-link">'+ic('play')+' Open edited video</a>'+(t.revision_count?(' \u00b7 revision '+t.revision_count):'')+'</div>'):'<div class="p-empty">No edited link</div>'))+
           _trBlock+
-          '<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
-          '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
-          '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results...">'+esc(t.upload_remarks||'')+'</textarea></div>'+
+          (_gate ? '' :
+            ('<div class="aw-sechead" style="margin-top:6px">'+ic('calendar')+' On approve \u2014 set upload schedule</div>'+
+            '<div class="p-field"><label>Tentative upload date &amp; time</label><input class="p-input" id="qc-update" type="datetime-local" value="'+esc((t.upload_date_iso||'').slice(0,16))+'"></div>'+
+            '<div class="p-field"><label>Upload remarks <span style="color:var(--muted);font-weight:600">(if no fixed date yet)</span></label><textarea class="p-area" id="qc-uprem" placeholder="e.g. next week, after results...">'+esc(t.upload_remarks||'')+'</textarea></div>'))+
           '<div class="qc-note" style="margin-top:12px;font-size:.82rem;color:var(--muted);background:rgba(180,83,9,.07);border:1px solid rgba(180,83,9,.2);border-radius:10px;padding:10px 12px;line-height:1.5">'+ic('edit')+' <b>Changes Required</b> or <b>Reject</b> \u2014 the editor is notified instantly and you\u2019ll be taken straight to <b>Chat with Editor</b> to explain what to change. No typing needed here.</div>'+
         '</div>'+
         '<div class="pd-foot"><div class="p-acts">'+_apprBtn+
