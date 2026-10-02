@@ -7790,7 +7790,22 @@ function _examEnsureCss(){
   var s=document.createElement('style'); s.id='ex-cv-css';
   s.textContent='.ex-qcard{contain:layout}'+
     '.ex-qcard.ex-ph{display:flex;align-items:center;justify-content:flex-start;padding:16px 18px;color:var(--text-muted,#9a8f73);opacity:.55}'+
-    '.ex-ph-in{font-size:.82rem;font-weight:800;letter-spacing:.02em}';
+    '.ex-ph-in{font-size:.82rem;font-weight:800;letter-spacing:.02em}'+
+    // ---- Question-card header: clean, premium, phone-responsive (injected here so it ships
+    // with mvs_app.js — overrides the base stylesheet because this <style> loads later). ----
+    '.ex-qhead{display:flex!important;align-items:center;gap:8px 10px;flex-wrap:wrap}'+
+    '.ex-qnum{flex:0 0 auto}'+
+    '.ex-qhead-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-left:auto;justify-content:flex-end}'+
+    '.ex-qhead-actions .btn{flex:0 0 auto;width:auto!important;white-space:nowrap}'+
+    '.ex-ins{display:inline-flex;align-items:center;gap:3px}'+
+    '.ex-ins-plus{font-weight:800;font-size:1.05em;line-height:1}'+
+    '.ex-del{display:inline-flex;align-items:center;justify-content:center}'+
+    '@media (max-width:600px){'+
+      '.ex-qhead-actions{gap:6px;width:100%;margin-top:6px;margin-left:0;justify-content:flex-start}'+
+      '.ex-qhead-actions .ex-ocr{font-size:.72rem!important;padding:6px 10px!important}'+
+      '.ex-ins-tx{display:none}'+          /* phone: show just "+" to save space */
+      '.ex-ins{padding:7px 12px!important}'+
+    '}';
   document.head.appendChild(s);
 }
 function _examEstH(i){ var h=(window._exVH&&window._exVH[i]); return (h&&h>60)?h:480; }
@@ -7924,7 +7939,7 @@ function _examCardInner(i){
     const q=_examQs[i]; if(!q) return '';
     const biling=(_examMedium==='Bilingual');
     const isHi=biling&&q._tab==='hi';
-    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Upload a screenshot of the question — AI reads it into text (best for PYQ integrals/fractions where copy-paste breaks)" onclick="document.getElementById('ex-ocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})"><button type="button" class="btn btn-ghost btn-sm ex-ins" title="Insert a new blank question right below this one (numbers shift automatically)" onclick="insertExamQ(${i}+1)">${ic('plus')||'+'} Insert below</button>${_examQs.length>1?`<button class="btn btn-danger btn-sm" title="Delete this question (numbers shift automatically)" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
+    const head=`<div class="ex-qhead"><span class="ex-qnum">Question ${i+1}</span><div class="ex-qhead-actions"><button type="button" class="btn btn-sm ex-ocr" title="Upload a screenshot of the question — AI reads it into text (best for PYQ integrals/fractions where copy-paste breaks)" onclick="document.getElementById('ex-ocrf-${i}').click()">Screenshot to Text</button><input type="file" id="ex-ocrf-${i}" accept="image/*" style="display:none" onchange="ocrFillQuestion(this,${i})"><button type="button" class="btn btn-ghost btn-sm ex-ins" title="Insert a new blank question right below this one (numbers shift automatically)" aria-label="Insert question below" onclick="insertExamQ(${i}+1)"><span class="ex-ins-plus">+</span><span class="ex-ins-tx"> Insert</span></button>${_examQs.length>1?`<button class="btn btn-danger btn-sm ex-del" title="Delete this question (numbers shift automatically)" aria-label="Delete question" onclick="removeExamQ(${i})">${ic('trash')}</button>`:''}</div></div>`;
     const _ts=_qTransState(q);
     const _tsLbl=_ts==='done'?'Hindi Added':(_ts==='part'?'Finish Hindi':'Translate to Hindi');
     const _tsTitle=_ts==='done'?'Hindi is filled for this question. Click to translate anything still empty.'
@@ -9538,7 +9553,7 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-window.MVS_BUILD='v13 (insert-view-or)';
+window.MVS_BUILD='v14 (ui-responsive)';
 console.log('%cMVS build: '+window.MVS_BUILD+' — if you do NOT see this line (or the badge in the Create Test box), you are on OLD cached JS. Hard-refresh: Ctrl+Shift+R','color:#0a7;font-weight:800;font-size:14px');
 
 /* ================= MAIN-THREAD HANG DETECTOR (diagnostic) =================
