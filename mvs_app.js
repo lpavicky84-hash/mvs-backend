@@ -5879,18 +5879,28 @@ async function examPdfPremium(id,mode,medium){
     const withSol=mode==='solutions';
     const sub=spDetectSubject((ex.subject||'')+' '+(ex.title||''));
     if(medium!=='en'){
-      let ti=0;
-      for(const q of qs){
-        ti++;
-        if(!((q.question_hi||'').trim())&&(q.question_text||'').trim()){ toast('Translating question '+ti+'/'+qs.length+'\u2026 (free)'); const t=await spTranslate(q.question_text,sub); if(t)q.question_hi=t; }
+      // FAST: use the Hindi ALREADY stored with the test (question_text_hi / options_hi /
+      // model_answer_hi). Only translate fields that are genuinely still empty. A test created
+      // or bulk-uploaded WITH Hindi now downloads INSTANTLY (no re-translation). The old code
+      // checked q.question_hi (a field the API never returns \u2014 the DB column is question_text_hi),
+      // so it re-translated every question every time. That was the whole "Translating 1/40..." delay.
+      const tasks=[];
+      qs.forEach(q=>{
+        const haveQ=((q.question_text_hi||q.question_hi||'').trim());
+        if(!haveQ&&(q.question_text||'').trim()) tasks.push(async()=>{ const t=await spTranslate(q.question_text,sub); if(t)q.question_text_hi=t; });
         if(isM&&Array.isArray(q.options)){
           q.options_hi=Array.isArray(q.options_hi)?q.options_hi:[];
-          for(let j=0;j<q.options.length;j++){ if(!((q.options_hi[j]||'').trim())&&(q.options[j]||'').trim()){ const t=await spTranslate(q.options[j],sub); if(t)q.options_hi[j]=t; } }
+          q.options.forEach((o,j)=>{ if(!((q.options_hi[j]||'').trim())&&(o||'').trim()) tasks.push(async()=>{ const t=await spTranslate(o,sub); if(t)q.options_hi[j]=t; }); });
         }
         const mdl0=q.model_answer||q.model||q.answer||'', mdlH0=q.model_answer_hi||q.model_hi||q.answer_hi||'';
-        if(withSol&&!(mdlH0||'').trim()&&(mdl0||'').trim()){ const t=await spTranslate(mdl0,sub); if(t)q.model_answer_hi=t; }
+        if(withSol&&!(mdlH0||'').trim()&&(mdl0||'').trim()) tasks.push(async()=>{ const t=await spTranslate(mdl0,sub); if(t)q.model_answer_hi=t; });
         const ex0=q.explanation||q.expl||'', exH0=q.explanation_hi||q.expl_hi||'';
-        if(withSol&&isM&&!(exH0||'').trim()&&(ex0||'').trim()){ const t=await spTranslate(ex0,sub); if(t)q.explanation_hi=t; }
+        if(withSol&&isM&&!(exH0||'').trim()&&(ex0||'').trim()) tasks.push(async()=>{ const t=await spTranslate(ex0,sub); if(t)q.explanation_hi=t; });
+      });
+      if(tasks.length){
+        toast('Translating '+tasks.length+' missing item(s)\u2026 (one-time)');
+        const CONC=6;   // bounded parallelism: fast, without hammering the free endpoint
+        for(let i=0;i<tasks.length;i+=CONC){ try{ await Promise.all(tasks.slice(i,i+CONC).map(fn=>fn().catch(()=>{}))); }catch(e){} }
       }
     }
     let logo=null;
@@ -9494,7 +9504,7 @@ async function saveYtTarget(yid){
 // ===================== END YOUTUBER TASKS =====================
 
 
-window.MVS_BUILD='v11 (hindi-redos-fix)';
+window.MVS_BUILD='v12 (fast-pdf)';
 console.log('%cMVS build: '+window.MVS_BUILD+' — if you do NOT see this line (or the badge in the Create Test box), you are on OLD cached JS. Hard-refresh: Ctrl+Shift+R','color:#0a7;font-weight:800;font-size:14px');
 
 /* ================= MAIN-THREAD HANG DETECTOR (diagnostic) =================
