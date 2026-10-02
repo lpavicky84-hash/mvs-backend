@@ -3519,25 +3519,50 @@ def teacher_review_approve(tid: int, payload: dict = Body(...),
     note = (payload.get("note") or payload.get("message") or "").strip()
     if not note:
         raise HTTPException(400, "Please write a note about the editing before approving")
+    # optional 1-5 star rating for the edit
+    _rating = None
+    try:
+        _rv = int(payload.get("rating") or 0)
+        if 1 <= _rv <= 5:
+            _rating = _rv
+    except Exception:
+        _rating = None
+    _tname = getattr(current_user, "name", "") or "Teacher"
     t.teacher_review_status = "approved"
     t.teacher_review_note = note
+    t.teacher_review_rating = _rating
     t.teacher_reviewed_at = datetime.utcnow()
     t.teacher_reviewed_by = getattr(current_user, "id", None)
-    t.teacher_reviewer_name = getattr(current_user, "name", "") or ""
+    t.teacher_reviewer_name = _tname
     try:
         # lifecycle stays qc_pending, so log the event directly (set_state skips same-state)
-        _pc.log_event(db, t, current_user, "teacher_review_approved", meta={"note": note[:200]})
+        _pc.log_event(db, t, current_user, "teacher_review_approved",
+                      meta={"note": note[:200], "rating": _rating})
     except Exception:
         pass
+    _stars = ("★" * _rating + "☆" * (5 - _rating)) if _rating else ""
     try:
         _pc.notify_pms(db, "Teacher approved a video",
-                       f'{getattr(current_user, "name", "Teacher")} approved "{t.title}": {note[:120]}',
+                       f'{_tname} approved "{t.title}"{(" " + _stars) if _stars else ""}: {note[:110]}',
                        "video_review", link=str(tid))
+    except Exception:
+        pass
+    # notify the editor — who rated their edit, how many stars, and the remark (motivation)
+    try:
+        from models import ProductionStaffProfile as _PSP
+        if t.editor_id:
+            sp = db.query(_PSP).filter(_PSP.id == t.editor_id).first()
+            if sp and sp.user_id:
+                _msg = (f'{_tname} rated your edit {_stars} ({_rating}/5)' if _rating
+                        else f'{_tname} approved your edit')
+                _pc.notify(db, sp.user_id, "Teacher reviewed your edit",
+                           f'{_msg} — "{note[:110]}"', "video_review", link=str(tid))
     except Exception:
         pass
     db.commit()
     return {"ok": True, "teacher_review_status": t.teacher_review_status,
             "teacher_review_note": t.teacher_review_note,
+            "teacher_review_rating": t.teacher_review_rating,
             "teacher_reviewer_name": t.teacher_reviewer_name}
 
 

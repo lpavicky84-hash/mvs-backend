@@ -619,6 +619,7 @@ class VideoTask(Base):
     teacher_reviewed_at   = Column(DateTime, nullable=True)
     teacher_reviewed_by   = Column(Integer, nullable=True)  # users.id of the teacher who approved
     teacher_reviewer_name = Column(String(120), default="")
+    teacher_review_rating = Column(Integer, nullable=True)   # 1-5 stars the teacher gave the edit
     # deadline extension request (editor -> PM approval)
     deadline_req        = Column(DateTime, nullable=True)     # requested new deadline
     deadline_req_reason = Column(String(400), default="")     # editor's reason

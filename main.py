@@ -287,6 +287,7 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN teacher_reviewed_at DATETIME NULL",
         "ALTER TABLE video_tasks ADD COLUMN teacher_reviewed_by INTEGER",
         "ALTER TABLE video_tasks ADD COLUMN teacher_reviewer_name VARCHAR(120) DEFAULT ''",
+        "ALTER TABLE video_tasks ADD COLUMN teacher_review_rating INTEGER",
         "ALTER TABLE video_tasks ADD COLUMN on_hold BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN cancelled BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN published_at DATETIME NULL",

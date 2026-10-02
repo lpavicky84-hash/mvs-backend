@@ -867,6 +867,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         # teacher (creator / collab) review of the edited video, BEFORE PM approves
         "teacher_review_status": (getattr(t, "teacher_review_status", "") or ""),
         "teacher_review_note": (getattr(t, "teacher_review_note", "") or ""),
+        "teacher_review_rating": (getattr(t, "teacher_review_rating", None)),
         "teacher_reviewer_name": (getattr(t, "teacher_reviewer_name", "") or ""),
         "teacher_reviewed_at": (t.teacher_reviewed_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "teacher_reviewed_at", None) else ""),
         # youtuber videos skip the teacher gate; teacher/collab videos need it

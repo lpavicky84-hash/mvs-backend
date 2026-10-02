@@ -11487,6 +11487,7 @@ let _tvtTimer=null;
 async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catch(e){}
   try{ _reviewEnsureCss(); }catch(e){}
   const el=document.getElementById('t-vtasks-content');
+  if(!el) return;
   softSpin(el);
   if(_tvtTimer){ clearInterval(_tvtTimer); _tvtTimer=null; }
   try{
@@ -11667,8 +11668,6 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       sp.style.color=neg?'#b91c1c':(s<86400?'#b45309':'#047857'); }); };
     tick(); _tvtTimer=setInterval(tick,1000);
     try{ if(window._tvtStat) _applyTvtStatFilter(); }catch(e){}
-    // deep-link: open a specific review (from the dashboard banner / notification)
-    try{ if(window._tvtPendingReviewOpen){ const _pid=window._tvtPendingReviewOpen; window._tvtPendingReviewOpen=null; setTimeout(function(){ try{ if((window._trevMap||{})[_pid]) tReviewOpen(_pid); }catch(e){} }, 120); } }catch(e){}
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 // Teacher stat-chip filter — click a stat to filter the task grid; click again to clear.
@@ -11699,11 +11698,12 @@ function _applyTvtStatFilter(){
 // Jump straight to My Tasks, filter to Editing Done, and open the review for a task.
 // Used by the dashboard banner and the "video ready for review" notification.
 function tGotoReview(id){
+  // Just open My Tasks and filter to Editing Done — the teacher clicks the card's own
+  // "Review Edited Video" button, so it's always clear which video they're reviewing.
   try{ _tvtView='tasks'; }catch(e){}
   window._tvtStat='review';
-  window._tvtPendingReviewOpen=id||null;
+  window._tvtPendingReviewOpen=null;
   try{ if(typeof navTo==='function') navTo('teacher-app','vtasks'); }catch(e){}
-  // fallback in case navTo didn't trigger the loader
   setTimeout(function(){ try{ if(document.getElementById('t-vtasks-content') && !document.querySelector('.vt-grid')) loadTVTasks(); }catch(e){} }, 120);
 }
 // ===== VIDEO REVIEW — styles (one-time inject) =====
@@ -11803,6 +11803,20 @@ function _reviewEnsureCss(){
     '.pmc-opt:has(input:checked){border-color:#c98a2e;background:rgba(201,154,46,.08)}'+
     '.pmc-sub{font-weight:700;color:var(--text-muted,#6b7280);font-size:.78rem}'+
     'body.dark .pmc-opt{border-color:#2c405e}'+
+    // star picker (teacher rating) + star display line
+    '.trv-stars{display:flex;gap:6px;font-size:1.7rem;line-height:1}'+
+    '.trv-stars .trv-star{color:#d8cdb0;cursor:pointer;transition:transform .1s,color .12s}'+
+    '.trv-stars .trv-star:hover{transform:scale(1.12)}'+
+    '.trv-stars .trv-star.on{color:#e6ad4e}'+
+    '.trv-starline{margin-top:4px;color:#e6ad4e;letter-spacing:1px;font-size:1rem}'+
+    '.trv-starline .trv-staroff{color:#d8cdb0}'+
+    // per-role ratings strip on a production/editor/graphics card
+    '.vt-rates{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}'+
+    '.vt-rate{display:inline-flex;align-items:center;gap:5px;font-size:.74rem;font-weight:800;padding:4px 9px;border-radius:999px;border:1px solid var(--border,#e5ddcb);background:var(--surface-2,#f6f1e4);color:var(--text,#14213d)}'+
+    '.vt-rate .vr-k{color:var(--text-muted,#6b7280);font-weight:700}'+
+    '.vt-rate .vr-st{color:#e6ad4e;letter-spacing:.5px}'+
+    '.vt-rate .vr-off{color:#d8cdb0}'+
+    'body.dark .vt-rate{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
     '@media(max-width:600px){.trv-grid{grid-template-columns:1fr}.trv-acts .btn{flex:1 1 100%}}';
   document.head.appendChild(s);
 }
@@ -11824,7 +11838,9 @@ window.tReviewOpen=function(id){
     : wantChg ? `<span class="trv-pill chg">${ic('edit')} Changes requested</span>`
       : `<span class="trv-pill new">${ic('clock')} Needs your check</span>`;
   const by=[]; if(v.teacher_reviewer_name) by.push(esc(v.teacher_reviewer_name)); if(v.teacher_reviewed_at) by.push(esc(v.teacher_reviewed_at));
-  const noteBox=(approved&&v.teacher_review_note)?`<div class="trv-note">${ic('check')} <b>${by.length?by.join(' · '):'Approved'}</b><div style="margin-top:4px">“${esc(v.teacher_review_note)}”</div></div>`:'';
+  const _rr=(v.teacher_review_rating||0);
+  const _rrStars=_rr?`<div class="trv-starline">${'★'.repeat(_rr)}<span class="trv-staroff">${'★'.repeat(5-_rr)}</span> <span style="font-size:.76rem;font-weight:800;color:var(--text-muted)">${_rr}/5</span></div>`:'';
+  const noteBox=(approved&&(v.teacher_review_note||_rr))?`<div class="trv-note">${ic('check')} <b>${by.length?by.join(' · '):'Approved'}</b>${_rrStars}${v.teacher_review_note?`<div style="margin-top:4px">“${esc(v.teacher_review_note)}”</div>`:''}</div>`:'';
   const acts=approved
     ? `<button class="p-btn trv-chat" onclick="tReviewChat(${id})">${ic('chat')} Chat with Editor</button>`
     : `<button class="p-btn trv-chat" onclick="tReviewChat(${id})">${ic('chat')} Chat with Editor${_unread?` <b class="vt-chat-badge">${_unread}</b>`:''}</button>
@@ -11886,9 +11902,12 @@ window.tReviewApprove=function(id){
   const v=(window._trevMap||{})[id]||{};
   const old=document.getElementById('prod-modal'); if(old) old.remove();
   const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+  window._trvStars=0;
+  const starRow=[1,2,3,4,5].map(function(n){ return '<span class="trv-star" data-n="'+n+'" onclick="tReviewSetStar('+n+')">★</span>'; }).join('');
   dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
     '<div class="pd-head"><div class="h-title">Approve Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
     '<div class="p-modal-body">'+
+      '<div class="p-field"><label>Rate the editing</label><div class="trv-stars" id="trv-stars">'+starRow+'</div></div>'+
       '<div class="p-field"><label>Your note about the editing <span style="color:#dc2626">*</span></label><textarea class="p-area" id="trv-app-note" rows="4" placeholder="Share your feedback on the editing before approving"></textarea></div>'+
     '</div>'+
     '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="tReviewOpen('+id+')">'+(window._BACKIC||'')+' Back</button>'+
@@ -11898,11 +11917,12 @@ window.tReviewApprove=function(id){
   document.body.appendChild(dr);
   setTimeout(function(){ var t=document.getElementById('trv-app-note'); if(t) t.focus(); },60);
 };
+window.tReviewSetStar=function(n){ window._trvStars=n; document.querySelectorAll('#trv-stars .trv-star').forEach(function(s){ s.classList.toggle('on', (+s.dataset.n)<=n); }); };
 window.tReviewApproveSubmit=function(id){
   const note=((document.getElementById('trv-app-note')||{}).value||'').trim();
   if(!note){ toast('Please write a note about the editing before approving',true); var t=document.getElementById('trv-app-note'); if(t) t.focus(); return; }
   prodDismiss(); toast('Approving…');
-  api('/api/teacher/tasks/'+id+'/review-approve','POST',{note:note}).then(function(){
+  api('/api/teacher/tasks/'+id+'/review-approve','POST',{note:note, rating:(window._trvStars||0)}).then(function(){
     toast('Approved — sent to the manager'); _apiBust(); try{ loadTReview(); }catch(e){}
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
 };
@@ -31668,7 +31688,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if((t.revision_count||0)>0) meta.push('Revision '+t.revision_count);
     if(t.yt_views!=null && t.youtube_url) meta.push('Live views: '+_num(t.yt_views));
-    if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>');
+    // Per-role ratings — editor/graphics/teacher shown separately so it's clear whose star it is.
+    // graphics portal: only graphics rating. editor: editor + teacher. PM/admin/youtuber: all.
+    try{
+      try{ _reviewEnsureCss(); }catch(e){}
+      var _mkRate=function(k,n,note){ if(!n) return ''; n=Math.max(0,Math.min(5,n|0)); return '<span class="vt-rate"'+(note?(' title="'+esc(note)+'"'):'')+'><span class="vr-k">'+k+'</span><span class="vr-st">'+'★'.repeat(n)+'<span class="vr-off">'+'★'.repeat(5-n)+'</span></span></span>'; };
+      var _er=t.quality_rating||0, _gr=(t.graphics&&t.graphics.quality_rating)||0, _tr=t.teacher_review_rating||0;
+      var _gnote=(t.graphics&&t.graphics.quality_note)||'', _rates=[];
+      if(portal==='graphics'){ if(_gr) _rates.push(_mkRate('Graphics',_gr,_gnote)); }
+      else if(portal==='editor'){ if(_er) _rates.push(_mkRate('Editor',_er,t.quality_note||'')); if(_tr) _rates.push(_mkRate('Teacher',_tr,t.teacher_review_note||'')); }
+      else { if(_er) _rates.push(_mkRate('Editor',_er,t.quality_note||'')); if(_gr) _rates.push(_mkRate('Graphics',_gr,_gnote)); if(_tr) _rates.push(_mkRate('Teacher',_tr,t.teacher_review_note||'')); }
+      if(_rates.length) meta.push('<span class="vt-rates">'+_rates.join('')+'</span>');
+      // editor also sees the teacher's written remark (motivation)
+      if(portal==='editor' && _tr && (t.teacher_review_note||'')){ meta.push('<span class="pw-subby" title="Teacher\'s remark on your edit">'+ic('chat')+' Teacher: “'+esc(t.teacher_review_note)+'”</span>'); }
+    }catch(e){ if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>'); }
     // Deadline date + Video ID — ek clean row, icons ke saath (reference #5)
     var _idParts=[];
     if(_dlNice) _idParts.push('<span class="pir-i"><span class="pir-ic">'+ic('calendar')+'</span><span class="pir-tx">'+esc((_dlLblPref||'').replace(/:\s*$/,''))+': '+esc(_dlNice)+'</span></span>');
@@ -31804,7 +31837,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   var SAVED={
     production:[['','All'],['pm_review','PM Review'],['editing','Editing'],['qc_pending','QC Queue'],['ready_for_youtube','Ready for YouTube'],['__overdue','Delayed']],
-    editor:[['','All'],['editor_assigned','Not Started'],['editing','Editing'],['qc_changes','Changes']],
+    editor:[['','All Tasks'],['editor_assigned','Pending'],['editing','Editing In Progress'],['editing_paused','Editing Paused'],['qc_changes','Changes Required'],['editing_done','Editing Done'],['uploaded','Uploaded']],
     youtuber:[['','All'],['creator_assigned','To Submit'],['pm_review','Submitted'],['uploaded','Published']],
     graphics:[['','All'],['new','New'],['in_progress','In Progress'],['changes','Changes']]
   };
@@ -31868,8 +31901,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='youtuber'){
       return '<div class="p-filter">'+_savedChips(portal)+'<button class="p-btn p-btn-primary" style="margin-left:auto" onclick="ytNewTask()">+ New Task</button></div>';
     }
+    if(portal==='editor'){
+      _edtEnsureCss();
+      return '<div class="p-filter p-filter-edt">'+
+        '<div class="pf-search edt-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="edt-search" placeholder="Search your tasks — title, ref, subject..." value="'+esc(f.q||'')+'" oninput="edtSearch(this.value)"></div>'+
+        '<div class="edt-chips">'+_savedChips(portal)+'</div>'+
+        '<button class="p-btn pf-clear" onclick="edtClearFilters()">Clear</button>'+
+      '</div>';
+    }
     return '<div class="p-filter">'+_savedChips(portal)+'</div>';
   }
+  function _edtEnsureCss(){
+    if(document.getElementById('edt-filt-css')) return;
+    var s=document.createElement('style'); s.id='edt-filt-css';
+    s.textContent='.p-filter-edt{display:flex;flex-wrap:wrap;gap:10px;align-items:center}'+
+      '.p-filter-edt .edt-search{flex:1 1 240px;min-width:200px}'+
+      '.p-filter-edt .edt-chips{display:flex;gap:8px;flex-wrap:wrap;flex:1 1 auto}'+
+      '.p-filter-edt .pf-clear{flex:0 0 auto}'+
+      '@media(max-width:640px){.p-filter-edt .edt-search{flex-basis:100%}.p-filter-edt .edt-chips{overflow-x:auto;flex-wrap:nowrap}}';
+    document.head.appendChild(s);
+  }
+  window.edtSearch=function(v){ _flt('editor').q=v; _edtApplySearch(); };
+  function _edtApplySearch(){
+    var q=((_flt('editor').q)||'').trim().toLowerCase();
+    var res=document.getElementById('editor-results'); if(!res) return;
+    var cards=res.querySelectorAll('.ptc-grid > *'); var shown=0;
+    cards.forEach(function(c){ var ok=!q || (c.textContent||'').toLowerCase().indexOf(q)>=0; c.style.display=ok?'':'none'; if(ok) shown++; });
+  }
+  window.edtClearFilters=function(){ var f=_flt('editor'); f.q=''; f.status=''; f.epreset=''; f.deadline=''; var s=document.getElementById('edt-search'); if(s) s.value=''; _prodLoadList('editor'); };
   window.gfxSeg=function(preset){ var f=_flt('graphics'); f.gpreset=preset; f.status=''; _prodLoadList('graphics');
     var box=document.querySelector('#graphics-body .gfx-seg'); if(box) box.querySelectorAll('.gfx-seg-b').forEach(function(b){ b.classList.toggle('on', (b.getAttribute('onclick')||'').indexOf("'"+preset+"'")>=0); }); };
   function _prodLoadFilterData(){
@@ -32331,7 +32390,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!res) return;
       res.innerHTML=arr.length?('<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
       try{ _prodMarkOpenedCard(); }catch(e){}
-      if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} }
+      if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }
       if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
     }).catch(function(e){ if(res) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); });
   }
