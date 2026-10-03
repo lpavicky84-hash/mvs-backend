@@ -28818,7 +28818,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }catch(e){}
   };
   window._edtDoPauseFromReq=function(id){ var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); try{ edtPauseModal(id); }catch(e){} };
-  window._edtOpenUrgent=function(id){ try{ prodOpenTask('editor',id); }catch(e){} };
+  window._edtOpenUrgent=function(id){ var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); try{ prodOpenTask('editor',id); }catch(e){} };
   window._edtPauseReqLater=function(id){ window._edtPauseSeen[id]=1; var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); };
   // ---- Editor + PM/Admin: dashboard popup when a TEACHER requests changes on the edited video ----
   window._revAlertSeen=window._revAlertSeen||{};
@@ -29611,12 +29611,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/tasks/'+id+'/comments','POST',body).then(function(){ prodEdtChat(id); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); window._chatImg=keep; });
   };
+  // Fetch the real task title and fill the chat-context bar (so it never shows "Task #id").
+  function _seedChatTitle(apiBase, id){
+    try{
+      api(apiBase+'/tasks/'+id).then(function(t){
+        if(!t) return;
+        window._prodTaskInfo=window._prodTaskInfo||{};
+        window._prodTaskInfo[id]={title:(t.title||('Task #'+id)),ref:(t.ref_code||''),creator:(t.editor_name?('Editor: '+t.editor_name):(t.creator_name||'')),ctype:''};
+        var bt=document.querySelector('#prod-modal .pcb-title, #cm-thread-pane .pcb-title');
+        if(bt) bt.textContent=(t.title||('Task #'+id));
+        var bm=document.querySelector('#prod-modal .pcb-meta, #cm-thread-pane .pcb-meta');
+        if(bm){ var _m=[]; if(t.ref_code) _m.push(t.ref_code); if(t.editor_name) _m.push('Editor: '+t.editor_name); bm.textContent=_m.join(' · '); }
+      }).catch(function(){});
+    }catch(e){}
+  }
   // PM/Admin: teacher<->editor VIDEO REVIEW thread (oversight — PM can read + message too)
   window.prodReviewChat=function(id, fromQc){
     _ytcOpen({getUrl:P.production.api+'/tasks/'+id+'/comments?audience=review',postUrl:P.production.api+'/tasks/'+id+'/comments',
       pingUrl:P.production.api+'/tasks/'+id+'/chat-ping?audience=review',audience:'review',mineRole:'production_manager',
       title:'Video Review (Teacher ↔ Editor)',taskId:id,barPortal:'production',multiTray:true,
       onBack:(fromQc?function(){ try{ pmQcReview(id); }catch(e){} }:null)});
+    _seedChatTitle(P.production.api, id);
   };
   function _peChatRender(id, aud, title, comments, sendFn, presence){
     try{ _reviewEnsureCss(); }catch(e){}
@@ -29669,7 +29684,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.edtChatTeacher=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=te_ed',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=te_ed',audience:'te_ed',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor'}); };
   window.edtChatGraphics=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'editor',title:'Chat with Graphics',taskId:id,barPortal:'editor'}); };
   // Editor <-> Teacher VIDEO REVIEW thread (PM/admin bhi dekh sakte hain) — edited video ke baare me.
-  window.edtReviewChat=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/review-chat',postUrl:P.editor.api+'/tasks/'+id+'/review-chat',pingUrl:P.editor.api+'/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor',multiTray:true}); };
+  window.edtReviewChat=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/review-chat',postUrl:P.editor.api+'/tasks/'+id+'/review-chat',pingUrl:P.editor.api+'/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor',multiTray:true}); _seedChatTitle(P.editor.api, id); };
   // Editor: PM + Teacher + Graphics se baat kar sakta hai.
   // one teacher thread (the edited-video review thread) — no duplicate "Video Review" entry
   window.edtChatMenu=function(id){ _prodChatChooser(id,'Chat about this video',[
