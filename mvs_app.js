@@ -11446,7 +11446,7 @@ window.tvtChatEditor=tvtChatEditor; window.tvtChatGraphics=tvtChatGraphics; wind
 function tvtChatMenu(id){
   var old=document.getElementById('modal'); // teacher uses showModal system
   // Teacher sirf PM aur Editor se baat karega (Graphics se direct chat band — graphics only PM).
-  var opts=[['users','Chat with PM','tvtChatPM'],['play','Chat with Editor','tvtChatEditor']];
+  var opts=[['users','Chat with PM','tvtChatPM'],['play','Chat with Editor','tReviewChat']];
   var rows=opts.map(function(o){ return '<button class="pcm-opt" onclick="closeModal();'+o[2]+'('+id+')" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1px solid var(--border,#e5ddcb);border-radius:12px;background:#fff;cursor:pointer;font-weight:700;margin-bottom:8px">'+ic(o[0])+'<span style="flex:1;text-align:left">'+o[1]+'</span><span style="color:#b0a483">›</span></button>'; }).join('');
   showModal('Chat about this video', rows, '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
 }
@@ -11791,6 +11791,9 @@ function _reviewEnsureCss(){
     '.trev-banner .tb-cta{flex:none;white-space:nowrap;background:#dc2626;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:800;font-size:.86rem;cursor:pointer}'+
     '.trev-banner .tb-cta:hover{filter:brightness(1.05)}'+
     '@media(max-width:560px){.trev-banner .tb-cta{flex-basis:100%}}'+
+    // "Reviewing edited video" tag shown in the review chat header
+    '.chat-rvtag{display:inline-flex;align-items:center;gap:5px;margin-left:8px;font-size:.66rem;font-weight:800;letter-spacing:.02em;text-transform:uppercase;color:#92700f;background:rgba(201,154,46,.16);border:1px solid rgba(201,154,46,.4);border-radius:999px;padding:3px 9px;vertical-align:middle;white-space:nowrap}'+
+    '.chat-rvtag svg{width:12px;height:12px}'+
     // premium back arrow in chat headers
     '.chat-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#14213d);cursor:pointer;flex:0 0 auto;transition:background .15s,box-shadow .15s}'+
     '.chat-back:hover{background:var(--surface-2,#f0ead9);box-shadow:0 2px 8px rgba(18,20,45,.08)}'+
@@ -11868,7 +11871,7 @@ window.tReviewChat=function(id){
   _ytcOpen({getUrl:'/api/teacher/tasks/'+id+'/review-chat',postUrl:'/api/teacher/tasks/'+id+'/review-chat',
     pingUrl:'/api/teacher/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'teacher',
     title:'Chat with Editor',taskId:id,barPortal:'',multiTray:true,
-    onBack:function(){ try{ tReviewOpen(id); }catch(e){} }});
+    onBack:function(){ try{ if((window._trevMap||{})[id]) tReviewOpen(id); else _chatCloseUnified(); }catch(e){ try{_chatCloseUnified();}catch(_){} } }});
 };
 window.tReviewChanges=function(id){
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
@@ -28404,6 +28407,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         else { try{ prodEdtChat(taskId); return; }catch(e){} }
       }
       if(ntype==='creator_chat' && portal==='production'){ try{ prodConvo(taskId); return; }catch(e){} }
+      // teacher<->editor VIDEO REVIEW message/approval -> open that chat directly (not the task drawer)
+      if(ntype==='video_review'){
+        if(portal==='editor'){ try{ edtReviewChat(taskId); return; }catch(e){} }
+        else { try{ prodReviewChat(taskId); return; }catch(e){} }
+      }
       prodOpenTask(portal, taskId);
     }
   };
@@ -28812,6 +28820,60 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._edtDoPauseFromReq=function(id){ var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); try{ edtPauseModal(id); }catch(e){} };
   window._edtOpenUrgent=function(id){ try{ prodOpenTask('editor',id); }catch(e){} };
   window._edtPauseReqLater=function(id){ window._edtPauseSeen[id]=1; var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); };
+  // ---- Editor + PM/Admin: dashboard popup when a TEACHER requests changes on the edited video ----
+  window._revAlertSeen=window._revAlertSeen||{};
+  function _reviewAlertEnsureCss(){
+    if(document.getElementById('rva-css')) return;
+    var s=document.createElement('style'); s.id='rva-css';
+    s.textContent='@keyframes rvaPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)}50%{box-shadow:0 0 0 7px rgba(220,38,38,0)}}'+
+      '.rva-modal{max-width:440px;overflow:hidden}'+
+      '.rva-top{display:flex;align-items:center;gap:12px;padding:16px 20px;background:linear-gradient(135deg,rgba(220,38,38,.12),rgba(220,38,38,.03));border-bottom:1px solid rgba(220,38,38,.2)}'+
+      '.rva-pulse{width:42px;height:42px;flex:0 0 auto;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#dc2626;color:#fff;animation:rvaPulse 1.4s ease-out infinite}'+
+      '.rva-pulse svg{width:22px;height:22px}'+
+      '.rva-h{font-weight:900;font-size:1rem;color:var(--text,#14213d)}'+
+      '.rva-sub{font-size:.8rem;font-weight:700;color:#b91c1c;margin-top:1px}'+
+      '.rva-task{background:var(--surface-2,#f6f1e4);border:1px solid var(--border,#e5ddcb);border-radius:12px;padding:11px 13px;margin-bottom:12px}'+
+      '.rva-lbl{font-size:.64rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#998)}'+
+      '.rva-title{font-weight:800;font-size:.95rem;color:var(--text,#14213d);margin-top:2px}'+
+      '.rva-ed{font-size:.78rem;color:var(--text-muted,#6b7280);margin-top:4px}.rva-ed svg{width:13px;height:13px;vertical-align:-2px}'+
+      '.rva-acts{display:flex;gap:9px;flex-wrap:wrap}'+
+      '.rva-btn{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 14px;border-radius:11px;font-weight:800;font-size:.86rem;cursor:pointer;border:1px solid transparent}'+
+      '.rva-btn svg{width:16px;height:16px}'+
+      '.rva-chat{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05}'+
+      '.rva-task{} .rva-btn.rva-task{background:var(--card,#fff);border-color:var(--border,#e5ddcb);color:var(--text,#14213d)}'+
+      'body.dark .rva-btn.rva-task{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
+      '@media(max-width:560px){.rva-acts .rva-btn{flex-basis:100%}}';
+    document.head.appendChild(s);
+  }
+  window._reviewAlertPopup=function(portal){
+    var d=P[portal]; if(!d) return;
+    api(d.api+'/review-alerts').then(function(r){
+      var list=(r&&r.alerts)||[]; if(!list.length) return;
+      var t=null; for(var i=0;i<list.length;i++){ if(!window._revAlertSeen[portal+':'+list[i].id]){ t=list[i]; break; } }
+      if(!t) return;
+      if(document.getElementById('rev-alert-modal')) return;
+      _reviewAlertEnsureCss();
+      var who=esc(t.teacher_reviewer_name||'The teacher');
+      var dr=document.createElement('div'); dr.className='p-modal-wrap rva-wrap'; dr.id='rev-alert-modal';
+      dr.innerHTML='<div class="p-modal rva-modal">'+
+        '<div class="rva-top"><span class="rva-pulse">'+ic('alert')+'</span><div><div class="rva-h">Changes requested on the edited video</div><div class="rva-sub">'+who+' wants changes</div></div></div>'+
+        '<div class="p-modal-body">'+
+          '<div class="rva-task"><div class="rva-lbl">Video</div><div class="rva-title">'+esc(t.title||('Task #'+t.id))+'</div>'+(t.editor_name?('<div class="rva-ed">'+ic('edit')+' Editor: <b>'+esc(t.editor_name)+'</b></div>'):'')+'</div>'+
+          '<div class="rva-acts"><button class="rva-btn rva-chat" onclick="_revAlertGo(\''+portal+'\','+t.id+',\'chat\')">'+ic('chat')+' Open Chat</button>'+
+          '<button class="rva-btn rva-task" onclick="_revAlertGo(\''+portal+'\','+t.id+',\'task\')">'+ic('play')+' Open Task</button></div>'+
+        '</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="_revAlertDismiss(\''+portal+'\','+t.id+')">Later</button></div></div>'+
+      '</div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) _revAlertDismiss(portal,t.id); });
+      document.body.appendChild(dr);
+    }).catch(function(){});
+  };
+  window._revAlertDismiss=function(portal,id){ window._revAlertSeen[portal+':'+id]=1; var m=document.getElementById('rev-alert-modal'); if(m) m.remove(); };
+  window._revAlertGo=function(portal,id,what){
+    window._revAlertSeen[portal+':'+id]=1; var m=document.getElementById('rev-alert-modal'); if(m) m.remove();
+    if(what==='task'){ try{ prodOpenTask(portal,id); }catch(e){} return; }
+    if(portal==='editor'){ try{ edtReviewChat(id); }catch(e){} } else { try{ prodReviewChat(id); }catch(e){} }
+  };
   // ---- Editor: rich submit modal (drive link + remarks + attachments) ----
   window._edtImgs=[];
   window.edtSubmitModal=function(id){
@@ -29186,7 +29248,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ _reviewEnsureCss(); }catch(e){}
     var cfg=window._chatCfg||{};
     var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:120px;overflow-y:auto;padding:4px 2px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet \u2014 start the conversation below.</div>')+'</div>';
-    var _hdr=(cfg._adminPills && window._vtAdminHead)?window._vtAdminHead(cfg._adminAud):('<div class="h-title">'+esc(cfg.title||'Chat')+'</div>');
+    var _rvtag=(cfg.audience==='review')?' <span class="chat-rvtag">'+ic('video')+' Reviewing edited video</span>':'';
+    var _hdr=(cfg._adminPills && window._vtAdminHead)?window._vtAdminHead(cfg._adminAud):('<div class="h-title">'+esc(cfg.title||'Chat')+_rvtag+'</div>');
     var _pills=(cfg._adminPills && window._vtAdminPills)?window._vtAdminPills(cfg._adminAud):'';
     var inner='<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatBack()">'+_BACKIC+'</button><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
     _chatShow(inner);
@@ -29606,10 +29669,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.edtChatTeacher=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=te_ed',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=te_ed',audience:'te_ed',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor'}); };
   window.edtChatGraphics=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.editor.api+'/tasks/'+id+'/pair-comments',pingUrl:P.editor.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'editor',title:'Chat with Graphics',taskId:id,barPortal:'editor'}); };
   // Editor <-> Teacher VIDEO REVIEW thread (PM/admin bhi dekh sakte hain) — edited video ke baare me.
-  window.edtReviewChat=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/review-chat',postUrl:P.editor.api+'/tasks/'+id+'/review-chat',pingUrl:P.editor.api+'/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'editor',title:'Video Review (Teacher)',taskId:id,barPortal:'editor',multiTray:true}); };
+  window.edtReviewChat=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/review-chat',postUrl:P.editor.api+'/tasks/'+id+'/review-chat',pingUrl:P.editor.api+'/tasks/'+id+'/review-chat-ping',audience:'review',mineRole:'editor',title:'Chat with Teacher',taskId:id,barPortal:'editor',multiTray:true}); };
   // Editor: PM + Teacher + Graphics se baat kar sakta hai.
+  // one teacher thread (the edited-video review thread) — no duplicate "Video Review" entry
   window.edtChatMenu=function(id){ _prodChatChooser(id,'Chat about this video',[
-    ['users','Chat with PM','edtChatPM'],['team','Chat with Teacher','edtChatTeacher'],['video','Video Review (Teacher)','edtReviewChat'],['image','Chat with Graphics','edtChatGraphics']]); };
+    ['users','Chat with PM','edtChatPM'],['team','Chat with Teacher','edtReviewChat'],['image','Chat with Graphics','edtChatGraphics']]); };
   // Graphics DIRECT pairs: graphics<->teacher (te_gf), graphics<->editor (ed_gf)
   window.gfxChatTeacher=function(id){ _ytcOpen({getUrl:P.graphics.api+'/tasks/'+id+'/pair-comments?audience=te_gf',postUrl:P.graphics.api+'/tasks/'+id+'/pair-comments',pingUrl:P.graphics.api+'/tasks/'+id+'/pair-ping?audience=te_gf',audience:'te_gf',mineRole:'graphics',title:'Chat with Teacher',taskId:id,barPortal:'graphics'}); };
   window.gfxChatEditor=function(id){ _ytcOpen({getUrl:P.graphics.api+'/tasks/'+id+'/pair-comments?audience=ed_gf',postUrl:P.graphics.api+'/tasks/'+id+'/pair-comments',pingUrl:P.graphics.api+'/tasks/'+id+'/pair-ping?audience=ed_gf',audience:'ed_gf',mineRole:'graphics',title:'Chat with Editor',taskId:id,barPortal:'graphics'}); };
@@ -29750,6 +29814,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         }).join('')+'</div>';
         body.innerHTML=html+'<div id="editor-work"></div>';
         _loadWork('editor');
+        try{ _reviewAlertPopup('editor'); }catch(e){}
         return;
       }
       if(portal==='production')
@@ -29778,7 +29843,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       body.innerHTML=(html||'<div class="p-empty">No data yet.</div>')+(portal==='production'?'<div id="production-queues"></div>':'')+'<div id="'+portal+'-work"></div>';
       if(portal!=='production') _loadWork(portal);   // production dashboard pe "Needs Your Attention" nahi — sab sidebar sections me
-      if(portal==='production'){ try{ _loadQueues(); }catch(e){} try{ _ytpStartPoll(); }catch(e){} }
+      if(portal==='production'){ try{ _loadQueues(); }catch(e){} try{ _ytpStartPoll(); }catch(e){} try{ _reviewAlertPopup('production'); }catch(e){} }
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load dashboard. '+esc(e&&e.message||'')+'</div>'; });
   }
   // Keep the pending-YT banner live: a video crossing its upload time appears without a manual

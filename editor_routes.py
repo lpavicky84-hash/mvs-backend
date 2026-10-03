@@ -482,6 +482,23 @@ def editor_tasks(status: str = "", filter: str = "", db: Session = Depends(get_d
     return {"tasks": _outs}
 
 
+@router.get("/review-alerts")
+def editor_review_alerts(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Edited videos where the TEACHER requested changes — drives the dashboard popup."""
+    from sqlalchemy import or_ as _or
+    sp = _me_staff(db, me)
+    rows = db.query(VideoTask).filter(
+        VideoTask.cancelled == False,
+        _or(VideoTask.editor_id == sp.id, VideoTask.collab_editor_ids.like('%' + str(sp.id) + '%')),
+        VideoTask.teacher_review_status == "changes",
+        VideoTask.lifecycle.in_(["qc_pending", "qc_changes"])).all()
+    rows = [t for t in rows if pc.editor_can_access(t, sp.id)]
+    out = [{"id": t.id, "title": t.title or "",
+            "teacher_reviewer_name": (getattr(t, "teacher_reviewer_name", "") or ""),
+            "teacher_review_note": (getattr(t, "teacher_review_note", "") or "")} for t in rows]
+    return {"alerts": out}
+
+
 @router.get("/tasks/{tid}")
 def editor_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)

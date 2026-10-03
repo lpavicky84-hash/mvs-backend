@@ -3475,6 +3475,7 @@ def teacher_review_changes(tid: int, payload: dict = Body(default={}),
     note = (payload.get("message") or payload.get("note") or "").strip()
     imgs = payload.get("images") or []
     t.teacher_review_status = "changes"
+    t.teacher_reviewer_name = getattr(current_user, "name", "") or ""
     # drop any earlier approval stamp — teacher now wants changes
     t.teacher_reviewed_at = None
     t.teacher_reviewed_by = None

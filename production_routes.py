@@ -426,6 +426,19 @@ def pm_party_tasks(tid: int, audience: str = "", db: Session = Depends(get_db), 
     return {"tasks": _chat_party_tasks(db, tid, (audience or "creator"))}
 
 
+@router.get("/review-alerts")
+def pm_review_alerts(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Edited videos where a TEACHER requested changes — drives the PM/Admin dashboard popup."""
+    rows = db.query(VideoTask).filter(
+        VideoTask.cancelled == False,
+        VideoTask.teacher_review_status == "changes",
+        VideoTask.lifecycle.in_(["qc_pending", "qc_changes"])).all()
+    out = [{"id": t.id, "title": t.title or "",
+            "teacher_reviewer_name": (getattr(t, "teacher_reviewer_name", "") or ""),
+            "editor_name": (pc._name_for_staff(db, t.editor_id) if t.editor_id else "")} for t in rows]
+    return {"alerts": out}
+
+
 @router.post("/heartbeat")
 def pm_heartbeat(payload: dict = Body(default={}), db: Session = Depends(get_db),
                  me=Depends(get_pm_or_admin)):
