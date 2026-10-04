@@ -2835,6 +2835,17 @@ def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_p
         ot_den = sum(1 for t in etasks if t.deadline)
         ot_hit = sum(1 for t in etasks if t.deadline and t.published_at <= t.deadline)
         revs = sum((t.revision_count or 0) for t in etasks)
+        # Phase 2a: also credit finished PROJECT CHAPTERS this editor edited (additive, guarded)
+        try:
+            from models import VideoTaskChapter as _VCp
+            _cdone = db.query(_VCp).filter(_VCp.editor_id == sp.id, _VCp.edit_state == "edited").all()
+            vids += len(_cdone)
+            for _c in _cdone:
+                _st = getattr(_c, "editing_started_at", None); _en = getattr(_c, "edited_at", None)
+                if _st and _en and _en > _st:
+                    secs += int((_en - _st).total_seconds())
+        except Exception:
+            pass
         ed_rows.append({
             "name": sp.user.name if sp.user else "",
             "videos": vids,
@@ -3922,6 +3933,89 @@ def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_p
                           "assigned": bool(c.editor_id or c.graphics_id)} for c in rows]}
 
 
+@router.get("/board-chapters")
+def pm_board_chapters(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Phase 2b: submitted project CHAPTERS as board items, mapped to the board's lifecycle
+    vocabulary so they slot into Editing / QC / Ready / Uploaded columns next to normal tasks.
+    Shoot-pending chapters (no link) stay only in the Projects screen. Read-only, additive."""
+    if not _PROJECT_OK:
+        return {"chapters": []}
+    rows = db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
+                                      VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
+    tmap = {t.id: t for t in rows}
+    ids = list(tmap.keys())
+    out = []
+    if ids:
+        chs = db.query(_PVChapter).filter(_PVChapter.task_id.in_(ids)).all()
+        nm = _staff_name_map(db, [c.editor_id for c in chs] + [c.graphics_id for c in chs])
+        ccache = {}
+        for c in chs:
+            link = (c.link or "").strip()
+            if not link:
+                continue  # shoot pending -> not in the production pipeline yet
+            rs = (getattr(c, "review_status", "") or "").strip()
+            es = (getattr(c, "edit_state", "") or "")
+            est = (getattr(c, "edit_status", "") or "")
+            if rs == "pending":
+                lc = "pm_review"
+            elif rs == "changes":
+                lc = "qc_changes"
+            elif est == "uploaded":
+                lc = "uploaded"
+            elif es == "edited":
+                lc = "ready_for_youtube"
+            elif es in ("editing", "paused"):
+                lc = "editing"
+            elif c.editor_id:
+                lc = "editor_assigned"
+            else:
+                lc = "approved"
+            t = tmap.get(c.task_id)
+            cname = ""
+            try:
+                cname, _ = pc.creator_info(db, t)
+            except Exception:
+                pass
+            out.append({
+                "cid": c.id, "task_id": c.task_id, "title": c.title or "Chapter",
+                "subject": (t.subject if t else ""), "teacher": cname, "ref_code": "PROJECT",
+                "lifecycle": lc, "link": link,
+                "edited_link": (getattr(c, "edited_link", "") or ""),
+                "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
+                "editor_id": c.editor_id, "editor_name": nm.get(c.editor_id, ""),
+                "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
+                "review_status": rs, "edit_state": es, "edit_status": est,
+                "deadline": pc._dt(getattr(c, "deadline", None)),
+            })
+    return {"chapters": out}
+
+
+@router.get("/chapters/{cid}/chat")
+def pm_chapter_chat(cid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import video_tasks as _vt
+    return _vt.chapter_chat_get(db, me, cid)
+
+
+@router.post("/chapters/{cid}/chat")
+def pm_chapter_chat_add(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                        me=Depends(get_pm_or_admin)):
+    import video_tasks as _vt
+    return _vt.chapter_chat_add(db, me, cid, payload, "production_manager")
+
+
+@router.post("/chapters/{cid}/chat-ping")
+def pm_chapter_chat_ping(cid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                         me=Depends(get_pm_or_admin)):
+    import video_tasks as _vt
+    return _vt.chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")))
+
+
+@router.get("/chapters/{cid}/timeline")
+def pm_chapter_timeline(cid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import video_tasks as _vt
+    return _vt.chapter_timeline(db, cid)
+
+
 @router.post("/chapter-status")
 def prod_chapter_status(payload: dict = Body(...), db: Session = Depends(get_db),
                         me=Depends(get_pm_or_admin)):
@@ -4193,19 +4287,34 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
     rows = query.order_by(VideoTask.created_at.desc()).all()
     # chapter progress per project (single grouped query)
     prog = {}
+    _now = datetime.utcnow()
+    _dl_map = {t.id: getattr(t, "deadline", None) for t in rows}
     try:
         from models import VideoTaskChapter as _VC
         ids = [t.id for t in rows]
         if ids:
             for c in db.query(_VC).filter(_VC.task_id.in_(ids)).all():
                 p = prog.setdefault(c.task_id, {"total": 0, "done": 0, "pending": 0,
-                                                "assigned": 0, "editing": 0, "edited": 0})
+                                                "shoot_pending": 0, "delayed": 0,
+                                                "assigned": 0, "editing": 0, "edited": 0, "uploaded": 0})
                 p["total"] += 1
                 rs = (getattr(c, "review_status", "") or "").strip()
-                if rs == "approved" or (rs == "" and (c.link or "").strip()):
+                _link = (c.link or "").strip()
+                _done = (rs == "approved" or (rs == "" and _link))
+                if _done:
                     p["done"] += 1
                 elif rs == "pending":
-                    p["pending"] += 1
+                    p["pending"] += 1          # waiting for PM review
+                else:
+                    p["shoot_pending"] += 1    # no video uploaded yet (shoot pending)
+                # delayed: video not done and its deadline (chapter or project) has passed
+                _dl = getattr(c, "deadline", None) or _dl_map.get(c.task_id)
+                if (not _done) and _dl and _dl < _now:
+                    p["delayed"] += 1
+                # editing pipeline buckets (per-chapter, pre-migration granularity)
+                _es2 = (getattr(c, "edit_status", "") or "").strip()
+                if _es2 == "uploaded":
+                    p["uploaded"] += 1
                 if getattr(c, "editor_id", None):
                     est = (getattr(c, "edit_state", "") or "") or "assigned"
                     p[("editing" if est == "editing" else ("edited" if est == "edited" else "assigned"))] += 1
@@ -4220,7 +4329,7 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
         counts[t.kind] = counts.get(t.kind, 0) + 1
         if t.subject:
             subjects.add(t.subject)
-        p = prog.get(t.id, {"total": 0, "done": 0, "pending": 0, "assigned": 0, "editing": 0, "edited": 0})
+        p = prog.get(t.id, {"total": 0, "done": 0, "pending": 0, "shoot_pending": 0, "delayed": 0, "assigned": 0, "editing": 0, "edited": 0, "uploaded": 0})
         cname = ""
         try:
             cname, _ = pc.creator_info(db, t)
@@ -4231,18 +4340,24 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
         out.append({
             "id": t.id, "kind": t.kind, "title": t.title or "Untitled",
             "subject": t.subject or "", "creator": cname,
+            "teacher_id": getattr(t, "teacher_id", None),
             "class_level": ("12" if "12" in (t.subject or "") else ("10" if "10" in (t.subject or "") else "")),
             "deadline": pc._dt(t.deadline), "updated": pc._dt(t.updated_at),
             "weekly_quota": getattr(t, "weekly_quota", 0) or 0,
             "chapters_total": p["total"], "chapters_done": p["done"],
             "chapters_pending": p.get("pending", 0),
+            "chapters_shoot_pending": p.get("shoot_pending", 0),
+            "chapters_delayed": p.get("delayed", 0),
             "vids_assigned": p.get("assigned", 0), "vids_editing": p.get("editing", 0),
-            "vids_edited": p.get("edited", 0),
+            "vids_edited": p.get("edited", 0), "vids_uploaded": p.get("uploaded", 0),
             "project_editor_id": _pe, "project_editor_name": _pe_nm.get(_pe, ""),
             "pct": pct, "is_old": bool(getattr(t, "is_old", False)),
         })
+    # teacher facet (distinct creators that have projects) for the master Teacher filter
+    _teachers = sorted({(o.get("creator") or "").strip() for o in out if (o.get("creator") or "").strip()})
     return {"projects": out, "counts": counts,
             "subjects": sorted(subjects),
+            "teachers": _teachers,
             "total": len(out)}
 
 

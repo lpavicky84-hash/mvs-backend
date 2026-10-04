@@ -1531,6 +1531,41 @@ def _tt_editor_brief(db, t, now):
     }
 
 
+def _tt_chapter_brief(db, c, now):
+    """Phase 2a: an editor's PROJECT-CHAPTER rendered like a normal editing task for the
+    live tracker (so project editing no longer shows the editor as 'free'). Read-only."""
+    est = (getattr(c, "edit_state", "") or "")
+    _dl = getattr(c, "deadline", None)
+    overdue = bool(_dl and _dl < now and est != "edited")
+    running = (est == "editing")
+    live = 0
+    _started = getattr(c, "editing_started_at", None)
+    if running and _started:
+        try:
+            live = max(0, int((now - _started).total_seconds()))
+        except Exception:
+            live = 0
+    ptitle = ""
+    try:
+        t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+        ptitle = ((t.subject or t.title or "") if t else "")
+    except Exception:
+        ptitle = ""
+    lc = ("editing" if est == "editing" else ("editing_paused" if est == "paused"
+          else ("editing_done" if est == "edited" else "editor_assigned")))
+    return {
+        "id": c.task_id, "chapter_id": c.id,
+        "title": (c.title or "Chapter") + (" — " + ptitle if ptitle else ""),
+        "ref_code": "PROJECT", "lifecycle": lc, "priority": "normal",
+        "progress": int(getattr(c, "editing_progress", 0) or 0),
+        "deadline": (_dt_raw(_dl) if _dl else ""),
+        "overdue": overdue,
+        "since": (_dt(_started) if _started else ""),
+        "live_seconds": int(live), "running": bool(running),
+        "is_project": True,
+    }
+
+
 def _tt_graphics_brief(db, g, now):
     t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
     st = g.status or ""
@@ -1570,10 +1605,38 @@ def build_team_tracker(db):
         queue.sort(key=lambda x: 0 if x["priority"] == "urgent" else 1)  # urgent first (stable: keeps deadline order)
         review = [_tt_editor_brief(db, t, now) for t in
                   base.filter(VideoTask.lifecycle.in_(["editing_done", "qc_pending"])).order_by(VideoTask.updated_at.desc()).all()]
+        # --- Phase 2a bridge: fold PROJECT-CHAPTER editing into this editor's live load ---
+        # (additive + guarded: a chapter the editor is editing now shows them as "editing",
+        #  not "free". Never throws into the main tracker.)
+        try:
+            from models import VideoTaskChapter as _VC
+            for _c in db.query(_VC).filter(_VC.editor_id == sp.id).all():
+                _est = (getattr(_c, "edit_state", "") or "")
+                if _est == "editing":
+                    if current is None:
+                        current = _tt_chapter_brief(db, _c, now)
+                    else:
+                        queue.append(_tt_chapter_brief(db, _c, now))
+                elif _est == "paused":
+                    paused.append(_tt_chapter_brief(db, _c, now))
+                elif _est == "edited":
+                    review.append(_tt_chapter_brief(db, _c, now))
+                elif _est in ("", "assigned"):
+                    queue.append(_tt_chapter_brief(db, _c, now))
+        except Exception:
+            pass
         completed_recent = [_tt_editor_brief(db, t, now) for t in
                             base.filter(VideoTask.lifecycle.in_(DONE)).order_by(VideoTask.updated_at.desc()).limit(10).all()]
         completed_count = base.filter(VideoTask.lifecycle.in_(DONE)).count()
         completed_month = base.filter(VideoTask.lifecycle.in_(DONE), VideoTask.updated_at >= month_start).count()
+        # Phase 2a: also credit finished PROJECT CHAPTERS (edited / uploaded) to this editor
+        try:
+            from models import VideoTaskChapter as _VCd
+            _cb = db.query(_VCd).filter(_VCd.editor_id == sp.id)
+            completed_count += _cb.filter(_VCd.edit_state == "edited").count()
+            completed_month += _cb.filter(_VCd.edited_at != None, _VCd.edited_at >= month_start).count()  # noqa: E711
+        except Exception:
+            pass
         overdue_count = base.filter(VideoTask.editor_deadline != None, VideoTask.editor_deadline < now,  # noqa: E711
                                     ~VideoTask.lifecycle.in_(DONE)).count()
         active_count = (1 if current else 0) + len(paused) + len(queue) + len(review)

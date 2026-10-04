@@ -246,6 +246,33 @@ def editor_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Ses
     return project_chat_ping(db, me, pid, typing=bool((payload or {}).get("typing")))
 
 
+# ===== Phase 2c: editor PER-CHAPTER chat + timeline =====
+@router.get("/chapters/{cid}/chat")
+def editor_chapter_chat(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    from video_tasks import chapter_chat_get
+    return chapter_chat_get(db, me, cid)
+
+
+@router.post("/chapters/{cid}/chat")
+def editor_chapter_chat_add(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                            me=Depends(get_editor)):
+    from video_tasks import chapter_chat_add
+    return chapter_chat_add(db, me, cid, payload, "editor")
+
+
+@router.post("/chapters/{cid}/chat-ping")
+def editor_chapter_chat_ping(cid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                             me=Depends(get_editor)):
+    from video_tasks import chapter_chat_ping
+    return chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")))
+
+
+@router.get("/chapters/{cid}/timeline")
+def editor_chapter_timeline(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    from video_tasks import chapter_timeline
+    return chapter_timeline(db, cid)
+
+
 
 def _my_task(db, sp, tid):
     t = db.query(VideoTask).filter(VideoTask.id == int(tid)).first()
@@ -395,6 +422,15 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
         "ready_for_youtube": c("ready_for_youtube"),
         "total_views": int(total_views),
     }
+    # Phase 2a: include this editor's PROJECT-CHAPTER work in their own dashboard counts
+    try:
+        from models import VideoTaskChapter as _VCe
+        _cb = db.query(_VCe).filter(_VCe.editor_id == sp.id)
+        cards["assigned_today"] += _cb.filter(_VCe.edit_state.in_(["", "assigned"])).count()
+        cards["editing_now"] += _cb.filter(_VCe.edit_state.in_(["editing", "paused"])).count()
+        cards["completed"] += _cb.filter(_VCe.edit_state == "edited").count()
+    except Exception:
+        pass
     return {
         "greeting_name": me.name,
         "events": pc.active_events_for(db, "editor"),

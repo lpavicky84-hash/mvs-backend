@@ -2191,6 +2191,108 @@ def vt_teacher_project_chat_ping(pid: int, payload: dict = Body(default={}),
     return project_chat_ping(db, current_user, pid, typing=bool((payload or {}).get("typing")))
 
 
+# ===== Phase 2c: PER-CHAPTER chat (audience = "chap<cid>") — no schema change =====
+def _chapter_row(db, cid):
+    from models import VideoTaskChapter as _VC
+    c = db.query(_VC).filter(_VC.id == int(cid)).first()
+    if not c:
+        raise HTTPException(404, "Chapter not found")
+    return c
+
+
+def _chap_aud(cid):
+    return "chap%d" % int(cid)
+
+
+def chapter_chat_get(db, user, cid):
+    c = _chapter_row(db, cid)
+    pid = c.task_id
+    aud = _chap_aud(cid)
+    _vtc_mark_read(db, user, pid, aud)
+    _chat_touch(db, user, pid, aud)
+    return {"comments": _vtc_list_v(db, pid, aud, getattr(user, "id", None)),
+            "presence": _chat_other_presence(db, getattr(user, "id", None), pid, aud),
+            "chapter_title": (c.title or "")}
+
+
+def chapter_chat_add(db, user, cid, payload, role):
+    c = _chapter_row(db, cid)
+    pid = c.task_id
+    aud = _chap_aud(cid)
+    _att = (payload.get("attachment_url") or "").strip()
+    if not _att:
+        _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+        if _imgs:
+            try:
+                import production_core as pc
+                t = _project_or_404(db, pid)
+                urls = pc.save_images(db, t, _imgs[:1], "chat", None, user, return_urls=True) or []
+                if urls:
+                    _att = urls[0]
+            except Exception:
+                _att = ""
+    cc = _vtc_add(db, pid, user, payload.get("message"), role, attachment_url=_att, audience=aud)
+    try:
+        _chat_touch(db, user, pid, aud, typing=False)
+    except Exception:
+        pass
+    if not cc:
+        raise HTTPException(400, "Message cannot be empty")
+    db.commit()
+    return {"ok": True, "comment": _vtc_out(db, cc)}
+
+
+def chapter_chat_ping(db, user, cid, typing=False):
+    c = _chapter_row(db, cid)
+    aud = _chap_aud(cid)
+    _chat_touch(db, user, c.task_id, aud, typing=bool(typing))
+    return {"presence": _chat_other_presence(db, getattr(user, "id", None), c.task_id, aud)}
+
+
+def chapter_timeline(db, cid):
+    """Phase 2c: a chapter's timeline synthesized from its own timestamps (read-only, no new storage)."""
+    import production_core as pc
+    c = _chapter_row(db, cid)
+    ev = []
+    def _add(label, at):
+        if at:
+            ev.append({"label": label, "at": pc._dt(at)})
+    _add("Video submitted", getattr(c, "submitted_at", None))
+    rs = (getattr(c, "review_status", "") or "")
+    if rs == "approved":
+        _add("Approved by PM/Admin", getattr(c, "reviewed_at", None))
+    elif rs == "changes":
+        _add("Changes requested", getattr(c, "reviewed_at", None))
+    _add("Editor assigned", getattr(c, "assigned_at", None))
+    _add("Editing started", getattr(c, "editing_started_at", None))
+    _add("Edited & submitted", getattr(c, "edited_at", None))
+    if (getattr(c, "edit_status", "") or "") == "uploaded":
+        _add("Marked uploaded", getattr(c, "changed_at", None))
+    return {"title": (c.title or "Chapter"), "events": ev}
+
+
+@router.get("/teacher/chapters/{cid}/chat")
+def vt_teacher_chapter_chat(cid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return chapter_chat_get(db, current_user, cid)
+
+
+@router.post("/teacher/chapters/{cid}/chat")
+def vt_teacher_chapter_chat_add(cid: int, payload: dict = Body(...),
+                                db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return chapter_chat_add(db, current_user, cid, payload, "teacher")
+
+
+@router.post("/teacher/chapters/{cid}/chat-ping")
+def vt_teacher_chapter_chat_ping(cid: int, payload: dict = Body(default={}),
+                                 db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return chapter_chat_ping(db, current_user, cid, typing=bool((payload or {}).get("typing")))
+
+
+@router.get("/teacher/chapters/{cid}/timeline")
+def vt_teacher_chapter_timeline(cid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    return chapter_timeline(db, cid)
+
+
 @router.get("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_comments(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """All chat messages on a task — admin sees every thread (creator, editor, internal, project)."""
