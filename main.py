@@ -1464,6 +1464,15 @@ def portal(request: _Request):
         return _cached_portal(request) or _cached_file(request, _PORTAL_FILE, "text/html")
     return {"error": "portal file not deployed"}
 
+# Class Manager student guide (shareable with the team & students) — app.mvsfoundation.in/guide
+_GUIDE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guide.html")
+
+@app.get("/guide")
+def student_guide(request: _Request):
+    if os.path.exists(_GUIDE_FILE):
+        return _cached_file(request, _GUIDE_FILE, "text/html")
+    return {"error": "guide file not deployed"}
+
 # Path-based portal entry points — Teacher aur Admin ke liye alag URL. Dono same SPA serve
 # karte hain; frontend path padh ke sahi portal khol deta hai. Student ka URL sirf root
 # (app.mvsfoundation.in) hi rehta hai — uska flow bilkul waisa ka waisa (approved template).
