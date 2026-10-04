@@ -32355,8 +32355,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     +'.pj-stat b{display:block;font-size:1.5rem;font-weight:900;line-height:1;color:#2e2716}'
     +'.pj-stat span{display:block;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:#8a7c55;margin-top:5px}'
     +'.pj-stat.s-done b{color:#059669}.pj-stat.s-pend b{color:#d97706}.pj-stat.s-rev b{color:#dc2626}.pj-stat.s-del b{color:#dc2626}.pj-stat.s-sub b{color:#2563eb}.pj-stat.s-ch b{color:#b8941f}'
+    +'.pj-stat.pj-stat-blink{border-color:#dc2626!important;animation:pjStatBlink 1.15s ease-in-out infinite}'
+    +'@keyframes pjStatBlink{0%,100%{box-shadow:0 0 0 1px rgba(220,38,38,.25)}50%{box-shadow:0 0 0 4px rgba(220,38,38,.4)}}'
     +'@media(max-width:1000px){.pj-stats{grid-template-columns:repeat(3,1fr)}}'
     +'@media(max-width:560px){.pj-stats{grid-template-columns:repeat(2,1fr)}}'
+    /* compact premium filter bar (image-1 style, not big stacked boxes) */
+    +'.pjf-bar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:2px 0 2px}'
+    +'.pjf-bar .pjf-sel{width:auto!important;min-width:120px;max-width:210px;padding:9px 13px!important;font-size:.84rem;font-weight:600;border:1px solid #e7dfc6!important;border-radius:11px!important;background:#fffdf6!important;color:#2e2716;height:auto!important;cursor:pointer}'
+    +'.pjf-bar .pjf-sel:focus{border-color:#b8941f!important;outline:none}'
+    +'.pjf-bar .pjf-l{display:none}'
+    +'@media(max-width:560px){.pjf-bar .pjf-sel{flex:1 1 44%;min-width:0;max-width:none}}'
     +'.pj-chcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:12px;padding:12px}'
     +'.pjcc{background:#fffdf6;border:1px solid #e7dfc6;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(90,70,15,.1);border-left:4px solid #8f3d66}'
     +'.pjcc-top{background:linear-gradient(135deg,#5a2f6b,#8f3d66);color:#fff;padding:13px 14px;position:relative;min-height:62px}'
@@ -32400,8 +32408,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         +'<div class="pj-stat s-ch'+on('chapters')+'" onclick="prodProjStat(\'chapters\')"><b>'+ag.ch+'</b><span>Chapters Assigned</span></div>'
         +'<div class="pj-stat s-done'+on('completed')+'" onclick="prodProjStat(\'completed\')"><b>'+ag.done+'</b><span>Completed</span></div>'
         +'<div class="pj-stat s-pend'+on('pending')+'" onclick="prodProjStat(\'pending\')"><b>'+ag.pend+'</b><span>Shoot Pending</span></div>'
-        +'<div class="pj-stat s-rev'+on('review')+'" onclick="prodProjStat(\'review\')"><b>'+ag.rev+'</b><span>PM Review</span></div>'
-        +'<div class="pj-stat s-del'+on('delayed')+'" onclick="prodProjStat(\'delayed\')"><b>'+ag.del+'</b><span>Delayed Videos</span></div>'
+        +'<div class="pj-stat s-rev'+on('review')+(ag.rev>0?' pj-stat-blink':'')+'" onclick="prodProjStat(\'review\')"><b>'+ag.rev+'</b><span>PM Review</span></div>'
+        +'<div class="pj-stat s-del'+on('delayed')+(ag.del>0?' pj-stat-blink':'')+'" onclick="prodProjStat(\'delayed\')"><b>'+ag.del+'</b><span>Delayed Videos</span></div>'
         +'</div>';
       var edits=[['','All Editing'],['editing','In Editing ('+ag.edit+')'],['uploaded','Uploaded ('+ag.up+')']];
       var bar='<div class="pjf-bar">'+
