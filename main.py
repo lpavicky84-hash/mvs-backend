@@ -1030,6 +1030,89 @@ def _r2_diag(key: str = "", url: str = "", attempt: int = 0):
     return out
 
 
+@app.get("/answer-check")
+def _answer_check(attempt: int = 0):
+    """DEFINITIVE answer-sheet health check — NO key chahiye, koi content/PII leak nahi.
+    Browser me kholo: /answer-check?attempt=<attempt_id>
+    Batata hai: file R2 par hai ya DB base64, server bytes fetch kar paa raha ya nahi,
+    file ka ASAL type (PDF/JPEG/PNG/CORRUPT), aur CDN kaun sa content-type bhej raha
+    (yahi 'corrupt' ki asli jad hoti hai). Isse pata chalta hai: deploy baaki hai,
+    serve fix chahiye, ya bytes sach me kharab hain."""
+    out = {"attempt": attempt}
+    try:
+        from database import SessionLocal
+        from models import ExamAttempt
+        db = SessionLocal()
+        try:
+            a = db.query(ExamAttempt).filter(ExamAttempt.id == int(attempt)).first()
+            val = (getattr(a, "answer_image_b64", "") if a else "") or ""
+        finally:
+            db.close()
+    except Exception as e:
+        return {"error": str(e)[:200]}
+    if not val:
+        out["verdict"] = "NO answer sheet stored for this attempt (khaali)."
+        return out
+    out["stored_is_url"] = val.startswith("http")
+    out["value_len"] = len(val)
+
+    import r2_storage as R2
+    # 1) Server kya bytes la paa raha (yehi force_proxy serve-path use karta hai)
+    try:
+        data = R2._resolve_bytes(val)
+    except Exception as e:
+        data = None
+        out["resolve_error"] = str(e)[:160]
+    if data:
+        out["server_can_fetch"] = True
+        out["bytes_len"] = len(data)
+        out["first_hex"] = data[:8].hex()
+        out["detected_type"] = R2._sniff_ct(data) or "UNKNOWN"
+        if data[:4] == b"%PDF":
+            out["bytes_verdict"] = "VALID PDF — bytes theek hain (dikkat sirf content-type/serve me)"
+        elif data[:3] == b"\xff\xd8\xff":
+            out["bytes_verdict"] = "VALID JPEG — bytes theek hain"
+        elif data[:8].startswith(b"\x89PNG"):
+            out["bytes_verdict"] = "VALID PNG — bytes theek hain"
+        elif R2._looks_like_error(data):
+            out["bytes_verdict"] = "ERROR PAGE (R2 access denied / HTML) — read-permission issue"
+        else:
+            out["bytes_verdict"] = "CORRUPT/UNKNOWN — magic bytes match nahi (bytes hi kharab hain)"
+    else:
+        out["server_can_fetch"] = False
+        out["bytes_verdict"] = "Server bytes fetch NAHI kar paya (R2 read permission / URL galat)"
+
+    # 2) CDN direct kya content-type bhej raha (purane redirect-path ki asli jad)
+    if val.startswith("http"):
+        try:
+            import urllib.request
+            req = urllib.request.Request(val, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                head = r.read(16)
+                out["cdn_http_status"] = getattr(r, "status", None)
+                out["cdn_content_type"] = r.headers.get("Content-Type")
+            out["cdn_first_hex"] = head[:8].hex()
+        except Exception as e:
+            out["cdn_fetch"] = "failed: " + str(e)[:120]
+
+    # 3) Saaf nateeja
+    bt = out.get("detected_type")
+    ct = (out.get("cdn_content_type") or "").lower()
+    if out.get("server_can_fetch") and bt and bt != "UNKNOWN":
+        if bt == "application/pdf" and "pdf" not in ct:
+            out["FINAL"] = ("File ASAL me VALID %s hai, par CDN use '%s' bhej raha. "
+                            "force_proxy serve-fix deploy karte hi khul jayegi."
+                            % (bt, out.get("cdn_content_type")))
+        else:
+            out["FINAL"] = ("File VALID %s hai. Agar abhi bhi na khule to naya serve-code "
+                            "deploy nahi hua — 4 backend files deploy karo." % bt)
+    elif out.get("server_can_fetch") is False:
+        out["FINAL"] = "R2 se bytes nahi aa rahe — R2 token ka READ permission check karo (/r2-test bhi chalao)."
+    else:
+        out["FINAL"] = "Bytes sach me CORRUPT hain — upload ke waqt kharab hui. Ye attempt re-upload karana padega; naye uploads ab theek honge."
+    return out
+
+
 @app.get("/r2-migrate-batch")
 def _r2_migrate_batch(key: str = "", kind: str = "", after_id: int = 0, limit: int = 10):
     if not _r2_mig_secret() or key != _r2_mig_secret():
