@@ -31074,10 +31074,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   // --- editor published videos + realtime views ---
   function renderEditorTasksUnified(portal,body){
-    // Phase 2d: editor's project chapters now live INSIDE My Tasks (no separate section)
-    body.innerHTML='<div id="edt-proj-sec"></div><div id="edt-tasks-sec"></div>';
-    try{ renderEditorProjectVideos(portal, document.getElementById('edt-proj-sec'), true); }catch(e){}
-    return renderList(portal, document.getElementById('edt-tasks-sec'));
+    // Editor's project chapters are merged straight INTO the task grid by _prodLoadList
+    // (premium .ptc cards, one chapter = one task, filterable). No separate top section.
+    return renderList(portal, body);
   }
   function renderEditorProjectVideos(portal,body,embedded){
     if(!embedded) body.innerHTML='<div class="p-load">Loading project videos...</div>';
@@ -32742,6 +32741,103 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }catch(e){}
   }
   window._prodMarkOpenedCard=_prodMarkOpenedCard;
+  // ===== Editor project CHAPTER as a premium task card (.ptc) — merged into My Tasks =====
+  // Har assigned chapter = editor ke liye ek task. Dikhta task card jaisa, actions wahi
+  // existing edtPv* (start/progress/pause/resume/submit/reopen) + per-chapter chat/timeline.
+  function _edtChapState(v){ if((v.edit_state==='edited') && v.review_status==='changes') return 'changes'; return v.edit_state||'assigned'; }
+  var _EDT_CHST={assigned:['ASSIGNED','#c99a2e'],editing:['EDITING IN PROGRESS','#7c4fc0'],paused:['EDITING PAUSED','#c99a2e'],edited:['SUBMITTED','#2a7fb8'],changes:['CHANGES REQUIRED','#d1443a']};
+  function _edtChapLc(st){ return {assigned:'editor_assigned',editing:'editing',paused:'editing_paused',edited:'editing_done',changes:'qc_changes'}[st]||'editor_assigned'; }
+  function _edtChapCard(v){
+    var cid=v.chapter_id;
+    var st=_edtChapState(v); var badge=_EDT_CHST[st]||_EDT_CHST.assigned; var prog=v.editing_progress||0;
+    var thumb=(v.thumbnail||'').trim();
+    var hcol=_PTC_HCOL[(cid||0)%_PTC_HCOL.length];
+    var letter=((v.title||'C').trim().charAt(0)||'C').toUpperCase();
+    var header=thumb
+      ? '<div class="ptc-head" style="background-image:url('+_esc1(thumb)+')" onclick="event.stopPropagation();prodThumbView(\''+_esc1(thumb)+'\')"><a class="ptc-view" onclick="event.stopPropagation();prodThumbView(\''+_esc1(thumb)+'\')">VIEW</a></div>'
+      : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
+    var badgeHtml='<span class="ptc-badge'+((st==='assigned'||st==='changes')?' ptc-blink':'')+'" style="background:'+badge[1]+'">'+esc(badge[0])+'</span>';
+    var over=false; try{ if(v.deadline_iso && st!=='edited') over=(new Date(String(v.deadline_iso).replace(' ','T')).getTime()<Date.now()); }catch(e){}
+    var chips=[];
+    chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800">'+esc(v.project_title||'Project')+'</span>');
+    if(v.subject) chips.push('<span class="pw-chip">'+esc(v.subject)+'</span>');
+    if(v.channel_name) chips.push('<span class="pw-chip">'+esc(v.channel_name)+'</span>');
+    if(v.kind) chips.push('<span class="pw-chip">'+esc(({one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[v.kind])||'Project')+'</span>');
+    var boxCls,boxIcon,boxLabel,boxSub;
+    if(st==='changes'){ boxCls='ov'; boxIcon='alert'; boxLabel='Changes required'; boxSub=(v.review_note||'Re-edit & submit again'); }
+    else if(st==='edited'){ boxCls='dn'; boxIcon='check'; boxLabel='Submitted'; boxSub='Waiting for PM review'; }
+    else if(st==='paused'){ boxCls='ov'; boxIcon='clock'; boxLabel='Editing paused · '+prog+'%'; boxSub=(v.progress_note||'Resume when ready'); }
+    else if(st==='editing'){ boxCls=over?'ov':''; boxIcon='edit'; boxLabel='Editing · '+prog+'%'; boxSub=(v.started_at?('Started '+v.started_at):'In progress'); }
+    else { boxCls=over?'ov':''; boxIcon='clock'; boxLabel=over?'Deadline passed':'Ready to start'; boxSub=(v.deadline?('Deadline: '+v.deadline):'Tap Start Editing'); }
+    var dlBox='<div class="pt-dlbox '+boxCls+'"><div class="pdb-ic">'+ic(boxIcon)+'</div>'+
+      '<div class="pdb-main"><div class="pdb-label">'+esc(boxLabel)+'</div>'+
+      '<div class="pdb-time"><span class="pdb-subpre">'+esc(boxSub||'')+'</span></div></div></div>';
+    var progBar=(st==='editing'||st==='paused')?('<div class="ptc-prog"><i style="width:'+prog+'%"></i></div><div class="ptc-prog-l">'+prog+'% edited</div>'):'';
+    var ip=[];
+    if(v.deadline) ip.push('<span class="pir-i"><span class="pir-ic">'+ic('calendar')+'</span><span class="pir-tx">Deadline: '+esc(v.deadline)+'</span></span>');
+    ip.push('<span class="pir-i pir-id"><span class="pir-ic">'+ic('list')+'</span><span class="pir-tx">PROJECT</span></span>');
+    var idrow='<div class="ptc-idrow">'+ip.join('')+'</div>';
+    var tnm=(''+(v.title||'')).replace(/[\\\x27\x22]/g,'');
+    var acts='';
+    if(st==='assigned') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvStart('+cid+')">Start Editing</button>';
+    else if(st==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvPause('+cid+','+prog+')">Pause</button>';
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Edited Video</button>'; }
+    else if(st==='paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvResume('+cid+')">Resume</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Edited Video</button>'; }
+    else if(st==='changes'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Again</button>'; }
+    else { if(v.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.edited_link)+'\',\'_blank\',\'noopener\')">Edited Video</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvReopen('+cid+')">Change</button>'; }
+    if(v.link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Source</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjChatOpen(\'/api/editor\','+cid+',\''+tnm+'\',\'editor\')">💬 Chat</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjTimelineOpen(\'/api/editor\','+cid+')">Timeline</button>';
+    var urgent=(st==='changes')||over;
+    return '<div class="ptc'+(urgent?' urgent-task':'')+'" data-edtchap="'+cid+'" style="border-left:5px solid '+badge[1]+';position:relative;cursor:default">'+
+      '<div class="ptc-hw">'+header+badgeHtml+'</div>'+
+      '<div class="ptc-body"><div class="ptc-title">'+esc(v.title||'Untitled')+'</div>'+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+progBar+dlBox+idrow+
+      '<div class="ptc-acts">'+acts+'</div></div></div>';
+  }
+  // match a chapter against the editor's current filter (dropdown `status` OR sidebar `epreset`)
+  function _edtChapMatch(v, status, epreset){
+    var st=_edtChapState(v);
+    if(status){
+      if(status==='editor_assigned') return st==='assigned';
+      if(status==='editing') return st==='editing';
+      if(status==='editing_paused') return st==='paused';
+      if(status==='qc_changes') return st==='changes';
+      if(status==='editing_done') return st==='edited';
+      return false; // uploaded / others -> chapters don't carry that state
+    }
+    if(epreset){
+      if(epreset==='editing') return st==='editing'||st==='paused';
+      if(epreset==='ready'||epreset==='completed'||epreset==='submitted') return st==='edited';
+      if(epreset==='changes') return st==='changes';
+      if(epreset==='assigned'||epreset==='not_started') return st==='assigned';
+      if(epreset==='overdue'){ try{ return !!v.deadline_iso && (new Date(String(v.deadline_iso).replace(' ','T')).getTime()<Date.now()) && st!=='edited'; }catch(e){ return false; } }
+      return true;
+    }
+    return true;
+  }
+  // whole-project assignment (editor owns every video of the project) — kept as a card so it's not lost
+  function _edtWholeCard(w){
+    var pid=w.project_id;
+    var letter=((w.title||'P').trim().charAt(0)||'P').toUpperCase();
+    var pt=(''+(w.title||'')).replace(/[\\\x27\x22]/g,'');
+    var chips=[];
+    if(w.subject) chips.push('<span class="pw-chip">'+esc(w.subject)+'</span>');
+    if(w.kind) chips.push('<span class="pw-chip">'+esc(({one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[w.kind])||'Project')+'</span>');
+    var box='<div class="pt-dlbox"><div class="pdb-ic">'+ic('video')+'</div><div class="pdb-main"><div class="pdb-label">Whole project — assigned to you</div><div class="pdb-time"><span class="pdb-subpre">'+(w.deadline?('Deadline: '+esc(w.deadline)):'Individual videos appear here as they are approved')+'</span></div></div></div>';
+    var acts='<button class="ptc-btn" onclick="event.stopPropagation();edtProjectChat('+pid+',\''+pt+'\')">💬 Chat</button>';
+    return '<div class="ptc" style="border-left:5px solid #7c3aed;position:relative;cursor:default">'+
+      '<div class="ptc-hw"><div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,#3a2c5f,#7c3aed)">'+esc(letter)+'</div><span class="ptc-badge" style="background:#7c3aed">WHOLE PROJECT</span></div>'+
+      '<div class="ptc-body"><div class="ptc-title">'+esc(w.title||'Project')+'</div>'+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+box+
+      '<div class="ptc-acts">'+acts+'</div></div></div>';
+  }
+  window._edtChapCard=_edtChapCard; window._edtChapLc=_edtChapLc; window._edtChapState=_edtChapState; window._edtChapMatch=_edtChapMatch;
   function _prodLoadList(portal,silent){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
     var act=document.getElementById(portal+'-active'); if(act) act.innerHTML=_activeChips(portal);
@@ -32757,10 +32853,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
       var arr=r[key]||r.tasks||r.videos||[];
       if(!res) return;
-      res.innerHTML=arr.length?('<div class="ptc-grid">'+arr.map(function(t){ return _prodTaskCard(portal,t); }).join('')+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
-      try{ _prodMarkOpenedCard(); }catch(e){}
-      if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }
-      if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
+      var _finish=function(extraCards){
+        var taskCards=arr.map(function(t){ return _prodTaskCard(portal,t); }).join('');
+        var total=arr.length+((extraCards&&extraCards.count)||0);
+        res.innerHTML=total?('<div class="ptc-grid">'+taskCards+((extraCards&&extraCards.html)||'')+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
+        try{ _prodMarkOpenedCard(); }catch(e){}
+        if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }
+        if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
+      };
+      // Editor: assigned project CHAPTERS ko bhi same grid me premium cards ke roop me merge karo
+      // (ek chapter = ek task), current status filter ke hisaab se. Fail ho to sirf tasks dikhao.
+      if(portal==='editor'){
+        return api(P.editor.api+'/project-videos').then(function(pv){
+          var vids=(pv&&pv.videos)||[];
+          var ef=_flt('editor'); var fs=(ef.status||''), fe=(ef.epreset||'');
+          vids=vids.filter(function(v){ return _edtChapMatch(v,fs,fe); });
+          // whole-project assignments only in the unfiltered "All Tasks" view
+          var whole=(!fs && !fe)?((pv&&pv.whole_projects)||[]):[];
+          _finish({html:vids.map(_edtChapCard).join('')+whole.map(_edtWholeCard).join(''), count:vids.length+whole.length});
+        }).catch(function(){ _finish(null); });
+      }
+      _finish(null);
     }).catch(function(e){ if(res) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); });
   }
   window.prodKpiGo=function(portal,key){
