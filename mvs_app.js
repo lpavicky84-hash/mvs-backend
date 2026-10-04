@@ -2391,13 +2391,12 @@ async function openDocViewer(url, name, opts){
   try{
     var r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('fail');
-    var ct=(r.headers.get('content-type')||'').toLowerCase();
     var raw=await r.blob();
     if(!raw||!raw.size) throw new Error('empty');
-    var nm=(name||'').toLowerCase();
-    var isImg=ct.indexOf('image')>=0 || /\.(png|jpe?g|webp|gif|bmp)$/.test(nm);
-    var isPdf=ct.indexOf('pdf')>=0 || /\.pdf$/.test(nm);
-    var blob=isPdf?new Blob([raw],{type:'application/pdf'}):raw;
+    // ASAL bytes se type (server content-type par bharosa NAHI) — PDF ko image samajhne ki dikkat yahi thi
+    var _k=await _blobKind(raw);
+    var isImg=_k.isImg, isPdf=_k.isPdf;
+    var blob=new Blob([raw],{type:_k.type});
     var u=URL.createObjectURL(blob); window._dvUrl=u;
     var body2=document.getElementById('dv-body');
     if(body2){
@@ -2422,6 +2421,25 @@ function _dlName(name, mime){
   var ext={'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[(mime||'').toLowerCase().split(';')[0]];
   if(ext){ name=name.replace(/\.(jpe?g|png|pdf|webp|gif)$/i,'')+'.'+ext; }
   return name;
+}
+// BULLETPROOF: file ke ASAL pehle bytes se type pehchaano — server/CDN ka content-type
+// galat ho (PDF ko image/jpeg bol de) to bhi sahi. Isi ek jagah se View + Download dono
+// decide karte hain, isliye content-type kabhi bhi answer sheet ko "corrupt" nahi dikhayega.
+async function _blobKind(blob){
+  try{
+    var h=new Uint8Array(await blob.slice(0,12).arrayBuffer());
+    if(h[0]===0x25&&h[1]===0x50&&h[2]===0x44&&h[3]===0x46) return {type:'application/pdf',ext:'pdf',isPdf:true,isImg:false}; // %PDF
+    if(h[0]===0xFF&&h[1]===0xD8&&h[2]===0xFF) return {type:'image/jpeg',ext:'jpg',isPdf:false,isImg:true};
+    if(h[0]===0x89&&h[1]===0x50&&h[2]===0x4E&&h[3]===0x47) return {type:'image/png',ext:'png',isPdf:false,isImg:true};
+    if(h[0]===0x47&&h[1]===0x49&&h[2]===0x46) return {type:'image/gif',ext:'gif',isPdf:false,isImg:true};
+    if(h[0]===0x52&&h[1]===0x49&&h[2]===0x46&&h[3]===0x46&&h[8]===0x57&&h[9]===0x45&&h[10]===0x42&&h[11]===0x50) return {type:'image/webp',ext:'webp',isPdf:false,isImg:true};
+  }catch(e){}
+  var t=((blob&&blob.type)||'').toLowerCase();
+  if(t.indexOf('pdf')>=0) return {type:'application/pdf',ext:'pdf',isPdf:true,isImg:false};
+  if(t.indexOf('png')>=0) return {type:'image/png',ext:'png',isPdf:false,isImg:true};
+  if(t.indexOf('webp')>=0) return {type:'image/webp',ext:'webp',isPdf:false,isImg:true};
+  if(t.indexOf('image')>=0) return {type:'image/jpeg',ext:'jpg',isPdf:false,isImg:true};
+  return {type:t||'application/octet-stream',ext:'bin',isPdf:false,isImg:false};
 }
 async function _smartDownload(url, name){
   // ROOT CAUSE: is app ke WebView me app.mvsfoundation.in par NAVIGATE karne se PDF ki jagah
@@ -10225,13 +10243,13 @@ function downloadStudentAnswer(attId,name){
   toast('Fetching the answer sheet\u2026');
   fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}}).then(async r=>{
     if(!r.ok){ toast('No answer sheet available for this student.',true); return; }
-    const ct=(r.headers.get('content-type')||'').toLowerCase();
     const b=await r.blob();
     if(!b||!b.size){ toast('The answer sheet file is empty. Ask the student to upload it again.',true); return; }
-    // ASAL type se sahi extension — PDF ho to .pdf (warna .jpg naam se PDF corrupt lagta tha)
-    const ext=ct.indexOf('pdf')>=0?'pdf':(ct.indexOf('png')>=0?'png':(ct.indexOf('webp')>=0?'webp':'jpg'));
-    const u=URL.createObjectURL(b);
-    const a=document.createElement('a'); a.href=u; a.download='answer-'+(name||'student')+'.'+ext;
+    // ASAL file bytes se type + extension (server ke content-type par bharosa NAHI — wahi .jpg
+    // naam se PDF save karke "corrupt/open nahi hoti" dikkat deta tha)
+    const k=await _blobKind(b);
+    const u=URL.createObjectURL(new Blob([b],{type:k.type}));
+    const a=document.createElement('a'); a.href=u; a.download='answer-'+(name||'student')+'.'+k.ext;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(u),4000);
     toast('Answer sheet downloaded.');
@@ -10401,9 +10419,11 @@ async function loadAnsImg(attId,imgId){
     // serve ab ASAL type se bhejta hai (PDF/JPEG/PNG) — content-type dekh ke sahi dikhao
     const r=await fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok){ if(wrap) wrap.innerHTML='<div class="gm-noimg">No answer sheet uploaded (this may be an MCQ test).</div>'; return; }
-    const ct=(r.headers.get('content-type')||'').toLowerCase();
-    const b=await r.blob(); const u=URL.createObjectURL(b);
-    if(ct.indexOf('pdf')>=0){
+    const b=await r.blob();
+    // ASAL bytes se type — content-type galat ho to bhi PDF/image sahi dikhe
+    const k=await _blobKind(b);
+    const u=URL.createObjectURL(new Blob([b],{type:k.type}));
+    if(k.isPdf){
       if(wrap){ wrap.innerHTML='<div id="'+imgId+'-pdf"></div>';
         try{ _pdfView(document.getElementById(imgId+'-pdf'), u, {title:'Answer Sheet', downloadName:'answer-sheet.pdf', src:u}); }
         catch(e){ wrap.innerHTML='<iframe class="gm-pdf" src="'+u+'" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:10px"></iframe>'; }
