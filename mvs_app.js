@@ -13451,11 +13451,15 @@ function _avtSpecBody(){
   const _allTasksSP=[].concat(...['one_shot','rapid_revision','project'].map(k=>(((sp||{})[k]||{}).tasks)||[]));
   // v131: subject list ab SELECTED class se filter hoti hai + duplicate hata (Set).
   // Pehle union of all subjects tha (class 12 chunne pe bhi class 10 subjects dikhte the).
-  const subs=[...new Set(_allTasksSP.filter(t=>!_avtSpecCls||String(t.cls)===String(_avtSpecCls)).map(t=>t.subject).filter(Boolean))].sort();
+  // Master cascade (PM parity): Teacher -> Class -> Subject.
+  // Teacher list = all teachers; class + subject options narrow to the selected teacher.
   const teacherList=[...new Set(_allTasksSP.map(t=>t.teacher).filter(Boolean))].sort();
   if(_avtSpecTeacher&&!teacherList.includes(_avtSpecTeacher)) _avtSpecTeacher='';
-  const clsList=[...new Set([].concat(...['one_shot','rapid_revision','project'].map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>t.cls)))).values()].filter(Boolean).sort();
-  if(_avtSpecCls&&!clsList.includes(_avtSpecCls)) clsList.push(_avtSpecCls);
+  const _byTeacher=_allTasksSP.filter(t=>!_avtSpecTeacher||t.teacher===_avtSpecTeacher);
+  const clsList=[...new Set(_byTeacher.map(t=>t.cls))].filter(Boolean).sort();
+  if(_avtSpecCls&&!clsList.includes(_avtSpecCls)) _avtSpecCls='';
+  const subs=[...new Set(_byTeacher.filter(t=>!_avtSpecCls||String(t.cls)===String(_avtSpecCls)).map(t=>t.subject).filter(Boolean))].sort();
+  if(_avtSpecSub&&!subs.includes(_avtSpecSub)) _avtSpecSub='';
   // v79: teacher portal jaisa ek hi premium filter bar — Class + Subject +
   // Type chips (All Types = sab kinds ek saath, group headers ke saath).
   // 0-task kind ka chip hidden; active kind 0 ho jaye to All Types pe switch.
@@ -13469,13 +13473,18 @@ function _avtSpecBody(){
   // hai. v87: options selected Project Type se cascade hote hain (All Types pe
   // sab, warna sirf usi type ke; kind prefix tabhi jab All Types ho).
   const _pKinds=_avtSpecTab?[_avtSpecTab]:['one_shot','rapid_revision','project'];
-  const _projOpts=[].concat(..._pKinds.map(k=>((((sp||{})[k]||{}).tasks)||[]).map(t=>({id:String(t.id),lbl:`${_avtSpecTab?'':KLBL[k]+' — '}${t.subject||t.title}${t.teacher?' ('+t.teacher+')':''}`}))));
+  // master cascade: Project dropdown bhi teacher/class/subject se narrow ho
+  const _projOpts=[].concat(..._pKinds.map(k=>((((sp||{})[k]||{}).tasks)||[])
+    .filter(t=>(!_avtSpecTeacher||t.teacher===_avtSpecTeacher)&&(!_avtSpecCls||String(t.cls)===String(_avtSpecCls))&&(!_avtSpecSub||t.subject===_avtSpecSub))
+    .map(t=>({id:String(t.id),lbl:`${_avtSpecTab?'':KLBL[k]+' — '}${t.subject||t.title}${t.teacher?' ('+t.teacher+')':''}`}))));
   if(_avtSpecProj&&!_projOpts.some(o=>o.id===_avtSpecProj)) _avtSpecProj='';
   const inScope=k=>{ let ts=(((sp||{})[k]||{}).tasks)||[]; if(_avtSpecProj) ts=ts.filter(x=>String(x.id)===_avtSpecProj); if(_avtSpecSub) ts=ts.filter(x=>x.subject===_avtSpecSub); if(_avtSpecCls) ts=ts.filter(x=>x.cls===_avtSpecCls); if(_avtSpecTeacher) ts=ts.filter(x=>x.teacher===_avtSpecTeacher); return ts; };
   const groups=_avtSpecTab?[[_avtSpecTab,KLBL[_avtSpecTab],inScope(_avtSpecTab)]]:_knds.map(([k,l])=>[k,l,inScope(k)]);
   const kindLbl=_avtSpecTab?KLBL[_avtSpecTab]:'';
   const bodyHtml=groups.map(([k,l,ts])=>ts.length?`${_avtSpecTab?'':`<div class="vtm-sec-cap" style="margin:10px 0 8px">${l} · ${ts.length} card${ts.length>1?'s':''}</div>`}${ts.map(_avtSpecCard).join('')}`:'').join('');
   return `<div class="vtm-filter" style="margin-bottom:12px;padding:8px 10px">
+      <span class="vtm-fl">Teacher</span>
+      ${_sselHtml('avt-spec-teacher', [{v:'',l:`All Teachers (${teacherList.length})`}].concat(teacherList.map(tn=>({v:tn,l:tn}))), _avtSpecTeacher, 'All Teachers', function(v){ avtSpecTeacherSet(v); })}
       <span class="vtm-fl">Class</span>
       <select class="vtm-sel" id="avt-spec-cls" onchange="avtSpecClsSet(this.value)">
         <option value="">All Classes</option>
@@ -13483,8 +13492,6 @@ function _avtSpecBody(){
       </select>
       <span class="vtm-fl">Subject</span>
       ${_sselHtml('avt-spec-sub', [{v:'',l:`All Subjects (${subs.length})`}].concat(subs.map(s=>({v:s,l:s}))), _avtSpecSub, 'All Subjects', function(v){ avtSpecSubSet(v); })}
-      <span class="vtm-fl">Teacher</span>
-      ${_sselHtml('avt-spec-teacher', [{v:'',l:`All Teachers (${teacherList.length})`}].concat(teacherList.map(tn=>({v:tn,l:tn}))), _avtSpecTeacher, 'All Teachers', function(v){ avtSpecTeacherSet(v); })}
       <span class="vtm-fl">Project Type</span>
       <select class="vtm-sel" id="avt-spec-type" onchange="avtSpecTypeSet(this.value)">
         <option value="">All Types (${totalN})</option>
@@ -13508,7 +13515,11 @@ const _VT_PJCOL=[['#3a2c07','#6b4f0c'],['#053f3c','#0f6f6a'],['#16294d','#2c4d86
 function _vtPjCol(id){ return _VT_PJCOL[(Math.abs(+id)||0)%_VT_PJCOL.length]; }
 function _avtSpecCard(t){
   _pjChCss();
-  const rows='<div class="pj-chcards">'+(t.chapters||[]).map(function(c,ci){ return _pjAdminCard(t,c,ci); }).join('')+'</div>';
+  // PM-portal parity: premium chapter cards (.ptc) + click opens the same detail panel.
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  const rows=(window._prodChapCard)
+    ? ('<div class="ptc-grid" style="padding:4px 0">'+(t.chapters||[]).map(function(c,ci){ return window._prodChapCard('admin',c,ci,{taskId:t.id,subject:t.subject,teacher:t.teacher}); }).join('')+'</div>')
+    : ('<div class="pj-chcards">'+(t.chapters||[]).map(function(c,ci){ return _pjAdminCard(t,c,ci); }).join('')+'</div>');
   return `<div class="vt-os" id="avt-os-${t.id}" data-pnew="${t.is_new?1:0}" style="border-color:${_vtPjCol(t.id)[1]}55">
     <div class="vt-os-h" style="background:linear-gradient(135deg,${_vtPjCol(t.id)[0]},${_vtPjCol(t.id)[1]})" onclick="avtSpecOpen(${t.id})">
       <div><h4><span class="vt-os-kind ${t.kind}">${_vtKindLbl(t)}</span>${esc(t.subject||t.title)} ${t.is_new?`<span class="vt-new" id="avt-new-${t.id}">NEW</span>`:''}</h4>
@@ -13593,7 +13604,7 @@ function avtProjectChat(pid,title){
   });
 }
 function avtSpecSubSet(s){ _avtSpecSub=s||''; avtSpecRefresh(); }
-function avtSpecTeacherSet(tn){ _avtSpecTeacher=tn||''; avtSpecRefresh(); }
+function avtSpecTeacherSet(tn){ _avtSpecTeacher=tn||''; _avtSpecCls=''; _avtSpecSub=''; avtSpecRefresh(); }
 function avtSpecClsSet(c){ _avtSpecCls=c||''; _avtSpecSub=''; avtSpecRefresh(); }
 function avtSpecToggle(){
   _avtSpecOpen=!_avtSpecOpen;
@@ -32988,16 +32999,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var noc=(where==='panel')?' p-btn-danger':'';
     var pric=(where==='panel')?' p-btn-primary':' ptc-ok';
     var tnm=(''+(ch.title||'')).replace(/[\\\x27\x22]/g,'');
-    var pf=_chapPrefix(portal), role=(portal==='teacher')?'teacher':'production_manager';
+    var pf=_chapPrefix(portal), role=(portal==='teacher')?'teacher':(portal==='admin'?'admin':'production_manager');
     if(ch.link) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Open Video</button>');
     if(rv==='pending'){
-      b.push('<button class="'+cls+okc+' ptc-review-blink" onclick="'+stop+'prodChapAct('+taskId+','+cid+',\'approve\')"><span class="rev-dot"></span>Approve</button>');
-      b.push('<button class="'+cls+noc+'" onclick="'+stop+'prodChapAct('+taskId+','+cid+',\'changes\')">Request Changes</button>');
+      b.push('<button class="'+cls+okc+' ptc-review-blink" onclick="'+stop+'prodChapAct(\''+portal+'\','+taskId+','+cid+',\'approve\')"><span class="rev-dot"></span>Approve</button>');
+      b.push('<button class="'+cls+noc+'" onclick="'+stop+'prodChapAct(\''+portal+'\','+taskId+','+cid+',\'changes\')">Request Changes</button>');
     }
     if(rv==='approved'){
       var asg=(ch.editor_name||ch.graphics_name);
-      b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapAssign('+taskId+','+cid+',\''+tnm+'\')">'+(asg?'Reassign Editor':'Assign Editor')+'</button>');
-      if(asg) b.push('<button class="'+cls+'" onclick="'+stop+'prodChapUnassign('+taskId+','+cid+')">Remove</button>');
+      b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapAssign(\''+portal+'\','+taskId+','+cid+',\''+tnm+'\')">'+(asg?'Reassign Editor':'Assign Editor')+'</button>');
+      if(asg) b.push('<button class="'+cls+'" onclick="'+stop+'prodChapUnassign(\''+portal+'\','+taskId+','+cid+')">Remove</button>');
     }
     if(ch.edited_link) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.edited_link)+'\',\'_blank\',\'noopener\')">Edited</button>');
     if(ch.thumbnail_link) b.push('<button class="'+cls+'" onclick="'+stop+'prodThumbView(\''+_esc1(ch.thumbnail_link)+'\')">Thumbnail</button>');
@@ -33106,6 +33117,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Edited Link', c.edited_link?('<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'')+
         _kv('Thumbnail', c.thumbnail_link?('<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'')+
         (c.review_note?_kv('Review Note', '<span class="pd-hot">'+esc(c.review_note)+'</span>'):'')+
+        // admin-only: production-status + New/Old (vintage) controls preserved from the admin card
+        ((portal==='admin' && c.link && typeof _avtChSel==='function')?_kv('Production Status', _avtChSel({id:c.task_id},c)):'')+
+        ((portal==='admin' && c.link && typeof _avtVinSel==='function')?_kv('New / Old', _avtVinSel({id:c.task_id},c)):'')+
       '</div>';
     }
     if(tab==='timeline'){ return '<div id="pdc-tl"><div class="pd-empty">Loading timeline…</div></div>'; }
@@ -33136,22 +33150,40 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(){ box.innerHTML='<div class="pd-empty">Could not load timeline.</div>'; });
   }
   // ---- action wrappers: work from both the card and the panel, refresh correctly ----
-  window.prodChapAct=function(taskId,cid,action){
+  // refresh whichever view is showing (production projects/board OR admin task manager)
+  function _chapRefresh(portal, taskId){
+    if(portal==='admin'){ try{ if(typeof _apiBust==='function') _apiBust(); }catch(e){} try{ if(typeof loadAVTasks==='function') loadAVTasks(); }catch(e){} return; }
+    try{ if(document.getElementById('pjch-'+taskId)) window._prodProjChaps(taskId); }catch(e){}
+    try{ _refresh('production'); }catch(e){}
+  }
+  window.prodChapAct=function(portal,taskId,cid,action){
+    // back-compat: older onclicks may call prodChapAct(taskId,cid,action)
+    if(typeof action==='undefined'){ action=cid; cid=taskId; taskId=portal; portal='production'; }
     var note='';
     if(action==='changes'){
       note=prompt('What needs to change in this video? (the teacher will see this note)');
       if(note===null) return; note=(''+note).trim();
       if(!note){ toast('Please add a short note',true); return; }
     }
-    api(P.production.api+'/chapter-review','POST',{chapter_id:cid,action:action,note:note}).then(function(){
+    var url=(portal==='admin')?'/api/admin/video-tasks/chapter-review':(P.production.api+'/chapter-review');
+    api(url,'POST',{chapter_id:cid,action:action,note:note}).then(function(){
       toast(action==='approve'?'Video approved':'Sent back for changes');
       try{ prodCloseChapter(); }catch(e){}
-      try{ if(document.getElementById('pjch-'+taskId)) window._prodProjChaps(taskId); }catch(e){}
-      try{ _refresh('production'); }catch(e){}
+      _chapRefresh(portal, taskId);
     }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  window.prodChapAssign=function(taskId,cid,title){ try{ prodCloseChapter(); }catch(e){} prodAssignVideo(taskId,cid,title); };
-  window.prodChapUnassign=function(taskId,cid){ try{ prodCloseChapter(); }catch(e){} prodUnassignVideo(taskId,cid); };
+  window.prodChapAssign=function(portal,taskId,cid,title){
+    if(typeof title==='undefined'){ title=cid; cid=taskId; taskId=portal; portal='production'; }
+    try{ prodCloseChapter(); }catch(e){}
+    if(portal==='admin' && typeof avtAssignVideo==='function') return avtAssignVideo(taskId,cid,title);
+    prodAssignVideo(taskId,cid,title);
+  };
+  window.prodChapUnassign=function(portal,taskId,cid){
+    if(typeof cid==='undefined'){ cid=taskId; taskId=portal; portal='production'; }
+    try{ prodCloseChapter(); }catch(e){}
+    if(portal==='admin' && typeof avtUnassignVideo==='function') return avtUnassignVideo(cid);
+    prodUnassignVideo(taskId,cid);
+  };
   window.prodChapTimeline=function(cid,prefix){ _pjTimelineOpen(prefix||'/api/production',cid); };
 
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
