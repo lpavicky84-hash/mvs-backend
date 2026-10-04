@@ -327,7 +327,26 @@ def _resolve_bytes(value):
     return dec
 
 
-def proxy_response(value, media_type="application/octet-stream", filename=None, download=True, sniff=False):
+def _sniff_ct(raw):
+    """File ke ASAL magic bytes se content-type. Unknown -> None.
+    Yahi single source of truth hai taaki galat label kabhi store/serve na ho."""
+    if not raw or len(raw) < 4:
+        return None
+    if raw[:4] == b"%PDF": return "application/pdf"
+    if raw[:3] == b"\xff\xd8\xff": return "image/jpeg"
+    if raw[:8].startswith(b"\x89PNG"): return "image/png"
+    if raw[:4] == b"RIFF" and b"WEBP" in raw[:16]: return "image/webp"
+    if raw[:6] in (b"GIF87a", b"GIF89a"): return "image/gif"
+    if raw[:2] == b"BM": return "image/bmp"
+    if raw[:4] in (b"II*\x00", b"MM\x00*"): return "image/tiff"
+    if raw[4:8] == b"ftyp": return "video/mp4"           # iOS .mov/.mp4 container
+    if raw[:4] == b"\x1a\x45\xdf\xa3": return "video/webm"
+    if raw[:4] == b"OggS": return "audio/ogg"
+    if raw[:3] == b"ID3" or raw[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"): return "audio/mpeg"
+    return None
+
+
+def proxy_response(value, media_type="application/octet-stream", filename=None, download=True, sniff=False, force_proxy=False):
     """Inline viewer / same-origin ke liye: R2 URL ho to server-side fetch karke bytes
     STREAM karo (cross-origin fetch/CORS ki dikkat nahi aayegi, aur URL pe b64decode crash
     bhi nahi). Base64 ho to decode. R2 se authenticated fetch pehle (bucket public na ho tab
@@ -338,7 +357,10 @@ def proxy_response(value, media_type="application/octet-stream", filename=None, 
         raise HTTPException(status_code=404, detail="Not found")
     # DEFAULT: R2 object -> CDN par 302 redirect (free egress), server se proxy nahi.
     # base64 / non-R2 -> serve_url None -> neeche proxy fallback. Emergency: R2_PROXY_FORCE=1.
-    if (os.getenv("R2_PROXY_FORCE") or "").strip().lower() not in ("1", "true", "yes", "on"):
+    # force_proxy=True -> redirect SKIP: hamesha bytes stream + sniff. (Answer-sheet jaisi
+    # files jinka stored ContentType galat ho sakta hai -> CDN galat type bhejta -> browser
+    # ko "corrupt" lagti. Proxy+sniff se content-type HAMESHA asal bytes se set hota hai.)
+    if not force_proxy and (os.getenv("R2_PROXY_FORCE") or "").strip().lower() not in ("1", "true", "yes", "on"):
         _su = serve_url(value)
         if _su:
             return _redirect_to(_su)
@@ -401,15 +423,26 @@ def normalize(value, prefix, content_type="application/octet-stream"):
                or raw[:4] in (b"II*\x00", b"MM\x00*") or b"ftyp" in raw[:40])
         if not _ok and len(raw) < 300:
             return value
-    ct = (content_type or "").lower()
+    # BULLETPROOF: file ke ASAL magic bytes ko caller ke content_type se zyada trust karo.
+    # (Root cause: answer-sheet PDF ko bhi "image/jpeg" bol ke bheja jaata tha -> R2 par
+    #  galat ContentType + .jpg key -> CDN se serve hone par browser PDF ko image samajhta
+    #  -> "corrupt / open nahi hoti". Ab stored type HAMESHA sahi hoga.)
+    eff_ct = _sniff_ct(raw) or (content_type or "application/octet-stream")
+    ct = eff_ct.lower()
     ext = ".bin"
     if "pdf" in ct: ext = ".pdf"
     elif "png" in ct: ext = ".png"
-    elif "webm" in ct or "ogg" in ct: ext = ".webm"
+    elif "webp" in ct: ext = ".webp"
+    elif "gif" in ct: ext = ".gif"
+    elif "tiff" in ct: ext = ".tiff"
+    elif "bmp" in ct: ext = ".bmp"
+    elif "webm" in ct: ext = ".webm"
+    elif "ogg" in ct: ext = ".ogg"
+    elif ("mp4" in ct) or ("m4a" in ct) or ("aac" in ct) or ("quicktime" in ct): ext = ".mp4"
     elif "mp3" in ct or "mpeg" in ct: ext = ".mp3"
     elif "jpeg" in ct or "jpg" in ct or "image" in ct: ext = ".jpg"
     try:
-        return upload_bytes(new_key(prefix, "f" + ext), raw, content_type or "application/octet-stream")
+        return upload_bytes(new_key(prefix, "f" + ext), raw, eff_ct)
     except Exception:
         return value
 

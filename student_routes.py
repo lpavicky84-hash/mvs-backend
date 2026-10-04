@@ -2506,7 +2506,16 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
     img = payload.get("answer_image_b64") or ""
     if not img:
         raise HTTPException(400, "Please upload your handwritten answer sheet")
-    att.answer_image_b64 = __import__("r2_storage").normalize(img, "exam-answers", "image/jpeg")
+    # Real mime from the data-URI header (PDF ya image) — normalize() khud bhi magic-bytes
+    # se sniff karta hai, par sahi hint dena belt-and-suspenders hai. "image/jpeg" hard-code
+    # karna hi corruption ki jad thi (PDF -> image/jpeg -> browser me "corrupt").
+    _hint = "application/octet-stream"
+    try:
+        if isinstance(img, str) and img.startswith("data:") and "," in img:
+            _hint = img.split(",", 1)[0].split(":", 1)[1].split(";", 1)[0] or _hint
+    except Exception:
+        _hint = "application/octet-stream"
+    att.answer_image_b64 = __import__("r2_storage").normalize(img, "exam-answers", _hint)
     att.status = "grading"   # shown to the student as "with teacher for checking"
     db.commit()
     return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,
@@ -2559,7 +2568,7 @@ def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_us
     if not att or not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet found")
     if str(att.answer_image_b64).startswith("http"):
-        return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg", "my-answer", False, sniff=True)
+        return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg", "my-answer", False, sniff=True, force_proxy=True)
     raw = att.answer_image_b64
     mime = "image/jpeg"
     if "," in raw and raw.startswith("data:"):

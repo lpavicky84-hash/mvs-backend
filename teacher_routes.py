@@ -4817,7 +4817,8 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
     # octet-stream jaata tha -> PDF sheets view pe blank + download pe corrupt aati thi.
     try:
         return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg",
-                                                       "answer-" + safe, False, sniff=True)
+                                                       "answer-" + safe, False, sniff=True,
+                                                       force_proxy=True)
     except Exception:
         raise HTTPException(400, "The uploaded answer sheet could not be read. Ask the student to upload it again.")
 

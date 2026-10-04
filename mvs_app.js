@@ -10317,14 +10317,41 @@ async function submitExam(){
     else toast((window._editExamId?'Update failed: ':'')+e.message,true);
   }
 }
+function _examResCss(){
+  if(document.getElementById('mvs-exres-css')) return;
+  const s=document.createElement('style'); s.id='mvs-exres-css';
+  s.textContent=`
+  .exr-resetbar{display:flex;justify-content:flex-end;margin-bottom:12px}
+  .exr{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:10px;box-shadow:var(--shadow);transition:box-shadow .18s,border-color .18s}
+  .exr:hover{box-shadow:var(--shadow-lg);border-color:var(--primary)}
+  .exr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .exr-id{min-width:0;flex:1;cursor:pointer}
+  .exr-name{font-weight:700;font-size:.97rem;line-height:1.35;color:var(--text);overflow-wrap:anywhere;word-break:normal;display:flex;align-items:center;gap:6px}
+  .exr-info{font-size:.8rem;color:var(--text-muted);margin-top:3px;overflow-wrap:anywhere}
+  .exr-badge{flex:0 0 auto;align-self:flex-start;white-space:nowrap}
+  .exr .sd-chev{transition:transform .18s;display:inline-block;color:var(--text-muted);font-size:1.05rem;line-height:1;flex:0 0 auto}
+  .exr .sd-chev.on{transform:rotate(90deg)}
+  .exr-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:flex-end}
+  .exr-actions .btn{flex:0 0 auto}
+  .exr .sd-box{margin-top:11px}
+  @media(max-width:560px){
+    .exr-actions{margin-top:13px}
+    .exr-actions .btn{flex:1 1 auto;justify-content:center;min-width:0}
+  }`;
+  document.head.appendChild(s);
+}
 async function viewExamAttempts(id){
   try{
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     window._examAttData=d;
+    _examResCss();
     const rows=d.attempts.length?d.attempts.map(a=>{
-      const info=(a.status==='graded'?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
-      const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${a.status==='graded'?'Edit Marks':'Grade Manually'}</button>`;
-      const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'))}')">${ic('download')} Sheet</button>`:'';
+      const graded=(a.status==='graded');
+      const info=(graded?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
+      const stTxt=graded?'Graded':(a.status==='marking'?'Marking':(a.status==='grading'?'Pending':'Awaiting'));
+      const nm=esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'));
+      const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${nm}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${nm}')">${ic('download')} Sheet</button>`:'';
+      const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${graded?'Edit Marks':'Grade Manually'}</button>`;
       // naam pe click -> student ki poori detail usi row me khul jati hai
       const det=[
         ['Student ID', a.student_code],
@@ -10337,13 +10364,19 @@ async function viewExamAttempts(id){
       ].filter(x=>x[1]).map(x=>`<div class="sd-item"><span>${x[0]}</span><b>${esc(String(x[1]))}</b></div>`).join('');
       const phone=(a.phone||'').replace(/[^0-9]/g,'');
       const acts=phone?`<div class="sd-acts"><a class="btn btn-ghost btn-sm" href="tel:${esc(phone)}">Call</a><a class="btn btn-ghost btn-sm" href="https://wa.me/${phone.length===10?('91'+phone):esc(phone)}" target="_blank" rel="noopener">WhatsApp</a></div>`:'';
-      return `<div class="today-row tr-stu"><div style="min-width:0;flex:1">
-          <div class="tr-sub sd-toggle" title="Click to see the full student details" onclick="_toggleStuDet(${a.attempt_id})">${esc(a.student_name||('Student #'+a.student_id))}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
-          <div class="tr-topic">${info}</div>
+      return `<div class="exr">
+          <div class="exr-head">
+            <div class="exr-id sd-toggle" title="Click to see the full student details" onclick="_toggleStuDet(${a.attempt_id})">
+              <div class="exr-name">${esc(a.student_name||('Student #'+a.student_id))}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
+              <div class="exr-info">${info}</div>
+            </div>
+            <span class="tag ${graded?'tag-done':'tag-pending'} exr-badge">${stTxt}</span>
+          </div>
           <div class="sd-box" id="sd-${a.attempt_id}" style="display:none">${det?`<div class="sd-grid">${det}</div>${acts}`:'<div class="sd-empty">No extra details are saved for this student yet.</div>'}</div>
-        </div><div class="tmeta"><span class="tstatus ${a.status==='graded'?'done':''}">${a.status==='grading'?'pending evaluation':esc(a.status)}</span>${dl}${btns}</div></div>`;
+          <div class="exr-actions">${dl}${btns}</div>
+        </div>`;
     }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
-    const resetBar=d.attempts.length?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn btn-danger btn-sm" onclick="examResetAttempts(${id})">${ic('refresh')} Allow Re-take (clear attempts)</button></div>`:'';
+    const resetBar=d.attempts.length?`<div class="exr-resetbar"><button class="btn btn-danger btn-sm" onclick="examResetAttempts(${id})">${ic('refresh')} Allow Re-take (clear attempts)</button></div>`:'';
     showModal('Results \u2014 '+esc(d.exam.title), resetBar+rows);
   }catch(e){ toast(e.message,true); }
 }
