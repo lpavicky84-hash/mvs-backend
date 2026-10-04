@@ -2568,7 +2568,8 @@ def student_answer_sheet(exam_id: int, db: Session = Depends(get_db), current_us
     if not att or not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet found")
     if str(att.answer_image_b64).startswith("http"):
-        return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg", "my-answer", False, sniff=True, force_proxy=True)
+        # SPEED: seedhe CDN par redirect (fast). Client bytes se type khud detect karta hai.
+        return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg", "my-answer", False, sniff=True)
     raw = att.answer_image_b64
     mime = "image/jpeg"
     if "," in raw and raw.startswith("data:"):

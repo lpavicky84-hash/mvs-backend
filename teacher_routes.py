@@ -4813,12 +4813,13 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
     if not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet uploaded")
     safe = "".join(c for c in (att.student_name or "student") if c.isalnum() or c in " -_").strip() or "student"
-    # ASAL magic-bytes se sahi content-type (PDF/JPEG/PNG). Pehle sab kuch image/jpeg ya
-    # octet-stream jaata tha -> PDF sheets view pe blank + download pe corrupt aati thi.
+    # SPEED: R2 object ho to seedhe Cloudflare CDN par 302 redirect (browser file direct edge se
+    # leta hai -> fast, Railway par 11MB ka double-hop nahi). Content-type bhale galat label ho,
+    # client (mvs_app.js _blobKind) file ke ASAL bytes se PDF/image khud pehchaan leta hai, isliye
+    # force_proxy ki zaroorat nahi. base64 (R2 off) ho to proxy_response khud sniff karke serve karega.
     try:
         return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg",
-                                                       "answer-" + safe, False, sniff=True,
-                                                       force_proxy=True)
+                                                       "answer-" + safe, False, sniff=True)
     except Exception:
         raise HTTPException(400, "The uploaded answer sheet could not be read. Ask the student to upload it again.")
 
