@@ -120,6 +120,13 @@ def _ensure_special_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN deadline DATETIME NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN editing_progress INTEGER DEFAULT 0",
         "ALTER TABLE video_task_chapters ADD COLUMN progress_note VARCHAR(400) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN qc_status VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN qc_note VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN edit_review_status VARCHAR(20) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN edit_review_note VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN edit_reviewer_name VARCHAR(160) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN edit_review_rating INTEGER NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN qc_revision INTEGER DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN project_editor_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
@@ -2293,6 +2300,102 @@ def vt_teacher_chapter_timeline(cid: int, db: Session = Depends(get_db), current
     return chapter_timeline(db, cid)
 
 
+# ===== Teacher reviews the EDITOR'S edited project video (approve / request changes) =====
+def _teacher_can_review_chapter(db, current_user, c):
+    """Teacher must be the creator (or a collaborator) of the chapter's project."""
+    from teacher_routes import get_teacher_profile as _gtp
+    tp = _gtp(current_user, db)
+    if not tp:
+        raise HTTPException(403, "Not a teacher")
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    if not t:
+        raise HTTPException(404, "Project not found")
+    ok = (getattr(t, "teacher_id", None) == tp.id)
+    if not ok:
+        try:
+            ok = tp.id in _collab_all_ids(t)
+        except Exception:
+            ok = False
+    if not ok:
+        raise HTTPException(403, "This project is not yours to review")
+    return t
+
+
+@router.post("/teacher/chapters/{cid}/review-approve")
+def vt_teacher_chapter_review_approve(cid: int, payload: dict = Body(default={}),
+                                      db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import production_core as _pc
+    c = _chapter_row(db, cid)
+    if (getattr(c, "edit_state", "") or "") != "edited":
+        raise HTTPException(400, "This video is not ready for review yet")
+    t = _teacher_can_review_chapter(db, current_user, c)
+    try:
+        _r = int(payload.get("rating") or 0)
+    except Exception:
+        _r = 0
+    c.edit_review_status = "approved"
+    c.edit_reviewer_name = getattr(current_user, "name", "") or ""
+    if _r:
+        c.edit_review_rating = max(1, min(5, _r))
+    _note = (payload.get("note") or payload.get("message") or "").strip()
+    if _note:
+        c.edit_review_note = _note[:600]
+    # record in the per-chapter chat so the editor + PM see the teacher's note
+    if _note:
+        try:
+            _vtc_add(db, c.task_id, current_user,
+                     "Teacher approved the edited video." + ("\n" + _note if _note else ""),
+                     "teacher", "", _chap_aud(cid))
+        except Exception:
+            pass
+    try:
+        _pc.notify_pms(db, "Teacher approved an edited video",
+                       f'{getattr(current_user,"name","Teacher")} approved the edit of "{c.title}".',
+                       "video_review", link=str(c.task_id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "edit_review_status": c.edit_review_status,
+            "edit_review_rating": c.edit_review_rating}
+
+
+@router.post("/teacher/chapters/{cid}/review-changes")
+def vt_teacher_chapter_review_changes(cid: int, payload: dict = Body(...),
+                                      db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import production_core as _pc
+    from models import ProductionStaffProfile
+    c = _chapter_row(db, cid)
+    if (getattr(c, "edit_state", "") or "") != "edited":
+        raise HTTPException(400, "This video is not ready for review yet")
+    t = _teacher_can_review_chapter(db, current_user, c)
+    note = (payload.get("note") or payload.get("message") or "").strip()
+    if not note:
+        raise HTTPException(400, "Please add a short note about the changes you want")
+    c.edit_review_status = "changes"
+    c.edit_reviewer_name = getattr(current_user, "name", "") or ""
+    c.edit_review_note = note[:600]
+    # seed the chapter chat with the teacher's change note (editor + PM both see it)
+    try:
+        _vtc_add(db, c.task_id, current_user,
+                 "Teacher wants changes in the edited video:\n" + note, "teacher", "", _chap_aud(cid))
+    except Exception:
+        pass
+    # notify PMs + the editor (PM formally decides the send-back, like a task)
+    try:
+        _pc.notify_pms(db, "Teacher wants changes in an edited video",
+                       f'{getattr(current_user,"name","Teacher")} on "{c.title}": {note[:120]}',
+                       "video_review", link=str(c.task_id))
+        if getattr(c, "editor_id", None):
+            sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == c.editor_id).first()
+            if sp and sp.user_id:
+                _pc.notify(db, sp.user_id, "Teacher wants changes",
+                           f'"{c.title}": {note[:140]}', "video_review", link=str(c.task_id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "edit_review_status": c.edit_review_status}
+
+
 @router.get("/admin/video-tasks/{task_id}/comments", dependencies=[Depends(_admin_section_guard)])
 def vt_admin_comments(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """All chat messages on a task — admin sees every thread (creator, editor, internal, project)."""
@@ -2793,6 +2896,13 @@ def _special_out(db, t, tname_map=None, ch_map=None):
         "graphics_name": _snm.get(getattr(c, "graphics_id", None), "") if getattr(c, "graphics_id", None) else "",
         "edit_state": (getattr(c, "edit_state", "") or ""),
         "edited_link": (getattr(c, "edited_link", "") or ""),
+        "edited_at": (c.edited_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "edited_at", None) else ""),
+        "qc_status": (getattr(c, "qc_status", "") or ""),
+        "qc_note": (getattr(c, "qc_note", "") or ""),
+        "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
+        "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
+        "edit_reviewer_name": (getattr(c, "edit_reviewer_name", "") or ""),
+        "edit_review_rating": (getattr(c, "edit_review_rating", None)),
         "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
         "gfx_state": (getattr(c, "gfx_state", "") or ""),
         "vintage": (getattr(c, "vintage", "") or ""),

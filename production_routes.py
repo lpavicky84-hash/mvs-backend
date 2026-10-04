@@ -3928,6 +3928,13 @@ def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_p
                           "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
                           "edit_state": (getattr(c, "edit_state", "") or ""),
                           "edited_link": (getattr(c, "edited_link", "") or ""),
+                          "edited_at": (c.edited_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "edited_at", None) else ""),
+                          "qc_status": (getattr(c, "qc_status", "") or ""),
+                          "qc_note": (getattr(c, "qc_note", "") or ""),
+                          "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
+                          "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
+                          "edit_reviewer_name": (getattr(c, "edit_reviewer_name", "") or ""),
+                          "edit_review_rating": (getattr(c, "edit_review_rating", None)),
                           "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
                           "gfx_state": (getattr(c, "gfx_state", "") or ""),
                           "assigned": bool(c.editor_id or c.graphics_id)} for c in rows]}
@@ -3985,6 +3992,10 @@ def pm_board_chapters(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)
                 "editor_id": c.editor_id, "editor_name": nm.get(c.editor_id, ""),
                 "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
                 "review_status": rs, "edit_state": es, "edit_status": est,
+                "qc_status": (getattr(c, "qc_status", "") or ""),
+                "qc_note": (getattr(c, "qc_note", "") or ""),
+                "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
+                "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
                 "deadline": pc._dt(getattr(c, "deadline", None)),
             })
     return {"chapters": out}
@@ -4054,6 +4065,58 @@ def prod_chapter_review(payload: dict = Body(...), db: Session = Depends(get_db)
     import video_tasks as _vt
     return _vt._do_chapter_review(db, payload.get("chapter_id"), payload.get("action"),
                                   payload.get("note") or "")
+
+
+@router.post("/chapter-qc")
+def prod_chapter_qc(payload: dict = Body(...), db: Session = Depends(get_db),
+                    me=Depends(get_pm_or_admin)):
+    """PM/Admin QC on an editor's EDITED project video.
+    approve -> QC passed (ready); changes -> sent back to the editor to redo."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(payload.get("chapter_id") or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    if (getattr(row, "edit_state", "") or "") != "edited":
+        raise HTTPException(400, "This video is not submitted for QC yet")
+    action = (payload.get("action") or "").strip()
+    note = (payload.get("note") or "").strip()
+    t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
+    _ed_uid = None
+    if row.editor_id:
+        _sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == row.editor_id).first()
+        _ed_uid = _sp.user_id if _sp else None
+    if action == "approve":
+        row.qc_status = "approved"
+        row.edit_status = "editing_done"
+        if _ed_uid:
+            pc.notify(db, _ed_uid, "QC Approved",
+                      f'Your edit of "{row.title}" passed QC.', "video_task", link=str(row.task_id))
+        db.commit()
+        return {"ok": True, "qc_status": row.qc_status, "edit_status": row.edit_status}
+    if action == "changes":
+        if not note:
+            raise HTTPException(400, "Please add a short note about the changes")
+        row.qc_status = "changes"
+        row.qc_note = note[:600]
+        try:
+            row.qc_revision = int(getattr(row, "qc_revision", 0) or 0) + 1
+        except Exception:
+            row.qc_revision = 1
+        if _ed_uid:
+            pc.notify(db, _ed_uid, "Changes Required in your edit",
+                      f'"{row.title}": {note[:140]}', "video_task", link=str(row.task_id))
+        # record the change note in the chapter chat so the editor sees details
+        try:
+            import video_tasks as _vt
+            _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
+            _vt._vtc_add(db, row.task_id, me, "Changes required in the edited video:\n" + note,
+                         _crole, "", _vt._chap_aud(row.id))
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "qc_status": row.qc_status}
+    raise HTTPException(400, "Unknown action")
 
 
 # ============================================================ PROJECT VIDEO ASSIGNMENT (Phase 3)

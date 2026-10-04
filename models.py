@@ -668,6 +668,14 @@ class VideoTaskChapter(Base):
     thumbnail_link = Column(String(600), default="")       # graphics-submitted thumbnail for this video
     thumb_refs    = Column(Text, default="")               # JSON list of reference thumbnail URLs (PM -> graphics)
     deadline      = Column(DateTime, nullable=True)         # per-video deadline set at assign time (editor/graphics submit by this)
+    # ---- Edited-video QC review (editor submits edited link -> PM/Admin + Teacher check it) ----
+    qc_status          = Column(String(20), default="")     # PM/Admin QC on the EDITED video: '' | pending | approved | changes
+    qc_note            = Column(String(600), default="")    # PM/Admin note when QC changes are requested
+    edit_review_status = Column(String(20), default="")     # Teacher's review of the EDITED video: '' | pending | approved | changes
+    edit_review_note   = Column(String(600), default="")    # Teacher's note on the edited video
+    edit_reviewer_name = Column(String(160), default="")    # which teacher reviewed the edited video
+    edit_review_rating = Column(Integer, nullable=True)     # teacher's 1-5 star rating of the edit
+    qc_revision        = Column(Integer, default=0)         # how many QC change rounds this edit went through
 
 
 class VideoViewSnapshot(Base):

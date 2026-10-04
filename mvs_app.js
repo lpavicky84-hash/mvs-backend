@@ -12742,9 +12742,58 @@ function _pjTeachCard(t,c,idx){
   } else {
     zone='<div id="'+zid+'" class="pjcc-acts" style="margin-top:9px"><a href="'+esc(c.link)+'" target="_blank" rel="noopener">'+ic('play')+' Open video</a><button onclick="tvtChEditCard('+t.id+','+c.id+')">Change link</button></div>';
   }
-  var acts='<div class="pjcc-acts"><button onclick="_pjChatOpen(\'/api/teacher\','+c.id+',\''+esc(''+(c.title||'')).replace(/[\\\x27\x22]/g,'')+'\',\'teacher\')">💬 Chat</button>'
+  // Edited-video review: once the editor submits, the teacher checks it (approve / changes)
+  var rev='';
+  if(c.edit_state==='edited'){
+    var ers=c.edit_review_status||'';
+    if(ers==='approved') rev='<div class="tvt-rev ok">'+ic('check')+' You approved this edit'+(c.edit_review_rating?(' · '+c.edit_review_rating+'★'):'')+'</div>';
+    else if(ers==='changes') rev='<div class="tvt-rev no">'+ic('alert')+' You requested changes'+(c.qc_status==='approved'?' — but PM approved':'')+'</div>';
+    else rev='<div class="tvt-rev new">'+ic('video')+' Edited video ready — please review</div>';
+  }
+  var tnm=esc(''+(c.title||'')).replace(/[\\\x27\x22]/g,'');
+  var revBtn=(c.edit_state==='edited')?'<button class="primary" onclick="tvtReviewEdit('+t.id+','+c.id+')">'+ic('play')+' Review Edited Video</button>':'';
+  var acts='<div class="pjcc-acts">'+revBtn+'<button onclick="_pjChatOpen(\'/api/teacher\','+c.id+',\''+tnm+'\',\'teacher\')">💬 Chat</button>'
     +'<button onclick="_pjTimelineOpen(\'/api/teacher\','+c.id+')">Timeline</button></div>';
-  return _pjShell(idx,c.title,pill,zone,acts);
+  return _pjShell(idx,c.title,pill,zone+rev,acts);
+}
+// Teacher reviews the editor's edited project video — premium modal (watch + rate + approve / changes)
+function tvtReviewEdit(tid,cid){
+  var t=(window._tvtMap||{})[tid]; var c=t&&(t.chapters||[]).find(function(x){return x.id===cid;}); if(!c){ toast('Video not found'); return; }
+  _tvtRevCss();
+  window._tvtRevStars=c.edit_review_rating||0;
+  var watch=c.edited_link?'<a class="tvtr-watch" href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">'+ic('play')+' Watch edited video</a>':'<div class="pfb-muted">No edited link found.</div>';
+  var stars='<div class="tvtr-stars" id="tvtr-stars">'+[1,2,3,4,5].map(function(n){return '<span class="tvtr-star'+((c.edit_review_rating||0)>=n?' on':'')+'" onclick="_tvtRevStar('+n+')">★</span>';}).join('')+'</div>';
+  showModal('Review Edited Video — '+esc(c.title||''),
+    '<div class="tvtr-body">'+watch+
+      '<div class="tvtr-lbl">Your rating (optional)</div>'+stars+
+      '<div class="tvtr-lbl">Note <span style="color:var(--text-muted);font-weight:600">(needed if asking for changes)</span></div>'+
+      '<textarea class="input" id="tvtr-note" rows="3" placeholder="What should the editor fix? (or a note with your approval)">'+esc(c.edit_review_note||'')+'</textarea>'+
+    '</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>'+
+    '<button class="btn" style="background:#d1443a;color:#fff" onclick="tvtReviewSubmit('+tid+','+cid+',\'changes\')">Request Changes</button>'+
+    '<button class="btn btn-primary" onclick="tvtReviewSubmit('+tid+','+cid+',\'approve\')">'+ic('check')+' Approve</button>');
+}
+function _tvtRevStar(n){ window._tvtRevStars=n; var box=document.getElementById('tvtr-stars'); if(box){ [].slice.call(box.children).forEach(function(s,i){ s.classList.toggle('on', i<n); }); } }
+async function tvtReviewSubmit(tid,cid,action){
+  var note=((document.getElementById('tvtr-note')||{}).value||'').trim();
+  if(action==='changes' && !note){ toast('Please add a short note about the changes you want'); return; }
+  try{
+    if(action==='approve') await api('/api/teacher/chapters/'+cid+'/review-approve','POST',{rating:(window._tvtRevStars||0),note:note});
+    else await api('/api/teacher/chapters/'+cid+'/review-changes','POST',{note:note});
+    closeModal(); toast(action==='approve'?'Edit approved — thank you!':'Sent back for changes');
+    if(typeof loadTVTasks==='function') loadTVTasks(); else if(typeof loadTeacherVideoTasks==='function') loadTeacherVideoTasks();
+  }catch(e){ toast(e.message||'Could not submit review'); }
+}
+function _tvtRevCss(){
+  if(document.getElementById('tvt-rev-css')) return;
+  var s=document.createElement('style'); s.id='tvt-rev-css';
+  s.textContent='.tvt-rev{margin-top:9px;font-size:.74rem;font-weight:700;display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:9px;background:rgba(42,127,184,.12);color:#1e5f86}'
+    +'.tvt-rev svg{width:15px;height:15px;flex:0 0 auto}.tvtr-watch svg{width:18px;height:18px;flex:0 0 auto}'
+    +'.tvt-rev.ok{background:rgba(46,158,107,.14);color:#1f7a44}.tvt-rev.no{background:rgba(209,68,58,.12);color:#b91c1c}.tvt-rev.new{background:rgba(201,138,46,.16);color:#8a5a12;animation:pjBlink 1.2s ease-in-out infinite}'
+    +'.tvtr-body{display:flex;flex-direction:column}.tvtr-watch{display:inline-flex;align-items:center;gap:8px;font-weight:800;color:#fff;background:linear-gradient(135deg,#b8941f,#9a7b16);padding:11px 16px;border-radius:12px;text-decoration:none;align-self:flex-start;margin-bottom:6px}'
+    +'.tvtr-lbl{font-size:.8rem;font-weight:800;color:var(--text,#2c2415);margin:12px 0 6px}'
+    +'.tvtr-stars{display:flex;gap:6px;font-size:1.7rem;cursor:pointer}.tvtr-star{color:#d8cfb4;transition:.1s}.tvtr-star.on{color:#e0a52e}.tvtr-star:hover{transform:scale(1.1)}';
+  document.head.appendChild(s);
 }
 function tvtChEditCard(tid,cid){
   var z=document.getElementById('vt-che-'+tid+'-'+cid); if(!z) return;
@@ -32744,12 +32793,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // ===== Editor project CHAPTER as a premium task card (.ptc) — merged into My Tasks =====
   // Har assigned chapter = editor ke liye ek task. Dikhta task card jaisa, actions wahi
   // existing edtPv* (start/progress/pause/resume/submit/reopen) + per-chapter chat/timeline.
-  function _edtChapState(v){ if((v.edit_state==='edited') && v.review_status==='changes') return 'changes'; return v.edit_state||'assigned'; }
-  var _EDT_CHST={assigned:['ASSIGNED','#c99a2e'],editing:['EDITING IN PROGRESS','#7c4fc0'],paused:['EDITING PAUSED','#c99a2e'],edited:['SUBMITTED','#2a7fb8'],changes:['CHANGES REQUIRED','#d1443a']};
+  function _edtChapState(v){ if((v.edit_state==='edited') && (v.qc_status==='changes'||v.review_status==='changes')) return 'changes'; return v.edit_state||'assigned'; }
+  var _EDT_CHST={assigned:['ASSIGNED','#c99a2e'],editing:['EDITING IN PROGRESS','#7c4fc0'],paused:['EDITING PAUSED','#c99a2e'],edited:['IN QC REVIEW','#2a7fb8'],approved:['QC APPROVED','#2e9e6b'],changes:['CHANGES REQUIRED','#d1443a']};
   function _edtChapLc(st){ return {assigned:'editor_assigned',editing:'editing',paused:'editing_paused',edited:'editing_done',changes:'qc_changes'}[st]||'editor_assigned'; }
   function _edtChapCard(v){
     var cid=v.chapter_id;
-    var st=_edtChapState(v); var badge=_EDT_CHST[st]||_EDT_CHST.assigned; var prog=v.editing_progress||0;
+    var st=_edtChapState(v); var prog=v.editing_progress||0;
+    var effSt=(st==='edited' && v.qc_status==='approved')?'approved':st;
+    var badge=_EDT_CHST[effSt]||_EDT_CHST.assigned;
     var thumb=(v.thumbnail||'').trim();
     var hcol=_PTC_HCOL[(cid||0)%_PTC_HCOL.length];
     var letter=((v.title||'C').trim().charAt(0)||'C').toUpperCase();
@@ -32763,9 +32814,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(v.subject) chips.push('<span class="pw-chip">'+esc(v.subject)+'</span>');
     if(v.channel_name) chips.push('<span class="pw-chip">'+esc(v.channel_name)+'</span>');
     if(v.kind) chips.push('<span class="pw-chip">'+esc(({one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[v.kind])||'Project')+'</span>');
+    // QC review verdicts (teacher + PM) once the edit is submitted
+    if(st==='edited'||effSt==='approved'){
+      if(v.edit_review_status==='approved') chips.push('<span class="pw-chip" style="background:rgba(46,158,107,.16);color:#1f7a44;font-weight:800">Teacher ✓</span>');
+      else if(v.edit_review_status==='changes') chips.push('<span class="pw-chip" style="background:rgba(209,68,58,.14);color:#b91c1c;font-weight:800">Teacher wants changes</span>');
+      else chips.push('<span class="pw-chip" style="background:rgba(42,127,184,.14);color:#1e5f86">Teacher review pending</span>');
+      if(v.qc_status==='approved') chips.push('<span class="pw-chip" style="background:rgba(46,158,107,.16);color:#1f7a44;font-weight:800">QC ✓</span>');
+    }
     var boxCls,boxIcon,boxLabel,boxSub;
-    if(st==='changes'){ boxCls='ov'; boxIcon='alert'; boxLabel='Changes required'; boxSub=(v.review_note||'Re-edit & submit again'); }
-    else if(st==='edited'){ boxCls='dn'; boxIcon='check'; boxLabel='Submitted'; boxSub='Waiting for PM review'; }
+    if(st==='changes'){ boxCls='ov'; boxIcon='alert'; boxLabel='Changes required'; boxSub=((v.qc_status==='changes'?v.qc_note:'')||v.edit_review_note||v.review_note||'Re-edit & submit again'); }
+    else if(effSt==='approved'){ boxCls='dn'; boxIcon='check'; boxLabel='QC Approved'; boxSub='Edit passed review'; }
+    else if(st==='edited'){ boxCls=''; boxIcon='clock'; boxLabel='In QC review'; boxSub='PM & teacher are checking your edit'; }
     else if(st==='paused'){ boxCls='ov'; boxIcon='clock'; boxLabel='Editing paused · '+prog+'%'; boxSub=(v.progress_note||'Resume when ready'); }
     else if(st==='editing'){ boxCls=over?'ov':''; boxIcon='edit'; boxLabel='Editing · '+prog+'%'; boxSub=(v.started_at?('Started '+v.started_at):'In progress'); }
     else { boxCls=over?'ov':''; boxIcon='clock'; boxLabel=over?'Deadline passed':'Ready to start'; boxSub=(v.deadline?('Deadline: '+v.deadline):'Tap Start Editing'); }
@@ -33095,7 +33154,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(rv==='changes') return ['Changes Requested','#d1443a',true];
     if((ch.edit_status||'')==='uploaded') return ['Uploaded','#2e9e6b',false];
     var es=ch.edit_state||'';
-    if(es==='edited') return ['Edited','#7c4fc0',false];
+    if(es==='edited'){
+      if(ch.qc_status==='changes') return ['QC Changes','#d1443a',true];
+      if(ch.qc_status==='approved') return ['QC Approved','#2e9e6b',false];
+      return ['Edit — Review','#c99a2e',true];   // waiting for PM/teacher QC
+    }
     if(es==='editing') return ['Editing In Progress','#7c4fc0',false];
     if(es==='paused') return ['Editing Paused','#c99a2e',false];
     if(ch.editor_name||ch.editor_id) return ['Editing Soon','#7c4fc0',false];
@@ -33122,6 +33185,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var asg=(ch.editor_name||ch.graphics_name);
       b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapAssign(\''+portal+'\','+taskId+','+cid+',\''+tnm+'\')">'+(asg?'Reassign Editor':'Assign Editor')+'</button>');
       if(asg) b.push('<button class="'+cls+'" onclick="'+stop+'prodChapUnassign(\''+portal+'\','+taskId+','+cid+')">Remove</button>');
+    }
+    // PM/Admin QC on the editor's EDITED video (like task QC) — only when an edit is submitted
+    if((portal==='production'||portal==='admin') && ch.edit_state==='edited' && ch.qc_status!=='approved'){
+      b.push('<button class="'+cls+okc+' ptc-review-blink" onclick="'+stop+'prodChapQc(\''+portal+'\','+taskId+','+cid+')"><span class="rev-dot"></span>Review Edit</button>');
     }
     if(ch.edited_link) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.edited_link)+'\',\'_blank\',\'noopener\')">Edited</button>');
     if(ch.thumbnail_link) b.push('<button class="'+cls+'" onclick="'+stop+'prodThumbView(\''+_esc1(ch.thumbnail_link)+'\')">Thumbnail</button>');
@@ -33230,6 +33297,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Edited Link', c.edited_link?('<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'')+
         _kv('Thumbnail', c.thumbnail_link?('<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'')+
         (c.review_note?_kv('Review Note', '<span class="pd-hot">'+esc(c.review_note)+'</span>'):'')+
+        // Edited-video QC + teacher verdict (only once an edit is submitted)
+        ((c.edit_state==='edited')?_kv('QC Status', esc({'':'In review',pending:'In review',approved:'Approved',changes:'Changes requested'}[c.qc_status||'']||'In review')):'')+
+        ((c.edit_state==='edited')?_kv('Teacher Review', esc({'':'Pending',pending:'Pending',approved:'Approved'+(c.edit_review_rating?(' ('+c.edit_review_rating+'★)'):''),changes:'Wants changes'}[c.edit_review_status||'']||'Pending')):'')+
+        ((c.edit_state==='edited'&&c.edit_review_note)?_kv('Teacher Note', '<span class="pd-hot">'+esc(c.edit_review_note)+'</span>'):'')+
+        ((c.qc_status==='changes'&&c.qc_note)?_kv('QC Changes Note', '<span class="pd-hot">'+esc(c.qc_note)+'</span>'):'')+
         // admin-only: production-status + New/Old (vintage) controls preserved from the admin card
         ((portal==='admin' && c.link && typeof _avtChSel==='function')?_kv('Production Status', _avtChSel({id:c.task_id},c)):'')+
         ((portal==='admin' && c.link && typeof _avtVinSel==='function')?_kv('New / Old', _avtVinSel({id:c.task_id},c)):'')+
@@ -33298,6 +33370,47 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     prodUnassignVideo(taskId,cid);
   };
   window.prodChapTimeline=function(cid,prefix){ _pjTimelineOpen(prefix||'/api/production',cid); };
+  // ---- PM/Admin QC on an editor's edited project video (premium modal) ----
+  window.prodChapQc=function(portal,taskId,cid){
+    var c=(window._pjChapCache||{})[cid]||{};
+    ensureCSS();
+    var tv=''; // teacher verdict line
+    if(c.edit_review_status==='approved') tv='<div class="pqc-tv ok">'+ic('check')+' Teacher approved the edit'+(c.edit_review_rating?(' \u00b7 '+c.edit_review_rating+'\u2605'):'')+(c.edit_review_note?(' \u2014 \u201c'+esc(c.edit_review_note)+'\u201d'):'')+'</div>';
+    else if(c.edit_review_status==='changes') tv='<div class="pqc-tv no">'+ic('alert')+' Teacher wants changes'+(c.edit_review_note?(' \u2014 \u201c'+esc(c.edit_review_note)+'\u201d'):'')+'</div>';
+    else tv='<div class="pqc-tv">'+ic('clock')+' Teacher review pending</div>';
+    _prodQcCss();
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; dr.style.zIndex='140';
+    dr.innerHTML='<div class="p-modal" style="max-width:480px"><div class="pd-head"><div><div class="h-title">Review Edited Video</div><div class="pqc-sub">'+esc(c.title||'Chapter')+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+
+        (c.edited_link?'<a class="pqc-watch" href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">'+ic('play')+' Watch edited video</a>':'<div class="p-opt">No edited link found.</div>')+
+        tv+
+        '<div class="p-field" style="margin-top:12px"><label>Changes note (needed only if asking for changes)</label><textarea class="p-area" id="pqc-note" placeholder="What should the editor fix?"></textarea></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-danger" onclick="prodChapQcDo(\''+portal+'\','+taskId+','+cid+',\'changes\')">Request Changes</button><button class="p-btn p-btn-ok" onclick="prodChapQcDo(\''+portal+'\','+taskId+','+cid+',\'approve\')">'+ic('check')+' Approve (QC Pass)</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  window.prodChapQcDo=function(portal,taskId,cid,action){
+    var note=((document.getElementById('pqc-note')||{}).value||'').trim();
+    if(action==='changes' && !note){ toast('Please add a short note about the changes',true); return; }
+    api(P.production.api+'/chapter-qc','POST',{chapter_id:cid,action:action,note:note}).then(function(){
+      try{ prodDismiss(); }catch(e){} try{ prodCloseChapter(); }catch(e){}
+      toast(action==='approve'?'QC approved':'Sent back to editor for changes');
+      _chapRefresh(portal, taskId);
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  function _prodQcCss(){
+    if(document.getElementById('prod-qc-css')) return;
+    var s=document.createElement('style'); s.id='prod-qc-css';
+    s.textContent='.pqc-sub{font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:2px}'
+      +'.pqc-watch{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:.9rem;color:#fff;background:linear-gradient(135deg,#b8941f,#9a7b16);padding:10px 16px;border-radius:11px;text-decoration:none;margin-bottom:12px}'
+      +'.pqc-watch svg{width:18px;height:18px;flex:0 0 auto}'
+      +'.pqc-tv{display:flex;align-items:center;gap:7px;font-size:.84rem;font-weight:700;color:#5a5340;background:rgba(42,127,184,.1);border-radius:10px;padding:9px 12px}'
+      +'.pqc-tv svg{width:16px;height:16px;flex:0 0 auto}'
+      +'.pqc-tv.ok{background:rgba(46,158,107,.14);color:#1f7a44}.pqc-tv.no{background:rgba(209,68,58,.12);color:#b91c1c}';
+    document.head.appendChild(s);
+  }
 
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
   function renderThumbBoard(portal,body){

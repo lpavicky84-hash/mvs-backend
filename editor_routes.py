@@ -88,6 +88,10 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
                 "progress_note": (getattr(c, "progress_note", "") or ""),
                 "review_status": (getattr(c, "review_status", "") or ""),
                 "review_note": (getattr(c, "review_note", "") or ""),
+                "qc_status": (getattr(c, "qc_status", "") or ""),
+                "qc_note": (getattr(c, "qc_note", "") or ""),
+                "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
+                "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
                 "thumbnail": (getattr(c, "thumbnail_link", "") or ""),
                 "started_at": pc._dt(_sa),
                 "started_at_iso": (_sa.strftime("%Y-%m-%dT%H:%M:%S") if _sa else ""),
@@ -189,16 +193,52 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
     c.edit_state = "edited"
     c.edited_at = datetime.utcnow()
     c.editing_progress = 100
+    # ---- edited-video QC: goes to PM/Admin AND the teacher for checking (like a task) ----
+    _re = (getattr(c, "qc_status", "") or "") in ("changes",)  # re-submit after changes?
+    c.qc_status = "pending"
+    c.edit_review_status = "pending"      # teacher must re-check the fresh edit
+    c.edit_reviewer_name = ""
+    if _re:
+        try: c.qc_revision = int(getattr(c, "qc_revision", 0) or 0) + 1
+        except Exception: c.qc_revision = 1
     t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
     proj = (t.title or t.subject or "project") if t else "project"
+    _msg = f'{me.name} submitted the edited "{c.title}" from "{proj}". Please review.'
     try:
-        pc.notify_pms(db, "Project video edited",
-                      f'{me.name} submitted the edited "{c.title}" from "{proj}".',
-                      "production", link=str(c.task_id))
+        pc.notify_pms(db, "Edited video ready for QC", _msg, "production", link=str(c.task_id))
+    except Exception:
+        pass
+    # notify the project's teacher(s) so they can check the edit too
+    try:
+        for _uid in _project_teacher_user_ids(db, t):
+            pc.notify(db, _uid, "Edited video ready — please review",
+                      f'The edited "{c.title}" is ready. Watch and approve or request changes.',
+                      "video_review", link=str(c.task_id))
     except Exception:
         pass
     db.commit()
-    return {"ok": True, "edit_state": c.edit_state, "edited_link": link}
+    return {"ok": True, "edit_state": c.edit_state, "qc_status": c.qc_status, "edited_link": link}
+
+
+def _project_teacher_user_ids(db, t):
+    """User ids of the project's teacher + any collaborating teachers (for review notifications)."""
+    if not t:
+        return []
+    from models import TeacherProfile as _TP
+    ids = set()
+    tids = []
+    if getattr(t, "teacher_id", None):
+        tids.append(t.teacher_id)
+    try:
+        from video_tasks import _collab_all_ids as _cai
+        tids = list(_cai(t)) or tids
+    except Exception:
+        pass
+    for tpid in tids:
+        tp = db.query(_TP).filter(_TP.id == tpid).first()
+        if tp and getattr(tp, "user_id", None):
+            ids.add(tp.user_id)
+    return list(ids)
 
 
 @router.post("/project-videos/{cid}/reopen")
