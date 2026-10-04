@@ -127,8 +127,23 @@ def migrate_batch(db, kind, after_id=0, limit=10):
                 if not _ok and len(raw) < 300:
                     skipped += 1
                     continue
-            fn = getattr(r, "filename", None) or ("file" + ext)
-            url = R2.upload_bytes(R2.new_key(prefix, fn), raw, ctype)
+            # BULLETPROOF: file ke ASAL magic-bytes se content-type decide karo, caller ke
+            # hard-coded ctype se nahi. (Pehle answer-sheet PDF ko bhi "image/jpeg" bol ke
+            # migrate kar deta tha -> R2 par galat ContentType + .jpg key -> browser me PDF
+            # "corrupt/encrypted" lagti thi. Ab har migrated file ka type sahi hoga.)
+            try:
+                _sniff = R2._sniff_ct(raw)
+            except Exception:
+                _sniff = None
+            eff_ct = _sniff or ctype or "application/octet-stream"
+            _extmap = {"application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png",
+                       "image/webp": ".webp", "image/gif": ".gif", "image/bmp": ".bmp",
+                       "image/tiff": ".tiff", "video/mp4": ".mp4", "video/webm": ".webm",
+                       "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a"}
+            eff_ext = _extmap.get(eff_ct, ext)
+            # key ka extension asal type se — new_key sirf extension padhta hai, isliye
+            # "f"+ext dena safe hai (chahe original filename galat ext ka ho).
+            url = R2.upload_bytes(R2.new_key(prefix, "f" + eff_ext), raw, eff_ct)
             setattr(r, field, url)
             migrated += 1
         except Exception:
