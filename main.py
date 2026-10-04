@@ -1031,20 +1031,53 @@ def _r2_diag(key: str = "", url: str = "", attempt: int = 0):
 
 
 @app.get("/answer-check")
-def _answer_check(attempt: int = 0):
+def _answer_check(attempt: str = "", student: str = "", exam: int = 0):
     """DEFINITIVE answer-sheet health check — NO key chahiye, koi content/PII leak nahi.
-    Browser me kholo: /answer-check?attempt=<attempt_id>
+    Browser me kholo (teeno me se kuch bhi chalega):
+      /answer-check?attempt=<attempt_id-number>
+      /answer-check?attempt=<student-code like MVSS5744>
+      /answer-check?student=<student-ka-naam>
     Batata hai: file R2 par hai ya DB base64, server bytes fetch kar paa raha ya nahi,
-    file ka ASAL type (PDF/JPEG/PNG/CORRUPT), aur CDN kaun sa content-type bhej raha
-    (yahi 'corrupt' ki asli jad hoti hai). Isse pata chalta hai: deploy baaki hai,
-    serve fix chahiye, ya bytes sach me kharab hain."""
-    out = {"attempt": attempt}
+    file ka ASAL type (PDF/JPEG/PNG/CORRUPT), aur CDN kaun sa content-type bhej raha."""
+    out = {}
+    key = (attempt or student or "").strip()
+    if not key:
+        return {"error": "attempt ya student do. e.g. /answer-check?attempt=MVSS5744"}
     try:
         from database import SessionLocal
-        from models import ExamAttempt
+        from models import ExamAttempt, StudentProfile, User
         db = SessionLocal()
         try:
-            a = db.query(ExamAttempt).filter(ExamAttempt.id == int(attempt)).first()
+            a = None
+            # 1) pure number -> attempt id
+            if key.isdigit():
+                a = db.query(ExamAttempt).filter(ExamAttempt.id == int(key)).first()
+                if a:
+                    out["matched_by"] = "attempt_id"
+            # 2) student CODE (e.g. MVSS5744) -> uski latest answer-sheet attempt
+            if a is None:
+                u = db.query(User).filter(User.user_id == key).first()
+                sp = db.query(StudentProfile).filter(StudentProfile.user_id == u.id).first() if u else None
+                q = None
+                if sp:
+                    q = db.query(ExamAttempt).filter(ExamAttempt.student_id == sp.id,
+                                                     ExamAttempt.answer_image_b64.isnot(None))
+                    out["matched_by"] = "student_code"
+                # 3) warna naam se
+                if q is None:
+                    q = db.query(ExamAttempt).filter(ExamAttempt.student_name.like("%" + key + "%"),
+                                                     ExamAttempt.answer_image_b64.isnot(None))
+                    out["matched_by"] = "student_name"
+                if exam:
+                    q = q.filter(ExamAttempt.exam_id == int(exam))
+                a = q.order_by(ExamAttempt.submitted_at.desc()).first()
+            if a is None:
+                return {"error": "Is input se koi answer-sheet attempt nahi mila: %s" % key,
+                        "tip": "Results modal me student ke naam pe click karke 'Student ID' (code) ya attempt number lo."}
+            out["attempt_id"] = a.id
+            out["student_name"] = a.student_name
+            out["exam_id"] = a.exam_id
+            out["status"] = a.status
             val = (getattr(a, "answer_image_b64", "") if a else "") or ""
         finally:
             db.close()
