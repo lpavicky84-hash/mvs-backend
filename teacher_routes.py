@@ -3808,6 +3808,10 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exams ADD COLUMN class_name TEXT NULL"),
         ("ALTER TABLE exams ADD COLUMN batch_id INTEGER NULL",
          "ALTER TABLE exams ADD COLUMN batch_id INT NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN reupload_allowed BOOLEAN DEFAULT 0",
+         "ALTER TABLE exam_attempts ADD COLUMN reupload_allowed INTEGER DEFAULT 0"),
+        ("ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL"),
     ]
     for group in stmts:
         for s in group:
@@ -4432,6 +4436,8 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
         out.append({"attempt_id": a.id, "student_id": a.student_id, "student_name": a.student_name,
             "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
             "has_answer": bool(a.answer_image_b64),
+            "reupload_allowed": bool(getattr(a, "reupload_allowed", False)),
+            "reupload_remark": (getattr(a, "reupload_remark", None) or ""),
             "feedback": a.overall_feedback,
             "results": [{"q_no": rr.q_no, "marks": rr.marks_awarded,
                          "max": rr.max_marks, "remark": rr.remark or ""}
@@ -4822,6 +4828,43 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
                                                        "answer-" + safe, False, sniff=True)
     except Exception:
         raise HTTPException(400, "The uploaded answer sheet could not be read. Ask the student to upload it again.")
+
+
+@router.post("/attempt/{attempt_id}/allow-reupload")
+def allow_attempt_reupload(attempt_id: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Ek SINGLE student ko uski answer sheet dubara upload karne ki permission do, ek remark
+    (reason) ke saath. Remark student ko test par + notification me dikhta hai, aur teacher
+    portal par us student ke neeche bhi. (e.g. 'Poora PDF nahi, sirf 1 image upload hui thi.')"""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not att:
+        raise HTTPException(404, "Attempt not found")
+    ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(403, "Not your test")
+    remark = (payload.get("remark") or "").strip()
+    if not remark:
+        raise HTTPException(400, "Please write a short remark (reason) for allowing re-upload.")
+    att.reupload_allowed = True
+    att.reupload_remark = remark
+    att.status = "grading"   # wapas 'teacher ke paas' wali state; purani sheet re-upload par replace hogi
+    # student ko notification — remark ke saath
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == att.student_id).first()
+    if sp and getattr(sp, "user_id", None):
+        try:
+            notify(db, sp.user_id,
+                   "\U0001f4e4 Re-upload allowed: " + (ex.title or ex.subject or "Test"),
+                   "Your teacher has allowed you to upload your answer sheet again. "
+                   "Reason: " + remark + " — please open the test and upload your complete answer sheet.",
+                   "exam")
+        except Exception:
+            pass
+    db.commit()
+    return {"ok": True, "attempt_id": att.id, "reupload_remark": remark}
+
 
 @router.post("/attempt/{attempt_id}/grade-manual")
 def grade_attempt_manual(attempt_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):

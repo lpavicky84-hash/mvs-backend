@@ -10352,11 +10352,65 @@ function _examResCss(){
   .exr-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:flex-end}
   .exr-actions .btn{flex:0 0 auto}
   .exr .sd-box{margin-top:11px}
-  @media(max-width:560px){
-    .exr-actions{margin-top:13px}
-    .exr-actions .btn{flex:1 1 auto;justify-content:center;min-width:0}
-  }`;
+  .exr-rebtn.on{background:rgba(5,150,105,.14);border-color:rgba(5,150,105,.4);color:#059669;font-weight:800}
+  .exr-renote{margin-top:10px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.28);border-left:3px solid var(--warning);border-radius:10px;padding:9px 12px}
+  .exr-renote-h{display:block;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--warning);display:flex;align-items:center;gap:5px}
+  .exr-renote-b{display:block;font-size:.86rem;color:var(--text);margin-top:3px;line-height:1.4;overflow-wrap:anywhere}
+  .exr-renote-h svg{width:13px;height:13px}
+  /* premium reupload prompt */
+  .reup-ov{position:fixed;inset:0;z-index:99999;background:rgba(15,20,30,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;animation:reupIn .18s ease}
+  @keyframes reupIn{from{opacity:0}to{opacity:1}}
+  .reup-card{background:var(--card);border:1px solid var(--border);border-radius:18px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35);overflow:hidden}
+  .reup-hd{padding:16px 18px 12px;border-bottom:1px solid var(--border)}
+  .reup-hd b{font-size:1.05rem;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px}
+  .reup-hd b svg{width:18px;height:18px;color:var(--warning)}
+  .reup-hd p{font-size:.82rem;color:var(--text-muted);margin:5px 0 0;line-height:1.45}
+  .reup-bd{padding:14px 18px}
+  .reup-bd label{font-size:.78rem;font-weight:800;color:var(--text);display:block;margin-bottom:6px}
+  .reup-ta{width:100%;min-height:84px;border:1px solid var(--border);border-radius:11px;padding:11px 12px;font:inherit;font-size:.9rem;color:var(--text);background:var(--bg);resize:vertical;outline:none}
+  .reup-ta:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(184,148,31,.15)}
+  .reup-hint{font-size:.74rem;color:var(--text-muted);margin-top:7px}
+  .reup-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .reup-chip{font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:.15s}
+  .reup-chip:hover{border-color:var(--primary);color:var(--primary)}
+  .reup-ft{display:flex;gap:9px;padding:0 18px 18px;justify-content:flex-end}
+  @media(max-width:480px){.reup-ft{flex-direction:column-reverse}.reup-ft .btn{width:100%;justify-content:center}}`;
   document.head.appendChild(s);
+}
+function allowReupload(attId, examId){
+  _examResCss();
+  var old=document.getElementById('reup-ov'); if(old) old.remove();
+  var chips=['Only 1 image uploaded — please upload the complete PDF.','Incomplete answer sheet — some pages missing.','Wrong file uploaded — please re-upload the correct sheet.','Blurry/unclear scan — upload a clearer copy.'];
+  var ov=document.createElement('div'); ov.className='reup-ov'; ov.id='reup-ov';
+  ov.innerHTML='<div class="reup-card" role="dialog" aria-modal="true">'
+    +'<div class="reup-hd"><b>'+ic('refresh')+'Allow re-upload for this student</b><p>The student will be able to upload their answer sheet again. Your remark is shown to them on the test and in a notification.</p></div>'
+    +'<div class="reup-bd"><label>Remark (reason) — required</label>'
+      +'<textarea class="reup-ta" id="reup-ta" placeholder="e.g. You uploaded only one image. Please upload your complete answer sheet as a PDF."></textarea>'
+      +'<div class="reup-chips">'+chips.map(function(c){return '<span class="reup-chip" onclick="_reupChip(this)">'+esc(c)+'</span>';}).join('')+'</div>'
+      +'<div class="reup-hint">This remark reaches the student instantly.</div>'
+    +'</div>'
+    +'<div class="reup-ft"><button class="btn btn-ghost" onclick="_reupClose()">Cancel</button>'
+      +'<button class="btn btn-primary" id="reup-go" onclick="_reupSubmit('+attId+','+examId+')">'+ic('check')+' Allow &amp; Notify</button></div>'
+    +'</div>';
+  ov.addEventListener('click',function(e){ if(e.target===ov) _reupClose(); });
+  document.body.appendChild(ov);
+  var ta=document.getElementById('reup-ta'); if(ta) ta.focus();
+}
+function _reupChip(el){ var ta=document.getElementById('reup-ta'); if(ta){ ta.value=(ta.value?ta.value+' ':'')+el.textContent; ta.focus(); } }
+function _reupClose(){ var ov=document.getElementById('reup-ov'); if(ov) ov.remove(); }
+async function _reupSubmit(attId, examId){
+  var ta=document.getElementById('reup-ta'); var remark=(ta&&ta.value||'').trim();
+  if(!remark){ toast('Please write a short remark (reason).',true); if(ta) ta.focus(); return; }
+  var btn=document.getElementById('reup-go'); if(btn){ btn.disabled=true; btn.style.opacity=.6; }
+  try{
+    await api('/api/teacher/attempt/'+attId+'/allow-reupload','POST',{remark:remark});
+    _reupClose();
+    toast('Re-upload allowed. The student has been notified.');
+    viewExamAttempts(examId);
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.style.opacity=1; }
+    toast(e.message||'Could not allow re-upload',true);
+  }
 }
 async function viewExamAttempts(id){
   try{
@@ -10370,6 +10424,10 @@ async function viewExamAttempts(id){
       const nm=esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'));
       const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${nm}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${nm}')">${ic('download')} Sheet</button>`:'';
       const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${graded?'Edit Marks':'Grade Manually'}</button>`;
+      // subjective test: is single student ko dubara upload allow karo (remark ke saath)
+      const isSubj=(d.exam.test_type||'')!=='mcq';
+      const reBtn=isSubj?`<button class="btn btn-ghost btn-sm exr-rebtn${a.reupload_allowed?' on':''}" onclick="allowReupload(${a.attempt_id},${id})">${ic('refresh')} ${a.reupload_allowed?'Re-upload ON':'Allow Re-upload'}</button>`:'';
+      const reNote=(a.reupload_remark)?`<div class="exr-renote"><span class="exr-renote-h">${ic('refresh')} Re-upload ${a.reupload_allowed?'allowed':'note'}</span><span class="exr-renote-b">${esc(a.reupload_remark)}</span></div>`:'';
       // naam pe click -> student ki poori detail usi row me khul jati hai
       const det=[
         ['Student ID', a.student_code],
@@ -10390,8 +10448,9 @@ async function viewExamAttempts(id){
             </div>
             <span class="tag ${graded?'tag-done':'tag-pending'} exr-badge">${stTxt}</span>
           </div>
+          ${reNote}
           <div class="sd-box" id="sd-${a.attempt_id}" style="display:none">${det?`<div class="sd-grid">${det}</div>${acts}`:'<div class="sd-empty">No extra details are saved for this student yet.</div>'}</div>
-          <div class="exr-actions">${dl}${btns}</div>
+          <div class="exr-actions">${dl}${reBtn}${btns}</div>
         </div>`;
     }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
     const resetBar=d.attempts.length?`<div class="exr-resetbar"><button class="btn btn-danger btn-sm" onclick="examResetAttempts(${id})">${ic('refresh')} Allow Re-take (clear attempts)</button></div>`:'';
@@ -20831,7 +20890,9 @@ function examCardHTML(e){
   if(!stPill){
     stPill=_future?`<span class="tx-pill tx-up">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
-  let action = e.status==='graded'
+  let action = e.reupload_allowed
+    ? `<button class="btn btn-primary btn-sm tx-reup" onclick="openExamPlayer(${e.id})">${ic('refresh')} Upload Again</button>`
+    : e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result${_got!=null?' \u00b7 '+_got+'/'+e.total_marks:''}</button>`
     : (e.status==='grading'||e.status==='marking')
     ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
@@ -21142,7 +21203,8 @@ async function _plRender(id){
   const medToggle=biling?`<select class="pl-msel" title="Language / माध्यम" onchange="_plSetMed(this.value,${id})"><option value="en"${_plMed==='en'?' selected':''}>English</option><option value="hi"${_plMed==='hi'?' selected':''}>हिंदी</option><option value="hg"${_plMed==='hg'?' selected':''}>Hinglish</option></select>`:'';
   const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
-  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${palette}${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:var(--card,#fffdf7)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:11px"><div style="font-weight:800;font-size:1rem">${ic('book')} Question Paper</div><button type="button" class="btn btn-ghost btn-sm" onclick="_m75View(${id},'student','q')">${ic('download')} Download</button></div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Read the paper below, solve it on paper, then upload a clear photo (or PDF) of your answer sheet.</div><div id="pl-qpdf-frame"><div class="spinner" style="margin:30px auto"></div></div></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  const reupBanner=ex.reupload_allowed?`<div style="display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.13),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.4);border-left:4px solid var(--primary,#b8941f);border-radius:14px;padding:13px 15px;margin:4px 0 14px">${ic('refresh')}<div style="min-width:0"><div style="font-weight:800;font-size:.95rem;color:var(--text,#2e2716)">Re-upload allowed by your teacher</div>${ex.reupload_remark?`<div style="font-size:.88rem;color:var(--text,#2e2716);margin-top:3px;line-height:1.45">“${esc(ex.reupload_remark)}”</div>`:''}<div style="font-size:.78rem;color:var(--text-muted,#8a7c55);margin-top:5px">Please upload your complete answer sheet again below, then submit.</div></div></div>`:'';
+  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${reupBanner}${palette}${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:var(--card,#fffdf7)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:11px"><div style="font-weight:800;font-size:1rem">${ic('book')} Question Paper</div><button type="button" class="btn btn-ghost btn-sm" onclick="_m75View(${id},'student','q')">${ic('download')} Download</button></div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Read the paper below, solve it on paper, then upload a clear photo (or PDF) of your answer sheet.</div><div id="pl-qpdf-frame"><div class="spinner" style="margin:30px auto"></div></div></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
   renderMath(el); _plPal(); _plTimerStart(ex); _txLoadLogos(el);
   if(ex.has_qpdf) setTimeout(function(){ _m75EmbedQ(id); },40);
 }
@@ -21384,6 +21446,12 @@ async function openExamResult(id){
     window._lastResult=r; r.id=id;
     if(r.status!=='graded'){
       const marking=r.status==='marking';
+      if(r.reupload_allowed){
+        el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(r.title||'Test')}</div></div>`
+         +`<div style="display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.13),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.4);border-left:4px solid var(--primary,#b8941f);border-radius:14px;padding:14px 16px;margin:4px 0 14px">${ic('refresh')}<div style="min-width:0"><div style="font-weight:800;font-size:1rem;color:var(--text,#2e2716)">Re-upload allowed by your teacher</div>${r.reupload_remark?`<div style="font-size:.9rem;color:var(--text,#2e2716);margin-top:4px;line-height:1.45">“${esc(r.reupload_remark)}”</div>`:''}<div style="font-size:.8rem;color:var(--text-muted,#8a7c55);margin-top:6px">You can upload your complete answer sheet again.</div></div></div>`
+         +`<button class="btn btn-primary" style="width:100%" onclick="openExamPlayer(${id})">${ic('refresh')} Upload Answer Sheet Again</button>`;
+        return;
+      }
       el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(r.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic(marking?'edit':'clock')}</div><p><b>${marking?'Marking by teacher':'Checking soon'}</b></p><small>${marking?'The teacher is checking your answer sheet — your marks will appear here shortly.':'Your answer sheet is with your teacher. Marks will appear here once checking starts.'}</small></div></div></div>`;
       return;
     }

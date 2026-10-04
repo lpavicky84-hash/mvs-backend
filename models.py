@@ -916,6 +916,8 @@ class ExamAttempt(Base):
     verdict     = Column(String(40), nullable=True)
     submitted_at= Column(DateTime, default=func.now())
     graded_at   = Column(DateTime, nullable=True)
+    reupload_allowed = Column(Boolean, default=False)   # teacher ne is single student ko dubara upload allow kiya
+    reupload_remark  = Column(Text, nullable=True)      # teacher ka reason — student ko test + notification me dikhta hai
 
 class ExamResult(Base):
     __tablename__ = "exam_results"

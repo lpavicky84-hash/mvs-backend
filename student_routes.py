@@ -2247,6 +2247,10 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_questions ADD COLUMN alt_image_b64 TEXT NULL"),
         ("ALTER TABLE exams ADD COLUMN class_name VARCHAR(50) NULL",
          "ALTER TABLE exams ADD COLUMN class_name TEXT NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN reupload_allowed BOOLEAN DEFAULT 0",
+         "ALTER TABLE exam_attempts ADD COLUMN reupload_allowed INTEGER DEFAULT 0"),
+        ("ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL"),
     ]
     for group in stmts:
         for st in group:
@@ -2362,6 +2366,8 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
                     "answers_unlock_at": (_pdf_unlock_iso(e) if getattr(e, "q_pdf", None) else None),
                     "status": att.status if att else "not_attempted",
                     "graded": int(graded_map.get(e.id, 0)),
+                    "reupload_allowed": bool(getattr(att, "reupload_allowed", False)) if att else False,
+                    "reupload_remark": (getattr(att, "reupload_remark", None) or "") if att else "",
                     "awarded": att.total_awarded if att else None})
     return out
 
@@ -2431,6 +2437,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     if not ex:
         raise HTTPException(404, "Test not found")
     att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).first()
+    _reup = bool(getattr(att, "reupload_allowed", False)) if att else False
     _log_exam_action(db, exam_id, sp.id, "view")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     # Hindi/Bilingual test -> Hindi fields missing ho to on-demand translate + cache (student panel
@@ -2463,8 +2470,10 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
             "has_qpdf": bool(getattr(ex, "q_pdf", None)),
             "q_count": int(getattr(ex, "q_count", 0) or 0),
             "answers_unlock_at": (_pdf_unlock_iso(ex) if getattr(ex, "q_pdf", None) else None),
-            "expired": _exp,
-            "already_submitted": bool(att and att.status == "graded")}
+            "expired": (_exp and not _reup),
+            "reupload_allowed": _reup,
+            "reupload_remark": (getattr(att, "reupload_remark", None) if att else None),
+            "already_submitted": bool(att and att.status == "graded") and not _reup}
 
 @router.post("/exam/{exam_id}/submit")
 def student_submit_exam(exam_id: int, payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_student)):
@@ -2473,23 +2482,29 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
     if not ex:
         raise HTTPException(404, "Test not found")
+    # teacher ne is student ko dubara upload allow kiya? to purane gates (window/graded) bypass
+    _prev = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).order_by(ExamAttempt.submitted_at.desc()).first()
+    _reup = bool(getattr(_prev, "reupload_allowed", False)) if _prev else False
+    _prev_remark = (getattr(_prev, "reupload_remark", None) if _prev else None)
     graded = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id, ExamAttempt.status == "graded").first()
-    if graded:
+    if graded and not _reup:
         raise HTTPException(400, "You have already submitted this test")
-    if getattr(ex, "scheduled_at", None) is not None:
+    if getattr(ex, "scheduled_at", None) is not None and not _reup:
         _end_utc = ex.scheduled_at + timedelta(minutes=ex.duration_min or 60) - timedelta(hours=5, minutes=30)
         if datetime.utcnow() > _end_utc:
             raise HTTPException(403, "Test window is over — submission closed")
     qs = db.query(ExamQuestion).filter(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.q_no).all()
     db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id, ExamAttempt.student_id == sp.id).delete()
     att = ExamAttempt(exam_id=exam_id, student_id=sp.id, student_name=current_user.name, status="grading",
+                      reupload_allowed=False, reupload_remark=_prev_remark,
                       attempted=(payload.get("attempted") if isinstance(payload.get("attempted"), list) else None),
                       skipped=(payload.get("skipped") if isinstance(payload.get("skipped"), list) else None))
     db.add(att); db.flush()
-    try:
-        _award_xp(db, sp.id, _XP_TEST, "test", "Attempted test: %s" % (ex.title or ex.subject or ""))
-    except Exception:
-        pass
+    if not _reup:   # re-upload par dobara XP nahi (farming se bachao)
+        try:
+            _award_xp(db, sp.id, _XP_TEST, "test", "Attempted test: %s" % (ex.title or ex.subject or ""))
+        except Exception:
+            pass
     teacher = ex.teacher_name or "your teacher"
     if ex.test_type == "mcq":
         att.mcq_answers = payload.get("mcq_answers") or {}
@@ -2517,7 +2532,14 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
         _hint = "application/octet-stream"
     att.answer_image_b64 = __import__("r2_storage").normalize(img, "exam-answers", _hint)
     att.status = "grading"   # shown to the student as "with teacher for checking"
+    # reupload_remark record ke liye bana rehta hai (teacher portal + student note); dobara
+    # upload ka banner reupload_allowed=False hone se apne aap hat jata hai.
     db.commit()
+    if _reup and background_tasks is not None:
+        try:
+            background_tasks.add_task(_notify_submission, ex.teacher_id, ex.subject, (ex.title or ex.subject), current_user.name)
+        except Exception:
+            pass
     return {"status": "grading", "message": _exam_thankyou(teacher), "teacher_name": teacher,
             "note": "Your answer sheet has been received. %s will check it and your marks will appear here with a notification." % teacher}
 
@@ -2554,7 +2576,9 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
             "test_type": ex.test_type, "medium": ex.medium, "results": items,
-            "has_answer": bool(att.answer_image_b64)}
+            "has_answer": bool(att.answer_image_b64),
+            "reupload_allowed": bool(getattr(att, "reupload_allowed", False)),
+            "reupload_remark": (getattr(att, "reupload_remark", None) or "")}
 
 
 @router.get("/exam/{exam_id}/answer")
