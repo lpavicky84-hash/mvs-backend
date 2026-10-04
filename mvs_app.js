@@ -32459,56 +32459,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._prodProjChaps=function(id){
     var box=document.getElementById('pjch-'+id); if(!box) return;
     box.innerHTML='<div class="p-load" style="color:#fff">Loading chapters...</div>';
-    var pname='';
-    try{ var _pd=(window._prodProjData&&window._prodProjData.projects)||[]; var _pp=_pd.filter(function(x){return x.id===id;})[0]; pname=_pp?(_pp.title||_pp.subject||''):''; }catch(e){}
+    // parent project -> subject + teacher for each chapter card
+    var _subj='', _teacher='';
+    try{ var _pd=(window._prodProjData&&window._prodProjData.projects)||[]; var _pp=_pd.filter(function(x){return x.id===id;})[0]; if(_pp){ _subj=_pp.subject||''; _teacher=_pp.creator||''; } }catch(e){}
     api(P.production.api+'/tasks/'+id+'/chapters').then(function(r){
       var chs=r.chapters||[];
-      box.innerHTML=chs.length?'<div class="pj-chcards">'+chs.map(function(ch,ci){
-        var rv=ch.review||((ch.link&&(''+ch.link).trim())?'approved':'');
-        // status pill (premium) + shoot-pending blink
-        var pill, blink='';
-        if(!rv){ pill='<span class="pjcc-st pjcc-blink" style="background:#fee2e2;color:#b91c1c">\u25cf Shoot Pending</span>'; }
-        else if(rv==='pending'){ pill='<span class="pjcc-st" style="background:#fef3c7;color:#92400e">\u25cf PM Review</span>'; }
-        else if(rv==='changes'){ pill='<span class="pjcc-st pjcc-blink" style="background:#fee2e2;color:#b91c1c">\u25cf Changes Requested</span>'; }
-        else {
-          var es=(ch.edit_state||'');
-          if(es==='editing') pill='<span class="pjcc-st" style="background:#dbeafe;color:#1e40af">\u25cf Editing</span>';
-          else if(es==='edited') pill='<span class="pjcc-st" style="background:#ede9fe;color:#5b21b6">\u25cf Edited</span>';
-          else if((ch.edit_status||'')==='uploaded') pill='<span class="pjcc-st" style="background:#d1fae5;color:#065f46">\u25cf Uploaded</span>';
-          else if(ch.editor_name) pill='<span class="pjcc-st" style="background:#fef3c7;color:#92400e">\u25cf Editing Pending</span>';
-          else pill='<span class="pjcc-st" style="background:#d1fae5;color:#065f46">\u2713 Approved</span>';
-        }
-        // action buttons
-        var acts='';
-        if(ch.link) acts+='<a href="'+esc(ch.link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Video</a>';
-        if(rv==='pending'){
-          acts+='<button class="ok" onclick="event.stopPropagation();prodChapReview('+id+','+ch.id+',\'approve\')">Approve</button>'+
-                '<button class="no" onclick="event.stopPropagation();prodChapReview('+id+','+ch.id+',\'changes\')">Changes</button>';
-        }
-        if(rv==='approved'){
-          var assigned=(ch.editor_name||ch.graphics_name);
-          acts+='<button class="primary" onclick="event.stopPropagation();prodAssignVideo('+id+','+ch.id+',\''+esc(''+ch.title).replace(/[\\\x27\x22]/g,'')+'\')">'+(assigned?'Reassign Editor':'Assign Editor')+'</button>';
-          if(assigned) acts+='<button onclick="event.stopPropagation();prodUnassignVideo('+id+','+ch.id+')">Remove</button>';
-          if(ch.edited_link) acts+='<a href="'+esc(ch.edited_link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">Edited</a>';
-          if(ch.thumbnail_link) acts+='<a href="'+esc(ch.thumbnail_link)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">Thumbnail</a>';
-        }
-        acts+='<button onclick="event.stopPropagation();_pjChatOpen(\'/api/production\','+ch.id+',\''+esc(''+ch.title).replace(/[\\\x27\x22]/g,'')+'\',\'production_manager\')">\ud83d\udcac Chat</button>';
-        acts+='<button onclick="event.stopPropagation();_pjTimelineOpen(\'/api/production\','+ch.id+')">Timeline</button>';
-        // who + note
-        var who='';
-        if(ch.editor_name) who+='Editor: '+esc(ch.editor_name)+'<br>';
-        if(ch.graphics_name) who+='Graphics: '+esc(ch.graphics_name)+'<br>';
-        if(ch.deadline) who+='Deadline: '+esc(ch.deadline)+'<br>';
-        if(rv==='changes'&&ch.review_note) who+='<span style="color:#b91c1c">Note: '+esc(ch.review_note)+'</span>';
-        return '<div class="pjcc">'+
-          '<div class="pjcc-top"><span class="pjcc-no">'+(ci+1)+'</span>'+
-            '<span class="pjcc-badge">Chapter</span>'+
-            '<div class="pjcc-t">'+esc(ch.title||('Chapter '+(ci+1)))+'</div></div>'+
-          '<div class="pjcc-bd">'+pill+
-            (who?'<div class="pjcc-who">'+who+'</div>':'')+
-            '<div class="pjcc-acts">'+acts+'</div></div>'+
-          '</div>';
-      }).join('')+'</div>':'<div style="color:#fff;opacity:.8;padding:8px">No chapter items.</div>';
+      box.innerHTML=chs.length?('<div class="ptc-grid">'+chs.map(function(ch,ci){
+        return _prodChapCard('production', ch, ci, {taskId:id, subject:_subj, teacher:_teacher});
+      }).join('')+'</div>'):'<div style="color:#fff;opacity:.8;padding:8px">No chapter items.</div>';
     }).catch(function(){ box.innerHTML='<div style="color:#fff;opacity:.8;padding:8px">Could not load chapters.</div>'; });
   };
   window.prodChapReview=function(taskId,cid,action){
@@ -32984,26 +32942,217 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodBoardChap=function(cid){
     var c=(window._boardChaps||{})[cid]; if(!c){ toast('Chapter not found',true); return; }
-    _pjChCss();
-    var rv=c.review_status||(c.link?'approved':'');
-    var acts='';
-    if(c.link) acts+='<a href="'+esc(c.link)+'" target="_blank" rel="noopener">'+ic('play')+' Open Video</a>';
-    if(rv==='pending'){ acts+='<button class="ok" onclick="prodChapReview('+c.task_id+','+cid+',\'approve\');_pjOvClose()">Approve</button><button class="no" onclick="prodChapReview('+c.task_id+','+cid+',\'changes\')">Changes</button>'; }
-    if(rv==='approved'){ var asg=(c.editor_name||c.graphics_name); acts+='<button class="primary" onclick="_pjOvClose();prodAssignVideo('+c.task_id+','+cid+',\''+esc(''+c.title).replace(/[\\\x27\x22]/g,'')+'\')">'+(asg?'Reassign Editor':'Assign Editor')+'</button>'; }
-    if(c.edited_link) acts+='<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Edited</a>';
-    if(c.thumbnail_link) acts+='<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Thumbnail</a>';
-    acts+='<button onclick="_pjChatOpen(\'/api/production\','+cid+',\''+esc(''+c.title).replace(/[\\\x27\x22]/g,'')+'\',\'production_manager\')">💬 Chat</button>';
-    acts+='<button onclick="_pjTimelineOpen(\'/api/production\','+cid+')">Timeline</button>';
-    var who='';
-    if(c.subject) who+='Subject: '+esc(c.subject)+'<br>';
-    if(c.teacher) who+='Teacher: '+esc(c.teacher)+'<br>';
-    if(c.editor_name) who+='Editor: '+esc(c.editor_name)+'<br>';
-    if(c.graphics_name) who+='Graphics: '+esc(c.graphics_name)+'<br>';
-    if(c.deadline) who+='Deadline: '+esc(c.deadline);
-    var card='<div class="pjcc" style="box-shadow:none;border-left:4px solid #8f3d66"><div class="pjcc-top"><span class="pjcc-badge">Project Chapter</span><div class="pjcc-t">'+esc(c.title)+'</div></div>'
-      +'<div class="pjcc-bd">'+_pjPill(c)+(who?'<div class="pjcc-who">'+who+'</div>':'')+'<div class="pjcc-acts">'+acts+'</div></div></div>';
-    _pjOv(card);
+    // Board gives rich fields (subject/teacher/deadline) — seed the chapter cache and open
+    // the SAME premium slide-over panel the project cards use (task-parity).
+    var cc={}; for(var k in c){ if(c.hasOwnProperty(k)) cc[k]=c[k]; }
+    cc.id=cid; cc.task_id=c.task_id;
+    window._pjChapCache=window._pjChapCache||{}; window._pjChapCache[cid]=cc;
+    prodOpenChapter('production', cid);
   };
+
+  // ============================================================
+  //  PREMIUM PROJECT-CHAPTER CARD + DETAIL SLIDE-OVER (task-parity)
+  //  Har chapter ab bilkul task card (.ptc-*) jaisa dikhega — thumbnail
+  //  header, status badge, chips, deadline box, buttons — aur click pe
+  //  wahi task-jaisa slide-over panel (.p-drawer/.pd-*) khulega: tabs
+  //  (Overview / Timeline / Editor / Graphics) + PM-review actions
+  //  (Approve / Request Changes / Assign-Reassign Editor / Open Video /
+  //  Chat / Timeline). Sab kuch EXISTING chapter endpoints se
+  //  (/chapter-review, /assign-project-video, /chapters/{cid}/chat,
+  //  /chapters/{cid}/timeline) — koi naya backend, koi migration nahi,
+  //  purana projects/board/teacher flow kuch nahi toota.
+  // ============================================================
+  window._pjChapCache=window._pjChapCache||{};
+  function _chapSt(ch){
+    // -> [label, color, blink]
+    var rv=ch.review||ch.review_status||((ch.link&&(''+ch.link).trim())?'approved':'');
+    if(!rv) return ['Shoot Pending','#d1443a',true];
+    if(rv==='pending') return ['PM Review','#c99a2e',true];
+    if(rv==='changes') return ['Changes Requested','#d1443a',true];
+    if((ch.edit_status||'')==='uploaded') return ['Uploaded','#2e9e6b',false];
+    var es=ch.edit_state||'';
+    if(es==='edited') return ['Edited','#7c4fc0',false];
+    if(es==='editing') return ['Editing In Progress','#7c4fc0',false];
+    if(es==='paused') return ['Editing Paused','#c99a2e',false];
+    if(ch.editor_name||ch.editor_id) return ['Editing Soon','#7c4fc0',false];
+    return ['Approved','#2e9e6b',false];
+  }
+  function _chapPrefix(portal){ return (portal==='teacher')?'/api/teacher':'/api/production'; }
+  function _esc1(s){ return esc(''+(s==null?'':s)).replace(/'/g,''); }
+  // shared action buttons — where==='card' -> .ptc-btn, where==='panel' -> .p-btn
+  function _chapActBtns(portal, ch, taskId, where){
+    var rv=ch.review||ch.review_status||((ch.link&&(''+ch.link).trim())?'approved':'');
+    var cid=ch.id, b=[], stop='event.stopPropagation();';
+    var cls=(where==='panel')?'p-btn':'ptc-btn';
+    var okc=(where==='panel')?' p-btn-ok':' ptc-ok';
+    var noc=(where==='panel')?' p-btn-danger':'';
+    var pric=(where==='panel')?' p-btn-primary':' ptc-ok';
+    var tnm=(''+(ch.title||'')).replace(/[\\\x27\x22]/g,'');
+    var pf=_chapPrefix(portal), role=(portal==='teacher')?'teacher':'production_manager';
+    if(ch.link) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Open Video</button>');
+    if(rv==='pending'){
+      b.push('<button class="'+cls+okc+' ptc-review-blink" onclick="'+stop+'prodChapAct('+taskId+','+cid+',\'approve\')"><span class="rev-dot"></span>Approve</button>');
+      b.push('<button class="'+cls+noc+'" onclick="'+stop+'prodChapAct('+taskId+','+cid+',\'changes\')">Request Changes</button>');
+    }
+    if(rv==='approved'){
+      var asg=(ch.editor_name||ch.graphics_name);
+      b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapAssign('+taskId+','+cid+',\''+tnm+'\')">'+(asg?'Reassign Editor':'Assign Editor')+'</button>');
+      if(asg) b.push('<button class="'+cls+'" onclick="'+stop+'prodChapUnassign('+taskId+','+cid+')">Remove</button>');
+    }
+    if(ch.edited_link) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.edited_link)+'\',\'_blank\',\'noopener\')">Edited</button>');
+    if(ch.thumbnail_link) b.push('<button class="'+cls+'" onclick="'+stop+'prodThumbView(\''+_esc1(ch.thumbnail_link)+'\')">Thumbnail</button>');
+    b.push('<button class="'+cls+'" onclick="'+stop+'_pjChatOpen(\''+pf+'\','+cid+',\''+tnm+'\',\''+role+'\')">💬 Chat</button>');
+    b.push('<button class="'+cls+'" onclick="'+stop+'prodChapTimeline('+cid+',\''+pf+'\')">Timeline</button>');
+    return b.join('');
+  }
+  // Premium chapter card — identical look to _prodTaskCard.
+  function _prodChapCard(portal, ch, idx, ctx){
+    ctx=ctx||{};
+    var taskId=ctx.taskId||ch.task_id;
+    var subject=ctx.subject||ch.subject||'';
+    var teacher=ctx.teacher||ch.teacher||'';
+    // cache an enriched copy for the detail panel
+    var cc={}; for(var k in ch){ if(ch.hasOwnProperty(k)) cc[k]=ch[k]; }
+    cc.task_id=taskId; cc.subject=subject; cc.teacher=teacher; cc._portal=portal; cc._idx=idx;
+    window._pjChapCache[ch.id]=cc;
+    var st=_chapSt(ch);
+    var rv=ch.review||ch.review_status||((ch.link&&(''+ch.link).trim())?'approved':'');
+    var thumb=(ch.thumbnail_link||'').trim();
+    var hcol=_PTC_HCOL[(ch.id||0)%_PTC_HCOL.length];
+    var letter=((ch.title||'C').trim().charAt(0)||'C').toUpperCase();
+    var header=thumb
+      ? '<div class="ptc-head" style="background-image:url('+_esc1(thumb)+')" onclick="event.stopPropagation();prodThumbView(\''+_esc1(thumb)+'\')"><a class="ptc-view" onclick="event.stopPropagation();prodThumbView(\''+_esc1(thumb)+'\')">VIEW</a></div>'
+      : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
+    var badge='<span class="ptc-badge'+(st[2]?' ptc-blink':'')+'" style="background:'+st[1]+'">'+esc(st[0])+'</span>';
+    var chips=[];
+    chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800">Chapter '+(idx+1)+'</span>');
+    if(subject) chips.push('<span class="pw-chip">'+esc(subject)+'</span>');
+    if(teacher) chips.push('<span class="pw-chip who">'+ic('user')+esc(teacher)+'</span>');
+    if(ch.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(ch.editor_name)+'</span>');
+    if(ch.graphics_name) chips.push('<span class="pw-chip gr">Graphics: '+esc(ch.graphics_name)+'</span>');
+    if(!rv) chips.push('<span class="pw-chip pw-shoot-blink">'+ic('clock')+' Awaiting teacher upload</span>');
+    // premium status/deadline box (same look as task card dl box)
+    var boxCls,boxIcon,boxLabel,boxSub;
+    if(rv==='pending'){ boxCls='ov'; boxIcon='alert'; boxLabel='Waiting for your review'; boxSub='Teacher submitted the video'; }
+    else if(rv==='changes'){ boxCls='ov'; boxIcon='alert'; boxLabel='Changes requested'; boxSub=(ch.review_note||'Sent back to teacher'); }
+    else if((ch.edit_status||'')==='uploaded'){ boxCls='dn'; boxIcon='check'; boxLabel='Uploaded'; boxSub='Published on YouTube'; }
+    else if((ch.edit_state||'')==='edited'){ boxCls='dn'; boxIcon='check'; boxLabel='Edited — ready'; boxSub=(ch.editor_name?('Editor: '+ch.editor_name):'Editor finished'); }
+    else if((ch.edit_state||'')==='editing'){ boxCls=''; boxIcon='edit'; boxLabel='Editing in progress'; boxSub=(ch.editor_name||''); }
+    else if(ch.editor_name){ boxCls=''; boxIcon='edit'; boxLabel='Editing soon'; boxSub=ch.editor_name; }
+    else if(rv==='approved'){ boxCls='dn'; boxIcon='check'; boxLabel='Approved'; boxSub='Assign an editor'; }
+    else { boxCls='ov'; boxIcon='clock'; boxLabel='Shoot pending'; boxSub='No video uploaded yet'; }
+    var dlBox='<div class="pt-dlbox '+boxCls+'"><div class="pdb-ic">'+ic(boxIcon)+'</div>'+
+      '<div class="pdb-main"><div class="pdb-label">'+esc(boxLabel)+'</div>'+
+      '<div class="pdb-time"><span class="pdb-subpre">'+esc(boxSub||'')+'</span></div></div>'+
+      '<button class="pdb-btn" onclick="event.stopPropagation();prodOpenChapter(\''+portal+'\','+ch.id+')">View Details<svg class="pdb-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></div>';
+    var ip=[];
+    if(ch.deadline) ip.push('<span class="pir-i"><span class="pir-ic">'+ic('calendar')+'</span><span class="pir-tx">Deadline: '+esc(ch.deadline)+'</span></span>');
+    ip.push('<span class="pir-i pir-id"><span class="pir-ic">'+ic('list')+'</span><span class="pir-tx">PROJECT</span></span>');
+    var idrow='<div class="ptc-idrow">'+ip.join('')+'</div>';
+    var acts=_chapActBtns(portal, ch, taskId, 'card');
+    return '<div class="ptc" data-pjc="'+ch.id+'" style="border-left:5px solid '+st[1]+';position:relative" onclick="prodOpenChapter(\''+portal+'\','+ch.id+')">'+
+      '<div class="ptc-hw">'+header+badge+'</div>'+
+      '<div class="ptc-body"><div class="ptc-title">'+esc(ch.title||('Chapter '+(idx+1)))+'</div>'+
+      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+dlBox+idrow+
+      '<div class="ptc-acts">'+acts+'</div></div></div>';
+  }
+  window._prodChapCard=_prodChapCard;
+  // ---- detail slide-over (same .p-drawer/.pd-* as the task panel) ----
+  window.prodOpenChapter=function(portal, cid){
+    ensureCSS();
+    var c=(window._pjChapCache||{})[cid]; if(!c){ toast('Chapter not found',true); return; }
+    window._pjChapOpen={portal:portal, c:c};
+    var old=document.getElementById('prod-chap-drawer'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-chap-drawer';
+    var tabs=['overview','timeline','editor','graphics'];
+    var tabLbl={overview:'Overview',timeline:'Timeline',editor:'Editor',graphics:'Graphics'};
+    var st=_chapSt(c);
+    dr.innerHTML='<div class="pd-panel">'+
+      '<div class="pd-head"><div><div class="h-title">'+esc(c.title||'Chapter')+'</div>'+
+        '<div class="h-meta"><span class="pt-ref" style="color:#8f3d66;font-weight:800">PROJECT CHAPTER</span>'+
+        '<span class="pt-stage">'+esc(st[0])+'</span>'+
+        (c.subject?'<span class="pt-badge b-teacher">'+esc(c.subject)+'</span>':'')+'</div></div>'+
+        '<button class="pd-x" onclick="prodCloseChapter()">&times;</button></div>'+
+      '<div class="pd-tabs">'+tabs.map(function(tb){ return '<button class="pd-tab'+(tb==='overview'?' on':'')+'" data-tab="'+tb+'" onclick="prodChapTab(\''+tb+'\')">'+tabLbl[tb]+'</button>'; }).join('')+'</div>'+
+      '<div class="pd-body" id="pdc-body">'+_chapTabHtml(portal,c,'overview')+'</div>'+
+      '<div class="pd-foot" id="pdc-foot">'+_chapPanelActions(portal,c)+'</div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodCloseChapter(); });
+    document.body.appendChild(dr);
+  };
+  window.prodCloseChapter=function(){ var d=document.getElementById('prod-chap-drawer'); if(d) d.remove(); };
+  window.prodChapTab=function(tab){
+    var st=window._pjChapOpen; if(!st) return;
+    document.querySelectorAll('#prod-chap-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
+    var body=document.getElementById('pdc-body'); if(body) body.innerHTML=_chapTabHtml(st.portal, st.c, tab);
+    if(tab==='timeline') _chapLoadTimeline(st.portal, st.c.id);
+  };
+  function _chapPanelActions(portal,c){
+    var b=_chapActBtns(portal,c,c.task_id,'panel');
+    return b?('<div class="p-acts" id="pdc-acts">'+b+'</div>'):'';
+  }
+  function _chapTabHtml(portal,c,tab){
+    if(tab==='overview'){
+      var rv=c.review||c.review_status||((c.link&&(''+c.link).trim())?'approved':'');
+      var rvLbl={'':'Shoot pending',pending:'PM review',changes:'Changes requested',approved:'Approved'}[rv]||rv;
+      return '<div class="pd-kv">'+
+        _kv('Subject', esc(c.subject||''))+
+        _kv('Teacher', esc(c.teacher||''))+
+        _kv('Review Status', esc(rvLbl))+
+        _kv('Editor', esc(c.editor_name||'Not assigned'))+
+        _kv('Graphics', esc(c.graphics_name||'Not assigned'))+
+        _kv('Deadline', esc(c.deadline||'Not set'))+
+        _kv('Source Drive', c.link?('<a href="'+esc(c.link)+'" target="_blank" rel="noopener">Open video</a>'):'')+
+        _kv('Edited Link', c.edited_link?('<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'')+
+        _kv('Thumbnail', c.thumbnail_link?('<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'')+
+        (c.review_note?_kv('Review Note', '<span class="pd-hot">'+esc(c.review_note)+'</span>'):'')+
+      '</div>';
+    }
+    if(tab==='timeline'){ return '<div id="pdc-tl"><div class="pd-empty">Loading timeline…</div></div>'; }
+    if(tab==='editor'){
+      if(!(c.editor_name||c.editor_id)) return '<div class="pd-empty">No editor assigned yet.</div>';
+      return '<div class="pd-kv">'+
+        _kv('Editor', esc(c.editor_name||''))+
+        _kv('Edit State', esc(c.edit_state||'assigned'))+
+        _kv('Deadline', esc(c.deadline||'Not set'))+
+        _kv('Edited Link', c.edited_link?('<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'Not submitted')+
+      '</div>';
+    }
+    if(tab==='graphics'){
+      if(!(c.graphics_name||c.graphics_id)) return '<div class="pd-empty">No graphics member assigned yet.</div>';
+      return '<div class="pd-kv">'+
+        _kv('Graphics', esc(c.graphics_name||''))+
+        _kv('Graphics State', esc(c.gfx_state||''))+
+        _kv('Thumbnail', c.thumbnail_link?('<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'Not submitted')+
+      '</div>';
+    }
+    return '';
+  }
+  function _chapLoadTimeline(portal,cid){
+    var box=document.getElementById('pdc-tl'); if(!box) return;
+    api(_chapPrefix(portal)+'/chapters/'+cid+'/timeline').then(function(r){
+      var ev=(r.events||[]);
+      box.innerHTML=ev.length?('<div class="pd-tl">'+ev.map(function(e){ return '<div class="ev"><div class="at">'+esc(e.at||'')+'</div><div class="lb">'+esc(e.label||'')+'</div></div>'; }).join('')+'</div>'):'<div class="pd-empty">No timeline events yet for this chapter.</div>';
+    }).catch(function(){ box.innerHTML='<div class="pd-empty">Could not load timeline.</div>'; });
+  }
+  // ---- action wrappers: work from both the card and the panel, refresh correctly ----
+  window.prodChapAct=function(taskId,cid,action){
+    var note='';
+    if(action==='changes'){
+      note=prompt('What needs to change in this video? (the teacher will see this note)');
+      if(note===null) return; note=(''+note).trim();
+      if(!note){ toast('Please add a short note',true); return; }
+    }
+    api(P.production.api+'/chapter-review','POST',{chapter_id:cid,action:action,note:note}).then(function(){
+      toast(action==='approve'?'Video approved':'Sent back for changes');
+      try{ prodCloseChapter(); }catch(e){}
+      try{ if(document.getElementById('pjch-'+taskId)) window._prodProjChaps(taskId); }catch(e){}
+      try{ _refresh('production'); }catch(e){}
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapAssign=function(taskId,cid,title){ try{ prodCloseChapter(); }catch(e){} prodAssignVideo(taskId,cid,title); };
+  window.prodChapUnassign=function(taskId,cid){ try{ prodCloseChapter(); }catch(e){} prodUnassignVideo(taskId,cid); };
+  window.prodChapTimeline=function(cid,prefix){ _pjTimelineOpen(prefix||'/api/production',cid); };
 
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
   function renderThumbBoard(portal,body){
