@@ -28055,6 +28055,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-view{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.64rem;font-weight:800;padding:4px 10px;border-radius:8px;text-decoration:none}',
 '.ptc-body{padding:15px 16px 16px;display:flex;flex-direction:column;gap:7px;flex:1}',
 '.ptc-title{font-weight:800;font-size:1.02rem;line-height:1.3;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}',
+'.pw-chip.pw-chapno{background:linear-gradient(135deg,#8f3d66,#6f2f54);color:#fff;font-weight:900;letter-spacing:.02em;border:none;box-shadow:0 2px 7px rgba(143,61,102,.3);padding:3px 11px}',
+'body.dark .pw-chip.pw-chapno{background:linear-gradient(135deg,#b05588,#8f3d66);color:#fff}',
 '.ptc-meta{font-size:.75rem;color:#8a7d5c;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}',
 '.ptc-ref{font-size:.68rem;color:#b0a483;font-family:monospace}',
 '.ptc-prog{height:7px;background:#efe8d6;border-radius:99px;overflow:hidden;margin-top:4px}',
@@ -28062,17 +28064,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-prog>i{display:block;height:100%;background:linear-gradient(90deg,#7c4fc0,#a06fd8);border-radius:99px;transition:width .3s}',
 '.ptc-prog-l{font-size:.72rem;color:#7c4fc0;font-weight:700;margin-top:2px}',
 /* ---- premium action row: primary (order 0) · secondary (order 2) · delete last (order 5) ---- */
-'.ptc-acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#ece2cd)}',
+'.ptc-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px;padding-top:13px;border-top:1px solid var(--border,#ece2cd)}',
 'body.dark .ptc-acts{border-color:#2c405e}',
-'.ptc-btn{order:2;display:inline-flex;align-items:center;gap:6px;font-size:.76rem;font-weight:700;padding:8px 13px;border-radius:10px;border:1px solid var(--border,#e6dcc4);background:var(--card,#fff);color:var(--text,#3a3320);cursor:pointer;line-height:1;transition:background .14s,border-color .14s,transform .14s,box-shadow .14s;-webkit-tap-highlight-color:transparent}',
-'.ptc-btn svg{width:15px;height:15px;flex:0 0 auto}',
-'body.dark .ptc-btn{border-color:#2c405e;background:rgba(255,255,255,.03);color:#dbe4f5}',
-'.ptc-btn:hover{background:rgba(230,173,78,.10);border-color:rgba(224,165,46,.45);transform:translateY(-1px);box-shadow:0 3px 10px rgba(18,20,45,.07)}',
-'.ptc-del{order:5;color:#d1443a;border-color:rgba(209,68,58,.32);background:rgba(209,68,58,.05)}',
-'.ptc-del:hover{background:rgba(209,68,58,.12);border-color:rgba(209,68,58,.5)}',
-'.ptc-ok{order:0;color:#fff;font-weight:800;border-color:transparent;background:linear-gradient(135deg,#2fa06d,#1f8a54);box-shadow:0 3px 10px rgba(31,138,84,.26)}',
-'.ptc-ok svg{color:#fff}',
-'.ptc-ok:hover{color:#fff;background:linear-gradient(135deg,#28925f,#1b7a49);border-color:transparent;box-shadow:0 5px 14px rgba(31,138,84,.36)}',
+'.ptc-btn{order:2;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:.78rem;font-weight:800;letter-spacing:.01em;padding:9px 15px;border-radius:11px;border:1px solid var(--border,#e6dcc4);background:linear-gradient(180deg,#fff,#fbf7ee);color:var(--text,#3a3320);cursor:pointer;line-height:1;transition:background .15s,border-color .15s,transform .12s,box-shadow .15s;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px rgba(18,20,45,.04)}',
+'.ptc-btn svg{width:15px;height:15px;flex:0 0 auto;opacity:.9}',
+'body.dark .ptc-btn{border-color:#324a6b;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));color:#dbe4f5}',
+'.ptc-btn:hover{background:linear-gradient(180deg,#fff,rgba(230,173,78,.12));border-color:rgba(224,165,46,.5);transform:translateY(-1.5px);box-shadow:0 5px 14px rgba(18,20,45,.1)}',
+'.ptc-btn:active{transform:translateY(0);box-shadow:0 1px 3px rgba(18,20,45,.08)}',
+'.ptc-del{order:5;color:#d1443a;border-color:rgba(209,68,58,.3);background:linear-gradient(180deg,#fff,rgba(209,68,58,.06))}',
+'.ptc-del:hover{background:linear-gradient(180deg,rgba(209,68,58,.1),rgba(209,68,58,.16));border-color:rgba(209,68,58,.55)}',
+'.ptc-ok{order:0;color:#fff;font-weight:800;border-color:transparent;background:linear-gradient(135deg,#34ac76,#1f8a54);box-shadow:0 4px 12px rgba(31,138,84,.3)}',
+'.ptc-ok svg{color:#fff;opacity:1}',
+'.ptc-ok:hover{color:#fff;background:linear-gradient(135deg,#2c9d69,#1b7a49);border-color:transparent;box-shadow:0 7px 18px rgba(31,138,84,.42);transform:translateY(-1.5px)}',
 /* attention/primary variants sabse pehle (order 0), full-width submit sabse upar (order -1) */
 '.ptc-btn.ptc-review-blink,.ptc-btn.ptc-btn-review,.ptc-btn.ptc-ref-blink,.ptc-btn.ptc-refv-blink{order:0}',
 '.ptc-submit{order:-1}',
@@ -32530,9 +32533,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     +'@media(max-width:1000px){.pj-stats{grid-template-columns:repeat(3,1fr)}}'
     +'@media(max-width:560px){.pj-stats{grid-template-columns:repeat(2,1fr)}}'
     /* compact premium filter bar (image-1 style, not big stacked boxes) */
-    +'.pjf-bar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:2px 0 2px}'
-    +'.pjf-bar .pjf-sel{width:auto!important;min-width:120px;max-width:210px;padding:9px 13px!important;font-size:.84rem;font-weight:600;border:1px solid #e7dfc6!important;border-radius:11px!important;background:#fffdf6!important;color:#2e2716;height:auto!important;cursor:pointer}'
-    +'.pjf-bar .pjf-sel:focus{border-color:#b8941f!important;outline:none}'
+    +'.pjf-bar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:2px 0 2px;background:linear-gradient(180deg,#fffdf7,#fbf6ea);border:1px solid #ece3cd;border-radius:14px;padding:11px 13px;box-shadow:0 2px 10px -6px rgba(90,70,15,.18)}'
+    +'.pjf-bar .pjf-sel{width:auto!important;min-width:128px;max-width:220px;padding:9px 34px 9px 14px!important;font-size:.84rem;font-weight:700;border:1px solid #e3d9bd!important;border-radius:11px!important;background:#fff url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23a9791f\' stroke-width=\'3\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'M6 9l6 6 6-6\'/%3E%3C/svg%3E") no-repeat right 12px center!important;background-size:12px!important;color:#2e2716;height:auto!important;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;transition:border-color .15s,box-shadow .15s}'
+    +'.pjf-bar .pjf-sel:hover{border-color:#cdba7e!important}'
+    +'.pjf-bar .pjf-sel:focus{border-color:#b8941f!important;outline:none;box-shadow:0 0 0 3px rgba(184,148,31,.18)}'
+    +'body.dark .pjf-bar{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border-color:#324a6b}'
+    +'body.dark .pjf-bar .pjf-sel{background-color:#17213a!important;border-color:#324a6b!important;color:#dbe4f5}'
     +'.pjf-bar .pjf-l{display:none}'
     +'@media(max-width:560px){.pjf-bar .pjf-sel{flex:1 1 44%;min-width:0;max-width:none}}'
     +'.pj-chcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:12px;padding:12px}'
@@ -32566,6 +32572,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     +'.pj-dchip.on{background:#fff;color:#2e2716;border-color:#fff}.pj-dchip.on b{color:#111}';
     document.head.appendChild(s);
   }
+  // project ko kisi production-stage ke hisaab se filter karne ke liye — jis project me us
+  // stage ka kam se kam ek chapter hai wahi dikhe.
+  var _PJ_STATUS_OPTS=[['','All Status'],['recording','Recording'],['pm_review','PM Review'],
+    ['approved','Waiting Editor'],['editing','Editing'],['qc','QC'],['ready','Ready'],['published','Published']];
+  var _PJ_STATUS_FIELD={recording:'stage_recording_pending',pm_review:'stage_pm_review',
+    approved:'stage_approved',editing:'stage_editing',qc:'stage_qc',ready:'stage_ready',published:'published_count'};
+  function _pjHasStage(p,s){ var f=_PJ_STATUS_FIELD[s]; return f?((p[f]||0)>0):true; }
   // production-stage aggregate chips (recording -> published) for a project card
   function _pjStageChips(p){
     var items=[['Recording',p.stage_recording_pending,'#f87171'],['PM Review',p.stage_pm_review,'#fbbf24'],
@@ -32588,7 +32601,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var byT=projs.filter(function(p){ return !flt.teacher||p.creator===flt.teacher; });
       var byC=byT.filter(function(p){ return !flt.class_level||p.class_level===flt.class_level; });
       var subjects=Object.keys(byC.reduce(function(a,p){ if(p.subject)a[p.subject]=1; return a; },{})).sort();
-      var shown=byC.filter(function(p){ if(flt.subject&&p.subject!==flt.subject)return false; if(flt.kind&&p.kind!==flt.kind)return false; return true; });
+      var shown=byC.filter(function(p){ if(flt.subject&&p.subject!==flt.subject)return false; if(flt.kind&&p.kind!==flt.kind)return false; if(flt.status&&!_pjHasStage(p,flt.status))return false; return true; });
       // aggregate stats across the (teacher/class/subject/type) filtered set
       var ag={sub:{},ch:0,done:0,pend:0,rev:0,del:0,edit:0,up:0};
       shown.forEach(function(p){ if(p.subject)ag.sub[p.subject]=1; ag.ch+=p.chapters_total||0; ag.done+=p.chapters_done||0; ag.pend+=p.chapters_shoot_pending||0; ag.rev+=p.chapters_pending||0; ag.del+=p.chapters_delayed||0; ag.edit+=p.vids_editing||0; ag.up+=p.vids_uploaded||0; });
@@ -32611,6 +32624,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<span class="pjf-l">CLASS</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'class_level\',this.value)">'+classes.map(function(o){return '<option value="'+o[0]+'"'+(flt.class_level===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
         '<span class="pjf-l">SUBJECT</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'subject\',this.value)"><option value="">All Subjects ('+subjects.length+')</option>'+subjects.map(function(s){return '<option value="'+esc(s)+'"'+(flt.subject===s?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'+
         '<span class="pjf-l">TYPE</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'kind\',this.value)">'+kinds.map(function(o){return '<option value="'+o[0]+'"'+(flt.kind===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
+        '<span class="pjf-l">STATUS</span><select class="p-select pjf-sel" onchange="prodProjFlt(\'status\',this.value)">'+_PJ_STATUS_OPTS.map(function(o){return '<option value="'+o[0]+'"'+(flt.status===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'+
         (sk?'<button class="p-btn" style="font-size:.74rem;padding:5px 12px" onclick="prodProjStat(\''+sk+'\')">Clear ✕</button>':'')+
         '<span style="color:#8a7d5c;font-size:.8rem;margin-left:auto">Showing '+listShown.length+' of '+projs.length+(sk?' · filter: '+sk:'')+'</span></div>';
       shown=listShown;
@@ -33370,6 +33384,24 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     b.push('<button class="'+cls+'" onclick="'+stop+'prodChapTimeline('+cid+',\''+pf+'\')">Timeline</button>');
     return b.join('');
   }
+  // Chapter title ke aage ka REAL chapter number nikaalo (L-1, L-5, Ch-12, Lesson 3...) —
+  // taaki card pe sequence (Chapter 1,2,3) ke bajaye wahi number dikhe jo teacher ne assign
+  // karte waqt chapter name me rakha tha. Number mile to naam me se prefix hata ke saaf naam
+  // bhi lautate hain, taaki chip (number) + title (naam) dono alag-alag dikhein.
+  function _chapNoName(title){
+    var t=(''+(title||'')).trim();
+    if(!t) return {no:'',name:''};
+    var m=t.match(/^(lesson|chapter|chap|unit|part|lec|ch|l|u|p)\s*[-.\s]?\s*(\d+[a-z]?)\s*[.)\-:–—]*\s+(.+)$/i);
+    if(m && m[3]){
+      var abbr={LESSON:'L',CHAPTER:'Ch',CHAP:'Ch',UNIT:'U',PART:'Part',LEC:'Lec',CH:'Ch',L:'L',U:'U',P:'P'};
+      var pre=abbr[m[1].toUpperCase()]||m[1];
+      return {no:pre+'-'+m[2].toUpperCase(), name:m[3].trim()};
+    }
+    var m2=t.match(/^(\d+[a-z]?)\s*[.)\-:–—]+\s*(.+)$/i);
+    if(m2 && m2[2]) return {no:m2[1], name:m2[2].trim()};
+    return {no:'', name:t};
+  }
+  window._chapNoName=_chapNoName;
   // Premium chapter card — identical look to _prodTaskCard.
   function _prodChapCard(portal, ch, idx, ctx){
     ctx=ctx||{};
@@ -33389,8 +33421,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       ? '<div class="ptc-head" style="background-image:url('+_esc1(thumb)+')" onclick="event.stopPropagation();prodThumbView(\''+_esc1(thumb)+'\')"><a class="ptc-view" onclick="event.stopPropagation();prodThumbView(\''+_esc1(thumb)+'\')">VIEW</a></div>'
       : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
     var badge='<span class="ptc-badge'+(st[2]?' ptc-blink':'')+'" style="background:'+st[1]+'">'+esc(st[0])+'</span>';
+    var _cn=_chapNoName(ch.title);
     var chips=[];
-    chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800">Chapter '+(idx+1)+'</span>');
+    // REAL chapter number (teacher ke assign kiye naam se) — na mile to koi galat sequence na dikhe
+    if(_cn.no) chips.push('<span class="pw-chip pw-chapno">'+esc(_cn.no)+'</span>');
     if(subject) chips.push('<span class="pw-chip">'+esc(subject)+'</span>');
     if(teacher) chips.push('<span class="pw-chip who">'+ic('user')+esc(teacher)+'</span>');
     if(ch.editor_name) chips.push('<span class="pw-chip ed">Editor: '+esc(ch.editor_name)+'</span>');
@@ -33417,7 +33451,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var acts=_chapActBtns(portal, ch, taskId, 'card');
     return '<div class="ptc" data-pjc="'+ch.id+'" style="border-left:5px solid '+st[1]+';position:relative" onclick="prodOpenChapter(\''+portal+'\','+ch.id+')">'+
       '<div class="ptc-hw">'+header+badge+'</div>'+
-      '<div class="ptc-body"><div class="ptc-title">'+esc(ch.title||('Chapter '+(idx+1)))+'</div>'+
+      '<div class="ptc-body"><div class="ptc-title">'+esc(_cn.name||ch.title||('Chapter '+(idx+1)))+'</div>'+
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+dlBox+idrow+
       '<div class="ptc-acts">'+acts+'</div></div></div>';
   }
@@ -34390,7 +34424,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     for(var i=0;i<ps.length;i++){ var b=document.getElementById(ps[i]+'-body'); if(b && b.offsetParent!==null) return ps[i]; }
     return '';
   }
-  window._prodAutoRefresh=function(){ try{ var pp=_activeProdPortal(); if(pp && typeof _refresh==='function') _refresh(pp); }catch(e){} };
+  // Tab wapas focus/visible hone par (e.g. screenshot lete waqt window focus chala jaata hai
+  // aur wapas aata hai) poora page RE-MOUNT mat karo — us se khuli hui project drilldown,
+  // chapter cards aur scroll reset ho jaate the (user jis screen pe tha vahan se Projects list
+  // pe wapas aa jaata tha). Ab sirf cache silently bust + halke nav badges refresh karte hain,
+  // taaki agli CLICK pe fresh data mile par view waisa ka waisa rahe. User ke apne actions
+  // (assign/approve/delete) abhi bhi seedha _refresh() call karke visibly refresh karte hain.
+  window._prodAutoRefresh=function(){
+    try{ if(typeof _apiBust==='function') _apiBust(); }catch(e){}
+    try{ var pp=_activeProdPortal(); if(pp==='production' && typeof _prodNavBadges==='function') _prodNavBadges(); }catch(e){}
+  };
   function _refresh(portal){ try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
     // === Chat Manager guard ===
     // Agar Chat Manager ka thread pane khula hai (koi chat open hai us pane me) to poora page
