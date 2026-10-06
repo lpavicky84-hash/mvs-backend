@@ -28060,6 +28060,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-title{font-weight:800;font-size:1.02rem;line-height:1.3;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}',
 '.pw-chip.pw-chapno{background:linear-gradient(135deg,#8f3d66,#6f2f54);color:#fff;font-weight:900;letter-spacing:.02em;border:none;box-shadow:0 2px 7px rgba(143,61,102,.3);padding:3px 11px}',
 'body.dark .pw-chip.pw-chapno{background:linear-gradient(135deg,#b05588,#8f3d66);color:#fff}',
+/* long project chip: inline-block so text-overflow ellipsis actually renders (flex breaks it) */
+'.pw-chip.pw-proj{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;line-height:1.5}',
+'@media(min-width:560px){.pw-chip.pw-proj{max-width:230px}}',
 '.ptc-meta{font-size:.75rem;color:#8a7d5c;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}',
 '.ptc-ref{font-size:.68rem;color:#b0a483;font-family:monospace}',
 '.ptc-prog{height:7px;background:#efe8d6;border-radius:99px;overflow:hidden;margin-top:4px}',
@@ -33183,6 +33186,69 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _edtChapState(v){ if((v.edit_state==='edited') && (v.qc_status==='changes'||v.review_status==='changes')) return 'changes'; return v.edit_state||'assigned'; }
   var _EDT_CHST={assigned:['ASSIGNED','#c99a2e'],editing:['EDITING IN PROGRESS','#7c4fc0'],paused:['EDITING PAUSED','#c99a2e'],edited:['IN QC REVIEW','#2a7fb8'],approved:['QC APPROVED','#2e9e6b'],changes:['CHANGES REQUIRED','#d1443a']};
   function _edtChapLc(st){ return {assigned:'editor_assigned',editing:'editing',paused:'editing_paused',edited:'editing_done',changes:'qc_changes'}[st]||'editor_assigned'; }
+  // editor chapter actions (shared by the card + the detail drawer)
+  function _edtChapActs(v){
+    var cid=v.chapter_id, st=_edtChapState(v), prog=v.editing_progress||0;
+    var tnm=(''+(v.title||'')).replace(/[\\\x27\x22]/g,'');
+    var acts='';
+    if(st==='assigned') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvStart('+cid+')">Start Editing</button>';
+    else if(st==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvPause('+cid+','+prog+')">Pause</button>';
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Edited Video</button>'; }
+    else if(st==='paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvResume('+cid+')">Resume</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Edited Video</button>'; }
+    else if(st==='changes'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
+      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Again</button>'; }
+    else { if(v.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.edited_link)+'\',\'_blank\',\'noopener\')">Edited Video</button>';
+      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvReopen('+cid+')">Change</button>'; }
+    if(v.link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Source</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjChatOpen(\'/api/editor\','+cid+',\''+tnm+'\',\'editor\')">💬 Chat</button>';
+    acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjTimelineOpen(\'/api/editor\','+cid+')">Timeline</button>';
+    return acts;
+  }
+  function _edtChapTabHtml(v){
+    var st=_edtChapState(v);
+    var stLbl=(_EDT_CHST[(st==='edited'&&v.qc_status==='approved')?'approved':st]||_EDT_CHST.assigned)[0];
+    var proj=(''+(v.project_title||'')).replace(/\s*\(all\s*chapters?\)\s*$/i,'').trim();
+    return '<div class="pd-kv">'+
+      _kv('Project', esc(proj||'—'))+
+      _kv('Subject', esc(v.subject||'—'))+
+      (v.channel_name?_kv('Channel', esc(v.channel_name)):'')+
+      (v.kind?_kv('Type', esc(({one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[v.kind])||'Project')):'')+
+      _kv('Current Stage', esc(stLbl))+
+      _kv('Editor Deadline', esc(v.deadline||'Not set'))+
+      ((st==='editing'||st==='paused')?_kv('Progress', (v.editing_progress||0)+'%'+(v.progress_note?(' · '+esc(v.progress_note)):'')):'')+
+      (v.started_at?_kv('Started', esc(v.started_at)):'')+
+      _kv('Source', v.link?('<a href="'+_esc1(v.link)+'" target="_blank" rel="noopener">Open video</a>'):'—')+
+      (v.edited_link?_kv('Edited Video', '<a href="'+_esc1(v.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'')+
+      (v.thumbnail?_kv('Thumbnail', '<a href="'+_esc1(v.thumbnail)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'')+
+      ((st==='edited'||v.qc_status)?_kv('QC Status', esc({'':'In review',pending:'In review',approved:'Approved',changes:'Changes requested'}[v.qc_status||'']||'In review')):'')+
+      ((v.qc_status==='changes'&&v.qc_note)?_kv('QC Changes', '<span class="pd-hot">'+esc(v.qc_note)+'</span>'):'')+
+      (v.edit_review_status?_kv('Teacher Review', esc({pending:'Pending',approved:'Approved'+(v.edit_review_rating?(' ('+v.edit_review_rating+'★)'):''),changes:'Wants changes'}[v.edit_review_status]||'Pending')):'')+
+      ((v.edit_review_status==='changes'&&v.edit_review_note)?_kv('Teacher Note', '<span class="pd-hot">'+esc(v.edit_review_note)+'</span>'):'')+
+    '</div>';
+  }
+  window._edtChapOpen=function(cid){
+    try{ ensureCSS(); }catch(e){}
+    var v=(window._edtChapData||{})[cid]; if(!v){ toast('Chapter not found',true); return; }
+    var old=document.getElementById('edt-chap-drawer'); if(old) old.remove();
+    var st=_edtChapState(v);
+    var badge=_EDT_CHST[(st==='edited'&&v.qc_status==='approved')?'approved':st]||_EDT_CHST.assigned;
+    var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='edt-chap-drawer';
+    dr.innerHTML='<div class="pd-panel">'+
+      '<div class="pd-head"><div><div class="h-title">'+esc(v.title||'Chapter')+'</div>'+
+        '<div class="h-meta"><span class="pt-ref" style="color:#8f3d66;font-weight:800">PROJECT CHAPTER</span>'+
+        '<span class="pt-stage" style="background:'+badge[1]+'22;color:'+badge[1]+'">'+esc(badge[0])+'</span>'+
+        (v.subject?'<span class="pt-badge b-teacher">'+esc(v.subject)+'</span>':'')+'</div></div>'+
+        '<button class="pd-x" onclick="_edtChapClose()">&times;</button></div>'+
+      '<div class="pd-body">'+_edtChapTabHtml(v)+'</div>'+
+      '<div class="pd-foot"><div class="p-acts">'+_edtChapActs(v)+'</div></div>'+
+      '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) window._edtChapClose(); });
+    document.body.appendChild(dr);
+  };
+  window._edtChapClose=function(){ var d=document.getElementById('edt-chap-drawer'); if(d) d.remove(); };
   function _edtChapCard(v){
     var cid=v.chapter_id;
     var st=_edtChapState(v); var prog=v.editing_progress||0;
@@ -33200,11 +33266,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var badgeHtml='<span class="ptc-badge'+(_blink?' ptc-blink':'')+'" style="background:'+badge[1]+'">'+esc(badge[0])+'</span>';
     var over=false; try{ if(v.deadline_iso && st!=='edited') over=(new Date(String(v.deadline_iso).replace(' ','T')).getTime()<Date.now()); }catch(e){}
     var chips=[];
-    // project chip: "(All Chapters)" jaisa redundant suffix hata do + lamba ho to saaf truncate
-    // (inline-flex chip me CSS ellipsis reliably kaam nahi karti, isliye text hi chhota karte hain)
+    // project chip: "(All Chapters)" jaisa redundant suffix hata do; lamba ho to .pw-proj
+    // (inline-block) ellipsis saaf "…" ke saath cut karega — card kabhi toot-ke nahi dikhega.
     var _pt=(''+(v.project_title||'Project')).replace(/\s*\(all\s*chapters?\)\s*$/i,'').trim()||'Project';
-    if(_pt.length>30) _pt=_pt.slice(0,29).replace(/[\s—\-]+$/,'')+'…';
-    chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800" title="'+esc(v.project_title||'')+'">'+esc(_pt)+'</span>');
+    chips.push('<span class="pw-chip pw-proj" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800" title="'+esc(v.project_title||'')+'">'+esc(_pt)+'</span>');
     if(v.subject) chips.push('<span class="pw-chip">'+esc(v.subject)+'</span>');
     if(v.channel_name) chips.push('<span class="pw-chip">'+esc(v.channel_name)+'</span>');
     if(v.kind) chips.push('<span class="pw-chip">'+esc(({one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[v.kind])||'Project')+'</span>');
@@ -33230,24 +33295,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(v.deadline) ip.push('<span class="pir-i"><span class="pir-ic">'+ic('calendar')+'</span><span class="pir-tx">Deadline: '+esc(v.deadline)+'</span></span>');
     ip.push('<span class="pir-i pir-id"><span class="pir-ic">'+ic('list')+'</span><span class="pir-tx">PROJECT</span></span>');
     var idrow='<div class="ptc-idrow">'+ip.join('')+'</div>';
-    var tnm=(''+(v.title||'')).replace(/[\\\x27\x22]/g,'');
-    var acts='';
-    if(st==='assigned') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvStart('+cid+')">Start Editing</button>';
-    else if(st==='editing'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvPause('+cid+','+prog+')">Pause</button>';
-      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Edited Video</button>'; }
-    else if(st==='paused'){ acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvResume('+cid+')">Resume</button>';
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
-      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Edited Video</button>'; }
-    else if(st==='changes'){ acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvProgress('+cid+','+prog+')">Update Progress</button>';
-      acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();edtPvSubmit('+cid+')">Submit Again</button>'; }
-    else { if(v.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.edited_link)+'\',\'_blank\',\'noopener\')">Edited Video</button>';
-      acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvReopen('+cid+')">Change</button>'; }
-    if(v.link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Source</button>';
-    acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjChatOpen(\'/api/editor\','+cid+',\''+tnm+'\',\'editor\')">💬 Chat</button>';
-    acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjTimelineOpen(\'/api/editor\','+cid+')">Timeline</button>';
+    var acts=_edtChapActs(v);
+    // cache the chapter so clicking the card can open its detail drawer (like normal tasks)
+    try{ window._edtChapData=window._edtChapData||{}; window._edtChapData[cid]=v; }catch(e){}
     var urgent=(st==='changes')||over;
-    return '<div class="ptc'+(urgent?' urgent-task':'')+'" data-edtchap="'+cid+'" style="border-left:5px solid '+badge[1]+';position:relative;cursor:default">'+
+    return '<div class="ptc'+(urgent?' urgent-task':'')+'" data-edtchap="'+cid+'" onclick="_edtChapOpen('+cid+')" style="border-left:5px solid '+badge[1]+';position:relative;cursor:pointer">'+
       '<div class="ptc-hw">'+header+badgeHtml+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(v.title||'Untitled')+'</div>'+
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+progBar+dlBox+idrow+

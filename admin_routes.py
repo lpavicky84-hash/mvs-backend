@@ -9581,6 +9581,65 @@ def update_production_user(uid: int, payload: dict, db: Session = Depends(get_db
     return {"ok": True}
 
 
+def _purge_user_references(db, user_id):
+    """BULLETPROOF user-delete prep: discover EVERY foreign key that references users.id
+    from the LIVE database schema and clear it before the user row is deleted —
+      * nullable FK column  -> SET NULL (keep the row, just unlink the deleted user)
+      * NOT NULL FK column   -> DELETE the row (it can't exist without the user)
+    This automatically covers video_task_chat_reads AND any table added in the future,
+    so deleting a production user never fails again on an FK constraint (error 1451).
+    Each statement runs in its own SAVEPOINT so one problem table can't abort the rest."""
+    from sqlalchemy import text as _t
+    try:
+        bind = db.get_bind()
+        dialect = bind.dialect.name
+    except Exception:
+        dialect = ""
+    cols = []  # list of (table, column, nullable_bool)
+    try:
+        if dialect == "mysql":
+            rows = db.execute(_t(
+                "SELECT k.TABLE_NAME, k.COLUMN_NAME, c.IS_NULLABLE "
+                "FROM information_schema.KEY_COLUMN_USAGE k "
+                "JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA=k.TABLE_SCHEMA "
+                "  AND c.TABLE_NAME=k.TABLE_NAME AND c.COLUMN_NAME=k.COLUMN_NAME "
+                "WHERE k.REFERENCED_TABLE_NAME='users' AND k.REFERENCED_COLUMN_NAME='id' "
+                "  AND k.TABLE_SCHEMA=DATABASE()")).fetchall()
+            cols = [(r[0], r[1], str(r[2]).upper() == "YES") for r in rows]
+        elif dialect == "sqlite":
+            tbls = [r[0] for r in db.execute(_t(
+                "SELECT name FROM sqlite_master WHERE type='table'")).fetchall()]
+            for tb in tbls:
+                try:
+                    fks = db.execute(_t("PRAGMA foreign_key_list('%s')" % tb)).fetchall()
+                except Exception:
+                    continue
+                notnull = {}
+                for ci in db.execute(_t("PRAGMA table_info('%s')" % tb)).fetchall():
+                    notnull[ci[1]] = (ci[3] == 1)
+                for fk in fks:
+                    if fk[2] == "users" and (fk[4] in ("id", None)):
+                        cols.append((tb, fk[3], not notnull.get(fk[3], False)))
+    except Exception:
+        cols = []
+
+    def _run(sql):
+        try:
+            with db.begin_nested():
+                db.execute(_t(sql), {"uid": user_id})
+        except Exception:
+            pass
+    # 1) null every nullable reference (safe, removes most blockers)
+    for tb, col, nullable in cols:
+        if nullable:
+            _run("UPDATE `%s` SET `%s`=NULL WHERE `%s`=:uid" % (tb, col, col))
+    # 2) delete mandatory-reference rows — twice, so FK chains between these tables resolve
+    for _ in range(2):
+        for tb, col, nullable in cols:
+            if not nullable:
+                _run("DELETE FROM `%s` WHERE `%s`=:uid" % (tb, col))
+
+
 @router.delete("/production-users/{uid}")
 def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import (YouTuberProfile, ProductionStaffProfile, GraphicsTask,
@@ -9650,24 +9709,30 @@ def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(ge
                 pass
             db.flush()
             db.delete(sp)
-    # User ko FULLY delete karo (card + user-id + password sab khatam). Pehle FK references saaf
-    # karo taaki MySQL FK-constraint delete block na kare.
+    # profile deletes ko DB tak bhej do, taaki dynamic purge unhe dobara na chhue
     try:
-        from models import (Notification, ProductionEvent, TaskReview,
-                            TaskAttachment, VideoTaskComment)
-        db.query(Notification).filter(Notification.user_id == u.id).delete(synchronize_session=False)
-        db.query(ProductionEvent).filter(ProductionEvent.actor_user_id == u.id).update(
-            {ProductionEvent.actor_user_id: None}, synchronize_session=False)
-        db.query(TaskReview).filter(TaskReview.reviewer_user_id == u.id).update(
-            {TaskReview.reviewer_user_id: None}, synchronize_session=False)
-        db.query(TaskAttachment).filter(TaskAttachment.uploader_user_id == u.id).update(
-            {TaskAttachment.uploader_user_id: None}, synchronize_session=False)
-        db.query(VideoTaskComment).filter(VideoTaskComment.user_id == u.id).update(
-            {VideoTaskComment.user_id: None}, synchronize_session=False)
+        db.flush()
     except Exception:
         pass
+    # BULLETPROOF: har table jo users.id ko reference karti hai (video_task_chat_reads samet,
+    # aur future ki koi bhi) usko live schema se dhoondh ke saaf karo — phir hi user delete.
+    _purge_user_references(db, u.id)
     db.delete(u)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # ek aur baar purge + delete (koi race / adhoori chain) — phir bhi fail ho to saaf error
+        try:
+            _purge_user_references(db, u.id)
+            uu = db.query(User).filter(User.id == uid).first()
+            if uu:
+                db.delete(uu)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=409,
+                                detail="Could not delete: this user still has linked records. Please try again.")
     return {"ok": True, "unassigned": unassigned, "deleted": True}
 
 
