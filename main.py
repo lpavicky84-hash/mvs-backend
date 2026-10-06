@@ -135,6 +135,12 @@ def ensure_columns():
         "ALTER TABLE notifications ADD COLUMN link VARCHAR(500)",
         "ALTER TABLE video_tasks MODIFY thumbnail_b64 MEDIUMTEXT",  # MySQL only; SQLite pe skip
         "ALTER TABLE doubts MODIFY topic TEXT",  # v: long student doubt topics overflowed VARCHAR(200)
+        # KEY/VALUE settings: live app_settings.value was created long ago as a small VARCHAR
+        # (model is Text now, but SQLAlchemy never alters existing columns). Long values like
+        # teacher_students_ids (comma-joined ids) / doubt_rate_cfg JSON overflowed it -> MySQL
+        # error 1406 "Data too long for column 'value'". Widen so no setting value can overflow.
+        "ALTER TABLE app_settings MODIFY value LONGTEXT",
+        "ALTER TABLE translation_settings MODIFY value TEXT",
         "ALTER TABLE video_tasks ADD COLUMN video_type VARCHAR(120) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN kind VARCHAR(20) DEFAULT 'normal'",
         "ALTER TABLE video_tasks ADD COLUMN subject VARCHAR(160) DEFAULT ''",

@@ -1729,7 +1729,7 @@ class TranslationSetting(Base):
 
     id     = Column(Integer, primary_key=True)
     key    = Column(String(60), unique=True, index=True)
-    value  = Column(String(240), default="")
+    value  = Column(Text, default="")
 
 
 class TranslationVersion(Base):
