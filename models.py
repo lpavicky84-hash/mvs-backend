@@ -676,6 +676,18 @@ class VideoTaskChapter(Base):
     edit_reviewer_name = Column(String(160), default="")    # which teacher reviewed the edited video
     edit_review_rating = Column(Integer, nullable=True)     # teacher's 1-5 star rating of the edit
     qc_revision        = Column(Integer, default=0)         # how many QC change rounds this edit went through
+    # ---- Canonical chapter lifecycle (single source of truth) + inheritance + publishing ----
+    lifecycle        = Column(String(30), default="")       # canonical state; '' = derive from legacy fields
+    editor_inherited = Column(Boolean, default=False)       # True = editor came from whole-project assignment (not an explicit per-chapter pick)
+    event_log        = Column(Text, default="")             # JSON list of {at, kind, note} — restart-safe chapter timeline
+    # chapter-level YouTube publishing (one chapter = one upload; never the parent project's url)
+    youtube_url      = Column(String(600), default="")
+    yt_video_id      = Column(String(40), default="")
+    upload_date      = Column(DateTime, nullable=True)      # scheduled upload date (PM sets)
+    upload_remarks   = Column(Text, default="")
+    uploaded_at      = Column(DateTime, nullable=True)      # when the YouTuber posted the URL
+    published_at     = Column(DateTime, nullable=True)
+    youtuber_id      = Column(Integer, nullable=True)       # production_staff_profiles.id of the publisher
 
 
 class VideoViewSnapshot(Base):

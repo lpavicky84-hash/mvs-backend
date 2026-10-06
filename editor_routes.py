@@ -67,6 +67,7 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
     read view — the full start/pause/submit workflow is added in the Projects section (Phase 4)."""
     sp = _me_staff(db, me)
     from models import VideoTaskChapter as _VC
+    from video_tasks import _chapter_lifecycle as _vt_life, _chapter_lifecycle_label as _vt_life_label
     proj_rows = db.query(VideoTask).filter(VideoTask.cancelled == False,
                                            VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
     pmap = {t.id: t for t in proj_rows}
@@ -90,6 +91,8 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
                 "review_note": (getattr(c, "review_note", "") or ""),
                 "qc_status": (getattr(c, "qc_status", "") or ""),
                 "qc_note": (getattr(c, "qc_note", "") or ""),
+                "lifecycle": _vt_life(c),
+                "lifecycle_label": _vt_life_label(c),
                 "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
                 "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
                 "thumbnail": (getattr(c, "thumbnail_link", "") or ""),
@@ -115,13 +118,14 @@ def _my_pv_chapter(db, sp, cid):
 
 @router.post("/project-videos/{cid}/start")
 def editor_pv_start(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    from video_tasks import set_chapter_state
     sp = _me_staff(db, me)
     c = _my_pv_chapter(db, sp, cid)
-    c.edit_state = "editing"
+    set_chapter_state(db, c, "editing", actor=me, note="Editing started", force=True)
     if not c.editing_started_at:
         c.editing_started_at = datetime.utcnow()
     db.commit()
-    return {"ok": True, "edit_state": c.edit_state}
+    return {"ok": True, "edit_state": c.edit_state, "lifecycle": c.lifecycle}
 
 
 def _pv_clamp_pct(v):
@@ -144,6 +148,7 @@ def editor_pv_progress(cid: int, payload: dict = Body(...), db: Session = Depend
         c.progress_note = _note[:400]
     if (c.edit_state or "") not in ("editing", "paused"):
         c.edit_state = "editing"
+        c.lifecycle = "editing"
     if not c.editing_started_at:
         c.editing_started_at = datetime.utcnow()
     db.commit()
@@ -161,9 +166,11 @@ def editor_pv_pause(cid: int, payload: dict = Body(...), db: Session = Depends(g
     rem = (payload.get("remarks") or "").strip()
     if not rem:
         raise HTTPException(400, "Add a short remark about what is done.")
+    from video_tasks import set_chapter_state
     c.editing_progress = _pv_clamp_pct(payload.get("progress"))
     c.progress_note = rem[:400]
-    c.edit_state = "paused"
+    set_chapter_state(db, c, "editing_paused", actor=me,
+                      note="Paused at %d%% — %s" % (c.editing_progress, rem), force=True)
     if not c.editing_started_at:
         c.editing_started_at = datetime.utcnow()
     db.commit()
@@ -172,9 +179,10 @@ def editor_pv_pause(cid: int, payload: dict = Body(...), db: Session = Depends(g
 
 @router.post("/project-videos/{cid}/resume")
 def editor_pv_resume(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    from video_tasks import set_chapter_state
     sp = _me_staff(db, me)
     c = _my_pv_chapter(db, sp, cid)
-    c.edit_state = "editing"
+    set_chapter_state(db, c, "editing", actor=me, note="Editing resumed", force=True)
     if not c.editing_started_at:
         c.editing_started_at = datetime.utcnow()
     db.commit()
@@ -189,18 +197,18 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
     link = (payload.get("edited_link") or "").strip()
     if not link:
         raise HTTPException(400, "Edited video drive link is required")
+    from video_tasks import set_chapter_state
+    _re = (getattr(c, "qc_status", "") or "") in ("changes",)  # re-submit after QC changes?
     c.edited_link = link
-    c.edit_state = "edited"
     c.edited_at = datetime.utcnow()
     c.editing_progress = 100
-    # ---- edited-video QC: goes to PM/Admin AND the teacher for checking (like a task) ----
-    _re = (getattr(c, "qc_status", "") or "") in ("changes",)  # re-submit after changes?
-    c.qc_status = "pending"
     c.edit_review_status = "pending"      # teacher must re-check the fresh edit
     c.edit_reviewer_name = ""
     if _re:
         try: c.qc_revision = int(getattr(c, "qc_revision", 0) or 0) + 1
         except Exception: c.qc_revision = 1
+    # ---- atomic transition: edited video submitted -> QC pending (NOT ready_for_youtube) ----
+    set_chapter_state(db, c, "qc_pending", actor=me, note="Edited video submitted for QC", force=True)
     t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
     proj = (t.title or t.subject or "project") if t else "project"
     _msg = f'{me.name} submitted the edited "{c.title}" from "{proj}". Please review.'
@@ -243,9 +251,13 @@ def _project_teacher_user_ids(db, t):
 
 @router.post("/project-videos/{cid}/reopen")
 def editor_pv_reopen(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    from video_tasks import set_chapter_state, _chapter_lifecycle
     sp = _me_staff(db, me)
     c = _my_pv_chapter(db, sp, cid)
-    c.edit_state = "editing"
+    # don't let an editor silently re-open a video that already passed QC / was published
+    if _chapter_lifecycle(c) in ("ready_for_youtube", "uploaded", "completed"):
+        raise HTTPException(400, "This video already passed QC — ask the PM to request changes to re-open it.")
+    set_chapter_state(db, c, "editing", actor=me, note="Re-opened for editing", force=True)
     db.commit()
     return {"ok": True, "edit_state": c.edit_state}
 
@@ -282,13 +294,31 @@ def editor_project_chat_add(pid: int, payload: dict = Body(...), db: Session = D
 @router.post("/projects/{pid}/chat-ping")
 def editor_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
                              me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    if not _editor_in_project(db, sp, pid):
+        raise HTTPException(403, "Not assigned to this project")
     from video_tasks import project_chat_ping
     return project_chat_ping(db, me, pid, typing=bool((payload or {}).get("typing")))
+
+
+def _assert_editor_chapter(db, me, cid):
+    """AUTHZ: an editor may touch a chapter only if it's their chapter or they own the project."""
+    from models import VideoTaskChapter as _VC
+    sp = _me_staff(db, me)
+    c = db.query(_VC).filter(_VC.id == int(cid or 0)).first()
+    if not c:
+        raise HTTPException(404, "Chapter not found")
+    if getattr(c, "editor_id", None) == sp.id:
+        return c
+    if _editor_in_project(db, sp, c.task_id):
+        return c
+    raise HTTPException(403, "You don't have access to this chapter")
 
 
 # ===== Phase 2c: editor PER-CHAPTER chat + timeline =====
 @router.get("/chapters/{cid}/chat")
 def editor_chapter_chat(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_get
     return chapter_chat_get(db, me, cid)
 
@@ -296,6 +326,7 @@ def editor_chapter_chat(cid: int, db: Session = Depends(get_db), me=Depends(get_
 @router.post("/chapters/{cid}/chat")
 def editor_chapter_chat_add(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
                             me=Depends(get_editor)):
+    _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_add
     return chapter_chat_add(db, me, cid, payload, "editor")
 
@@ -303,12 +334,14 @@ def editor_chapter_chat_add(cid: int, payload: dict = Body(...), db: Session = D
 @router.post("/chapters/{cid}/chat-ping")
 def editor_chapter_chat_ping(cid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
                              me=Depends(get_editor)):
+    _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_ping
     return chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")))
 
 
 @router.get("/chapters/{cid}/timeline")
 def editor_chapter_timeline(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_timeline
     return chapter_timeline(db, cid)
 

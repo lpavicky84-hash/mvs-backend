@@ -127,6 +127,16 @@ def _ensure_special_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN edit_reviewer_name VARCHAR(160) DEFAULT ''",
         "ALTER TABLE video_task_chapters ADD COLUMN edit_review_rating INTEGER NULL",
         "ALTER TABLE video_task_chapters ADD COLUMN qc_revision INTEGER DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN lifecycle VARCHAR(30) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_inherited BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN event_log TEXT NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN youtube_url VARCHAR(600) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN yt_video_id VARCHAR(40) DEFAULT ''",
+        "ALTER TABLE video_task_chapters ADD COLUMN upload_date DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN upload_remarks TEXT NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN uploaded_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN published_at DATETIME NULL",
+        "ALTER TABLE video_task_chapters ADD COLUMN youtuber_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN project_editor_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN vintage VARCHAR(10) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN collab_teacher_ids TEXT NULL",
@@ -207,6 +217,194 @@ def _ch_approved(c):
     return _ch_review(c) == "approved"
 
 
+# ====================================================================================
+#  CANONICAL CHAPTER LIFECYCLE  — single source of truth for a project chapter's state.
+#  Reuses the normal VideoTask vocabulary so Admin/PM/Editor/Teacher/YouTuber all agree.
+#  `chapter.lifecycle` (once set) wins; otherwise we DERIVE it conservatively from the
+#  legacy fields so existing data keeps working (no reset, backward compatible).
+# ====================================================================================
+CHAPTER_STATES = [
+    "awaiting_creator", "pm_review", "changes_required", "approved",
+    "editor_assigned", "editing", "editing_paused",
+    "qc_pending", "qc_changes", "ready_for_youtube",
+    "uploaded", "completed",
+]
+CHAPTER_STATE_LABELS = {
+    "awaiting_creator": "Awaiting recording", "pm_review": "PM review",
+    "changes_required": "Changes requested", "approved": "Approved — assign editor",
+    "editor_assigned": "Editing soon", "editing": "Editing in progress",
+    "editing_paused": "Editing paused", "qc_pending": "QC pending",
+    "qc_changes": "QC changes requested", "ready_for_youtube": "Ready for YouTube",
+    "uploaded": "Uploaded", "completed": "Completed",
+}
+# legal "forward/back" moves — used to reject impossible jumps (admin override bypasses)
+CHAPTER_TRANSITIONS = {
+    "awaiting_creator": {"pm_review"},
+    "pm_review": {"approved", "changes_required"},
+    "changes_required": {"pm_review"},
+    "approved": {"editor_assigned", "pm_review"},
+    "editor_assigned": {"editing", "approved"},
+    "editing": {"editing_paused", "qc_pending"},
+    "editing_paused": {"editing", "qc_pending"},
+    "qc_pending": {"qc_changes", "ready_for_youtube"},
+    "qc_changes": {"editing", "qc_pending"},
+    "ready_for_youtube": {"uploaded", "qc_pending"},
+    "uploaded": {"completed", "ready_for_youtube"},
+    "completed": set(),
+}
+
+
+def _chapter_lifecycle(c):
+    """THE read function: canonical lifecycle for a chapter. Stored value wins; else
+    derive conservatively from legacy fields (never move forward on ambiguous data)."""
+    lc = (getattr(c, "lifecycle", "") or "").strip()
+    if lc in CHAPTER_STATES:
+        return lc
+    link = (getattr(c, "link", "") or "").strip()
+    rs = (getattr(c, "review_status", "") or "").strip()
+    es = (getattr(c, "edit_state", "") or "").strip()
+    qc = (getattr(c, "qc_status", "") or "").strip()
+    est = (getattr(c, "edit_status", "") or "").strip()
+    yt = (getattr(c, "youtube_url", "") or "").strip()
+    if yt:
+        return "completed" if getattr(c, "published_at", None) else "uploaded"
+    if est == "uploaded":
+        return "uploaded"
+    if not link:
+        return "awaiting_creator"
+    if rs == "pending":
+        return "pm_review"
+    if rs == "changes":
+        return "changes_required"
+    # rs == "approved"  OR  legacy (link present, rs blank == approved)
+    if es == "edited":
+        if qc == "approved":
+            return "ready_for_youtube"
+        if qc == "changes":
+            return "qc_changes"
+        return "qc_pending"
+    if es == "editing":
+        return "editing"
+    if es == "paused":
+        return "editing_paused"
+    if getattr(c, "editor_id", None):
+        return "editor_assigned"
+    return "approved"
+
+
+def _chapter_lifecycle_label(c):
+    return CHAPTER_STATE_LABELS.get(_chapter_lifecycle(c), "")
+
+
+def _chap_event(c, kind, note=""):
+    """Append a restart-safe timeline event to the chapter's event_log (JSON)."""
+    try:
+        log = json.loads(getattr(c, "event_log", "") or "[]")
+        if not isinstance(log, list):
+            log = []
+    except Exception:
+        log = []
+    log.append({"at": _now_ist().strftime("%d %b %Y, %I:%M %p"),
+                "kind": str(kind or "")[:60], "note": str(note or "")[:400]})
+    c.event_log = json.dumps(log[-120:])   # keep it bounded
+
+
+def set_chapter_state(db, c, state, actor=None, note="", meta=None, force=False, event=True):
+    """THE single transition function. Validates the move (unless force/admin override),
+    sets the canonical lifecycle AND keeps legacy fields in sync (backward compatible),
+    and records a timeline event. Idempotent: setting the same state is a no-op-ish."""
+    state = (state or "").strip()
+    if state not in CHAPTER_STATES:
+        raise HTTPException(400, "Unknown chapter state: %s" % state)
+    cur = _chapter_lifecycle(c)
+    if cur != state and not force:
+        allowed = CHAPTER_TRANSITIONS.get(cur, set())
+        if state not in allowed:
+            # admin override is allowed by callers passing force=True; otherwise reject
+            raise HTTPException(400, "Illegal transition %s -> %s" % (cur, state))
+    # ---- keep legacy fields consistent so EVERY old reader still works ----
+    if state == "awaiting_creator":
+        pass
+    elif state == "pm_review":
+        c.review_status = "pending"
+    elif state == "changes_required":
+        c.review_status = "changes"
+        if note:
+            c.review_note = note[:600]
+    elif state == "approved":
+        c.review_status = "approved"
+        c.review_note = ""
+        c.reviewed_at = _now_ist()
+    elif state == "editor_assigned":
+        c.review_status = "approved"
+        if (getattr(c, "edit_state", "") or "") in ("", "assigned"):
+            c.edit_state = "assigned"
+    elif state == "editing":
+        c.review_status = "approved"
+        c.edit_state = "editing"
+        c.qc_status = ""        # a fresh editing pass clears a prior QC-changes flag
+    elif state == "editing_paused":
+        c.edit_state = "paused"
+    elif state == "qc_pending":
+        c.edit_state = "edited"
+        c.qc_status = "pending"
+    elif state == "qc_changes":
+        c.edit_state = "edited"
+        c.qc_status = "changes"
+        if note:
+            c.qc_note = note[:600]
+    elif state == "ready_for_youtube":
+        c.edit_state = "edited"
+        c.qc_status = "approved"
+        c.edit_status = "editing_done"
+    elif state == "uploaded":
+        c.edit_status = "uploaded"
+        if not getattr(c, "uploaded_at", None):
+            c.uploaded_at = _now_ist()
+    elif state == "completed":
+        c.edit_status = "uploaded"
+        if not getattr(c, "published_at", None):
+            c.published_at = _now_ist()
+    c.lifecycle = state
+    if hasattr(c, "changed_at"):
+        c.changed_at = _now_ist()
+    if event and cur != state:
+        _chap_event(c, state, note)
+    return c
+
+
+def _sync_project_editor(db, t, force_state_bump=True):
+    """Whole-project editor inheritance (the CRITICAL bug fix).
+    Every APPROVED chapter that has no EXPLICIT editor inherits the project editor and
+    becomes actionable (editor_assigned). Explicit per-chapter assignments are NEVER
+    overwritten. Safe to call repeatedly (idempotent)."""
+    pe = getattr(t, "project_editor_id", None)
+    if not pe:
+        return 0
+    n = 0
+    chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all()
+    for c in chs:
+        lc = _chapter_lifecycle(c)
+        # only chapters that are approved & waiting for an editor (or already inherited) qualify
+        explicit = bool(getattr(c, "editor_id", None)) and not getattr(c, "editor_inherited", False)
+        if explicit:
+            continue  # respect an admin's deliberate per-chapter editor
+        if lc == "approved" and not getattr(c, "editor_id", None):
+            c.editor_id = pe
+            c.editor_inherited = True
+            if (getattr(c, "deadline", None) is None) and getattr(t, "deadline", None):
+                c.deadline = t.deadline
+            set_chapter_state(db, c, "editor_assigned", note="Inherited whole-project editor")
+            n += 1
+        elif getattr(c, "editor_inherited", False) and getattr(c, "editor_id", None) != pe and lc in (
+                "editor_assigned",):
+            # project editor was changed and this chapter hadn't started yet -> move it along
+            c.editor_id = pe
+            _chap_event(c, "reassigned", "Project editor updated")
+            n += 1
+    return n
+
+
 def _recompute_special_completion(db, t):
     """Special/project task ki completion approval par tay hoti hai — jab har chapter
     APPROVED ho jaaye tabhi task 'submitted' (complete). Koi chapter changes/pending ho
@@ -266,9 +464,14 @@ def _do_chapter_review(db, cid, action, note=""):
     now = _now_ist()
     subj = t.subject or t.title or "project"
     if action == "approve":
-        row.review_status = "approved"
-        row.review_note = ""
-        row.reviewed_at = now
+        set_chapter_state(db, row, "approved", note="Source video approved", force=True)
+        # whole-project editor inheritance: if this project already has an editor, the freshly
+        # approved chapter becomes actionable for that editor automatically (critical-bug fix).
+        try:
+            if getattr(t, "project_editor_id", None):
+                _sync_project_editor(db, t)
+        except Exception:
+            pass
         _hist_add(t, "progress", '"%s" video approved' % row.title)
         try:
             tp = _teacher_profile(db, t.teacher_id)
@@ -281,9 +484,7 @@ def _do_chapter_review(db, cid, action, note=""):
     elif action in ("changes", "reject"):
         if not note:
             raise HTTPException(400, "Add a short note on what needs to change")
-        row.review_status = "changes"
-        row.review_note = note
-        row.reviewed_at = now
+        set_chapter_state(db, row, "changes_required", note=note, force=True)
         _hist_add(t, "progress", '"%s" video sent back for changes: %s' % (row.title, note))
         try:
             tp = _teacher_profile(db, t.teacher_id)
@@ -2257,9 +2458,20 @@ def chapter_chat_ping(db, user, cid, typing=False):
 
 
 def chapter_timeline(db, cid):
-    """Phase 2c: a chapter's timeline synthesized from its own timestamps (read-only, no new storage)."""
+    """A chapter's timeline. Prefers the persistent event_log (restart-safe, written by
+    set_chapter_state); falls back to synthesizing from timestamps for legacy chapters."""
     import production_core as pc
     c = _chapter_row(db, cid)
+    # persistent events (survive refresh/restart) take precedence
+    try:
+        log = json.loads(getattr(c, "event_log", "") or "[]")
+    except Exception:
+        log = []
+    if isinstance(log, list) and log:
+        ev = [{"label": CHAPTER_STATE_LABELS.get(e.get("kind", ""), e.get("kind", "")) +
+               (": " + e.get("note") if e.get("note") else ""), "at": e.get("at", "")}
+              for e in log if isinstance(e, dict)]
+        return {"title": (c.title or "Chapter"), "events": ev}
     ev = []
     def _add(label, at):
         if at:
@@ -2278,25 +2490,51 @@ def chapter_timeline(db, cid):
     return {"title": (c.title or "Chapter"), "events": ev}
 
 
+def _assert_teacher_chapter(db, current_user, cid):
+    """AUTHZ: a teacher may touch a chapter only if they are the project's creator/collaborator.
+    Never trust a bare chapter id — return 403 otherwise."""
+    from teacher_routes import get_teacher_profile as _gtp
+    c = _chapter_row(db, cid)
+    tp = _gtp(current_user, db)
+    if not tp:
+        raise HTTPException(403, "Not a teacher")
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    if not t:
+        raise HTTPException(404, "Project not found")
+    ok = (getattr(t, "teacher_id", None) == tp.id)
+    if not ok:
+        try:
+            ok = tp.id in _collab_all_ids(t)
+        except Exception:
+            ok = False
+    if not ok:
+        raise HTTPException(403, "You don't have access to this chapter")
+    return c
+
+
 @router.get("/teacher/chapters/{cid}/chat")
 def vt_teacher_chapter_chat(cid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _assert_teacher_chapter(db, current_user, cid)
     return chapter_chat_get(db, current_user, cid)
 
 
 @router.post("/teacher/chapters/{cid}/chat")
 def vt_teacher_chapter_chat_add(cid: int, payload: dict = Body(...),
                                 db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _assert_teacher_chapter(db, current_user, cid)
     return chapter_chat_add(db, current_user, cid, payload, "teacher")
 
 
 @router.post("/teacher/chapters/{cid}/chat-ping")
 def vt_teacher_chapter_chat_ping(cid: int, payload: dict = Body(default={}),
                                  db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _assert_teacher_chapter(db, current_user, cid)
     return chapter_chat_ping(db, current_user, cid, typing=bool((payload or {}).get("typing")))
 
 
 @router.get("/teacher/chapters/{cid}/timeline")
 def vt_teacher_chapter_timeline(cid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    _assert_teacher_chapter(db, current_user, cid)
     return chapter_timeline(db, cid)
 
 
@@ -2895,6 +3133,9 @@ def _special_out(db, t, tname_map=None, ch_map=None):
         "graphics_id": getattr(c, "graphics_id", None),
         "graphics_name": _snm.get(getattr(c, "graphics_id", None), "") if getattr(c, "graphics_id", None) else "",
         "edit_state": (getattr(c, "edit_state", "") or ""),
+        "lifecycle": _chapter_lifecycle(c),
+        "lifecycle_label": _chapter_lifecycle_label(c),
+        "youtube_url": (getattr(c, "youtube_url", "") or ""),
         "edited_link": (getattr(c, "edited_link", "") or ""),
         "edited_at": (c.edited_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "edited_at", None) else ""),
         "qc_status": (getattr(c, "qc_status", "") or ""),

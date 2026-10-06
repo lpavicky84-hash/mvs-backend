@@ -3917,12 +3917,17 @@ def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_p
             return rs
         return "approved" if (c.link or "").strip() else ""
     _pe = getattr(t, "project_editor_id", None)
+    import video_tasks as _vt
     nm = _staff_name_map(db, [c.editor_id for c in rows] + [c.graphics_id for c in rows] + [_pe])
     return {"is_project": (getattr(t, "kind", "") == "project"),
             "project_editor_id": _pe, "project_editor_name": nm.get(_pe, ""),
             "chapters": [{"id": c.id, "title": c.title, "link": (c.link or ""),
                           "status": _p_ch_status(c),
                           "review": _rv(c),
+                          "lifecycle": _vt._chapter_lifecycle(c),
+                          "lifecycle_label": _vt._chapter_lifecycle_label(c),
+                          "youtube_url": (getattr(c, "youtube_url", "") or ""),
+                          "editor_inherited": bool(getattr(c, "editor_inherited", False)),
                           "review_note": (getattr(c, "review_note", "") or ""),
                           "editor_id": c.editor_id, "editor_name": nm.get(c.editor_id, ""),
                           "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
@@ -3947,6 +3952,7 @@ def pm_board_chapters(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)
     Shoot-pending chapters (no link) stay only in the Projects screen. Read-only, additive."""
     if not _PROJECT_OK:
         return {"chapters": []}
+    import video_tasks as pc_vt
     rows = db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
                                       VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
     tmap = {t.id: t for t in rows}
@@ -3963,20 +3969,9 @@ def pm_board_chapters(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)
             rs = (getattr(c, "review_status", "") or "").strip()
             es = (getattr(c, "edit_state", "") or "")
             est = (getattr(c, "edit_status", "") or "")
-            if rs == "pending":
-                lc = "pm_review"
-            elif rs == "changes":
-                lc = "qc_changes"
-            elif est == "uploaded":
-                lc = "uploaded"
-            elif es == "edited":
-                lc = "ready_for_youtube"
-            elif es in ("editing", "paused"):
-                lc = "editing"
-            elif c.editor_id:
-                lc = "editor_assigned"
-            else:
-                lc = "approved"
+            # CANONICAL lifecycle — fixes the old bug where a submitted edit (qc pending)
+            # was shown as "ready_for_youtube" before QC approval.
+            lc = pc_vt._chapter_lifecycle(c)
             t = tmap.get(c.task_id)
             cname = ""
             try:
@@ -3986,9 +3981,10 @@ def pm_board_chapters(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)
             out.append({
                 "cid": c.id, "task_id": c.task_id, "title": c.title or "Chapter",
                 "subject": (t.subject if t else ""), "teacher": cname, "ref_code": "PROJECT",
-                "lifecycle": lc, "link": link,
+                "lifecycle": lc, "lifecycle_label": pc_vt.CHAPTER_STATE_LABELS.get(lc, ""), "link": link,
                 "edited_link": (getattr(c, "edited_link", "") or ""),
                 "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
+                "youtube_url": (getattr(c, "youtube_url", "") or ""),
                 "editor_id": c.editor_id, "editor_name": nm.get(c.editor_id, ""),
                 "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
                 "review_status": rs, "edit_state": es, "edit_status": est,
@@ -4086,37 +4082,103 @@ def prod_chapter_qc(payload: dict = Body(...), db: Session = Depends(get_db),
     if row.editor_id:
         _sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == row.editor_id).first()
         _ed_uid = _sp.user_id if _sp else None
+    import video_tasks as _vt
     if action == "approve":
-        row.qc_status = "approved"
-        row.edit_status = "editing_done"
+        # QC pass -> ready_for_youtube (ONLY here; submitting an edit never jumps here)
+        _vt.set_chapter_state(db, row, "ready_for_youtube", actor=me, note="QC approved", force=True)
         if _ed_uid:
             pc.notify(db, _ed_uid, "QC Approved",
                       f'Your edit of "{row.title}" passed QC.', "video_task", link=str(row.task_id))
         db.commit()
-        return {"ok": True, "qc_status": row.qc_status, "edit_status": row.edit_status}
+        return {"ok": True, "qc_status": row.qc_status, "lifecycle": row.lifecycle}
     if action == "changes":
         if not note:
             raise HTTPException(400, "Please add a short note about the changes")
-        row.qc_status = "changes"
-        row.qc_note = note[:600]
         try:
             row.qc_revision = int(getattr(row, "qc_revision", 0) or 0) + 1
         except Exception:
             row.qc_revision = 1
+        _vt.set_chapter_state(db, row, "qc_changes", actor=me, note=note[:600], force=True)
         if _ed_uid:
             pc.notify(db, _ed_uid, "Changes Required in your edit",
                       f'"{row.title}": {note[:140]}', "video_task", link=str(row.task_id))
         # record the change note in the chapter chat so the editor sees details
         try:
-            import video_tasks as _vt
             _crole = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
             _vt._vtc_add(db, row.task_id, me, "Changes required in the edited video:\n" + note,
                          _crole, "", _vt._chap_aud(row.id))
         except Exception:
             pass
         db.commit()
-        return {"ok": True, "qc_status": row.qc_status}
+        return {"ok": True, "qc_status": row.qc_status, "lifecycle": row.lifecycle}
     raise HTTPException(400, "Unknown action")
+
+
+@router.post("/chapter-upload-schedule")
+def prod_chapter_upload_schedule(payload: dict = Body(...), db: Session = Depends(get_db),
+                                 me=Depends(get_pm_or_admin)):
+    """PM/Admin sets a tentative upload date + remarks for a QC-approved chapter."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(payload.get("chapter_id") or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    _d = (payload.get("upload_date") or "").strip()
+    if _d:
+        try:
+            row.upload_date = datetime.fromisoformat(_d.replace("Z", ""))
+        except Exception:
+            pass
+    if "upload_remarks" in payload:
+        row.upload_remarks = (payload.get("upload_remarks") or "").strip()[:600]
+    db.commit()
+    return {"ok": True, "chapter_id": row.id}
+
+
+def _chapter_set_youtube(db, me, cid, url, youtuber_id=None):
+    """Shared: a chapter's YouTube URL is posted -> uploaded -> completed. One chapter = one
+    upload; stored at CHAPTER level (never the parent project's url). Used by PM/admin + YouTuber."""
+    import video_tasks as _vt
+    from video_tasks import _yt_extract_id, _yt_get_key, _yt_fetch_views
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(cid or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    lc = _vt._chapter_lifecycle(row)
+    if lc not in ("ready_for_youtube", "upload_scheduled", "uploaded"):
+        raise HTTPException(400, "This video is not QC-approved / ready for YouTube yet")
+    url = (url or "").strip()
+    vid = _yt_extract_id(url)
+    if not vid:
+        raise HTTPException(400, "Could not read a valid YouTube video id from that URL")
+    row.youtube_url = url
+    row.yt_video_id = vid
+    if youtuber_id:
+        row.youtuber_id = youtuber_id
+    row.uploaded_at = datetime.utcnow()
+    _vt.set_chapter_state(db, row, "uploaded", actor=me, note="YouTube URL added", force=True)
+    _vt.set_chapter_state(db, row, "completed", actor=me, note="Published", force=True)
+    t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
+    # notify editor + teacher(s) that the chapter is live
+    try:
+        if row.editor_id:
+            ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == row.editor_id).first()
+            if ep and ep.user_id:
+                pc.notify(db, ep.user_id, "Your video is live",
+                          f'"{row.title}" you edited is now on YouTube.', "appreciation", link=str(row.task_id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "chapter_id": row.id, "youtube_url": url, "yt_video_id": vid,
+            "lifecycle": row.lifecycle}
+
+
+@router.post("/chapter-youtube")
+def prod_chapter_youtube(payload: dict = Body(...), db: Session = Depends(get_db),
+                         me=Depends(get_pm_or_admin)):
+    """PM/Admin posts the published YouTube URL for a ready chapter -> uploaded/completed."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    return _chapter_set_youtube(db, me, payload.get("chapter_id"), payload.get("youtube_url"))
 
 
 # ============================================================ PROJECT VIDEO ASSIGNMENT (Phase 3)
@@ -4164,10 +4226,14 @@ def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get
         raise HTTPException(400, "Choose an editor and/or a graphics designer")
     t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
     proj = (t.title or t.subject or "project") if t else "project"
+    import video_tasks as _vt
     if eid:
         row.editor_id = eid
-        if (getattr(row, "edit_state", "") or "") in ("", "assigned"):
-            row.edit_state = "assigned"
+        row.editor_inherited = False   # EXPLICIT per-chapter pick — project-sync must never steal it
+        # move to editor_assigned only if the chapter hasn't started editing yet
+        if _vt._chapter_lifecycle(row) in ("approved", "editor_assigned"):
+            _vt.set_chapter_state(db, row, "editor_assigned", actor=me,
+                                  note="Editor assigned", force=True)
     if gid:
         row.graphics_id = gid
         if (getattr(row, "gfx_state", "") or "") in ("", "assigned"):
@@ -4245,13 +4311,19 @@ def pm_assign_project(payload: dict = Body(...), db: Session = Depends(get_db),
             t.deadline = datetime.fromisoformat(dl.replace("Z", ""))
         except Exception:
             pass
+    # CRITICAL FIX: whole-project assignment now actually makes the approved chapters
+    # actionable for this editor (inherit editor_id + lifecycle editor_assigned), without
+    # ever overwriting a chapter that was explicitly assigned to someone else.
+    import video_tasks as _vt
+    _applied = _vt._sync_project_editor(db, t)
     from models import ProductionStaffProfile as _SP
     try:
         ep = db.query(_SP).filter(_SP.id == eid).first()
         if ep and ep.user_id:
             pc.notify(db, ep.user_id, "Whole project assigned to you",
                       f'The project "{t.title or t.subject}" has been assigned to you. '
-                      f'Edit each video from your Projects section.', "video_task", link=str(t.id))
+                      f'{_applied} ready video(s) are in your tasks now; new ones appear as they are approved.',
+                      "video_task", link=str(t.id))
     except Exception:
         pass
     try:
@@ -4260,7 +4332,8 @@ def pm_assign_project(payload: dict = Body(...), db: Session = Depends(get_db),
         pass
     db.commit()
     nm = _staff_name_map(db, [eid])
-    return {"ok": True, "task_id": t.id, "project_editor_id": eid, "editor_name": nm.get(eid, "")}
+    return {"ok": True, "task_id": t.id, "project_editor_id": eid,
+            "editor_name": nm.get(eid, ""), "chapters_assigned": _applied}
 
 
 @router.post("/unassign-project")

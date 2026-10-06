@@ -1008,3 +1008,51 @@ def yt_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
             pass
     db.commit()
     return {"ok": True, "changed": changes}
+
+
+# ============================================================ PROJECT CHAPTER PUBLISHING
+# QC-approved project chapters appear here so a YouTuber can publish them. One chapter =
+# one YouTube upload; the URL is stored at CHAPTER level (never the parent project's url).
+@router.get("/project-chapters")
+def yt_project_chapters(db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from models import VideoTaskChapter as _VC
+    import video_tasks as _vt
+    yp = _me_yt(db, me)
+    rows = db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
+                                      VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
+    tmap = {t.id: t for t in rows}
+    out = []
+    if tmap:
+        chs = db.query(_VC).filter(_VC.task_id.in_(list(tmap.keys()))).all()
+        for c in chs:
+            lc = _vt._chapter_lifecycle(c)
+            if lc not in ("ready_for_youtube", "uploaded", "completed"):
+                continue
+            t = tmap.get(c.task_id)
+            cname = ""
+            try:
+                cname, _ = pc.creator_info(db, t)
+            except Exception:
+                pass
+            out.append({
+                "chapter_id": c.id, "project_id": c.task_id,
+                "project_title": (t.title or t.subject or "Project") if t else "Project",
+                "title": c.title or "Chapter", "subject": (t.subject if t else ""),
+                "teacher": cname, "ref_code": "PROJECT",
+                "lifecycle": lc, "lifecycle_label": _vt.CHAPTER_STATE_LABELS.get(lc, ""),
+                "edited_link": (getattr(c, "edited_link", "") or ""),
+                "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
+                "channel_name": (getattr(t, "channel_name", "") or "") if t else "",
+                "upload_date": pc._dt(getattr(c, "upload_date", None)),
+                "upload_remarks": (getattr(c, "upload_remarks", "") or ""),
+                "youtube_url": (getattr(c, "youtube_url", "") or ""),
+            })
+    return {"chapters": out, "count": len(out)}
+
+
+@router.post("/project-chapters/{cid}/youtube")
+def yt_project_chapter_publish(cid: int, payload: dict = Body(...),
+                               db: Session = Depends(get_db), me=Depends(get_youtuber)):
+    from production_routes import _chapter_set_youtube
+    yp = _me_yt(db, me)
+    return _chapter_set_youtube(db, me, cid, payload.get("youtube_url"), youtuber_id=yp.id)
