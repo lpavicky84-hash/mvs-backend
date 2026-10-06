@@ -31732,6 +31732,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       'body.dark .pim-b.proj{color:#c0a6ef}','body.dark .pim-b.norm{color:#7db8e0}',
       '.pim-b.fmt{background:var(--surface-2,#efe8d6);color:var(--muted)}',
       '.pim-b.late{background:rgba(209,68,58,.15);color:#b91c1c}','.pim-b.ontime{background:rgba(46,158,107,.15);color:#1f7a44}',
+      /* base helpers so perf sections render cleanly on ANY portal (incl. admin) */
+      '.p-subsec{font-size:.78rem;font-weight:700;margin:16px 0 7px;color:#8a6d1f;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:7px}',
+      '.p-subsec:before{content:"";width:4px;height:13px;border-radius:2px;background:#c98a2e}',
       '@media(max-width:560px){.perf-ring{width:108px;height:108px}.sb-k{flex-basis:104px}}'
     ].join('');
     document.head.appendChild(s);
@@ -33464,6 +33467,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P[portal].api+'/me/photo','POST',{photo:''}).then(function(){ toast('Photo removed'); window._prodProfImg=''; var av=document.getElementById('ps-prof-av-'+portal); if(av){ av.style.backgroundImage=''; av.classList.remove('has-img'); av.textContent=(NAME||'?').slice(0,1).toUpperCase(); } prodDismiss(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodPersonView=function(kind,pid,name){
+    // Editor/Graphics -> premium Performance drilldown (score, rank, breakdown, leaderboard + active tasks).
+    if((kind==='editor'||kind==='graphics') && typeof window.prodPerfPerson==='function'){
+      try{ return window.prodPerfPerson(kind,pid,name); }catch(e){}
+    }
     api(P.production.api+'/person/'+kind+'/'+pid).then(function(r){ _prodPersonRender(kind,name,r||{}); })
       .catch(function(e){ toast((e&&e.message)||'Could not load',true); });
   };
@@ -34208,10 +34215,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<span class="pt-stage" '+(over?'style="background:rgba(209,68,58,.14);color:#d1443a"':'')+'>'+load+'</span></div>';
         }).join('');
       }
-      var html=(liveStrip||'')+block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Delayed','overdue']],'editor');
+      var html=(liveStrip||'')+
+        '<div class="p-sec">Editors &amp; Graphics Performance</div><div id="prod-perf-scored"><div class="p-load">Loading leaderboards...</div></div>'+
+        block('Editors',r.editors,[['Active','active'],['Completed','completed'],['Delayed','overdue']],'editor');
       html+=block('Graphics',r.graphics,[['Active','active'],['Completed','completed']],'graphics');
       html+=block('YouTubers',r.youtubers,[['Pending','pending'],['In Production','in_production'],['Published','published']],'youtuber');
       body.innerHTML=html;
+      try{ if(typeof _loadProdPerformance==='function') _loadProdPerformance(); }catch(e){}
     }
   }
 
@@ -34259,10 +34269,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load analytics. '+esc(e&&e.message||'')+'</div>'; });
   }
   // ---- PM/Admin unified performance (scored leaderboards + per-staff drilldown) ----
+  window._loadProdPerformance=function(){ _loadProdPerformance(); };
   function _loadProdPerformance(){
     var box=document.getElementById('prod-perf-scored'); if(!box) return; _perfCss();
     var per=window._prodPerfPeriod||'month';
-    api(P.production.api+'/performance?period='+per).then(function(r){
+    api(_prodApiBase()+'/performance?period='+per).then(function(r){
       if(!document.getElementById('prod-perf-scored')) return;
       var PER=[['today','Today'],['week','Week'],['month','This Month'],['prev_month','Last Month']];
       var html='<div class="perf-period">'+PER.map(function(p){return '<b class="'+(per===p[0]?'on':'')+'" onclick="prodPerfPeriod(\''+p[0]+'\')">'+p[1]+'</b>';}).join('')+'</div>';
@@ -34286,13 +34297,33 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="lb-score"><div class="s">'+(r.score==null?'—':r.score)+' <small>/100</small></div></div></div>';
     }).join('')+'</div>';
   }
-  window.prodPerfStaff=function(role,id,name){
-    var per=window._prodPerfPeriod||'month';
-    _perfModal(name||'Performance','<div class="p-load" style="padding:24px">Loading...</div>');
-    api(P.production.api+'/performance/staff?role='+encodeURIComponent(role)+'&id='+id+'&period='+encodeURIComponent(per)).then(function(r){
-      _perfModalBody(_staffPerfHtml(r));
+  function _prodApiBase(){ return (window.P&&P.production&&P.production.api)||'/api/production'; }
+  window.prodPerfStaff=function(role,id,name){ window.prodPerfPerson(role,id,name); };
+  // Premium per-person performance (PM + Admin): full performance drilldown + period switch + active tasks.
+  // Used by the scored leaderboards AND by the Team & Workload person click (editor/graphics).
+  window.prodPerfPerson=function(role,id,name){ window._ppPerson={role:role,id:id,name:name}; _ppRender(); };
+  window.prodPerfPersonPeriod=function(p){ window._prodPerfPeriod=p; _ppRender(); };
+  function _ppRender(){
+    var s=window._ppPerson; if(!s) return; _perfCss();
+    var per=window._prodPerfPeriod||'month', base=_prodApiBase();
+    _perfModal(s.name||'Performance','<div class="p-load" style="padding:24px">Loading...</div>');
+    Promise.all([
+      api(base+'/performance/staff?role='+encodeURIComponent(s.role)+'&id='+s.id+'&period='+encodeURIComponent(per)).catch(function(){return null;}),
+      api(base+'/person/'+encodeURIComponent(s.role)+'/'+s.id).catch(function(){return null;})
+    ]).then(function(res){
+      if(!document.getElementById('perf-ov')) return;
+      var perf=res[0], person=res[1];
+      var html=_perfPeriodBar(per,'prodPerfPersonPeriod');
+      html+=perf?_staffPerfHtml(perf):'<div class="p-empty" style="padding:20px">No performance data for this period.</div>';
+      if(person && person.all_tasks){
+        var active=(person.all_tasks||[]).filter(function(t){return t.active;});
+        if(active.length && typeof window._personTaskRows==='function'){
+          html+='<div class="p-sec">Active Tasks ('+active.length+')</div>'+window._personTaskRows(active);
+        }
+      }
+      _perfModalBody(html);
     }).catch(function(e){ _perfModalBody('<div class="p-empty" style="padding:24px">Could not load. '+esc(e&&e.message||'')+'</div>'); });
-  };
+  }
   function _staffPerfHtml(r){
     if(!r) return '';
     var mv=r.rank_movement;
@@ -37416,7 +37447,13 @@ function _renderAProdTeam(){
     (tab==='youtuber'?'Independent content creators \u2014 separate from Teachers, never in academic performance.':(tab==='production_manager'?'Operational owners of the production pipeline.':'Production '+_ape(meta.label.toLowerCase())+'.'))+
     '</div><button class="ap-add" onclick="apAdd(\''+tab+'\')">Add '+_ape(meta.one)+'</button></div>';
   var body=mine.length?'<div class="ap-grid">'+mine.map(_apCard).join('')+'</div>':'<div style="color:#9c8f6e;padding:20px">None yet. Use \u201cAdd '+_ape(meta.one)+'\u201d to create one.</div>';
-  el.innerHTML=head+body;
+  // Premium scored performance leaderboards (same engine as the editor portal) \u2014 admin sees it too.
+  var perfSec='<div style="font-size:1rem;font-weight:800;margin:4px 0 12px;letter-spacing:-.01em">Editors &amp; Graphics Performance</div>'+
+    '<div id="prod-perf-scored"><div style="color:#9c8f6e;padding:16px">Loading leaderboards\u2026</div></div>'+
+    '<div style="height:1px;background:var(--border,#e5ddcb);margin:22px 0 18px"></div>';
+  el.innerHTML=perfSec+head+body;
+  try{ if(typeof window._perfCss==='function') window._perfCss(); }catch(e){}
+  try{ if(typeof window._loadProdPerformance==='function') window._loadProdPerformance(); }catch(e){}
   _apLoadAvatars();
 }
 function _apSetAv(el,photo){ if(!el||!photo) return; el.style.backgroundImage='url('+photo+')'; el.classList.add('has-img'); el.textContent=''; }
@@ -37499,6 +37536,11 @@ window.apPersonCard=function(key){
   var el=document.getElementById('ap-person-tl'); if(el) el.innerHTML=_personTaskRows(_personFilter(window._apPersonAll,key));
 };
 window.apPerson=function(kind,pid,name){
+  // Editor/Graphics -> premium Performance view (score, rank, breakdown, leaderboard + active tasks).
+  // Same on PM and Admin portals (this Team & Workload page is shared by both).
+  if((kind==='editor'||kind==='graphics') && typeof window.prodPerfPerson==='function'){
+    try{ return window.prodPerfPerson(kind,pid,name); }catch(e){}
+  }
   _apModal(_ape(name),'<div class="ap-load" style="padding:16px">Loading profile...</div>');
   api('/api/production/person/'+kind+'/'+pid).then(function(r){
     var s=r.stats||{}; var cards=[];
