@@ -9,6 +9,7 @@ from database import get_db
 from security import get_editor
 from models import VideoTask, EditingSession, ProductionStaffProfile, TaskReview
 import production_core as pc
+import performance_core as PC
 
 router = APIRouter(prefix="/api/editor", tags=["Editor"])
 
@@ -1047,107 +1048,137 @@ def editor_refresh_views(db: Session = Depends(get_db), me=Depends(get_editor)):
     return {"ok": True, "updated": updated}
 
 
+def _perf_legacy_bucket(p, yt_views=0):
+    """Map the canonical engine category result to the legacy response keys the current
+    frontend reads, while also passing through the new rich fields."""
+    return {
+        "videos_edited": p["edited"], "videos_approved": p["approved"],
+        "videos_uploaded": p["published"], "pending": p["pending"], "overdue": p["overdue"],
+        "revision_count": p["revisions"],
+        "avg_turnaround_hours": p["avg_turnaround"] or 0,
+        "on_time_pct": p["on_time_pct"] if p["on_time_pct"] is not None else 0,
+        "avg_quality": p["avg_quality"] if p["avg_quality"] is not None else 0,
+        "youtube_views": yt_views,
+        # ---- new canonical fields (Phase-2 UI reads these) ----
+        "edited": p["edited"], "approved": p["approved"], "published": p["published"],
+        "first_pass_pct": p["first_pass_pct"], "avg_turnaround": p["avg_turnaround"],
+        "score": p["score"], "score_breakdown": p["score_breakdown"],
+        "provisional": p["provisional"], "sample": p["sample"], "target": p["target"],
+        "normal_work": p["source_normal"], "project_work": p["source_project"],
+    }
+
+
 @router.get("/performance")
-def editor_performance(db: Session = Depends(get_db), me=Depends(get_editor)):
-    """Full editor performance: quantity, quality, timeliness; split LONG vs SHORT;
-    plus chart data (bar / donut / 6-month trend) and ranking. Real data only."""
+def editor_performance(period: str = "month", db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Canonical editor performance (performance_core) — counts BOTH normal VideoTasks
+    and project VideoTaskChapters, no double-counting, long/short split, 100-pt score,
+    server-authoritative rank + movement from persistent snapshots. Real data only."""
     sp = _me_staff(db, me)
     now = datetime.utcnow()
-    base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
-    all_tasks = base.all()
-    _done = ["editing_done", "qc_pending", "ready_for_youtube", "uploaded", "completed"]
-    _uploaded = ["uploaded", "completed"]
-    _pending = ["editor_assigned", "editing", "editing_paused", "qc_changes"]
+    try:
+        PC.maybe_daily_snapshot(db, now)   # self-healing daily rank history for ALL staff
+    except Exception:
+        pass
+    items = PC.get_editor_work_items(db, sp.id, now=now)
+    perf = PC.compute_editor_performance(sp, items, period, ref=now)
 
-    def bucket(tasks):
-        edited = sum(1 for t in tasks if t.lifecycle in _done or t.lifecycle == "qc_changes")
-        approved = sum(1 for t in tasks if t.lifecycle in ["ready_for_youtube", "uploaded", "completed"])
-        uploaded = sum(1 for t in tasks if t.lifecycle in _uploaded)
-        pending = sum(1 for t in tasks if t.lifecycle in _pending)
-        overdue = sum(1 for t in tasks if (getattr(t, "editor_deadline", None)) and t.editor_deadline < now and t.lifecycle not in _uploaded + ["ready_for_youtube"])
-        revisions = sum(int(t.revision_count or 0) for t in tasks)
-        views = sum(int(t.yt_views or 0) for t in tasks)
-        # turnaround: start -> editing_done
-        turns = []
-        for t in tasks:
-            if t.editing_started_at and t.editing_done_at and t.editing_done_at >= t.editing_started_at:
-                turns.append((t.editing_done_at - t.editing_started_at).total_seconds() / 3600.0)
-        # on-time: editing_done_at <= editor deadline (editor judged on their own date)
-        done_with_dl = [t for t in tasks if t.editing_done_at and (getattr(t, "editor_deadline", None) or t.deadline)]
-        ontime = sum(1 for t in done_with_dl if t.editing_done_at <= (getattr(t, "editor_deadline", None) or t.deadline))
-        ratings = [t.quality_rating for t in tasks if t.quality_rating]
-        return {
-            "videos_edited": edited, "videos_approved": approved, "videos_uploaded": uploaded,
-            "pending": pending, "overdue": overdue, "revision_count": revisions,
-            "avg_turnaround_hours": round(sum(turns) / len(turns), 1) if turns else 0,
-            "on_time_pct": round(ontime * 100 / len(done_with_dl)) if done_with_dl else 0,
-            "avg_quality": round(sum(ratings) / len(ratings), 1) if ratings else 0,
-            "youtube_views": views,
-        }
+    # total YouTube views (keep the legacy KPI alive — engine is item-state based)
+    try:
+        yt_views = sum(int(t.yt_views or 0) for t in
+                       db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
+                                                  VideoTask.editor_id == sp.id).all())
+    except Exception:
+        yt_views = 0
 
-    longs = [t for t in all_tasks if not _is_short(t.video_type)]
-    shorts = [t for t in all_tasks if _is_short(t.video_type)]
-    overall = bucket(all_tasks)
+    ov = perf["overall"]
+    # overall is a roll-up (no single score breakdown) — build its legacy shape directly
+    _oq = [p["avg_quality"] for p in (perf["long"], perf["short"]) if p["avg_quality"] is not None]
+    _oot = [p["on_time_pct"] for p in (perf["long"], perf["short"]) if p["on_time_pct"] is not None]
+    overall = {
+        "videos_edited": ov["edited"], "videos_approved": ov["approved"],
+        "videos_uploaded": ov["published"], "pending": ov["pending"], "overdue": ov["overdue"],
+        "revision_count": ov["revisions"],
+        "avg_turnaround_hours": 0,
+        "on_time_pct": round(sum(_oot) / len(_oot)) if _oot else 0,
+        "avg_quality": round(sum(_oq) / len(_oq), 1) if _oq else 0,
+        "youtube_views": yt_views,
+        "edited": ov["edited"], "approved": ov["approved"], "published": ov["published"],
+        "score": ov["score"], "normal_work": ov["normal_work"], "project_work": ov["project_work"],
+    }
+    long_b = _perf_legacy_bucket(perf["long"])
+    short_b = _perf_legacy_bucket(perf["short"])
 
-    # 6-month trend (videos edited per month)
+    # charts
+    start, end, _ = PC.period_bounds(period, now)
+    completed = [it for it in items if it["edited"] and it["completed_at"]]
     trend = []
     for i in range(5, -1, -1):
         m = (now.month - i - 1) % 12 + 1
         y = now.year + ((now.month - i - 1) // 12)
-        m0 = datetime(y, m, 1)
-        m1 = datetime(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
-        cnt = sum(1 for t in all_tasks if t.editing_done_at and m0 <= t.editing_done_at < m1)
-        trend.append({"label": m0.strftime("%b"), "value": cnt})
-
-    # donut: status distribution
+        mm0 = datetime(y, m, 1)
+        mm1 = datetime(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
+        trend.append({"label": mm0.strftime("%b"),
+                      "value": sum(1 for it in completed if mm0 <= it["completed_at"] < mm1)})
     donut = [
-        {"label": "Editing", "value": sum(1 for t in all_tasks if t.lifecycle in ["editing", "editing_paused"])},
-        {"label": "In QC", "value": sum(1 for t in all_tasks if t.lifecycle == "qc_pending")},
-        {"label": "Changes", "value": sum(1 for t in all_tasks if t.lifecycle == "qc_changes")},
-        {"label": "Approved", "value": overall["videos_approved"]},
+        {"label": "Editing", "value": sum(1 for it in items if it["lifecycle"] in ("editing", "editing_paused"))},
+        {"label": "In QC", "value": sum(1 for it in items if it["lifecycle"] in ("qc_pending", "qc_changes"))},
+        {"label": "Approved", "value": perf["overall"]["approved"]},
+        {"label": "Published", "value": perf["overall"]["published"]},
     ]
 
-    try:
-        rank = pc.editor_rank_and_streak(db, sp)
-    except Exception:
-        rank = 0
-    # ranking cards: top editors this month by approvals
-    ranking = []
-    try:
-        month0 = datetime(now.year, now.month, 1)
-        eds = db.query(ProductionStaffProfile).filter(
-            ProductionStaffProfile.staff_role == "editor",
-            ProductionStaffProfile.is_active == True).all()
-        for e in eds:
-            appr = db.query(VideoTask).filter(
-                VideoTask.editor_id == e.id,
-                VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"]),
-                VideoTask.updated_at >= month0).count()
-            ranking.append({"name": e.user.name if e.user else "", "approved": appr,
-                            "me": (e.id == sp.id)})
-        ranking.sort(key=lambda x: -x["approved"])
-        ranking = ranking[:5]
-    except Exception:
-        ranking = []
+    # ---- server-authoritative leaderboards + rank + movement (per category) ----
+    cat = perf["primary_category"]
+    lb_long = PC.compute_editor_leaderboard(db, PC.CAT_LONG, period, ref=now)
+    lb_short = PC.compute_editor_leaderboard(db, PC.CAT_SHORT, period, ref=now)
+    my_lb = lb_long if cat == PC.CAT_LONG else lb_short
+    rank, total = PC.find_rank(my_lb, sp.id)
+    snap_cat = "editor_long" if cat == PC.CAT_LONG else "editor_short"
+    if rank:
+        PC.save_rank_snapshot(db, sp.id, "editor", snap_cat, rank,
+                              (perf[cat]["score"] or 0), total, ref=now)
+    movement = PC.rank_movement(db, sp.id, snap_cat, rank, ref=now)
+
+    def _lb_cards(rows):
+        out = []
+        for r in rows[:5]:
+            out.append({"name": r["name"], "approved": r["approved"], "edited": r["edited"],
+                        "score": r["score"], "rank": r["rank"], "me": (r["staff_id"] == sp.id),
+                        "avg_quality": r["avg_quality"], "on_time_pct": r["on_time_pct"],
+                        "provisional": r["provisional"], "category": r["category"]})
+        return out
+    ranking = _lb_cards(my_lb)
 
     return {
-        "overall": overall,
-        "long": bucket(longs),
-        "short": bucket(shorts),
-        "charts": {
-            "bar": [
-                {"label": "Edited", "value": overall["videos_edited"]},
-                {"label": "Approved", "value": overall["videos_approved"]},
-                {"label": "Uploaded", "value": overall["videos_uploaded"]},
-                {"label": "Pending", "value": overall["pending"]},
-                {"label": "Delayed", "value": overall["overdue"]},
-            ],
-            "donut": donut,
-            "trend": trend,
-        },
-        "rank": rank,
-        "ranking": ranking,
+        # legacy keys (current UI)
+        "overall": overall, "long": long_b, "short": short_b,
+        "charts": {"bar": [{"label": "Edited", "value": overall["videos_edited"]},
+                           {"label": "Approved", "value": overall["videos_approved"]},
+                           {"label": "Uploaded", "value": overall["videos_uploaded"]},
+                           {"label": "Pending", "value": overall["pending"]},
+                           {"label": "Delayed", "value": overall["overdue"]}],
+                   "donut": donut, "trend": trend},
+        "rank": rank or 0, "ranking": ranking,
+        # new canonical keys (Phase-2 UI)
+        "period": perf["period"], "specialization": perf["specialization"],
+        "primary_category": cat, "score": perf["overall"]["score"],
+        "rank_movement": movement,
+        "leaderboard_long": _lb_cards(lb_long), "leaderboard_short": _lb_cards(lb_short),
+        "rank_trend": PC.rank_trend(db, sp.id, snap_cat, 30, ref=now),
+        "badges": PC.editor_badges(perf),
+        "total_ranked": total,
+        "personal_bests": PC.personal_bests(db, sp.id, snap_cat, ref=now),
     }
+
+
+@router.get("/performance/items")
+def editor_performance_items(period: str = "month", category: str = "", filter: str = "edited",
+                             db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Drill-down list behind a clickable performance metric (perf §31). Own data only."""
+    sp = _me_staff(db, me)
+    items = PC.get_editor_work_items(db, sp.id)
+    rows = PC.filter_work_items(items, period, category, filter)
+    return {"items": [PC.item_dto(it) for it in rows], "count": len(rows),
+            "filter": filter, "category": category, "period": period}
 
 
 @router.post("/tasks/{tid}/request-deadline")

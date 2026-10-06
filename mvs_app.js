@@ -31654,39 +31654,228 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.editor.api+'/refresh-views','POST').then(function(){ toast('Live views updated'); var body=document.getElementById('editor-body'); if(body) renderEditorUploads('editor',body); })
       .catch(function(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.textContent='Refresh live views'; } });
   };
+  // ======================= PREMIUM PERFORMANCE UI (renders backend only) =======================
+  function _perfCss(){
+    if(document.getElementById('mvs-perf-css')) return;
+    var s=document.createElement('style'); s.id='mvs-perf-css';
+    s.textContent=[
+      '.perf-hero{position:relative;overflow:hidden;border-radius:20px;padding:22px 24px;color:#fff;background:linear-gradient(120deg,#1d1740,#3a2070 55%,#5a2f6b);box-shadow:0 12px 32px -14px rgba(30,20,60,.55)}',
+      '.perf-hero-top{display:flex;align-items:center;gap:24px;flex-wrap:wrap}',
+      '.perf-ring{flex:0 0 auto;position:relative;width:130px;height:130px}',
+      '.perf-ring .pr-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}',
+      '.perf-ring .pr-v{font-size:2.05rem;font-weight:900;line-height:1}',
+      '.perf-ring .pr-of{font-size:.64rem;opacity:.8;margin-top:3px;letter-spacing:.06em}',
+      '.perf-hmeta{flex:1;min-width:220px}',
+      '.perf-h-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.85}',
+      '.perf-h-sub{font-size:.9rem;opacity:.9;margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+      '.perf-spec{display:inline-block;font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.2)}',
+      '.perf-h-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}',
+      '.perf-hs{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.17);border-radius:13px;padding:9px 13px;min-width:96px}',
+      '.perf-hs .v{font-size:1.18rem;font-weight:900;line-height:1;display:flex;align-items:center;gap:6px}',
+      '.perf-hs .l{font-size:.58rem;letter-spacing:.06em;text-transform:uppercase;opacity:.82;margin-top:6px}',
+      '.mv-chip{display:inline-flex;align-items:center;gap:2px;font-size:.72rem;font-weight:900;padding:2px 7px;border-radius:999px}',
+      '.mv-up{background:rgba(46,206,120,.24);color:#9af5c4}','.mv-down{background:rgba(244,87,77,.24);color:#ffb3ad}','.mv-same{background:rgba(255,255,255,.16);color:#f0eef7}',
+      '.perf-seg{display:inline-flex;gap:4px;background:var(--surface-2,#f3ecdb);border:1px solid var(--border,#e7dfc6);border-radius:12px;padding:4px;margin:16px 0}',
+      '.perf-seg b{font-size:.8rem;font-weight:800;padding:8px 16px;border-radius:9px;cursor:pointer;color:var(--muted,#8a7d5c);transition:.15s}',
+      '.perf-seg b.on{background:var(--card,#fff);color:var(--text,#2a2313);box-shadow:0 1px 5px rgba(0,0,0,.1)}',
+      '.perf-prov{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;color:#b07d12;background:rgba(224,165,46,.14);border:1px solid rgba(224,165,46,.3);padding:6px 12px;border-radius:999px;margin:4px 0 12px}',
+      '.sb-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:15px 18px;margin:14px 0}',
+      '.sb-h{font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}',
+      '.sb-row{display:flex;align-items:center;gap:12px;padding:7px 0}',
+      '.sb-k{flex:0 0 130px;font-size:.8rem;font-weight:700;color:var(--text);display:flex;align-items:center}',
+      '.sb-bar{flex:1;height:9px;border-radius:99px;background:var(--surface-2,#efe8d6);overflow:hidden}',
+      '.sb-bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#c99a2e,#e6b84e)}',
+      '.sb-v{flex:0 0 auto;font-size:.8rem;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;min-width:58px;text-align:right}',
+      '.sb-v.sb-na{color:var(--muted)}',
+      '.perf-src{font-size:.8rem;color:var(--muted);margin:12px 2px;padding:11px 14px;background:var(--surface-2,#faf7ef);border:1px solid var(--border);border-radius:12px}',
+      '.perf-src b{color:var(--text);font-weight:800}',
+      '.lb-list{display:flex;flex-direction:column;gap:9px}',
+      '.lb-row{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 15px;transition:.15s}',
+      '.lb-row.me{border-color:#c99a2e;box-shadow:0 0 0 2px rgba(201,154,46,.22)}',
+      '.lb-rank{flex:0 0 auto;width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.98rem;background:var(--surface-2,#f3ecdb);color:var(--text)}',
+      '.lb-rank.top{background:linear-gradient(135deg,#f3c75a,#d99e26);color:#3a2b08;box-shadow:0 3px 10px rgba(214,154,36,.35)}',
+      '.lb-main{flex:1;min-width:0}',
+      '.lb-nm{font-weight:800;font-size:.92rem;color:var(--text);display:flex;align-items:center;gap:7px}',
+      '.lb-meta{font-size:.74rem;color:var(--muted);margin-top:3px}',
+      '.lb-score{flex:0 0 auto;text-align:right}',
+      '.lb-score .s{font-size:1.12rem;font-weight:900;color:var(--text)}',
+      '.lb-score .s small{font-size:.64rem;color:var(--muted);font-weight:700}',
+      '.rt-wrap{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px}',
+      '.pf-badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}',
+      '.pf-badge{font-size:.72rem;font-weight:800;padding:6px 13px;border-radius:999px;background:linear-gradient(135deg,rgba(201,154,46,.18),rgba(201,154,46,.07));border:1px solid rgba(201,154,46,.32);color:#9a7b16;display:inline-flex;align-items:center;gap:6px}',
+      'body.dark .pf-badge{color:#f0c45a}',
+      '.ptip{position:relative;display:inline-flex;align-items:center}',
+      '.ptip-i{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--surface-2,#e7dfc6);color:var(--muted);font-size:.58rem;font-weight:900;margin-left:6px;cursor:pointer;font-style:normal}',
+      '.ptip-box{position:absolute;bottom:calc(100% + 9px);left:50%;transform:translateX(-50%);background:#1d1740;color:#fff;font-size:.72rem;font-weight:600;line-height:1.45;padding:8px 11px;border-radius:9px;width:max-content;max-width:230px;box-shadow:0 10px 26px rgba(0,0,0,.34);opacity:0;visibility:hidden;transition:.14s;z-index:60;text-align:left;pointer-events:none}',
+      '.ptip-box:after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1d1740}',
+      '.ptip:hover .ptip-box,.ptip.on .ptip-box{opacity:1;visibility:visible}',
+      '.perf-period{display:flex;justify-content:flex-end;gap:4px;margin-bottom:12px;flex-wrap:wrap}',
+      '.perf-period b{font-size:.74rem;font-weight:800;padding:6px 12px;border-radius:9px;cursor:pointer;color:var(--muted);background:var(--surface-2,#f3ecdb);border:1px solid var(--border)}',
+      '.perf-period b.on{background:linear-gradient(135deg,#f3c75a,#d99e26);color:#3a2b08;border-color:transparent}',
+      '.pk-card.clk{cursor:pointer;transition:border-color .14s,transform .12s,box-shadow .14s}',
+      '.pk-card.clk:hover{border-color:rgba(201,154,46,.5);transform:translateY(-1.5px);box-shadow:0 5px 14px rgba(18,20,45,.08)}',
+      '.perf-ov{position:fixed;inset:0;z-index:300;background:rgba(10,12,26,.55);display:flex;align-items:center;justify-content:center;padding:18px}',
+      '.perf-mbox{background:var(--card,#fff);color:var(--text,#2a2313);max-width:560px;width:100%;max-height:86vh;overflow:auto;border-radius:18px;box-shadow:0 26px 64px -14px rgba(0,0,0,.55)}',
+      '.perf-mhd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card);z-index:1}',
+      '.perf-mhd b{font-size:1.02rem;font-weight:800}',
+      '.perf-mx{background:none;border:none;font-size:1.5rem;cursor:pointer;color:inherit;line-height:1}',
+      '.perf-mbd{padding:14px 18px}',
+      '.pim-list{display:flex;flex-direction:column;gap:8px}',
+      '.pim-row{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;padding:11px 13px}',
+      '.pim-main{flex:1;min-width:0}','.pim-t{font-weight:700;font-size:.9rem;word-break:break-word}','.pim-meta{font-size:.74rem;color:var(--muted);margin-top:3px}',
+      '.pim-badges{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto}',
+      '.pim-b{font-size:.6rem;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap;text-transform:uppercase;letter-spacing:.02em}',
+      '.pim-b.proj{background:rgba(124,79,192,.15);color:#6d3fb0}','.pim-b.norm{background:rgba(42,127,184,.14);color:#1e5f86}',
+      'body.dark .pim-b.proj{color:#c0a6ef}','body.dark .pim-b.norm{color:#7db8e0}',
+      '.pim-b.fmt{background:var(--surface-2,#efe8d6);color:var(--muted)}',
+      '.pim-b.late{background:rgba(209,68,58,.15);color:#b91c1c}','.pim-b.ontime{background:rgba(46,158,107,.15);color:#1f7a44}',
+      '@media(max-width:560px){.perf-ring{width:108px;height:108px}.sb-k{flex-basis:104px}}'
+    ].join('');
+    document.head.appendChild(s);
+  }
+  function _scoreRing(score){
+    var v=(score==null)?null:Math.max(0,Math.min(100,score));
+    var C=2*Math.PI*54, off=(v==null)?C:C*(1-v/100);
+    var col=(v==null)?'rgba(255,255,255,.3)':(v>=80?'#6ff0a8':v>=60?'#f3c75a':v>=40?'#f3a24e':'#f4756b');
+    return '<div class="perf-ring"><svg viewBox="0 0 120 120" width="130" height="130">'+
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="11"/>'+
+      '<circle cx="60" cy="60" r="54" fill="none" stroke="'+col+'" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+C.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'" transform="rotate(-90 60 60)"/></svg>'+
+      '<div class="pr-num"><div class="pr-v">'+(v==null?'\u2014':v.toFixed(1))+'</div><div class="pr-of">/ 100</div></div></div>';
+  }
+  function _moveChip(mv){
+    if(!mv) return '';
+    var m=mv.movement||0;
+    var tip='Previous Rank: '+(mv.previous_rank?('#'+mv.previous_rank):'\u2014')+'<br>Current Rank: '+(mv.current_rank?('#'+mv.current_rank):'\u2014')+'<br>'+(m>0?('Moved Up: '+m+' position'+(m>1?'s':'')):m<0?('Moved Down: '+(-m)+' position'+((-m)>1?'s':'')):'No change');
+    var arrow=m>0?'\u2191':m<0?'\u2193':'\u2013', cls=m>0?'mv-up':m<0?'mv-down':'mv-same';
+    return '<span class="ptip" onclick="event.stopPropagation();this.classList.toggle(\'on\')"><span class="mv-chip '+cls+'">'+arrow+(m!==0?Math.abs(m):'')+'</span><span class="ptip-box">'+tip+'</span></span>';
+  }
+  function _scoreBars(bd){
+    if(!bd) return '';
+    var order=[['output','Output'],['quality','Quality'],['on_time','On-Time'],['first_pass','First-Pass'],['consistency','Consistency']];
+    var rows=order.map(function(o){ var c=bd[o[0]]; if(!c) return '';
+      var av=c.available, pct=av?Math.round(c.points/c.max*100):0, val=av?(c.points+' / '+c.max):'N/A';
+      return '<div class="sb-row"><div class="sb-k">'+o[1]+'<span class="ptip" onclick="event.stopPropagation();this.classList.toggle(\'on\')"><i class="ptip-i">i</i><span class="ptip-box"><b>'+o[1]+' \u2014 '+val+'</b><br>'+esc(c.detail||'')+'</span></span></div>'+
+        '<div class="sb-bar"><i style="width:'+(av?pct:0)+'%"></i></div><div class="sb-v'+(av?'':' sb-na')+'">'+val+'</div></div>';
+    }).join('');
+    return '<div class="sb-wrap"><div class="sb-h">Score Breakdown</div>'+rows+'</div>';
+  }
+  function _perfLeaderboard(rows,unit,title){
+    if(!rows||!rows.length) return '';
+    return '<div class="p-sec">'+esc(title)+'</div><div class="lb-list">'+rows.map(function(r){
+      var rk=r.rank||0;
+      return '<div class="lb-row'+(r.me?' me':'')+'"><div class="lb-rank'+(rk&&rk<=3?' top':'')+'">#'+rk+'</div>'+
+        '<div class="lb-main"><div class="lb-nm">'+esc(r.name||'')+(r.me?' <span style="font-size:.66rem;color:#c99a2e;font-weight:800">(You)</span>':'')+(r.provisional?'<span class="ptip" onclick="event.stopPropagation();this.classList.toggle(\'on\')"><i class="ptip-i">i</i><span class="ptip-box">Provisional \u2014 limited data this month</span></span>':'')+'</div>'+
+        '<div class="lb-meta">'+(r.edited||0)+' '+esc(unit)+(r.avg_quality?(' \u00b7 '+r.avg_quality+'\u2605'):'')+(r.on_time_pct!=null?(' \u00b7 '+r.on_time_pct+'% on-time'):'')+'</div></div>'+
+        '<div class="lb-score"><div class="s">'+(r.score==null?'\u2014':r.score)+' <small>/100</small></div></div></div>';
+    }).join('')+'</div>';
+  }
+  function _rankTrend(trend){
+    var pts=(trend||[]).filter(function(p){return p.rank;});
+    if(pts.length<2) return '';
+    var W=320,H=100,pad=18, ranks=pts.map(function(p){return p.rank;});
+    var mn=Math.min.apply(null,ranks), mx=Math.max.apply(null,ranks); if(mx===mn) mx=mn+1;
+    var step=(W-2*pad)/(pts.length-1);
+    var P=pts.map(function(p,i){ return [pad+i*step, pad+(p.rank-mn)/(mx-mn)*(H-2*pad), p]; });
+    var line=P.map(function(p,i){return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1);}).join(' ');
+    var dots=P.map(function(p){return '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3.5" fill="#c99a2e"/><text x="'+p[0].toFixed(1)+'" y="'+(p[1]-8).toFixed(1)+'" font-size="9" text-anchor="middle" fill="var(--muted,#8a7d5c)">#'+p[2].rank+'</text>';}).join('');
+    var labels=pts.map(function(p){return '<span style="flex:1;text-align:center">'+esc(p.label)+'</span>';}).join('');
+    return '<div class="p-sec">Rank Trend</div><div class="rt-wrap"><svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'"><path d="'+line+'" fill="none" stroke="#c99a2e" stroke-width="2.5"/>'+dots+'</svg><div style="display:flex;font-size:.7rem;color:var(--muted);margin-top:4px">'+labels+'</div><div style="font-size:.66rem;color:var(--muted);margin-top:5px;text-align:center">#1 is best (top of the line)</div></div>';
+  }
+  function _moveSummary(mv){
+    if(!mv) return '';
+    var items=[['Rank Ups',mv.times_rank_up||0],['Rank Downs',mv.times_rank_down||0],['Best Rank',mv.best_rank?('#'+mv.best_rank):'\u2014'],['Lowest Rank',mv.worst_rank?('#'+mv.worst_rank):'\u2014'],['Days at #1',mv.days_at_rank_1||0]];
+    return '<div class="pk-grid" style="margin-top:10px">'+items.map(function(k){return '<div class="pk-card"><div class="pk-val">'+k[1]+'</div><div class="pk-lbl">'+k[0]+'</div></div>';}).join('')+'</div>';
+  }
+  function _perfBadges(badges){
+    if(!badges||!badges.length) return '';
+    return '<div class="p-sec">Badges</div><div class="pf-badges">'+badges.map(function(b){return '<span class="pf-badge">\u2605 '+esc(b)+'</span>';}).join('')+'</div>';
+  }
+  window._perfCss=_perfCss; window._scoreRing=_scoreRing; window._moveChip=_moveChip;
+  window._scoreBars=_scoreBars; window._perfLeaderboard=_perfLeaderboard; window._rankTrend=_rankTrend;
+  function _personalBests(pb){
+    if(!pb) return '';
+    var items=[['Best Rank',pb.best_rank?('#'+pb.best_rank):'—'],['Best Score',pb.best_score!=null?pb.best_score:'—'],['Longest #1 Streak',(pb.longest_rank1_streak||0)+'d']];
+    return '<div class="p-sec">Personal Bests</div><div class="pk-grid">'+items.map(function(k){return '<div class="pk-card"><div class="pk-val">'+k[1]+'</div><div class="pk-lbl">'+k[0]+'</div></div>';}).join('')+'</div>';
+  }
+  function _perfPeriodBar(cur,fn){
+    var PER=[['today','Today'],['week','Week'],['month','This Month'],['prev_month','Last Month']];
+    return '<div class="perf-period">'+PER.map(function(p){return '<b class="'+((cur||'month')===p[0]?'on':'')+'" onclick="'+fn+'(\''+p[0]+'\')">'+p[1]+'</b>';}).join('')+'</div>';
+  }
+  function _perfModal(title,html){
+    _perfCss(); window._perfModalClose();
+    var ov=document.createElement('div'); ov.className='perf-ov'; ov.id='perf-ov';
+    ov.innerHTML='<div class="perf-mbox"><div class="perf-mhd"><b>'+esc(title)+'</b><button class="perf-mx" onclick="_perfModalClose()">&times;</button></div><div class="perf-mbd" id="perf-mbd">'+html+'</div></div>';
+    ov.addEventListener('click',function(e){ if(e.target===ov) window._perfModalClose(); });
+    document.body.appendChild(ov);
+  }
+  function _perfModalBody(html){ var b=document.getElementById('perf-mbd'); if(b) b.innerHTML=html; }
+  window._perfModalClose=function(){ var e=document.getElementById('perf-ov'); if(e) e.remove(); };
+  function _perfItemsHtml(items){
+    if(!items||!items.length) return '<div class="p-empty" style="padding:26px">No items in this list.</div>';
+    return '<div class="pim-list">'+items.map(function(it){
+      var badges='<span class="pim-b '+(it.source==='project'?'proj':'norm')+'">'+(it.source==='project'?'Project':'Normal')+'</span>'+
+        '<span class="pim-b fmt">'+esc((it.format||'').toUpperCase())+'</span>'+
+        (it.on_time===false?'<span class="pim-b late">Late</span>':it.on_time===true?'<span class="pim-b ontime">On-time</span>':'');
+      var meta=[];
+      if(it.completed_at) meta.push(esc(it.completed_at));
+      if(it.turnaround_hours!=null) meta.push(it.turnaround_hours+'h');
+      if(it.revisions) meta.push(it.revisions+' rev');
+      if(it.quality) meta.push(it.quality+'★');
+      if(it.state) meta.push(esc((''+it.state).replace(/_/g,' ')));
+      return '<div class="pim-row"><div class="pim-main"><div class="pim-t">'+esc(it.title||'Untitled')+'</div><div class="pim-meta">'+meta.join(' · ')+'</div></div><div class="pim-badges">'+badges+'</div></div>';
+    }).join('')+'</div>';
+  }
+  function _perfMetricOpen(apiBase,per,cat,filter,label){
+    _perfModal(label,'<div class="p-load" style="padding:24px">Loading...</div>');
+    api(apiBase+'/performance/items?period='+encodeURIComponent(per)+'&category='+encodeURIComponent(cat||'')+'&filter='+encodeURIComponent(filter)).then(function(r){
+      _perfModalBody('<div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">'+(r.count||0)+' item'+((r.count||0)===1?'':'s')+'</div>'+_perfItemsHtml(r.items||[]));
+    }).catch(function(e){ _perfModalBody('<div class="p-empty" style="padding:24px">Could not load. '+esc(e&&e.message||'')+'</div>'); });
+  }
+  window.edtMetricOpen=function(filter,label){ _perfMetricOpen(P.editor.api,(window._edtPerfPeriod||'month'),((window._edtPerfSeg&&window._edtPerfSeg!=='overall')?window._edtPerfSeg:''),filter,label); };
+  window.gfxMetricOpen=function(filter,label){ _perfMetricOpen(P.graphics.api,(window._gfxPerfPeriod||'month'),'',filter,label); };
+
   function renderEditorPerf(portal,body){
-    body.innerHTML='<div class="p-load">Loading performance...</div>';
-    return api(P.editor.api+'/performance').then(function(r){
+    _perfCss(); body.innerHTML='<div class="p-load">Loading performance...</div>';
+    return api(P.editor.api+'/performance?period='+(window._edtPerfPeriod||'month')).then(function(r){
       if(_stale(portal,'performance')) return;
-      var seg=window._edtPerfSeg||'overall';
-      var o=r[seg]||r.overall||{};
-      var html='';
-      // segmented Overall / Long / Short
-      html+='<div class="p-filter"><div class="gfx-seg" id="edt-perf-seg">'+[['overall','Overall'],['long','Long Video'],['short','Short Video']].map(function(s){
-        return '<button class="gfx-seg-b'+(seg===s[0]?' on':'')+'" onclick="edtPerfSeg(\''+s[0]+'\')">'+s[1]+'</button>'; }).join('')+'</div></div>';
-      // metric cards (Quantity / Quality / Timeliness)
-      var cards=[['Videos Edited',o.videos_edited||0],['Approved',o.videos_approved||0],['Uploaded',o.videos_uploaded||0],
-                 ['Pending',o.pending||0],['Delayed',o.overdue||0],['Revisions',o.revision_count||0],
-                 ['Avg Turnaround',(o.avg_turnaround_hours||0)+'h'],['On-time',(o.on_time_pct||0)+'%'],
-                 ['Avg Quality',(o.avg_quality||0)+'\u2605'],['YouTube Views',_num(o.youtube_views||0)]];
-      html+='<div class="pk-grid">'+cards.map(function(c){ return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
-      // charts (only on overall)
-      if(seg==='overall' && r.charts){
-        html+='<div class="perf-charts">';
-        html+='<div class="perf-card"><div class="perf-h">Output</div>'+_barChart(r.charts.bar)+'</div>';
-        html+='<div class="perf-card"><div class="perf-h">Status Mix</div>'+_donutChart(r.charts.donut)+'</div>';
-        html+='<div class="perf-card perf-wide"><div class="perf-h">6-Month Trend</div>'+_edtTrend(r.charts.trend)+'</div>';
-        html+='</div>';
-        if(r.ranking && r.ranking.length){
-          html+='<div class="p-sec">Editor Ranking (this month)</div><div class="rank-cards">'+r.ranking.map(function(x,i){
-            return '<div class="rank-card'+(x.me?' me':'')+'"><div class="rank-pos">#'+(i+1)+'</div><div class="rank-name">'+esc(x.name||'')+(x.me?' (You)':'')+'</div><div class="rank-val">'+(x.approved||0)+' approved</div></div>';
-          }).join('')+'</div>';
-        }
-      }
+      var prim=r.primary_category||'overall';
+      var seg=window._edtPerfSeg||prim;
+      var MAP={overall:{m:r.overall,score:r.score,bd:null,lb:(prim==='short'?r.leaderboard_short:r.leaderboard_long),unit:(prim==='short'?'shorts/reels':'long videos'),title:'Editor Leaderboard'},
+               long:{m:r.long||{},score:(r.long||{}).score,bd:(r.long||{}).score_breakdown,lb:r.leaderboard_long,unit:'long videos',title:'Long Video Editor Leaderboard'},
+               short:{m:r.short||{},score:(r.short||{}).score,bd:(r.short||{}).score_breakdown,lb:r.leaderboard_short,unit:'shorts/reels',title:'Short / Reel Editor Leaderboard'}};
+      var S=MAP[seg]||MAP.overall, o=S.m||{};
+      var myrow=(S.lb||[]).filter(function(x){return x.me;})[0]||{};
+      var total=r.total_ranked||((S.lb||[]).length);
+      var mv=(seg===prim||seg==='overall')?r.rank_movement:null;
+      var rkLbl=seg==='short'?'Short Rank':seg==='long'?'Long Rank':'Rank';
+      var html=_perfPeriodBar(window._edtPerfPeriod,'edtPerfPeriod')+'<div class="perf-hero"><div class="perf-hero-top">'+_scoreRing(S.score)+
+        '<div class="perf-hmeta"><div class="perf-h-title">Performance</div><div class="perf-h-sub">'+esc(r.period||'')+' <span class="perf-spec">'+esc((r.specialization||'hybrid'))+' editor</span></div>'+
+        '<div class="perf-h-stats">'+
+          '<div class="perf-hs"><div class="v">'+(myrow.rank?('#'+myrow.rank):'\u2014')+(total?('<span style="font-size:.66rem;opacity:.7">of '+total+'</span>'):'')+(mv?_moveChip(mv):'')+'</div><div class="l">'+rkLbl+'</div></div>'+
+          '<div class="perf-hs"><div class="v">'+(o.videos_edited||o.edited||0)+'</div><div class="l">This Month</div></div>'+
+          '<div class="perf-hs"><div class="v">'+((o.avg_quality||0)||'\u2014')+'<span style="font-size:.7rem">\u2605</span></div><div class="l">Quality</div></div>'+
+          '<div class="perf-hs"><div class="v">'+(o.on_time_pct!=null?o.on_time_pct:0)+'%</div><div class="l">On Time</div></div>'+
+        '</div></div></div></div>';
+      html+='<div class="perf-seg" id="edt-perf-seg">'+[['overall','Overall'],['long','Long Video'],['short','Short / Reel']].map(function(x){return '<b class="'+(seg===x[0]?'on':'')+'" onclick="edtPerfSeg(\''+x[0]+'\')">'+x[1]+'</b>';}).join('')+'</div>';
+      if(o.provisional) html+='<div class="perf-prov">\u26a0 Provisional rank \u2014 limited data this month</div>';
+      if(S.bd) html+=_scoreBars(S.bd);
+      var cards=[['Edited',o.videos_edited||o.edited||0,'edited'],['Approved',o.videos_approved||o.approved||0,'approved'],['Published',o.videos_uploaded||o.published||0,'published'],
+                 ['Pending',o.pending||0,'pending'],['Delayed',o.overdue||0,'overdue'],['Revisions',o.revision_count||o.revisions||0,'revisions'],
+                 ['Avg Turnaround',(o.avg_turnaround||o.avg_turnaround_hours||0)+'h',''],['On-Time',(o.on_time_pct!=null?o.on_time_pct:0)+'%','late'],
+                 ['Quality',(o.avg_quality||0)+'\u2605',''],['First-Pass',(o.first_pass_pct!=null?o.first_pass_pct+'%':'\u2014'),'']];
+      html+='<div class="pk-grid">'+cards.map(function(c){ var clk=c[2]?' class="pk-card clk" onclick="edtMetricOpen(\''+c[2]+'\',\''+esc(c[0]==='On-Time'?'Late videos':c[0])+'\')"':' class="pk-card"'; return '<div'+clk+'><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+(c[2]?' \u203a':'')+'</div></div>'; }).join('')+'</div>';
+      html+='<div class="perf-src"><span style="cursor:pointer" onclick="edtMetricOpen(\'normal\',\'Normal Videos\')">Normal Videos <b>'+(o.normal_work||0)+'</b> \u203a</span> &nbsp;\u00b7&nbsp; <span style="cursor:pointer" onclick="edtMetricOpen(\'project\',\'Project Chapters\')">Project Chapters <b>'+(o.project_work||0)+'</b> \u203a</span> &nbsp;\u00b7&nbsp; Total Edited <b>'+((o.normal_work||0)+(o.project_work||0))+'</b></div>';
+      html+=_perfLeaderboard(S.lb,S.unit,S.title);
+      html+=_rankTrend(r.rank_trend);
+      if(mv) html+='<div class="p-sec">Rank Movement</div>'+_moveSummary(mv);
+      html+=_personalBests(r.personal_bests);
+      html+=_perfBadges(r.badges);
       body.innerHTML=html;
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load performance. '+esc(e&&e.message||'')+'</div>'; });
   }
   window.edtPerfSeg=function(s){ window._edtPerfSeg=s; var body=document.getElementById('editor-body'); if(body) renderEditorPerf('editor',body); };
+  window.edtPerfPeriod=function(p){ window._edtPerfPeriod=p; var body=document.getElementById('editor-body'); if(body) renderEditorPerf('editor',body); };
+  window.gfxPerfPeriod=function(p){ window._gfxPerfPeriod=p; var body=document.getElementById('graphics-body'); if(body) renderGfxPerf('graphics',body); };
   // --- lightweight SVG charts (no external libs) ---
   function _barChart(data){
     if(!data||!data.length) return '<div class="pd-empty">No data</div>';
@@ -31719,28 +31908,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return '<div class="trend-wrap"><svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'"><path d="'+area+'" fill="rgba(46,158,107,.12)"/><path d="'+line+'" fill="none" stroke="#2e9e6b" stroke-width="2.5"/>'+dots+'</svg><div class="trend-x">'+labels+'</div></div>';
   }
   function renderGfxPerf(portal,body){
-    body.innerHTML='<div class="p-load">Loading performance...</div>';
-    return api(P.graphics.api+'/performance').then(function(r){
+    _perfCss(); body.innerHTML='<div class="p-load">Loading performance...</div>';
+    return api(P.graphics.api+'/performance?period='+(window._gfxPerfPeriod||'month')).then(function(r){
       if(_stale(portal,'performance')) return;
-      var cards=[['Daily Output',r.daily_output||0],['Weekly Output',r.weekly_output||0],['Monthly Output',r.monthly_output||0],
-                 ['Approved',r.approved_count||0],['Revisions',r.revision_count||0],
-                 ['Avg Turnaround',(r.avg_turnaround_hours||0)+'h'],['PM Quality',(r.pm_quality_rating||0)+'\u2605'],
-                 ['First-time Approved',(r.approval_rate||0)+'%'],['Rank',r.rank?('#'+r.rank):'\u2014']];
-      var html='<div class="p-sec">Your Performance</div><div class="pk-grid">'+cards.map(function(c){
-        return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>'; }).join('')+'</div>';
-      if(r.charts){
-        html+='<div class="perf-charts">';
-        html+='<div class="perf-card"><div class="perf-h">Output</div>'+_barChart(r.charts.bar)+'</div>';
-        html+='<div class="perf-card"><div class="perf-h">Status Mix</div>'+_donutChart(r.charts.donut)+'</div>';
-        html+='<div class="perf-card perf-wide"><div class="perf-h">6-Month Trend</div>'+_edtTrend(r.charts.trend)+'</div>';
-        html+='</div>';
-      }
-      if(r.ranking && r.ranking.length){
-        html+='<div class="p-sec">Designer Ranking (this month)</div><div class="rank-cards">'+r.ranking.map(function(x,i){
-          return '<div class="rank-card'+(x.me?' me':'')+'"><div class="rank-pos">#'+(i+1)+'</div><div class="rank-name">'+esc(x.name||'')+(x.me?' (You)':'')+'</div><div class="rank-val">'+(x.approved||0)+' approved</div></div>';
-        }).join('')+'</div>';
-      }
-      if(r.appreciation && r.appreciation.total_done>0) html+=_appreciationStrip(r.appreciation);
+      var mv=r.rank_movement;
+      var myrow=(r.ranking||[]).filter(function(x){return x.me;})[0]||{};
+      var total=r.total_ranked||((r.ranking||[]).length);
+      var html=_perfPeriodBar(window._gfxPerfPeriod,'gfxPerfPeriod')+'<div class="perf-hero"><div class="perf-hero-top">'+_scoreRing(r.score)+
+        '<div class="perf-hmeta"><div class="perf-h-title">Graphics Performance</div><div class="perf-h-sub">'+esc(r.period||'')+'</div>'+
+        '<div class="perf-h-stats">'+
+          '<div class="perf-hs"><div class="v">'+(myrow.rank?('#'+myrow.rank):(r.rank?('#'+r.rank):'\u2014'))+(total?('<span style="font-size:.66rem;opacity:.7">of '+total+'</span>'):'')+(mv?_moveChip(mv):'')+'</div><div class="l">Rank</div></div>'+
+          '<div class="perf-hs"><div class="v">'+(r.monthly_output||0)+'</div><div class="l">Thumbnails</div></div>'+
+          '<div class="perf-hs"><div class="v">'+((r.pm_quality_rating||0)||'\u2014')+'<span style="font-size:.7rem">\u2605</span></div><div class="l">PM Quality</div></div>'+
+          '<div class="perf-hs"><div class="v">'+(r.on_time_pct!=null?r.on_time_pct:0)+'%</div><div class="l">On Time</div></div>'+
+        '</div></div></div></div>';
+      if(r.provisional) html+='<div class="perf-prov">\u26a0 Provisional rank \u2014 limited data this month</div>';
+      if(r.score_breakdown) html+=_scoreBars(r.score_breakdown);
+      var cards=[['Thumbnails',r.monthly_output||0,'edited'],['Approved',r.approved_count||0,'approved'],['Pending',r.pending||0,'pending'],['Delayed',r.overdue||0,'overdue'],
+                 ['Revisions',r.revision_count||0,'revisions'],['First-Pass',(r.first_pass_pct!=null?r.first_pass_pct:0)+'%',''],
+                 ['PM Quality',(r.pm_quality_rating||0)+'\u2605',''],['On-Time',(r.on_time_pct!=null?r.on_time_pct:0)+'%','late']];
+      html+='<div class="pk-grid">'+cards.map(function(c){ var clk=c[2]?' class="pk-card clk" onclick="gfxMetricOpen(\''+c[2]+'\',\''+esc(c[0]==='On-Time'?'Late thumbnails':c[0])+'\')"':' class="pk-card"'; return '<div'+clk+'><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+(c[2]?' \u203a':'')+'</div></div>'; }).join('')+'</div>';
+      html+='<div class="perf-src"><span style="cursor:pointer" onclick="gfxMetricOpen(\'normal\',\'Normal Thumbnails\')">Normal Thumbnails <b>'+(r.normal_work||0)+'</b> \u203a</span> &nbsp;\u00b7&nbsp; <span style="cursor:pointer" onclick="gfxMetricOpen(\'project\',\'Project Thumbnails\')">Project Thumbnails <b>'+(r.project_work||0)+'</b> \u203a</span> &nbsp;\u00b7&nbsp; Total <b>'+((r.normal_work||0)+(r.project_work||0))+'</b></div>';
+      html+=_perfLeaderboard(r.ranking,'thumbnails','Graphics Leaderboard');
+      html+=_rankTrend(r.rank_trend);
+      if(mv) html+='<div class="p-sec">Rank Movement</div>'+_moveSummary(mv);
+      html+=_personalBests(r.personal_bests);
+      html+=_perfBadges(r.badges);
       body.innerHTML=html;
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load performance. '+esc(e&&e.message||'')+'</div>'; });
   }
@@ -33985,6 +34178,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       html+='<div class="pk-grid">'+kpis.map(function(k){ return '<div class="pk-card '+(k[2]||'')+'"><div class="pk-val">'+(k[1]==null?0:k[1])+'</div><div class="pk-lbl">'+k[0]+'</div></div>'; }).join('')+'</div>';
       // trend chart
       html+='<div class="p-sec">Weekly Output (Created vs Completed)</div>'+_trendChart(r.trend||[]);
+      // scored leaderboards (same engine as staff portals) — clickable rows open a staff drilldown
+      html+='<div class="p-sec">Performance Leaderboards (Scored /100)</div><div id="prod-perf-scored"><div class="p-load">Loading leaderboards...</div></div>';
       // editors — long & short compared separately (like-with-like), falls back to combined
       var _edCols=[['Editor','name'],['Videos','videos'],['Active Hrs','active_hours'],['Avg/Video','avg_hours'],['On-Time','on_time_pct','pct'],['Revisions','revisions']];
       html+='<div class="p-sec">Editor Performance</div>';
@@ -34008,7 +34203,81 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       html+='<div class="p-sec" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">Team Performance<button class="p-btn p-btn-primary" onclick="prodDownloadReport()">Download Report (CSV)</button></div><div id="prod-rank-box"><div class="p-load">Loading ranking...</div></div><div id="prod-targets-box"></div>';
       body.innerHTML=html;
       _loadRankTargets();
+      _loadProdPerformance();
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load analytics. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  // ---- PM/Admin unified performance (scored leaderboards + per-staff drilldown) ----
+  function _loadProdPerformance(){
+    var box=document.getElementById('prod-perf-scored'); if(!box) return; _perfCss();
+    var per=window._prodPerfPeriod||'month';
+    api(P.production.api+'/performance?period='+per).then(function(r){
+      if(!document.getElementById('prod-perf-scored')) return;
+      var PER=[['today','Today'],['week','Week'],['month','This Month'],['prev_month','Last Month']];
+      var html='<div class="perf-period">'+PER.map(function(p){return '<b class="'+(per===p[0]?'on':'')+'" onclick="prodPerfPeriod(\''+p[0]+'\')">'+p[1]+'</b>';}).join('')+'</div>';
+      html+=_pmBoard(r.editors_long,'Long Video Editors','long videos','editor');
+      html+=_pmBoard(r.editors_short,'Short / Reel Editors','shorts/reels','editor');
+      html+=_pmBoard(r.graphics,'Graphics Designers','thumbnails','graphics');
+      box.innerHTML=html;
+    }).catch(function(){ if(box) box.innerHTML='<div class="p-empty">Could not load leaderboards.</div>'; });
+  }
+  window.prodPerfPeriod=function(p){ window._prodPerfPeriod=p; _loadProdPerformance(); };
+  function _pmBoard(rows,title,unit,role){
+    if(!rows||!rows.length) return '<div class="p-subsec">'+esc(title)+'</div><div class="p-empty" style="padding:14px">No data this period.</div>';
+    return '<div class="p-subsec">'+esc(title)+'</div><div class="lb-list">'+rows.map(function(r){
+      var rk=r.rank||0, mv=r.movement||0;
+      var arrow=mv>0?'↑':mv<0?'↓':'', mvcls=mv>0?'mv-up':mv<0?'mv-down':'mv-same';
+      var mvchip=mv!==0?('<span class="mv-chip '+mvcls+'" style="margin-left:7px">'+arrow+Math.abs(mv)+'</span>'):'';
+      return '<div class="lb-row" style="cursor:pointer" onclick="prodPerfStaff(\''+role+'\','+r.staff_id+',\''+esc((r.name||'').replace(/[\\\x27\x22]/g,''))+'\')">'+
+        '<div class="lb-rank'+(rk&&rk<=3?' top':'')+'">#'+rk+'</div>'+
+        '<div class="lb-main"><div class="lb-nm">'+esc(r.name||'')+mvchip+(r.provisional?'<span class="ptip" onclick="event.stopPropagation();this.classList.toggle(\'on\')"><i class="ptip-i">i</i><span class="ptip-box">Provisional — limited data</span></span>':'')+'</div>'+
+        '<div class="lb-meta">'+(r.edited||0)+' '+esc(unit)+(r.avg_quality?(' · '+r.avg_quality+'★'):'')+(r.on_time_pct!=null?(' · '+r.on_time_pct+'% on-time'):'')+'</div></div>'+
+        '<div class="lb-score"><div class="s">'+(r.score==null?'—':r.score)+' <small>/100</small></div></div></div>';
+    }).join('')+'</div>';
+  }
+  window.prodPerfStaff=function(role,id,name){
+    var per=window._prodPerfPeriod||'month';
+    _perfModal(name||'Performance','<div class="p-load" style="padding:24px">Loading...</div>');
+    api(P.production.api+'/performance/staff?role='+encodeURIComponent(role)+'&id='+id+'&period='+encodeURIComponent(per)).then(function(r){
+      _perfModalBody(_staffPerfHtml(r));
+    }).catch(function(e){ _perfModalBody('<div class="p-empty" style="padding:24px">Could not load. '+esc(e&&e.message||'')+'</div>'); });
+  };
+  function _staffPerfHtml(r){
+    if(!r) return '';
+    var mv=r.rank_movement;
+    if(r.role==='graphics'){
+      var g='<div class="perf-hero"><div class="perf-hero-top">'+_scoreRing(r.score)+
+        '<div class="perf-hmeta"><div class="perf-h-title">Graphics</div><div class="perf-h-sub">'+esc(r.period||'')+'</div>'+
+        '<div class="perf-h-stats">'+
+          '<div class="perf-hs"><div class="v">'+(r.rank?('#'+r.rank):'—')+(r.total_ranked?('<span style="font-size:.66rem;opacity:.7">of '+r.total_ranked+'</span>'):'')+(mv?_moveChip(mv):'')+'</div><div class="l">Rank</div></div>'+
+          '<div class="perf-hs"><div class="v">'+(r.thumbnails||0)+'</div><div class="l">Thumbnails</div></div>'+
+          '<div class="perf-hs"><div class="v">'+((r.avg_quality||0)||'—')+'★</div><div class="l">Quality</div></div>'+
+          '<div class="perf-hs"><div class="v">'+(r.on_time_pct!=null?r.on_time_pct:0)+'%</div><div class="l">On Time</div></div>'+
+        '</div></div></div></div><div style="padding:14px 2px 2px">';
+      if(r.score_breakdown) g+=_scoreBars(r.score_breakdown);
+      var gc=[['Thumbnails',r.thumbnails||0],['Approved',r.approved||0],['Pending',r.pending||0],['Delayed',r.overdue||0],['Revisions',r.revisions||0],['First-Pass',(r.first_pass_pct!=null?r.first_pass_pct:0)+'%']];
+      g+='<div class="pk-grid">'+gc.map(function(c){return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>';}).join('')+'</div>';
+      g+='<div class="perf-src">Normal <b>'+(r.normal_work||0)+'</b> &nbsp;·&nbsp; Project <b>'+(r.project_work||0)+'</b></div>';
+      if(mv) g+='<div class="p-sec">Rank Movement</div>'+_moveSummary(mv);
+      g+=_personalBests(r.personal_bests)+_perfBadges(r.badges)+'</div>';
+      return g;
+    }
+    var o=r.overall||{}, lp=r.long||{}, spt=r.short||{};
+    var html='<div class="perf-hero"><div class="perf-hero-top">'+_scoreRing(o.score)+
+      '<div class="perf-hmeta"><div class="perf-h-title">Editor</div><div class="perf-h-sub">'+esc(r.period||'')+' <span class="perf-spec">'+esc(r.specialization||'hybrid')+'</span></div>'+
+      '<div class="perf-h-stats">'+
+        '<div class="perf-hs"><div class="v">'+(r.rank?('#'+r.rank):'—')+(r.total_ranked?('<span style="font-size:.66rem;opacity:.7">of '+r.total_ranked+'</span>'):'')+(mv?_moveChip(mv):'')+'</div><div class="l">Rank</div></div>'+
+        '<div class="perf-hs"><div class="v">'+(o.edited||0)+'</div><div class="l">This Month</div></div>'+
+        '<div class="perf-hs"><div class="v">'+(lp.edited||0)+'</div><div class="l">Long</div></div>'+
+        '<div class="perf-hs"><div class="v">'+(spt.edited||0)+'</div><div class="l">Short</div></div>'+
+      '</div></div></div></div><div style="padding:14px 2px 2px">';
+    var pcat=(r.primary_category==='short')?spt:lp;
+    if(pcat&&pcat.score_breakdown) html+=_scoreBars(pcat.score_breakdown);
+    var cards=[['Edited',o.edited||0],['Approved',o.approved||0],['Published',o.published||0],['Pending',o.pending||0],['Delayed',o.overdue||0],['Revisions',o.revisions||0]];
+    html+='<div class="pk-grid">'+cards.map(function(c){return '<div class="pk-card"><div class="pk-val">'+c[1]+'</div><div class="pk-lbl">'+c[0]+'</div></div>';}).join('')+'</div>';
+    html+='<div class="perf-src">Normal <b>'+(o.normal_work||0)+'</b> &nbsp;·&nbsp; Project <b>'+(o.project_work||0)+'</b></div>';
+    if(mv) html+='<div class="p-sec">Rank Movement</div>'+_moveSummary(mv);
+    html+=_personalBests(r.personal_bests)+_perfBadges(r.badges)+'</div>';
+    return html;
   }
   function _loadRankTargets(){
     var rb=document.getElementById('prod-rank-box'), tb=document.getElementById('prod-targets-box');
@@ -37152,6 +37421,7 @@ function _apCard(u){
     '<div class="ap-actions" onclick="event.stopPropagation()">'+
       '<button class="ap-btn" onclick="apReset('+u.id+')">Reset Password</button>'+
       (u.password?'<button class="ap-btn" onclick="apShowPass('+u.id+')">Show Password</button>':'')+
+      ((u.role==='editor'||u.role==='graphics')?'<button class="ap-btn" onclick="apPerfSet('+u.id+',\''+u.role+'\',\''+(u.editor_specialization||'')+'\','+(u.target_long||'null')+','+(u.target_short||'null')+','+(u.target_thumbnails||'null')+')">Performance</button>':'')+
       toggles+
       '<button class="ap-btn" onclick="apToggleActive('+u.id+','+(active?'false':'true')+')">'+(active?'Deactivate':'Activate')+'</button>'+
       '<button class="ap-btn" style="color:#b91c1c;border-color:rgba(185,28,28,.4)" onclick="apDelete('+u.id+',\''+_ape(u.name).replace(/'/g,"")+'\',\''+u.role+'\')">Delete</button>'+
@@ -37200,6 +37470,32 @@ window.apPerson=function(kind,pid,name){
   }).catch(function(e){ var box=document.querySelector('#ap-modal .ap-box'); if(box) box.innerHTML='<div style="padding:20px;color:#c1443a">Could not load profile. '+_ape(e&&e.message||'')+'</div><div style="margin-top:12px"><button class="ap-btn" onclick="apClose()">Close</button></div>'; });
 };
 
+window.apPerfSet=function(uid, role, spec, tl, ts, tt){
+  spec=spec||'hybrid';
+  var fields='';
+  if(role==='editor'){
+    fields='<div class="ap-fld"><label>Editor Specialization</label><select class="ap-sel" id="aps-spec">'+
+      [['hybrid','Hybrid (Long + Short)'],['long','Long Video Editor'],['short','Short / Reel Editor']].map(function(o){return '<option value="'+o[0]+'"'+((spec||'hybrid')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select></div>'+
+      '<div style="display:flex;gap:10px"><div class="ap-fld" style="flex:1"><label>Monthly Long Target</label><input class="ap-in" id="aps-tl" type="number" placeholder="8" min="0" max="200" value="'+(tl&&tl!=='null'?tl:'')+'"></div>'+
+      '<div class="ap-fld" style="flex:1"><label>Monthly Short Target</label><input class="ap-in" id="aps-ts" type="number" placeholder="20" min="0" max="500" value="'+(ts&&ts!=='null'?ts:'')+'"></div></div>';
+  } else {
+    fields='<div class="ap-fld"><label>Monthly Thumbnail Target</label><input class="ap-in" id="aps-tt" type="number" placeholder="25" min="0" max="500" value="'+(tt&&tt!=='null'?tt:'')+'"></div>';
+  }
+  _apModal('Performance Settings',
+    fields+'<p style="color:#8a7d5c;font-size:.8rem;margin-top:6px">Specialization decides which leaderboard (Long / Short) this editor is ranked on. Targets drive the Output score. Leave targets blank to use defaults.</p>'+
+    '<div style="display:flex;gap:9px;margin-top:16px"><button class="ap-add" onclick="apPerfSave('+uid+',\''+role+'\')">Save</button>'+
+    '<button class="ap-btn" onclick="apClose()">Cancel</button></div>');
+};
+window.apPerfSave=function(uid, role){
+  var _gv=function(id){ var e=document.getElementById(id); return e?e.value:''; };
+  var body={};
+  if(role==='editor'){ body.editor_specialization=_gv('aps-spec')||'hybrid';
+    body.target_long=(_gv('aps-tl')===''?null:parseInt(_gv('aps-tl'),10));
+    body.target_short=(_gv('aps-ts')===''?null:parseInt(_gv('aps-ts'),10)); }
+  else { body.target_thumbnails=(_gv('aps-tt')===''?null:parseInt(_gv('aps-tt'),10)); }
+  api('/api/admin/production-users/'+uid,'PATCH',body).then(function(){ apClose(); toast('Performance settings saved'); loadAProductionTeam(); })
+    .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
 window.apShowPass=function(id){
   var u=(window._apUsers||[]).filter(function(x){return x.id===id;})[0]; if(!u) return;
   _apModalMsg('Login Credentials','<div class="ap-cred"><div><b>Name:</b> '+_ape(u.name)+'</div><div><b>User ID:</b> '+_ape(u.user_id)+'</div><div><b>Password:</b> <span class="ap-pass">'+_ape(u.password||'\u2014')+'</span></div></div>');
@@ -37228,7 +37524,12 @@ window.apAdd=function(role){
   var meta=_apRoleMeta(role);
   var roleFields='';
   if(role==='youtuber') roleFields='<div class="ap-fld"><label>Default Approval Mode</label><select class="ap-sel" id="ap-approval"><option value="true">Approval Required (PM reviews videos)</option><option value="false">Approval Off (videos enter production directly)</option></select></div>';
-  else if(role==='editor'||role==='graphics') roleFields='<div class="ap-fld"><label>Recommended Workload (active tasks)</label><input class="ap-in" id="ap-load" type="number" value="5" min="1" max="30"></div>';
+  else if(role==='editor') roleFields='<div class="ap-fld"><label>Recommended Workload (active tasks)</label><input class="ap-in" id="ap-load" type="number" value="5" min="1" max="30"></div>'+
+    '<div class="ap-fld"><label>Editor Specialization</label><select class="ap-sel" id="ap-spec"><option value="hybrid">Hybrid (Long + Short)</option><option value="long">Long Video Editor</option><option value="short">Short / Reel Editor</option></select></div>'+
+    '<div style="display:flex;gap:10px"><div class="ap-fld" style="flex:1"><label>Monthly Long Target</label><input class="ap-in" id="ap-tl" type="number" placeholder="8" min="0" max="200"></div>'+
+    '<div class="ap-fld" style="flex:1"><label>Monthly Short Target</label><input class="ap-in" id="ap-ts" type="number" placeholder="20" min="0" max="500"></div></div>';
+  else if(role==='graphics') roleFields='<div class="ap-fld"><label>Recommended Workload (active tasks)</label><input class="ap-in" id="ap-load" type="number" value="5" min="1" max="30"></div>'+
+    '<div class="ap-fld"><label>Monthly Thumbnail Target</label><input class="ap-in" id="ap-tt" type="number" placeholder="25" min="0" max="500"></div>';
   _apModal('Add '+_ape(meta.one),
     '<div class="ap-fld"><label>Full Name</label><input class="ap-in" id="ap-name" placeholder="e.g. Rahul Sharma"></div>'+
     '<div class="ap-fld"><label>Phone (optional)</label><input class="ap-in" id="ap-phone" placeholder="10-digit"></div>'+
@@ -37242,6 +37543,11 @@ window.apAddSubmit=function(role){
   var body={name:name, role:role, phone:((document.getElementById('ap-phone')||{}).value||'').trim()};
   if(role==='youtuber') body.approval_required=((document.getElementById('ap-approval')||{}).value==='true');
   if(role==='editor'||role==='graphics') body.recommended_load=parseInt((document.getElementById('ap-load')||{}).value||'5',10);
+  var _gv=function(id){ var e=document.getElementById(id); return e?e.value:''; };
+  if(role==='editor'){ body.editor_specialization=_gv('ap-spec')||'hybrid';
+    if(_gv('ap-tl')!=='') body.target_long=parseInt(_gv('ap-tl'),10);
+    if(_gv('ap-ts')!=='') body.target_short=parseInt(_gv('ap-ts'),10); }
+  if(role==='graphics'){ if(_gv('ap-tt')!=='') body.target_thumbnails=parseInt(_gv('ap-tt'),10); }
   api('/api/admin/production-users','POST',body).then(function(r){
     _apModalMsg('Account Created','<div class="ap-cred"><div><b>Name:</b> '+_ape(name)+'</div><div><b>User ID:</b> '+_ape(r.user_id)+'</div><div><b>Password:</b> <span class="ap-pass">'+_ape(r.password)+'</span></div></div><p style="color:#8a7d5c;font-size:.84rem;margin-top:10px">Share these credentials. They log in at the '+_ape(_apRoleMeta(role).one)+' portal.</p>');
     loadAProductionTeam();

@@ -658,6 +658,16 @@ def _ensure_production_columns():
         "ALTER TABLE video_tasks ADD COLUMN collab_editor_ids TEXT",
         "ALTER TABLE video_tasks ADD COLUMN upload_date DATETIME",
         "ALTER TABLE video_tasks ADD COLUMN upload_remarks TEXT",
+        # ---- performance engine (perf §4/§36/§41) ----
+        "ALTER TABLE video_tasks ADD COLUMN content_format VARCHAR(12)",
+        "ALTER TABLE production_staff_profiles ADD COLUMN editor_specialization VARCHAR(12)",
+        "ALTER TABLE production_staff_profiles ADD COLUMN target_long INTEGER",
+        "ALTER TABLE production_staff_profiles ADD COLUMN target_short INTEGER",
+        "ALTER TABLE production_staff_profiles ADD COLUMN target_thumbnails INTEGER",
+        # project-chapter graphics tracking (perf §9) — backward compatible, nullable
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_approved_at DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_revision INTEGER DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_quality INTEGER",
     ]
     for _s in _stmts:
         try:
@@ -670,6 +680,12 @@ def _ensure_production_columns():
     try:
         from models import PmEvent
         PmEvent.__table__.create(bind=engine, checkfirst=True)
+    except Exception:
+        pass
+    # ensure the rank-snapshot table exists (perf §21 — persistent rank history)
+    try:
+        from models import ProductionRankSnapshot
+        ProductionRankSnapshot.__table__.create(bind=engine, checkfirst=True)
     except Exception:
         pass
 

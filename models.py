@@ -533,6 +533,7 @@ class VideoTask(Base):
     channel_id     = Column(Integer, ForeignKey("video_channels.id"), nullable=True)
     channel_name   = Column(String(160), default="")
     video_type     = Column(String(120), default="")      # Short Video / Long Video / One Shot / Strategy ...
+    content_format = Column(String(12), default="")       # perf §41 explicit format override: long|short|reel|live
     thumbnail_b64  = Column(_B64TEXT, nullable=True)      # uploaded thumbnail image (compressed)
     thumbnail_link = Column(String(600), default="")      # ya drive link
     reference      = Column(Text, default="")             # manager ka reference/brief
@@ -665,6 +666,9 @@ class VideoTaskChapter(Base):
     editing_progress = Column(Integer, default=0)          # % editing done (task-like progress for project videos)
     progress_note = Column(String(400), default="")        # last progress/pause remark from the editor
     gfx_state     = Column(String(20), default="")        # '' | assigned | done (graphics thumbnail workflow)
+    thumb_approved_at = Column(DateTime, nullable=True)    # perf §9: when PM finalized the chapter thumbnail
+    thumb_revision    = Column(Integer, default=0)         # perf §9: thumbnail revision rounds
+    thumb_quality     = Column(Integer, nullable=True)     # perf §9: PM thumbnail quality 1-5
     thumbnail_link = Column(String(600), default="")       # graphics-submitted thumbnail for this video
     thumb_refs    = Column(Text, default="")               # JSON list of reference thumbnail URLs (PM -> graphics)
     deadline      = Column(DateTime, nullable=True)         # per-video deadline set at assign time (editor/graphics submit by this)
@@ -1570,12 +1574,35 @@ class ProductionStaffProfile(Base):
     rank1_since         = Column(DateTime, nullable=True)   # streak start when this person is rank #1 (§23)
     rank_appreciated_at = Column(DateTime, nullable=True)   # last streak appreciation sent
     skills              = Column(Text, default="")         # JSON/text — e.g. long, shorts, reels
+    # ---- performance engine (perf §4/§36): editor work specialization + monthly targets ----
+    editor_specialization = Column(String(12), default="")  # long | short | hybrid ('' => inferred/hybrid)
+    target_long         = Column(Integer, nullable=True)    # monthly long-video output target (editor)
+    target_short        = Column(Integer, nullable=True)    # monthly short/reel output target (editor)
+    target_thumbnails   = Column(Integer, nullable=True)    # monthly thumbnail target (graphics)
     notes               = Column(Text, default="")
     plain_password      = Column(String(255), nullable=True)
     is_active           = Column(Boolean, default=True)
     created_at          = Column(DateTime, default=func.now())
 
     user = relationship("User", foreign_keys=[user_id])
+
+
+class ProductionRankSnapshot(Base):
+    """Persistent daily rank/score snapshot per editor/graphics per category (perf §21).
+    Rank MOVEMENT is derived from these snapshots, never from frontend state.
+    Idempotent: at most one row per (staff_id, category, snapshot_date)."""
+    __tablename__ = "production_rank_snapshots"
+
+    id           = Column(Integer, primary_key=True)
+    staff_id     = Column(Integer, index=True)              # production_staff_profiles.id
+    staff_role   = Column(String(20), default="")           # editor | graphics
+    category     = Column(String(20), index=True)           # editor_long | editor_short | graphics
+    period       = Column(String(7), index=True)            # YYYY-MM
+    snapshot_date = Column(Date, index=True)
+    rank         = Column(Integer, nullable=True)
+    score        = Column(Float, nullable=True)
+    total_ranked = Column(Integer, nullable=True)
+    created_at   = Column(DateTime, default=func.now())
 
 
 class EditingSession(Base):

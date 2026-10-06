@@ -2823,9 +2823,10 @@ def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_p
         "qc_first_pass_pct": round(100.0 * first_pass / n_done) if n_done else None,
     }
 
-    # ---- long vs short classification (compare like-with-like) ----
+    # ---- long vs short classification (CANONICAL — same rule everywhere; rapid != short) ----
+    import performance_core as _PC
     def _is_short(vt):
-        return "short" in ((vt or "").strip().lower())
+        return _PC.format_category(_PC.get_video_format(vt)) == "short"
     # task_id -> video_type for EVERY task (cheap 2-col pull) so project chapters inherit
     # their parent project's video_type for long/short classification.
     try:
@@ -2967,6 +2968,79 @@ def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_p
             "editors_long": editors_long, "editors_short": editors_short,
             "graphics": gfx_rows, "graphics_long": gfx_long, "graphics_short": gfx_short,
             "content_mix": content_mix, "trend": trend}
+
+
+# ============================================================ UNIFIED PERFORMANCE (perf §35)
+# Admin/PM see the SAME engine as the staff — one source of truth. Leaderboards + per-staff drilldown.
+@router.get("/performance")
+def pm_performance(period: str = "month", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    import performance_core as PC
+    now = datetime.utcnow()
+    try:
+        PC.maybe_daily_snapshot(db, now)
+    except Exception:
+        pass
+    _, _, plabel = PC.period_bounds(period, now)
+
+    def _rows(lb, snapcat):
+        out = []
+        for r in lb:
+            mv = PC.rank_movement(db, r["staff_id"], snapcat, r["rank"], ref=now)
+            out.append({"staff_id": r["staff_id"], "name": r["name"], "rank": r["rank"],
+                        "score": r["score"], "edited": r["edited"], "approved": r["approved"],
+                        "avg_quality": r["avg_quality"], "on_time_pct": r["on_time_pct"],
+                        "first_pass_pct": r.get("first_pass_pct"), "provisional": r["provisional"],
+                        "movement": mv.get("movement", 0), "previous_rank": mv.get("previous_rank")})
+        return out
+    lb_long = PC.compute_editor_leaderboard(db, PC.CAT_LONG, period, ref=now)
+    lb_short = PC.compute_editor_leaderboard(db, PC.CAT_SHORT, period, ref=now)
+    lb_gfx = PC.compute_graphics_leaderboard(db, period, ref=now)
+    return {"period": plabel, "period_key": period,
+            "editors_long": _rows(lb_long, "editor_long"),
+            "editors_short": _rows(lb_short, "editor_short"),
+            "graphics": _rows(lb_gfx, "graphics")}
+
+
+@router.get("/performance/staff")
+def pm_performance_staff(role: str, id: int, period: str = "month",
+                         db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Full premium performance for ONE staff member (PM/Admin drilldown). Same engine."""
+    import performance_core as PC
+    sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == id).first()
+    if not sp:
+        raise HTTPException(404, "Staff not found")
+    now = datetime.utcnow()
+    name = sp.user.name if sp.user else ""
+    if role == "graphics":
+        items = PC.get_graphics_work_items(db, sp.id, now=now)
+        perf = PC.compute_graphics_performance(sp, items, period, ref=now)
+        lb = PC.compute_graphics_leaderboard(db, period, ref=now)
+        rank, total = PC.find_rank(lb, sp.id)
+        return {"role": "graphics", "name": name, "period": perf["period"],
+                "score": perf["score"], "score_breakdown": perf["score_breakdown"],
+                "thumbnails": perf["thumbnails"], "approved": perf["approved"],
+                "pending": perf["pending"], "overdue": perf["overdue"],
+                "revisions": perf["revisions"], "avg_quality": perf["avg_quality"],
+                "on_time_pct": perf["on_time_pct"], "first_pass_pct": perf["first_pass_pct"],
+                "normal_work": perf["normal_work"], "project_work": perf["project_work"],
+                "provisional": perf["provisional"], "rank": rank, "total_ranked": total,
+                "rank_movement": PC.rank_movement(db, sp.id, "graphics", rank, ref=now),
+                "badges": PC.graphics_badges(perf),
+                "personal_bests": PC.personal_bests(db, sp.id, "graphics", ref=now)}
+    # editor
+    items = PC.get_editor_work_items(db, sp.id, now=now)
+    perf = PC.compute_editor_performance(sp, items, period, ref=now)
+    cat = perf["primary_category"]
+    snapcat = "editor_long" if cat == PC.CAT_LONG else "editor_short"
+    lb = PC.compute_editor_leaderboard(db, cat, period, ref=now)
+    rank, total = PC.find_rank(lb, sp.id)
+    return {"role": "editor", "name": name, "period": perf["period"],
+            "specialization": perf["specialization"], "primary_category": cat,
+            "overall": perf["overall"], "long": perf["long"], "short": perf["short"],
+            "rank": rank, "total_ranked": total,
+            "rank_movement": PC.rank_movement(db, sp.id, snapcat, rank, ref=now),
+            "badges": PC.editor_badges(perf),
+            "personal_bests": PC.personal_bests(db, sp.id, snapcat, ref=now)}
 
 
 # ============================================================ helpers

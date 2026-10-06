@@ -9487,6 +9487,10 @@ def _prod_user_out(db, u):
         row["recommended_load"] = (sp.recommended_load if sp else 5)
         row["password"] = (sp.plain_password if sp else "") or ""
         row["profile_id"] = sp.id if sp else None
+        row["editor_specialization"] = (getattr(sp, "editor_specialization", "") or "") if sp else ""
+        row["target_long"] = getattr(sp, "target_long", None) if sp else None
+        row["target_short"] = getattr(sp, "target_short", None) if sp else None
+        row["target_thumbnails"] = getattr(sp, "target_thumbnails", None) if sp else None
     return row
 
 
@@ -9522,9 +9526,22 @@ def create_production_user(payload: dict, db: Session = Depends(get_db), _=Depen
                                approval_required=bool(payload.get("approval_required", True)),
                                phone=(payload.get("phone") or "").strip()))
     else:
+        def _spec(v):
+            v = (v or "").strip().lower()
+            return v if v in ("long", "short", "hybrid") else ""
+
+        def _tgt(v):
+            try:
+                return int(v) if (v is not None and str(v).strip() != "") else None
+            except Exception:
+                return None
         db.add(ProductionStaffProfile(user_id=u.id, staff_role=role, plain_password=pwd,
                                       phone=(payload.get("phone") or "").strip(),
-                                      recommended_load=int(payload.get("recommended_load") or 5)))
+                                      recommended_load=int(payload.get("recommended_load") or 5),
+                                      editor_specialization=_spec(payload.get("editor_specialization")),
+                                      target_long=_tgt(payload.get("target_long")),
+                                      target_short=_tgt(payload.get("target_short")),
+                                      target_thumbnails=_tgt(payload.get("target_thumbnails"))))
     db.commit()
     return {"ok": True, "id": u.id, "user_id": uid, "password": pwd, "role": role}
 
@@ -9550,6 +9567,16 @@ def update_production_user(uid: int, payload: dict, db: Session = Depends(get_db
         sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
         if sp and "recommended_load" in payload:
             sp.recommended_load = int(payload["recommended_load"] or 5)
+        if sp and "editor_specialization" in payload:
+            v = (payload.get("editor_specialization") or "").strip().lower()
+            sp.editor_specialization = v if v in ("long", "short", "hybrid") else ""
+        for _k in ("target_long", "target_short", "target_thumbnails"):
+            if sp and _k in payload:
+                try:
+                    raw = payload.get(_k)
+                    setattr(sp, _k, int(raw) if (raw is not None and str(raw).strip() != "") else None)
+                except Exception:
+                    pass
     db.commit()
     return {"ok": True}
 
