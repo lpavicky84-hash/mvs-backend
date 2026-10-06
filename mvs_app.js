@@ -27743,8 +27743,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.pj-title{font-weight:800;font-size:1.05rem}',
 '.pj-sub{font-size:.8rem;opacity:.85;margin-top:6px}',
 '.pj-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}',
-'.pj-btn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:6px 14px;font-weight:700;font-size:.8rem;cursor:pointer}',
-'.pj-btn:hover{background:rgba(255,255,255,.28)}',
+'.pj-btn{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:11px;padding:9px 16px;font-weight:800;font-size:.8rem;letter-spacing:.01em;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 2px 8px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.18);transition:background .15s,transform .12s,box-shadow .15s,border-color .15s}',
+'.pj-btn:hover{background:rgba(255,255,255,.26);transform:translateY(-1.5px);box-shadow:0 7px 16px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.26);border-color:rgba(255,255,255,.48)}',
+'.pj-btn:active{transform:translateY(0);box-shadow:0 2px 6px rgba(0,0,0,.14)}',
+'.pj-btn.pj-primary{background:linear-gradient(135deg,#f3c75a,#d99e26);color:#3a2b08;border-color:transparent;box-shadow:0 4px 13px rgba(214,154,36,.42),inset 0 1px 0 rgba(255,255,255,.35)}',
+'.pj-btn.pj-primary:hover{background:linear-gradient(135deg,#efbd44,#c9901f);color:#3a2b08;box-shadow:0 7px 20px rgba(214,154,36,.55)}',
 '.pj-r{text-align:right;min-width:180px}',
 '.pj-pct{font-size:1.8rem;font-weight:800;line-height:1}',
 '.pj-ch{font-size:.8rem;opacity:.9;margin:4px 0 8px}',
@@ -32587,7 +32590,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var total=p.chapters_total||0, pub=p.published_count||0;
     var chips=items.map(function(x){return '<span class="pj-stg" style="--c:'+x[2]+'"><b>'+x[1]+'</b> '+x[0]+'</span>';}).join('');
     var pubChip='<span class="pj-stg-pub">'+ic('video')+' '+pub+'/'+total+' published</span>';
-    return '<div class="pj-stages">'+pubChip+chips+'</div>';
+    // id -> expand hone par ise chupa dete hain (niche clickable dash-bar wahi status dikhata hai,
+    // taaki status 2 baar na dikhe)
+    return '<div class="pj-stages" id="pjstg-'+(p.id||0)+'">'+pubChip+chips+'</div>';
   }
   function _prodLoadProjects(pr,fromFilter){
     var box=document.getElementById('prod-projects'); if(!box) return; _pjCss();
@@ -32640,7 +32645,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           _pjStageChips(p)+
           '<div class="pj-c-acts"><button class="pj-btn" onclick="event.stopPropagation();prodStatusHistory('+p.id+')">History</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodEditTask('+p.id+')">Edit</button>'+
-            '<button class="pj-btn" onclick="event.stopPropagation();prodAssignProject('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Assign Editor</button>'+
+            '<button class="pj-btn pj-primary" onclick="event.stopPropagation();prodAssignProject('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Assign Editor</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodProjectChat('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button>'+
             '<button class="pj-btn pj-del" onclick="event.stopPropagation();prodDeleteTask('+p.id+')">Delete</button></div>'+
           '<div class="pj-chapters" id="pjch-'+p.id+'" style="display:none"></div>'+
@@ -32660,9 +32665,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodProjStat=function(k){ window._prodProjFlt=window._prodProjFlt||{};
     window._prodProjFlt.stat=(window._prodProjFlt.stat===k?'':k); _prodLoadProjects(null,true); };
   window.prodProjExpand=function(id){
-    var box=document.getElementById('pjch-'+id), chev=document.getElementById('pjchev-'+id); if(!box) return;
-    if(box.style.display!=='none'){ box.style.display='none'; if(chev)chev.style.transform=''; return; }
-    box.style.display='block'; if(chev)chev.style.transform='rotate(180deg)';
+    var box=document.getElementById('pjch-'+id), chev=document.getElementById('pjchev-'+id);
+    var stg=document.getElementById('pjstg-'+id); if(!box) return;
+    if(box.style.display!=='none'){ box.style.display='none'; if(chev)chev.style.transform=''; if(stg)stg.style.display=''; return; }
+    // open: static (non-clickable) status chips chupao -> niche sirf clickable dash-bar wala status dikhe (1 hi baar)
+    box.style.display='block'; if(chev)chev.style.transform='rotate(180deg)'; if(stg)stg.style.display='none';
     window._prodProjChaps(id);
   };
   // ===== PROJECT DETAIL DASHBOARD (expand view) — stage counters (clickable filter) + chapter cards
