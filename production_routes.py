@@ -2823,58 +2823,124 @@ def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_p
         "qc_first_pass_pct": round(100.0 * first_pass / n_done) if n_done else None,
     }
 
-    # ---- editor performance ----
+    # ---- long vs short classification (compare like-with-like) ----
+    def _is_short(vt):
+        return "short" in ((vt or "").strip().lower())
+    # task_id -> video_type for EVERY task (cheap 2-col pull) so project chapters inherit
+    # their parent project's video_type for long/short classification.
+    try:
+        _vt_of = dict(db.query(VideoTask.id, VideoTask.video_type).all())
+    except Exception:
+        _vt_of = {}
+    from models import VideoTaskChapter as _VCp
+    # finished project chapters grouped by editor (edit submitted = a completed video for the editor)
+    _ed_chaps = {}
+    try:
+        for _c in db.query(_VCp).filter(_VCp.edit_state == "edited", _VCp.editor_id != None).all():
+            _ed_chaps.setdefault(_c.editor_id, []).append(_c)
+    except Exception:
+        pass
+
+    def _secs_task(t):
+        try:
+            return int(getattr(t, "editing_seconds", 0) or 0)
+        except Exception:
+            return 0
+
+    def _secs_chap(c):
+        st = getattr(c, "editing_started_at", None); en = getattr(c, "edited_at", None)
+        return int((en - st).total_seconds()) if (st and en and en > st) else 0
+
     editors = db.query(ProductionStaffProfile).filter(
         ProductionStaffProfile.staff_role == "editor").all()
-    ed_rows = []
-    for sp in editors:
-        etasks = [t for t in completed if t.editor_id == sp.id]
-        secs = db.query(func.coalesce(func.sum(EditingSession.duration_seconds), 0)).filter(
-            EditingSession.editor_id == sp.id).scalar() or 0
-        vids = len(etasks)
-        ot_den = sum(1 for t in etasks if t.deadline)
-        ot_hit = sum(1 for t in etasks if t.deadline and t.published_at <= t.deadline)
-        revs = sum((t.revision_count or 0) for t in etasks)
-        # Phase 2a: also credit finished PROJECT CHAPTERS this editor edited (additive, guarded)
-        try:
-            from models import VideoTaskChapter as _VCp
-            _cdone = db.query(_VCp).filter(_VCp.editor_id == sp.id, _VCp.edit_state == "edited").all()
-            vids += len(_cdone)
-            for _c in _cdone:
-                _st = getattr(_c, "editing_started_at", None); _en = getattr(_c, "edited_at", None)
-                if _st and _en and _en > _st:
-                    secs += int((_en - _st).total_seconds())
-        except Exception:
-            pass
-        ed_rows.append({
-            "name": sp.user.name if sp.user else "",
-            "videos": vids,
-            "active_hours": round(float(secs) / 3600.0, 1),
-            "avg_hours": round((float(secs) / 3600.0) / vids, 1) if vids else 0,
-            "on_time_pct": round(100.0 * ot_hit / ot_den) if ot_den else None,
-            "revisions": revs,
-        })
-    ed_rows.sort(key=lambda x: -x["videos"])
 
-    # ---- graphics performance ----
+    def _ed_row(sp, cat):
+        want_short = (cat == "short")
+        etasks = [t for t in completed if t.editor_id == sp.id and _is_short(t.video_type) == want_short]
+        chaps = [c for c in _ed_chaps.get(sp.id, []) if _is_short(_vt_of.get(c.task_id, "")) == want_short]
+        vids = len(etasks) + len(chaps)
+        if not vids:
+            return None
+        secs = sum(_secs_task(t) for t in etasks) + sum(_secs_chap(c) for c in chaps)
+        ot_den = sum(1 for t in etasks if t.deadline) + sum(1 for c in chaps if getattr(c, "deadline", None))
+        ot_hit = sum(1 for t in etasks if t.deadline and t.published_at and t.published_at <= t.deadline)
+        ot_hit += sum(1 for c in chaps if getattr(c, "deadline", None) and getattr(c, "edited_at", None) and c.edited_at <= c.deadline)
+        revs = sum((t.revision_count or 0) for t in etasks) + sum((getattr(c, "qc_revision", 0) or 0) for c in chaps)
+        return {"name": sp.user.name if sp.user else "", "videos": vids,
+                "active_hours": round(secs / 3600.0, 1),
+                "avg_hours": round((secs / 3600.0) / vids, 1) if vids else 0,
+                "on_time_pct": round(100.0 * ot_hit / ot_den) if ot_den else None,
+                "revisions": revs}
+
+    editors_long, editors_short = [], []
+    for sp in editors:
+        rl = _ed_row(sp, "long"); rs = _ed_row(sp, "short")
+        if rl:
+            editors_long.append(rl)
+        if rs:
+            editors_short.append(rs)
+    editors_long.sort(key=lambda x: -x["videos"])
+    editors_short.sort(key=lambda x: -x["videos"])
+    # combined list (backward compatible) — long + short merged per editor
+    _ed_comb = {}
+    for r in editors_long + editors_short:
+        c = _ed_comb.setdefault(r["name"], {"name": r["name"], "videos": 0, "active_hours": 0.0,
+                                            "revisions": 0, "_othit": 0, "_otden": 0})
+        c["videos"] += r["videos"]; c["active_hours"] += r["active_hours"]; c["revisions"] += r["revisions"]
+    ed_rows = sorted(_ed_comb.values(), key=lambda x: -x["videos"])
+    for r in ed_rows:
+        r["active_hours"] = round(r["active_hours"], 1)
+        r["avg_hours"] = round(r["active_hours"] / r["videos"], 1) if r["videos"] else 0
+        r.pop("_othit", None); r.pop("_otden", None)
+
+    # ---- graphics performance (also split long vs short by the task's video_type) ----
     gfx = db.query(ProductionStaffProfile).filter(
         ProductionStaffProfile.staff_role == "graphics").all()
-    gfx_rows = []
-    for sp in gfx:
-        gts = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id,
-                                            GraphicsTask.status == "approved",
-                                            GraphicsTask.approved_at != None,
-                                            GraphicsTask.approved_at >= start).all()
+    # finished thumbnails this graphics member made on project chapters
+    _gfx_chaps = {}
+    try:
+        for _c in db.query(_VCp).filter(_VCp.graphics_id != None,
+                                        _VCp.thumbnail_link != "").all():
+            if (getattr(_c, "thumbnail_link", "") or "").strip():
+                _gfx_chaps.setdefault(_c.graphics_id, []).append(_c)
+    except Exception:
+        pass
+
+    def _gfx_row(sp, cat, gts_all):
+        want_short = (cat == "short")
+        gts = [g for g in gts_all if _is_short(_vt_of.get(g.task_id, "")) == want_short]
+        chaps = [c for c in _gfx_chaps.get(sp.id, []) if _is_short(_vt_of.get(c.task_id, "")) == want_short]
+        cnt = len(gts) + len(chaps)
+        if not cnt:
+            return None
         design_h = [((g.approved_at - g.started_at).total_seconds() / 3600.0)
                     for g in gts if g.started_at and g.approved_at]
         revs = sum((g.revision_count or 0) for g in gts)
-        gfx_rows.append({
-            "name": sp.user.name if sp.user else "",
-            "thumbnails": len(gts),
-            "avg_hours": round(sum(design_h) / len(design_h), 1) if design_h else 0,
-            "revisions": revs,
-        })
+        return {"name": sp.user.name if sp.user else "", "thumbnails": cnt,
+                "avg_hours": round(sum(design_h) / len(design_h), 1) if design_h else 0,
+                "revisions": revs}
+
+    gfx_rows, gfx_long, gfx_short = [], [], []
+    for sp in gfx:
+        gts_all = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id,
+                                                GraphicsTask.status == "approved",
+                                                GraphicsTask.approved_at != None,
+                                                GraphicsTask.approved_at >= start).all()
+        rl = _gfx_row(sp, "long", gts_all); rs = _gfx_row(sp, "short", gts_all)
+        if rl:
+            gfx_long.append(rl)
+        if rs:
+            gfx_short.append(rs)
+        tot = (len(gts_all) + len(_gfx_chaps.get(sp.id, [])))
+        if tot:
+            design_h = [((g.approved_at - g.started_at).total_seconds() / 3600.0)
+                        for g in gts_all if g.started_at and g.approved_at]
+            gfx_rows.append({"name": sp.user.name if sp.user else "", "thumbnails": tot,
+                             "avg_hours": round(sum(design_h) / len(design_h), 1) if design_h else 0,
+                             "revisions": sum((g.revision_count or 0) for g in gts_all)})
     gfx_rows.sort(key=lambda x: -x["thumbnails"])
+    gfx_long.sort(key=lambda x: -x["thumbnails"])
+    gfx_short.sort(key=lambda x: -x["thumbnails"])
 
     # ---- content mix (by video_type) ----
     mix = {}
@@ -2898,7 +2964,9 @@ def pm_analytics(days: int = 30, db: Session = Depends(get_db), me=Depends(get_p
         trend.append({"label": wk_end.strftime("%d %b"), "created": c_created, "completed": c_done})
 
     return {"days": days, "overview": overview, "editors": ed_rows,
-            "graphics": gfx_rows, "content_mix": content_mix, "trend": trend}
+            "editors_long": editors_long, "editors_short": editors_short,
+            "graphics": gfx_rows, "graphics_long": gfx_long, "graphics_short": gfx_short,
+            "content_mix": content_mix, "trend": trend}
 
 
 # ============================================================ helpers
@@ -4425,6 +4493,15 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
     prog = {}
     _now = datetime.utcnow()
     _dl_map = {t.id: getattr(t, "deadline", None) for t in rows}
+    import video_tasks as pc_vt
+    # canonical lifecycle -> aggregate production-stage bucket (section 7/8)
+    _STAGE_OF = {
+        "awaiting_creator": "recording_pending", "changes_required": "recording_pending",
+        "pm_review": "pm_review", "approved": "approved",
+        "editor_assigned": "editing", "editing": "editing", "editing_paused": "editing",
+        "qc_pending": "qc", "qc_changes": "qc", "ready_for_youtube": "ready",
+        "uploaded": "published", "completed": "published",
+    }
     try:
         from models import VideoTaskChapter as _VC
         ids = [t.id for t in rows]
@@ -4432,8 +4509,16 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
             for c in db.query(_VC).filter(_VC.task_id.in_(ids)).all():
                 p = prog.setdefault(c.task_id, {"total": 0, "done": 0, "pending": 0,
                                                 "shoot_pending": 0, "delayed": 0,
-                                                "assigned": 0, "editing": 0, "edited": 0, "uploaded": 0})
+                                                "assigned": 0, "editing": 0, "edited": 0, "uploaded": 0,
+                                                "st_recording_pending": 0, "st_pm_review": 0,
+                                                "st_approved": 0, "st_editing": 0, "st_qc": 0,
+                                                "st_ready": 0, "st_published": 0})
                 p["total"] += 1
+                try:
+                    _stg = _STAGE_OF.get(pc_vt._chapter_lifecycle(c), "recording_pending")
+                    p["st_" + _stg] += 1
+                except Exception:
+                    pass
                 rs = (getattr(c, "review_status", "") or "").strip()
                 _link = (c.link or "").strip()
                 _done = (rs == "approved" or (rs == "" and _link))
@@ -4465,7 +4550,7 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
         counts[t.kind] = counts.get(t.kind, 0) + 1
         if t.subject:
             subjects.add(t.subject)
-        p = prog.get(t.id, {"total": 0, "done": 0, "pending": 0, "shoot_pending": 0, "delayed": 0, "assigned": 0, "editing": 0, "edited": 0, "uploaded": 0})
+        p = prog.get(t.id, {"total": 0, "done": 0, "pending": 0, "shoot_pending": 0, "delayed": 0, "assigned": 0, "editing": 0, "edited": 0, "uploaded": 0, "st_recording_pending": 0, "st_pm_review": 0, "st_approved": 0, "st_editing": 0, "st_qc": 0, "st_ready": 0, "st_published": 0})
         cname = ""
         try:
             cname, _ = pc.creator_info(db, t)
@@ -4486,6 +4571,18 @@ def pm_projects(kind: str = "", class_level: str = "", subject: str = "", q: str
             "chapters_delayed": p.get("delayed", 0),
             "vids_assigned": p.get("assigned", 0), "vids_editing": p.get("editing", 0),
             "vids_edited": p.get("edited", 0), "vids_uploaded": p.get("uploaded", 0),
+            # ---- canonical production-stage aggregate (section 7/8) ----
+            "stage_recording_pending": p.get("st_recording_pending", 0),
+            "stage_pm_review": p.get("st_pm_review", 0),
+            "stage_approved": p.get("st_approved", 0),
+            "stage_editing": p.get("st_editing", 0),
+            "stage_qc": p.get("st_qc", 0),
+            "stage_ready": p.get("st_ready", 0),
+            "stage_published": p.get("st_published", 0),
+            "published_count": p.get("st_published", 0),
+            "recording_complete": bool(p["total"] and (p.get("st_recording_pending", 0) + p.get("st_pm_review", 0)) == 0),
+            "production_complete": bool(p["total"] and p.get("st_published", 0) == p["total"]),
+            "prod_pct": (round(100.0 * p.get("st_published", 0) / p["total"]) if p["total"] else 0),
             "project_editor_id": _pe, "project_editor_name": _pe_nm.get(_pe, ""),
             "pct": pct, "is_old": bool(getattr(t, "is_old", False)),
         })
