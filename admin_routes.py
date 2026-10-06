@@ -9558,6 +9558,7 @@ def update_production_user(uid: int, payload: dict, db: Session = Depends(get_db
 def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import (YouTuberProfile, ProductionStaffProfile, GraphicsTask,
                         VideoTask, EditingSession)
+    from models import VideoTaskChapter as _VC
     u = db.query(User).filter(User.id == uid).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -9583,12 +9584,44 @@ def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(ge
                 # remove their editing sessions (historical, tied to this profile)
                 for es in db.query(EditingSession).filter(EditingSession.editor_id == sp.id).all():
                     db.delete(es)
+                # PROJECT CHAPTERS: free every chapter this editor owned + any whole-project
+                # assignment, so the editor profile can be deleted without orphaning chapter work.
+                try:
+                    for c in db.query(_VC).filter(_VC.editor_id == sp.id).all():
+                        c.editor_id = None
+                        c.editor_inherited = False
+                        if (getattr(c, "lifecycle", "") or "") in _EDIT_LC:
+                            c.lifecycle = "approved"
+                        if (getattr(c, "edit_state", "") or "") in ("assigned", "editing", "paused"):
+                            c.edit_state = ""
+                        unassigned += 1
+                    for t in db.query(VideoTask).filter(VideoTask.project_editor_id == sp.id).all():
+                        t.project_editor_id = None
+                except Exception:
+                    pass
             elif role == "graphics":
                 for t in db.query(VideoTask).filter(VideoTask.graphics_id == sp.id).all():
                     t.graphics_id = None
                     unassigned += 1
                 for g in db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id).all():
                     db.delete(g)
+                # PROJECT CHAPTERS: free graphics assignment too
+                try:
+                    for c in db.query(_VC).filter(_VC.graphics_id == sp.id).all():
+                        c.graphics_id = None
+                        c.gfx_state = ""
+                        unassigned += 1
+                except Exception:
+                    pass
+            # defensive: clear any cross-referenced column so FK delete of the profile never blocks
+            try:
+                db.query(VideoTask).filter(VideoTask.editor_id == sp.id).update(
+                    {VideoTask.editor_id: None}, synchronize_session=False)
+                db.query(VideoTask).filter(VideoTask.graphics_id == sp.id).update(
+                    {VideoTask.graphics_id: None}, synchronize_session=False)
+            except Exception:
+                pass
+            db.flush()
             db.delete(sp)
     # User ko FULLY delete karo (card + user-id + password sab khatam). Pehle FK references saaf
     # karo taaki MySQL FK-constraint delete block na kare.
