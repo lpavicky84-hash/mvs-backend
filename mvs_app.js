@@ -28056,7 +28056,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-hw .pt-badge.review{position:absolute;left:10px;bottom:10px;z-index:4;background:rgba(255,255,255,.94);color:#c23a30;backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(0,0,0,.22)}',
 'body.dark .ptc-hw .pt-badge.review{background:rgba(30,22,10,.9);color:#f0a58f}',
 '.ptc-view{position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:.64rem;font-weight:800;padding:4px 10px;border-radius:8px;text-decoration:none}',
-'.ptc-body{padding:15px 16px 16px;display:flex;flex-direction:column;gap:7px;flex:1}',
+'.ptc-body{padding:15px 16px 16px;display:flex;flex-direction:column;gap:7px;flex:1;color:var(--text,#2a2313)}',
 '.ptc-title{font-weight:800;font-size:1.02rem;line-height:1.3;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}',
 '.pw-chip.pw-chapno{background:linear-gradient(135deg,#8f3d66,#6f2f54);color:#fff;font-weight:900;letter-spacing:.02em;border:none;box-shadow:0 2px 7px rgba(143,61,102,.3);padding:3px 11px}',
 'body.dark .pw-chip.pw-chapno{background:linear-gradient(135deg,#b05588,#8f3d66);color:#fff}',
@@ -32582,6 +32582,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var _PJ_STATUS_FIELD={recording:'stage_recording_pending',pm_review:'stage_pm_review',
     approved:'stage_approved',editing:'stage_editing',qc:'stage_qc',ready:'stage_ready',published:'published_count'};
   function _pjHasStage(p,s){ var f=_PJ_STATUS_FIELD[s]; return f?((p[f]||0)>0):true; }
+  // upper STATUS dropdown value -> andar wali chapter dashboard ki stage key (taaki expand par
+  // chapters bhi apne aap wahi status dikhein jo upar chuna hai)
+  var _PJ_UP2STAGE={recording:'recording_pending',pm_review:'pm_review',approved:'approved',
+    editing:'editing',qc:'qc',ready:'ready',published:'published'};
   // production-stage aggregate chips (recording -> published) for a project card
   function _pjStageChips(p){
     var items=[['Recording',p.stage_recording_pending,'#f87171'],['PM Review',p.stage_pm_review,'#fbbf24'],
@@ -32661,6 +32665,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // cascade reset: teacher change clears class+subject; class change clears subject
     if(k==='teacher'){ window._prodProjFlt.class_level=''; window._prodProjFlt.subject=''; }
     if(k==='class_level'){ window._prodProjFlt.subject=''; }
+    // STATUS badalte hi har project ki chapter-filter choice reset -> sab naye status ko follow karein
+    if(k==='status'){ window._pjChapFilter={}; }
     window._prodProjFlt[k]=v; _prodLoadProjects(null,true); };
   window.prodProjStat=function(k){ window._prodProjFlt=window._prodProjFlt||{};
     window._prodProjFlt.stat=(window._prodProjFlt.stat===k?'':k); _prodLoadProjects(null,true); };
@@ -32697,7 +32703,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var box=document.getElementById('pjch-'+id); if(!box) return;
     var c=window._pjChapsCache[id]||{chs:[]}; var chs=c.chs||[];
     if(!chs.length){ box.innerHTML='<div style="color:#fff;opacity:.8;padding:8px">No chapter items.</div>'; return; }
-    var cur=window._pjChapFilter[id]||'';
+    // default filter = jo upar STATUS dropdown me chuna hai (jab tak user ne niche khud koi chip na chuni ho)
+    var _fs=(window._prodProjFlt||{}).status||'';
+    var cur=window._pjChapFilter.hasOwnProperty(id)?window._pjChapFilter[id]:(_PJ_UP2STAGE[_fs]||'');
     var counts={}; chs.forEach(function(ch){ var s=_pjStageOf(ch); counts[s]=(counts[s]||0)+1; });
     var total=chs.length;
     var chips='<button class="pj-dchip'+(cur===''?' on':'')+'" onclick="prodProjChapFilter('+id+',\'\')"><b>'+total+'</b> All</button>';
@@ -32999,7 +33007,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var badgeHtml='<span class="ptc-badge'+(_blink?' ptc-blink':'')+'" style="background:'+badge[1]+'">'+esc(badge[0])+'</span>';
     var over=false; try{ if(v.deadline_iso && st!=='edited') over=(new Date(String(v.deadline_iso).replace(' ','T')).getTime()<Date.now()); }catch(e){}
     var chips=[];
-    chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800">'+esc(v.project_title||'Project')+'</span>');
+    // project chip: "(All Chapters)" jaisa redundant suffix hata do + lamba ho to saaf truncate
+    // (inline-flex chip me CSS ellipsis reliably kaam nahi karti, isliye text hi chhota karte hain)
+    var _pt=(''+(v.project_title||'Project')).replace(/\s*\(all\s*chapters?\)\s*$/i,'').trim()||'Project';
+    if(_pt.length>30) _pt=_pt.slice(0,29).replace(/[\s—\-]+$/,'')+'…';
+    chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800" title="'+esc(v.project_title||'')+'">'+esc(_pt)+'</span>');
     if(v.subject) chips.push('<span class="pw-chip">'+esc(v.subject)+'</span>');
     if(v.channel_name) chips.push('<span class="pw-chip">'+esc(v.channel_name)+'</span>');
     if(v.kind) chips.push('<span class="pw-chip">'+esc(({one_shot:'One Shot',rapid_revision:'Rapid Revision',project:'Project'}[v.kind])||'Project')+'</span>');
