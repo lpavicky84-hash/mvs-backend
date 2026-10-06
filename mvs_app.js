@@ -34317,12 +34317,28 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       html+=perf?_staffPerfHtml(perf):'<div class="p-empty" style="padding:20px">No performance data for this period.</div>';
       if(person && person.all_tasks){
         var active=(person.all_tasks||[]).filter(function(t){return t.active;});
-        if(active.length && typeof window._personTaskRows==='function'){
-          html+='<div class="p-sec">Active Tasks ('+active.length+')</div>'+window._personTaskRows(active);
+        if(active.length){
+          html+='<div class="p-sec">Active Tasks ('+active.length+')</div>'+_perfTaskRows(active);
         }
       }
       _perfModalBody(html);
     }).catch(function(e){ _perfModalBody('<div class="p-empty" style="padding:24px">Could not load. '+esc(e&&e.message||'')+'</div>'); });
+  }
+  // premium active-tasks list for the drilldown modal (uses the styled .pim-row cards)
+  function _perfTaskRows(tasks){
+    if(!tasks||!tasks.length) return '<div class="p-empty" style="padding:16px">No active tasks.</div>';
+    return '<div class="pim-list">'+tasks.map(function(t){
+      var lc=(t.lifecycle||t.next_action||'active').replace(/_/g,' ');
+      var meta=[];
+      if(t.ref_code) meta.push(esc(t.ref_code));
+      if(t.deadline) meta.push('due '+esc(t.deadline));
+      var hrs=(t.editing_hours!=null&&t.editing_hours!=='')?(t.editing_hours+'h'):'';
+      var over=!!t.overdue;
+      var badge='<span class="pim-b" style="background:'+(over?'rgba(209,68,58,.15);color:#b91c1c':'rgba(124,79,192,.15);color:#6d3fb0')+'">'+(hrs?esc(hrs)+' · ':'')+esc(lc)+'</span>';
+      return '<div class="pim-row"><div class="pim-main"><div class="pim-t">'+esc(t.title||'Untitled')+'</div>'+
+        (meta.length?'<div class="pim-meta">'+meta.join(' · ')+'</div>':'')+'</div>'+
+        '<div class="pim-badges">'+badge+'</div></div>';
+    }).join('')+'</div>';
   }
   function _staffPerfHtml(r){
     if(!r) return '';
@@ -34703,17 +34719,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(tab==='youtube'){
       if(!t.youtube_url) return '<div class="pd-empty">Not published yet.</div>';
-      setTimeout(function(){ try{ prodLoadNotifyLog(t.id); }catch(e){} },30);
-      return '<div class="pd-kv">'+
+      var _isPM=(portal==='production'||portal==='admin');
+      if(_isPM) setTimeout(function(){ try{ prodLoadNotifyLog(t.id); }catch(e){} },30);
+      var _h='<div class="pd-kv">'+
         _kv('YouTube URL', '<a href="'+esc(t.youtube_url)+'" target="_blank">Open on YouTube</a>')+
         _kv('Video ID', esc(t.yt_video_id||''))+
         _kv('Channel', esc(t.channel_name||''))+
         _kv('Published', esc(t.published_at||''))+
         _kv('Current Views', t.yt_views!=null?String(t.yt_views):'\u2014')+
         _kv('Last Updated', esc(t.yt_views_at||''))+
-      '</div>'+
-      '<div style="margin-top:8px"><button class="p-btn p-btn-primary" onclick="prodNotifyStudents('+t.id+')">'+ic('send')+' Send to Students</button></div>'+
-      prodNotifyLogHtml(t.id);
+      '</div>';
+      // premium "auto-notified" info card \u2014 shown to everyone (editors see only this, no button)
+      _h+='<div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px;padding:13px 15px;border-radius:14px;background:linear-gradient(135deg,rgba(46,158,107,.1),rgba(46,158,107,.04));border:1px solid rgba(46,158,107,.28)">'+
+        '<div style="flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:rgba(46,158,107,.16);color:#1f8a54;display:flex;align-items:center;justify-content:center">'+ic('send')+'</div>'+
+        '<div><div style="font-weight:800;font-size:.9rem;color:var(--text,#2a2313)">Students notified automatically</div>'+
+        '<div style="font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:3px;line-height:1.45">The published YouTube link was sent to this teacher\u2019s students the moment it went live \u2014 and appears as a portal notification.</div></div></div>';
+      // Only PM/Admin get a manual re-send + the sent-history log. Editors never see this.
+      if(_isPM){
+        _h+='<div style="margin-top:12px"><button class="p-btn p-btn-primary" onclick="prodNotifyStudents('+t.id+')">'+ic('send')+' Send again (custom)</button></div>'+prodNotifyLogHtml(t.id);
+      }
+      return _h;
     }
     return '';
   }

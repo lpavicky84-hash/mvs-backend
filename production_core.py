@@ -668,6 +668,9 @@ def _ensure_production_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_approved_at DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_revision INTEGER DEFAULT 0",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_quality INTEGER",
+        # auto-notify students on publish (idempotent flag)
+        "ALTER TABLE video_tasks ADD COLUMN students_notified BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN students_notified BOOLEAN DEFAULT 0",
     ]
     for _s in _stmts:
         try:

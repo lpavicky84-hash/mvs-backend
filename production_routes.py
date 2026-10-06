@@ -787,6 +787,19 @@ def _apply_upload_done(db, t, payload, me):
                           f'"{t.title}" was uploaded to YouTube.', "video_request", link=str(t.id))
     except Exception:
         pass
+    # AUTO: teacher ke sabhi students ko published YouTube link turant bhej do (sirf ek baar)
+    try:
+        if not bool(getattr(t, "students_notified", False)):
+            _n = auto_notify_students_video(db, t.teacher_id, t.youtube_url, t.title,
+                                            t.channel_name or "", actor_id=getattr(me, "id", None))
+            t.students_notified = True
+            try:
+                pc.log_event(db, t, me, "auto_sent_to_students",
+                             meta={"note": "Auto-sent to %d student%s" % (_n, "" if _n == 1 else "s")})
+            except Exception:
+                pass
+    except Exception:
+        pass
     # initial live views (best-effort)
     try:
         key = _yt_get_key(db)
@@ -1581,6 +1594,19 @@ def add_youtube(tid: int, payload: dict = Body(...),
             if yp and yp.user_id:
                 pc.notify(db, yp.user_id, "Your video is live",
                           f'"{t.title}" was uploaded to YouTube.', "video_request", link=str(t.id))
+    except Exception:
+        pass
+    # AUTO: teacher ke sabhi students ko published YouTube link turant bhej do (sirf ek baar)
+    try:
+        if not bool(getattr(t, "students_notified", False)):
+            _n = auto_notify_students_video(db, t.teacher_id, t.youtube_url, t.title,
+                                            t.channel_name or "", actor_id=getattr(me, "id", None))
+            t.students_notified = True
+            try:
+                pc.log_event(db, t, me, "auto_sent_to_students",
+                             meta={"note": "Auto-sent to %d student%s" % (_n, "" if _n == 1 else "s")})
+            except Exception:
+                pass
     except Exception:
         pass
     # fetch initial metrics (best-effort) — reuses the shared YouTube views system
@@ -3277,6 +3303,46 @@ def _prod_active_students(db):
             .filter(User.is_active == True, User.role == "student").all())  # noqa: E712
 
 
+def _teacher_students(db, teacher_id):
+    """All active students of a teacher (same rule as the teacher's own notify: subject overlap;
+    if the teacher has no subjects on file, fall back to all active students)."""
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first() if teacher_id else None
+    if tp is not None:
+        try:
+            from teacher_routes import _my_students
+            got = _my_students(db, tp)
+            if got is not None:
+                return got
+        except Exception:
+            pass
+    return _prod_active_students(db)
+
+
+def auto_notify_students_video(db, teacher_id, link, title, channel_name="", actor_id=None):
+    """AUTO-send a PUBLISHED YouTube link to all of a teacher's students as a portal
+    notification. Only the YouTube link is ever shared. Returns the number sent."""
+    link = (link or "").strip()
+    if not (teacher_id and link):
+        return 0
+    import uuid
+    batch = uuid.uuid4().hex[:24]
+    ntitle = "New Video: %s" % (title or "")
+    msg = ('New video "%s" is now live%s. Tap to watch on YouTube.'
+           % (title or "", (" on %s" % channel_name) if channel_name else ""))
+    sent = 0
+    for sp in _teacher_students(db, teacher_id):
+        uid = getattr(sp, "user_id", None)
+        if not uid:
+            continue
+        db.add(Notification(user_id=uid, title=ntitle, message=msg, notif_type="video_link",
+                            link=link, image_url=None, sender_id=actor_id,
+                            sender_role="production", batch_key=batch,
+                            batch_label="Auto · Students notified on publish"))
+        sent += 1
+    return sent
+
+
 @router.get("/tasks/{tid}/notify-targets")
 def prod_notify_targets(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     """Recipient options for 'Send to Students' — all / by class / by subject, with live counts."""
@@ -4307,6 +4373,14 @@ def _chapter_set_youtube(db, me, cid, url, youtuber_id=None):
             if ep and ep.user_id:
                 pc.notify(db, ep.user_id, "Your video is live",
                           f'"{row.title}" you edited is now on YouTube.', "appreciation", link=str(row.task_id))
+    except Exception:
+        pass
+    # AUTO: teacher ke sabhi students ko chapter ka published YouTube link bhej do (sirf ek baar)
+    try:
+        if t is not None and not bool(getattr(row, "students_notified", False)):
+            auto_notify_students_video(db, t.teacher_id, row.youtube_url, row.title,
+                                       getattr(t, "channel_name", "") or "", actor_id=getattr(me, "id", None))
+            row.students_notified = True
     except Exception:
         pass
     db.commit()

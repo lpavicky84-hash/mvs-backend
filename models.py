@@ -635,6 +635,7 @@ class VideoTask(Base):
     project_editor_id = Column(Integer, nullable=True)    # whole-project assigned to this editor (production_staff_profiles.id) — Phase 3
     cancelled       = Column(Boolean, default=False)
     published_at    = Column(DateTime, nullable=True)
+    students_notified = Column(Boolean, default=False)   # auto-sent YouTube link to teacher's students (once)
     created_at     = Column(DateTime, default=func.now())
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -669,6 +670,7 @@ class VideoTaskChapter(Base):
     thumb_approved_at = Column(DateTime, nullable=True)    # perf §9: when PM finalized the chapter thumbnail
     thumb_revision    = Column(Integer, default=0)         # perf §9: thumbnail revision rounds
     thumb_quality     = Column(Integer, nullable=True)     # perf §9: PM thumbnail quality 1-5
+    students_notified = Column(Boolean, default=False)     # auto-sent chapter YouTube link to teacher's students (once)
     thumbnail_link = Column(String(600), default="")       # graphics-submitted thumbnail for this video
     thumb_refs    = Column(Text, default="")               # JSON list of reference thumbnail URLs (PM -> graphics)
     deadline      = Column(DateTime, nullable=True)         # per-video deadline set at assign time (editor/graphics submit by this)
