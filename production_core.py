@@ -728,12 +728,47 @@ FINAL_STATUS_KEYS = ("uploaded",)
 
 
 def stage_filter(status):
-    """UI status value -> SQLAlchemy OR clause (lifecycle OR legacy status), or None for
-    blank/all. Single source of truth for the status↔lifecycle mapping."""
-    from sqlalchemy import or_ as _or
+    """UI status value -> precise SQLAlchemy clause, or None for blank/all. Single source of
+    truth for the status↔lifecycle mapping.
+
+    The production pipeline is a strict ladder; each filter shows ONLY its own rung, never a
+    later one leaking in through a stale legacy ``status`` column:
+      approved          -> PM-approved, NOT yet assigned to an editor (editor_id is NULL).
+      editor_assigned   -> assigned to an editor, editing NOT started yet (queue).
+      editing           -> editor is actively editing (editing / paused / marked-done-not-submitted).
+      qc_pending        -> editor submitted the edited video; waiting for PM QC — nothing else.
+      ready_for_youtube -> PM QC-approved.
+      uploaded          -> published. changes_required -> any changes requested.
+    """
+    from sqlalchemy import or_ as _or, and_ as _and
     s = (status or "").strip()
     if not s or s == "all":
         return None
+    _blank = _or(VideoTask.lifecycle == None, VideoTask.lifecycle == "")      # noqa: E711
+
+    if s == "approved":
+        # teacher shot + PM approved, editor NOT assigned yet
+        return _and(
+            _or(VideoTask.lifecycle == "approved",
+                _and(_blank, VideoTask.status == "approved")),
+            VideoTask.editor_id == None)                                      # noqa: E711
+    if s == "editor_assigned":
+        # assigned to editor, editing NOT started (legacy match only when lifecycle is blank,
+        # so a task that has really moved to 'editing' can never leak in via a stale status)
+        return _and(
+            _or(VideoTask.lifecycle == "editor_assigned",
+                _and(_blank, VideoTask.status == "editing_soon")),
+            VideoTask.editing_started_at == None)                            # noqa: E711
+    if s == "editing":
+        # actively editing: started -> editing / paused, and editor-marked-done-not-submitted
+        return VideoTask.lifecycle.in_(["editing", "editing_paused", "editing_done"])
+    if s == "qc_pending":
+        # ONLY editor-submitted-for-check (nothing that already passed QC / uploaded)
+        return VideoTask.lifecycle == "qc_pending"
+    if s == "ready_for_youtube":
+        return VideoTask.lifecycle == "ready_for_youtube"
+
+    # generic buckets (pm_review, uploaded, changes_required, assigned, …) from the map
     lcs, sts = STATUS_LIFECYCLE_MAP.get(s, ([s], [s]))
     conds = []
     if lcs:

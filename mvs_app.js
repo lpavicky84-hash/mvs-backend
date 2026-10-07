@@ -27635,18 +27635,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '@keyframes ptTimerPulse{0%,100%{box-shadow:0 4px 12px rgba(209,54,43,.30)}50%{box-shadow:0 4px 18px rgba(209,54,43,.55)}}',
 '.pt-timer.overdue{animation:ptTimerPulse 2.2s ease-in-out infinite}',
 /* ================= PREMIUM DEADLINE COMPONENT (card) ================= */
-'.pt-dlbox{display:flex;align-items:center;gap:12px;margin-top:11px;padding:12px 13px;border-radius:14px;border:1px solid transparent;background:var(--surface-2,#faf7ef)}',
+'.pt-dlbox{display:flex;align-items:center;gap:12px;margin-top:11px;padding:12px 13px;border-radius:14px;border:1px solid transparent;background:var(--surface-2,#faf7ef);flex-wrap:wrap}',
 'body.dark .pt-dlbox{background:rgba(255,255,255,.03)}',
 '.pt-dlbox .pdb-ic{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center}',
 '.pt-dlbox .pdb-ic svg{width:19px;height:19px}',
-'.pt-dlbox .pdb-main{flex:1;min-width:0}',
-'.pt-dlbox .pdb-label{font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.1}',
+'.pt-dlbox .pdb-main{flex:1 1 55%;min-width:128px}',
+'.pt-dlbox .pdb-label{font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.15;white-space:normal;overflow-wrap:normal;word-break:keep-all}',
 '.pt-dlbox .pdb-time{font-size:.74rem;color:var(--muted,#8a7d5c);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
 '.pt-dlbox .pdb-subpre{font-weight:600}',
 '.pt-dlbox .pdb-time b{font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em}',
 '.pt-dlbox .pdb-who{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-size:.68rem;font-weight:700;color:var(--muted,#8a7d5c)}',
 '.pt-dlbox .pdb-who svg{width:12px;height:12px;opacity:.85}',
-'.pt-dlbox .pdb-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;border:1px solid transparent;background:rgba(0,0,0,.05);color:inherit;font-size:.74rem;font-weight:800;padding:8px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:filter .14s,transform .14s,background .14s}',
+'.pt-dlbox .pdb-btn{flex:0 0 auto;margin-left:auto;display:inline-flex;align-items:center;gap:3px;border:1px solid transparent;background:rgba(0,0,0,.05);color:inherit;font-size:.74rem;font-weight:800;padding:8px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:filter .14s,transform .14s,background .14s}',
 '.pt-dlbox .pdb-btn .pdb-chev{width:14px;height:14px}',
 '.pt-dlbox .pdb-btn:hover{transform:translateX(1px);filter:brightness(1.02)}',
 'body.dark .pt-dlbox .pdb-btn{background:rgba(255,255,255,.08)}',
@@ -27966,6 +27966,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}',
 '.ptc{background:var(--card,#fffdf7);border:1px solid #ece3d0;border-radius:18px;overflow:hidden;cursor:pointer;transition:box-shadow .18s,transform .18s,border-color .18s;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(18,20,45,.04),0 6px 16px rgba(18,20,45,.05)}',
 'body.dark .ptc{border-color:#25364f;background:#152643;box-shadow:0 1px 2px rgba(0,0,0,.2),0 8px 22px rgba(0,0,0,.28)}',
+/* premium per-status tint: subtle body wash + a status-coloured top accent so each bucket reads at a glance */
+'.ptc.ptc-tint{background:linear-gradient(180deg,var(--stg-a,transparent) 0,var(--card,#fffdf7) 120px)}',
+'body.dark .ptc.ptc-tint{background:linear-gradient(180deg,var(--stg-a,transparent) 0,#152643 120px)}',
+'.ptc.ptc-tint .ptc-hw::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--stg,#8a7d5c);z-index:3}',
+'.ptc.ptc-tint:hover{border-color:var(--stg-b,rgba(224,165,46,.4))}',
 '.ptc:hover{box-shadow:0 12px 30px rgba(18,20,45,.13);transform:translateY(-3px);border-color:rgba(224,165,46,.4)}',
 '.ptc.ptc-opened{box-shadow:0 0 0 2px #b98a2e,0 10px 26px rgba(185,138,46,.22)!important}',
 '.ptc.ptc-opened::after{content:"\\2713 Last opened";position:absolute;top:8px;left:8px;z-index:5;background:#b98a2e;color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(185,138,46,.4)}',
@@ -32171,6 +32176,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return false;
   }
   var _PTC_HCOL=['#1e4d6b','#1f5c3a','#6b2f4d','#5a4a1e','#3a3a6b','#6b3a1e','#1e6b5a','#5a1e4d'];
+  // hex -> rgba (premium per-status tint). Tolerant of #rgb / #rrggbb / bad input.
+  function _hexA(h,a){ try{ h=(''+(h||'')).replace('#',''); if(h.length===3) h=h.replace(/./g,function(c){return c+c;}); var n=parseInt(h,16); if(isNaN(n)) return 'rgba(138,125,92,'+a+')'; return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }catch(e){ return 'rgba(138,125,92,'+a+')'; } }
   // --- human-readable deadline (canonical ISO -> user-timezone live label) ---
   function _dlHuman(iso, lifecycle, mode){
     if(!iso) return null;
@@ -32306,11 +32313,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     var thumb=_finalThumb(t); if(!thumb && t.youtube_url){ var yi=_ytId(t.youtube_url); if(yi) thumb='https://img.youtube.com/vi/'+yi+'/hqdefault.jpg'; }
     var st=_prodStatus(t);
+    var scol=st[1]||'#8a7d5c';   // status color — drives the whole card's premium tint
     var letter=((t.title||'?').trim().charAt(0)||'?').toUpperCase();
-    var hcol=_PTC_HCOL[(t.id||0)%_PTC_HCOL.length];
     var header=thumb
       ? '<div class="ptc-head" style="background-image:url('+esc(thumb)+')" onclick="event.stopPropagation();prodThumbView(\''+esc(thumb)+'\')"><a class="ptc-view" onclick="event.stopPropagation();prodThumbView(\''+esc(thumb)+'\')">VIEW</a></div>'
-      : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+hcol+',rgba(0,0,0,.15))">'+esc(letter)+'</div>';
+      : '<div class="ptc-head ptc-letter" style="background:linear-gradient(135deg,'+scol+','+_hexA(scol,.55)+')">'+esc(letter)+'</div>';
     var isLive=_prodIsLive(t);
     var badge=st[0]?'<span class="ptc-badge'+(isLive?' ptc-blink':'')+'" style="background:'+(st[1]||'#8a7d5c')+'" onclick="event.stopPropagation();prodStatusHistory('+t.id+')" title="View status history">'+esc(st[0])+'</span>':'';
     var chips=[];
@@ -32530,7 +32537,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     var prog=(portal==='editor'&&(lc==='editing'||lc==='editing_paused'||lc==='editing_done')&&t.editing_progress!=null)?'<div class="ptc-prog"><i style="width:'+(t.editing_progress||0)+'%"></i></div><div class="ptc-prog-l">'+(t.editing_progress||0)+'% edited</div>':'';
     var _urgentCard=(t.priority==='urgent')||(lc==='pm_review')||(lc==='creator_submitted')||(t.deadline_flag&&t.deadline_flag.kind==='overdue');
-    return '<div class="ptc'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="border-left:5px solid '+(st[1]||'#8a7d5c')+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+    return '<div class="ptc ptc-tint'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';border-left:5px solid '+scol+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
       '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
       '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+_dlRow+_idrow+
@@ -32600,7 +32607,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){
       var fd=window._prodFD||{};
       var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
-      var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+      var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
       var html='<div class="p-filter p-filter-prod">'+
         '<div class="pf-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="prod-search" placeholder="Search tasks \u2014 title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)"></div>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
@@ -32678,7 +32685,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodFilterDrawer=function(){
     var f=_flt('production'); var fd=window._prodFD||{};
     var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
-    var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+    var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
     var sel=function(field,ph,opts){ return '<div class="p-field"><label>'+ph+'</label><select class="p-select" onchange="prodSetFilter(\'production\',\''+field+'\',this.value);prodCloseDrawer()">'+opts+'</select></div>'; };
     var deadlines=[['','Any deadline'],['overdue','Delayed'],['today','Due Today'],['week','This Week'],['none','No deadline']];
     var priorities=[['','Any priority'],['urgent','Urgent'],['normal','Normal']];

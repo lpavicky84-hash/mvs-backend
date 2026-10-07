@@ -124,7 +124,7 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
                                                       GraphicsTask.task_id.in_(_live)).count(),
         "thumb_changes": db.query(GraphicsTask).filter(GraphicsTask.status == "changes",
                                                        GraphicsTask.task_id.in_(_live)).count(),
-        "editing": c("editing", "editing_paused"),
+        "editing": c("editing", "editing_paused", "editing_done"),
         "graphics": db.query(GraphicsTask).filter(GraphicsTask.status.in_(["in_progress", "submitted"]),
                                                   GraphicsTask.task_id.in_(_live)).count(),
         "qc_pending": c("qc_pending"),
