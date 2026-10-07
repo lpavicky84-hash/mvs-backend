@@ -321,6 +321,18 @@ def ensure_columns():
             pass  # column already exists — safe to ignore
 ensure_columns()
 
+# ===== ONE-TIME LEGACY STATE REPAIR (makes GET /api/production/tasks read-only) =====
+# The Tasks list used to self-heal legacy admin state (approved/uploaded/youtuber) on EVERY
+# request. That healing now runs once here at startup so the read path writes nothing.
+try:
+    import production_core as _pc_boot
+    _pc_boot.repair_legacy_production_state()
+except Exception as _repair_err:
+    try:
+        print("legacy production repair skipped:", str(_repair_err)[:200])
+    except Exception:
+        pass
+
 
 def ensure_fk_cascade():
     """Make child tables that FK to video_tasks use ON DELETE CASCADE, so deleting a

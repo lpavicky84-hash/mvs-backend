@@ -8746,7 +8746,10 @@ window._ytF={q:'',creator:'',channel:'',video_type:'',status:'',bucket:''};
 ============================================================================ */
 window._pdfState = window._pdfState || {};
 window._pdfApplyFns = window._pdfApplyFns || {};
-window._pdfGet = function(scope){ if(!window._pdfState[scope]) window._pdfState[scope]={range:'',from:'',to:''}; return window._pdfState[scope]; };
+window._pdfGet = function(scope){ if(!window._pdfState[scope]) window._pdfState[scope]={range:'',from:'',to:'',field:''}; if(window._pdfState[scope].field===undefined) window._pdfState[scope].field=''; return window._pdfState[scope]; };
+// Date-field selector (which date the range filters on). 'created' is the backend default.
+window._pdfFields = [['created','Created'],['deadline','Deadline'],['upload','Upload date'],['editing_done','Editing done']];
+window._pdfFieldLabel = function(fld){ var m={created:'Created',deadline:'Deadline',upload:'Upload date',editing_done:'Editing done'}; return m[fld||'created']||'Created'; };
 window._pdfId = function(scope){ return 'pdf-'+String(scope).replace(/[^a-z0-9]/gi,'_'); };
 window._pdfLabel = function(scope){
   var s=window._pdfGet(scope);
@@ -8807,7 +8810,16 @@ window.premDateFilter = function(scope){
   var presets=[['today','Today'],['yesterday','Yesterday'],['week','Weekly'],['month','Monthly']];
   var opts=presets.map(function(o){ return '<button type="button" class="pdf-opt'+(s.range===o[0]?' on':'')+'" onclick="_pdfPick(\''+scope+'\',\''+o[0]+'\')"><span class="d"></span>'+o[1]+'</button>'; }).join('');
   var custShow=(s.range==='custom');
+  // date-field picker (production only — which date the range applies to)
+  var fieldSec='';
+  if(scope==='prod'){
+    var curF=s.field||'created';
+    fieldSec='<div class="pdf-sec">Date based on</div>'+
+      (window._pdfFields||[]).map(function(o){ return '<button type="button" class="pdf-opt'+(curF===o[0]?' on':'')+'" onclick="_pdfSetField(\''+scope+'\',\''+o[0]+'\')"><span class="d"></span>'+o[1]+'</button>'; }).join('')+
+      '<div class="pdf-div"></div>';
+  }
   var menu='<div class="pdf-menu" id="'+id+'-menu">'+
+    fieldSec+
     '<div class="pdf-sec">Quick ranges</div>'+opts+
     '<div class="pdf-div"></div>'+
     '<button type="button" class="pdf-opt'+(custShow?' on':'')+'" onclick="_pdfPick(\''+scope+'\',\'custom\')"><span class="d"></span>Custom range</button>'+
@@ -8868,6 +8880,13 @@ window._pdfClear = function(scope){
   window._pdfCloseAll('');
   window._pdfApply(scope);
 };
+window._pdfSetField = function(scope, fld){
+  var s=window._pdfGet(scope); s.field=fld||'';
+  // reflect the active state on the menu buttons without closing it
+  try{ var el=document.getElementById(window._pdfId(scope)); if(el){ el.querySelectorAll('.pdf-sec').forEach(function(sec){ if((sec.textContent||'').indexOf('Date based on')>=0){ var n=sec.nextElementSibling; while(n && n.classList && n.classList.contains('pdf-opt')){ var on=(n.getAttribute('onclick')||'').indexOf("'"+(fld||'created')+"'")>=0 || (!fld && (n.getAttribute('onclick')||'').indexOf("'created'")>=0); n.classList.toggle('on',on); n=n.nextElementSibling; } } }); } }catch(e){}
+  // only re-query if a range is already chosen (field alone does nothing without a range)
+  if(s.range){ window._pdfApply(scope); }
+};
 window._pdfQS = function(scope){
   var s=window._pdfGet(scope); var p=[];
   if(s.range==='custom'){
@@ -8876,6 +8895,7 @@ window._pdfQS = function(scope){
   } else if(s.range){
     p.push('date_range='+encodeURIComponent(s.range));
   }
+  if(s.field && s.field!=='created') p.push('date_field='+encodeURIComponent(s.field));
   return p.join('&');
 };
 window._pdfApply = function(scope){
@@ -27508,6 +27528,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 'body.dark .p-active .achip{color:#e6ad4e}',
 '.p-active .achip button{background:none;border:none;color:inherit;cursor:pointer;font-size:.9rem;line-height:1;padding:0;margin-left:1px}',
 '.p-active .clr{background:none;border:none;color:#d1443a;font-weight:700;font-size:.78rem;cursor:pointer}',
+'.pl-foot{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;margin:18px 0 6px;padding-top:4px}',
+'.pl-foot .pl-count{font-size:.82rem;color:#8a7d5c;font-weight:600}',
+'body.dark .pl-foot .pl-count{color:#9fb0c8}',
+'.pl-foot .pl-count b{color:var(--text,#2a2313);font-weight:800}',
+'body.dark .pl-foot .pl-count b{color:#eaf0fb}',
+'.pl-foot .pl-more{min-width:150px}',
+'.pl-foot .pl-more:disabled{opacity:.6;cursor:wait}',
+'.pl-foot .pl-hint{font-size:.78rem;color:#a9791f;font-weight:600}',
 '.pk-val{font-size:1.85rem;font-weight:800;letter-spacing:-.02em;line-height:1}',
 '.pk-lbl{font-size:.76rem;color:#8a7d5c;margin-top:7px;font-weight:600}',
 'body.dark .pk-lbl{color:#93a6c4}',
@@ -28805,6 +28833,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       f._locked=true; return; }
     if(page==='urgent'){ _clr(); f.priority='urgent'; f._locked=true; return; }
   }
+  // Page-cache key WITH a filter signature, so a filtered Tasks view never restores another
+  // filter's cached cards. Non-list pages get a stable signature (no filter) so they still cache.
+  function _prodCacheKey(portal,page){
+    var sig='';
+    try{
+      if(portal==='production' && (page==='tasks'||page==='videos')){
+        var f=_flt(portal)||{}; var ds={};
+        try{ ds=window._pdfGet('prod')||{}; }catch(e){}
+        sig=[f.status||'',f.deadline||'',f.priority||'',f.creator_type||'',f.teacher_id||'',
+             (f.channel_id||f.channel||''),(f.video_type_id||f.video_type||''),(f.q||''),
+             (ds.range||''),(ds.from||''),(ds.to||''),(ds.field||'')].join('~');
+      }
+    }catch(e){}
+    return portal+'|'+page+(sig?('|'+sig):'');
+  }
   // --- nav dispatch ---
   window.prodNav=function(portal,page){
     try{ if(portal){ window._hbUrl='/api/'+portal+'/heartbeat'; window._hbPage=(String(page||'dashboard').replace(/^[a-z]+:/,'').replace(/[_-]+/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();})); } }catch(e){}
@@ -28820,7 +28863,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var _ob=document.getElementById(portal+'-body');
         if(_ob){ var _oh=_ob.innerHTML||'';
           if(_oh.length>60 && _oh.indexOf('p-load')<0 && _oh.indexOf('skel')<0){
-            (window._pgCache=window._pgCache||{})[portal+'|'+_prevPage]={html:_oh,ts:Date.now()};
+            (window._pgCache=window._pgCache||{})[_prodCacheKey(portal,_prevPage)]={html:_oh,ts:Date.now()};
           }
         }
       }
@@ -28838,7 +28881,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // nahi karte -> sidebar load pe fully collapsed rehta hai (user ki request).
     var body=document.getElementById(portal+'-body'); if(!body) return;
     // cached section ho to TURANT restore karo (spinner nahi), warna Loading dikhao
-    var _ck=portal+'|'+page, _cc=_PG_NOCACHE[page]?null:(window._pgCache||{})[_ck], _restored=false;
+    var _ck=_prodCacheKey(portal,page), _cc=_PG_NOCACHE[page]?null:(window._pgCache||{})[_ck], _restored=false;
     // NOTE: silent refresh (_prodSilent) ke dauraan cache restore NAHI karna (warna _refresh ->
     // prodNav fallback -> phir cache restore -> infinite loop). Tab seedha fresh render ho.
     if(!window._prodSilent && _cc && _cc.html && (Date.now()-_cc.ts)<600000){ body.innerHTML=_cc.html; _restored=true; }
@@ -32528,13 +32571,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){
       if(f.creator_type) p.push('creator_type='+encodeURIComponent(f.creator_type));
       if(f.teacher_id) p.push('teacher_id='+encodeURIComponent(f.teacher_id));
-      if(f.channel) p.push('channel='+encodeURIComponent(f.channel));
-      if(f.video_type) p.push('video_type='+encodeURIComponent(f.video_type));
+      // Channel / type: prefer the stable ID, fall back to legacy name string.
+      if(f.channel_id) p.push('channel_id='+encodeURIComponent(f.channel_id));
+      else if(f.channel) p.push('channel='+encodeURIComponent(f.channel));
+      if(f.video_type_id) p.push('video_type_id='+encodeURIComponent(f.video_type_id));
+      else if(f.video_type) p.push('video_type='+encodeURIComponent(f.video_type));
       if(f.deadline) p.push('deadline='+encodeURIComponent(f.deadline));
       if(f.priority) p.push('priority='+encodeURIComponent(f.priority));
       if(f.q) p.push('q='+encodeURIComponent(f.q));
       try{ var _dq=(typeof window._pdfQS==='function')?window._pdfQS('prod'):''; if(_dq) p.push(_dq); }catch(e){}
-      p.push('size=100');
+      // Pagination: growing-limit model — always fetch page 1 with the current limit (default
+      // 40, Load More grows it by 40, backend hard-caps at 100). Fetching from the top every
+      // time keeps results consistent and immune to offset drift on silent refresh / Load More.
+      p.push('size='+(f._size||40));
+      p.push('page=1');
     }
     return p.length?('?'+p.join('&')):'';
   }
@@ -32554,8 +32604,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var html='<div class="p-filter p-filter-prod">'+
         '<div class="pf-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="prod-search" placeholder="Search tasks \u2014 title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)"></div>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
-        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
-        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
+        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel_id\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+ch.id+'"'+((f.channel_id||'')==String(ch.id)?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
+        '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type_id\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+ty.id+'"'+((f.video_type_id||'')==String(ty.id)?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
         ((f._locked&&f.status)?'':'<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>')+
         ((typeof window.premDateFilter==='function')?window.premDateFilter('prod'):'')+
         '<button class="p-btn pf-clear" onclick="prodClearFilters()">Clear</button>'+
@@ -32630,20 +32680,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
     var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
     var sel=function(field,ph,opts){ return '<div class="p-field"><label>'+ph+'</label><select class="p-select" onchange="prodSetFilter(\'production\',\''+field+'\',this.value);prodCloseDrawer()">'+opts+'</select></div>'; };
+    var deadlines=[['','Any deadline'],['overdue','Delayed'],['today','Due Today'],['week','This Week'],['none','No deadline']];
+    var priorities=[['','Any priority'],['urgent','Urgent'],['normal','Normal']];
+    var creators=[['','All creators'],['teacher','Teacher'],['youtuber','YouTuber']];
     var old=document.getElementById('prod-fdrawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='pfd-wrap'; dr.id='prod-fdrawer';
     dr.innerHTML='<div class="pfd"><div class="pfd-grip"></div><div class="pfd-h"><span class="t">Filters</span><button class="pd-x" onclick="prodCloseDrawer()">&times;</button></div>'+
       sel('teacher_id','Teacher','<option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join(''))+
-      sel('channel','Channel','<option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+esc(ch.name)+'"'+((f.channel||'')===ch.name?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join(''))+
-      sel('video_type','Type','<option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+esc(ty.name)+'"'+((f.video_type||'')===ty.name?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join(''))+
+      sel('channel_id','Channel','<option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+ch.id+'"'+((f.channel_id||'')==String(ch.id)?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join(''))+
+      sel('video_type_id','Type','<option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+ty.id+'"'+((f.video_type_id||'')==String(ty.id)?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join(''))+
       sel('status','Status',statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
-      '<button class="p-btn pf-clear" style="width:100%;margin-top:6px" onclick="prodClearFilters();prodCloseDrawer()">Clear all</button></div>';
+      sel('deadline','Deadline',deadlines.map(function(o){ return '<option value="'+o[0]+'"'+((f.deadline||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
+      sel('priority','Priority',priorities.map(function(o){ return '<option value="'+o[0]+'"'+((f.priority||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
+      sel('creator_type','Creator',creators.map(function(o){ return '<option value="'+o[0]+'"'+((f.creator_type||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
+      '<button class="p-btn pf-clear" style="width:100%;margin-top:6px" onclick="prodClearAll(\'production\');prodCloseDrawer()">Clear all</button></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodCloseDrawer(); });
     document.body.appendChild(dr);
     setTimeout(function(){ dr.classList.add('open'); },10);
   };
   window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-fdrawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
-  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','video_type','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
+  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','channel_id','video_type','video_type_id','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); f._page=1; try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to='';_ds.field=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results">'+_pSkelRows(5)+'</div>';
     return _prodLoadList(portal);
@@ -33148,13 +33204,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ toast((e&&e.message)||'Could not move',true); });
   };
   var _ST_LABEL={assigned:'Assigned',pm_review:'PM Review',thumb_review:'Thumbnail Review',thumb_changes:'Thumbnail Changes',creator_submitted:'Submitted',approved:'Approved',editor_assigned:'Not Started',editing:'Editing',editing_paused:'Paused',editing_done:'Editing Done',qc_pending:'QC Pending',qc_changes:'Changes',ready_for_youtube:'Ready for YouTube',uploaded:'Uploaded',creator_assigned:'To Submit',changes_required:'Changes',new:'New',in_progress:'In Progress',changes:'Changes',submitted:'Submitted'};
+  // name lookups for active-filter chips (so applied id-filters are always VISIBLE, never secret).
+  function _prodTeacherName(id){ var fd=window._prodFD||{}; var t=(fd.teachers||[]).filter(function(x){return String(x.id)===String(id);})[0]; return t?t.name:('#'+id); }
+  function _prodChannelName(f){ var fd=window._prodFD||{}; if(f.channel_id){ var c=(fd.channels||[]).filter(function(x){return String(x.id)===String(f.channel_id);})[0]; return c?c.name:('#'+f.channel_id); } return f.channel||''; }
+  function _prodTypeName(f){ var fd=window._prodFD||{}; if(f.video_type_id){ var v=(fd.types||[]).filter(function(x){return String(x.id)===String(f.video_type_id);})[0]; return v?v.name:('#'+f.video_type_id); } return f.video_type||''; }
+  var _DL_LABEL={overdue:'Delayed',today:'Due Today',week:'This Week',none:'No deadline'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
     if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
     if(portal==='production'&&f.creator_type) chips.push(['Creator: '+(f.creator_type==='youtuber'?'YouTuber':'Teacher'),'creator_type']);
-    if(f.deadline) chips.push(['Deadline: '+(f.deadline==='overdue'?'Delayed':(f.deadline==='today'?'Due Today':f.deadline)),'deadline']);
+    if(portal==='production'&&f.teacher_id) chips.push(['Teacher: '+_prodTeacherName(f.teacher_id),'teacher_id']);
+    if(portal==='production'&&(f.channel_id||f.channel)) chips.push(['Channel: '+_prodChannelName(f),'channel']);
+    if(portal==='production'&&(f.video_type_id||f.video_type)) chips.push(['Type: '+_prodTypeName(f),'video_type']);
+    if(f.deadline) chips.push(['Deadline: '+(_DL_LABEL[f.deadline]||f.deadline),'deadline']);
     if(portal==='production'&&f.priority) chips.push(['Priority: '+(f.priority==='urgent'?'Urgent':f.priority),'priority']);
     if(portal==='production'&&f.q) chips.push(['Search: "'+f.q+'"','q']);
+    if(portal==='production'){ try{ var ds=window._pdfGet('prod'); if(ds.range){ chips.push(['Date: '+window._pdfLabel('prod')+((ds.field&&ds.field!=='created')?(' \u00b7 '+window._pdfFieldLabel(ds.field)):''),'date']); } }catch(e){} }
     if(!chips.length) return '';
     return '<div class="p-active"><span class="lbl">Active:</span>'+
       chips.map(function(c){ return '<span class="achip">'+esc(c[0])+'<button onclick="prodClearFilter(\''+portal+'\',\''+c[1]+'\')">\u00d7</button></span>'; }).join('')+
@@ -33346,25 +33411,57 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="ptc-acts">'+acts+'</div></div></div>';
   }
   window._edtChapCard=_edtChapCard; window._edtChapLc=_edtChapLc; window._edtChapState=_edtChapState; window._edtChapMatch=_edtChapMatch;
+  // Footer under the task grid: "Showing X of N" + Load More (production only).
+  function _prodListFooter(portal,shown,total){
+    if(portal!=='production') return '';
+    if(!total) return '';
+    var f=_flt(portal); var lim=(f._size||40);
+    var capped=(lim>=100);
+    var hasMore=(shown<total) && !capped;
+    var right='';
+    if(hasMore) right='<button class="p-btn pl-more" onclick="prodLoadMore(\'production\')">Load more</button>';
+    else if(capped && shown<total) right='<span class="pl-hint">Refine filters to see more</span>';
+    return '<div class="pl-foot"><span class="pl-count">Showing <b>'+shown+'</b> of <b>'+total+'</b></span>'+right+'</div>';
+  }
+  window.prodLoadMore=function(portal){
+    var f=_flt(portal); f._size=Math.min(100,(f._size||40)+40);
+    var btn=document.querySelector('#'+portal+'-results .pl-more'); if(btn){ btn.disabled=true; btn.textContent='Loading…'; }
+    _prodLoadList(portal,true);   // silent -> no skeleton blank; replaces with the larger set
+  };
+  // latest-wins request guard: every load gets a sequence number; a response is applied only
+  // if it is still the newest request for this portal (stale/overtaken responses are dropped).
+  function _prodSeqNext(portal){ var s=(window._prodSeq=window._prodSeq||{}); s[portal]=(s[portal]||0)+1; return s[portal]; }
+  function _prodSeqCur(portal){ return (window._prodSeq||{})[portal]||0; }
   function _prodLoadList(portal,silent){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
+    var f=_flt(portal);
+    // Growing-limit pagination: a FRESH (non-silent) load resets the limit to 40. Load More and
+    // silent background refreshes keep the current limit so an expanded view is not shrunk.
+    if(portal==='production' && !silent){ f._size=40; }
     var act=document.getElementById(portal+'-active'); if(act) act.innerHTML=_activeChips(portal);
     // keep saved-view chip highlight in sync
     var bar=document.querySelector('#'+portal+'-app .p-filter');
-    if(bar){ var f=_flt(portal); var chips=bar.querySelectorAll('.p-chip'); var views=SAVED[portal]||[];
+    if(bar){ var chips=bar.querySelectorAll('.p-chip'); var views=SAVED[portal]||[];
       chips.forEach(function(c,i){ var v=views[i]?views[i][0]:''; var on=(v.indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v && !f.deadline); c.classList.toggle('on',on); }); }
     var res=document.getElementById(portal+'-results');
     var hasRows=res && res.children.length && res.textContent.indexOf('Loading')<0;
     // silent reload par scroll position yaad rakho -> background refresh se page upar nahi jaayega
     var _scEl=_prodScrollEl(portal); var _scTop=(silent&&_scEl)?_scEl.scrollTop:0;
+    // Non-blanking: skeleton only on a FRESH, non-silent load with nothing already shown.
     if(res && !(silent && hasRows)) res.innerHTML=_pSkelRows(4);
+    var myseq=_prodSeqNext(portal);
     return api(d.api+'/'+key+_prodQuery(portal)).then(function(r){
+      if(myseq!==_prodSeqCur(portal)) return;   // a newer request started -> drop this stale one
       var arr=r[key]||r.tasks||r.videos||[];
       if(!res) return;
+      var backendTotal=(r && typeof r.total==='number')?r.total:null;
       var _finish=function(extraCards){
         var taskCards=arr.map(function(t){ return _prodTaskCard(portal,t); }).join('');
-        var total=arr.length+((extraCards&&extraCards.count)||0);
-        res.innerHTML=total?('<div class="ptc-grid">'+taskCards+((extraCards&&extraCards.html)||'')+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
+        var extraHtml=(extraCards&&extraCards.html)||'', extraCount=(extraCards&&extraCards.count)||0;
+        var pageCount=arr.length+extraCount;
+        var total0=(backendTotal!=null)?backendTotal:pageCount;
+        var foot=_prodListFooter(portal, pageCount, total0);
+        res.innerHTML=pageCount?('<div class="ptc-grid">'+taskCards+extraHtml+'</div>'+foot):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
         try{ _prodMarkOpenedCard(); }catch(e){}
         if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }
         if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
@@ -33373,6 +33470,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       // (ek chapter = ek task), current status filter ke hisaab se. Fail ho to sirf tasks dikhao.
       if(portal==='editor'){
         return api(P.editor.api+'/project-videos').then(function(pv){
+          if(myseq!==_prodSeqCur(portal)) return;   // stale guard on the secondary fetch too
           var vids=(pv&&pv.videos)||[];
           var ef=_flt('editor'); var fs=(ef.status||''), fe=(ef.epreset||'');
           vids=vids.filter(function(v){ return _edtChapMatch(v,fs,fe); });
@@ -33382,7 +33480,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         }).catch(function(){ _finish(null); });
       }
       _finish(null);
-    }).catch(function(e){ if(res) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); });
+    }).catch(function(e){ if(myseq!==_prodSeqCur(portal)) return; if(res && !append) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); else if(res && append){ var b=res.querySelector('.pl-more'); if(b){ b.disabled=false; b.textContent='Load more'; } } });
   }
   window.prodKpiGo=function(portal,key){
     var nav=(KPI_NAV[portal]||{})[key]; if(!nav) return;
@@ -33399,8 +33497,28 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else { page=(portal==='youtuber')?'videos':'tasks'; }
     prodNav(portal,page);
   };
-  window.prodClearFilter=function(portal,k){ _flt(portal)[k]=''; if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; } _prodLoadList(portal); };
-  window.prodClearAll=function(portal){ window._prodFilter[portal]={}; var s=document.getElementById('prod-search'); if(s) s.value=''; _prodLoadList(portal); };
+  window.prodClearFilter=function(portal,k){
+    var f=_flt(portal);
+    if(k==='channel'){ delete f.channel; delete f.channel_id; }
+    else if(k==='video_type'){ delete f.video_type; delete f.video_type_id; }
+    else if(k==='date'){ try{ var ds=window._pdfGet('prod'); ds.range='';ds.from='';ds.to=''; }catch(e){} }
+    else { delete f[k]; }
+    if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; }
+    f._page=1;
+    // the filter bar's own selects must reflect the cleared state
+    try{ var body=document.getElementById(portal+'-body'); if(body && (k==='teacher_id'||k==='channel'||k==='video_type'||k==='status'||k==='date')){ var pf=body.querySelector('.p-filter'); if(pf){ var w=document.createElement('div'); w.innerHTML=_filterBar(portal); pf.parentNode.replaceChild(w.firstChild,pf); } } }catch(e){}
+    _prodLoadList(portal);
+  };
+  // ONE reset — clears every production filter including the (separate) date-range state.
+  window.prodClearAll=function(portal){
+    window._prodFilter[portal]={};
+    try{ if(portal==='production'){ var ds=window._pdfGet('prod'); ds.range='';ds.from='';ds.to='';ds.field=''; } }catch(e){}
+    var s=document.getElementById('prod-search'); if(s) s.value='';
+    var s2=document.getElementById('edt-search'); if(s2) s2.value='';
+    var body=document.getElementById(portal+'-body');
+    if(body && portal==='production'){ var pf=body.querySelector('.p-filter'); if(pf){ var w=document.createElement('div'); w.innerHTML=_filterBar(portal); pf.parentNode.replaceChild(w.firstChild,pf); } }
+    _prodLoadList(portal);
+  };
   window.prodLoadProfilePhoto=function(portal){
     try{ api(P[portal].api+'/me/photo').then(function(r){ var av=document.getElementById('ps-prof-av-'+portal); if(av && r && r.photo){ av.style.backgroundImage='url('+r.photo+')'; av.classList.add('has-img'); av.textContent=''; } }).catch(function(){}); }catch(e){}
   };
@@ -33540,8 +33658,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       chips.forEach(function(c,i){ var v=views[i]?views[i][0]:''; var on=(v.indexOf('__')===0)?(f.deadline==='overdue'):((f.status||'')===v && !f.deadline); c.classList.toggle('on',on); }); }
     _prodLoadList(portal);
   };
-  window.prodSetFilter=function(portal,k,v){ _flt(portal)[k]=v; _prodLoadList(portal); };
-  window.prodSearch=function(portal,v){ _flt(portal).q=v; clearTimeout(window._prodSearchT); window._prodSearchT=setTimeout(function(){ _prodLoadList(portal); },350); };
+  window.prodSetFilter=function(portal,k,v){
+    var f=_flt(portal);
+    if(v===''||v==null){ delete f[k]; } else { f[k]=v; }
+    // id/name pairs are mutually exclusive — setting one clears its sibling so the serializer
+    // always sends exactly one param for that filter.
+    if(k==='channel_id'){ delete f.channel; }
+    else if(k==='channel'){ delete f.channel_id; }
+    else if(k==='video_type_id'){ delete f.video_type; }
+    else if(k==='video_type'){ delete f.video_type_id; }
+    f._page=1;   // any filter change resets to page 1
+    _prodLoadList(portal);
+  };
+  window.prodSearch=function(portal,v){ var f=_flt(portal); f.q=v; f._page=1; clearTimeout(window._prodSearchT); window._prodSearchT=setTimeout(function(){ _prodLoadList(portal); },300); };
 
   // --- PM production board (grouped by lifecycle) ---
   var BOARD_COLS=[['creator_submitted,pm_review','PM Review'],['approved,editor_assigned','Editor Assignment'],

@@ -13,7 +13,7 @@ import json
 from models import (
     User, UserRole, VideoTask, GraphicsTask, EditingSession, ProductionEvent,
     TaskReview, TaskAttachment, YouTuberProfile, ProductionStaffProfile,
-    TeacherProfile, Notification, ist_now,
+    TeacherProfile, Notification, VideoChannel, VideoType, ist_now,
 )
 
 # ---------------------------------------------------------------- lifecycle
@@ -693,6 +693,249 @@ def _ensure_production_columns():
         pass
 
 
+# ============================================================================
+# CANONICAL PRODUCTION-TASKS FILTER CONTRACT
+# ----------------------------------------------------------------------------
+# ONE place that defines how each Production → Tasks UI filter maps to the DB.
+# The GET /api/production/tasks endpoint (and nothing else) builds its WHERE out
+# of these helpers. Rules the whole filter obeys:
+#   • IDs over mutable names (teacher/editor/graphics/channel/video_type).
+#   • id 1 must NEVER match id 11 (boundary-safe collaborator matching).
+#   • case / whitespace normalised for legacy string columns.
+#   • status maps to BOTH the new `lifecycle` and the legacy admin `status`.
+#   • every helper returns a SQLAlchemy clause (or None) — pure, read-only.
+# ============================================================================
+
+# status (UI dropdown value) -> (lifecycle values, legacy admin status values).
+# OR-combined so legacy/admin tasks (lifecycle blank, state in `status`) and new
+# production tasks both match the same UI option. THE ONLY COPY of this mapping.
+STATUS_LIFECYCLE_MAP = {
+    "assigned":          (["creator_assigned", "creator_working", "changes_required"], ["assigned", "reshoot", "rejected", "new", "in_progress"]),
+    "pm_review":         (["pm_review", "creator_submitted"],                          ["submitted"]),
+    "approved":          (["approved"],                                               ["approved"]),
+    "editor_assigned":   (["editor_assigned"],                                        ["editing_soon"]),
+    "editing":           (["editing", "editing_paused"],                              []),
+    "editing_done":      (["editing_done"],                                           ["editing_done"]),
+    "qc_pending":        (["qc_pending"],                                             []),
+    "ready_for_youtube": (["ready_for_youtube"],                                      []),
+    "uploaded":          (["uploaded", "completed"],                                  ["uploaded"]),
+    "changes_required":  (["changes_required", "qc_changes"],                         ["reshoot", "rejected"]),
+}
+
+# Statuses that mean the task is finished — the default Tasks view hides these, so the
+# status dropdown's "all" option is labelled "All Active", not "All Status".
+FINAL_STATUS_KEYS = ("uploaded",)
+
+
+def stage_filter(status):
+    """UI status value -> SQLAlchemy OR clause (lifecycle OR legacy status), or None for
+    blank/all. Single source of truth for the status↔lifecycle mapping."""
+    from sqlalchemy import or_ as _or
+    s = (status or "").strip()
+    if not s or s == "all":
+        return None
+    lcs, sts = STATUS_LIFECYCLE_MAP.get(s, ([s], [s]))
+    conds = []
+    if lcs:
+        conds.append(VideoTask.lifecycle.in_(lcs))
+    if sts:
+        conds.append(VideoTask.status.in_(sts))
+    if not conds:
+        return None
+    return _or(*conds)
+
+
+def _collab_norm():
+    """SQL expression: collab_teacher_ids with spaces removed, so matching is independent of
+    json.dumps spacing. '[1, 11, 2]' -> '[1,11,2]'."""
+    from sqlalchemy import func as _f
+    return _f.replace(_f.coalesce(VideoTask.collab_teacher_ids, ""), " ", "")
+
+
+def teacher_filter(teacher_id):
+    """Match primary teacher OR any collaborator by ID — boundary-safe (id 1 never matches 11)
+    and spacing-independent. collab_teacher_ids is a json.dumps([...]) Text column; we strip
+    spaces in SQL and anchor on comma/bracket boundaries."""
+    from sqlalchemy import or_ as _or
+    try:
+        tid = int(teacher_id)
+    except Exception:
+        return None
+    if not tid:
+        return None
+    ts = str(tid)
+    norm = _collab_norm()
+    return _or(
+        VideoTask.teacher_id == tid,
+        norm == "[" + ts + "]",
+        norm.like("[" + ts + ",%"),
+        norm.like("%," + ts + ",%"),
+        norm.like("%," + ts + "]"),
+    )
+
+
+def channel_filter(db, channel_id=0, channel=""):
+    """Match by VideoChannel id (preferred) with a normalised legacy channel_name fallback.
+    `channel` may be a legacy name OR a numeric id (frontend transition). Matches tasks that
+    carry either channel_id or the denormalised channel_name."""
+    from sqlalchemy import or_ as _or, func as _f
+    try:
+        cid = int(channel_id or 0)
+    except Exception:
+        cid = 0
+    raw = (channel or "").strip()
+    if not cid and raw.isdigit():
+        cid = int(raw); raw = ""
+    name = None
+    if cid:
+        ch = db.query(VideoChannel).filter(VideoChannel.id == cid).first()
+        if ch:
+            name = (ch.name or "").strip()
+        conds = [VideoTask.channel_id == cid]
+        if name:
+            conds.append(_f.lower(_f.trim(VideoTask.channel_name)) == name.lower())
+        return _or(*conds)
+    if raw:
+        low = raw.lower()
+        sub = db.query(VideoChannel.id).filter(_f.lower(_f.trim(VideoChannel.name)) == low)
+        return _or(_f.lower(_f.trim(VideoTask.channel_name)) == low,
+                   VideoTask.channel_id.in_(sub))
+    return None
+
+
+def video_type_filter(db, video_type_id=0, video_type=""):
+    """Match by VideoType id (preferred, resolved to its name) with a normalised legacy
+    video_type string fallback. VideoTask has no video_type_id column, so the actual match is
+    always on the denormalised video_type string (case/whitespace-insensitive)."""
+    from sqlalchemy import func as _f
+    try:
+        vid = int(video_type_id or 0)
+    except Exception:
+        vid = 0
+    raw = (video_type or "").strip()
+    if not vid and raw.isdigit():
+        vid = int(raw); raw = ""
+    name = None
+    if vid:
+        vt = db.query(VideoType).filter(VideoType.id == vid).first()
+        if vt:
+            name = (vt.name or "").strip()
+    target = (name or raw).strip().lower()
+    if not target:
+        return None
+    return _f.lower(_f.trim(VideoTask.video_type)) == target
+
+
+# date_field (UI selector) -> the VideoTask column the date-range filter runs on.
+# created_at is stored UTC-naive; deadline / upload_date / editing_done_at are stored
+# IST-naive-local (per the serializer). date_window_ist() returns IST calendar bounds and
+# the caller shifts only the UTC-stored column.
+DATE_FIELDS = {
+    "created":      ("created_at",     True),
+    "deadline":     ("deadline",       False),
+    "upload":       ("upload_date",    False),
+    "editing_done": ("editing_done_at", False),
+}
+
+
+def date_window_ist(date_range="", date_from="", date_to=""):
+    """IST calendar window (start inclusive, end EXCLUSIVE) as naive-IST datetimes, or
+    (None, None). Supports today / yesterday / week / month / custom. The caller subtracts
+    the IST offset only for UTC-stored columns."""
+    dr = (date_range or "").strip().lower()
+    df = (date_from or "").strip()
+    dt2 = (date_to or "").strip()
+    try:
+        if dr == "custom" or df or dt2:
+            s = e = None
+            if df:
+                s = datetime.strptime(df[:10], "%Y-%m-%d")
+            if dt2:
+                e = datetime.strptime(dt2[:10], "%Y-%m-%d") + timedelta(days=1)
+            return s, e
+        if not dr or dr == "all":
+            return None, None
+        today = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if dr == "today":
+            return today, today + timedelta(days=1)
+        if dr == "yesterday":
+            return today - timedelta(days=1), today
+        if dr in ("week", "weekly", "7d"):
+            return today - timedelta(days=6), today + timedelta(days=1)
+        if dr in ("month", "monthly", "30d"):
+            return today - timedelta(days=29), today + timedelta(days=1)
+        return None, None
+    except Exception:
+        return None, None
+
+
+IST_OFFSET = timedelta(hours=5, minutes=30)
+
+
+def date_range_clauses(date_field="", date_range="", date_from="", date_to=""):
+    """Return a list of SQLAlchemy clauses for the date-range master filter on the chosen
+    date_field, timezone-correct for that column's storage. Empty list = no date filter."""
+    fld_name, is_utc = DATE_FIELDS.get((date_field or "").strip().lower(),
+                                       DATE_FIELDS["created"])
+    col = getattr(VideoTask, fld_name)
+    ws, we = date_window_ist(date_range, date_from, date_to)
+    if ws is None and we is None:
+        return []
+    if is_utc:
+        ws = (ws - IST_OFFSET) if ws is not None else None
+        we = (we - IST_OFFSET) if we is not None else None
+    out = []
+    if ws is not None:
+        out.append(col != None); out.append(col >= ws)   # noqa: E711
+    if we is not None:
+        out.append(col != None); out.append(col < we)     # noqa: E711
+    return out
+
+
+def repair_legacy_production_state():
+    """One-time idempotent sync of legacy admin state -> production lifecycle. Runs at STARTUP
+    (main.py), NOT inside GET /tasks — the task list is now strictly read-only. Does exactly the
+    healing the read path used to do on every request:
+      • status=approved but lifecycle stuck in review  -> lifecycle=approved
+      • status=uploaded but lifecycle not final         -> lifecycle=uploaded
+      • youtuber_id set but creator_type != youtuber    -> creator_type=youtuber
+    Safe to call repeatedly; never raises."""
+    try:
+        from database import SessionLocal
+        from sqlalchemy import or_ as _or
+    except Exception:
+        return
+    db = SessionLocal()
+    try:
+        changed = False
+        for s in db.query(VideoTask).filter(
+                VideoTask.status == "approved",
+                VideoTask.lifecycle.in_(["pm_review", "creator_submitted"])).all():
+            s.lifecycle = "approved"; changed = True
+        for s in db.query(VideoTask).filter(
+                VideoTask.status == "uploaded",
+                VideoTask.lifecycle.isnot(None), VideoTask.lifecycle != "",
+                ~VideoTask.lifecycle.in_(["uploaded", "completed"])).all():
+            s.lifecycle = "uploaded"; changed = True
+        for s in db.query(VideoTask).filter(
+                VideoTask.youtuber_id.isnot(None),
+                _or(VideoTask.creator_type == None,                      # noqa: E711
+                    VideoTask.creator_type != "youtuber")).all():
+            s.creator_type = "youtuber"; changed = True
+        if changed:
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
 try:
     _ensure_production_columns()
 except Exception:
@@ -1313,6 +1556,38 @@ _ACTIVE_PIPELINE = ["creator_assigned", "creator_working", "creator_submitted", 
                     "qc_pending", "qc_changes", "ready_for_youtube", "changes_required"]
 
 
+def _bucket_deadline(t):
+    """The ONE stage-aware deadline used for overdue / today / this-week / no-deadline buckets.
+    Legacy blank-lifecycle tasks fall back to the admin `status` (only genuinely-open states
+    carry a deadline). Mirrors the dashboard KPI exactly — single source of truth so the Tasks
+    list deadline filter and the KPI count never disagree."""
+    lc = t.lifecycle or ""
+    if not lc:
+        st = (t.status or "").lower()
+        return getattr(t, "deadline", None) if st in ("assigned", "reshoot", "rejected") else None
+    if lc in _STAGE_UPLOAD:
+        return getattr(t, "upload_date", None)
+    if lc in _STAGE_NO_COUNTDOWN:
+        return None
+    if lc in _STAGE_EDITOR_ACTIVE:
+        return getattr(t, "editor_deadline", None)
+    return getattr(t, "deadline", None)
+
+
+def _active_single_rows(db):
+    """Normal-kind, not-cancelled, not-old, active-or-legacy-blank lifecycle single videos —
+    the population the deadline buckets scan."""
+    from sqlalchemy import or_ as _or
+    from sqlalchemy.orm import defer as _defer
+    _NS = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")  # noqa: E711
+    _LC_OK = _or(VideoTask.lifecycle.in_(_ACTIVE_PIPELINE),
+                 VideoTask.lifecycle == None, VideoTask.lifecycle == "")  # noqa: E711
+    return (db.query(VideoTask)
+            .options(_defer(VideoTask.thumbnail_b64))
+            .filter(VideoTask.cancelled == False, _NS, VideoTask.is_old == False,  # noqa: E712
+                    _LC_OK).all())
+
+
 def overdue_today_ids(db):
     """SINGLE SOURCE OF TRUTH for stage-aware DELAYED + DUE-TODAY task ids.
 
@@ -1327,37 +1602,10 @@ def overdue_today_ids(db):
     - Legacy/admin-created tasks ka lifecycle BLANK hota hai -> unhe bhi shaamil karo (status se stage
       decide karke). Pehle sirf lifecycle.in_(pipeline) tha -> Vicky Verma jaise blank-lifecycle
       overdue tasks PM par dikhte hi nahi the (admin par dikhte the) -> mismatch."""
-    from sqlalchemy import or_ as _or
-    from sqlalchemy.orm import defer as _defer
     ref = ist_now()   # IST-naive "now" — kyunki deadlines IST-local store hote hain
-    _NS = _or(VideoTask.kind == None, VideoTask.kind == "", VideoTask.kind == "normal")  # noqa: E711
-    _LC_OK = _or(VideoTask.lifecycle.in_(_ACTIVE_PIPELINE),
-                 VideoTask.lifecycle == None, VideoTask.lifecycle == "")  # noqa: E711
     overdue, today = [], []
-    rows = (db.query(VideoTask)
-            .options(_defer(VideoTask.thumbnail_b64))
-            .filter(VideoTask.cancelled == False, _NS, VideoTask.is_old == False,   # noqa: E712
-                    _LC_OK).all())
-    for t in rows:
-        lc = t.lifecycle or ""
-        if not lc:
-            # Legacy/admin task (koi production lifecycle nahi): admin ki tarah SIRF genuinely-open
-            # statuses (assigned/reshoot/rejected) ko delayed gino — jinme teacher ko abhi kaam
-            # karna hai. approved/editing_soon/editing_done/uploaded = DONE (admin inhe delayed nahi
-            # ginta), submitted = review me. Warna purane legacy tasks se count phoot jaata hai (97!).
-            st = (t.status or "").lower()
-            if st in ("assigned", "reshoot", "rejected"):
-                dl = getattr(t, "deadline", None)
-            else:
-                dl = None
-        elif lc in _STAGE_UPLOAD:
-            dl = getattr(t, "upload_date", None)
-        elif lc in _STAGE_NO_COUNTDOWN:
-            dl = None
-        elif lc in _STAGE_EDITOR_ACTIVE:
-            dl = getattr(t, "editor_deadline", None)
-        else:
-            dl = getattr(t, "deadline", None)
+    for t in _active_single_rows(db):
+        dl = _bucket_deadline(t)
         if not dl:
             continue
         if dl < ref:
@@ -1365,6 +1613,33 @@ def overdue_today_ids(db):
         elif dl.date() == ref.date():
             today.append(t.id)
     return overdue, today
+
+
+def deadline_state_ids(db, state):
+    """Stage-aware deadline bucket -> task ids (IST). States: overdue | today | week | none.
+    'week' = current-stage deadline falls within the next 7 IST days (today included, not
+    overdue). 'none' = active task with no deadline set for its current stage. Uses the SAME
+    stage-aware deadline as the dashboard KPI, so list and count always match. (Date-range and
+    deadline-state are independent filters — this covers only the deadline-state one.)"""
+    st = (state or "").strip().lower()
+    if st in ("overdue", "today"):
+        ovd, tod = overdue_today_ids(db)
+        return ovd if st == "overdue" else tod
+    if st not in ("week", "none"):
+        return []
+    ref = ist_now()
+    today0 = ref.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = today0 + timedelta(days=7)
+    out = []
+    for t in _active_single_rows(db):
+        dl = _bucket_deadline(t)
+        if st == "none":
+            if not dl:
+                out.append(t.id)
+        else:  # week — upcoming (not already overdue)
+            if dl and today0 <= dl < week_end:
+                out.append(t.id)
+    return out
 
 
 _DL_UNSET = object()

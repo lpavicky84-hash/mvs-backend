@@ -21,43 +21,6 @@ import production_core as pc
 router = APIRouter(prefix="/api/production", tags=["Production"])
 
 
-def _daterange_utc(date_range: str = "", date_from: str = "", date_to: str = ""):
-    """Date-wise master filter -> (start_utc, end_utc) naive-UTC bounds for created_at, ya (None, None).
-
-    created_at DB me UTC-naive store hota hai. Boundaries IST calendar (ist_now) par nikaal kar
-    UTC me shift (-5:30) karte hain, taaki 'Today/Yesterday/Weekly/Monthly' aur custom range IST
-    ke hisaab se sahi din pakde. end HAMESHA exclusive (< end)."""
-    IST_OFF = timedelta(hours=5, minutes=30)
-    dr = (date_range or "").strip().lower()
-    df = (date_from or "").strip()
-    dt2 = (date_to or "").strip()
-    try:
-        # Custom range: "kab se kab tak" (YYYY-MM-DD). Range set ho ya sirf from/to aaye.
-        if dr == "custom" or df or dt2:
-            s = e = None
-            if df:
-                s = datetime.strptime(df[:10], "%Y-%m-%d") - IST_OFF
-            if dt2:
-                e = (datetime.strptime(dt2[:10], "%Y-%m-%d") + timedelta(days=1)) - IST_OFF
-            return s, e
-        if not dr or dr == "all":
-            return None, None
-        today = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
-        if dr == "today":
-            s, e = today, today + timedelta(days=1)
-        elif dr == "yesterday":
-            s, e = today - timedelta(days=1), today
-        elif dr in ("week", "weekly", "7d"):
-            s, e = today - timedelta(days=6), today + timedelta(days=1)
-        elif dr in ("month", "monthly", "30d"):
-            s, e = today - timedelta(days=29), today + timedelta(days=1)
-        else:
-            return None, None
-        return s - IST_OFF, e - IST_OFF
-    except Exception:
-        return None, None
-
-
 def _task(db, tid):
     t = db.query(VideoTask).filter(VideoTask.id == int(tid)).first()
     if not t:
@@ -220,34 +183,25 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              graphics_id: int = 0, priority: str = "", q: str = "",
              deadline: str = "", teacher_id: int = 0, channel: str = "",
-             video_type: str = "", date_range: str = "", date_from: str = "",
+             channel_id: int = 0, video_type: str = "", video_type_id: int = 0,
+             date_field: str = "", date_range: str = "", date_from: str = "",
              date_to: str = "", page: int = 1, size: int = 40,
              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
-    # Self-heal: agar legacy Task Manager me admin ne approve/upload kiya (status aage badh gaya)
-    # par production lifecycle abhi review/editing me atka hai, to lifecycle ko aage sync kar do —
-    # taaki approved video PM Review me dikhna band ho jaaye (dono portal ek jaisa).
+    # READ-ONLY: this endpoint NEVER writes. Legacy admin->lifecycle healing runs once at
+    # startup (production_core.repair_legacy_production_state), not here.
+    #
+    # Canonical filter contract — every UI filter maps to exactly one param below and is built
+    # from the single-source-of-truth helpers in production_core (status/teacher/channel/
+    # video_type/date). All conditions AND together; none resets another.
+    # Pagination guard: default 40, hard max 100, page >= 1.
     try:
-        _healed = False
-        for s in (db.query(VideoTask).filter(
-                VideoTask.status == "approved",
-                VideoTask.lifecycle.in_(["pm_review", "creator_submitted"])).all()):
-            s.lifecycle = "approved"; _healed = True
-        for s in (db.query(VideoTask).filter(
-                VideoTask.status == "uploaded",
-                VideoTask.lifecycle.isnot(None), VideoTask.lifecycle != "",
-                ~VideoTask.lifecycle.in_(["uploaded", "completed"])).all()):
-            s.lifecycle = "uploaded"; _healed = True
-        # Self-heal: agar kisi task ka youtuber_id set hai par creator_type "youtuber" nahi hai
-        # (kisi edit/legacy ki wajah se), to wo YouTuber Tasks section se gayab ho jaata tha.
-        # creator_type ko theek kar do taaki wo hamesha sahi section me dikhe.
-        for s in (db.query(VideoTask).filter(
-                VideoTask.youtuber_id.isnot(None),
-                or_(VideoTask.creator_type == None, VideoTask.creator_type != "youtuber")).all()):
-            s.creator_type = "youtuber"; _healed = True
-        if _healed:
-            db.commit()
+        size = max(1, min(100, int(size or 40)))
     except Exception:
-        db.rollback()
+        size = 40
+    try:
+        page = max(1, int(page or 1))
+    except Exception:
+        page = 1
     query = db.query(VideoTask).filter(VideoTask.cancelled == False)
     # Teacher/general list: single-video TASKS only — projects (one_shot / rapid_revision /
     # project) live in their own Projects section. BUT the YouTuber Tasks section has NO separate
@@ -277,20 +231,19 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(or_(VideoTask.kind == None, VideoTask.kind == "",
                                  VideoTask.kind == "normal"))
     if teacher_id:
-        # collab-aware: match the primary teacher OR any collaborator (precise JSON
-        # boundary patterns against json.dumps format "[2, 3]" so id 1 != 11).
-        _ts = str(teacher_id)
-        query = query.filter(or_(
-            VideoTask.teacher_id == teacher_id,
-            VideoTask.collab_teacher_ids == "[" + _ts + "]",
-            VideoTask.collab_teacher_ids.like("[" + _ts + ", %"),
-            VideoTask.collab_teacher_ids.like("%, " + _ts + ", %"),
-            VideoTask.collab_teacher_ids.like("%, " + _ts + "]"),
-        ))
-    if channel:
-        query = query.filter(VideoTask.channel_name == channel)
-    if video_type:
-        query = query.filter(VideoTask.video_type == video_type)
+        # Primary teacher OR any collaborator — boundary-safe (id 1 never matches 11),
+        # spacing-independent. Single source of truth: production_core.teacher_filter.
+        _tf = pc.teacher_filter(teacher_id)
+        if _tf is not None:
+            query = query.filter(_tf)
+    # Channel: prefer VideoChannel id, fall back to normalised legacy channel_name string.
+    _chf = pc.channel_filter(db, channel_id=channel_id, channel=channel)
+    if _chf is not None:
+        query = query.filter(_chf)
+    # Video type: prefer VideoType id (resolved to name), normalised legacy string fallback.
+    _vtf = pc.video_type_filter(db, video_type_id=video_type_id, video_type=video_type)
+    if _vtf is not None:
+        query = query.filter(_vtf)
     if not status and _ct != "youtuber":
         # Default Tasks view me uploaded/completed nahi — wo alag "Uploaded Videos" section me hain.
         # LEKIN YouTuber Tasks section me poora pipeline dikhta hai (Published/uploaded bhi) taaki
@@ -309,29 +262,11 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         query = query.filter(VideoTask.id.in_(_tsub))
         status = ""
     if status:
-        # The dropdown uses production-style statuses, but old / admin-created tasks store
-        # their state in the admin `status` field (lifecycle may be blank). Match BOTH so
-        # every task shows up under the right filter.
-        _SMAP = {
-            "assigned":         (["creator_assigned", "creator_working", "changes_required"], ["assigned", "reshoot", "rejected", "new", "in_progress"]),
-            "pm_review":        (["pm_review", "creator_submitted"], ["submitted"]),
-            "approved":         (["approved"],                       ["approved"]),
-            "editor_assigned":  (["editor_assigned"],                ["editing_soon"]),
-            "editing":          (["editing", "editing_paused"],      []),
-            "editing_done":     (["editing_done"],                   ["editing_done"]),
-            "qc_pending":       (["qc_pending"],                     []),
-            "ready_for_youtube": (["ready_for_youtube"],            []),
-            "uploaded":         (["uploaded", "completed"],          ["uploaded"]),
-            "changes_required": (["changes_required", "qc_changes"], ["reshoot", "rejected"]),
-        }
-        lcs, sts = _SMAP.get(status, ([status], [status]))
-        conds = []
-        if lcs:
-            conds.append(VideoTask.lifecycle.in_(lcs))
-        if sts:
-            conds.append(VideoTask.status.in_(sts))
-        if conds:
-            query = query.filter(or_(*conds))
+        # Canonical status↔lifecycle mapping (matches BOTH new lifecycle and legacy admin
+        # status). Single source of truth: production_core.stage_filter.
+        _sf = pc.stage_filter(status)
+        if _sf is not None:
+            query = query.filter(_sf)
     if creator_type:
         if creator_type == "youtuber":
             # Bulletproof: creator_type ya youtuber_id — dono me se koi bhi youtuber ho to YouTuber
@@ -348,26 +283,43 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     if priority:
         query = query.filter(VideoTask.priority == priority)
     if q:
-        like = "%" + q.strip() + "%"
-        query = query.filter(or_(VideoTask.title.like(like),
-                                 VideoTask.ref_code.like(like),
-                                 VideoTask.subject.like(like)))
-    now = datetime.utcnow()
-    if deadline in ("overdue", "today"):
-        # Dashboard KPI ke SAME stage-aware helper se — count aur list ab HAMESHA barabar.
-        _ovd_ids, _tod_ids = pc.overdue_today_ids(db)
-        _ids = _ovd_ids if deadline == "overdue" else _tod_ids
+        # Expanded search: title / ref / subject / channel / type / series, PLUS people by
+        # name — teacher (primary + collaborator), editor and graphics. Name->id resolved via
+        # small subqueries; all OR-combined into one clause.
+        qq = q.strip()
+        like = "%" + qq + "%"
+        conds = [VideoTask.title.like(like), VideoTask.ref_code.like(like),
+                 VideoTask.subject.like(like), VideoTask.channel_name.like(like),
+                 VideoTask.video_type.like(like), VideoTask.series_name.like(like)]
+        try:
+            _tp_ids = [r[0] for r in db.query(TeacherProfile.id)
+                       .join(User, User.id == TeacherProfile.user_id)
+                       .filter(User.name.like(like)).limit(30).all()]
+            for _tid in _tp_ids:
+                _tf2 = pc.teacher_filter(_tid)      # primary + collaborator, boundary-safe
+                if _tf2 is not None:
+                    conds.append(_tf2)
+        except Exception:
+            pass
+        try:
+            _ps_ids = [r[0] for r in db.query(ProductionStaffProfile.id)
+                       .join(User, User.id == ProductionStaffProfile.user_id)
+                       .filter(User.name.like(like)).limit(30).all()]
+            if _ps_ids:
+                conds.append(VideoTask.editor_id.in_(_ps_ids))
+                conds.append(VideoTask.graphics_id.in_(_ps_ids))
+        except Exception:
+            pass
+        query = query.filter(or_(*conds))
+    if deadline in ("overdue", "today", "week", "none"):
+        # Deadline STATE (separate from date-range): stage-aware, IST-correct, matches the
+        # dashboard KPI exactly. Single source of truth: production_core.deadline_state_ids.
+        _ids = pc.deadline_state_ids(db, deadline)
         query = query.filter(VideoTask.id.in_(_ids or [-1]))
-    elif deadline == "week":
-        query = query.filter(VideoTask.deadline != None,
-                             VideoTask.deadline <= now + timedelta(days=7),
-                             VideoTask.deadline >= now)
-    # Date-wise master filter (Today / Yesterday / Weekly / Monthly / Custom) — created_at par.
-    _ds, _de = _daterange_utc(date_range, date_from, date_to)
-    if _ds is not None:
-        query = query.filter(VideoTask.created_at != None, VideoTask.created_at >= _ds)  # noqa: E711
-    if _de is not None:
-        query = query.filter(VideoTask.created_at != None, VideoTask.created_at < _de)   # noqa: E711
+    # Date-wise master filter (Created / Deadline / Upload / Editing Done) × (Today / Yesterday
+    # / Weekly / Monthly / Custom). IST-correct per column storage. Independent of deadline-state.
+    for _dc in pc.date_range_clauses(date_field, date_range, date_from, date_to):
+        query = query.filter(_dc)
     total = query.count()
     # base64 thumbnail column ka CONTENT list me load MAT karo (RAM + speed) — thumbnail
     # ka URL alag se thumb_map se aata hai.
@@ -408,7 +360,9 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
             _o["unread_total"] = sum(_u.values()) if _u else 0
     except Exception:
         pass
-    return {"total": total, "page": page, "size": size, "tasks": _outs}
+    _has_more = (page * size) < total
+    return {"total": total, "page": page, "size": size, "page_size": size,
+            "has_more": _has_more, "returned": len(_outs), "tasks": _outs}
 
 
 @router.get("/tasks/{tid}/comments")
