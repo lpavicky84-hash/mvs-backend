@@ -2348,6 +2348,14 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
     graded_map = dict(db.query(ExamAttempt.exam_id, _func.count(ExamAttempt.id))
                       .filter(ExamAttempt.status == "graded")
                       .group_by(ExamAttempt.exam_id).all())
+    # Which exams actually have a solution to show (model answer / correct option / explanation
+    # on any question) — so the card's Solution button only appears when there IS a solution.
+    from sqlalchemy import or_ as _or, and_ as _and
+    _ans_exam_ids = set(r[0] for r in db.query(ExamQuestion.exam_id).filter(_or(
+        _and(ExamQuestion.model_answer.isnot(None), ExamQuestion.model_answer != ""),
+        _and(ExamQuestion.correct_option.isnot(None), ExamQuestion.correct_option != ""),
+        _and(ExamQuestion.explanation.isnot(None), ExamQuestion.explanation != ""),
+    )).distinct().all())
     out = []
     for e in rows:
         # Class-targeted test: sirf usi class ke students ko dikhe ("" = sabhi classes)
@@ -2356,15 +2364,31 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
             continue
         att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.student_id == sp.id).order_by(ExamAttempt.submitted_at.desc()).first()
         nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
+        _is_pdf = bool(getattr(e, "q_pdf", None))
+        _scheduled = getattr(e, "scheduled_at", None) is not None
+        _end_utc = None
+        if _scheduled:
+            try:
+                _end_utc = e.scheduled_at + timedelta(minutes=(e.duration_min or 60)) - timedelta(hours=5, minutes=30)
+            except Exception:
+                _end_utc = None
+        _exp = bool(_end_utc and datetime.utcnow() > _end_utc)
+        _submitted = bool(att and (att.status or "") not in ("", "not_attempted"))
+        # SINGLE rule: window over, OR (no schedule AND submitted).
+        _can_sol = _exp or ((not _scheduled) and _submitted)
+        _has_sol = (bool(getattr(e, "s_pdf", None)) if _is_pdf else (e.id in _ans_exam_ids))
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "class_name": getattr(e, "class_name", "") or "",
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "medium": e.medium, "questions": nq, "teacher_name": e.teacher_name,
                     "teacher_id": e.teacher_id,
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
-                    "is_pdf": bool(getattr(e, "q_pdf", None)),
-                    "answers_unlock_at": (_pdf_unlock_iso(e) if getattr(e, "q_pdf", None) else None),
+                    "is_pdf": _is_pdf,
+                    "answers_unlock_at": (_pdf_unlock_iso(e) if _is_pdf else None),
                     "status": att.status if att else "not_attempted",
+                    "submitted": _submitted,
+                    "can_view_solution": _can_sol,
+                    "has_solution": _has_sol,
                     "graded": int(graded_map.get(e.id, 0)),
                     "reupload_allowed": bool(getattr(att, "reupload_allowed", False)) if att else False,
                     "reupload_remark": (getattr(att, "reupload_remark", None) or "") if att else "",
@@ -2450,6 +2474,12 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
     if getattr(ex, "scheduled_at", None) is not None:
         _end_utc = ex.scheduled_at + timedelta(minutes=ex.duration_min or 60) - timedelta(hours=5, minutes=30)
         _exp = datetime.utcnow() > _end_utc
+    # Solution reveal (SINGLE rule, mirrored in the card + the PDF endpoint):
+    #   window over, OR (no schedule AND this student has submitted their answer sheet).
+    # So a submitted student of an un-scheduled mock test can view/download the solution right
+    # away; scheduled group tests still open only after the window ends.
+    _submitted = bool(att and (att.status or "") not in ("", "not_attempted"))
+    _reveal = _exp or ((getattr(ex, "scheduled_at", None) is None) and _submitted)
     questions = []
     for q in qs:
         d = {"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
@@ -2458,7 +2488,7 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
              "options_hi": q.options_hi if ex.test_type == "mcq" else None,
              "image_b64": q.image_b64,
              "alt_image_b64": getattr(q, "alt_image_b64", None)}
-        if _exp:   # window over -> solutions become visible (attempting stays closed)
+        if _reveal:   # solutions visible (attempting stays closed)
             d.update({"model_answer": q.model_answer, "model_answer_hi": q.model_answer_hi,
                       "correct_option": q.correct_option, "explanation": q.explanation,
                       "explanation_hi": q.explanation_hi, "model_answer_image": q.model_answer_image})
@@ -2471,6 +2501,8 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
             "q_count": int(getattr(ex, "q_count", 0) or 0),
             "answers_unlock_at": (_pdf_unlock_iso(ex) if getattr(ex, "q_pdf", None) else None),
             "expired": (_exp and not _reup),
+            "submitted": _submitted,
+            "can_view_solution": _reveal,
             "reupload_allowed": _reup,
             "reupload_remark": (getattr(att, "reupload_remark", None) if att else None),
             "already_submitted": bool(att and att.status == "graded") and not _reup}

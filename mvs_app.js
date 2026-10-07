@@ -21101,6 +21101,11 @@ function examCardHTML(e){
   }
   const _sch=spSchedOf(e),_future=_sch&&_sch.getTime()>Date.now();
   const _exp=_sch&&Date.now()>(_sch.getTime()+(e.duration_min||60)*60000);
+  // Solution availability — ONE rule (also enforced server-side): window over, OR (no schedule
+  // AND the student has submitted). Prefer the backend flags; fall back for older payloads.
+  const _submitted=(e.submitted!=null)?!!e.submitted:(!!e.status&&e.status!=='not_attempted');
+  const _canSol=(e.can_view_solution!=null)?!!e.can_view_solution:(_exp||(!_sch&&_submitted));
+  const _hasSol=(e.has_solution!=null)?!!e.has_solution:true;
   if(_exp&&!stPill){
     stPill=`<span class="tx-pill s">NOT ATTEMPTED</span>`;
   }
@@ -21115,12 +21120,8 @@ function examCardHTML(e){
     ? `<button class="btn btn-ghost btn-sm" disabled>${e.status==='marking'?'Marking by teacher':'Checking soon'}</button>`
     : (_exp?`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">${ic('book')} View Paper</button>`
     : (_future?`<span class="tx-cdchip">Starts in <b data-cd="${_sch.getTime()}">\u2026</b></span>`:`<button class="btn btn-primary btn-sm" onclick="openExamPlayer(${e.id})">Start Test</button>`));
-  if(e.is_pdf){
-    var _hasSched=!!e.scheduled_at;
-    var _ansReady=_hasSched
-      ? (!!e.answers_unlock_at && (new Date()>=new Date(e.answers_unlock_at)))
-      : (!!e.status && e.status!=='not_attempted');
-    if(_ansReady) action=`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'student','a')">${ic('eye')} View Solution</button>`+action;
+  if(e.is_pdf && _canSol && _hasSol){
+    action=`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'student','a')">${ic('eye')} View Solution</button>`+action;
   }
   return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -21138,7 +21139,7 @@ function examCardHTML(e){
     </div>
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
       ${(_future||_exp)?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id})">${ic('download')} Paper</button>`}
-      ${_exp?`<button class="btn btn-ghost btn-sm" onclick="_solHub(${e.id})">${ic('book')} Solutions</button>`:''}
+      ${(_canSol&&_hasSol)?`<button class="btn btn-success btn-sm" onclick="_solHub(${e.id})">${ic('book')} Solution</button>`:''}
       ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test — attempt na bhi kiya ho to dikh sakta hai" onclick="openExamRanking(${e.id},'student')">${ic('chart')} Ranking</button>`:''}
       ${action}
     </div>
