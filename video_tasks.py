@@ -296,16 +296,25 @@ def _chapter_lifecycle_label(c):
     return CHAPTER_STATE_LABELS.get(_chapter_lifecycle(c), "")
 
 
-def _chap_event(c, kind, note=""):
-    """Append a restart-safe timeline event to the chapter's event_log (JSON)."""
+def _chap_event(c, kind, note="", actor=None):
+    """Append a restart-safe timeline event to the chapter's event_log (JSON). When an actor
+    (the acting user) is given, the event records WHO did it + their role, so the timeline can
+    read 'Thumbnail changes requested by Suraj Yadav · Production Manager'."""
     try:
         log = json.loads(getattr(c, "event_log", "") or "[]")
         if not isinstance(log, list):
             log = []
     except Exception:
         log = []
-    log.append({"at": _now_ist().strftime("%d %b %Y, %I:%M %p"),
-                "kind": str(kind or "")[:60], "note": str(note or "")[:400]})
+    ev = {"at": _now_ist().strftime("%d %b %Y, %I:%M %p"),
+          "kind": str(kind or "")[:60], "note": str(note or "")[:400]}
+    if actor is not None:
+        try:
+            ev["by"] = (getattr(actor, "name", "") or "")[:120]
+            ev["by_role"] = (getattr(actor, "role", "") or "")[:30]
+        except Exception:
+            pass
+    log.append(ev)
     c.event_log = json.dumps(log[-120:])   # keep it bounded
 
 
@@ -369,7 +378,7 @@ def set_chapter_state(db, c, state, actor=None, note="", meta=None, force=False,
     if hasattr(c, "changed_at"):
         c.changed_at = _now_ist()
     if event and cur != state:
-        _chap_event(c, state, note)
+        _chap_event(c, state, note, actor=actor)
     return c
 
 
@@ -2339,9 +2348,61 @@ def _notify_project_chat(db, project, author_id, author_name, message):
                 pass
 
 
+def _chat_access_ok(db, user, c=None, pid=None):
+    """CENTRAL participant check for project/chapter chat + timeline (defense-in-depth on top of
+    the per-portal route guards). PM/Admin: full. Teacher: own/collaborator project only. Editor:
+    own chapter OR whole-project-editor. Graphics: own chapter only. YouTuber: ready/published only.
+    Unknown role -> allowed (the route-level guard still applies; we never lock out a known-good flow)."""
+    role = (getattr(user, "role", "") or "")
+    if role in ("admin", "production_manager"):
+        return True
+    pid = pid or (getattr(c, "task_id", None) if c is not None else None)
+    t = db.query(VideoTask).filter(VideoTask.id == int(pid or 0)).first() if pid else None
+    if role == "teacher":
+        try:
+            from teacher_routes import get_teacher_profile as _gtp
+            tp = _gtp(user, db)
+            if tp and t and (getattr(t, "teacher_id", None) == tp.id or tp.id in _collab_all_ids(t)):
+                return True
+        except Exception:
+            pass
+        return False
+    if role in ("editor", "graphics", "youtuber"):
+        import production_core as _pc
+        sp = None
+        try:
+            sp = _pc.staff_profile(db, user)
+        except Exception:
+            sp = None
+        if not sp:
+            return False
+        from models import VideoTaskChapter as _VC
+        if role == "editor":
+            if c is not None:
+                return (getattr(c, "editor_id", None) == sp.id) or bool(t and getattr(t, "project_editor_id", None) == sp.id)
+            if t and getattr(t, "project_editor_id", None) == sp.id:
+                return True
+            return db.query(_VC).filter(_VC.task_id == int(pid or 0), _VC.editor_id == sp.id).first() is not None
+        if role == "graphics":
+            if c is not None:
+                return getattr(c, "graphics_id", None) == sp.id
+            return db.query(_VC).filter(_VC.task_id == int(pid or 0), _VC.graphics_id == sp.id).first() is not None
+        if role == "youtuber":
+            if c is not None:
+                return _chapter_lifecycle(c) in ("ready_for_youtube", "uploaded", "completed")
+            return True
+    return True
+
+
+def _assert_chat_access(db, user, c=None, pid=None):
+    if not _chat_access_ok(db, user, c=c, pid=pid):
+        raise HTTPException(403, "You don't have access to this conversation")
+
+
 def project_chat_get(db, user, pid):
     """Shared list + presence for a project chat (any participant portal)."""
     _project_or_404(db, pid)
+    _assert_chat_access(db, user, pid=pid)
     _vtc_mark_read(db, user, pid, "project")
     _chat_touch(db, user, pid, "project")
     return {"comments": _vtc_list_v(db, pid, "project", getattr(user, "id", None)),
@@ -2350,6 +2411,7 @@ def project_chat_get(db, user, pid):
 
 def project_chat_add(db, user, pid, payload, role):
     t = _project_or_404(db, pid)
+    _assert_chat_access(db, user, pid=pid)
     _att = (payload.get("attachment_url") or "").strip()
     if not _att:
         _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
@@ -2378,6 +2440,7 @@ def project_chat_add(db, user, pid, payload, role):
 
 
 def project_chat_ping(db, user, pid, typing=False):
+    _assert_chat_access(db, user, pid=pid)
     _chat_touch(db, user, pid, "project", typing=bool(typing))
     return {"presence": _chat_other_presence(db, getattr(user, "id", None), pid, "project")}
 
@@ -2414,6 +2477,7 @@ def _chap_aud(cid):
 
 def chapter_chat_get(db, user, cid):
     c = _chapter_row(db, cid)
+    _assert_chat_access(db, user, c=c)
     pid = c.task_id
     aud = _chap_aud(cid)
     _vtc_mark_read(db, user, pid, aud)
@@ -2425,6 +2489,7 @@ def chapter_chat_get(db, user, cid):
 
 def chapter_chat_add(db, user, cid, payload, role):
     c = _chapter_row(db, cid)
+    _assert_chat_access(db, user, c=c)
     pid = c.task_id
     aud = _chap_aud(cid)
     _att = (payload.get("attachment_url") or "").strip()
@@ -2452,25 +2517,39 @@ def chapter_chat_add(db, user, cid, payload, role):
 
 def chapter_chat_ping(db, user, cid, typing=False):
     c = _chapter_row(db, cid)
+    _assert_chat_access(db, user, c=c)
     aud = _chap_aud(cid)
     _chat_touch(db, user, c.task_id, aud, typing=bool(typing))
     return {"presence": _chat_other_presence(db, getattr(user, "id", None), c.task_id, aud)}
 
 
-def chapter_timeline(db, cid):
+def chapter_timeline(db, cid, user=None):
     """A chapter's timeline. Prefers the persistent event_log (restart-safe, written by
     set_chapter_state); falls back to synthesizing from timestamps for legacy chapters."""
     import production_core as pc
     c = _chapter_row(db, cid)
+    if user is not None:
+        _assert_chat_access(db, user, c=c)
     # persistent events (survive refresh/restart) take precedence
     try:
         log = json.loads(getattr(c, "event_log", "") or "[]")
     except Exception:
         log = []
     if isinstance(log, list) and log:
-        ev = [{"label": CHAPTER_STATE_LABELS.get(e.get("kind", ""), e.get("kind", "")) +
-               (": " + e.get("note") if e.get("note") else ""), "at": e.get("at", "")}
-              for e in log if isinstance(e, dict)]
+        _RL = {"production_manager": "Production Manager", "admin": "Admin", "teacher": "Teacher",
+               "editor": "Editor", "graphics": "Graphics", "youtuber": "YouTuber"}
+        ev = []
+        for e in log:
+            if not isinstance(e, dict):
+                continue
+            lbl = CHAPTER_STATE_LABELS.get(e.get("kind", ""), e.get("kind", ""))
+            if e.get("note"):
+                lbl += ": " + e.get("note")
+            by = (e.get("by") or ""); br = (e.get("by_role") or "")
+            # append the actor only when the note doesn't already name them
+            if by and by.lower() not in lbl.lower():
+                lbl += " — " + by + ((" · " + _RL.get(br, br)) if br else "")
+            ev.append({"label": lbl, "at": e.get("at", ""), "by": by, "by_role": br})
         return {"title": (c.title or "Chapter"), "events": ev}
     ev = []
     def _add(label, at):

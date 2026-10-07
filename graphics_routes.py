@@ -95,32 +95,49 @@ def gfx_project_thumbnails(db: Session = Depends(get_db), me=Depends(get_graphic
                 cands = []
             if not isinstance(cands, list):
                 cands = []
+            hist = []
+            try:
+                hist = _json.loads(c.thumb_candidate_history) if (getattr(c, "thumb_candidate_history", "") or "").strip() else []
+            except Exception:
+                hist = []
+            if not isinstance(hist, list):
+                hist = []
+            _gdl = getattr(c, "graphics_deadline", None) or getattr(c, "deadline", None) or (t.deadline if t else None)
             out.append({
                 "chapter_id": c.id, "title": c.title,
                 "project_id": c.task_id, "project_title": (t.title or t.subject or "Project") if t else "Project",
                 "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
                 "video_link": (c.link or ""), "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
                 "gfx_state": (getattr(c, "gfx_state", "") or "") or "assigned",
-                "candidates": cands,
+                "candidates": cands, "candidate_history": hist,
                 "instructions": (getattr(c, "thumb_instructions", "") or ""),
+                "change_note": (getattr(c, "thumb_change_note", "") or ""),
                 "thumb_revision": int(getattr(c, "thumb_revision", 0) or 0),
-                "refs": refs, "deadline": pc._dt(getattr(c, "deadline", None) or (t.deadline if t else None)),
+                "thumb_quality": getattr(c, "thumb_quality", None),
+                "priority": (getattr(c, "priority", "") or "normal"),
+                "refs": refs,
+                "deadline": pc._dt(_gdl),
+                "overdue": bool(_gdl and _gdl < datetime.utcnow() and (getattr(c, "gfx_state", "") or "") not in ("done",)),
             })
     return {"thumbnails": out, "count": len(out)}
 
 
 @router.post("/project-thumbnails/{cid}/start")
 def gfx_project_thumb_start(cid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
-    """Designer starts work on a chapter thumbnail: assigned -> in_progress."""
+    """Designer starts (or resumes after changes) work on a chapter thumbnail -> in_progress."""
     sp = _me_staff(db, me)
     c = _my_gfx_chapter(db, sp, cid)
-    if (getattr(c, "gfx_state", "") or "") in ("", "assigned"):
+    _cur = (getattr(c, "gfx_state", "") or "")
+    if _cur in ("", "assigned", "changes"):
+        _resuming = (_cur == "changes")
         c.gfx_state = "in_progress"
         if not getattr(c, "thumb_started_at", None):
             c.thumb_started_at = datetime.utcnow()
         try:
             import video_tasks as _vt
-            _vt._chap_event(c, "thumbnail_started", "Designer started the thumbnail")
+            _vt._chap_event(c, "thumbnail_started",
+                            "Designer resumed after changes" if _resuming else "Designer started the thumbnail",
+                            actor=me)
         except Exception:
             pass
         db.commit()
@@ -167,10 +184,12 @@ def gfx_project_thumb_submit(cid: int, payload: dict = Body(...), db: Session = 
     # the PM approves (final sets thumb_approved_at). gfx_state -> submitted (review stage).
     c.gfx_state = "submitted"
     c.thumb_submitted_at = datetime.utcnow()
+    c.thumb_change_note = ""   # a fresh submission clears the previous "changes requested" note
     try:
         import video_tasks as _vt
         _vt._chap_event(c, "thumbnail_submitted",
-                        "Designer submitted %d thumbnail option%s" % (len(urls), "s" if len(urls) != 1 else ""))
+                        "Designer submitted %d thumbnail option%s" % (len(urls), "s" if len(urls) != 1 else ""),
+                        actor=me)
     except Exception:
         pass
     t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()

@@ -697,6 +697,10 @@ def _ensure_production_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_direct BOOLEAN DEFAULT 0",
         "ALTER TABLE video_task_chapters ADD COLUMN reconciled BOOLEAN DEFAULT 0",
         "ALTER TABLE video_task_chapters ADD COLUMN reconciled_by VARCHAR(160)",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_change_note VARCHAR(600)",
+        "ALTER TABLE video_task_chapters ADD COLUMN graphics_deadline DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_assigned_at DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN graphics_assigned_at DATETIME",
     ]
     for _s in _stmts:
         try:

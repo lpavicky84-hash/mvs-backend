@@ -724,6 +724,11 @@ class VideoTaskChapter(Base):
     thumb_submitted_at = Column(DateTime, nullable=True)     # designer submitted candidates
     thumb_credited_by  = Column(String(160), default="")     # set when PM credits an existing/off-portal thumbnail
     thumb_direct       = Column(Boolean, default=False)      # thumbnail uploaded/credited directly by PM (no review loop)
+    thumb_change_note  = Column(String(600), default="")     # latest PM "changes requested" note on the thumbnail (designer sees it immediately)
+    # ---- SEPARATE department deadlines + assignment timestamps (editor vs graphics are independent) ----
+    graphics_deadline  = Column(DateTime, nullable=True)     # graphics must finish the thumbnail by (SEPARATE from editor_deadline)
+    editor_assigned_at   = Column(DateTime, nullable=True)   # when the editor was assigned (turnaround/perf; distinct from legacy assigned_at)
+    graphics_assigned_at = Column(DateTime, nullable=True)   # when the graphics designer was assigned
     # ---- administrative reconciliation (existing external work linked in, not pipeline-produced) ----
     reconciled         = Column(Boolean, default=False)      # YouTube URL linked via explicit admin reconciliation
     reconciled_by      = Column(String(160), default="")     # who reconciled / linked the existing video

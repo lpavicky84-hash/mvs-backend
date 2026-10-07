@@ -28222,7 +28222,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.ptc-submit:active{transform:translateY(0);box-shadow:0 5px 14px rgba(15,138,69,.32)}',
 'body.dark .ptc-submit{background:linear-gradient(135deg,#20bd66 0%,#12924a 100%);box-shadow:0 8px 22px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.18)}',
 '.pw-chip.pwlive{background:rgba(209,68,58,.14);color:#d1443a}',
-'.p-modal-wrap{position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px}',
+'.p-modal-wrap{position:fixed;inset:0;z-index:1600;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px;animation:pModalFade .16s ease}',
+'@keyframes pModalFade{from{opacity:0}to{opacity:1}}',
+'.p-modal-wrap .p-modal{animation:pModalPop .2s cubic-bezier(.2,.8,.2,1)}',
+'@keyframes pModalPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}',
 '.p-modal{background:var(--card,#fffdf7);border-radius:18px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)}',
 'body.dark .p-modal{background:#152643}',
 '.p-modal-body{padding:18px 22px;overflow-y:auto;flex:1}',
@@ -31142,7 +31145,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.ytChapPublish=function(cid,title){
     ensureCSS();
     var old=document.getElementById('prod-modal'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; dr.style.zIndex='140';
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div><div class="h-title">Publish to YouTube</div><div style="font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:2px">'+esc(title||'Chapter')+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body"><div class="p-field"><label>Published YouTube URL</label><input class="p-input" id="ytc-url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off"></div>'+
         '<div style="font-size:.8rem;color:var(--muted)">Paste the live YouTube link. This marks the video as uploaded &amp; completed.</div></div>'+
@@ -31519,34 +31522,106 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       taskId:pid, barPortal:'editor'
     });
   };
+  // status chip: [label, color, blink]
+  var _GFX_ST={assigned:['To Design','#d97706',false],in_progress:['Designing','#2563eb',false],
+    submitted:['In Review','#7c4fc0',false],changes:['Changes Requested','#d1443a',true],done:['Approved','#16a34a',false]};
+  function _gfxImgCell(u,i,lbl){ return '<div class="thumb-cell" onclick="prodThumbView(\''+_esc1(u)+'\')" title="Tap to view"><span class="thumb-n">'+esc(lbl||('#'+(i+1)))+'</span><img loading="lazy" src="'+esc(u)+'"></div>'; }
   function renderGfxProjectThumbs(portal,body){
-    body.innerHTML='<div class="p-load">Loading project thumbnails...</div>';
+    _gfxProjCss();
+    if(!window._prodSilent) body.innerHTML='<div class="p-load">Loading project thumbnails...</div>';
     return api(P.graphics.api+'/project-thumbnails').then(function(r){
       var th=(r&&r.thumbnails)||[];
       if(!th.length){ body.innerHTML='<div class="p-empty"><h3>No project thumbnails assigned</h3><p>When a PM or admin assigns you a project video thumbnail, it will appear here.</p></div>'; return; }
-      var stCol={assigned:['To do','#d97706'],done:['Submitted','#16a34a']};
       var cards=th.map(function(v){
-        var st=stCol[v.gfx_state]||stCol.assigned;
-        var refs=(v.refs||[]).map(function(u,i){ return '<a class="pj-btn" href="'+esc(u)+'" target="_blank" rel="noopener">Reference '+(i+1)+'</a>'; }).join('');
-        var vidBtn=v.video_link?'<a class="pj-btn" href="'+esc(v.video_link)+'" target="_blank" rel="noopener">Watch video</a>':'';
-        var act=(v.gfx_state==='done')
-          ? (v.thumbnail_link?'<a class="pj-btn" href="'+esc(v.thumbnail_link)+'" target="_blank" rel="noopener">Thumbnail</a>':'')+'<button class="pj-btn" onclick="gfxPvSubmit('+v.chapter_id+')">Change</button>'
-          : '<button class="pj-btn" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="gfxPvSubmit('+v.chapter_id+')">Submit Thumbnail</button>';
-        return '<div class="pj-card2" style="--pj0:#3a2c1e;--pj1:#d97706;margin-bottom:10px"><div class="pj-c-head" style="cursor:default">'+
-          '<div class="pj-c-l"><div class="pj-c-t"><span class="pj-badge">'+esc(v.project_title||'Project')+'</span><span class="pj-title">'+esc(v.title||'')+'</span>'+
-            '<span style="margin-left:8px;font-size:.66rem;font-weight:700;padding:2px 9px;border-radius:999px;background:'+st[1]+';color:#fff">'+st[0]+'</span></div>'+
-          '<div class="pj-sub">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+((v.refs&&v.refs.length)?' \u00b7 '+v.refs.length+' reference'+(v.refs.length>1?'s':''):'')+'</div></div></div>'+
-          '<div class="pj-c-acts">'+vidBtn+refs+act+'<button class="pj-btn" onclick="gfxProjectChat('+v.project_id+',\''+esc(v.project_title||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button></div>'+
+        var st=_GFX_ST[v.gfx_state]||_GFX_ST.assigned;
+        var pj=esc((v.project_title||'').replace(/[\\\'\"]/g,''));
+        var stPill='<span class="gpt-pill'+(st[2]?' gpt-blink':'')+'" style="background:'+st[1]+'">'+st[0]+'</span>';
+        var urgent=(v.priority==='urgent')?'<span class="gpt-pill" style="background:#d1443a">URGENT</span>':'';
+        var ovd=(v.overdue&&v.gfx_state!=='done')?'<span class="gpt-pill" style="background:#b91c1c">OVERDUE</span>':'';
+        var meta='<div class="gpt-meta">'+(v.subject?'<span>'+esc(v.subject)+'</span>':'')+
+          (v.deadline?'<span'+(v.overdue?' style="color:#d1443a;font-weight:800"':'')+'>\u23f1 '+esc(v.deadline)+'</span>':'')+
+          ((v.thumb_revision||0)>0?'<span>\u21bb Round '+(v.thumb_revision+1)+'</span>':'')+'</div>';
+        // changes-requested note (immediate, prominent)
+        var chg=(v.gfx_state==='changes'&&(v.change_note||''))?'<div class="gpt-chg">'+ic('alert')+'<div><b>Changes requested</b><div>'+esc(v.change_note)+'</div></div></div>':'';
+        // PM brief
+        var brief=(v.instructions||'')?'<div class="gpt-brief"><b>Brief:</b> '+esc(v.instructions)+'</div>':'';
+        // reference thumbnails gallery
+        var refs=(v.refs&&v.refs.length)?'<div class="gpt-sec">References from PM ('+v.refs.length+')</div><div class="thumb-gal gpt-gal">'+v.refs.map(function(u,i){return _gfxImgCell(u,i,'Ref '+(i+1));}).join('')+'</div>':'';
+        // my current submitted candidates
+        var cands=(v.candidates&&v.candidates.length&&v.gfx_state!=='done')?'<div class="gpt-sec">Your submitted options ('+v.candidates.length+')</div><div class="thumb-gal gpt-gal">'+v.candidates.map(function(u,i){return _gfxImgCell(u,i,'Opt '+(i+1));}).join('')+'</div>':'';
+        // final approved thumbnail
+        var fin=(v.gfx_state==='done'&&v.thumbnail_link)?'<div class="gpt-sec">Approved thumbnail'+(v.thumb_quality?(' \u00b7 '+v.thumb_quality+'\u2605'):'')+'</div><div class="thumb-gal gpt-gal">'+_gfxImgCell(v.thumbnail_link,0,'Final')+'</div>':'';
+        // actions by state
+        var acts='';
+        if(v.gfx_state==='assigned'||!v.gfx_state){ acts+='<button class="pj-btn gpt-primary" onclick="gfxStartDesign('+v.chapter_id+')">'+ic('edit')+' Start Designing</button>'; }
+        else if(v.gfx_state==='in_progress'){ acts+='<button class="pj-btn gpt-primary" onclick="gfxSubmitThumbs('+v.chapter_id+')">'+ic('upload')+' Submit Thumbnails</button>'; }
+        else if(v.gfx_state==='changes'){ acts+='<button class="pj-btn gpt-primary" onclick="gfxSubmitThumbs('+v.chapter_id+')">'+ic('upload')+' Resubmit Thumbnails</button>'; }
+        else if(v.gfx_state==='submitted'){ acts+='<span class="pj-btn" style="opacity:.7;cursor:default">\u23f3 Waiting for PM review</span><button class="pj-btn" onclick="gfxSubmitThumbs('+v.chapter_id+')">Submit More / Replace</button>'; }
+        if(v.video_link) acts+='<button class="pj-btn" onclick="window.open(\''+_esc1(v.video_link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Open Video</button>';
+        acts+='<button class="pj-btn" onclick="gfxProjectChat('+v.project_id+',\''+pj+'\')">\ud83d\udcac Chat</button>';
+        acts+='<button class="pj-btn" onclick="gfxProjTimeline('+v.chapter_id+')">Timeline</button>';
+        return '<div class="pj-card2 gpt-card" style="--pj0:#3a2c1e;--pj1:'+st[1]+'">'+
+          '<div class="gpt-head"><div class="gpt-l"><span class="pj-badge">'+esc(v.project_title||'Project')+'</span><span class="gpt-title">'+esc(v.title||'')+'</span></div>'+
+            '<div class="gpt-pills">'+stPill+urgent+ovd+'</div></div>'+
+          meta+chg+brief+refs+cands+fin+
+          '<div class="pj-c-acts gpt-acts">'+acts+'</div>'+
         '</div>';
       }).join('');
-      body.innerHTML='<div style="margin-bottom:14px"><h2 style="margin:0 0 4px">Project Thumbnails</h2><p style="margin:0;color:var(--muted);font-size:.85rem">Design a thumbnail for each assigned video. Open the references, then submit your thumbnail link.</p></div>'+cards;
-    }).catch(function(){ body.innerHTML='<div class="p-empty">Could not load project thumbnails.</div>'; });
+      body.innerHTML='<div class="gpt-wrap"><div style="margin-bottom:14px"><h2 style="margin:0 0 4px">Project Thumbnails</h2><p style="margin:0;color:var(--muted);font-size:.85rem">Start designing, then submit one or more thumbnail options. The PM reviews and picks the final one.</p></div>'+cards+'</div>';
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load project thumbnails. '+esc(e&&e.message||'')+'</div>'; });
   }
-  window.gfxPvSubmit=function(cid){
-    var link=prompt('Paste the thumbnail drive/image link:'); if(link===null) return; link=(''+link).trim();
-    if(!link){ toast('Link required',true); return; }
-    api(P.graphics.api+'/project-thumbnails/'+cid+'/submit','POST',{thumbnail_link:link}).then(function(){ toast('Thumbnail submitted'); _refresh('graphics'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  window.gfxStartDesign=function(cid){
+    api(P.graphics.api+'/project-thumbnails/'+cid+'/start','POST',{}).then(function(){ toast('Started \u2014 now submit your options'); _refresh('graphics'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
+  // premium MULTI-candidate submit modal (upload / drop / paste / URL) \u2014 replaces the old prompt()
+  window.gfxSubmitThumbs=function(cid){
+    window._gfxCand=[];
+    _chModal('Submit Thumbnail Options','Add one or more candidates \u2014 the PM will pick the final',
+      '<div class="p-field"><label>Thumbnail options <span style="color:var(--muted,#8a7d5c);font-weight:600">(up to 12 \u2014 upload, drop, paste Ctrl+V, or add a link)</span></label>'+
+        '<div class="thumb-gal" id="gfxc-gal"></div>'+
+        '<div id="gfxc-drop" class="yt-drop" onclick="document.getElementById(\'gfxc-file\').click()"><span>+ Add thumbnail image \u2014 click, drop or paste</span></div>'+
+        '<input type="file" id="gfxc-file" accept="image/*" multiple style="display:none">'+
+        '<div class="pji-input-row" style="margin-top:8px"><input class="p-input" id="gfxc-url" placeholder="\u2026or paste an image / drive link"><button class="p-btn" onclick="_gfxAddUrl()">Add link</button></div></div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="gfxc-sub" onclick="gfxSubmitThumbsDo('+cid+')">Submit Options</button>', 560);
+    setTimeout(_gfxcWire,40);
+  };
+  function _gfxcRenderGal(){ var g=document.getElementById('gfxc-gal'); if(!g) return; var a=window._gfxCand||[];
+    g.innerHTML=a.map(function(u,i){ return '<div class="thumb-cell"><span class="thumb-n">Opt '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="_gfxCandRemove('+i+')">Remove</button></div>'; }).join(''); }
+  window._gfxCandRemove=function(i){ if(window._gfxCand) window._gfxCand.splice(i,1); _gfxcRenderGal(); };
+  window._gfxAddUrl=function(){ var el=document.getElementById('gfxc-url'); var u=((el||{}).value||'').trim(); if(!u) return; window._gfxCand=window._gfxCand||[]; if(window._gfxCand.length<12) window._gfxCand.push(u); if(el) el.value=''; _gfxcRenderGal(); };
+  function _gfxCandAdd(file){ if(!file) return; _compressImg(file,1280,0.85,function(dataUrl){ if(!dataUrl) return; window._gfxCand=window._gfxCand||[]; if(window._gfxCand.length<12) window._gfxCand.push(dataUrl); _gfxcRenderGal(); }); }
+  function _gfxcWire(){
+    var f=document.getElementById('gfxc-file'); if(f) f.onchange=function(e){ Array.prototype.forEach.call(e.target.files||[],function(x){_gfxCandAdd(x);}); };
+    var d=document.getElementById('gfxc-drop'); if(d){ d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault(); Array.prototype.forEach.call(e.dataTransfer.files||[],function(x){_gfxCandAdd(x);}); }); }
+    if(window._gfxcPaste) document.removeEventListener('paste',window._gfxcPaste);
+    window._gfxcPaste=function(e){ if(!document.getElementById('gfxc-drop')){ document.removeEventListener('paste',window._gfxcPaste); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _gfxCandAdd(items[i].getAsFile()); e.preventDefault(); } } };
+    document.addEventListener('paste',window._gfxcPaste);
+  }
+  window.gfxSubmitThumbsDo=function(cid){
+    var a=(window._gfxCand||[]).slice(0,12); if(!a.length){ toast('Add at least one thumbnail option',true); return; }
+    var b=document.getElementById('gfxc-sub'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    api(P.graphics.api+'/project-thumbnails/'+cid+'/submit','POST',{candidates:a}).then(function(){ try{ document.removeEventListener('paste',window._gfxcPaste); }catch(e){} window._gfxCand=[]; prodDismiss(); toast('Submitted '+a.length+' option'+(a.length>1?'s':'')+' \u2713'); _refresh('graphics'); }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
+  };
+  window.gfxProjTimeline=function(cid){ _pjTimelineOpen(P.graphics.api,cid); };
+  function _gfxProjCss(){ if(document.getElementById('gpt-css')) return; var s=document.createElement('style'); s.id='gpt-css'; s.textContent=[
+    '.gpt-card{margin-bottom:12px;padding:14px 16px}',
+    '.gpt-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}',
+    '.gpt-l{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0}',
+    '.gpt-title{font-weight:800;font-size:1rem;color:var(--text,#2a2313)}',
+    'body.dark .gpt-title{color:#eaf0fb}',
+    '.gpt-pills{display:flex;gap:6px;flex-wrap:wrap}',
+    '.gpt-pill{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 10px;border-radius:999px;color:#fff;white-space:nowrap}',
+    '@keyframes gptBlink{0%,100%{opacity:1}50%{opacity:.45}}.gpt-blink{animation:gptBlink 1.1s ease-in-out infinite}',
+    '.gpt-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:.76rem;color:var(--muted,#8a7d5c);margin:8px 0}',
+    '.gpt-chg{display:flex;gap:9px;align-items:flex-start;background:rgba(209,68,58,.1);border:1px solid rgba(209,68,58,.3);border-radius:11px;padding:10px 12px;margin:6px 0;font-size:.82rem;color:#b91c1c}',
+    '.gpt-chg svg{width:16px;height:16px;flex:0 0 auto;margin-top:1px}',
+    '.gpt-brief{font-size:.82rem;color:var(--text,#2a2313);background:rgba(224,165,78,.1);border-radius:10px;padding:8px 11px;margin:6px 0}',
+    'body.dark .gpt-brief{color:#e7dcc3}',
+    '.gpt-sec{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted,#8a7d5c);margin:10px 0 6px}',
+    '.gpt-gal{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important;gap:8px!important}',
+    '.gpt-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}',
+    '.gpt-primary{background:#16a34a!important;color:#fff!important;border-color:#16a34a!important}'
+  ].join('\n'); document.head.appendChild(s); }
   window.gfxProjectChat=function(pid,title){
     if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable',true); return; }
     window._ytcOpen({
@@ -33036,18 +33111,49 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.lp-row .pbar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#e6ad4e,#d18f28)}',
       '.lp-row .pp{font-size:.8rem;font-weight:800;color:var(--text,#2a2313);width:42px;text-align:right;flex:0 0 auto}',
       'body.dark .lp-row .pp{color:#eaf0fb}',
-      '.lp-row.hl-overdue{--rc:#d1443a}.lp-row.hl-due_soon{--rc:#e0a52e}.lp-row.hl-published{--rc:#2e9e6b}',
+      '.lp-row.hl-overdue{--rc:#d1443a}.lp-row.hl-due_soon{--rc:#e0a52e}.lp-row.hl-due_today{--rc:#e0792e}.lp-row.hl-published{--rc:#2e9e6b}',
       '.lp-hchip.not_started,.lp-hchip.in_production{background:rgba(255,255,255,.18);color:#fff}',
       '.lp-hchip.at_risk{background:#d1443a;color:#fff}.lp-hchip.publishing{background:#2a7fb8;color:#fff}.lp-hchip.completed{background:#2e9e6b;color:#fff}',
       '.lp-empty{text-align:center;color:var(--muted,#8a7d5c);padding:30px;font-size:.88rem}',
       '@media(prefers-reduced-motion:reduce){.lp,.lp-wrap,.lp-row,.lp-stg{transition:none}}',
-      '@media(max-width:640px){.lp-head{padding:14px}.lp-body{padding:14px 14px 40px}.lp-ring{width:92px;height:92px}}'
+      /* ---- phone / small-tablet: keep the whole command center legible & tap-friendly ---- */
+      '@media(max-width:720px){',
+      '.lp-wrap{background:rgba(18,16,10,.52)}',
+      '.lp{width:100%;max-width:100%;box-shadow:none}',
+      '.lp-head{padding:13px 15px 11px;gap:10px}',
+      '.lp-head .t{font-size:1.01rem;line-height:1.25}',
+      '.lp-head .s{font-size:.72rem}',
+      '.lp-x{width:30px;height:30px;font-size:1rem}',
+      '.lp-body{padding:13px 13px 52px}',
+      '.lp-top{gap:12px;margin-bottom:14px}',
+      '.lp-ring{width:82px;height:82px}',
+      '.lp-ring svg{width:82px;height:82px}',
+      '.lp-ring .p{font-size:1.22rem}',
+      '.lp-ring .l{font-size:.5rem}',
+      '.lp-sum{min-width:0;flex:1 1 150px;font-size:.84rem}',
+      '.lp-ana{gap:6px}.lp-ana span{font-size:.65rem;padding:3px 7px}',
+      '.lp-rail{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}',
+      '.lp-stg{flex:none;min-width:0;padding:9px 7px;border-radius:12px}',
+      '.lp-stg .n{font-size:1.18rem}',
+      '.lp-stg .k{font-size:.56rem;letter-spacing:.02em}',
+      '.lp-att b,.lp-team b{font-size:.72rem;padding:5px 10px}',
+      '.lp-tools{margin:10px 0}',
+      '.lp-search{min-width:0;flex:1 1 100%;padding:8px 11px}',
+      '.lp-row{gap:9px;padding:10px 11px;flex-wrap:wrap}',
+      '.lp-row .idx{width:18px;font-size:.66rem}',
+      '.lp-row .mid{flex:1 1 60%}',
+      '.lp-row .ti{font-size:.86rem;white-space:normal;line-height:1.25}',
+      '.lp-row .mt{font-size:.66rem;gap:6px}',
+      '.lp-row .pp{order:2;flex:0 0 auto;width:auto}',
+      '.lp-row .pbar{order:3;flex:1 1 100%;margin-top:7px}',
+      '}',
+      '@media(max-width:430px){.lp-rail{grid-template-columns:repeat(2,1fr)}.lp-head .t{font-size:.95rem}}'
     ].join('\n');
     document.head.appendChild(s);
   }
   var _LP_STAGES=[['recording','Recording'],['pm_review','PM Review'],['approved','Approved'],['editing','Editing'],['qc','QC'],['ready','Ready'],['published','Published']];
   var _LP_PILLCOL={awaiting_creator:'#8a7d5c',changes_required:'#d1443a',pm_review:'#c99a2e',approved:'#2e9e6b',editor_assigned:'#7c4fc0',editing:'#7c4fc0',editing_paused:'#c99a2e',qc_pending:'#2a7fb8',qc_changes:'#d1443a',ready_for_youtube:'#e0a52e',uploaded:'#2e9e6b',completed:'#2e9e6b'};
-  var _LP_HEALTH={on_track:['On Track','#2e9e6b'],due_soon:['Due Soon','#e0a52e'],overdue:['Overdue','#d1443a'],published:['Published','#2e9e6b'],waiting_teacher:['Waiting Teacher','#8a7d5c'],waiting_pm_review:['Waiting PM Review','#c99a2e'],waiting_editor:['Waiting Editor','#7c4fc0'],editing:['Editing','#7c4fc0'],waiting_qc:['Waiting QC','#2a7fb8'],waiting_upload:['Waiting Upload','#e0a52e']};
+  var _LP_HEALTH={on_track:['On Track','#2e9e6b'],due_soon:['Due Soon','#e0a52e'],due_today:['Due Today','#e0792e'],overdue:['Overdue','#d1443a'],published:['Published','#2e9e6b'],waiting_teacher:['Waiting Teacher','#8a7d5c'],waiting_pm_review:['Waiting PM Review','#c99a2e'],waiting_editor:['Waiting Editor','#7c4fc0'],editing:['Editing','#7c4fc0'],waiting_qc:['Waiting QC','#2a7fb8'],waiting_upload:['Waiting Upload','#e0a52e']};
   window.prodLiveProgress=function(pid){
     _lpCss();
     window._lp={pid:pid,data:null,filter:{type:'all',val:''},q:''};
@@ -33094,11 +33200,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // attention row
     var attItems=[];
     if(att.overdue) attItems.push(['overdue','ov','Overdue',att.overdue]);
-    if(att.waiting_pm_review) attItems.push(['waiting_pm_review','wa','Waiting PM Review',att.waiting_pm_review]);
-    if(att.waiting_qc) attItems.push(['waiting_qc','wa','QC Pending',att.waiting_qc]);
+    if(att.waiting_teacher) attItems.push(['waiting_teacher','wa','Teacher Pending',att.waiting_teacher]);
+    if(att.waiting_pm_review) attItems.push(['waiting_pm_review','wa','PM Video Review',att.waiting_pm_review]);
+    if(att.editor_overdue) attItems.push(['editor_overdue','ov','Editor Overdue',att.editor_overdue]);
     if(att.waiting_graphics) attItems.push(['waiting_graphics','wa','Thumbnail Review',att.waiting_graphics]);
+    if(att.graphics_in_progress) attItems.push(['graphics_in_progress','wa','Graphics In Progress',att.graphics_in_progress]);
+    if(att.graphics_changes) attItems.push(['graphics_changes','wa','Graphics Changes',att.graphics_changes]);
+    if(att.graphics_overdue) attItems.push(['graphics_overdue','ov','Graphics Overdue',att.graphics_overdue]);
+    if(att.waiting_qc) attItems.push(['waiting_qc','wa','QC Pending',att.waiting_qc]);
     if(att.upload_due_today) attItems.push(['upload_due_today','wa','Upload Due Today',att.upload_due_today]);
-    if(att.waiting_teacher) attItems.push(['waiting_teacher','wa','Waiting Teacher',att.waiting_teacher]);
+    if(att.upload_overdue) attItems.push(['upload_overdue','ov','Upload Overdue',att.upload_overdue]);
     var attH=attItems.length?('<div class="lp-sec-h">Needs attention</div><div class="lp-att">'+attItems.map(function(a){ var on=(f.type==='att'&&f.val===a[0]); return '<b class="'+a[1]+(on?' on':'')+'" onclick="_lpFilter(\'att\',\''+a[0]+'\')">'+esc(a[2])+' <span class="c">'+a[3]+'</span></b>'; }).join('')+(bn.stage?'<b class="wa'+(f.type==='stage'&&f.val===bn.stage?' on':'')+'" title="Bottleneck" onclick="_lpFilter(\'stage\',\''+bn.stage+'\')">'+ic('alert')+' Bottleneck: '+esc((_LP_STAGES.filter(function(x){return x[0]===bn.stage;})[0]||[,bn.stage])[1])+' <span class="c">'+bn.count+'</span></b>':'')+'</div>'):'';
     // team load
     var tl=d.team_load||{}; var teamH='';
@@ -33118,17 +33229,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   function _lpMatch(row){
     var f=window._lp.filter||{}, q=(window._lp.q||'').trim().toLowerCase();
-    if(q){ var hay=((row.title||'')+' '+(row.editor||'')+' '+(row.graphics||'')+' '+(row.lifecycle_label||'')+' '+(row.health||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+    if(q){ var hay=((row.title||'')+' '+(row.teacher||'')+' '+(row.editor||'')+' '+(row.graphics||'')+' '+(row.lifecycle_label||'')+' '+(row.health||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
     if(f.type==='stage'){ return (_LP_PIPE_OF(row.lifecycle)===f.val); }
     if(f.type==='editor'){ return (row.editor||'')===f.val; }
     if(f.type==='graphics'){ return (row.graphics||'')===f.val; }
     if(f.type==='att'){
       if(f.val==='overdue') return row.health==='overdue';
       if(f.val==='waiting_pm_review') return row.lifecycle==='pm_review';
-      if(f.val==='waiting_qc') return row.lifecycle==='qc_pending';
+      if(f.val==='waiting_qc') return row.lifecycle==='qc_pending' && !row.publish_blocked;
       if(f.val==='waiting_graphics') return (row.graphics_state==='submitted' && !row.thumbnail);
+      if(f.val==='graphics_in_progress') return (row.graphics_state==='in_progress' && !row.thumbnail);
+      if(f.val==='graphics_changes') return (row.graphics_state==='changes' && !row.thumbnail);
+      if(f.val==='graphics_overdue') return (row.health!=='published' && !row.thumbnail && !!row.graphics_deadline && ['assigned','in_progress','changes','submitted'].indexOf(row.graphics_state)>=0);
+      if(f.val==='editor_overdue') return (['editor_assigned','editing','editing_paused','qc_changes'].indexOf(row.lifecycle)>=0 && row.health==='overdue');
       if(f.val==='waiting_teacher') return (row.lifecycle==='awaiting_creator'||row.lifecycle==='changes_required');
       if(f.val==='upload_due_today') return (row.lifecycle==='ready_for_youtube' && !!row.upload_date);
+      if(f.val==='upload_overdue') return (row.lifecycle==='ready_for_youtube' && !!row.upload_date);
     }
     return true;
   }
@@ -33140,7 +33256,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     box.innerHTML=rows.map(function(r){
       var hc=_LP_HEALTH[r.health]||['',''];
       var pill='<span class="pill" style="background:'+(_LP_PILLCOL[r.lifecycle]||'#8a7d5c')+'">'+esc(r.lifecycle_label||'')+'</span>';
-      var meta=[]; if(r.editor) meta.push('Editor: '+esc(r.editor)); if(r.graphics) meta.push('Graphics: '+esc(r.graphics)); if(r.deadline) meta.push((r.health==='overdue'?'Overdue · ':'Due ')+esc(r.deadline));
+      var meta=[]; if(r.teacher) meta.push('Teacher: '+esc(r.teacher)); if(r.editor) meta.push('Editor: '+esc(r.editor)); if(r.graphics) meta.push('Graphics: '+esc(r.graphics)); if(r.deadline) meta.push((r.health==='overdue'?'Overdue · ':'Due ')+esc(r.deadline));
       return '<div class="lp-row hl-'+(r.health||'')+'" style="--rc:'+(hc[1]||'#8a7d5c')+'" onclick="_lpOpenChapter('+r.id+')">'+
         '<div class="idx">'+(r.sort?String(r.sort).padStart(2,'0'):'')+'</div>'+
         '<div class="mid"><div class="ti">'+esc(r.title||'Chapter')+'</div><div class="mt">'+pill+(hc[0]?'<span class="pill" style="background:'+hc[1]+'">'+esc(hc[0])+'</span>':'')+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div></div>'+
@@ -34023,7 +34139,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(rv==='approved'){
       var asg=(ch.editor_name||ch.graphics_name);
-      b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapAssign(\''+portal+'\','+taskId+','+cid+',\''+tnm+'\')">'+(asg?'Reassign Editor':'Assign Editor')+'</button>');
+      b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapAssignEditor(\''+portal+'\','+cid+')">'+(ch.editor_name?'Reassign Editor':'Assign Editor')+'</button>');
+      b.push('<button class="'+cls+'" onclick="'+stop+'prodChapAssignGraphics(\''+portal+'\','+cid+')">'+(ch.graphics_name?'Graphics · '+esc(ch.graphics_name):'Assign Graphics')+'</button>');
       if(asg) b.push('<button class="'+cls+'" onclick="'+stop+'prodChapUnassign(\''+portal+'\','+taskId+','+cid+')">Remove</button>');
     }
     // PM/Admin QC on the editor's EDITED video (like task QC) — only when an edit is submitted
@@ -34183,23 +34300,51 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '</div>';
     if(st.tab==='timeline') _chapLoadTimeline(portal, wi.id);
   }
+  // swap an element's innerHTML and restart its CSS entrance animation -> smooth, flicker-free
+  function _fadeSwap(el, html){ if(!el) return; el.innerHTML=html; try{ el.style.animation='none'; void el.offsetWidth; el.style.animation=''; }catch(e){} }
   window.prodChapTab=function(tab){
     var st=window._pjChapOpen; if(!st) return; st.tab=tab;
     document.querySelectorAll('#prod-chap-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
-    var body=document.getElementById('pdc-body'); if(body) body.innerHTML=_chapTabHtml(st.portal, st.wi, tab);
+    var body=document.getElementById('pdc-body'); if(body) _fadeSwap(body, _chapTabHtml(st.portal, st.wi, tab));
     if(tab==='timeline') _chapLoadTimeline(st.portal, st.wi.id);
   };
+  // repaint the ALREADY-OPEN drawer in place (head pill + body + foot) WITHOUT rebuilding the
+  // panel — so the slide-in animation never re-fires (no glitch). Falls back to a full render
+  // only when the panel isn't mounted yet.
+  function _chapPaint(){
+    var st=window._pjChapOpen; if(!st||!st.wi) return;
+    var dr=document.getElementById('prod-chap-drawer');
+    if(!dr || !dr.querySelector('.pd-panel')){ _chapRenderDrawer(); return; }
+    var wi=st.wi, portal=st.portal, pill=_LP_PILLCOL[wi.lifecycle]||'#8a7d5c';
+    var h=dr.querySelector('.h-title'); if(h) h.innerHTML=esc(wi.title||'Chapter');
+    var pb=dr.querySelector('.chd-pill'); if(pb){ pb.style.background=pill; pb.innerHTML=esc(wi.lifecycle_label||wi.lifecycle||''); }
+    var body=document.getElementById('pdc-body'); if(body) _fadeSwap(body, _chapTabHtml(portal, wi, st.tab));
+    var foot=document.getElementById('pdc-foot'); if(foot) foot.innerHTML=_chapFoot(portal, wi);
+    if(st.tab==='timeline') _chapLoadTimeline(portal, wi.id);
+  }
+  window._chapPaint=_chapPaint;
   function _chapAfter(){
-    // re-fetch the work-item and re-render the open drawer, then refresh dashboards.
+    // re-fetch the work-item and repaint the open drawer IN PLACE, then quietly sync the
+    // surfaces that are actually visible (Live Progress / expanded project dash). No heavy
+    // full board reload -> closing the drawer no longer resets/scrolls the view behind it.
     var st=window._pjChapOpen; if(!st) return;
     if((st.portal==='production'||st.portal==='admin')){
-      api(P.production.api+'/chapters/'+st.cid+'/work-item').then(function(wi){ st.wi=wi; _chapRenderDrawer(); }).catch(function(){});
+      api(P.production.api+'/chapters/'+st.cid+'/work-item').then(function(wi){ st.wi=wi; _chapPaint(); }).catch(function(){});
     }
     try{ if(document.getElementById('prod-live')) _lpLoad(true); }catch(e){}
-    try{ if(st.wi&&st.wi.parent_project_id) window._prodProjChaps(st.wi.parent_project_id); }catch(e){}
-    try{ _refresh('production'); }catch(e){}
+    try{ if(st.wi&&st.wi.parent_project_id && document.getElementById('pjch-'+st.wi.parent_project_id)) window._prodProjChaps(st.wi.parent_project_id); }catch(e){}
+    // admin task-manager list: keep its existing light refresh so the row reflects the change
+    if(st.portal==='admin'){ try{ if(typeof _apiBust==='function')_apiBust(); if(typeof loadAVTasks==='function') loadAVTasks(); }catch(e){} }
   }
   window._chapAfter=_chapAfter;
+  // refresh after an action that may have been fired from a CARD (no drawer open) OR the drawer
+  function _chapAfterAny(cid){
+    var st=window._pjChapOpen;
+    if(st && st.cid==cid && document.getElementById('prod-chap-drawer')){ _chapAfter(); return; }
+    try{ if(document.getElementById('prod-live')) _lpLoad(true); }catch(e){}
+    try{ var c=(window._pjChapCache||{})[cid]; var tid=c&&c.task_id; if(tid && document.getElementById('pjch-'+tid)) window._prodProjChaps(tid); }catch(e){}
+  }
+  window._chapAfterAny=_chapAfterAny;
   function _link(u,lbl){ return u?('<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(lbl)+'</a>'):'<span style="color:var(--muted,#8a7d5c)">—</span>'; }
   function _chapTabHtml(portal,wi,tab){
     var R=wi.ratings||{};
@@ -34236,11 +34381,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(tab==='graphics'){
       var g='';
       if(wi.thumbnail){ g+='<div class="chd-sec-h">Final thumbnail'+(wi.thumb_direct?' (uploaded/credited by PM)':'')+(R.pm_thumbnail?(' · '+_chStars(R.pm_thumbnail)):'')+'</div>'+_chGal([wi.thumbnail],{}); }
-      if((wi.thumb_candidates||[]).length && !wi.thumbnail){ g+='<div class="chd-sec-h">Submitted options — review & pick the final</div>'+_chGal(wi.thumb_candidates,{label:'Option'}); }
+      if((wi.thumb_candidates||[]).length && !wi.thumbnail){ g+='<div class="chd-sec-h">Current submission — review & pick the final</div>'+_chGal(wi.thumb_candidates,{label:'Option'}); }
+      if((wi.thumb_change_note||'') && (wi.graphics_state==='changes')){ g+='<div class="chd-chg">'+ic('alert')+' <b>Changes requested:</b> '+esc(wi.thumb_change_note)+'</div>'; }
       if((wi.thumb_refs||[]).length){ g+='<div class="chd-sec-h">Reference thumbnails (PM → designer)</div>'+_chGal(wi.thumb_refs,{label:'Ref'}); }
+      // revision history — every submitted round is kept, never deleted
+      var hist=(wi.thumb_candidate_history||[]);
+      if(hist.length){
+        g+='<div class="chd-sec-h">Revision history ('+hist.length+' round'+(hist.length>1?'s':'')+')</div>';
+        g+=hist.map(function(h){ return '<div class="chd-round"><div class="chd-round-h">Round '+(h.round||'')+' · '+esc(h.at||'')+' · '+((h.urls||[]).length)+' option'+(((h.urls||[]).length)>1?'s':'')+(h.note?(' — '+esc(h.note)):'')+'</div>'+_chGal(h.urls||[],{label:'Opt'})+'</div>'; }).join('');
+      }
       g+='<div class="pd-kv">'+
         _kv('Designer', esc(wi.graphics||'Not assigned'))+
-        _kv('Graphics state', esc({'':'—','assigned':'Assigned','in_progress':'In progress','submitted':'Submitted · review','done':'Done'}[wi.graphics_state||'']||wi.graphics_state||'—'))+
+        _kv('Graphics state', esc({'':'—','assigned':'Assigned','in_progress':'In progress','submitted':'Submitted · review','changes':'Changes requested','done':'Done'}[wi.graphics_state||'']||wi.graphics_state||'—'))+
+        _kv('Graphics deadline', esc(wi.graphics_deadline||'Not set'))+
+        ((wi.thumb_revision||0)>0?_kv('Revisions', String(wi.thumb_revision)):'')+
         (wi.thumb_instructions?_kv('Brief', esc(wi.thumb_instructions)):'')+
       '</div>';
       return g;
@@ -34283,10 +34437,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(A.approve_creator) add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Approve','prodChapAct(\''+portal+'\','+tid+','+cid+',\'approve\')');
       if(A.request_changes) add('p-btn-danger','Request Changes','prodChapAct(\''+portal+'\','+tid+','+cid+',\'changes\')');
       if(A.reshoot) add('','Reshoot','prodChapReshoot('+cid+')');
-      if(A.assign_editor) add('p-btn-primary',(wi.editor?'Reassign Editor':'Assign Editor'),'prodChapAssign(\''+portal+'\','+tid+','+cid+',\''+_esc1(wi.title)+'\')');
+      if(A.assign_editor) add('p-btn-primary',(wi.editor?'Reassign Editor':'Assign Editor'),'prodChapAssignEditor(\''+portal+'\','+cid+')');
       if(A.credit_edit) add('','Credit Existing Edit','prodChapCreditEdit('+cid+')');
       if(A.thumbnail_review) add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Review Thumbnail','prodChapThumbReview('+cid+')');
-      if(A.assign_graphics && !A.thumbnail_review) add('',(wi.graphics?'Graphics · '+esc(wi.graphics):'Assign Graphics'),'prodChapAssign(\''+portal+'\','+tid+','+cid+',\''+_esc1(wi.title)+'\')');
+      if(A.assign_graphics && !A.thumbnail_review) add('',(wi.graphics?'Graphics · '+esc(wi.graphics):'Assign Graphics'),'prodChapAssignGraphics(\''+portal+'\','+cid+')');
       if(A.upload_thumbnail) add('','Upload Thumbnail','prodChapThumbUpload('+cid+')');
       if(A.credit_thumbnail) add('','Credit Thumbnail','prodChapCreditThumb('+cid+')');
       if(A.qc_approve) add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Review Edit (QC)','prodChapQc(\''+portal+'\','+tid+','+cid+')');
@@ -34307,6 +34461,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _chapDrawerCss(){
     if(document.getElementById('chd-css')) return;
     var s=document.createElement('style'); s.id='chd-css'; s.textContent=[
+      /* chapter drawer must float ABOVE the Live Progress panel (z1200) so opening a chapter from
+         Live Progress layers on top of it — closing returns to Live Progress cleanly. */
+      '#prod-chap-drawer{z-index:1300}',
+      '#prod-chap-drawer #pdc-body{animation:chdBodyFade .18s ease}',
+      '@keyframes chdBodyFade{from{opacity:.35}to{opacity:1}}',
       '.chd-pill{border:none;color:#fff;font-size:.66rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:4px 11px;border-radius:999px;cursor:pointer}',
       '.chd-pill:hover{filter:brightness(1.06)}',
       '.chd-sec-h{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted,#8a7d5c);margin:14px 0 8px}',
@@ -34317,7 +34476,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.chd-img{width:100%;aspect-ratio:16/9;background-size:cover;background-position:center;background-color:#17130c;cursor:zoom-in}',
       '.chd-lb{font-size:.72rem;font-weight:700;padding:6px 8px;color:var(--text,#2a2313)}',
       'body.dark .chd-lb{color:#eaf0fb}',
-      '.chd-stars{font-size:1.5rem;letter-spacing:3px;color:#e0a52e;cursor:pointer;user-select:none}'
+      '.chd-stars{font-size:1.5rem;letter-spacing:3px;color:#e0a52e;cursor:pointer;user-select:none}',
+      '.chd-chg{display:flex;gap:8px;align-items:flex-start;background:rgba(209,68,58,.1);border:1px solid rgba(209,68,58,.3);border-radius:11px;padding:10px 12px;margin:8px 0;font-size:.84rem;color:#b91c1c}',
+      '.chd-chg svg{width:16px;height:16px;flex:0 0 auto;margin-top:1px}',
+      '.chd-round{border:1px solid var(--border,#ece2cd);border-radius:12px;padding:10px 11px;margin-bottom:8px;background:var(--surface-2,#faf7ef)}',
+      'body.dark .chd-round{background:rgba(255,255,255,.03);border-color:#2c405e}',
+      '.chd-round-h{font-size:.72rem;font-weight:700;color:var(--muted,#8a7d5c);margin-bottom:7px}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -34380,7 +34544,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else tv='<div class="pqc-tv">'+ic('clock')+' Teacher review pending</div>';
     _prodQcCss();
     var old=document.getElementById('prod-modal'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; dr.style.zIndex='140';
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     dr.innerHTML='<div class="p-modal" style="max-width:480px"><div class="pd-head"><div><div class="h-title">Review Edited Video</div><div class="pqc-sub">'+esc(c.title||'Chapter')+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+
         (c.edited_link?'<a class="pqc-watch" href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">'+ic('play')+' Watch edited video</a>':'<div class="p-opt">No edited link found.</div>')+
@@ -34405,7 +34569,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodChapYoutube=function(portal,taskId,cid,title){
     ensureCSS();
     var old=document.getElementById('prod-modal'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; dr.style.zIndex='140';
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div><div class="h-title">Post YouTube URL</div><div style="font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:2px">'+esc(title||'Chapter')+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body"><div class="p-field"><label>Published YouTube URL</label><input class="p-input" id="pcy-url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off"></div></div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pcy-sub" onclick="prodChapYoutubeDo(\''+portal+'\','+taskId+','+cid+')">'+ic('check')+' Publish</button></div></div></div>';
@@ -34440,7 +34604,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _chModal(title, sub, bodyHtml, footHtml, max){
     ensureCSS(); _chapDrawerCss();
     var old=document.getElementById('prod-modal'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; dr.style.zIndex='1400';
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     dr.innerHTML='<div class="p-modal" style="max-width:'+(max||480)+'px"><div class="pd-head"><div><div class="h-title">'+esc(title)+'</div>'+(sub?'<div style="font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:2px">'+esc(sub)+'</div>':'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body">'+bodyHtml+'</div>'+
       '<div class="pd-foot"><div class="p-acts">'+footHtml+'</div></div></div>';
@@ -34498,31 +34662,55 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else { if(!note){ toast('Add a short note',true); return; } body.note=note; }
     api(P.production.api+'/chapter-thumbnail-review','POST',body).then(function(){ prodDismiss(); toast(action==='approve'?'Thumbnail approved \u2713':'Sent back to designer'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
+  // ---- reusable SINGLE-image picker (upload / drop / paste / URL + live preview) ----
+  function _chImgPicker(id, cur){
+    window._chImg=window._chImg||{}; window._chImg[id]=cur||'';
+    return '<div class="thumb-gal" id="'+id+'-prev" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))"></div>'+
+      '<div id="'+id+'-drop" class="yt-drop" onclick="document.getElementById(\''+id+'-file\').click()"><span>Click, drop or paste an image (Ctrl+V)</span></div>'+
+      '<input type="file" id="'+id+'-file" accept="image/*" style="display:none">'+
+      '<div class="pji-input-row" style="margin-top:8px"><input class="p-input" id="'+id+'-url" placeholder="\u2026or paste an image / drive link"><button class="p-btn" type="button" onclick="_chImgUrl(\''+id+'\')">Use link</button></div>';
+  }
+  function _chImgRender(id){ var box=document.getElementById(id+'-prev'); if(!box) return; var u=(window._chImg||{})[id]||'';
+    box.innerHTML=u?('<div class="thumb-cell"><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="_chImgClear(\''+id+'\')">Remove</button></div>'):''; }
+  window._chImgUrl=function(id){ var el=document.getElementById(id+'-url'); var u=((el||{}).value||'').trim(); if(!u) return; window._chImg=window._chImg||{}; window._chImg[id]=u; if(el) el.value=''; _chImgRender(id); };
+  window._chImgClear=function(id){ window._chImg=window._chImg||{}; window._chImg[id]=''; _chImgRender(id); };
+  function _chImgAdd(id,file){ if(!file) return; _compressImg(file,1600,0.88,function(d){ if(!d) return; window._chImg=window._chImg||{}; window._chImg[id]=d; _chImgRender(id); }); }
+  function _chImgWire(id){
+    var f=document.getElementById(id+'-file'); if(f) f.onchange=function(e){ var x=(e.target.files||[])[0]; if(x)_chImgAdd(id,x); };
+    var d=document.getElementById(id+'-drop'); if(d){ d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault(); var x=(e.dataTransfer.files||[])[0]; if(x)_chImgAdd(id,x); }); }
+    var pk='_chImgPaste_'+id; if(window[pk]) document.removeEventListener('paste',window[pk]);
+    window[pk]=function(e){ if(!document.getElementById(id+'-drop')){ document.removeEventListener('paste',window[pk]); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _chImgAdd(id,items[i].getAsFile()); e.preventDefault(); } } };
+    document.addEventListener('paste',window[pk]); _chImgRender(id);
+  }
   window.prodChapThumbUpload=function(cid){
     _chModal('Upload Thumbnail Directly', _chWi().title||'Chapter',
-      '<div class="p-field"><label>Thumbnail image URL (or paste a link)</label><input class="p-input" id="pctu-url" placeholder="https://..."></div>'+
+      '<div class="p-field"><label>Thumbnail image</label>'+_chImgPicker('pctu','')+'</div>'+
       '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">This becomes the final approved thumbnail \u2014 no graphics review needed.</div>',
-      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapThumbUploadDo('+cid+')">Set as Final</button>');
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pctu-sub" onclick="prodChapThumbUploadDo('+cid+')">Set as Final</button>');
+    setTimeout(function(){ _chImgWire('pctu'); },40);
   };
   window.prodChapThumbUploadDo=function(cid){
-    var url=((document.getElementById('pctu-url')||{}).value||'').trim(); if(!url){ toast('Paste the thumbnail URL',true); return; }
-    api(P.production.api+'/chapter-thumbnail-upload','POST',{chapter_id:cid,thumbnail:url}).then(function(){ prodDismiss(); toast('Thumbnail set \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    var url=((window._chImg||{})['pctu']||'').trim(); if(!url){ toast('Add a thumbnail image or link',true); return; }
+    var b=document.getElementById('pctu-sub'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    api(P.production.api+'/chapter-thumbnail-upload','POST',{chapter_id:cid,thumbnail:url}).then(function(){ prodDismiss(); toast('Thumbnail set \u2713'); _chapAfter(); }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
   function _chStaffOpts(list, role){ return (list||[]).map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+'</option>'; }).join(''); }
   window.prodChapCreditThumb=function(cid){
     api(P.production.api+'/people?role=').then(function(p){
       _chModal('Credit Existing Thumbnail', _chWi().title||'Chapter',
         '<div class="p-field"><label>Graphics designer to credit</label><select class="p-select" id="pcct-g"><option value="">\u2014 choose \u2014</option>'+_chStaffOpts(p.graphics||[])+'</select></div>'+
-        '<div class="p-field"><label>Thumbnail image URL</label><input class="p-input" id="pcct-url" placeholder="https://..."></div>'+
+        '<div class="p-field"><label>Thumbnail image</label>'+_chImgPicker('pcct','')+'</div>'+
         '<div class="p-field"><label>Quality rating</label>'+_chStarPicker('pcct-rate',0)+'</div>'+
         '<div class="p-field"><label>Quality note (optional)</label><input class="p-input" id="pcct-note"></div>',
-        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapCreditThumbDo('+cid+')">Credit Thumbnail</button>');
+        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pcct-sub" onclick="prodChapCreditThumbDo('+cid+')">Credit Thumbnail</button>');
+      setTimeout(function(){ _chImgWire('pcct'); },40);
     }).catch(function(e){ toast((e&&e.message)||'Could not load designers',true); });
   };
   window.prodChapCreditThumbDo=function(cid){
-    var gid=(document.getElementById('pcct-g')||{}).value||''; var url=((document.getElementById('pcct-url')||{}).value||'').trim();
-    if(!gid){ toast('Choose a designer',true); return; } if(!url){ toast('Paste the thumbnail URL',true); return; }
-    api(P.production.api+'/chapter-credit-thumbnail','POST',{chapter_id:cid,graphics_id:parseInt(gid,10),thumbnail:url,quality_rating:(window._chRate||{})['pcct-rate']||0,quality_note:((document.getElementById('pcct-note')||{}).value||'')}).then(function(){ prodDismiss(); toast('Credited \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    var gid=(document.getElementById('pcct-g')||{}).value||''; var url=((window._chImg||{})['pcct']||'').trim();
+    if(!gid){ toast('Choose a designer',true); return; } if(!url){ toast('Add the thumbnail image or link',true); return; }
+    var b=document.getElementById('pcct-sub'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    api(P.production.api+'/chapter-credit-thumbnail','POST',{chapter_id:cid,graphics_id:parseInt(gid,10),thumbnail:url,quality_rating:(window._chRate||{})['pcct-rate']||0,quality_note:((document.getElementById('pcct-note')||{}).value||'')}).then(function(){ prodDismiss(); toast('Credited \u2713'); _chapAfter(); }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
   window.prodChapCreditEdit=function(cid){
     api(P.production.api+'/people?role=').then(function(p){
@@ -34578,6 +34766,90 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodChapScheduleDo=function(cid){
     var dt=((document.getElementById('pcsch-dt')||{}).value||'').trim(); if(!dt){ toast('Pick a date & time',true); return; }
     api(P.production.api+'/chapter-upload-schedule','POST',{chapter_id:cid,upload_date:dt,upload_remarks:((document.getElementById('pcsch-rm')||{}).value||'')}).then(function(){ prodDismiss(); toast('Upload date set \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+
+  // ===== PREMIUM chapter Assign Editor / Assign Graphics \u2014 full parity with the normal-task flow
+  // (editor's active tasks + deadlines shown; optional pause & extend). Layers OVER the drawer
+  // (modal z1600 > drawer z1300) so nothing is torn down; success repaints the drawer in place.
+  function _chWiFor(cid){
+    var st=window._pjChapOpen; if(st && st.cid==cid && st.wi) return st.wi;
+    var c=(window._pjChapCache||{})[cid];
+    if(c && typeof _wiFromCached==='function'){ try{ return _wiFromCached(c,cid); }catch(e){} }
+    return {id:cid, title:(c&&c.title)||'Chapter', parent_project_id:(c&&c.task_id)};
+  }
+  window.prodChapAssignEditor=function(portal,cid){
+    portal=portal||'production';
+    var wi=_chWiFor(cid);
+    if(portal==='admin'){ try{ prodCloseChapter(); }catch(e){}
+      if(typeof avtAssignVideo==='function') return avtAssignVideo(wi.parent_project_id,cid,wi.title);
+      return prodAssignVideo(wi.parent_project_id,cid,wi.title); }
+    window._pasfPause=null;
+    api(P.production.api+'/people?role=').then(function(p){
+      var eds=(p.editors||[]); var cur=wi.editor_id||'';
+      var edOpts='<option value="">\u2014 choose editor \u2014</option>'+eds.map(function(e){return '<option value="'+e.id+'"'+(String(cur)===String(e.id)?' selected':'')+'>'+esc(e.name)+' ('+(e.active||0)+' active)</option>';}).join('');
+      _chModal((wi.editor?'Reassign Editor':'Assign Editor'), wi.title||'Chapter',
+        '<div class="p-field"><label>Choose editor</label><select class="p-select" id="pced-sel" onchange="_pcedEditorSel(this.value)">'+edOpts+'</select></div>'+
+        '<div id="pced-activebox" class="pasf-active" style="display:none"></div>'+
+        '<div class="p-field"><label>Editor instructions / brief (optional)</label><textarea class="p-area" id="pced-ins" placeholder="e.g. Cut the intro, add captions, keep it under 12 min">'+_esc1(wi.editor_instructions||'')+'</textarea></div>'+
+        '<div class="p-field"><label>Editor reference link (optional)</label><input class="p-input" id="pced-ref" placeholder="https://... reference edit / style" value="'+_esc1(wi.editor_reference||'')+'"></div>'+
+        '<div class="p-field"><label>Priority</label><select class="p-select" id="pced-pri"><option value="normal"'+(wi.priority==='urgent'?'':' selected')+'>Normal</option><option value="urgent"'+(wi.priority==='urgent'?' selected':'')+'>Urgent</option></select></div>'+
+        '<div class="p-field"><label>Editing deadline (optional)</label><input class="p-input" id="pced-dl" type="datetime-local"></div>',
+        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapAssignEditorDo('+cid+')">Assign</button>', 520);
+      if(cur) setTimeout(function(){ _pcedEditorSel(cur); },30);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load editors',true); });
+  };
+  window._pcedEditorSel=function(editorId){ try{ window._editorActivePanel('pced-activebox', editorId, 0, 'pced'); }catch(e){} };
+  window.prodChapAssignEditorDo=function(cid){
+    var v=(document.getElementById('pced-sel')||{}).value||''; if(!v){ toast('Pick an editor',true); return; }
+    var body={chapter_id:cid, editor_id:parseInt(v,10)};
+    body.editor_instructions=((document.getElementById('pced-ins')||{}).value||'').trim();
+    body.editor_reference=((document.getElementById('pced-ref')||{}).value||'').trim();
+    var pri=(document.getElementById('pced-pri')||{}).value||''; if(pri) body.priority=pri;
+    var dl=((document.getElementById('pced-dl')||{}).value||'').trim(); if(dl) body.editor_deadline=dl;
+    if(window._pasfPause && window._pasfPause.task_id){ body.pause_task_id=window._pasfPause.task_id;
+      var pdl=((document.getElementById(window._pasfPause.dlInputId||'pced-pausedl')||{}).value||'').trim(); if(pdl) body.pause_deadline=pdl; }
+    api(P.production.api+'/assign-project-video','POST',body).then(function(){ window._pasfPause=null; prodDismiss(); toast('Editor assigned'+(body.pause_task_id?' \u00b7 pause request sent':'')); _chapAfterAny(cid); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapAssignGraphics=function(portal,cid){
+    portal=portal||'production';
+    var wi=_chWiFor(cid);
+    if(portal==='admin'){ try{ prodCloseChapter(); }catch(e){}
+      if(typeof avtAssignVideo==='function') return avtAssignVideo(wi.parent_project_id,cid,wi.title);
+      return prodAssignVideo(wi.parent_project_id,cid,wi.title); }
+    window._pcgRefs=[];
+    api(P.production.api+'/people?role=').then(function(p){
+      var gfx=(p.graphics||[]); var cur=wi.graphics_id||'';
+      var gfOpts='<option value="">\u2014 choose designer \u2014</option>'+gfx.map(function(g){return '<option value="'+g.id+'"'+(String(cur)===String(g.id)?' selected':'')+'>'+esc(g.name)+'</option>';}).join('');
+      _chModal((wi.graphics?'Reassign Graphics':'Assign Graphics'), wi.title||'Chapter',
+        '<div class="p-field"><label>Graphics designer</label><select class="p-select" id="pcg-sel">'+gfOpts+'</select></div>'+
+        '<div class="p-field"><label>Thumbnail brief (optional)</label><textarea class="p-area" id="pcg-ins" placeholder="e.g. Face left, yellow headline, NIOS logo, formula on right">'+_esc1(wi.thumb_instructions||'')+'</textarea></div>'+
+        '<div class="p-field"><label>Reference thumbnails (optional \u2014 click / drop / paste Ctrl+V, multiple)</label>'+
+          '<div class="thumb-gal" id="pcg-gal"></div>'+
+          '<div id="pcg-drop" class="yt-drop" onclick="document.getElementById(\'pcg-file\').click()"><span>+ Add reference image \u2014 click, drop or paste</span></div>'+
+          '<input type="file" id="pcg-file" accept="image/*" multiple style="display:none"></div>'+
+        '<div class="p-field"><label>Graphics deadline <span style="color:var(--muted,#8a7d5c);font-weight:600">(optional — independent of the editor\'s deadline)</span></label><input class="p-input" id="pcg-dl" type="datetime-local"></div>',
+        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapAssignGraphicsDo('+cid+')">Assign</button>', 520);
+      setTimeout(_pcgWire,40);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load designers',true); });
+  };
+  function _pcgRenderGal(){ var g=document.getElementById('pcg-gal'); if(!g) return; var refs=window._pcgRefs||[];
+    g.innerHTML=refs.map(function(u,i){ return '<div class="thumb-cell"><span class="thumb-n">Ref '+(i+1)+'</span><img loading="lazy" src="'+u+'"><button class="thumb-sel-full" style="color:#b91c1c" onclick="_pcgRemove('+i+')">Remove</button></div>'; }).join(''); }
+  window._pcgRemove=function(i){ if(window._pcgRefs) window._pcgRefs.splice(i,1); _pcgRenderGal(); };
+  function _pcgAdd(file){ if(!file) return; _compressImg(file,1280,0.85,function(dataUrl){ if(!dataUrl) return; window._pcgRefs=window._pcgRefs||[]; if(window._pcgRefs.length<8) window._pcgRefs.push(dataUrl); _pcgRenderGal(); }); }
+  function _pcgWire(){
+    var f=document.getElementById('pcg-file'); if(f) f.onchange=function(e){ Array.prototype.forEach.call(e.target.files||[],function(x){_pcgAdd(x);}); };
+    var d=document.getElementById('pcg-drop'); if(d){ d.addEventListener('dragover',function(e){e.preventDefault();}); d.addEventListener('drop',function(e){e.preventDefault(); Array.prototype.forEach.call(e.dataTransfer.files||[],function(x){_pcgAdd(x);}); }); }
+    if(window._pcgPaste) document.removeEventListener('paste',window._pcgPaste);
+    window._pcgPaste=function(e){ if(!document.getElementById('pcg-drop')){ document.removeEventListener('paste',window._pcgPaste); return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _pcgAdd(items[i].getAsFile()); e.preventDefault(); } } };
+    document.addEventListener('paste',window._pcgPaste);
+  }
+  window.prodChapAssignGraphicsDo=function(cid){
+    var v=(document.getElementById('pcg-sel')||{}).value||''; if(!v){ toast('Pick a designer',true); return; }
+    var body={chapter_id:cid, graphics_id:parseInt(v,10)};
+    body.thumb_instructions=((document.getElementById('pcg-ins')||{}).value||'').trim();
+    if((window._pcgRefs||[]).length) body.thumb_refs=window._pcgRefs;
+    var dl=((document.getElementById('pcg-dl')||{}).value||'').trim(); if(dl) body.graphics_deadline=dl;
+    api(P.production.api+'/assign-project-video','POST',body).then(function(){ try{ document.removeEventListener('paste',window._pcgPaste); }catch(e){} window._pcgRefs=[]; prodDismiss(); toast('Graphics assigned'); _chapAfterAny(cid); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
 
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
