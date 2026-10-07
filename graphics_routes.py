@@ -88,37 +88,101 @@ def gfx_project_thumbnails(db: Session = Depends(get_db), me=Depends(get_graphic
                 refs = []
             if not isinstance(refs, list):
                 refs = []
+            cands = []
+            try:
+                cands = _json.loads(c.thumb_candidates) if (getattr(c, "thumb_candidates", "") or "").strip() else []
+            except Exception:
+                cands = []
+            if not isinstance(cands, list):
+                cands = []
             out.append({
                 "chapter_id": c.id, "title": c.title,
                 "project_id": c.task_id, "project_title": (t.title or t.subject or "Project") if t else "Project",
                 "subject": (t.subject if t else ""), "kind": (t.kind if t else ""),
                 "video_link": (c.link or ""), "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
                 "gfx_state": (getattr(c, "gfx_state", "") or "") or "assigned",
+                "candidates": cands,
+                "instructions": (getattr(c, "thumb_instructions", "") or ""),
+                "thumb_revision": int(getattr(c, "thumb_revision", 0) or 0),
                 "refs": refs, "deadline": pc._dt(getattr(c, "deadline", None) or (t.deadline if t else None)),
             })
     return {"thumbnails": out, "count": len(out)}
 
 
+@router.post("/project-thumbnails/{cid}/start")
+def gfx_project_thumb_start(cid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
+    """Designer starts work on a chapter thumbnail: assigned -> in_progress."""
+    sp = _me_staff(db, me)
+    c = _my_gfx_chapter(db, sp, cid)
+    if (getattr(c, "gfx_state", "") or "") in ("", "assigned"):
+        c.gfx_state = "in_progress"
+        if not getattr(c, "thumb_started_at", None):
+            c.thumb_started_at = datetime.utcnow()
+        try:
+            import video_tasks as _vt
+            _vt._chap_event(c, "thumbnail_started", "Designer started the thumbnail")
+        except Exception:
+            pass
+        db.commit()
+    return {"ok": True, "gfx_state": c.gfx_state}
+
+
 @router.post("/project-thumbnails/{cid}/submit")
 def gfx_project_thumb_submit(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
                              me=Depends(get_graphics)):
+    """Designer submits one OR MULTIPLE candidate thumbnails for a chapter -> PM review.
+    Candidates (paste/upload/URL) are stored; a previous round is kept in history. The chapter
+    is NOT marked done here — the PM reviews, selects the final one and rates it."""
+    import json as _json
     sp = _me_staff(db, me)
     c = _my_gfx_chapter(db, sp, cid)
-    link = (payload.get("thumbnail_link") or "").strip()
-    if not link:
-        raise HTTPException(400, "Thumbnail drive/image link is required")
-    c.thumbnail_link = link
-    c.gfx_state = "done"
+    raw = payload.get("candidates")
+    if not isinstance(raw, list) or not raw:
+        single = (payload.get("thumbnail_link") or payload.get("thumbnail") or "").strip()
+        raw = [single] if single else []
+    # normalise (data-URL -> R2) via the production helper
+    try:
+        from production_routes import _chap_norm_images
+        urls = _chap_norm_images(raw)
+    except Exception:
+        urls = [str(x).strip() for x in raw if str(x).strip()]
+    if not urls:
+        raise HTTPException(400, "At least one thumbnail image or link is required")
+    # keep previous submitted set in history before replacing
+    try:
+        import video_tasks as _vt
+        prev = _json.loads(c.thumb_candidates) if (getattr(c, "thumb_candidates", "") or "").strip() else []
+        if isinstance(prev, list) and prev:
+            hist = _json.loads(c.thumb_candidate_history) if (getattr(c, "thumb_candidate_history", "") or "").strip() else []
+            if not isinstance(hist, list):
+                hist = []
+            hist.append({"round": len(hist) + 1,
+                         "at": _vt._now_ist().strftime("%d %b %Y, %I:%M %p"),
+                         "urls": prev})
+            c.thumb_candidate_history = _json.dumps(hist[-30:])
+    except Exception:
+        pass
+    c.thumb_candidates = _json.dumps(urls[:12])
+    # keep the first candidate on thumbnail_link ONLY as a preview hint; it is NOT final until
+    # the PM approves (final sets thumb_approved_at). gfx_state -> submitted (review stage).
+    c.gfx_state = "submitted"
+    c.thumb_submitted_at = datetime.utcnow()
+    try:
+        import video_tasks as _vt
+        _vt._chap_event(c, "thumbnail_submitted",
+                        "Designer submitted %d thumbnail option%s" % (len(urls), "s" if len(urls) != 1 else ""))
+    except Exception:
+        pass
     t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
     proj = (t.title or t.subject or "project") if t else "project"
     try:
         pc.notify_pms(db, "Project thumbnail submitted",
-                      f'{me.name} submitted a thumbnail for "{c.title}" from "{proj}".',
+                      f'{me.name} submitted {len(urls)} thumbnail option(s) for "{c.title}" from "{proj}" — review needed.',
                       "production", link=str(c.task_id))
     except Exception:
         pass
     db.commit()
-    return {"ok": True, "gfx_state": c.gfx_state, "thumbnail_link": link}
+    return {"ok": True, "gfx_state": c.gfx_state, "candidates": urls}
 
 
 def _gfx_in_project(db, sp, pid):

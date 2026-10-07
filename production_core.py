@@ -671,6 +671,32 @@ def _ensure_production_columns():
         # auto-notify students on publish (idempotent flag)
         "ALTER TABLE video_tasks ADD COLUMN students_notified BOOLEAN DEFAULT 0",
         "ALTER TABLE video_task_chapters ADD COLUMN students_notified BOOLEAN DEFAULT 0",
+        # ---- project-chapter FIRST-CLASS parity (additive; backward compatible) ----
+        "ALTER TABLE video_task_chapters ADD COLUMN submitted_by_role VARCHAR(30)",
+        "ALTER TABLE video_task_chapters ADD COLUMN submitted_by_name VARCHAR(160)",
+        "ALTER TABLE video_task_chapters ADD COLUMN on_time BOOLEAN",
+        "ALTER TABLE video_task_chapters ADD COLUMN reject_count INTEGER DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN revision_count INTEGER DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN no_resubmit BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_deadline DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_instructions TEXT",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_reference TEXT",
+        "ALTER TABLE video_task_chapters ADD COLUMN priority VARCHAR(10)",
+        "ALTER TABLE video_task_chapters ADD COLUMN quality_rating INTEGER",
+        "ALTER TABLE video_task_chapters ADD COLUMN quality_note VARCHAR(400)",
+        "ALTER TABLE video_task_chapters ADD COLUMN quality_dims TEXT",
+        "ALTER TABLE video_task_chapters ADD COLUMN editor_credited_by VARCHAR(160)",
+        "ALTER TABLE video_task_chapters ADD COLUMN edited_direct BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_instructions TEXT",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_candidates TEXT",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_candidate_history TEXT",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_quality_note VARCHAR(400)",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_started_at DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_submitted_at DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_credited_by VARCHAR(160)",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_direct BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN reconciled BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_task_chapters ADD COLUMN reconciled_by VARCHAR(160)",
     ]
     for _s in _stmts:
         try:

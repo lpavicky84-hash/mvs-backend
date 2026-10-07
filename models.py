@@ -694,6 +694,39 @@ class VideoTaskChapter(Base):
     uploaded_at      = Column(DateTime, nullable=True)      # when the YouTuber posted the URL
     published_at     = Column(DateTime, nullable=True)
     youtuber_id      = Column(Integer, nullable=True)       # production_staff_profiles.id of the publisher
+    # ======================================================================
+    # FIRST-CLASS PARITY FIELDS (additive) — a chapter is a full production task.
+    # ======================================================================
+    # ---- source-video submission audit (who submitted the link; PM can submit on behalf) ----
+    submitted_by_role = Column(String(30), default="")      # teacher | production_manager | admin | youtuber
+    submitted_by_name = Column(String(160), default="")     # display name of whoever submitted the link
+    on_time           = Column(Boolean, nullable=True)       # was the source submitted on/before the deadline
+    reject_count      = Column(Integer, default=0)           # how many times the source video was rejected/reshot
+    revision_count    = Column(Integer, default=0)           # overall edit revision rounds (parity with VideoTask)
+    no_resubmit       = Column(Boolean, default=False)       # source rejected with no re-submission allowed
+    # ---- rich editor assignment (parity with VideoTask assign-editor) ----
+    editor_deadline     = Column(DateTime, nullable=True)    # editor must finish by (per-chapter)
+    editor_instructions = Column(Text, default="")           # PM brief for the editor
+    editor_reference    = Column(Text, default="")           # editor reference link / notes
+    priority            = Column(String(10), default="normal")  # normal | urgent
+    # ---- PM editor QUALITY rating (SEPARATE from teacher's edit_review_rating) ----
+    quality_rating    = Column(Integer, nullable=True)       # PM 1-5 rating of the editor's work
+    quality_note      = Column(String(400), default="")      # PM quality note
+    quality_dims      = Column(Text, default="")             # JSON per-dimension sub-ratings (parity)
+    editor_credited_by= Column(String(160), default="")      # set when PM credits an existing/off-portal edit
+    edited_direct     = Column(Boolean, default=False)       # edit was credited directly (no start/submit loop)
+    # ---- richer GRAPHICS workflow (multi reference, multi candidate, review, direct/credit) ----
+    thumb_instructions = Column(Text, default="")            # PM thumbnail brief for the designer
+    thumb_candidates   = Column(Text, default="")            # JSON list of the CURRENT submitted candidate thumbnail urls
+    thumb_candidate_history = Column(Text, default="")       # JSON list of {round, at, urls[]} — every submitted round
+    thumb_quality_note = Column(String(400), default="")     # PM note on the chosen thumbnail
+    thumb_started_at   = Column(DateTime, nullable=True)     # designer started
+    thumb_submitted_at = Column(DateTime, nullable=True)     # designer submitted candidates
+    thumb_credited_by  = Column(String(160), default="")     # set when PM credits an existing/off-portal thumbnail
+    thumb_direct       = Column(Boolean, default=False)      # thumbnail uploaded/credited directly by PM (no review loop)
+    # ---- administrative reconciliation (existing external work linked in, not pipeline-produced) ----
+    reconciled         = Column(Boolean, default=False)      # YouTube URL linked via explicit admin reconciliation
+    reconciled_by      = Column(String(160), default="")     # who reconciled / linked the existing video
 
 
 class VideoViewSnapshot(Base):

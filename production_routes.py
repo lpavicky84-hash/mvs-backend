@@ -1668,7 +1668,44 @@ def pm_upload_schedule(db: Session = Depends(get_db), me=Depends(get_pm_or_admin
                         VideoTask.lifecycle.in_(["ready_for_youtube", "uploaded"])))
             .order_by(VideoTask.upload_date.asc()).all())
     _tm = pc.thumb_map_for(db, [t.id for t in rows])
-    return {"tasks": [pc.task_out(db, t, light=True, thumb_map=_tm) for t in rows]}
+    out = [pc.task_out(db, t, light=True, thumb_map=_tm) for t in rows]
+    # ---- PROJECT CHAPTERS are uploads too: one chapter = one upload ----
+    if _PROJECT_OK:
+        import video_tasks as _vt
+        chs = (db.query(_PVChapter)
+               .filter(or_(_PVChapter.upload_date != None,                       # noqa: E711
+                           _PVChapter.lifecycle.in_(["ready_for_youtube", "uploaded", "completed"])))
+               .order_by(_PVChapter.upload_date.asc()).all())
+        if chs:
+            pids = list({c.task_id for c in chs})
+            pmap = {t.id: t for t in db.query(VideoTask).filter(
+                VideoTask.id.in_(pids), VideoTask.cancelled == False).all()}
+            tname = {}
+            for c in chs:
+                t = pmap.get(c.task_id)
+                if not t:
+                    continue
+                if t.id not in tname:
+                    try:
+                        tname[t.id] = pc.creator_info(db, t)[0] if hasattr(pc, "creator_info") else ""
+                    except Exception:
+                        tname[t.id] = ""
+                proj = (t.title or t.subject or "Project")
+                out.append({
+                    "work_type": "project_chapter",
+                    "id": c.id, "chapter_id": c.id, "task_id": t.id, "parent_project_id": t.id,
+                    "title": proj + " · " + (c.title or "Chapter"),
+                    "channel_name": t.channel_name or "",
+                    "creator_name": tname.get(t.id, ""),
+                    "video_type": t.video_type or "",
+                    "lifecycle": _vt._chapter_lifecycle(c),
+                    "upload_date": (c.upload_date.strftime("%d %b %Y, %I:%M %p") if getattr(c, "upload_date", None) else ""),
+                    "upload_date_iso": (c.upload_date.strftime("%Y-%m-%dT%H:%M:%S") if getattr(c, "upload_date", None) else ""),
+                    "upload_remarks": getattr(c, "upload_remarks", "") or "",
+                    "youtube_url": getattr(c, "youtube_url", "") or "",
+                    "thumbnail": getattr(c, "thumbnail_link", "") or "",
+                })
+    return {"tasks": out}
 
 
 # ============================================================ DAILY / WEEKLY / MONTHLY REPORT
@@ -4394,6 +4431,777 @@ def prod_chapter_youtube(payload: dict = Body(...), db: Session = Depends(get_db
     return _chapter_set_youtube(db, me, payload.get("chapter_id"), payload.get("youtube_url"))
 
 
+# ============================================================================
+# CHAPTER = FIRST-CLASS PRODUCTION TASK — parity actions (Phase 2/3)
+# ----------------------------------------------------------------------------
+# Shared helpers + the actions a normal VideoTask has that chapters were missing:
+# submit-link (PM on behalf, audited), reshoot/reject with counts, rich editor
+# assign, multi-candidate thumbnail submit + PM review/select-final/rate, PM
+# direct thumbnail upload, credit-existing thumbnail/edit, link-existing YouTube
+# reconciliation, and a separate PM editor quality rating. Every action is atomic,
+# authorised (get_pm_or_admin), and records a timeline event via set_chapter_state /
+# _chap_event. The business rules mirror the normal task; only the storage differs.
+# ============================================================================
+def _chap(db, cid):
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(cid or 0)).first()
+    if not row:
+        raise HTTPException(404, "Chapter not found")
+    return row
+
+
+def _actor_role(me):
+    return "admin" if (getattr(me, "role", "") == "admin") else "production_manager"
+
+
+def _actor_name(me):
+    return (getattr(me, "name", "") or ("Admin" if getattr(me, "role", "") == "admin" else "Production Manager"))
+
+
+def _chap_norm_images(imgs, bucket="thumbnails"):
+    """Normalise a list of image inputs (data-URL / http URL) to stored URLs via R2.
+    Mirrors the normal flow — never store raw base64 blobs in text columns."""
+    out = []
+    if not isinstance(imgs, list):
+        return out
+    r2 = None
+    try:
+        r2 = __import__("r2_storage")
+    except Exception:
+        r2 = None
+    for im in imgs[:12]:
+        s = (str(im or "")).strip()
+        if not s:
+            continue
+        if s.startswith("http"):
+            out.append(s); continue
+        if r2 is not None and s.startswith("data:"):
+            try:
+                hint = s.split(",", 1)[0].split(":", 1)[1].split(";", 1)[0] or "image/jpeg"
+                out.append(r2.normalize(s, bucket, hint)); continue
+            except Exception:
+                pass
+        out.append(s)   # last resort: keep as-is (short URL / drive link)
+    return out
+
+
+def _chap_thumb_final(c):
+    """A chapter HAS a final thumbnail if the PM uploaded/credited/approved one."""
+    return bool((getattr(c, "thumbnail_link", "") or "").strip())
+
+
+def _chap_json_list(v):
+    try:
+        x = json.loads(v or "[]")
+        return x if isinstance(x, list) else []
+    except Exception:
+        return []
+
+
+def _chap_push_candidate_history(c, urls, note=""):
+    hist = _chap_json_list(getattr(c, "thumb_candidate_history", ""))
+    import video_tasks as _vt
+    hist.append({"round": len(hist) + 1,
+                 "at": _vt._now_ist().strftime("%d %b %Y, %I:%M %p"),
+                 "urls": list(urls or []), "note": (note or "")[:200]})
+    c.thumb_candidate_history = json.dumps(hist[-30:])
+
+
+def chapter_allowed_actions(c, role="pm"):
+    """ONE allowed-actions engine for a chapter work-item (parity with the normal task's
+    next_action). Returns {action: bool} so the UI never shows an impossible button and
+    JS never re-implements lifecycle rules. role: pm | admin | editor | graphics | teacher | youtuber."""
+    import video_tasks as _vt
+    lc = _vt._chapter_lifecycle(c)
+    link = bool((getattr(c, "link", "") or "").strip())
+    edited = bool((getattr(c, "edited_link", "") or "").strip())
+    gfx = (getattr(c, "gfx_state", "") or "")
+    has_final = _chap_thumb_final(c)
+    cands = _chap_json_list(getattr(c, "thumb_candidates", ""))
+    is_pm = role in ("pm", "admin", "production_manager")
+    A = {k: False for k in (
+        "submit_link", "update_link", "approve_creator", "request_changes", "reshoot",
+        "assign_editor", "assign_graphics", "credit_edit", "credit_thumbnail",
+        "upload_thumbnail", "thumbnail_review", "qc_approve", "request_edit_changes",
+        "rate_editor", "schedule_upload", "post_youtube", "link_existing_youtube",
+        "start_editing", "submit_edit", "teacher_review")}
+    if is_pm:
+        A["submit_link"] = (not link) or lc in ("awaiting_creator", "changes_required")
+        A["update_link"] = link and lc not in ("uploaded", "completed")
+        if lc == "pm_review":
+            A["approve_creator"] = A["request_changes"] = A["reshoot"] = True
+        if lc in ("approved", "editor_assigned", "editing", "editing_paused", "qc_changes"):
+            A["assign_editor"] = True
+        if lc in ("approved", "editor_assigned", "editing", "editing_paused",
+                  "qc_pending", "qc_changes", "ready_for_youtube") and not has_final:
+            A["assign_graphics"] = True
+            A["upload_thumbnail"] = True
+            A["credit_thumbnail"] = True
+        # PM can review thumbnails once the designer has submitted candidates
+        if cands and gfx in ("submitted", "assigned") and not has_final:
+            A["thumbnail_review"] = True
+        # credit an off-portal edit when none has come through the pipeline
+        if lc in ("approved", "editor_assigned") and not edited:
+            A["credit_edit"] = True
+        if lc == "qc_pending":
+            A["qc_approve"] = A["request_edit_changes"] = True
+        if edited and lc in ("qc_pending", "ready_for_youtube", "uploaded", "completed") and getattr(c, "editor_id", None):
+            A["rate_editor"] = True
+        if lc == "ready_for_youtube":
+            A["schedule_upload"] = A["post_youtube"] = True
+        if lc in ("uploaded",):
+            A["post_youtube"] = True
+        # reconcile an already-live video for any not-yet-published chapter
+        if lc not in ("completed",) and not (getattr(c, "youtube_url", "") or "").strip():
+            A["link_existing_youtube"] = True
+    if role == "editor":
+        if lc in ("editor_assigned",):
+            A["start_editing"] = True
+        if lc in ("editing", "editing_paused", "qc_changes"):
+            A["submit_edit"] = True
+    if role == "teacher":
+        if edited and lc in ("qc_pending", "ready_for_youtube") and (getattr(c, "edit_review_status", "") or "") in ("", "pending"):
+            A["teacher_review"] = True
+    return A
+
+
+def chapter_work_item(db, c, t=None, role="pm", name_map=None):
+    """Normalised production work-item for a chapter (parity shape with a normal task), so the
+    frontend and the live-progress dashboard render from ONE representation with no special cases."""
+    import video_tasks as _vt
+    if t is None:
+        t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    nm = name_map if name_map is not None else _staff_name_map(
+        db, [getattr(c, "editor_id", None), getattr(c, "graphics_id", None)])
+    lc = _vt._chapter_lifecycle(c)
+    teacher_name = ""
+    try:
+        if t is not None:
+            teacher_name = pc.creator_info(db, t)[0] if hasattr(pc, "creator_info") else ""
+    except Exception:
+        teacher_name = ""
+    _dt = lambda d: (d.strftime("%d %b %Y, %I:%M %p") if d else "")
+    return {
+        "work_type": "project_chapter",
+        "id": c.id,
+        "parent_project_id": c.task_id,
+        "project_title": (getattr(t, "title", "") or getattr(t, "subject", "") or "Project") if t else "Project",
+        "title": c.title or "",
+        "subject": (getattr(t, "subject", "") or "") if t else "",
+        "sort": getattr(c, "sort", 0) or 0,
+        "lifecycle": lc,
+        "lifecycle_label": _vt.CHAPTER_STATE_LABELS.get(lc, lc),
+        "teacher": teacher_name,
+        "channel": (getattr(t, "channel_name", "") or "") if t else "",
+        "video_type": (getattr(t, "video_type", "") or "") if t else "",
+        "source_video": c.link or "",
+        "submitted_by_name": getattr(c, "submitted_by_name", "") or "",
+        "submitted_by_role": getattr(c, "submitted_by_role", "") or "",
+        "submitted_at": _dt(getattr(c, "submitted_at", None)),
+        "on_time": getattr(c, "on_time", None),
+        "review_status": getattr(c, "review_status", "") or "",
+        "review_note": getattr(c, "review_note", "") or "",
+        "reject_count": getattr(c, "reject_count", 0) or 0,
+        "editor_id": getattr(c, "editor_id", None),
+        "editor": nm.get(getattr(c, "editor_id", None), ""),
+        "editor_deadline": _dt(getattr(c, "editor_deadline", None)),
+        "editor_instructions": getattr(c, "editor_instructions", "") or "",
+        "editor_reference": getattr(c, "editor_reference", "") or "",
+        "editing_progress": getattr(c, "editing_progress", 0) or 0,
+        "edited_link": getattr(c, "edited_link", "") or "",
+        "edited_direct": bool(getattr(c, "edited_direct", False)),
+        "qc_status": getattr(c, "qc_status", "") or "",
+        "qc_note": getattr(c, "qc_note", "") or "",
+        "teacher_review_status": getattr(c, "edit_review_status", "") or "",
+        "teacher_review_note": getattr(c, "edit_review_note", "") or "",
+        "revision_count": getattr(c, "revision_count", 0) or getattr(c, "qc_revision", 0) or 0,
+        "graphics_id": getattr(c, "graphics_id", None),
+        "graphics": nm.get(getattr(c, "graphics_id", None), ""),
+        "graphics_state": getattr(c, "gfx_state", "") or "",
+        "thumbnail": getattr(c, "thumbnail_link", "") or "",
+        "thumb_refs": _chap_json_list(getattr(c, "thumb_refs", "")),
+        "thumb_candidates": _chap_json_list(getattr(c, "thumb_candidates", "")),
+        "thumb_instructions": getattr(c, "thumb_instructions", "") or "",
+        "thumb_quality": getattr(c, "thumb_quality", None),
+        "thumb_direct": bool(getattr(c, "thumb_direct", False)),
+        "priority": getattr(c, "priority", "") or "normal",
+        "upload_date": _dt(getattr(c, "upload_date", None)),
+        "upload_remarks": getattr(c, "upload_remarks", "") or "",
+        "youtube_url": getattr(c, "youtube_url", "") or "",
+        "published_at": _dt(getattr(c, "published_at", None)),
+        "reconciled": bool(getattr(c, "reconciled", False)),
+        "deadline": _dt(getattr(c, "deadline", None)),
+        "ratings": {"pm_editor": getattr(c, "quality_rating", None),
+                    "teacher_edit": getattr(c, "edit_review_rating", None),
+                    "pm_thumbnail": getattr(c, "thumb_quality", None)},
+        "allowed_actions": chapter_allowed_actions(c, role),
+        "updated_at": _dt(getattr(c, "changed_at", None)),
+    }
+
+
+@router.get("/chapters/{cid}/work-item")
+def pm_chapter_work_item(cid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """Full normalised work-item for one chapter (fetch-by-id) — powers the chapter drawer and
+    deep-links (Project -> Chapter) from notifications / upload schedule / live progress."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    c = _chap(db, cid)
+    return chapter_work_item(db, c, role=_actor_role(me))
+
+
+@router.post("/chapter-submit-link")
+def prod_chapter_submit_link(payload: dict = Body(...), db: Session = Depends(get_db),
+                             me=Depends(get_pm_or_admin)):
+    """PM/Admin submits (or updates) a chapter's source video link ON BEHALF of the teacher.
+    Records the real audit identity — never pretends the teacher submitted it."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    link = (payload.get("link") or payload.get("url") or "").strip()
+    if not link:
+        raise HTTPException(400, "Video link is required")
+    _pre = _vt._chapter_lifecycle(c)   # BEFORE mutating the link
+    _was = bool((c.link or "").strip())
+    c.link = link
+    c.submitted_at = datetime.utcnow()
+    c.submitted_by_role = _actor_role(me)
+    c.submitted_by_name = _actor_name(me)
+    if hasattr(c, "changed_at"):
+        c.changed_at = _vt._now_ist()
+    # on-time vs the chapter deadline (IST-local), if a deadline exists
+    try:
+        _dl = getattr(c, "deadline", None)
+        if _dl:
+            c.on_time = (_vt._now_ist() <= _dl)
+    except Exception:
+        pass
+    # fresh submission -> PM review (keep it state-safe; only forward from pre-review states).
+    # Don't pre-set review_status here: set_chapter_state derives the current state, flips it to
+    # pm_review and logs the timeline event (pre-setting would make cur==target and skip the event).
+    if _pre in ("awaiting_creator", "changes_required", "pm_review"):
+        _vt.set_chapter_state(db, c, "pm_review", actor=me,
+                              note=("Video link %s by %s · %s" % (
+                                  "updated" if _was else "submitted",
+                                  _actor_name(me),
+                                  "Admin" if _actor_role(me) == "admin" else "Production Manager")),
+                              force=True)
+    else:
+        _vt._chap_event(c, "link_updated",
+                        "Video link updated by %s · %s" % (_actor_name(me),
+                        "Admin" if _actor_role(me) == "admin" else "Production Manager"))
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "lifecycle": c.lifecycle}
+
+
+@router.post("/chapter-reshoot")
+def prod_chapter_reshoot(payload: dict = Body(...), db: Session = Depends(get_db),
+                         me=Depends(get_pm_or_admin)):
+    """Reject / reshoot the SOURCE video (parity with reshoot-creator). Optional new deadline +
+    reason; increments reject_count; sends the chapter back for a fresh recording."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    if _vt._chapter_lifecycle(c) != "pm_review":
+        raise HTTPException(400, "This video is not in PM review")
+    reason = (payload.get("reason") or payload.get("note") or "").strip()
+    _dl = (payload.get("deadline") or payload.get("new_deadline") or "").strip()
+    if _dl:
+        try:
+            c.deadline = datetime.fromisoformat(_dl.replace("Z", ""))
+        except Exception:
+            pass
+    c.reject_count = int(getattr(c, "reject_count", 0) or 0) + 1
+    if bool(payload.get("no_resubmit")):
+        c.no_resubmit = True
+    # reshoot: clear the old link so the teacher re-records; send to changes_required
+    c.link = ""
+    c.review_status = "changes"
+    _vt.set_chapter_state(db, c, "changes_required", actor=me,
+                          note=("Reshoot requested" + ((" — " + reason) if reason else "")), force=True)
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "lifecycle": c.lifecycle, "reject_count": c.reject_count}
+
+
+@router.post("/chapter-thumbnail-review")
+def prod_chapter_thumbnail_review(payload: dict = Body(...), db: Session = Depends(get_db),
+                                  me=Depends(get_pm_or_admin)):
+    """PM reviews the designer's submitted thumbnail candidates: select ONE as final + a
+    mandatory 1-5 rating (approve), OR request changes, OR reject. Mirrors thumbnail-approve."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    action = (payload.get("action") or "approve").strip()
+    note = (payload.get("note") or "").strip()
+    cands = _chap_json_list(getattr(c, "thumb_candidates", ""))
+    gid_uid = None
+    if getattr(c, "graphics_id", None):
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == c.graphics_id).first()
+        gid_uid = sp.user_id if sp else None
+    if action == "approve":
+        final = (payload.get("selected_thumbnail") or payload.get("final") or "").strip()
+        if not final and cands:
+            final = cands[0]
+        if not final:
+            raise HTTPException(400, "Select a thumbnail to approve")
+        try:
+            rating = int(payload.get("quality_rating") or payload.get("rating") or 0)
+        except Exception:
+            rating = 0
+        if not (1 <= rating <= 5):
+            raise HTTPException(400, "A 1-5 quality rating is required to approve a thumbnail")
+        c.thumbnail_link = final
+        c.thumb_quality = rating
+        c.thumb_quality_note = (payload.get("quality_note") or "")[:400]
+        c.thumb_approved_at = datetime.utcnow()
+        c.gfx_state = "done"
+        _vt._chap_event(c, "thumbnail_approved",
+                        "Thumbnail selected as final & approved (%d★) by %s" % (rating, _actor_name(me)))
+        if gid_uid:
+            pc.notify(db, gid_uid, "Thumbnail Approved",
+                      f'Your thumbnail for "{c.title}" was approved ({rating}★).', "video_task", link=str(c.task_id))
+        db.commit()
+        return {"ok": True, "chapter_id": c.id, "thumbnail": c.thumbnail_link, "thumb_quality": rating}
+    if action == "changes":
+        if not note:
+            raise HTTPException(400, "Please add a short note about the thumbnail changes")
+        c.thumb_revision = int(getattr(c, "thumb_revision", 0) or 0) + 1
+        c.gfx_state = "assigned"   # back to the designer for a new set (history preserved)
+        _vt._chap_event(c, "thumbnail_changes", "Thumbnail changes requested: " + note[:200])
+        if gid_uid:
+            pc.notify(db, gid_uid, "Thumbnail Changes Requested",
+                      f'"{c.title}": {note[:140]}', "video_task", link=str(c.task_id))
+        db.commit()
+        return {"ok": True, "chapter_id": c.id, "thumb_revision": c.thumb_revision}
+    if action == "reject":
+        c.gfx_state = "assigned"
+        _vt._chap_event(c, "thumbnail_rejected", "Thumbnail rejected" + ((" — " + note) if note else ""))
+        if gid_uid:
+            pc.notify(db, gid_uid, "Thumbnail Rejected", (note or "Please redo the thumbnail.")[:160],
+                      "video_task", link=str(c.task_id))
+        db.commit()
+        return {"ok": True, "chapter_id": c.id}
+    raise HTTPException(400, "Unknown action")
+
+
+@router.post("/chapter-thumbnail-upload")
+def prod_chapter_thumbnail_upload(payload: dict = Body(...), db: Session = Depends(get_db),
+                                  me=Depends(get_pm_or_admin)):
+    """PM uploads a thumbnail DIRECTLY (already made) -> becomes the final approved thumbnail
+    with no graphics review loop. Mirrors the normal task's pm_set_thumbnail."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    img = (payload.get("thumbnail") or payload.get("image") or payload.get("url") or "").strip()
+    urls = _chap_norm_images([img]) if img else []
+    if not urls:
+        raise HTTPException(400, "A thumbnail image or URL is required")
+    c.thumbnail_link = urls[0]
+    c.thumb_direct = True
+    c.thumb_approved_at = datetime.utcnow()
+    c.gfx_state = "done"
+    _vt._chap_event(c, "thumbnail_uploaded", "Thumbnail uploaded directly by %s" % _actor_name(me))
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "thumbnail": c.thumbnail_link}
+
+
+@router.post("/chapter-credit-thumbnail")
+def prod_chapter_credit_thumbnail(payload: dict = Body(...), db: Session = Depends(get_db),
+                                  me=Depends(get_pm_or_admin)):
+    """Credit a designer for a pre-made (off-portal) thumbnail: set final thumbnail + designer +
+    1-5 rating, no assignment/submission/review loop. Mirrors credit-thumbnail. Counts once."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    gid = _valid_staff(db, payload.get("graphics_id"), "graphics")
+    if not gid:
+        raise HTTPException(400, "Select the graphics designer to credit")
+    img = (payload.get("thumbnail") or payload.get("image") or payload.get("url") or "").strip()
+    urls = _chap_norm_images([img]) if img else []
+    if not urls:
+        raise HTTPException(400, "A thumbnail image or URL is required")
+    try:
+        rating = int(payload.get("quality_rating") or payload.get("rating") or 0)
+    except Exception:
+        rating = 0
+    c.graphics_id = gid
+    c.thumbnail_link = urls[0]
+    c.thumb_direct = True
+    c.thumb_credited_by = _actor_name(me)
+    c.thumb_approved_at = datetime.utcnow()
+    c.gfx_state = "done"
+    if 1 <= rating <= 5:
+        c.thumb_quality = rating
+    if "quality_note" in payload:
+        c.thumb_quality_note = (payload.get("quality_note") or "")[:400]
+    nm = _staff_name_map(db, [gid]).get(gid, "")
+    _vt._chap_event(c, "thumbnail_credited",
+                    "Existing thumbnail credited to %s by %s%s" % (nm, _actor_name(me),
+                    (" (%d★)" % rating) if 1 <= rating <= 5 else ""))
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "graphics_id": gid, "thumbnail": c.thumbnail_link}
+
+
+@router.post("/chapter-credit-edit")
+def prod_chapter_credit_edit(payload: dict = Body(...), db: Session = Depends(get_db),
+                             me=Depends(get_pm_or_admin)):
+    """Credit an editor for an already-made (off-portal) edit: set editor + edited link + PM
+    rating, skipping Assign->Start->Progress->Submit->QC. Chapter moves to Ready for YouTube."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    eid = _valid_staff(db, payload.get("editor_id"), "editor")
+    if not eid:
+        raise HTTPException(400, "Select the editor to credit")
+    link = (payload.get("edited_link") or payload.get("link") or "").strip()
+    if not link:
+        raise HTTPException(400, "The edited video link is required")
+    try:
+        rating = int(payload.get("quality_rating") or payload.get("rating") or 0)
+    except Exception:
+        rating = 0
+    c.editor_id = eid
+    c.editor_inherited = False
+    c.edited_link = link
+    c.edited_direct = True
+    c.editor_credited_by = _actor_name(me)
+    c.edit_state = "edited"
+    _done = (payload.get("completion_date") or payload.get("edited_at") or "").strip()
+    if _done:
+        try:
+            c.edited_at = datetime.fromisoformat(_done.replace("Z", ""))
+        except Exception:
+            c.edited_at = datetime.utcnow()
+    elif not getattr(c, "edited_at", None):
+        c.edited_at = datetime.utcnow()
+    if 1 <= rating <= 5:
+        c.quality_rating = rating
+    if "quality_note" in payload:
+        c.quality_note = (payload.get("quality_note") or "")[:400]
+    nm = _staff_name_map(db, [eid]).get(eid, "")
+    # PM-credited edit is QC-satisfied by definition -> ready for YouTube
+    _vt.set_chapter_state(db, c, "ready_for_youtube", actor=me,
+                          note="Existing edit credited to %s by %s%s" % (
+                              nm, _actor_name(me), (" (%d★)" % rating) if 1 <= rating <= 5 else ""),
+                          force=True)
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "editor_id": eid, "lifecycle": c.lifecycle}
+
+
+@router.post("/chapter-link-youtube")
+def prod_chapter_link_youtube(payload: dict = Body(...), db: Session = Depends(get_db),
+                              me=Depends(get_pm_or_admin)):
+    """Administrative reconciliation: attach an ALREADY-LIVE YouTube URL to a chapter that
+    skipped the pipeline. Validates the URL, optionally credits editor/graphics, marks the
+    chapter reconciled+completed. Never invents missing historical timestamps."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    from video_tasks import _yt_extract_id
+    c = _chap(db, payload.get("chapter_id"))
+    url = (payload.get("youtube_url") or "").strip()
+    vid = _yt_extract_id(url)
+    if not vid:
+        raise HTTPException(400, "Could not read a valid YouTube video id from that URL")
+    c.youtube_url = url
+    c.yt_video_id = vid
+    c.reconciled = True
+    c.reconciled_by = _actor_name(me)
+    # optional credit (counts once via the credited staff id)
+    eid = _valid_staff(db, payload.get("editor_id"), "editor")
+    gid = _valid_staff(db, payload.get("graphics_id"), "graphics")
+    if eid:
+        c.editor_id = eid; c.editor_inherited = False
+        try:
+            er = int(payload.get("editor_rating") or 0)
+            if 1 <= er <= 5:
+                c.quality_rating = er
+        except Exception:
+            pass
+    if gid:
+        c.graphics_id = gid
+        try:
+            gr = int(payload.get("graphics_rating") or 0)
+            if 1 <= gr <= 5:
+                c.thumb_quality = gr
+        except Exception:
+            pass
+    _vt.set_chapter_state(db, c, "completed", actor=me,
+                          note="Existing YouTube video linked by %s (reconciliation)" % _actor_name(me),
+                          force=True)
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "youtube_url": url, "lifecycle": c.lifecycle, "reconciled": True}
+
+
+@router.post("/chapter-rate")
+def prod_chapter_rate(payload: dict = Body(...), db: Session = Depends(get_db),
+                      me=Depends(get_pm_or_admin)):
+    """PM editor QUALITY rating for a chapter (SEPARATE from the teacher's edit rating).
+    1-5 + optional note + optional per-dimension quality_dims. rating=0 clears it."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    c = _chap(db, payload.get("chapter_id"))
+    try:
+        rating = int(payload.get("quality_rating") or payload.get("rating") or 0)
+    except Exception:
+        rating = 0
+    if rating and not (1 <= rating <= 5):
+        raise HTTPException(400, "Rating must be 1-5")
+    c.quality_rating = (rating or None)
+    if "quality_note" in payload:
+        c.quality_note = (payload.get("quality_note") or "")[:400]
+    dims = payload.get("quality_dims")
+    if isinstance(dims, dict):
+        c.quality_dims = json.dumps(dims)
+    if rating:
+        _vt._chap_event(c, "editor_rated", "PM rated the edit %d★" % rating)
+    db.commit()
+    return {"ok": True, "chapter_id": c.id, "quality_rating": c.quality_rating}
+
+
+# ============================================================================
+# PROJECT LIVE PROGRESS — one efficient endpoint powering the command center.
+# ============================================================================
+# Weighted production progress per chapter (centralised; thumbnail weight is
+# redistributed when a thumbnail isn't part of this chapter's pipeline).
+_PROGRESS_WEIGHTS = {"submitted": 15, "approved": 15, "thumbnail": 15,
+                     "editing": 25, "qc": 15, "published": 15}
+# pipeline bucket a chapter's main lifecycle falls into
+_PIPE_OF = {
+    "awaiting_creator": "recording", "changes_required": "recording",
+    "pm_review": "pm_review", "approved": "approved",
+    "editor_assigned": "editing", "editing": "editing", "editing_paused": "editing",
+    "qc_pending": "qc", "qc_changes": "qc",
+    "ready_for_youtube": "ready", "uploaded": "published", "completed": "published",
+}
+_PIPE_ORDER = ["recording", "pm_review", "approved", "editing", "qc", "ready", "published"]
+
+
+def _chap_thumb_required(c):
+    """A chapter's pipeline includes a thumbnail when any graphics involvement exists
+    (assigned designer, references, instructions, or a thumbnail already present)."""
+    return bool(getattr(c, "graphics_id", None) or _chap_thumb_final(c)
+                or (getattr(c, "thumb_refs", "") or "").strip()
+                or (getattr(c, "thumb_instructions", "") or "").strip()
+                or (getattr(c, "thumb_candidates", "") or "").strip())
+
+
+def _chapter_production_progress(c):
+    """TOTAL production progress 0-100 (not just published/total, not editing_progress alone).
+    Weighted milestones; thumbnail weight redistributed if thumbnail isn't in this pipeline."""
+    import video_tasks as _vt
+    lc = _vt._chapter_lifecycle(c)
+    rank = {s: i for i, s in enumerate(_vt.CHAPTER_STATES)}
+    r = rank.get(lc, 0)
+    thumb_req = _chap_thumb_required(c)
+    w = dict(_PROGRESS_WEIGHTS)
+    if not thumb_req:
+        # redistribute the thumbnail weight across the other five milestones
+        share = w.pop("thumbnail") / 5.0
+        for k in list(w.keys()):
+            w[k] += share
+    done = {
+        "submitted": bool((getattr(c, "link", "") or "").strip()) or r >= rank["pm_review"],
+        "approved": r >= rank["approved"],
+        "thumbnail": _chap_thumb_final(c),
+        "editing": bool((getattr(c, "edited_link", "") or "").strip()) or r >= rank["ready_for_youtube"],
+        "qc": r >= rank["ready_for_youtube"],
+        "published": lc in ("uploaded", "completed"),
+    }
+    total = 0.0
+    for k, wt in w.items():
+        if done.get(k):
+            total += wt
+    return int(round(min(100.0, total)))
+
+
+def _chap_stage_deadline(c):
+    """The deadline in force for a chapter's current stage (editor_deadline while editing,
+    upload_date while ready, else the chapter deadline). Mirrors the task stage-deadline idea."""
+    import video_tasks as _vt
+    lc = _vt._chapter_lifecycle(c)
+    if lc in ("editor_assigned", "editing", "editing_paused", "qc_changes"):
+        return getattr(c, "editor_deadline", None) or getattr(c, "deadline", None)
+    if lc in ("ready_for_youtube",):
+        return getattr(c, "upload_date", None) or getattr(c, "deadline", None)
+    if lc in ("uploaded", "completed"):
+        return None
+    return getattr(c, "deadline", None)
+
+
+def _chapter_health(c, now_ist):
+    """Operational status derived from lifecycle + deadline (never stored)."""
+    import video_tasks as _vt
+    lc = _vt._chapter_lifecycle(c)
+    if lc in ("uploaded", "completed"):
+        return "published"
+    dl = _chap_stage_deadline(c)
+    if dl:
+        try:
+            if dl < now_ist:
+                return "overdue"
+            if dl <= now_ist + timedelta(hours=24):
+                return "due_soon"
+        except Exception:
+            pass
+    base = {"awaiting_creator": "waiting_teacher", "changes_required": "waiting_teacher",
+            "pm_review": "waiting_pm_review", "approved": "waiting_editor",
+            "editor_assigned": "waiting_editor", "editing": "editing", "editing_paused": "editing",
+            "qc_pending": "waiting_qc", "qc_changes": "editing", "ready_for_youtube": "waiting_upload"}
+    return base.get(lc, "on_track")
+
+
+@router.get("/projects/{project_id}/live-progress")
+def pm_project_live_progress(project_id: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+    """ONE request -> everything the Live Progress command center needs: project summary,
+    weighted overall progress, pipeline counts, attention + bottleneck, team load, and every
+    chapter row (with its own progress, health and allowed_actions). No N+1."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    t = db.query(VideoTask).filter(VideoTask.id == int(project_id)).first()
+    if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
+        raise HTTPException(404, "Project not found")
+    chs = (db.query(_PVChapter).filter(_PVChapter.task_id == t.id)
+           .order_by(_PVChapter.sort.asc(), _PVChapter.id.asc()).all())
+    # bulk-load staff names (no N+1)
+    sids = set()
+    for c in chs:
+        if getattr(c, "editor_id", None):
+            sids.add(c.editor_id)
+        if getattr(c, "graphics_id", None):
+            sids.add(c.graphics_id)
+    nm = _staff_name_map(db, list(sids))
+    now_ist = _vt._now_ist()
+    role = _actor_role(me)
+    pipeline = {k: 0 for k in _PIPE_ORDER}
+    attention = {"overdue": 0, "waiting_pm_review": 0, "waiting_qc": 0, "upload_due_today": 0,
+                 "waiting_graphics": 0, "waiting_editor": 0, "waiting_teacher": 0}
+    team_ed, team_gf = {}, {}
+    rows = []
+    prog_sum = 0
+    completed = 0
+    overdue = 0
+    comp_week = 0
+    week_ago = now_ist - timedelta(days=7)
+    for c in chs:
+        lc = _vt._chapter_lifecycle(c)
+        prog = _chapter_production_progress(c)
+        health = _chapter_health(c, now_ist)
+        prog_sum += prog
+        pipeline[_PIPE_OF.get(lc, "recording")] = pipeline.get(_PIPE_OF.get(lc, "recording"), 0) + 1
+        if lc in ("uploaded", "completed"):
+            completed += 1
+            _pub = getattr(c, "published_at", None) or getattr(c, "uploaded_at", None)
+            if _pub and _pub >= week_ago:
+                comp_week += 1
+        if health == "overdue":
+            overdue += 1; attention["overdue"] += 1
+        if lc == "pm_review":
+            attention["waiting_pm_review"] += 1
+        if lc == "qc_pending":
+            attention["waiting_qc"] += 1
+        if lc in ("awaiting_creator", "changes_required"):
+            attention["waiting_teacher"] += 1
+        if lc == "approved":
+            attention["waiting_editor"] += 1
+        # graphics waiting for PM review (candidates submitted, not finalised)
+        if (getattr(c, "gfx_state", "") or "") == "submitted" and not _chap_thumb_final(c):
+            attention["waiting_graphics"] += 1
+        if lc == "ready_for_youtube":
+            _ud = getattr(c, "upload_date", None)
+            if _ud and _ud.date() == now_ist.date():
+                attention["upload_due_today"] += 1
+        # team load (active, not published)
+        if getattr(c, "editor_id", None) and lc not in ("uploaded", "completed"):
+            team_ed[c.editor_id] = team_ed.get(c.editor_id, 0) + 1
+        if getattr(c, "graphics_id", None) and (getattr(c, "gfx_state", "") or "") != "done":
+            team_gf[c.graphics_id] = team_gf.get(c.graphics_id, 0) + 1
+        rows.append({
+            "id": c.id, "title": c.title or "", "sort": getattr(c, "sort", 0) or 0,
+            "lifecycle": lc, "lifecycle_label": _vt.CHAPTER_STATE_LABELS.get(lc, lc),
+            "production_progress": prog, "health": health,
+            "teacher": "", "editor": nm.get(getattr(c, "editor_id", None), ""),
+            "graphics": nm.get(getattr(c, "graphics_id", None), ""),
+            "graphics_state": getattr(c, "gfx_state", "") or "",
+            "thumbnail": getattr(c, "thumbnail_link", "") or "",
+            "deadline": (_chap_stage_deadline(c).strftime("%d %b %Y, %I:%M %p") if _chap_stage_deadline(c) else ""),
+            "upload_date": (c.upload_date.strftime("%d %b %Y, %I:%M %p") if getattr(c, "upload_date", None) else ""),
+            "youtube_url": getattr(c, "youtube_url", "") or "",
+            "priority": getattr(c, "priority", "") or "normal",
+            "allowed_actions": chapter_allowed_actions(c, role),
+        })
+    total_ch = len(chs)
+    overall = int(round(prog_sum / total_ch)) if total_ch else 0
+    # bottleneck = the biggest non-terminal waiting bucket
+    _bn_pool = {k: pipeline.get(k, 0) for k in ("recording", "pm_review", "approved", "editing", "qc", "ready")}
+    bn_stage = max(_bn_pool, key=_bn_pool.get) if any(_bn_pool.values()) else ""
+    bottleneck = {"stage": bn_stage, "count": _bn_pool.get(bn_stage, 0)} if bn_stage and _bn_pool[bn_stage] else {"stage": "", "count": 0}
+    # project health (aggregate)
+    if total_ch == 0:
+        phealth = "not_started"
+    elif completed == total_ch:
+        phealth = "completed"
+    elif overdue > 0:
+        phealth = "at_risk"
+    elif pipeline.get("ready", 0) + pipeline.get("published", 0) >= max(1, total_ch // 2):
+        phealth = "publishing"
+    elif completed == 0 and (pipeline.get("recording", 0) == total_ch):
+        phealth = "not_started"
+    else:
+        phealth = "in_production"
+    # analytics (deterministic; no fake predictions)
+    remaining = total_ch - completed
+    first_created = min([c.task_id and getattr(c, "assigned_at", None) or None for c in chs] + [None]) if False else None
+    weeks_active = None
+    try:
+        if getattr(t, "created_at", None):
+            weeks_active = max(1.0, (datetime.utcnow() - t.created_at).days / 7.0)
+    except Exception:
+        weeks_active = None
+    avg_per_week = round(completed / weeks_active, 1) if (weeks_active and completed) else None
+    est_completion = "Not enough data"
+    if avg_per_week and avg_per_week > 0 and remaining > 0 and completed >= 3:
+        try:
+            eta = now_ist + timedelta(days=int(round(remaining / avg_per_week * 7)))
+            est_completion = eta.strftime("%d %b %Y")
+        except Exception:
+            est_completion = "Not enough data"
+    elif remaining == 0 and total_ch:
+        est_completion = "Completed"
+    # deterministic summary line
+    _parts = ["%s has %d chapter%s" % (t.title or t.subject or "This project", total_ch, "s" if total_ch != 1 else "")]
+    if completed:
+        _parts.append("%d published" % completed)
+    if pipeline.get("editing"):
+        _parts.append("%d in editing" % pipeline["editing"])
+    if pipeline.get("qc"):
+        _parts.append("%d waiting for QC" % pipeline["qc"])
+    if overdue:
+        _parts.append("%d overdue" % overdue)
+    summary = ". ".join([_parts[0], ", ".join(_parts[1:])]).strip().rstrip(",") + "." if len(_parts) > 1 else (_parts[0] + ".")
+    _lblmap = _staff_name_map(db, list(team_ed.keys()) + list(team_gf.keys()))
+    return {
+        "project": {"id": t.id, "title": t.title or t.subject or "Project", "subject": t.subject or "",
+                    "kind": t.kind or "project", "total_chapters": total_ch, "overall_progress": overall,
+                    "health": phealth, "completed": completed, "overdue": overdue},
+        "pipeline": pipeline,
+        "attention": attention,
+        "bottleneck": bottleneck,
+        "team_load": {"editors": [{"id": k, "name": _lblmap.get(k, "#%d" % k), "count": v} for k, v in sorted(team_ed.items(), key=lambda x: -x[1])],
+                      "graphics": [{"id": k, "name": _lblmap.get(k, "#%d" % k), "count": v} for k, v in sorted(team_gf.items(), key=lambda x: -x[1])]},
+        "analytics": {"published_this_week": comp_week, "completed_this_week": comp_week,
+                      "remaining": remaining, "avg_per_week": avg_per_week, "est_completion": est_completion},
+        "summary": summary,
+        "chapters": rows,
+    }
+
+
 # ============================================================ PROJECT VIDEO ASSIGNMENT (Phase 3)
 # Two modes: (a) assign a single approved project-video to an editor (+ optional graphics),
 # (b) assign a whole project to one editor with a deadline. Names show on the card; PM/admin
@@ -4447,14 +5255,32 @@ def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get
         if _vt._chapter_lifecycle(row) in ("approved", "editor_assigned"):
             _vt.set_chapter_state(db, row, "editor_assigned", actor=me,
                                   note="Editor assigned", force=True)
+    # rich editor-assignment fields (parity with the normal task's assign-editor)
+    if eid:
+        if "editor_instructions" in payload:
+            row.editor_instructions = (payload.get("editor_instructions") or "")[:4000]
+        if "editor_reference" in payload:
+            row.editor_reference = (payload.get("editor_reference") or "")[:1000]
+        _edl = (payload.get("editor_deadline") or "").strip()
+        if _edl:
+            try:
+                row.editor_deadline = datetime.fromisoformat(_edl.replace("Z", ""))
+            except Exception:
+                pass
+    _pri = (payload.get("priority") or "").strip().lower()
+    if _pri in ("normal", "urgent"):
+        row.priority = _pri
     if gid:
         row.graphics_id = gid
         if (getattr(row, "gfx_state", "") or "") in ("", "assigned"):
             row.gfx_state = "assigned"
+        if "thumb_instructions" in payload:
+            row.thumb_instructions = (payload.get("thumb_instructions") or "")[:4000]
     refs = payload.get("thumb_refs")
     if isinstance(refs, list):
         import json as _json
-        row.thumb_refs = _json.dumps([str(x).strip() for x in refs if str(x).strip()][:10])
+        # accept data-URLs too (store in R2) so PM can PASTE/upload multiple references
+        row.thumb_refs = _json.dumps(_chap_norm_images(refs)[:10])
     # per-video deadline (editor/graphics ko is date tak submit karna hoga)
     _dl = (payload.get("deadline") or "").strip()
     if _dl:

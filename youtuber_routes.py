@@ -1024,6 +1024,18 @@ def yt_project_chapters(db: Session = Depends(get_db), me=Depends(get_youtuber))
     out = []
     if tmap:
         chs = db.query(_VC).filter(_VC.task_id.in_(list(tmap.keys()))).all()
+        # bulk editor/graphics names (no N+1)
+        from models import ProductionStaffProfile as _SP
+        _sids = set()
+        for c in chs:
+            if getattr(c, "editor_id", None):
+                _sids.add(c.editor_id)
+            if getattr(c, "graphics_id", None):
+                _sids.add(c.graphics_id)
+        _nm = {}
+        if _sids:
+            for s in db.query(_SP).filter(_SP.id.in_(list(_sids))).all():
+                _nm[s.id] = (s.user.name if s.user else "") or ("#%d" % s.id)
         for c in chs:
             lc = _vt._chapter_lifecycle(c)
             if lc not in ("ready_for_youtube", "uploaded", "completed"):
@@ -1039,6 +1051,8 @@ def yt_project_chapters(db: Session = Depends(get_db), me=Depends(get_youtuber))
                 "project_title": (t.title or t.subject or "Project") if t else "Project",
                 "title": c.title or "Chapter", "subject": (t.subject if t else ""),
                 "teacher": cname, "ref_code": "PROJECT",
+                "editor": _nm.get(getattr(c, "editor_id", None), ""),
+                "graphics": _nm.get(getattr(c, "graphics_id", None), ""),
                 "lifecycle": lc, "lifecycle_label": _vt.CHAPTER_STATE_LABELS.get(lc, ""),
                 "edited_link": (getattr(c, "edited_link", "") or ""),
                 "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),

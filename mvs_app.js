@@ -1333,6 +1333,11 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
     if(_m){ var _cid=parseInt(_m[1],10); setTimeout(function(){ try{ (role==='admin')?amcCmpOpen(_cid):scOpenDetail(_cid); }catch(e){} }, 420); }
     return;
   }
+  // Project-chapter deep link (chap:<chapter_id>) -> open that exact chapter drawer.
+  if(link.indexOf('chap:')===0){
+    const _cc=parseInt(link.slice(5),10);
+    if(_cc){ try{ closeModal(); }catch(e){} try{ if(typeof window.prodOpenChapter==='function'){ window.prodOpenChapter((role==='admin')?'admin':'production', _cc); openNotifPanel(role); return; } }catch(e){} }
+  }
   // Numeric task id -> navigate INSIDE the app to that task and highlight it
   const tid=parseInt(link,10);
   if(tid && (''+tid)===link.trim()){
@@ -21723,32 +21728,32 @@ function _solMedPick(id,mode){
 }
 async function _solData(id,med){
   const _hasAns=function(rr){ return rr&&(rr.results||[]).some(function(x){ return x.model_answer||x.correct_answer||x.explanation; }); };
-  let r=window._lastResult;
-  if(r&&r.id===id&&!_hasAns(r)) r=null;   // cached result without answers -> refetch for solution
-  if(!r||r.id!==id){
-    r=null;
-    // graded result (per-question marks + answers) if it actually carries solutions
-    try{ const rr=await api('/api/student/exam/'+id+'/result'); if(_hasAns(rr)) r=rr; }catch(e){}
-    // otherwise build the solution from the exam detail — model answers are revealed by the
-    // backend once the student has submitted (un-scheduled test) or the window is over.
-    if(!r){
-      const d=await api('/api/student/exam/'+id);
-      const ex=d.exam||d;
+  // The SOLUTION lives in the exam detail (model answers / correct options / explanations,
+  // revealed by the backend once the student submits an un-scheduled test, or the window ends).
+  // Build from there first; /result is only a fallback for older graded tests. This is why a
+  // non-graded subjective test used to open blank — /result had no answers in it.
+  let r=null;
+  try{
+    const d=await api('/api/student/exam/'+id);
+    const ex=d.exam||d; const qs=(d.questions||[]);
+    if(qs.length){
       r={ id:id, title:ex.title, subject:ex.subject, test_type:ex.test_type,
           total_marks:ex.total_marks, total_awarded:null, verdict:null, feedback:'',
-          results:(d.questions||[]).map(q=>({
+          _canSol:(ex.can_view_solution!=null?!!ex.can_view_solution:true),
+          results:qs.map(q=>({
             q_no:q.q_no, max:q.max_marks, marks:null,
             question:q.question_text||'', question_hi:q.question_text_hi||'',
             model_answer:q.model_answer||'', model_answer_hi:q.model_answer_hi||'',
             correct_answer:q.correct_option!=null?q.correct_option:'',
             explanation:q.explanation||'', explanation_hi:q.explanation_hi||'', remark:''
           })) };
-      if(!_hasAns(r)){
-        throw new Error('Solution unlocks after you submit the test (or after the test window ends).');
-      }
+      if(!_hasAns(r)) r=null;   // questions present but answers still locked / not provided
     }
-    window._lastResult=r; r.id=id;
-  }
+  }catch(e){}
+  // fallback: a graded result that actually carries answers (older MCQ flows)
+  if(!r){ try{ const rr=await api('/api/student/exam/'+id+'/result'); if(_hasAns(rr)) r=rr; }catch(e){} }
+  if(!r){ throw new Error('Solution unlocks after you submit the test (or after the test window ends). If you have already submitted, the teacher may not have added a written solution for this test yet.'); }
+  r.id=id; window._lastResult=r;
   const sub=spDetectSubject((r.subject||'')+' '+(r.title||''));
   const items=[];
   for(const it of (r.results||[])){
@@ -21776,6 +21781,13 @@ async function _solView(id,med){
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const d=await _solData(id,med); const r=d.r, items=d.items;
+    // Never render a blank solutions page — if there is nothing to show, say so clearly.
+    if(!items.length){
+      const _ha=(r.total_awarded!=null);
+      el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" onclick="${_ha?`openExamResult(${id})`:`loadSTests()`}">${ic('back')} ${_ha?'Back to Result':'Back to Tests'}</button><div class="pl-title">${esc(r.title||'Test')} — Solutions</div></div>`
+        +`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('book')}</div><p><b>No written solution for this test yet</b></p><small>The teacher hasn't added a solution for this test. You can still download the question paper from the Tests page.</small></div></div></div>`;
+      return;
+    }
     const rows=items.map(o=>{
       const qMain=med==='hi'?(o.q_hi||o.q_en):o.q_en;
       const qHi=(med==='both'&&o.q_hi)?`<div class="rs-qtext-hi">${_fmtRich(o.q_hi)}</div>`:'';
@@ -28980,14 +28992,19 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var pend=(due && !t.youtube_url);
     var tl=''; try{ if(t.upload_date_iso){ tl=new Date(t.upload_date_iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); } }catch(e){}
     var m=[]; if(t.channel_name) m.push(esc(t.channel_name)); if(tl) m.push(tl); if(t.creator_name) m.push(esc(t.creator_name));
-    return '<div class="ytw-item'+(pend?' usch-pend-item':'')+'" style="position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-      '<button title="Edit upload date" onclick="event.stopPropagation();prodUploadSchedule('+t.id+')" style="position:absolute;top:6px;right:6px;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:3px 6px;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center">'+ic('calendar')+'</button>'+
-      '<div class="ytw-it-t" style="padding-right:26px">'+esc(t.title||'Untitled')+'</div>'+
+    var isChap=(t.work_type==='project_chapter');
+    var open=isChap?('prodOpenChapter(\'production\','+(t.chapter_id||t.id)+')'):('prodOpenTask(\''+portal+'\','+t.id+')');
+    var editFn=isChap?('prodChapSchedule('+(t.chapter_id||t.id)+')'):('prodUploadSchedule('+t.id+')');
+    var tag=isChap?'<span style="display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.05em;background:rgba(143,61,102,.14);color:#8f3d66;padding:2px 7px;border-radius:999px;margin-right:6px;vertical-align:1px">CHAPTER</span>':'';
+    return '<div class="ytw-item'+(pend?' usch-pend-item':'')+'" style="position:relative" onclick="'+open+'">'+
+      '<button title="Edit upload date" onclick="event.stopPropagation();'+editFn+'" style="position:absolute;top:6px;right:6px;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:3px 6px;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center">'+ic('calendar')+'</button>'+
+      '<div class="ytw-it-t" style="padding-right:26px">'+tag+esc(t.title||'Untitled')+'</div>'+
       (m.length?'<div class="ytw-it-m"><span>'+m.join('</span><span>')+'</span></div>':'')+
       (t.upload_remarks?'<div class="usch-remline">'+ic('edit')+' '+esc(t.upload_remarks)+'</div>':'')+
       (pend?'<div class="usch-pendline">'+ic('alert')+' Pending YT link</div>':(t.youtube_url?'<div class="usch-liveline">'+ic('check')+' Live</div>':''))+
     '</div>';
   }
+  function _upKey(t){ return (t.work_type==='project_chapter'?'c':'t')+(t.chapter_id||t.id); }
   function _upChans(tasks){ var m={}; tasks.forEach(function(t){ var c=(t.channel_name||'').trim(); if(c)m[c]=1; }); return Object.keys(m).sort(); }
   function _upFilter(tasks){ var st=window._upSched; var q=(st.q||'').toLowerCase(), ch=st.ch||'';
     return tasks.filter(function(t){
@@ -29006,12 +29023,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     for(var i=0;i<days;i++){
       var day=new Date(t0.getTime()+i*86400000), s=day.getTime(), e=s+86400000;
       var items=tasks.filter(function(t){ var d=dOf(t); return d && d.getTime()>=s && d.getTime()<e; }).sort(function(a,b){ return dOf(a)-dOf(b); });
-      items.forEach(function(t){ used[t.id]=1; });
+      items.forEach(function(t){ used[_upKey(t)]=1; });
       var head='<div class="ytw-dh"><b>'+(i===0?'Today':day.toLocaleDateString('en-US',{weekday:'short'}))+'</b><span>'+day.toLocaleDateString('en-US',{day:'numeric',month:'short'})+(items.length?' · '+items.length:'')+'</span></div>';
       cols+='<div class="ytw-day'+(i===0?' today':'')+'">'+head+(items.length?items.map(function(t){ return _upItem(portal,t); }).join(''):'<div class="ytw-empty">No uploads</div>')+'</div>';
     }
     var overdue=tasks.filter(function(t){ var d=dOf(t); return d && d.getTime()<t0.getTime() && !t.youtube_url; });
-    var tbd=tasks.filter(function(t){ return !used[t.id] && !t.upload_date_iso; });
+    var tbd=tasks.filter(function(t){ return !used[_upKey(t)] && !t.upload_date_iso; });
     var extra='';
     if(overdue.length) extra+='<div class="p-sec" style="margin-top:20px;color:#dc2626">'+ic('alert')+' Upload date passed — YT link pending · '+overdue.length+'</div><div class="usch-tbd">'+overdue.map(function(t){ return _upItem(portal,t); }).join('')+'</div>';
     if(tbd.length) extra+='<div class="p-sec" style="margin-top:20px">No fixed date yet · '+tbd.length+'</div><div class="usch-tbd">'+tbd.map(function(t){ return _upItem(portal,t); }).join('')+'</div>';
@@ -31103,6 +31120,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     chips.push('<span class="pw-chip" style="background:rgba(143,61,102,.16);color:#8f3d66;font-weight:800">PROJECT: '+esc(c.project_title||'')+'</span>');
     if(c.subject) chips.push('<span class="pw-chip">'+esc(c.subject)+'</span>');
     if(c.teacher) chips.push('<span class="pw-chip who">'+ic('user')+esc(c.teacher)+'</span>');
+    if(c.editor) chips.push('<span class="pw-chip ed">Editor: '+esc(c.editor)+'</span>');
+    if(c.graphics) chips.push('<span class="pw-chip gr">Graphics: '+esc(c.graphics)+'</span>');
     if(c.channel_name) chips.push('<span class="pw-chip">'+esc(c.channel_name)+'</span>');
     var box='<div class="pt-dlbox"><div class="pdb-ic">'+ic('check')+'</div>'+
       '<div class="pdb-main"><div class="pdb-label">QC approved — ready to upload</div>'+
@@ -32937,9 +32956,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<div class="pj-c-r"><div class="pj-pct">'+p.pct+'%</div><div class="pj-ch">'+p.chapters_done+' / '+p.chapters_total+' chapters done</div><div class="pj-track"><i style="width:'+p.pct+'%"></i></div></div>'+
             '<span class="pj-chev" id="pjchev-'+p.id+'">\u25be</span></div>'+
           _pjStageChips(p)+
-          '<div class="pj-c-acts"><button class="pj-btn" onclick="event.stopPropagation();prodStatusHistory('+p.id+')">History</button>'+
+          '<div class="pj-c-acts"><button class="pj-btn pj-primary" onclick="event.stopPropagation();prodLiveProgress('+p.id+')">'+ic('chart')+' Live Progress</button>'+
+            '<button class="pj-btn" onclick="event.stopPropagation();prodStatusHistory('+p.id+')">History</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodEditTask('+p.id+')">Edit</button>'+
-            '<button class="pj-btn pj-primary" onclick="event.stopPropagation();prodAssignProject('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Assign Editor</button>'+
+            '<button class="pj-btn" onclick="event.stopPropagation();prodAssignProject('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Assign Editor</button>'+
             '<button class="pj-btn" onclick="event.stopPropagation();prodProjectChat('+p.id+',\''+esc(p.title||p.subject||'').replace(/[\\\'\"]/g,'')+'\')">Chat</button>'+
             '<button class="pj-btn pj-del" onclick="event.stopPropagation();prodDeleteTask('+p.id+')">Delete</button></div>'+
           '<div class="pj-chapters" id="pjch-'+p.id+'" style="display:none"></div>'+
@@ -32951,6 +32971,193 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else if(fromFilter && window._prodProjData){ render(window._prodProjData); }   // filter re-render = instant, no refetch
     else api(P.production.api+'/projects').then(render).catch(function(){ box.innerHTML='<div class="p-empty">Could not load projects.</div>'; });  // actions = always refetch fresh
   }
+  // ============================================================================
+  // PROJECT LIVE PROGRESS — premium operational command center (one endpoint).
+  // ============================================================================
+  function _lpCss(){
+    if(document.getElementById('lp-css')) return;
+    var s=document.createElement('style'); s.id='lp-css'; s.textContent=[
+      '.lp-wrap{position:fixed;inset:0;z-index:1200;display:flex;justify-content:flex-end;background:rgba(18,16,10,.44);opacity:0;transition:opacity .2s}',
+      '.lp-wrap.open{opacity:1}',
+      '.lp{width:min(1080px,100%);height:100%;background:var(--bg,#f6f1e7);box-shadow:-18px 0 50px rgba(18,20,45,.28);display:flex;flex-direction:column;transform:translateX(26px);transition:transform .22s cubic-bezier(.2,.8,.2,1);overflow:hidden}',
+      '.lp-wrap.open .lp{transform:none}',
+      'body.dark .lp{background:#0e1726}',
+      '.lp-head{flex:0 0 auto;padding:18px 22px 14px;background:linear-gradient(135deg,#2a2210,#4a3a16);color:#fff;display:flex;align-items:flex-start;gap:16px}',
+      '.lp-head .t{font-weight:800;font-size:1.18rem;letter-spacing:-.01em}',
+      '.lp-head .s{font-size:.8rem;opacity:.85;margin-top:3px}',
+      '.lp-x{margin-left:auto;background:rgba(255,255,255,.14);border:none;color:#fff;width:34px;height:34px;border-radius:10px;font-size:1.1rem;cursor:pointer}',
+      '.lp-x:hover{background:rgba(255,255,255,.26)}',
+      '.lp-hchip{display:inline-flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:4px 11px;border-radius:999px;margin-top:8px}',
+      '.lp-body{flex:1;overflow-y:auto;padding:18px 22px 40px}',
+      '.lp-top{display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:18px}',
+      '.lp-ring{position:relative;width:118px;height:118px;flex:0 0 auto}',
+      '.lp-ring .v{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}',
+      '.lp-ring .p{font-size:1.7rem;font-weight:800;line-height:1;color:var(--text,#2a2313)}',
+      'body.dark .lp-ring .p{color:#eaf0fb}',
+      '.lp-ring .l{font-size:.6rem;font-weight:700;letter-spacing:.05em;color:var(--muted,#8a7d5c);text-transform:uppercase;margin-top:3px}',
+      '.lp-sum{flex:1;min-width:230px;font-size:.92rem;line-height:1.5;color:var(--text,#2a2313)}',
+      'body.dark .lp-sum{color:#d6def0}',
+      '.lp-ana{display:flex;gap:9px;flex-wrap:wrap;margin-top:9px}',
+      '.lp-ana span{font-size:.72rem;font-weight:700;color:var(--muted,#8a7d5c);background:rgba(138,125,92,.1);border-radius:8px;padding:4px 9px}',
+      '.lp-rail{display:flex;gap:7px;flex-wrap:wrap;margin:6px 0 16px}',
+      '.lp-stg{flex:1 1 112px;min-width:104px;border:1px solid var(--border,#ece2cd);border-radius:13px;padding:11px 12px;cursor:pointer;background:var(--card,#fffdf7);transition:.15s;position:relative}',
+      'body.dark .lp-stg{background:#152643;border-color:#243654}',
+      '.lp-stg:hover{border-color:#c98a2e;transform:translateY(-2px);box-shadow:0 8px 20px rgba(201,138,46,.14)}',
+      '.lp-stg.on{border-color:transparent;background:linear-gradient(135deg,#e6ad4e,#d18f28);color:#fff;box-shadow:0 7px 18px rgba(209,143,40,.32)}',
+      '.lp-stg .n{font-size:1.5rem;font-weight:800;line-height:1}',
+      '.lp-stg .k{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#8a7d5c);margin-top:4px}',
+      '.lp-stg.on .k{color:rgba(255,255,255,.9)}',
+      '.lp-sec-h{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8a7d5c);margin:14px 0 8px}',
+      '.lp-att{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}',
+      '.lp-att b{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:800;padding:6px 12px;border-radius:999px;cursor:pointer;border:1px solid transparent}',
+      '.lp-att b.ov{background:rgba(209,68,58,.12);color:#c0322a;border-color:rgba(209,68,58,.3)}',
+      '.lp-att b.wa{background:rgba(224,165,46,.14);color:#9a6b00;border-color:rgba(224,165,46,.32)}',
+      '.lp-att b:hover{filter:brightness(.97);transform:translateY(-1px)}',
+      '.lp-att b .c{background:rgba(0,0,0,.12);border-radius:999px;padding:0 7px;font-size:.72rem}',
+      '.lp-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}',
+      '.lp-search{flex:1;min-width:180px;display:flex;align-items:center;gap:8px;border:1px solid var(--border,#e5ddcb);border-radius:11px;padding:8px 12px;background:var(--card,#fff)}',
+      '.lp-search input{border:none;outline:none;background:transparent;flex:1;font-size:.9rem;color:var(--text,#2a2313)}',
+      'body.dark .lp-search{background:#152643;border-color:#2a3b57}body.dark .lp-search input{color:#eaf0fb}',
+      '.lp-team{display:flex;gap:7px;flex-wrap:wrap}',
+      '.lp-team b{font-size:.74rem;font-weight:700;padding:5px 11px;border-radius:999px;background:rgba(138,125,92,.12);color:var(--text,#2a2313);cursor:pointer;border:1px solid transparent}',
+      '.lp-team b.on{border-color:#c98a2e;background:rgba(201,138,46,.18)}',
+      'body.dark .lp-team b{color:#d6def0}',
+      '.lp-rows{display:flex;flex-direction:column;gap:9px;margin-top:4px}',
+      '.lp-row{display:flex;align-items:center;gap:13px;border:1px solid var(--border,#ece2cd);border-left:4px solid var(--rc,#8a7d5c);border-radius:13px;padding:11px 14px;background:var(--card,#fffdf7);cursor:pointer;transition:.14s}',
+      'body.dark .lp-row{background:#152643;border-color:#243654}',
+      '.lp-row:hover{transform:translateX(2px);box-shadow:0 7px 18px rgba(18,20,45,.1);border-left-color:var(--rc,#8a7d5c)}',
+      '.lp-row .idx{font-size:.74rem;font-weight:800;color:var(--muted,#8a7d5c);width:26px;flex:0 0 auto;text-align:center}',
+      '.lp-row .mid{flex:1;min-width:0}',
+      '.lp-row .ti{font-weight:700;font-size:.93rem;color:var(--text,#2a2313);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      'body.dark .lp-row .ti{color:#eaf0fb}',
+      '.lp-row .mt{font-size:.74rem;color:var(--muted,#8a7d5c);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}',
+      '.lp-row .pill{font-size:.63rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:999px;color:#fff;white-space:nowrap}',
+      '.lp-row .pbar{flex:0 0 96px;height:7px;border-radius:999px;background:rgba(138,125,92,.2);overflow:hidden}',
+      '.lp-row .pbar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#e6ad4e,#d18f28)}',
+      '.lp-row .pp{font-size:.8rem;font-weight:800;color:var(--text,#2a2313);width:42px;text-align:right;flex:0 0 auto}',
+      'body.dark .lp-row .pp{color:#eaf0fb}',
+      '.lp-row.hl-overdue{--rc:#d1443a}.lp-row.hl-due_soon{--rc:#e0a52e}.lp-row.hl-published{--rc:#2e9e6b}',
+      '.lp-hchip.not_started,.lp-hchip.in_production{background:rgba(255,255,255,.18);color:#fff}',
+      '.lp-hchip.at_risk{background:#d1443a;color:#fff}.lp-hchip.publishing{background:#2a7fb8;color:#fff}.lp-hchip.completed{background:#2e9e6b;color:#fff}',
+      '.lp-empty{text-align:center;color:var(--muted,#8a7d5c);padding:30px;font-size:.88rem}',
+      '@media(prefers-reduced-motion:reduce){.lp,.lp-wrap,.lp-row,.lp-stg{transition:none}}',
+      '@media(max-width:640px){.lp-head{padding:14px}.lp-body{padding:14px 14px 40px}.lp-ring{width:92px;height:92px}}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+  var _LP_STAGES=[['recording','Recording'],['pm_review','PM Review'],['approved','Approved'],['editing','Editing'],['qc','QC'],['ready','Ready'],['published','Published']];
+  var _LP_PILLCOL={awaiting_creator:'#8a7d5c',changes_required:'#d1443a',pm_review:'#c99a2e',approved:'#2e9e6b',editor_assigned:'#7c4fc0',editing:'#7c4fc0',editing_paused:'#c99a2e',qc_pending:'#2a7fb8',qc_changes:'#d1443a',ready_for_youtube:'#e0a52e',uploaded:'#2e9e6b',completed:'#2e9e6b'};
+  var _LP_HEALTH={on_track:['On Track','#2e9e6b'],due_soon:['Due Soon','#e0a52e'],overdue:['Overdue','#d1443a'],published:['Published','#2e9e6b'],waiting_teacher:['Waiting Teacher','#8a7d5c'],waiting_pm_review:['Waiting PM Review','#c99a2e'],waiting_editor:['Waiting Editor','#7c4fc0'],editing:['Editing','#7c4fc0'],waiting_qc:['Waiting QC','#2a7fb8'],waiting_upload:['Waiting Upload','#e0a52e']};
+  window.prodLiveProgress=function(pid){
+    _lpCss();
+    window._lp={pid:pid,data:null,filter:{type:'all',val:''},q:''};
+    var old=document.getElementById('prod-live'); if(old) old.remove();
+    var w=document.createElement('div'); w.className='lp-wrap'; w.id='prod-live';
+    w.innerHTML='<div class="lp"><div class="lp-head"><div><div class="t">Loading…</div></div><button class="lp-x" onclick="_lpClose()">×</button></div><div class="lp-body"><div class="p-load">Loading live progress…</div></div></div>';
+    w.addEventListener('click',function(e){ if(e.target===w) _lpClose(); });
+    document.body.appendChild(w);
+    setTimeout(function(){ w.classList.add('open'); },10);
+    _lpLoad();
+    try{ clearInterval(window._lpTimer); }catch(e){}
+    window._lpTimer=setInterval(function(){ if(document.getElementById('prod-live') && !document.hidden) _lpLoad(true); },25000);
+  };
+  window._lpClose=function(){ try{ clearInterval(window._lpTimer); }catch(e){} var w=document.getElementById('prod-live'); if(w){ w.classList.remove('open'); setTimeout(function(){ w.remove(); },220); } };
+  function _lpLoad(silent){
+    var pid=(window._lp||{}).pid; if(!pid) return;
+    api(P.production.api+'/projects/'+pid+'/live-progress').then(function(d){
+      if(!document.getElementById('prod-live')) return;
+      window._lp.data=d; _lpRender();
+    }).catch(function(e){ if(!silent){ var b=document.querySelector('#prod-live .lp-body'); if(b) b.innerHTML='<div class="lp-empty">Could not load live progress.</div>'; } });
+  }
+  function _lpRender(){
+    var d=(window._lp||{}).data; if(!d) return;
+    var w=document.getElementById('prod-live'); if(!w) return;
+    var pr=d.project||{}, pipe=d.pipeline||{}, att=d.attention||{}, bn=d.bottleneck||{};
+    var phmap={not_started:'Not Started',in_production:'In Production',at_risk:'At Risk',publishing:'Publishing',completed:'Completed'};
+    // head
+    var head=w.querySelector('.lp-head');
+    head.innerHTML='<div><div class="t">'+esc(pr.title||'Project')+(pr.subject?' <span style="opacity:.7;font-weight:600">· '+esc(pr.subject)+'</span>':'')+'</div>'+
+      '<div class="s">'+(pr.total_chapters||0)+' chapters · '+(pr.completed||0)+' published'+((pr.overdue||0)?' · '+pr.overdue+' overdue':'')+'</div>'+
+      '<span class="lp-hchip '+(pr.health||'in_production')+'">'+(phmap[pr.health]||'In Production')+'</span></div>'+
+      '<button class="lp-x" onclick="_lpClose()">×</button>';
+    // ring
+    var pct=pr.overall_progress||0, off=(326*(1-pct/100)).toFixed(1);
+    var ring='<div class="lp-ring"><svg width="118" height="118" viewBox="0 0 118 118"><circle cx="59" cy="59" r="52" fill="none" stroke="rgba(138,125,92,.18)" stroke-width="10"/><circle cx="59" cy="59" r="52" fill="none" stroke="#d18f28" stroke-width="10" stroke-linecap="round" stroke-dasharray="326" stroke-dashoffset="'+off+'" transform="rotate(-90 59 59)"/></svg><div class="v"><div class="p">'+pct+'%</div><div class="l">Production</div></div></div>';
+    var ana=d.analytics||{};
+    var anaH='<div class="lp-ana"><span>Published this week: '+(ana.published_this_week||0)+'</span><span>Remaining: '+(ana.remaining||0)+'</span>'+(ana.avg_per_week!=null?'<span>Avg/week: '+ana.avg_per_week+'</span>':'')+'<span>ETA: '+esc(ana.est_completion||'Not enough data')+'</span></div>';
+    var top='<div class="lp-top">'+ring+'<div class="lp-sum">'+esc(d.summary||'')+anaH+'</div></div>';
+    // pipeline rail (clickable)
+    var f=window._lp.filter||{};
+    var rail='<div class="lp-rail">'+_LP_STAGES.map(function(s){
+      var on=(f.type==='stage'&&f.val===s[0]); return '<div class="lp-stg'+(on?' on':'')+'" onclick="_lpFilter(\'stage\',\''+s[0]+'\')"><div class="n">'+(pipe[s[0]]||0)+'</div><div class="k">'+s[1]+'</div></div>';
+    }).join('')+'</div>';
+    // attention row
+    var attItems=[];
+    if(att.overdue) attItems.push(['overdue','ov','Overdue',att.overdue]);
+    if(att.waiting_pm_review) attItems.push(['waiting_pm_review','wa','Waiting PM Review',att.waiting_pm_review]);
+    if(att.waiting_qc) attItems.push(['waiting_qc','wa','QC Pending',att.waiting_qc]);
+    if(att.waiting_graphics) attItems.push(['waiting_graphics','wa','Thumbnail Review',att.waiting_graphics]);
+    if(att.upload_due_today) attItems.push(['upload_due_today','wa','Upload Due Today',att.upload_due_today]);
+    if(att.waiting_teacher) attItems.push(['waiting_teacher','wa','Waiting Teacher',att.waiting_teacher]);
+    var attH=attItems.length?('<div class="lp-sec-h">Needs attention</div><div class="lp-att">'+attItems.map(function(a){ var on=(f.type==='att'&&f.val===a[0]); return '<b class="'+a[1]+(on?' on':'')+'" onclick="_lpFilter(\'att\',\''+a[0]+'\')">'+esc(a[2])+' <span class="c">'+a[3]+'</span></b>'; }).join('')+(bn.stage?'<b class="wa'+(f.type==='stage'&&f.val===bn.stage?' on':'')+'" title="Bottleneck" onclick="_lpFilter(\'stage\',\''+bn.stage+'\')">'+ic('alert')+' Bottleneck: '+esc((_LP_STAGES.filter(function(x){return x[0]===bn.stage;})[0]||[,bn.stage])[1])+' <span class="c">'+bn.count+'</span></b>':'')+'</div>'):'';
+    // team load
+    var tl=d.team_load||{}; var teamH='';
+    if((tl.editors||[]).length||(tl.graphics||[]).length){
+      teamH='<div class="lp-sec-h">Team load</div><div class="lp-team">'+
+        (tl.editors||[]).map(function(m){ var on=(f.type==='editor'&&f.val===m.name); return '<b class="'+(on?'on':'')+'" onclick="_lpFilter(\'editor\',\''+esc(String(m.name)).replace(/[\\\'\"]/g,'')+'\')">'+ic('edit')+' '+esc(m.name)+' · '+m.count+'</b>'; }).join('')+
+        (tl.graphics||[]).map(function(m){ var on=(f.type==='graphics'&&f.val===m.name); return '<b class="'+(on?'on':'')+'" onclick="_lpFilter(\'graphics\',\''+esc(String(m.name)).replace(/[\\\'\"]/g,'')+'\')">'+ic('image')+' '+esc(m.name)+' · '+m.count+'</b>'; }).join('')+'</div>';
+    }
+    var tools='<div class="lp-sec-h">Chapters'+(f.type!=='all'?' · <a style="color:#c98a2e;cursor:pointer;font-weight:800" onclick="_lpFilter(\'all\',\'\')">clear filter</a>':'')+'</div>'+
+      '<div class="lp-tools"><div class="lp-search">'+ic('search')+'<input id="lp-q" placeholder="Search chapter, teacher, editor, status…" value="'+esc(window._lp.q||'')+'" oninput="_lpSearchInput(this.value)"></div></div>';
+    var body=w.querySelector('.lp-body');
+    // preserve scroll + focus across silent re-render
+    var sc=body?body.scrollTop:0;
+    body.innerHTML=top+rail+attH+teamH+tools+'<div class="lp-rows" id="lp-rows"></div>';
+    _lpRenderRows();
+    try{ body.scrollTop=sc; }catch(e){}
+  }
+  function _lpMatch(row){
+    var f=window._lp.filter||{}, q=(window._lp.q||'').trim().toLowerCase();
+    if(q){ var hay=((row.title||'')+' '+(row.editor||'')+' '+(row.graphics||'')+' '+(row.lifecycle_label||'')+' '+(row.health||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+    if(f.type==='stage'){ return (_LP_PIPE_OF(row.lifecycle)===f.val); }
+    if(f.type==='editor'){ return (row.editor||'')===f.val; }
+    if(f.type==='graphics'){ return (row.graphics||'')===f.val; }
+    if(f.type==='att'){
+      if(f.val==='overdue') return row.health==='overdue';
+      if(f.val==='waiting_pm_review') return row.lifecycle==='pm_review';
+      if(f.val==='waiting_qc') return row.lifecycle==='qc_pending';
+      if(f.val==='waiting_graphics') return (row.graphics_state==='submitted' && !row.thumbnail);
+      if(f.val==='waiting_teacher') return (row.lifecycle==='awaiting_creator'||row.lifecycle==='changes_required');
+      if(f.val==='upload_due_today') return (row.lifecycle==='ready_for_youtube' && !!row.upload_date);
+    }
+    return true;
+  }
+  function _LP_PIPE_OF(lc){ var m={awaiting_creator:'recording',changes_required:'recording',pm_review:'pm_review',approved:'approved',editor_assigned:'editing',editing:'editing',editing_paused:'editing',qc_pending:'qc',qc_changes:'qc',ready_for_youtube:'ready',uploaded:'published',completed:'published'}; return m[lc]||'recording'; }
+  function _lpRenderRows(){
+    var box=document.getElementById('lp-rows'); if(!box) return;
+    var rows=((window._lp.data||{}).chapters||[]).filter(_lpMatch);
+    if(!rows.length){ box.innerHTML='<div class="lp-empty">No chapters match this filter.</div>'; return; }
+    box.innerHTML=rows.map(function(r){
+      var hc=_LP_HEALTH[r.health]||['',''];
+      var pill='<span class="pill" style="background:'+(_LP_PILLCOL[r.lifecycle]||'#8a7d5c')+'">'+esc(r.lifecycle_label||'')+'</span>';
+      var meta=[]; if(r.editor) meta.push('Editor: '+esc(r.editor)); if(r.graphics) meta.push('Graphics: '+esc(r.graphics)); if(r.deadline) meta.push((r.health==='overdue'?'Overdue · ':'Due ')+esc(r.deadline));
+      return '<div class="lp-row hl-'+(r.health||'')+'" style="--rc:'+(hc[1]||'#8a7d5c')+'" onclick="_lpOpenChapter('+r.id+')">'+
+        '<div class="idx">'+(r.sort?String(r.sort).padStart(2,'0'):'')+'</div>'+
+        '<div class="mid"><div class="ti">'+esc(r.title||'Chapter')+'</div><div class="mt">'+pill+(hc[0]?'<span class="pill" style="background:'+hc[1]+'">'+esc(hc[0])+'</span>':'')+meta.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div></div>'+
+        '<div class="pbar"><i style="width:'+(r.production_progress||0)+'%"></i></div><div class="pp">'+(r.production_progress||0)+'%</div></div>';
+    }).join('');
+  }
+  window._lpFilter=function(type,val){ var f=window._lp.filter||{}; if(f.type===type&&f.val===val){ window._lp.filter={type:'all',val:''}; } else { window._lp.filter={type:type,val:val}; } _lpRender(); };
+  window._lpSearchInput=function(v){ window._lp.q=v; _lpRenderRows(); };
+  window._lpOpenChapter=function(cid){
+    // load the project's full chapters into the existing drawer cache, then open the chapter drawer
+    var pid=(window._lp||{}).pid;
+    api(P.production.api+'/tasks/'+pid+'/chapters').then(function(r){
+      var list=(r&&r.chapters)||[]; window._pjChapCache=window._pjChapCache||{};
+      list.forEach(function(c){ window._pjChapCache[c.id]=c; });
+      if(typeof window.prodOpenChapter==='function') window.prodOpenChapter('production',cid);
+    }).catch(function(){ toast('Could not open chapter',true); });
+  };
   window.prodProjFlt=function(k,v){ window._prodProjFlt=window._prodProjFlt||{};
     // cascade reset: teacher change clears class+subject; class change clears subject
     if(k==='teacher'){ window._prodProjFlt.class_level=''; window._prodProjFlt.subject=''; }
@@ -33044,7 +33251,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       dr.innerHTML='<div class="p-modal"><div class="pd-head"><div class="h-title">Assign video \u2014 '+esc(title||'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
         '<div class="p-modal-body">'+
           '<div class="p-field"><label>Editor</label><select class="p-select" id="pav-editor">'+edOpts+'</select></div>'+
+          '<div class="p-field"><label>Editor instructions / brief (optional)</label><textarea class="p-area" id="pav-einstr" placeholder="e.g. Cut the intro, add captions, keep it under 12 min"></textarea></div>'+
+          '<div class="p-field"><label>Editor reference link (optional)</label><input class="p-input" id="pav-eref" placeholder="https://... reference edit / style"></div>'+
+          '<div class="p-field"><label>Priority</label><select class="p-select" id="pav-pri"><option value="normal">Normal</option><option value="urgent">Urgent</option></select></div>'+
           '<div class="p-field"><label>Graphics Designer (optional)</label><select class="p-select" id="pav-graphics">'+gfOpts+'</select></div>'+
+          '<div class="p-field"><label>Thumbnail brief for graphics (optional)</label><textarea class="p-area" id="pav-tinstr" placeholder="e.g. Face left, yellow headline, NIOS logo, formula on right"></textarea></div>'+
           '<div class="p-field"><label>Reference thumbnails for graphics (optional \u2014 one link per line)</label><textarea class="p-area" id="pav-refs" placeholder="https://... (paste one or more reference thumbnail links)"></textarea></div>'+
           '<div class="p-field"><label>Deadline (optional \u2014 submit by this date &amp; time)</label><input class="p-input" id="pav-deadline" type="datetime-local"></div>'+
           '<div style="font-size:.78rem;color:var(--muted)">The editor &amp; graphics will see this as a task with the deadline in their portal.</div>'+
@@ -33062,8 +33273,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var refs=rf.split('\n').map(function(x){return x.trim();}).filter(Boolean);
     if(refs.length) body.thumb_refs=refs;
     var dl=(document.getElementById('pav-deadline')||{}).value||''; if(dl) body.deadline=dl;
+    var ei=(document.getElementById('pav-einstr')||{}).value||''; if(ei.trim()) body.editor_instructions=ei.trim();
+    var er=(document.getElementById('pav-eref')||{}).value||''; if(er.trim()) body.editor_reference=er.trim();
+    var pri=(document.getElementById('pav-pri')||{}).value||''; if(pri) body.priority=pri;
+    var ti=(document.getElementById('pav-tinstr')||{}).value||''; if(ti.trim()) body.thumb_instructions=ti.trim();
+    if(dl) body.editor_deadline=dl;   // the per-chapter deadline doubles as the editor deadline
     api(P.production.api+'/assign-project-video','POST',body).then(function(){
-      prodDismiss(); toast('Assigned'); window._prodProjChaps(taskId); _refresh('production');
+      prodDismiss(); toast('Assigned');
+      try{ if(window._pjChapOpen && window._pjChapOpen.cid==cid && typeof prodOpenChapter==='function'){ prodOpenChapter(window._pjChapOpen.portal||'production', cid); } }catch(e){}
+      try{ window._prodProjChaps(taskId); }catch(e){}
+      try{ if(document.getElementById('prod-live')) _lpLoad(true); }catch(e){}
+      _refresh('production');
     }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodUnassignVideo=function(taskId,cid){
@@ -33894,83 +34114,212 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window._prodChapCard=_prodChapCard;
   // ---- detail slide-over (same .p-drawer/.pd-* as the task panel) ----
+  // ===== WORK-ITEM driven chapter drawer (full parity with the normal task) =====
+  function _chGal(urls, opts){
+    opts=opts||{}; urls=(urls||[]).filter(Boolean);
+    if(!urls.length) return '';
+    return '<div class="chd-gal">'+urls.map(function(u,i){
+      var sel=(opts.sel===u);
+      return '<div class="chd-opt'+(sel?' on':'')+'"'+(opts.pick?(' onclick="'+opts.pick+'(\''+_esc1(u)+'\')"'):'')+'>'+
+        '<div class="chd-img" style="background-image:url('+_esc1(u)+')" onclick="event.stopPropagation();prodThumbView(\''+_esc1(u)+'\')"></div>'+
+        (opts.label?('<div class="chd-lb">'+esc(opts.label)+' '+(i+1)+(sel?' · Selected':'')+'</div>'):'')+
+      '</div>';
+    }).join('')+'</div>';
+  }
+  function _chStars(n){ n=Math.max(0,Math.min(5,n|0)); return '★'.repeat(n)+'<span style="opacity:.3">'+'★'.repeat(5-n)+'</span>'; }
+  function _wiFromCached(c, cid){
+    // fallback normalized shape from the card cache (used when the fetch-by-id endpoint is unavailable)
+    var lc=(typeof window._chapLc==='function')?window._chapLc(c):(c.lifecycle||'');
+    return {work_type:'project_chapter', id:cid, parent_project_id:c.task_id, title:c.title||'',
+      project_title:'', subject:c.subject||'', lifecycle:lc, lifecycle_label:'', teacher:c.teacher||'',
+      channel:c.channel_name||'', video_type:c.video_type||'', source_video:c.link||'',
+      review_status:c.review_status||'', review_note:c.review_note||'', editor:c.editor_name||'',
+      editor_id:c.editor_id, graphics:c.graphics_name||'', graphics_id:c.graphics_id,
+      graphics_state:c.gfx_state||'', thumbnail:c.thumbnail_link||'', edited_link:c.edited_link||'',
+      qc_status:c.qc_status||'', deadline:c.deadline||'', upload_date:c.upload_date||'',
+      youtube_url:c.youtube_url||'', thumb_refs:[], thumb_candidates:[],
+      ratings:{pm_editor:c.quality_rating,teacher_edit:c.edit_review_rating,pm_thumbnail:c.thumb_quality},
+      allowed_actions:null, _legacy:c};
+  }
   window.prodOpenChapter=function(portal, cid){
-    ensureCSS();
-    var c=(window._pjChapCache||{})[cid]; if(!c){ toast('Chapter not found',true); return; }
-    window._pjChapOpen={portal:portal, c:c};
+    ensureCSS(); _chapDrawerCss();
+    var cached=(window._pjChapCache||{})[cid]||{};
+    window._pjChapOpen={portal:portal, cid:cid, wi:null, tab:'overview'};
     var old=document.getElementById('prod-chap-drawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-drawer'; dr.id='prod-chap-drawer';
-    var tabs=['overview','timeline','editor','graphics'];
-    var tabLbl={overview:'Overview',timeline:'Timeline',editor:'Editor',graphics:'Graphics'};
-    var st=_chapSt(c);
-    dr.innerHTML='<div class="pd-panel">'+
-      '<div class="pd-head"><div><div class="h-title">'+esc(c.title||'Chapter')+'</div>'+
-        '<div class="h-meta"><span class="pt-ref" style="color:#8f3d66;font-weight:800">PROJECT CHAPTER</span>'+
-        '<span class="pt-stage">'+esc(st[0])+'</span>'+
-        (c.subject?'<span class="pt-badge b-teacher">'+esc(c.subject)+'</span>':'')+'</div></div>'+
-        '<button class="pd-x" onclick="prodCloseChapter()">&times;</button></div>'+
-      '<div class="pd-tabs">'+tabs.map(function(tb){ return '<button class="pd-tab'+(tb==='overview'?' on':'')+'" data-tab="'+tb+'" onclick="prodChapTab(\''+tb+'\')">'+tabLbl[tb]+'</button>'; }).join('')+'</div>'+
-      '<div class="pd-body" id="pdc-body">'+_chapTabHtml(portal,c,'overview')+'</div>'+
-      '<div class="pd-foot" id="pdc-foot">'+_chapPanelActions(portal,c)+'</div>'+
-      '</div>';
+    dr.innerHTML='<div class="pd-panel"><div class="pd-body" style="padding:40px;text-align:center;color:var(--muted,#8a7d5c)">Loading chapter…</div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodCloseChapter(); });
     document.body.appendChild(dr);
+    var isPM=(portal==='production'||portal==='admin');
+    if(isPM){
+      api(P.production.api+'/chapters/'+cid+'/work-item').then(function(wi){
+        if(!wi.teacher && cached.teacher) wi.teacher=cached.teacher;
+        if(!wi.subject && cached.subject) wi.subject=cached.subject;
+        window._pjChapOpen.wi=wi; _chapRenderDrawer();
+      }).catch(function(){ window._pjChapOpen.wi=_wiFromCached(cached,cid); _chapRenderDrawer(); });
+    } else {
+      window._pjChapOpen.wi=_wiFromCached(cached,cid); _chapRenderDrawer();
+    }
   };
   window.prodCloseChapter=function(){ var d=document.getElementById('prod-chap-drawer'); if(d) d.remove(); };
-  window.prodChapTab=function(tab){
-    var st=window._pjChapOpen; if(!st) return;
-    document.querySelectorAll('#prod-chap-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
-    var body=document.getElementById('pdc-body'); if(body) body.innerHTML=_chapTabHtml(st.portal, st.c, tab);
-    if(tab==='timeline') _chapLoadTimeline(st.portal, st.c.id);
-  };
-  function _chapPanelActions(portal,c){
-    var b=_chapActBtns(portal,c,c.task_id,'panel');
-    return b?('<div class="p-acts" id="pdc-acts">'+b+'</div>'):'';
+  // canonical deep-link entry any surface can call (notification, upload schedule, search, dashboard)
+  window.openProjectChapter=function(cid){ try{ return window.prodOpenChapter('production', cid); }catch(e){} };
+  function _chapRenderDrawer(){
+    var st=window._pjChapOpen; if(!st||!st.wi) return;
+    var wi=st.wi, portal=st.portal;
+    var pill=_LP_PILLCOL[wi.lifecycle]||'#8a7d5c';
+    var tabs=[['overview','Overview'],['teacher','Teacher'],['graphics','Graphics'],['editor','Editor'],['upload','Upload'],['timeline','Timeline']];
+    var dr=document.getElementById('prod-chap-drawer'); if(!dr) return;
+    dr.innerHTML='<div class="pd-panel">'+
+      '<div class="pd-head"><div><div class="h-title">'+esc(wi.title||'Chapter')+'</div>'+
+        '<div class="h-meta"><span class="pt-ref" style="color:#8f3d66;font-weight:800">'+esc(wi.project_title||'PROJECT')+'</span>'+
+        '<button class="chd-pill" style="background:'+pill+'" title="View timeline" onclick="prodChapTab(\'timeline\')">'+esc(wi.lifecycle_label||wi.lifecycle||'')+'</button>'+
+        (wi.priority==='urgent'?'<span class="pt-badge" style="background:#d1443a;color:#fff">URGENT</span>':'')+
+        (wi.subject?'<span class="pt-badge b-teacher">'+esc(wi.subject)+'</span>':'')+'</div></div>'+
+        '<button class="pd-x" onclick="prodCloseChapter()">&times;</button></div>'+
+      '<div class="pd-tabs">'+tabs.map(function(tb){ return '<button class="pd-tab'+(tb[0]===st.tab?' on':'')+'" data-tab="'+tb[0]+'" onclick="prodChapTab(\''+tb[0]+'\')">'+tb[1]+'</button>'; }).join('')+'</div>'+
+      '<div class="pd-body" id="pdc-body">'+_chapTabHtml(portal,wi,st.tab)+'</div>'+
+      '<div class="pd-foot" id="pdc-foot">'+_chapFoot(portal,wi)+'</div>'+
+      '</div>';
+    if(st.tab==='timeline') _chapLoadTimeline(portal, wi.id);
   }
-  function _chapTabHtml(portal,c,tab){
+  window.prodChapTab=function(tab){
+    var st=window._pjChapOpen; if(!st) return; st.tab=tab;
+    document.querySelectorAll('#prod-chap-drawer .pd-tab').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tab')===tab); });
+    var body=document.getElementById('pdc-body'); if(body) body.innerHTML=_chapTabHtml(st.portal, st.wi, tab);
+    if(tab==='timeline') _chapLoadTimeline(st.portal, st.wi.id);
+  };
+  function _chapAfter(){
+    // re-fetch the work-item and re-render the open drawer, then refresh dashboards.
+    var st=window._pjChapOpen; if(!st) return;
+    if((st.portal==='production'||st.portal==='admin')){
+      api(P.production.api+'/chapters/'+st.cid+'/work-item').then(function(wi){ st.wi=wi; _chapRenderDrawer(); }).catch(function(){});
+    }
+    try{ if(document.getElementById('prod-live')) _lpLoad(true); }catch(e){}
+    try{ if(st.wi&&st.wi.parent_project_id) window._prodProjChaps(st.wi.parent_project_id); }catch(e){}
+    try{ _refresh('production'); }catch(e){}
+  }
+  window._chapAfter=_chapAfter;
+  function _link(u,lbl){ return u?('<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(lbl)+'</a>'):'<span style="color:var(--muted,#8a7d5c)">—</span>'; }
+  function _chapTabHtml(portal,wi,tab){
+    var R=wi.ratings||{};
     if(tab==='overview'){
-      var rv=c.review||c.review_status||((c.link&&(''+c.link).trim())?'approved':'');
-      var rvLbl={'':'Shoot pending',pending:'PM review',changes:'Changes requested',approved:'Approved'}[rv]||rv;
+      var rate=[]; if(R.pm_editor) rate.push('Editor (PM): '+_chStars(R.pm_editor)); if(R.teacher_edit) rate.push('Editor (Teacher): '+_chStars(R.teacher_edit)); if(R.pm_thumbnail) rate.push('Thumbnail: '+_chStars(R.pm_thumbnail));
       return '<div class="pd-kv">'+
-        _kv('Subject', esc(c.subject||''))+
-        _kv('Teacher', esc(c.teacher||''))+
-        _kv('Review Status', esc(rvLbl))+
-        _kv('Editor', esc(c.editor_name||'Not assigned'))+
-        _kv('Graphics', esc(c.graphics_name||'Not assigned'))+
-        _kv('Deadline', esc(c.deadline||'Not set'))+
-        _kv('Source Drive', c.link?('<a href="'+esc(c.link)+'" target="_blank" rel="noopener">Open video</a>'):'')+
-        _kv('Edited Link', c.edited_link?('<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'')+
-        _kv('Thumbnail', c.thumbnail_link?('<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'')+
-        (c.review_note?_kv('Review Note', '<span class="pd-hot">'+esc(c.review_note)+'</span>'):'')+
-        // Edited-video QC + teacher verdict (only once an edit is submitted)
-        ((c.edit_state==='edited')?_kv('QC Status', esc({'':'In review',pending:'In review',approved:'Approved',changes:'Changes requested'}[c.qc_status||'']||'In review')):'')+
-        ((c.edit_state==='edited')?_kv('Teacher Review', esc({'':'Pending',pending:'Pending',approved:'Approved'+(c.edit_review_rating?(' ('+c.edit_review_rating+'★)'):''),changes:'Wants changes'}[c.edit_review_status||'']||'Pending')):'')+
-        ((c.edit_state==='edited'&&c.edit_review_note)?_kv('Teacher Note', '<span class="pd-hot">'+esc(c.edit_review_note)+'</span>'):'')+
-        ((c.qc_status==='changes'&&c.qc_note)?_kv('QC Changes Note', '<span class="pd-hot">'+esc(c.qc_note)+'</span>'):'')+
-        // admin-only: production-status + New/Old (vintage) controls preserved from the admin card
-        ((portal==='admin' && c.link && typeof _avtChSel==='function')?_kv('Production Status', _avtChSel({id:c.task_id},c)):'')+
-        ((portal==='admin' && c.link && typeof _avtVinSel==='function')?_kv('New / Old', _avtVinSel({id:c.task_id},c)):'')+
+        _kv('Project', esc(wi.project_title||''))+
+        _kv('Status', esc(wi.lifecycle_label||wi.lifecycle||''))+
+        _kv('Teacher', esc(wi.teacher||'—'))+
+        _kv('Channel', esc(wi.channel||'—'))+
+        _kv('Type', esc(wi.video_type||'—'))+
+        _kv('Priority', (wi.priority==='urgent'?'<span class="pd-hot">Urgent</span>':'Normal'))+
+        _kv('Deadline', esc(wi.deadline||'Not set'))+
+        _kv('Editor', esc(wi.editor||'Not assigned'))+
+        _kv('Graphics', esc(wi.graphics||'Not assigned'))+
+        (rate.length?_kv('Ratings', rate.join(' · ')):'')+
+        _kv('Source', _link(wi.source_video,'Open video'))+
+        _kv('Edited', _link(wi.edited_link,'Open edited'))+
+        _kv('Thumbnail', _link(wi.thumbnail,'Open thumbnail'))+
+        _kv('YouTube', _link(wi.youtube_url,'On YouTube'))+
       '</div>';
     }
-    if(tab==='timeline'){ return '<div id="pdc-tl"><div class="pd-empty">Loading timeline…</div></div>'; }
-    if(tab==='editor'){
-      if(!(c.editor_name||c.editor_id)) return '<div class="pd-empty">No editor assigned yet.</div>';
+    if(tab==='teacher'){
       return '<div class="pd-kv">'+
-        _kv('Editor', esc(c.editor_name||''))+
-        _kv('Edit State', esc(c.edit_state||'assigned'))+
-        _kv('Deadline', esc(c.deadline||'Not set'))+
-        _kv('Edited Link', c.edited_link?('<a href="'+esc(c.edited_link)+'" target="_blank" rel="noopener">Open edited</a>'):'Not submitted')+
+        _kv('Source video', _link(wi.source_video,'Open video'))+
+        _kv('Submitted by', esc(wi.submitted_by_name?(wi.submitted_by_name+(wi.submitted_by_role?(' · '+({teacher:'Teacher',production_manager:'PM',admin:'Admin',youtuber:'YouTuber'}[wi.submitted_by_role]||wi.submitted_by_role)):'')):(wi.teacher||'—')))+
+        (wi.submitted_at?_kv('Submitted at', esc(wi.submitted_at)):'')+
+        (wi.on_time!=null?_kv('On time', wi.on_time?'<span style="color:#2e9e6b;font-weight:800">On time</span>':'<span class="pd-hot">Late</span>'):'')+
+        _kv('PM review', esc({'':'Pending',pending:'PM review',changes:'Changes requested',approved:'Approved'}[wi.review_status||'']||wi.review_status||'—'))+
+        (wi.review_note?_kv('Review note','<span class="pd-hot">'+esc(wi.review_note)+'</span>'):'')+
+        ((wi.reject_count||0)>0?_kv('Reshoots', String(wi.reject_count)):'')+
       '</div>';
     }
     if(tab==='graphics'){
-      if(!(c.graphics_name||c.graphics_id)) return '<div class="pd-empty">No graphics member assigned yet.</div>';
+      var g='';
+      if(wi.thumbnail){ g+='<div class="chd-sec-h">Final thumbnail'+(wi.thumb_direct?' (uploaded/credited by PM)':'')+(R.pm_thumbnail?(' · '+_chStars(R.pm_thumbnail)):'')+'</div>'+_chGal([wi.thumbnail],{}); }
+      if((wi.thumb_candidates||[]).length && !wi.thumbnail){ g+='<div class="chd-sec-h">Submitted options — review & pick the final</div>'+_chGal(wi.thumb_candidates,{label:'Option'}); }
+      if((wi.thumb_refs||[]).length){ g+='<div class="chd-sec-h">Reference thumbnails (PM → designer)</div>'+_chGal(wi.thumb_refs,{label:'Ref'}); }
+      g+='<div class="pd-kv">'+
+        _kv('Designer', esc(wi.graphics||'Not assigned'))+
+        _kv('Graphics state', esc({'':'—','assigned':'Assigned','in_progress':'In progress','submitted':'Submitted · review','done':'Done'}[wi.graphics_state||'']||wi.graphics_state||'—'))+
+        (wi.thumb_instructions?_kv('Brief', esc(wi.thumb_instructions)):'')+
+      '</div>';
+      return g;
+    }
+    if(tab==='editor'){
       return '<div class="pd-kv">'+
-        _kv('Graphics', esc(c.graphics_name||''))+
-        _kv('Graphics State', esc(c.gfx_state||''))+
-        _kv('Thumbnail', c.thumbnail_link?('<a href="'+esc(c.thumbnail_link)+'" target="_blank" rel="noopener">Open thumbnail</a>'):'Not submitted')+
+        _kv('Editor', esc(wi.editor||'Not assigned'))+
+        (wi.editor_instructions?_kv('Instructions', esc(wi.editor_instructions)):'')+
+        (wi.editor_reference?_kv('Reference', _link(wi.editor_reference,'Open reference')):'')+
+        _kv('Editor deadline', esc(wi.editor_deadline||wi.deadline||'Not set'))+
+        _kv('Progress', (wi.editing_progress!=null?(wi.editing_progress+'%'):'—'))+
+        _kv('Edited link', _link(wi.edited_link,'Open edited')+(wi.edited_direct?' <span style="color:var(--muted,#8a7d5c)">(credited)</span>':''))+
+        _kv('QC status', esc({'':'—',pending:'QC pending',approved:'QC approved',changes:'Changes requested'}[wi.qc_status||'']||wi.qc_status||'—'))+
+        ((wi.revision_count||0)>0?_kv('Revisions', String(wi.revision_count)):'')+
+        (R.pm_editor?_kv('PM rating', _chStars(R.pm_editor)):'')+
+        (R.teacher_edit?_kv('Teacher rating', _chStars(R.teacher_edit)):'')+
       '</div>';
     }
+    if(tab==='upload'){
+      return '<div class="pd-kv">'+
+        _kv('Ready', (wi.lifecycle==='ready_for_youtube'||wi.youtube_url)?'<span style="color:#2e9e6b;font-weight:800">Yes</span>':'Not yet')+
+        _kv('Channel', esc(wi.channel||'—'))+
+        _kv('Upload date', esc(wi.upload_date||'Not set'))+
+        (wi.upload_remarks?_kv('Remarks', esc(wi.upload_remarks)):'')+
+        _kv('YouTube URL', _link(wi.youtube_url,'Open on YouTube'))+
+        (wi.published_at?_kv('Published', esc(wi.published_at)):'')+
+        (wi.reconciled?_kv('Note','<span class="pd-hot">Linked via reconciliation</span>'):'')+
+      '</div>';
+    }
+    if(tab==='timeline'){ return '<div id="pdc-tl"><div class="pd-empty">Loading timeline…</div></div>'; }
     return '';
+  }
+  function _chapFoot(portal,wi){
+    var A=wi.allowed_actions, cid=wi.id, tid=wi.parent_project_id, b=[];
+    var stop='event.stopPropagation();';
+    var add=function(cls,lbl,fn){ b.push('<button class="p-btn '+cls+'" onclick="'+stop+fn+'">'+lbl+'</button>'); };
+    if(A){
+      if(A.submit_link) add('p-btn-primary',''+ic('upload')+' Submit Video Link','prodChapSubmitLink('+cid+')');
+      else if(A.update_link) add('','Update Video Link','prodChapSubmitLink('+cid+')');
+      if(A.approve_creator) add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Approve','prodChapAct(\''+portal+'\','+tid+','+cid+',\'approve\')');
+      if(A.request_changes) add('p-btn-danger','Request Changes','prodChapAct(\''+portal+'\','+tid+','+cid+',\'changes\')');
+      if(A.reshoot) add('','Reshoot','prodChapReshoot('+cid+')');
+      if(A.assign_editor) add('p-btn-primary',(wi.editor?'Reassign Editor':'Assign Editor'),'prodChapAssign(\''+portal+'\','+tid+','+cid+',\''+_esc1(wi.title)+'\')');
+      if(A.credit_edit) add('','Credit Existing Edit','prodChapCreditEdit('+cid+')');
+      if(A.thumbnail_review) add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Review Thumbnail','prodChapThumbReview('+cid+')');
+      if(A.assign_graphics && !A.thumbnail_review) add('',(wi.graphics?'Graphics · '+esc(wi.graphics):'Assign Graphics'),'prodChapAssign(\''+portal+'\','+tid+','+cid+',\''+_esc1(wi.title)+'\')');
+      if(A.upload_thumbnail) add('','Upload Thumbnail','prodChapThumbUpload('+cid+')');
+      if(A.credit_thumbnail) add('','Credit Thumbnail','prodChapCreditThumb('+cid+')');
+      if(A.qc_approve) add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Review Edit (QC)','prodChapQc(\''+portal+'\','+tid+','+cid+')');
+      if(A.rate_editor) add('',(wi.ratings&&wi.ratings.pm_editor?('Rated '+wi.ratings.pm_editor+'★'):'Rate Editor'),'prodChapRate('+cid+')');
+      if(A.schedule_upload) add('','Set Upload Date','prodChapSchedule('+cid+')');
+      if(A.post_youtube) add('p-btn-primary',''+ic('upload')+' Post YouTube URL','prodChapYoutube(\''+portal+'\','+tid+','+cid+',\''+_esc1(wi.title)+'\')');
+      if(A.link_existing_youtube) add('','Link Existing YouTube','prodChapLinkYT('+cid+')');
+    } else {
+      // fallback: legacy state-machine buttons from the cached chapter
+      var legacy=_chapActBtns(portal, wi._legacy||wi, tid, 'panel'); if(legacy) return '<div class="p-acts">'+legacy+'</div>';
+    }
+    // always-available
+    if(wi.source_video) b.push('<button class="p-btn" onclick="'+stop+'window.open(\''+_esc1(wi.source_video)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Open Video</button>');
+    b.push('<button class="p-btn" onclick="'+stop+'_pjChatOpen(\''+_chapPrefix(portal)+'\','+cid+',\''+_esc1(wi.title)+'\',\''+((portal==='admin')?'admin':'production_manager')+'\')">💬 Chat</button>');
+    b.push('<button class="p-btn" onclick="'+stop+'prodChapTab(\'timeline\')">Timeline</button>');
+    return b.length?('<div class="p-acts">'+b.join('')+'</div>'):'';
+  }
+  function _chapDrawerCss(){
+    if(document.getElementById('chd-css')) return;
+    var s=document.createElement('style'); s.id='chd-css'; s.textContent=[
+      '.chd-pill{border:none;color:#fff;font-size:.66rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:4px 11px;border-radius:999px;cursor:pointer}',
+      '.chd-pill:hover{filter:brightness(1.06)}',
+      '.chd-sec-h{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted,#8a7d5c);margin:14px 0 8px}',
+      '.chd-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:6px}',
+      '.chd-opt{border:2px solid var(--border,#ece2cd);border-radius:12px;overflow:hidden;cursor:pointer;transition:.14s;background:var(--card,#fff)}',
+      '.chd-opt.on{border-color:#2e9e6b;box-shadow:0 0 0 3px rgba(46,158,107,.2)}',
+      '.chd-opt:hover{border-color:#c98a2e}',
+      '.chd-img{width:100%;aspect-ratio:16/9;background-size:cover;background-position:center;background-color:#17130c;cursor:zoom-in}',
+      '.chd-lb{font-size:.72rem;font-weight:700;padding:6px 8px;color:var(--text,#2a2313)}',
+      'body.dark .chd-lb{color:#eaf0fb}',
+      '.chd-stars{font-size:1.5rem;letter-spacing:3px;color:#e0a52e;cursor:pointer;user-select:none}'
+    ].join('\n');
+    document.head.appendChild(s);
   }
   function _chapLoadTimeline(portal,cid){
     var box=document.getElementById('pdc-tl'); if(!box) return;
@@ -33998,8 +34347,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var url=(portal==='admin')?'/api/admin/video-tasks/chapter-review':(P.production.api+'/chapter-review');
     api(url,'POST',{chapter_id:cid,action:action,note:note}).then(function(){
       toast(action==='approve'?'Video approved':'Sent back for changes');
-      try{ prodCloseChapter(); }catch(e){}
-      _chapRefresh(portal, taskId);
+      if(document.getElementById('prod-chap-drawer') && (window._pjChapOpen||{}).cid==cid){ _chapAfter(); }
+      else { try{ prodCloseChapter(); }catch(e){} _chapRefresh(portal, taskId); }
     }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodChapAssign=function(portal,taskId,cid,title){
@@ -34018,10 +34367,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // ---- PM/Admin QC on an editor's edited project video (premium modal) ----
   window.prodChapQc=function(portal,taskId,cid){
     var c=(window._pjChapCache||{})[cid]||{};
+    // when opened via the work-item drawer the card cache may be empty -> fall back to the wi
+    var wi=(window._pjChapOpen&&window._pjChapOpen.cid==cid)?(window._pjChapOpen.wi||{}):{};
+    var ers=c.edit_review_status||wi.teacher_review_status||'';
+    var ern=c.edit_review_note||wi.teacher_review_note||'';
+    var err=c.edit_review_rating||((wi.ratings||{}).teacher_edit)||0;
+    if(!c.edited_link && wi.edited_link) c={edited_link:wi.edited_link, title:c.title||wi.title};
     ensureCSS();
     var tv=''; // teacher verdict line
-    if(c.edit_review_status==='approved') tv='<div class="pqc-tv ok">'+ic('check')+' Teacher approved the edit'+(c.edit_review_rating?(' \u00b7 '+c.edit_review_rating+'\u2605'):'')+(c.edit_review_note?(' \u2014 \u201c'+esc(c.edit_review_note)+'\u201d'):'')+'</div>';
-    else if(c.edit_review_status==='changes') tv='<div class="pqc-tv no">'+ic('alert')+' Teacher wants changes'+(c.edit_review_note?(' \u2014 \u201c'+esc(c.edit_review_note)+'\u201d'):'')+'</div>';
+    if(ers==='approved') tv='<div class="pqc-tv ok">'+ic('check')+' Teacher approved the edit'+(err?(' \u00b7 '+err+'\u2605'):'')+(ern?(' \u2014 \u201c'+esc(ern)+'\u201d'):'')+'</div>';
+    else if(ers==='changes') tv='<div class="pqc-tv no">'+ic('alert')+' Teacher wants changes'+(ern?(' \u2014 \u201c'+esc(ern)+'\u201d'):'')+'</div>';
     else tv='<div class="pqc-tv">'+ic('clock')+' Teacher review pending</div>';
     _prodQcCss();
     var old=document.getElementById('prod-modal'); if(old) old.remove();
@@ -34040,9 +34395,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var note=((document.getElementById('pqc-note')||{}).value||'').trim();
     if(action==='changes' && !note){ toast('Please add a short note about the changes',true); return; }
     api(P.production.api+'/chapter-qc','POST',{chapter_id:cid,action:action,note:note}).then(function(){
-      try{ prodDismiss(); }catch(e){} try{ prodCloseChapter(); }catch(e){}
+      try{ prodDismiss(); }catch(e){}
       toast(action==='approve'?'QC approved':'Sent back to editor for changes');
-      _chapRefresh(portal, taskId);
+      if(document.getElementById('prod-chap-drawer') && (window._pjChapOpen||{}).cid==cid){ _chapAfter(); }
+      else { try{ prodCloseChapter(); }catch(e){} _chapRefresh(portal, taskId); }
     }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   // PM/Admin posts the YouTube URL for a QC-approved chapter -> uploaded/completed
@@ -34062,8 +34418,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(!url){ toast('Paste the YouTube URL',true); return; }
     var b=document.getElementById('pcy-sub'); if(b){ b.disabled=true; b.style.opacity='.6'; }
     api(P.production.api+'/chapter-youtube','POST',{chapter_id:cid,youtube_url:url}).then(function(){
-      try{ prodDismiss(); }catch(e){} try{ prodCloseChapter(); }catch(e){}
-      toast('Published to YouTube ✓'); _chapRefresh(portal, taskId);
+      try{ prodDismiss(); }catch(e){}
+      toast('Published to YouTube ✓');
+      if(document.getElementById('prod-chap-drawer') && (window._pjChapOpen||{}).cid==cid){ _chapAfter(); }
+      else { try{ prodCloseChapter(); }catch(e){} _chapRefresh(portal, taskId); }
     }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
   function _prodQcCss(){
@@ -34077,6 +34435,150 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       +'.pqc-tv.ok{background:rgba(46,158,107,.14);color:#1f7a44}.pqc-tv.no{background:rgba(209,68,58,.12);color:#b91c1c}';
     document.head.appendChild(s);
   }
+
+  // ===== NEW chapter action modals (parity with normal task) =====
+  function _chModal(title, sub, bodyHtml, footHtml, max){
+    ensureCSS(); _chapDrawerCss();
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; dr.style.zIndex='1400';
+    dr.innerHTML='<div class="p-modal" style="max-width:'+(max||480)+'px"><div class="pd-head"><div><div class="h-title">'+esc(title)+'</div>'+(sub?'<div style="font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:2px">'+esc(sub)+'</div>':'')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+bodyHtml+'</div>'+
+      '<div class="pd-foot"><div class="p-acts">'+footHtml+'</div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  }
+  function _chStarPicker(id, init){
+    window._chRate=window._chRate||{}; window._chRate[id]=init||0;
+    var sp='<div class="chd-stars" id="'+id+'">'+[1,2,3,4,5].map(function(n){ return '<span data-n="'+n+'" onclick="_chStarSet(\''+id+'\','+n+')" style="color:'+((init||0)>=n?'#e0a52e':'#d8cdb2')+'">\u2605</span>'; }).join('')+'</div>';
+    return sp;
+  }
+  window._chStarSet=function(id,n){ window._chRate=window._chRate||{}; window._chRate[id]=n; var box=document.getElementById(id); if(box){ box.querySelectorAll('span').forEach(function(s){ s.style.color=(parseInt(s.getAttribute('data-n'),10)<=n)?'#e0a52e':'#d8cdb2'; }); } };
+  function _chCid(){ return (window._pjChapOpen||{}).cid; }
+  function _chWi(){ return (window._pjChapOpen||{}).wi||{}; }
+  window.prodChapSubmitLink=function(cid){
+    var wi=_chWi();
+    _chModal('Submit Video Link', wi.title||'Chapter',
+      '<div class="p-field"><label>Teacher\'s source video link</label><input class="p-input" id="pcsl-url" placeholder="https://drive.google.com/..." value="'+_esc1(wi.source_video||'')+'"></div>'+
+      '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">You are submitting on behalf of the teacher \u2014 the timeline records it as submitted by you.</div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapSubmitLinkDo('+cid+')">Submit</button>');
+  };
+  window.prodChapSubmitLinkDo=function(cid){
+    var url=((document.getElementById('pcsl-url')||{}).value||'').trim(); if(!url){ toast('Paste the video link',true); return; }
+    api(P.production.api+'/chapter-submit-link','POST',{chapter_id:cid,link:url}).then(function(){ prodDismiss(); toast('Submitted \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapReshoot=function(cid){
+    _chModal('Request Reshoot', _chWi().title||'Chapter',
+      '<div class="p-field"><label>Reason (teacher will see this)</label><textarea class="p-area" id="pcrs-note" placeholder="e.g. Audio unclear, please re-record"></textarea></div>'+
+      '<div class="p-field"><label>New deadline (optional)</label><input class="p-input" id="pcrs-dl" type="datetime-local"></div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-danger" onclick="prodChapReshootDo('+cid+')">Request Reshoot</button>');
+  };
+  window.prodChapReshootDo=function(cid){
+    var note=((document.getElementById('pcrs-note')||{}).value||'').trim();
+    var dl=((document.getElementById('pcrs-dl')||{}).value||'').trim();
+    api(P.production.api+'/chapter-reshoot','POST',{chapter_id:cid,reason:note,deadline:dl}).then(function(){ prodDismiss(); toast('Reshoot requested'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapThumbReview=function(cid){
+    var wi=_chWi(); var cands=(wi.thumb_candidates||[]);
+    window._chSelThumb=cands[0]||'';
+    _chModal('Review Thumbnail', wi.title||'Chapter',
+      (cands.length?('<div class="chd-sec-h">Pick the final thumbnail</div><div id="pctr-gal">'+_chGal(cands,{label:'Option',sel:window._chSelThumb,pick:'_chPickThumb'})+'</div>'):'<div class="p-opt">No candidate thumbnails submitted.</div>')+
+      '<div class="p-field" style="margin-top:12px"><label>Quality rating (required to approve)</label>'+_chStarPicker('pctr-rate',0)+'</div>'+
+      '<div class="p-field"><label>Note (for changes / optional)</label><textarea class="p-area" id="pctr-note" placeholder="What to improve, or a note on the final pick"></textarea></div>',
+      '<button class="p-btn p-btn-danger" onclick="prodChapThumbDecide('+cid+',\'changes\')">Request Changes</button>'+
+      '<button class="p-btn" onclick="prodChapThumbDecide('+cid+',\'reject\')">Reject</button>'+
+      '<button class="p-btn p-btn-ok" onclick="prodChapThumbDecide('+cid+',\'approve\')">'+ic('check')+' Approve Selected</button>', 560);
+  };
+  window._chPickThumb=function(u){ window._chSelThumb=u; var g=document.getElementById('pctr-gal'); if(g){ g.innerHTML=_chGal(_chWi().thumb_candidates||[],{label:'Option',sel:u,pick:'_chPickThumb'}); } };
+  window.prodChapThumbDecide=function(cid,action){
+    var body={chapter_id:cid,action:action};
+    var note=((document.getElementById('pctr-note')||{}).value||'').trim();
+    if(action==='approve'){ body.selected_thumbnail=window._chSelThumb||''; body.quality_rating=(window._chRate||{})['pctr-rate']||0; body.quality_note=note;
+      if(!body.selected_thumbnail){ toast('Pick a thumbnail',true); return; }
+      if(!body.quality_rating){ toast('Give a 1-5 rating to approve',true); return; } }
+    else { if(!note){ toast('Add a short note',true); return; } body.note=note; }
+    api(P.production.api+'/chapter-thumbnail-review','POST',body).then(function(){ prodDismiss(); toast(action==='approve'?'Thumbnail approved \u2713':'Sent back to designer'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapThumbUpload=function(cid){
+    _chModal('Upload Thumbnail Directly', _chWi().title||'Chapter',
+      '<div class="p-field"><label>Thumbnail image URL (or paste a link)</label><input class="p-input" id="pctu-url" placeholder="https://..."></div>'+
+      '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">This becomes the final approved thumbnail \u2014 no graphics review needed.</div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapThumbUploadDo('+cid+')">Set as Final</button>');
+  };
+  window.prodChapThumbUploadDo=function(cid){
+    var url=((document.getElementById('pctu-url')||{}).value||'').trim(); if(!url){ toast('Paste the thumbnail URL',true); return; }
+    api(P.production.api+'/chapter-thumbnail-upload','POST',{chapter_id:cid,thumbnail:url}).then(function(){ prodDismiss(); toast('Thumbnail set \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  function _chStaffOpts(list, role){ return (list||[]).map(function(s){ return '<option value="'+s.id+'">'+esc(s.name)+'</option>'; }).join(''); }
+  window.prodChapCreditThumb=function(cid){
+    api(P.production.api+'/people?role=').then(function(p){
+      _chModal('Credit Existing Thumbnail', _chWi().title||'Chapter',
+        '<div class="p-field"><label>Graphics designer to credit</label><select class="p-select" id="pcct-g"><option value="">\u2014 choose \u2014</option>'+_chStaffOpts(p.graphics||[])+'</select></div>'+
+        '<div class="p-field"><label>Thumbnail image URL</label><input class="p-input" id="pcct-url" placeholder="https://..."></div>'+
+        '<div class="p-field"><label>Quality rating</label>'+_chStarPicker('pcct-rate',0)+'</div>'+
+        '<div class="p-field"><label>Quality note (optional)</label><input class="p-input" id="pcct-note"></div>',
+        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapCreditThumbDo('+cid+')">Credit Thumbnail</button>');
+    }).catch(function(e){ toast((e&&e.message)||'Could not load designers',true); });
+  };
+  window.prodChapCreditThumbDo=function(cid){
+    var gid=(document.getElementById('pcct-g')||{}).value||''; var url=((document.getElementById('pcct-url')||{}).value||'').trim();
+    if(!gid){ toast('Choose a designer',true); return; } if(!url){ toast('Paste the thumbnail URL',true); return; }
+    api(P.production.api+'/chapter-credit-thumbnail','POST',{chapter_id:cid,graphics_id:parseInt(gid,10),thumbnail:url,quality_rating:(window._chRate||{})['pcct-rate']||0,quality_note:((document.getElementById('pcct-note')||{}).value||'')}).then(function(){ prodDismiss(); toast('Credited \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapCreditEdit=function(cid){
+    api(P.production.api+'/people?role=').then(function(p){
+      _chModal('Credit Existing Edit', _chWi().title||'Chapter',
+        '<div class="p-field"><label>Editor to credit</label><select class="p-select" id="pcce-e"><option value="">\u2014 choose \u2014</option>'+_chStaffOpts(p.editors||[])+'</select></div>'+
+        '<div class="p-field"><label>Edited video link</label><input class="p-input" id="pcce-url" placeholder="https://..."></div>'+
+        '<div class="p-field"><label>PM quality rating</label>'+_chStarPicker('pcce-rate',0)+'</div>'+
+        '<div class="p-field"><label>Quality note (optional)</label><input class="p-input" id="pcce-note"></div>'+
+        '<div class="p-field"><label>Completion date (optional)</label><input class="p-input" id="pcce-date" type="datetime-local"></div>'+
+        '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">Skips Assign\u2192Start\u2192Submit\u2192QC. Chapter moves to Ready for YouTube.</div>',
+        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapCreditEditDo('+cid+')">Credit Edit</button>');
+    }).catch(function(e){ toast((e&&e.message)||'Could not load editors',true); });
+  };
+  window.prodChapCreditEditDo=function(cid){
+    var eid=(document.getElementById('pcce-e')||{}).value||''; var url=((document.getElementById('pcce-url')||{}).value||'').trim();
+    if(!eid){ toast('Choose an editor',true); return; } if(!url){ toast('Paste the edited link',true); return; }
+    api(P.production.api+'/chapter-credit-edit','POST',{chapter_id:cid,editor_id:parseInt(eid,10),edited_link:url,quality_rating:(window._chRate||{})['pcce-rate']||0,quality_note:((document.getElementById('pcce-note')||{}).value||''),completion_date:((document.getElementById('pcce-date')||{}).value||'')}).then(function(){ prodDismiss(); toast('Edit credited \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapLinkYT=function(cid){
+    api(P.production.api+'/people?role=').then(function(p){
+      _chModal('Link Existing YouTube Video', _chWi().title||'Chapter',
+        '<div class="p-field"><label>Published YouTube URL</label><input class="p-input" id="pcly-url" placeholder="https://www.youtube.com/watch?v=..."></div>'+
+        '<div class="p-field"><label>Credit editor (optional)</label><select class="p-select" id="pcly-e"><option value="">\u2014 none \u2014</option>'+_chStaffOpts(p.editors||[])+'</select></div>'+
+        '<div class="p-field"><label>Credit graphics (optional)</label><select class="p-select" id="pcly-g"><option value="">\u2014 none \u2014</option>'+_chStaffOpts(p.graphics||[])+'</select></div>'+
+        '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">Administrative reconciliation for a video that skipped the pipeline. No fake history is created.</div>',
+        '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapLinkYTDo('+cid+')">Link Video</button>');
+    }).catch(function(e){ toast((e&&e.message)||'Could not load staff',true); });
+  };
+  window.prodChapLinkYTDo=function(cid){
+    var url=((document.getElementById('pcly-url')||{}).value||'').trim(); if(!url){ toast('Paste the YouTube URL',true); return; }
+    var body={chapter_id:cid,youtube_url:url};
+    var e=(document.getElementById('pcly-e')||{}).value||''; var g=(document.getElementById('pcly-g')||{}).value||'';
+    if(e) body.editor_id=parseInt(e,10); if(g) body.graphics_id=parseInt(g,10);
+    api(P.production.api+'/chapter-link-youtube','POST',body).then(function(){ prodDismiss(); toast('Linked \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapRate=function(cid){
+    var wi=_chWi(); var cur=(wi.ratings&&wi.ratings.pm_editor)||0;
+    _chModal('Rate Editor (PM Quality)', wi.title||'Chapter',
+      '<div class="p-field"><label>Editor quality (1-5) \u2014 separate from the teacher\'s rating</label>'+_chStarPicker('pcr-rate',cur)+'</div>'+
+      '<div class="p-field"><label>Note (optional)</label><input class="p-input" id="pcr-note" value="'+_esc1(wi.quality_note||'')+'"></div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapRateDo('+cid+')">Save Rating</button>');
+  };
+  window.prodChapRateDo=function(cid){
+    api(P.production.api+'/chapter-rate','POST',{chapter_id:cid,quality_rating:(window._chRate||{})['pcr-rate']||0,quality_note:((document.getElementById('pcr-note')||{}).value||'')}).then(function(){ prodDismiss(); toast('Rating saved \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  window.prodChapSchedule=function(cid){
+    var wi=_chWi();
+    _chModal('Set Upload Date', wi.title||'Chapter',
+      '<div class="p-field"><label>Upload date &amp; time</label><input class="p-input" id="pcsch-dt" type="datetime-local"></div>'+
+      '<div class="p-field"><label>Remarks (optional)</label><input class="p-input" id="pcsch-rm" value="'+_esc1(wi.upload_remarks||'')+'"></div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapScheduleDo('+cid+')">Save</button>');
+  };
+  window.prodChapScheduleDo=function(cid){
+    var dt=((document.getElementById('pcsch-dt')||{}).value||'').trim(); if(!dt){ toast('Pick a date & time',true); return; }
+    api(P.production.api+'/chapter-upload-schedule','POST',{chapter_id:cid,upload_date:dt,upload_remarks:((document.getElementById('pcsch-rm')||{}).value||'')}).then(function(){ prodDismiss(); toast('Upload date set \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
 
   var THUMB_COLS=[['new','Assigned'],['in_progress','In Progress'],['submitted','Submitted \u00b7 Review'],['changes','Changes'],['approved','Done']];
   function renderThumbBoard(portal,body){
