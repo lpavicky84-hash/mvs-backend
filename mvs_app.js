@@ -21722,12 +21722,16 @@ function _solMedPick(id,mode){
   +`</div>`);
 }
 async function _solData(id,med){
+  const _hasAns=function(rr){ return rr&&(rr.results||[]).some(function(x){ return x.model_answer||x.correct_answer||x.explanation; }); };
   let r=window._lastResult;
+  if(r&&r.id===id&&!_hasAns(r)) r=null;   // cached result without answers -> refetch for solution
   if(!r||r.id!==id){
-    try{ r=await api('/api/student/exam/'+id+'/result'); }
-    catch(err){
-      // Jis student ne test attempt hi it yet uske liye result nahi hota -
-      // window khatam hone ke baad exam detail me hi solutions aa jate hain
+    r=null;
+    // graded result (per-question marks + answers) if it actually carries solutions
+    try{ const rr=await api('/api/student/exam/'+id+'/result'); if(_hasAns(rr)) r=rr; }catch(e){}
+    // otherwise build the solution from the exam detail — model answers are revealed by the
+    // backend once the student has submitted (un-scheduled test) or the window is over.
+    if(!r){
       const d=await api('/api/student/exam/'+id);
       const ex=d.exam||d;
       r={ id:id, title:ex.title, subject:ex.subject, test_type:ex.test_type,
@@ -21739,8 +21743,8 @@ async function _solData(id,med){
             correct_answer:q.correct_option!=null?q.correct_option:'',
             explanation:q.explanation||'', explanation_hi:q.explanation_hi||'', remark:''
           })) };
-      if(!r.results.length || !r.results.some(x=>x.model_answer||x.correct_answer||x.explanation)){
-        throw new Error('Solutions are not available yet. They open once the test window is over.');
+      if(!_hasAns(r)){
+        throw new Error('Solution unlocks after you submit the test (or after the test window ends).');
       }
     }
     window._lastResult=r; r.id=id;

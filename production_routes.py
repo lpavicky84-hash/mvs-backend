@@ -245,25 +245,35 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     if _vtf is not None:
         query = query.filter(_vtf)
     # Thumbnail state filter (independent of the lifecycle status filter): pending / assigned /
-    # review / changes / done. Lets the PM see which thumbnails still need a designer and act.
+    # review / changes / done. "Has a thumbnail" matches the card logic EXACTLY — a thumbnail can
+    # live in VideoTask.thumbnail_b64 (PM uploaded directly), VideoTask.thumbnail_link, OR an
+    # approved GraphicsTask.thumbnail_url. Pending = genuinely nothing yet.
     _tb = (thumb or "").strip().lower()
     if _tb:
         _THUMB_STAGE = ["approved", "editor_assigned", "editing", "editing_paused",
                         "editing_done", "qc_pending", "qc_changes", "ready_for_youtube"]
-        _assigned_sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.graphics_id != None)   # noqa: E711
+        # task HAS a usable thumbnail already (any source)
+        _has_b64  = and_(VideoTask.thumbnail_b64 != None, VideoTask.thumbnail_b64 != "")   # noqa: E711
+        _has_link = and_(VideoTask.thumbnail_link != None, VideoTask.thumbnail_link != "")  # noqa: E711
+        _gfx_done_sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "approved")
+        _has_thumb = or_(_has_b64, _has_link, VideoTask.id.in_(_gfx_done_sub))
+        # any graphics activity at all (assigned to a designer OR a row past 'new')
+        _gfx_any_sub = db.query(GraphicsTask.task_id).filter(
+            or_(GraphicsTask.graphics_id != None,                                          # noqa: E711
+                GraphicsTask.status.in_(["in_progress", "submitted", "changes", "approved"])))
         if _tb == "pending":
-            # needs a thumbnail, none assigned/made yet
+            # thumbnail-stage video, NO thumbnail yet, NO graphics assigned/started
             query = query.filter(
                 or_(VideoTask.lifecycle.in_(_THUMB_STAGE),
-                    and_(or_(VideoTask.lifecycle == None, VideoTask.lifecycle == ""),  # noqa: E711
+                    and_(or_(VideoTask.lifecycle == None, VideoTask.lifecycle == ""),      # noqa: E711
                          VideoTask.status == "approved")),
-                ~VideoTask.id.in_(_assigned_sub),
-                or_(VideoTask.thumbnail_link == None, VideoTask.thumbnail_link == ""))  # noqa: E711
+                ~_has_thumb,
+                ~VideoTask.id.in_(_gfx_any_sub))
         elif _tb == "assigned":
             _sub = db.query(GraphicsTask.task_id).filter(
-                GraphicsTask.graphics_id != None,                                       # noqa: E711
+                GraphicsTask.graphics_id != None,                                          # noqa: E711
                 GraphicsTask.status.in_(["new", "in_progress"]))
-            query = query.filter(VideoTask.id.in_(_sub))
+            query = query.filter(VideoTask.id.in_(_sub), ~_has_thumb)
         elif _tb == "review":
             _sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "submitted")
             query = query.filter(VideoTask.id.in_(_sub))
@@ -271,10 +281,7 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
             _sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "changes")
             query = query.filter(VideoTask.id.in_(_sub))
         elif _tb == "done":
-            _sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "approved")
-            query = query.filter(or_(VideoTask.id.in_(_sub),
-                                     and_(VideoTask.thumbnail_link != None,             # noqa: E711
-                                          VideoTask.thumbnail_link != "")))
+            query = query.filter(_has_thumb)
     if not status and _ct != "youtuber":
         # Default Tasks view me uploaded/completed nahi — wo alag "Uploaded Videos" section me hain.
         # LEKIN YouTuber Tasks section me poora pipeline dikhta hai (Published/uploaded bhi) taaki
