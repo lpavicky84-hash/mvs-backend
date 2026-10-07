@@ -32200,22 +32200,37 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   var _STG_EDIT=['editor_assigned','editing_soon','editing','editing_paused','editing_done','qc_changes'];
   var _STG_UP=['qc_approved','ready_for_youtube'];
   var _STG_NONE=['creator_submitted','pm_review','approved','qc_pending','uploaded','completed'];
+  // Effective lifecycle for LEGACY/admin tasks (lifecycle blank, state lives in `status`).
+  // Without this, a legacy "approved" task (lifecycle='') falls through to the teacher deadline
+  // and wrongly shows "Deadline Delayed" even though the teacher submitted on time and the PM
+  // approved it. Mirrors the backend's blank-lifecycle handling.
+  function _effLc(t){
+    var lc=t.lifecycle||''; if(lc) return lc;
+    var s=t.status||'';
+    if(s==='assigned'||s==='reshoot'||s==='rejected') return 'creator_working'; // teacher still shooting -> teacher deadline
+    if(s==='submitted') return 'pm_review';
+    if(s==='approved') return 'approved';           // done by teacher + PM -> NO countdown
+    if(s==='editing_soon') return 'editor_assigned';
+    if(s==='editing_done') return 'editing_done';
+    if(s==='uploaded') return 'uploaded';
+    return lc;
+  }
   function _stageDlIso(t){
-    var lc=t.lifecycle||'';
+    var lc=_effLc(t);
     if(_STG_NONE.indexOf(lc)>=0) return '';
     if(_STG_EDIT.indexOf(lc)>=0) return t.editor_deadline_iso||'';
     if(_STG_UP.indexOf(lc)>=0) return t.upload_date_iso||'';
     return t.deadline_iso||'';
   }
   function _stageDlNice(t){
-    var lc=t.lifecycle||'';
+    var lc=_effLc(t);
     if(_STG_NONE.indexOf(lc)>=0) return '';
     if(_STG_EDIT.indexOf(lc)>=0) return t.editor_deadline||'';
     if(_STG_UP.indexOf(lc)>=0) return t.upload_date||'';
     return t.deadline||'';
   }
   function _stageDlWho(t){
-    var lc=t.lifecycle||'';
+    var lc=_effLc(t);
     if(_STG_EDIT.indexOf(lc)>=0) return t.editor_name?('Editor '+t.editor_name):'Editor';
     if(_STG_UP.indexOf(lc)>=0) return 'Upload';
     return '';   // teacher/creator stage — koi name prefix nahi
@@ -32227,7 +32242,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   // Kis stage ka countdown chal raha hai + kiska kaam hai -> premium owner badge ke liye.
   function _stageOwnerInfo(portal,t){
-    var lc=t.lifecycle||'';
+    var lc=_effLc(t);
     if(portal==='editor' || _STG_EDIT.indexOf(lc)>=0)
       return {role:'editor',label:'Editor',name:(t.editor_name||''),icon:'edit',title:'Editor is on this — timer is the editor deadline'};
     if(_STG_UP.indexOf(lc)>=0)
@@ -32364,10 +32379,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='editor'){
       _dlIso=t.editor_deadline_iso||''; _dlNice=t.editor_deadline||''; _dlLblPref='Editor deadline: ';
     } else {
-      _dlIso=_stageDlIso(t); _dlNice=_stageDlNice(t); _dlLblPref=_stageDlLabel(t.lifecycle||'');
+      _dlIso=_stageDlIso(t); _dlNice=_stageDlNice(t); _dlLblPref=_stageDlLabel(_effLc(t));
     }
     var df=t.deadline_flag||{};
-    if(_dlIso){ var live=_dlHuman(_dlIso, t.lifecycle); if(live) df=live; }
+    if(_dlIso){ var live=_dlHuman(_dlIso, _effLc(t)); if(live) df=live; }
     else { df={kind:'none',label:'',body:''}; }   // is stage ka koi active deadline nahi -> koi delay nahi
     var _hasTimer=(df.kind&&df.kind!=='none'&&df.kind!=='done');
     // ===== PREMIUM DEADLINE COMPONENT (label + sub + big live time + View Details) =====
@@ -32387,7 +32402,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '</div>';
     }
     // Uploaded / Completed -> green "Completed" box (koi active countdown nahi).
-    else if(['uploaded','completed'].indexOf(t.lifecycle||'')>=0){
+    else if(['uploaded','completed'].indexOf(_effLc(t))>=0){
       _dlBox='<div class="pt-dlbox dn">'+
         '<div class="pdb-ic">'+ic('check')+'</div>'+
         '<div class="pdb-main"><div class="pdb-label">Completed</div>'+
@@ -32397,7 +32412,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     // Teacher submit kar chuka + ab review/next-stage me hai -> countdown ki jagah submission
     // ka result dikhao (green "Submitted on time" / red "Submitted delayed") — positive confirm.
-    else if(t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(t.lifecycle||'')>=0){
+    else if(t.on_time!=null && ['creator_submitted','pm_review','approved'].indexOf(_effLc(t))>=0){
       _dlBox='<div class="pt-dlbox '+(t.on_time?'dn':'ov')+'">'+
         '<div class="pdb-ic">'+ic(t.on_time?'check':'alert')+'</div>'+
         '<div class="pdb-main"><div class="pdb-label">'+(t.on_time?'Submitted On Time':'Submitted Delayed')+'</div>'+
@@ -32511,15 +32526,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var _thumbStage=(lc==='approved'||lc==='editor_assigned'||lc==='editing'||lc==='editing_paused'||lc==='editing_done'||lc==='qc_pending'||lc==='qc_changes'||lc==='ready_for_youtube');
     if(_hasThumb){
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();ytGfxManage('+t.id+')">Credit Thumbnail'+(g.graphics_name?' \u00b7 '+esc(g.graphics_name):'')+'</button>';
-    } else if(_thumbStage){
+    } else if(_thumbStage && !t.is_short){
+      // Short videos: no blinking "Assign Graphics" on the card (shorts rarely need a custom
+      // thumbnail). The PM can still assign from inside View Details if needed.
       acts+='<button class="ptc-btn'+(g.graphics_name?'':' ptc-ok')+'" onclick="event.stopPropagation();ytGfxManage('+t.id+')">'+(g.graphics_name?'Graphics \u00b7 '+esc(g.graphics_name):'Assign Graphics')+'</button>';
     }
     if(lc==='qc_pending') acts+='<button class="ptc-btn ptc-ok" onclick="event.stopPropagation();pmQcReview('+t.id+')">Review &amp; Approve</button>';
     if(g.status==='submitted') acts+='<button class="ptc-btn ptc-btn-review" onclick="event.stopPropagation();pmThumbReview('+t.id+')"><span class="rev-dot"></span>Review Thumbnail</button>';
     if(g.graphics_id && ['submitted','changes','in_progress'].indexOf(g.status)>=0) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodGfxChat('+t.id+')">Chat with Graphics</button>';
     if(lc==='ready_for_youtube') acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardForm(\'post-yt\','+t.id+')">Post YT Link</button>';
-    // Upload schedule: ready_for_youtube ya uploaded pe PM tentative upload date + remarks set kare (editable)
-    if(lc==='ready_for_youtube'||lc==='uploaded') acts+='<button class="ptc-btn'+(t.upload_date?'':' ptc-ok')+'" onclick="event.stopPropagation();prodUploadSchedule('+t.id+')">'+ic('calendar')+' '+(t.upload_date?'Edit Upload Date':'Set Upload Date')+'</button>';
+    // Upload schedule: SIRF ready_for_youtube pe PM tentative upload date set kare. Uploaded ho
+    // jaane par upload date = actual publish date (automatic) — isliye button nahi dikhana.
+    if(lc==='ready_for_youtube') acts+='<button class="ptc-btn'+(t.upload_date?'':' ptc-ok')+'" onclick="event.stopPropagation();prodUploadSchedule('+t.id+')">'+ic('calendar')+' '+(t.upload_date?'Edit Upload Date':'Set Upload Date')+'</button>';
     var _refv=(t.reference_video||'').trim()||((/^https?:\/\//i.test((t.reference||'').trim()))?(t.reference||'').trim():'');
     if(_refv) acts+='<button class="ptc-btn ptc-refv-blink" onclick="event.stopPropagation();window.open(\''+esc(_refv)+'\',\'_blank\')"><span class="rev-dot"></span>Reference Video</button>';
     if(t.youtube_url||t.submitted_link||t.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+esc(t.youtube_url||t.submitted_link||t.edited_link)+'\',\'_blank\')">Open Video</button>';
@@ -32583,6 +32601,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(f.channel) p.push('channel='+encodeURIComponent(f.channel));
       if(f.video_type_id) p.push('video_type_id='+encodeURIComponent(f.video_type_id));
       else if(f.video_type) p.push('video_type='+encodeURIComponent(f.video_type));
+      if(f.thumb) p.push('thumb='+encodeURIComponent(f.thumb));
       if(f.deadline) p.push('deadline='+encodeURIComponent(f.deadline));
       if(f.priority) p.push('priority='+encodeURIComponent(f.priority));
       if(f.q) p.push('q='+encodeURIComponent(f.q));
@@ -32608,12 +32627,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var fd=window._prodFD||{};
       var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
       var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+      var thumbs=[['','All Thumbnails'],['pending','Thumbnail Pending'],['assigned','Thumbnail Assigned'],['review','Thumbnail Review'],['changes','Thumbnail Changes'],['done','Thumbnail Done']];
       var html='<div class="p-filter p-filter-prod">'+
         '<div class="pf-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="prod-search" placeholder="Search tasks \u2014 title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)"></div>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel_id\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+ch.id+'"'+((f.channel_id||'')==String(ch.id)?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type_id\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+ty.id+'"'+((f.video_type_id||'')==String(ty.id)?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
         ((f._locked&&f.status)?'':'<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>')+
+        '<select class="p-select pf-sel pf-thumb" onchange="prodSetFilter(\'production\',\'thumb\',this.value)">'+thumbs.map(function(o){ return '<option value="'+o[0]+'"'+((f.thumb||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
         ((typeof window.premDateFilter==='function')?window.premDateFilter('prod'):'')+
         '<button class="p-btn pf-clear" onclick="prodClearFilters()">Clear</button>'+
         '<button class="p-mfilter" onclick="prodFilterDrawer()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filters</button>'+
@@ -32690,6 +32711,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var deadlines=[['','Any deadline'],['overdue','Delayed'],['today','Due Today'],['week','This Week'],['none','No deadline']];
     var priorities=[['','Any priority'],['urgent','Urgent'],['normal','Normal']];
     var creators=[['','All creators'],['teacher','Teacher'],['youtuber','YouTuber']];
+    var thumbs=[['','All Thumbnails'],['pending','Thumbnail Pending'],['assigned','Thumbnail Assigned'],['review','Thumbnail Review'],['changes','Thumbnail Changes'],['done','Thumbnail Done']];
     var old=document.getElementById('prod-fdrawer'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='pfd-wrap'; dr.id='prod-fdrawer';
     dr.innerHTML='<div class="pfd"><div class="pfd-grip"></div><div class="pfd-h"><span class="t">Filters</span><button class="pd-x" onclick="prodCloseDrawer()">&times;</button></div>'+
@@ -32697,6 +32719,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       sel('channel_id','Channel','<option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+ch.id+'"'+((f.channel_id||'')==String(ch.id)?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join(''))+
       sel('video_type_id','Type','<option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+ty.id+'"'+((f.video_type_id||'')==String(ty.id)?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join(''))+
       sel('status','Status',statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
+      sel('thumb','Thumbnail',thumbs.map(function(o){ return '<option value="'+o[0]+'"'+((f.thumb||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
       sel('deadline','Deadline',deadlines.map(function(o){ return '<option value="'+o[0]+'"'+((f.deadline||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
       sel('priority','Priority',priorities.map(function(o){ return '<option value="'+o[0]+'"'+((f.priority||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
       sel('creator_type','Creator',creators.map(function(o){ return '<option value="'+o[0]+'"'+((f.creator_type||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
@@ -32706,7 +32729,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     setTimeout(function(){ dr.classList.add('open'); },10);
   };
   window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-fdrawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
-  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','channel_id','video_type','video_type_id','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); f._page=1; try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to='';_ds.field=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
+  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','channel_id','video_type','video_type_id','thumb','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); f._page=1; try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to='';_ds.field=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results">'+_pSkelRows(5)+'</div>';
     return _prodLoadList(portal);
@@ -33216,6 +33239,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _prodChannelName(f){ var fd=window._prodFD||{}; if(f.channel_id){ var c=(fd.channels||[]).filter(function(x){return String(x.id)===String(f.channel_id);})[0]; return c?c.name:('#'+f.channel_id); } return f.channel||''; }
   function _prodTypeName(f){ var fd=window._prodFD||{}; if(f.video_type_id){ var v=(fd.types||[]).filter(function(x){return String(x.id)===String(f.video_type_id);})[0]; return v?v.name:('#'+f.video_type_id); } return f.video_type||''; }
   var _DL_LABEL={overdue:'Delayed',today:'Due Today',week:'This Week',none:'No deadline'};
+  var _TH_LABEL={pending:'Pending',assigned:'Assigned',review:'In Review',changes:'Changes',done:'Done'};
   function _activeChips(portal){
     var f=_flt(portal); var chips=[];
     if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
@@ -33223,6 +33247,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'&&f.teacher_id) chips.push(['Teacher: '+_prodTeacherName(f.teacher_id),'teacher_id']);
     if(portal==='production'&&(f.channel_id||f.channel)) chips.push(['Channel: '+_prodChannelName(f),'channel']);
     if(portal==='production'&&(f.video_type_id||f.video_type)) chips.push(['Type: '+_prodTypeName(f),'video_type']);
+    if(portal==='production'&&f.thumb) chips.push(['Thumbnail: '+(_TH_LABEL[f.thumb]||f.thumb),'thumb']);
     if(f.deadline) chips.push(['Deadline: '+(_DL_LABEL[f.deadline]||f.deadline),'deadline']);
     if(portal==='production'&&f.priority) chips.push(['Priority: '+(f.priority==='urgent'?'Urgent':f.priority),'priority']);
     if(portal==='production'&&f.q) chips.push(['Search: "'+f.q+'"','q']);
@@ -33513,7 +33538,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; }
     f._page=1;
     // the filter bar's own selects must reflect the cleared state
-    try{ var body=document.getElementById(portal+'-body'); if(body && (k==='teacher_id'||k==='channel'||k==='video_type'||k==='status'||k==='date')){ var pf=body.querySelector('.p-filter'); if(pf){ var w=document.createElement('div'); w.innerHTML=_filterBar(portal); pf.parentNode.replaceChild(w.firstChild,pf); } } }catch(e){}
+    try{ var body=document.getElementById(portal+'-body'); if(body && (k==='teacher_id'||k==='channel'||k==='video_type'||k==='status'||k==='thumb'||k==='date')){ var pf=body.querySelector('.p-filter'); if(pf){ var w=document.createElement('div'); w.innerHTML=_filterBar(portal); pf.parentNode.replaceChild(w.firstChild,pf); } } }catch(e){}
     _prodLoadList(portal);
   };
   // ONE reset — clears every production filter including the (separate) date-range state.

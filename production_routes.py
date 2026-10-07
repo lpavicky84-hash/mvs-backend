@@ -185,7 +185,7 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              deadline: str = "", teacher_id: int = 0, channel: str = "",
              channel_id: int = 0, video_type: str = "", video_type_id: int = 0,
              date_field: str = "", date_range: str = "", date_from: str = "",
-             date_to: str = "", page: int = 1, size: int = 40,
+             date_to: str = "", thumb: str = "", page: int = 1, size: int = 40,
              db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     # READ-ONLY: this endpoint NEVER writes. Legacy admin->lifecycle healing runs once at
     # startup (production_core.repair_legacy_production_state), not here.
@@ -244,6 +244,37 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     _vtf = pc.video_type_filter(db, video_type_id=video_type_id, video_type=video_type)
     if _vtf is not None:
         query = query.filter(_vtf)
+    # Thumbnail state filter (independent of the lifecycle status filter): pending / assigned /
+    # review / changes / done. Lets the PM see which thumbnails still need a designer and act.
+    _tb = (thumb or "").strip().lower()
+    if _tb:
+        _THUMB_STAGE = ["approved", "editor_assigned", "editing", "editing_paused",
+                        "editing_done", "qc_pending", "qc_changes", "ready_for_youtube"]
+        _assigned_sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.graphics_id != None)   # noqa: E711
+        if _tb == "pending":
+            # needs a thumbnail, none assigned/made yet
+            query = query.filter(
+                or_(VideoTask.lifecycle.in_(_THUMB_STAGE),
+                    and_(or_(VideoTask.lifecycle == None, VideoTask.lifecycle == ""),  # noqa: E711
+                         VideoTask.status == "approved")),
+                ~VideoTask.id.in_(_assigned_sub),
+                or_(VideoTask.thumbnail_link == None, VideoTask.thumbnail_link == ""))  # noqa: E711
+        elif _tb == "assigned":
+            _sub = db.query(GraphicsTask.task_id).filter(
+                GraphicsTask.graphics_id != None,                                       # noqa: E711
+                GraphicsTask.status.in_(["new", "in_progress"]))
+            query = query.filter(VideoTask.id.in_(_sub))
+        elif _tb == "review":
+            _sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "submitted")
+            query = query.filter(VideoTask.id.in_(_sub))
+        elif _tb == "changes":
+            _sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "changes")
+            query = query.filter(VideoTask.id.in_(_sub))
+        elif _tb == "done":
+            _sub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "approved")
+            query = query.filter(or_(VideoTask.id.in_(_sub),
+                                     and_(VideoTask.thumbnail_link != None,             # noqa: E711
+                                          VideoTask.thumbnail_link != "")))
     if not status and _ct != "youtuber":
         # Default Tasks view me uploaded/completed nahi — wo alag "Uploaded Videos" section me hain.
         # LEKIN YouTuber Tasks section me poora pipeline dikhta hai (Published/uploaded bhi) taaki
@@ -722,6 +753,9 @@ def _apply_upload_done(db, t, payload, me):
         return True
     # ---- genuine publish (naya link ya pehli baar) ----
     t.published_at = datetime.utcnow()
+    # Uploaded video ka "upload date" = actual publish date (IST-local), automatic. PM ko ab
+    # manually set karne ki zaroorat nahi — jo publish hua wahi upload date.
+    t.upload_date = t.published_at + timedelta(hours=5, minutes=30)
     pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added", force=True)
     pc.log_event(db, t, me, "uploaded", new_state="uploaded")
     # notify editor + (youtuber) creator that it's live
@@ -1534,6 +1568,8 @@ def add_youtube(tid: int, payload: dict = Body(...),
     t.youtube_url = url
     t.yt_video_id = vid
     t.published_at = datetime.utcnow()
+    # upload date = actual publish date (IST-local), set automatically on publish.
+    t.upload_date = t.published_at + timedelta(hours=5, minutes=30)
     pc.set_state(db, t, "uploaded", actor=me, event="youtube_link_added")
     pc.log_event(db, t, me, "uploaded", new_state="uploaded")
     # notify the editor + (if applicable) the youtuber creator that their video is live

@@ -957,6 +957,16 @@ def repair_legacy_production_state():
                 _or(VideoTask.creator_type == None,                      # noqa: E711
                     VideoTask.creator_type != "youtuber")).all():
             s.creator_type = "youtuber"; changed = True
+        # Backfill: uploaded videos ka upload_date = publish date (IST-local), agar set nahi hai.
+        _IST = timedelta(hours=5, minutes=30)
+        for s in db.query(VideoTask).filter(
+                VideoTask.lifecycle.in_(["uploaded", "completed"]),
+                VideoTask.published_at.isnot(None),
+                _or(VideoTask.upload_date == None, VideoTask.upload_date == "")).all():  # noqa: E711
+            try:
+                s.upload_date = s.published_at + _IST; changed = True
+            except Exception:
+                pass
         if changed:
             db.commit()
     except Exception:
@@ -1108,6 +1118,20 @@ def thumb_map_for(db, ids):
     return out
 
 
+def _task_is_short(t):
+    """True for short-form videos (Short / Reel), using the canonical format helper so the UI
+    can de-emphasise thumbnail actions for shorts. Tolerant if the perf module is unavailable."""
+    try:
+        from performance_core import get_video_format, format_category, CAT_SHORT
+        fmt = get_video_format(getattr(t, "video_type", "") or "",
+                               getattr(t, "kind", "") or "",
+                               getattr(t, "content_format", "") or "")
+        return format_category(fmt) == CAT_SHORT
+    except Exception:
+        _v = (getattr(t, "video_type", "") or "").lower()
+        return ("short" in _v) or ("reel" in _v)
+
+
 def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_count=None, thumb_map=None):
     """Production-facing task serializer (no heavy base64 blobs)."""
     if g is None:
@@ -1122,6 +1146,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "creator_badge": ("%s \u00b7 %s" % (cname, ctype)) if cname else ctype,
         "subject": t.subject or "",
         "video_type": t.video_type or "",
+        "is_short": _task_is_short(t),
         "channel_name": t.channel_name or "",
         "series_name": (getattr(t, "series_name", "") or ""),
         "streaming": t.streaming or "",
