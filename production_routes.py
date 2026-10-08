@@ -284,12 +284,9 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
             query = query.filter(VideoTask.id.in_(_sub))
         elif _tb == "done":
             query = query.filter(_has_thumb)
-    if not status and _ct != "youtuber":
-        # Default Tasks view me uploaded/completed nahi — wo alag "Uploaded Videos" section me hain.
-        # LEKIN YouTuber Tasks section me poora pipeline dikhta hai (Published/uploaded bhi) taaki
-        # "Published" count aur uploaded videos wahin dikhein.
-        query = query.filter(or_(VideoTask.lifecycle == None, ~VideoTask.lifecycle.in_(["uploaded", "completed"])),
-                             or_(VideoTask.status == None, ~VideoTask.status.in_(["uploaded", "completed"])))
+    # "All Status" now means ALL — including uploaded/completed (the count bar + total make the
+    # full pipeline navigable). Earlier this view hid uploaded/completed, so selecting a teacher
+    # on All Status dropped their published videos; that exclusion is removed.
     if status == "thumb_changes":
         # Thumbnail Changes section — jin thumbnails ko PM ne changes ke liye wapas bheja.
         _csub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "changes")
@@ -301,12 +298,8 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         _tsub = db.query(GraphicsTask.task_id).filter(GraphicsTask.status == "submitted")
         query = query.filter(VideoTask.id.in_(_tsub))
         status = ""
-    if status:
-        # Canonical status↔lifecycle mapping (matches BOTH new lifecycle and legacy admin
-        # status). Single source of truth: production_core.stage_filter.
-        _sf = pc.stage_filter(status)
-        if _sf is not None:
-            query = query.filter(_sf)
+    # NOTE: the selected status is applied AFTER every other (non-status) filter below, so the
+    # per-status count bar can be computed from the same fully-filtered base.
     if creator_type:
         if creator_type == "youtuber":
             # Bulletproof: creator_type ya youtuber_id — dono me se koi bhi youtuber ho to YouTuber
@@ -360,6 +353,27 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     # / Weekly / Monthly / Custom). IST-correct per column storage. Independent of deadline-state.
     for _dc in pc.date_range_clauses(date_field, date_range, date_from, date_to):
         query = query.filter(_dc)
+    # ---- PER-STATUS COUNTS for the premium count bar (computed from ALL non-status filters) ----
+    # One cheap COUNT per status key on the shared base query; the grand total is every card that
+    # matches the current teacher/channel/type/thumb/date/search selection across all statuses.
+    _ckeys = ["pm_review", "approved", "editor_assigned", "editing", "qc_pending",
+              "ready_for_youtube", "uploaded", "changes_required"]
+    _counts = {}
+    for _k in _ckeys:
+        _cf = pc.stage_filter(_k)
+        try:
+            _counts[_k] = (query.filter(_cf).count() if _cf is not None else 0)
+        except Exception:
+            _counts[_k] = 0
+    try:
+        _counts_total = query.count()
+    except Exception:
+        _counts_total = 0
+    # now narrow to the selected status for the actual page
+    if status:
+        _sf = pc.stage_filter(status)
+        if _sf is not None:
+            query = query.filter(_sf)
     total = query.count()
     # base64 thumbnail column ka CONTENT list me load MAT karo (RAM + speed) — thumbnail
     # ka URL alag se thumb_map se aata hai.
@@ -402,7 +416,8 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
         pass
     _has_more = (page * size) < total
     return {"total": total, "page": page, "size": size, "page_size": size,
-            "has_more": _has_more, "returned": len(_outs), "tasks": _outs}
+            "has_more": _has_more, "returned": len(_outs), "tasks": _outs,
+            "counts": _counts, "counts_total": _counts_total}
 
 
 @router.get("/tasks/{tid}/comments")
@@ -5919,7 +5934,28 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
                         pc.notify(db, gp.user_id, "Thumbnail task assigned",
                                   f'You have been assigned the thumbnail for "{t.title}".', "graphics_task", link=str(t.id))
         else:
+            # gid == 0 -> thumbnail NOT needed. Earlier this only cleared t.graphics_id, leaving the
+            # GraphicsTask row behind -> the video kept showing in the designer's portal & thumbnail
+            # board. Now we fully UNASSIGN: drop the sub-task so it disappears everywhere for the
+            # designer, and notify them. (Only runs on an explicit graphics_id=0 from the editor.)
+            _prev_gid = getattr(t, "graphics_id", None)
             t.graphics_id = None
+            _g = db.query(GraphicsTask).filter(GraphicsTask.task_id == t.id).first()
+            _g_gid = (_g.graphics_id if _g else None) or _prev_gid
+            if _g is not None:
+                try:
+                    db.delete(_g)
+                except Exception:
+                    pass
+            try:
+                if _g_gid:
+                    _gp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == _g_gid).first()
+                    if _gp and _gp.user_id:
+                        pc.notify(db, _gp.user_id, "Thumbnail task removed",
+                                  f'The thumbnail for "{t.title}" is no longer needed — it has been removed from your list.',
+                                  "graphics_task", link=str(t.id))
+            except Exception:
+                pass
     if "editor_id" in payload:
         try:
             eid = int(payload.get("editor_id") or 0)

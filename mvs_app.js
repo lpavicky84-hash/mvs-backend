@@ -33818,6 +33818,45 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // if it is still the newest request for this portal (stale/overtaken responses are dropped).
   function _prodSeqNext(portal){ var s=(window._prodSeq=window._prodSeq||{}); s[portal]=(s[portal]||0)+1; return s[portal]; }
   function _prodSeqCur(portal){ return (window._prodSeq||{})[portal]||0; }
+  // premium per-status COUNT BAR (production Tasks): clickable chips with live counts + a big
+  // running total for whatever status/filter is selected. Driven by the backend `counts`.
+  var _PCB=[['pm_review','PM Review','#c99a2e'],['approved','Approved','#2e9e6b'],
+    ['editor_assigned','Editing Soon','#7c4fc0'],['editing','Editing','#2563eb'],
+    ['qc_pending','QC Pending','#2a7fb8'],['ready_for_youtube','Ready for YouTube','#e0a52e'],
+    ['uploaded','Uploaded','#2e9e6b'],['changes_required','Changes','#d1443a']];
+  function _pcbCss(){
+    if(document.getElementById('pcb-css')) return;
+    var s=document.createElement('style'); s.id='pcb-css'; s.textContent=[
+      '.pcb-wrap{display:flex;align-items:center;gap:14px;margin:2px 0 14px;flex-wrap:wrap}',
+      '.pcb-total{flex:0 0 auto;display:flex;align-items:baseline;gap:6px;font-size:1.5rem;font-weight:800;color:var(--text,#2a2313);line-height:1}',
+      '.pcb-total span{font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#8a7d5c)}',
+      'body.dark .pcb-total{color:#eaf0fb}',
+      '.pcb-chips{display:flex;gap:7px;flex-wrap:wrap;flex:1 1 auto}',
+      '.pcb-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border,#e6dcc4);background:var(--card,#fff);color:var(--text,#4a4330);border-radius:999px;padding:7px 12px;font-size:.8rem;font-weight:700;cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s,background .12s;-webkit-tap-highlight-color:transparent}',
+      'body.dark .pcb-chip{background:#152a45;border-color:#2c405e;color:#d6def0}',
+      '.pcb-chip:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(18,20,45,.1);border-color:var(--pc,#c98a2e)}',
+      '.pcb-chip .pcb-dot{width:8px;height:8px;border-radius:50%;background:var(--pc,#8a7d5c);flex:0 0 auto}',
+      '.pcb-chip .pcb-n{min-width:20px;text-align:center;font-weight:800;font-size:.76rem;color:#fff;background:var(--pc,#8a7d5c);border-radius:999px;padding:1px 7px}',
+      '.pcb-all .pcb-n{background:#6b7280}',
+      '.pcb-chip.pcb-zero{opacity:.45}',
+      '.pcb-chip.pcb-zero .pcb-n{background:var(--muted,#b4a985)}',
+      '.pcb-chip.on{background:var(--pc,#c98a2e);border-color:transparent;color:#fff;box-shadow:0 6px 16px -4px var(--pc,#c98a2e)}',
+      '.pcb-chip.on .pcb-dot{background:rgba(255,255,255,.9)}',
+      '.pcb-chip.on .pcb-n{background:rgba(255,255,255,.28)}',
+      '.pcb-all.on{background:#374151}',
+      '@media(max-width:640px){.pcb-wrap{gap:10px}.pcb-total{font-size:1.25rem}.pcb-chips{gap:6px}.pcb-chip{padding:6px 10px;font-size:.76rem}}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+  function _prodCountBar(counts, countsTotal, viewTotal, active){
+    _pcbCss(); counts=counts||{}; active=active||'';
+    var vt=(viewTotal!=null?viewTotal:countsTotal)||0;
+    var all='<button class="pcb-chip pcb-all'+(active===''?' on':'')+'" onclick="prodSetFilter(\'production\',\'status\',\'\')"><span class="pcb-lbl">All</span><span class="pcb-n">'+((countsTotal||0))+'</span></button>';
+    var chips=_PCB.map(function(s){ var n=counts[s[0]]||0; var on=(active===s[0]);
+      return '<button class="pcb-chip'+(on?' on':'')+((!n&&!on)?' pcb-zero':'')+'" style="--pc:'+s[2]+'" onclick="prodSetFilter(\'production\',\'status\',\''+s[0]+'\')"><span class="pcb-dot"></span><span class="pcb-lbl">'+s[1]+'</span><span class="pcb-n">'+n+'</span></button>';
+    }).join('');
+    return '<div class="pcb-wrap"><div class="pcb-total">'+vt+' <span>video'+(vt===1?'':'s')+'</span></div><div class="pcb-chips">'+all+chips+'</div></div>';
+  }
   function _prodLoadList(portal,silent){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
     var f=_flt(portal);
@@ -33847,7 +33886,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var pageCount=arr.length+extraCount;
         var total0=(backendTotal!=null)?backendTotal:pageCount;
         var foot=_prodListFooter(portal, pageCount, total0);
-        res.innerHTML=pageCount?('<div class="ptc-grid">'+taskCards+extraHtml+'</div>'+foot):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
+        // premium per-status count bar (production Tasks only)
+        var countBar=(portal==='production' && r && r.counts)?_prodCountBar(r.counts, r.counts_total, total0, f.status||''):'';
+        var grid=pageCount?('<div class="ptc-grid">'+taskCards+extraHtml+'</div>'+foot):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
+        res.innerHTML=countBar+grid;
         try{ _prodMarkOpenedCard(); }catch(e){}
         if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }
         if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
@@ -34054,6 +34096,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else if(k==='video_type_id'){ delete f.video_type; }
     else if(k==='video_type'){ delete f.video_type_id; }
     f._page=1;   // any filter change resets to page 1
+    // keep the filter-bar status dropdown in sync when status changed via a count-bar chip
+    if(k==='status' && portal==='production'){
+      try{ var sel=document.querySelector('#production-body .p-filter .pf-sel[onchange*="status"]'); if(sel) sel.value=(v||''); }catch(e){}
+    }
     _prodLoadList(portal);
   };
   window.prodSearch=function(portal,v){ var f=_flt(portal); f.q=v; f._page=1; clearTimeout(window._prodSearchT); window._prodSearchT=setTimeout(function(){ _prodLoadList(portal); },300); };
@@ -34657,6 +34703,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.prodChapThumbReview=function(cid){
     var wi=_chWi(); var cands=(wi.thumb_candidates||[]);
     window._chSelThumb=cands[0]||'';
+    window._chThumbVer=wi.thumb_submission_version;   // snapshot the submission version being reviewed
     _chModal('Review Thumbnail', wi.title||'Chapter',
       (cands.length?('<div class="chd-sec-h">Pick the final thumbnail</div><div id="pctr-gal">'+_chGal(cands,{label:'Option',sel:window._chSelThumb,pick:'_chPickThumb'})+'</div>'):'<div class="p-opt">No candidate thumbnails submitted.</div>')+
       '<div class="p-field" style="margin-top:12px"><label>Quality rating (required to approve)</label>'+_chStarPicker('pctr-rate',0)+'</div>'+
@@ -34670,6 +34717,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var body={chapter_id:cid,action:action};
     var note=((document.getElementById('pctr-note')||{}).value||'').trim();
     if(action==='approve'){ body.selected_thumbnail=window._chSelThumb||''; body.quality_rating=(window._chRate||{})['pctr-rate']||0; body.quality_note=note;
+      if(window._chThumbVer) body.expected_version=window._chThumbVer;   // reject if designer resubmitted meanwhile
       if(!body.selected_thumbnail){ toast('Pick a thumbnail',true); return; }
       if(!body.quality_rating){ toast('Give a 1-5 rating to approve',true); return; } }
     else { if(!note){ toast('Add a short note',true); return; } body.note=note; }
