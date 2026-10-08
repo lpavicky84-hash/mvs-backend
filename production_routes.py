@@ -1362,6 +1362,16 @@ def thumbnail_approve(tid: int, payload: dict = Body(default={}),
     g = pc.graphics_task(db, t)
     if not g or g.status != "submitted":
         raise HTTPException(400, "No submitted thumbnail to approve")
+    # VALIDATE first (rating + mandatory remark) — never half-mutate the row then reject.
+    try:
+        _rt0 = int(payload.get("quality_rating") or 0)
+    except Exception:
+        _rt0 = 0
+    if not (1 <= _rt0 <= 5):
+        raise HTTPException(400, "A 1–5 star rating is required to approve the thumbnail")
+    _gnote0 = (payload.get("quality_note") or payload.get("remarks") or payload.get("note") or "").strip()
+    if not _gnote0:
+        raise HTTPException(400, "Please write a short remark explaining this rating (the designer will see it).")
     g.status = "approved"
     g.approved_at = datetime.utcnow()
     # PM may pick ONE of several submitted thumbnails as the final — that becomes the approved one
@@ -1377,8 +1387,28 @@ def thumbnail_approve(tid: int, payload: dict = Body(default={}),
         rt = 0
     if not (1 <= rt <= 5):
         raise HTTPException(400, "A 1\u20135 star rating is required to approve the thumbnail")
+    _gnote = (payload.get("quality_note") or payload.get("remarks") or payload.get("note") or "").strip()
+    if not _gnote:
+        raise HTTPException(400, "Please write a short remark explaining this rating (the designer will see it).")
     g.quality_rating = rt
-    g.quality_note = (payload.get("quality_note") or payload.get("remarks") or g.quality_note or "")[:400]
+    g.quality_note = _gnote[:400]
+    # per-dimension sub-ratings (concept/design/text/colors/brief)
+    try:
+        import json as _jgd
+        _GD = ["concept", "design", "text", "colors", "brief"]
+        _src = payload.get("dimensions") or payload.get("dims") or payload.get("quality_dims") or {}
+        _gd = {}
+        if isinstance(_src, dict):
+            for _k in _GD:
+                try:
+                    _v = int(_src.get(_k) or 0)
+                    if 1 <= _v <= 5:
+                        _gd[_k] = _v
+                except Exception:
+                    pass
+        g.quality_dims = _jgd.dumps(_gd) if _gd else ""
+    except Exception:
+        pass
     db.add(TaskReview(task_id=t.id, kind="thumbnail", reviewer_user_id=me.id,
                       decision="approved", remarks=g.quality_note or "",
                       revision_no=g.revision_count or 0))
@@ -4734,7 +4764,12 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "deadline": _dt(getattr(c, "deadline", None)),
         "ratings": {"pm_editor": getattr(c, "quality_rating", None),
                     "teacher_edit": getattr(c, "edit_review_rating", None),
-                    "pm_thumbnail": getattr(c, "thumb_quality", None)},
+                    "pm_thumbnail": getattr(c, "thumb_quality", None),
+                    "pm_editor_note": getattr(c, "quality_note", "") or "",
+                    "pm_editor_dims": pc._dims_out(getattr(c, "quality_dims", "")),
+                    "teacher_edit_note": getattr(c, "edit_review_note", "") or "",
+                    "pm_thumbnail_note": getattr(c, "thumb_quality_note", "") or "",
+                    "pm_thumbnail_dims": pc._dims_out(getattr(c, "thumb_quality_dims", ""))},
         "allowed_actions": chapter_allowed_actions(c, role),
         "updated_at": _dt(getattr(c, "changed_at", None)),
     }
@@ -4873,9 +4908,27 @@ def prod_chapter_thumbnail_review(payload: dict = Body(...), db: Session = Depen
             rating = 0
         if not (1 <= rating <= 5):
             raise HTTPException(400, "A 1-5 quality rating is required to approve a thumbnail")
+        _tn = (payload.get("quality_note") or payload.get("note") or "").strip()
+        if not _tn:
+            raise HTTPException(400, "Please write a short remark explaining this rating (the designer will see it).")
         c.thumbnail_link = final
         c.thumb_quality = rating
-        c.thumb_quality_note = (payload.get("quality_note") or "")[:400]
+        c.thumb_quality_note = _tn[:400]
+        # per-dimension sub-ratings for the thumbnail
+        try:
+            _tsrc = payload.get("dimensions") or payload.get("dims") or payload.get("quality_dims") or {}
+            _td = {}
+            if isinstance(_tsrc, dict):
+                for _k in ("concept", "design", "text", "colors", "brief"):
+                    try:
+                        _v = int(_tsrc.get(_k) or 0)
+                        if 1 <= _v <= 5:
+                            _td[_k] = _v
+                    except Exception:
+                        pass
+            c.thumb_quality_dims = json.dumps(_td) if _td else ""
+        except Exception:
+            pass
         c.thumb_approved_at = datetime.utcnow()
         c.gfx_state = "done"
         c.thumb_change_note = ""   # obligation satisfied — clear any pending change note
@@ -5090,14 +5143,27 @@ def prod_chapter_rate(payload: dict = Body(...), db: Session = Depends(get_db),
         rating = 0
     if rating and not (1 <= rating <= 5):
         raise HTTPException(400, "Rating must be 1-5")
+    _note = (payload.get("quality_note") or payload.get("note") or "").strip()
+    if rating and not _note:
+        raise HTTPException(400, "Please write a short remark explaining this rating (the editor will see it).")
     c.quality_rating = (rating or None)
-    if "quality_note" in payload:
-        c.quality_note = (payload.get("quality_note") or "")[:400]
-    dims = payload.get("quality_dims")
-    if isinstance(dims, dict):
-        c.quality_dims = json.dumps(dims)
     if rating:
-        _vt._chap_event(c, "editor_rated", "PM rated the edit %d★" % rating)
+        c.quality_note = _note[:400]
+    elif "quality_note" in payload:
+        c.quality_note = _note[:400]
+    dims = payload.get("quality_dims") or payload.get("dimensions") or payload.get("dims")
+    if isinstance(dims, dict):
+        _d = {}
+        for k, v in dims.items():
+            try:
+                v = int(v)
+                if 1 <= v <= 5:
+                    _d[str(k)] = v
+            except Exception:
+                pass
+        c.quality_dims = json.dumps(_d) if _d else ""
+    if rating:
+        _vt._chap_event(c, "editor_rated", "PM rated the edit %d★ — %s" % (rating, _note[:120]), actor=me)
     db.commit()
     return {"ok": True, "chapter_id": c.id, "quality_rating": c.quality_rating}
 
@@ -6204,8 +6270,12 @@ def pm_rate(tid: int, payload: dict = Body(...), db: Session = Depends(get_db),
         return {"ok": True, "quality_rating": None, "cleared": True}
     if rating < 1 or rating > 5:
         raise HTTPException(400, "Rating must be between 1 and 5.")
+    # REMARK IS MANDATORY — the editor must be able to see WHY they got this rating.
+    _note = (payload.get("note") or payload.get("remarks") or "").strip()
+    if not _note:
+        raise HTTPException(400, "Please write a short remark explaining this rating (the editor will see it).")
     t.quality_rating = rating
-    t.quality_note = (payload.get("note") or "").strip()[:400]
+    t.quality_note = _note[:400]
     # optional per-dimension sub-ratings (pacing, cuts, audio, graphics, captions, storytelling, technical)
     _DIMS = ["pacing", "cuts", "audio", "graphics", "captions", "storytelling", "technical"]
     dims = {}

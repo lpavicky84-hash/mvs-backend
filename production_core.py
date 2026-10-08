@@ -374,6 +374,26 @@ def _json_list(s, fallback=""):
     return [fallback] if fallback else []
 
 
+def _dims_out(s):
+    """Parse a JSON object of per-dimension sub-ratings -> {dim: int}. Safe on empty/garbage."""
+    import json as _j
+    try:
+        v = _j.loads(s) if s else {}
+        if isinstance(v, dict):
+            out = {}
+            for k, n in v.items():
+                try:
+                    n = int(n)
+                    if 1 <= n <= 5:
+                        out[str(k)] = n
+                except Exception:
+                    pass
+            return out
+    except Exception:
+        pass
+    return {}
+
+
 def creator_info(db, t):
     """(name, type_label) for the task's creator."""
     if (t.creator_type or "teacher") == "youtuber":
@@ -701,6 +721,8 @@ def _ensure_production_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN graphics_deadline DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN editor_assigned_at DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN graphics_assigned_at DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN thumb_quality_dims TEXT",
+        "ALTER TABLE graphics_tasks ADD COLUMN quality_dims TEXT",
     ]
     for _s in _stmts:
         try:
@@ -1186,6 +1208,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "deadline_req_status": (getattr(t, "deadline_req_status", "") or ""),
         "quality_rating": getattr(t, "quality_rating", None),
         "quality_note": (getattr(t, "quality_note", "") or ""),
+        "quality_dims": _dims_out(getattr(t, "quality_dims", "")),
         "lifecycle": t.lifecycle or "",
         "lifecycle_label": lc_label(t.lifecycle),
         "legacy_status": t.status or "",
@@ -1263,6 +1286,8 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
             "instructions": (g.instructions if g else ""),
             "remarks": (g.remarks if g else ""),
             "quality_rating": (g.quality_rating if g else None),
+            "quality_note": (getattr(g, "quality_note", "") if g else ""),
+            "quality_dims": (_dims_out(getattr(g, "quality_dims", "")) if g else {}),
             "drive_link": (getattr(g, "drive_link", "") if g else ""),
             "revision_count": (g.revision_count if g else 0),
         },

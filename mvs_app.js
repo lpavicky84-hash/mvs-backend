@@ -30108,7 +30108,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window._prodChatChooser=_prodChatChooser;
   window.pmThumbReview=function(id){
-    window._pmThumbImgs=[]; window._pmThumbId=id;
+    window._pmThumbImgs=[]; window._pmThumbId=id; window._pmDims={}; try{ _rateCss(); }catch(e){}
     api(P.production.api+'/tasks/'+id).then(function(t){
       var gx=t.graphics||{};
       var cands=(gx.thumbnail_candidates&&gx.thumbnail_candidates.length)?gx.thumbnail_candidates:((gx.thumbnail_url)?[gx.thumbnail_url]:[]);
@@ -30121,8 +30121,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-modal-body">'+
           gal+
           (gx.drive_link?('<div class="p-field"><a href="'+esc(gx.drive_link)+'" target="_blank" class="p-link">Open Drive link</a></div>'):'')+
-          '<div class="p-field"><label>Quality rating (on approve)</label><div class="gfx-stars" id="pm-stars">'+[1,2,3,4,5].map(function(n){ return '<span class="gfx-star" data-n="'+n+'" onclick="_pmSetStar('+n+')">\u2605</span>'; }).join('')+'</div></div>'+
-          '<div class="p-field"><label>Remarks <span style="color:var(--muted);font-weight:600">(for Approve note; for Changes you can discuss in chat)</span></label><textarea class="p-area" id="pm-th-remarks" placeholder="Optional note"></textarea></div>'+
+          '<div class="p-field"><label>Quality rating <span style="color:var(--muted);font-weight:600">(required to approve)</span></label><div class="gfx-stars" id="pm-stars">'+[1,2,3,4,5].map(function(n){ return '<span class="gfx-star" data-n="'+n+'" onclick="_pmSetStar('+n+')">\u2605</span>'; }).join('')+'</div></div>'+
+          '<div class="p-field"><label>Breakdown <span style="color:var(--muted);font-weight:600">(optional \u2014 helps the designer see where)</span></label>'+RATE_DIMS.graphics.map(function(k){ return '<div class="rc-dimrow"><span class="rc-l">'+esc(RATE_DIM_LABELS[k]||k)+'</span><span class="rc-stars" id="pmd-'+k+'">'+[1,2,3,4,5].map(function(i){ return '<span class="rc-st" data-v="'+i+'" onclick="_pmDimSet(\''+k+'\','+i+')">\u2605</span>'; }).join('')+'</span></div>'; }).join('')+'</div>'+
+          '<div class="p-field"><label>Remarks <span class="rc-req">* required on approve \u2014 the designer sees WHY</span></label><textarea class="p-area" id="pm-th-remarks" placeholder="What was good / what to improve"></textarea></div>'+
           '<div class="gfx-paste" id="pm-paste" tabindex="0"><div class="gfx-paste-i">Paste/upload screenshots (optional)</div><input type="file" id="pm-file" accept="image/*" multiple style="display:none"></div>'+
           '<div class="gfx-prev" id="pm-prev"></div>'+
         '</div>'+
@@ -30142,6 +30143,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   window.pmSelectThumb=function(el){ if(!el) return; var url=el.getAttribute('data-url')||''; window._pmSelThumb=url; var box=el.parentNode; if(box) box.querySelectorAll('.thumb-cell').forEach(function(c){ var on=(c===el); c.classList.toggle('sel', on); var b=c.querySelector('.thsel'); if(b) b.textContent=on?'\u2713 Selected':'Select as final'; }); };
   window._pmSetStar=function(n){ window._pmStar=n; var box=document.getElementById('pm-stars'); if(box) box.querySelectorAll('.gfx-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-n'),10)<=n); }); };
+  window._pmDimSet=function(k,v){ window._pmDims=window._pmDims||{}; window._pmDims[k]=v; var bx=document.getElementById('pmd-'+k); if(bx) bx.querySelectorAll('.rc-st').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-v'),10)<=v); }); };
   function _pmAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._pmThumbImgs.length<6){ window._pmThumbImgs.push(rd.result); var box=document.getElementById('pm-prev'); if(box) box.innerHTML=window._pmThumbImgs.map(function(s){ return '<div class="gfx-thumb" style="background-image:url('+s+')"></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window.pmThumbDecide=function(action){
     var _ta=document.getElementById('pm-th-remarks');
@@ -30151,7 +30153,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     function _needRem(){ if(_ta){ _ta.classList.add('p-area-req'); _ta.focus(); setTimeout(function(){ _ta.classList.remove('p-area-req'); },2500); } toast('Please add remarks \u2014 batao designer ko kya change karna hai',true); }
     if(action==='approve'){
       if(!(window._pmStar>=1)){ toast('Please rate the designer (tap 1\u20135 stars) before approving',true); var _sb=document.getElementById('pm-stars'); if(_sb){ _sb.classList.add('stars-req'); setTimeout(function(){ _sb.classList.remove('stars-req'); },1800); } return; }
-      ep='/thumbnail-approve'; body={quality_rating:window._pmStar,quality_note:rem,selected_thumbnail:(window._pmSelThumb||'')};
+      if(!rem){ _needRem(); return; }   // remark is MANDATORY on approve so the designer sees why
+      ep='/thumbnail-approve'; body={quality_rating:window._pmStar,quality_note:rem,selected_thumbnail:(window._pmSelThumb||''),dimensions:(window._pmDims||{})};
     }
     else if(action==='changes'){
       // Smooth: mark for a new thumbnail in the background, then open the PM<->Graphics chat with the
@@ -32543,12 +32546,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // graphics portal: only graphics rating. editor: editor + teacher. PM/admin/youtuber: all.
     try{
       try{ _reviewEnsureCss(); }catch(e){}
-      var _mkRate=function(k,n,note){ if(!n) return ''; n=Math.max(0,Math.min(5,n|0)); return '<span class="vt-rate"'+(note?(' title="'+esc(note)+'"'):'')+'><span class="vr-k">'+k+'</span><span class="vr-st">'+'★'.repeat(n)+'<span class="vr-off">'+'★'.repeat(5-n)+'</span></span></span>'; };
+      // CLICKABLE rating chip -> opens a premium breakdown (per-dimension stars + the rater's remark)
+      var _reg=function(roleKey,label,n,note,dims,who){ if(!n) return ''; n=Math.max(0,Math.min(5,n|0));
+        var key=(t.id||('x'+Math.floor(Math.random()*1e6)))+':'+roleKey;
+        window._RATEREG=window._RATEREG||{}; window._RATEREG[key]={role:roleKey,label:label,stars:n,note:(note||''),dims:(dims||{}),who:(who||''),title:(t.title||'')};
+        var hasInfo=((note&&note.trim())||(dims&&Object.keys(dims).length));
+        return '<button type="button" class="vt-rate vt-rate-btn" onclick="event.stopPropagation();_rateView(\''+key+'\')" title="Click to see why — breakdown &amp; remark"><span class="vr-k">'+esc(label)+'</span><span class="vr-st">'+'★'.repeat(n)+'<span class="vr-off">'+'★'.repeat(5-n)+'</span></span>'+(hasInfo?'<span class="vr-i">i</span>':'')+'</button>'; };
       var _er=t.quality_rating||0, _gr=(t.graphics&&t.graphics.quality_rating)||0, _tr=t.teacher_review_rating||0;
+      var _edims=t.quality_dims||{}, _gdims=(t.graphics&&t.graphics.quality_dims)||{};
       var _gnote=(t.graphics&&t.graphics.quality_note)||'', _rates=[];
-      if(portal==='graphics'){ if(_gr) _rates.push(_mkRate('Graphics',_gr,_gnote)); }
-      else if(portal==='editor'){ if(_er) _rates.push(_mkRate('Editor',_er,t.quality_note||'')); if(_tr) _rates.push(_mkRate('Teacher',_tr,t.teacher_review_note||'')); }
-      else { if(_er) _rates.push(_mkRate('Editor',_er,t.quality_note||'')); if(_gr) _rates.push(_mkRate('Graphics',_gr,_gnote)); if(_tr) _rates.push(_mkRate('Teacher',_tr,t.teacher_review_note||'')); }
+      if(portal==='graphics'){ if(_gr) _rates.push(_reg('graphics','Graphics',_gr,_gnote,_gdims,'Production Manager')); }
+      else if(portal==='editor'){ if(_er) _rates.push(_reg('editor','Editor',_er,t.quality_note||'',_edims,'Production Manager')); if(_tr) _rates.push(_reg('teacher','Teacher',_tr,t.teacher_review_note||'',{},'Teacher')); }
+      else { if(_er) _rates.push(_reg('editor','Editor',_er,t.quality_note||'',_edims,'Production Manager')); if(_gr) _rates.push(_reg('graphics','Graphics',_gr,_gnote,_gdims,'Production Manager')); if(_tr) _rates.push(_reg('teacher','Teacher',_tr,t.teacher_review_note||'',{},'Teacher')); }
       if(_rates.length) meta.push('<span class="vt-rates">'+_rates.join('')+'</span>');
       // editor also sees the teacher's written remark (motivation)
       if(portal==='editor' && _tr && (t.teacher_review_note||'')){ meta.push('<span class="pw-subby" title="Teacher\'s remark on your edit">'+ic('chat')+' Teacher: “'+esc(t.teacher_review_note)+'”</span>'); }
@@ -34405,10 +34414,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window._chapAfterAny=_chapAfterAny;
   function _link(u,lbl){ return u?('<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(lbl)+'</a>'):'<span style="color:var(--muted,#8a7d5c)">—</span>'; }
+  function _chapRate(wi, roleKey, label, stars, note, dims, who){ if(!stars) return ''; stars=Math.max(0,Math.min(5,stars|0));
+    var key='chap'+(wi.id)+':'+roleKey; window._RATEREG=window._RATEREG||{};
+    window._RATEREG[key]={role:(roleKey==='thumb'?'graphics':roleKey),label:label,stars:stars,note:(note||''),dims:(dims||{}),who:(who||''),title:(wi.title||'')};
+    return '<button type="button" class="vt-rate vt-rate-btn" onclick="event.stopPropagation();_rateView(\''+key+'\')" title="Click to see why"><span class="vr-k">'+esc(label)+'</span><span class="vr-st">'+'★'.repeat(stars)+'<span class="vr-off">'+'★'.repeat(5-stars)+'</span></span><span class="vr-i">i</span></button>'; }
   function _chapTabHtml(portal,wi,tab){
+    try{ _rateCss(); }catch(e){}
     var R=wi.ratings||{};
     if(tab==='overview'){
-      var rate=[]; if(R.pm_editor) rate.push('Editor (PM): '+_chStars(R.pm_editor)); if(R.teacher_edit) rate.push('Editor (Teacher): '+_chStars(R.teacher_edit)); if(R.pm_thumbnail) rate.push('Thumbnail: '+_chStars(R.pm_thumbnail));
+      var rate=[]; if(R.pm_editor) rate.push(_chapRate(wi,'editor','Editor (PM)',R.pm_editor,R.pm_editor_note,R.pm_editor_dims,'Production Manager')); if(R.teacher_edit) rate.push(_chapRate(wi,'teacher','Editor (Teacher)',R.teacher_edit,R.teacher_edit_note,{},'Teacher')); if(R.pm_thumbnail) rate.push(_chapRate(wi,'thumb','Thumbnail',R.pm_thumbnail,R.pm_thumbnail_note,R.pm_thumbnail_dims,'Production Manager'));
       return '<div class="pd-kv">'+
         _kv('Project', esc(wi.project_title||''))+
         _kv('Status', esc(wi.lifecycle_label||wi.lifecycle||''))+
@@ -34419,7 +34433,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Deadline', esc(wi.deadline||'Not set'))+
         _kv('Editor', esc(wi.editor||'Not assigned'))+
         _kv('Graphics', esc(wi.graphics||'Not assigned'))+
-        (rate.length?_kv('Ratings', rate.join(' · ')):'')+
+        (rate.length?_kv('Ratings', '<span class="vt-rates">'+rate.join('')+'</span>'):'')+
         _kv('Source', _link(wi.source_video,'Open video'))+
         _kv('Edited', _link(wi.edited_link,'Open edited'))+
         _kv('Thumbnail', _link(wi.thumbnail,'Open thumbnail'))+
@@ -34439,7 +34453,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(tab==='graphics'){
       var g='';
-      if(wi.thumbnail){ g+='<div class="chd-sec-h">Final thumbnail'+(wi.thumb_direct?' (uploaded/credited by PM)':'')+(R.pm_thumbnail?(' · '+_chStars(R.pm_thumbnail)):'')+'</div>'+_chGal([wi.thumbnail],{}); }
+      if(wi.thumbnail){ g+='<div class="chd-sec-h">Final thumbnail'+(wi.thumb_direct?' (uploaded/credited by PM)':'')+'</div>'+(R.pm_thumbnail?('<div style="margin:-2px 0 8px">'+_chapRate(wi,'thumb','Thumbnail',R.pm_thumbnail,R.pm_thumbnail_note,R.pm_thumbnail_dims,'Production Manager')+'</div>'):'')+_chGal([wi.thumbnail],{}); }
       if((wi.thumb_candidates||[]).length && !wi.thumbnail){ g+='<div class="chd-sec-h">Current submission — review & pick the final</div>'+_chGal(wi.thumb_candidates,{label:'Option'}); }
       if((wi.thumb_change_note||'') && (wi.graphics_state==='changes')){ g+='<div class="chd-chg">'+ic('alert')+' <b>Changes requested:</b> '+esc(wi.thumb_change_note)+'</div>'; }
       if((wi.thumb_refs||[]).length){ g+='<div class="chd-sec-h">Reference thumbnails (PM → designer)</div>'+_chGal(wi.thumb_refs,{label:'Ref'}); }
@@ -34468,8 +34482,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Edited link', _link(wi.edited_link,'Open edited')+(wi.edited_direct?' <span style="color:var(--muted,#8a7d5c)">(credited)</span>':''))+
         _kv('QC status', esc({'':'—',pending:'QC pending',approved:'QC approved',changes:'Changes requested'}[wi.qc_status||'']||wi.qc_status||'—'))+
         ((wi.revision_count||0)>0?_kv('Revisions', String(wi.revision_count)):'')+
-        (R.pm_editor?_kv('PM rating', _chStars(R.pm_editor)):'')+
-        (R.teacher_edit?_kv('Teacher rating', _chStars(R.teacher_edit)):'')+
+        (R.pm_editor?_kv('PM rating', _chapRate(wi,'editor','Editor (PM)',R.pm_editor,R.pm_editor_note,R.pm_editor_dims,'Production Manager')):'')+
+        (R.teacher_edit?_kv('Teacher rating', _chapRate(wi,'teacher','Editor (Teacher)',R.teacher_edit,R.teacher_edit_note,{},'Teacher')):'')+
       '</div>';
     }
     if(tab==='upload'){
@@ -34704,22 +34718,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var wi=_chWi(); var cands=(wi.thumb_candidates||[]);
     window._chSelThumb=cands[0]||'';
     window._chThumbVer=wi.thumb_submission_version;   // snapshot the submission version being reviewed
+    window._chThDims={}; try{ _rateCss(); }catch(e){}
     _chModal('Review Thumbnail', wi.title||'Chapter',
       (cands.length?('<div class="chd-sec-h">Pick the final thumbnail</div><div id="pctr-gal">'+_chGal(cands,{label:'Option',sel:window._chSelThumb,pick:'_chPickThumb'})+'</div>'):'<div class="p-opt">No candidate thumbnails submitted.</div>')+
-      '<div class="p-field" style="margin-top:12px"><label>Quality rating (required to approve)</label>'+_chStarPicker('pctr-rate',0)+'</div>'+
-      '<div class="p-field"><label>Note (for changes / optional)</label><textarea class="p-area" id="pctr-note" placeholder="What to improve, or a note on the final pick"></textarea></div>',
+      '<div class="p-field" style="margin-top:12px"><label>Quality rating <span style="color:var(--muted,#8a7d5c);font-weight:600">(required to approve)</span></label>'+_chStarPicker('pctr-rate',0)+'</div>'+
+      '<div class="p-field"><label>Breakdown <span style="color:var(--muted,#8a7d5c);font-weight:600">(optional)</span></label>'+RATE_DIMS.graphics.map(function(k){ return '<div class="rc-dimrow"><span class="rc-l">'+esc(RATE_DIM_LABELS[k]||k)+'</span><span class="rc-stars" id="pctrd-'+k+'">'+[1,2,3,4,5].map(function(i){ return '<span class="rc-st" data-v="'+i+'" onclick="_chThDimSet(\''+k+'\','+i+')">★</span>'; }).join('')+'</span></div>'; }).join('')+'</div>'+
+      '<div class="p-field"><label>Remark <span class="rc-req">* required on approve — the designer sees WHY</span></label><textarea class="p-area" id="pctr-note" placeholder="What was good / what to improve"></textarea></div>',
       '<button class="p-btn p-btn-danger" onclick="prodChapThumbDecide('+cid+',\'changes\')">Request Changes</button>'+
       '<button class="p-btn" onclick="prodChapThumbDecide('+cid+',\'reject\')">Reject</button>'+
       '<button class="p-btn p-btn-ok" onclick="prodChapThumbDecide('+cid+',\'approve\')">'+ic('check')+' Approve Selected</button>', 560);
   };
+  window._chThDimSet=function(k,v){ window._chThDims=window._chThDims||{}; window._chThDims[k]=v; var bx=document.getElementById('pctrd-'+k); if(bx) bx.querySelectorAll('.rc-st').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-v'),10)<=v); }); };
   window._chPickThumb=function(u){ window._chSelThumb=u; var g=document.getElementById('pctr-gal'); if(g){ g.innerHTML=_chGal(_chWi().thumb_candidates||[],{label:'Option',sel:u,pick:'_chPickThumb'}); } };
   window.prodChapThumbDecide=function(cid,action){
     var body={chapter_id:cid,action:action};
     var note=((document.getElementById('pctr-note')||{}).value||'').trim();
-    if(action==='approve'){ body.selected_thumbnail=window._chSelThumb||''; body.quality_rating=(window._chRate||{})['pctr-rate']||0; body.quality_note=note;
+    if(action==='approve'){ body.selected_thumbnail=window._chSelThumb||''; body.quality_rating=(window._chRate||{})['pctr-rate']||0; body.quality_note=note; body.dimensions=(window._chThDims||{});
       if(window._chThumbVer) body.expected_version=window._chThumbVer;   // reject if designer resubmitted meanwhile
       if(!body.selected_thumbnail){ toast('Pick a thumbnail',true); return; }
-      if(!body.quality_rating){ toast('Give a 1-5 rating to approve',true); return; } }
+      if(!body.quality_rating){ toast('Give a 1-5 rating to approve',true); return; }
+      if(!note){ toast('Write a short remark (required) so the designer knows why',true); return; } }
     else { if(!note){ toast('Add a short note',true); return; } body.note=note; }
     api(P.production.api+'/chapter-thumbnail-review','POST',body).then(function(){ prodDismiss(); toast(action==='approve'?'Thumbnail approved \u2713':'Sent back to designer'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
@@ -34821,14 +34839,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/chapter-link-youtube','POST',body).then(function(){ prodDismiss(); toast('Linked \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodChapRate=function(cid){
-    var wi=_chWi(); var cur=(wi.ratings&&wi.ratings.pm_editor)||0;
-    _chModal('Rate Editor (PM Quality)', wi.title||'Chapter',
-      '<div class="p-field"><label>Editor quality (1-5) \u2014 separate from the teacher\'s rating</label>'+_chStarPicker('pcr-rate',cur)+'</div>'+
-      '<div class="p-field"><label>Note (optional)</label><input class="p-input" id="pcr-note" value="'+_esc1(wi.quality_note||'')+'"></div>',
-      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapRateDo('+cid+')">Save Rating</button>');
-  };
-  window.prodChapRateDo=function(cid){
-    api(P.production.api+'/chapter-rate','POST',{chapter_id:cid,quality_rating:(window._chRate||{})['pcr-rate']||0,quality_note:((document.getElementById('pcr-note')||{}).value||'')}).then(function(){ prodDismiss(); toast('Rating saved \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    var wi=_chWi(); var R=wi.ratings||{};
+    _rateCapture({role:'editor',title:'Rate the Editor',allowRemove:!!R.pm_editor,
+      cur:{stars:R.pm_editor||0,note:R.pm_editor_note||'',dims:R.pm_editor_dims||{}},
+      onSubmit:function(stars,note,dims){ api(P.production.api+'/chapter-rate','POST',{chapter_id:cid,quality_rating:stars,quality_note:note,quality_dims:dims}).then(function(){ prodDismiss(); toast('Rating saved \u2713'); _chapAfter(); }).catch(function(e){ var bb=document.getElementById('rc-sub'); if(bb){bb.disabled=false;bb.style.opacity='1';} toast((e&&e.message)||'Failed',true); }); },
+      onRemove:function(){ api(P.production.api+'/chapter-rate','POST',{chapter_id:cid,quality_rating:0,quality_note:''}).then(function(){ prodDismiss(); toast('Rating removed'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }});
   };
   window.prodChapSchedule=function(cid){
     var wi=_chWi();
@@ -35970,20 +35985,103 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     },140);
   }
   function _stars(n){ n=Math.max(0,Math.min(5,parseInt(n||0,10))); var s=''; for(var i=1;i<=5;i++) s+='<span style="color:'+(i<=n?'#e0a52e':'#d9cba8')+'">\u2605</span>'; return s; }
-  window.prodRateForm=function(id,cur){
-    var old=document.getElementById('prod-modal'); if(old) old.remove();
-    window._prodRate=parseInt(cur||0,10)||0;
+  // ================= PREMIUM RATING SYSTEM (clickable breakdown + mandatory remark) =================
+  var RATE_DIM_LABELS={pacing:'Pacing & Flow',cuts:'Cutting',audio:'Audio / Sync',graphics:'Effects / Graphics',
+    captions:'Captions',storytelling:'Storytelling',technical:'Technical Quality',
+    concept:'Concept',design:'Design & Layout',text:'Text & Readability',colors:'Colours',brief:'Followed Brief'};
+  var RATE_DIMS={editor:['cuts','pacing','audio','graphics'],graphics:['concept','design','text','brief']};
+  function _rateCss(){ if(document.getElementById('rate-css2')) return; var s=document.createElement('style'); s.id='rate-css2'; s.textContent=[
+    '.vt-rate-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border,#e6dcc4);background:var(--card,#fff);border-radius:999px;padding:3px 9px 3px 10px;cursor:pointer;font:inherit;transition:border-color .14s,box-shadow .14s,transform .12s}',
+    'body.dark .vt-rate-btn{background:#152a45;border-color:#2c405e}',
+    '.vt-rate-btn:hover{border-color:#e0a52e;box-shadow:0 4px 12px rgba(224,165,46,.2);transform:translateY(-1px)}',
+    '.vt-rate-btn .vr-i{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#e0a52e;color:#fff;font-size:.6rem;font-weight:800;font-style:normal}',
+    '.rv-wrap{max-width:460px}',
+    '.rv-hero{display:flex;align-items:center;gap:14px;padding:16px 18px;background:linear-gradient(135deg,#2a2210,#4a3a16);color:#fff}',
+    '.rv-hero .rv-big{font-size:2.1rem;font-weight:800;line-height:1}',
+    '.rv-hero .rv-stars{font-size:1.15rem;letter-spacing:2px;color:#f5c04e}',
+    '.rv-hero .rv-off{opacity:.35}',
+    '.rv-hero .rv-sub{font-size:.74rem;opacity:.85;margin-top:3px;text-transform:uppercase;letter-spacing:.05em}',
+    '.rv-body{padding:16px 18px}',
+    '.rv-sec{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#8a7d5c);margin:2px 0 10px}',
+    '.rv-dim{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--border,#ece2cd)}',
+    '.rv-dim:last-child{border-bottom:none}',
+    '.rv-dim-l{font-size:.9rem;font-weight:600;color:var(--text,#2a2313)}',
+    'body.dark .rv-dim-l{color:#eaf0fb}',
+    '.rv-dim-s{font-size:1rem;letter-spacing:2px;color:#e0a52e;white-space:nowrap}',
+    '.rv-dim-s .rv-off{color:#d8cdb2}',
+    '.rv-dim.low .rv-dim-l{color:#c0322a;font-weight:800}',
+    '.rv-dim.low .rv-dim-s{color:#d1443a}',
+    '.rv-note{margin-top:14px;background:rgba(224,165,46,.1);border:1px solid rgba(224,165,46,.3);border-radius:12px;padding:12px 14px}',
+    '.rv-note-h{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#a9791f;margin-bottom:5px;display:flex;align-items:center;gap:6px}',
+    '.rv-note-t{font-size:.95rem;line-height:1.5;color:var(--text,#2a2313);white-space:pre-wrap}',
+    'body.dark .rv-note-t{color:#e7dcc3}',
+    '.rv-note.empty{background:rgba(138,125,92,.08);border-color:rgba(138,125,92,.2)}.rv-note.empty .rv-note-t{color:var(--muted,#8a7d5c);font-style:italic}',
+    /* capture */
+    '.rc-dimrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0}',
+    '.rc-dimrow .rc-l{font-size:.88rem;font-weight:600;color:var(--text,#2a2313)}',
+    'body.dark .rc-dimrow .rc-l{color:#eaf0fb}',
+    '.rc-stars{display:inline-flex;gap:3px;font-size:1.5rem;color:#d8cdb2;cursor:pointer;user-select:none}',
+    '.rc-stars .rc-st.on{color:#e0a52e}',
+    '.rc-overall .rc-stars{font-size:2rem}',
+    '.rc-req{color:#d1443a}'
+  ].join('\n'); document.head.appendChild(s); }
+  function _rateStarsHTML(n,cls){ n=Math.max(0,Math.min(5,n|0)); return '<span class="'+(cls||'')+'">'+'\u2605'.repeat(n)+'<span class="rv-off">'+'\u2605'.repeat(5-n)+'</span></span>'; }
+  // read-only breakdown viewer (what the editor/graphics clicks to see)
+  window._rateView=function(key){
+    var d=(window._RATEREG||{})[key]; if(!d){ toast('No rating details',true); return; }
+    _rateCss(); var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dims=d.dims||{}; var dkeys=Object.keys(dims);
+    var dimHtml=dkeys.length?('<div class="rv-sec">Breakdown \u2014 where the stars went</div>'+dkeys.map(function(k){ var n=dims[k]||0; var low=(n<=2||n<d.stars); return '<div class="rv-dim'+(low?' low':'')+'"><span class="rv-dim-l">'+esc(RATE_DIM_LABELS[k]||k)+'</span><span class="rv-dim-s">'+_rateStarsHTML(n)+'</span></div>'; }).join('')):'';
+    var note=(d.note||'').trim();
+    var noteHtml='<div class="rv-note'+(note?'':' empty')+'"><div class="rv-note-h">'+ic('chat')+' Why this rating'+(d.who?(' \u00b7 '+esc(d.who)):'')+'</div><div class="rv-note-t">'+(note?esc(note):'No remark was written for this rating.')+'</div></div>';
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    var starBtns=function(){ var h=''; for(var i=1;i<=5;i++){ h+='<span class="rate-star'+(i<=window._prodRate?' on':'')+'" data-v="'+i+'" onclick="prodRateSet('+i+')">\u2605</span>'; } return h; };
-    dr.innerHTML='<div class="p-modal" style="max-width:420px">'+
-      '<div class="pd-head"><div class="h-title">Rate this work</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body"><div style="text-align:center"><div class="rate-stars" id="rate-stars">'+starBtns()+'</div></div>'+
-      '<div class="p-field" style="margin-top:12px"><label>Note (optional)</label><textarea class="p-area" id="rate-note" placeholder="What was good / what to improve"></textarea></div></div>'+
-      '<div class="pd-foot"><div class="p-acts" id="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+(window._prodRate?'<button class="p-btn" style="color:#b91c1c" onclick="prodRateRemove('+id+')">Remove Rating</button>':'')+'<button class="p-btn p-btn-primary" onclick="prodRateSubmit('+id+')">Save Rating</button></div></div>'+
-      '</div>';
+    dr.innerHTML='<div class="p-modal rv-wrap">'+
+      '<div class="rv-hero"><div class="rv-big">'+d.stars+'<span style="font-size:1rem;opacity:.7">/5</span></div>'+
+        '<div><div class="rv-stars">'+_rateStarsHTML(d.stars)+'</div><div class="rv-sub">'+esc(d.label||'')+' rating'+(d.who?(' \u00b7 by '+esc(d.who)):'')+'</div></div>'+
+        '<button class="pd-x" style="margin-left:auto;background:rgba(255,255,255,.15);color:#fff" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="rv-body">'+dimHtml+noteHtml+'</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="prodDismiss()">Got it</button></div></div></div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
   };
+  // premium capture: overall + per-dimension stars + MANDATORY remark
+  // cfg = {role:'editor'|'graphics', title, cur:{stars,note,dims}, onSubmit(stars,note,dims), allowRemove, onRemove}
+  window._rateCapture=function(cfg){
+    _rateCss(); cfg=cfg||{}; var role=cfg.role||'editor'; var dims=RATE_DIMS[role]||RATE_DIMS.editor; var cur=cfg.cur||{};
+    window._rc={stars:(cur.stars||0),dims:{}}; (function(){ var cd=cur.dims||{}; dims.forEach(function(k){ if(cd[k]) window._rc.dims[k]=cd[k]; }); })();
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var overall='<div class="rc-overall" style="text-align:center;margin:4px 0 10px"><div class="rc-stars" id="rc-ov">'+[1,2,3,4,5].map(function(i){ return '<span class="rc-st'+(i<=window._rc.stars?' on':'')+'" data-v="'+i+'" onclick="_rcSet(\'__ov\','+i+')">\u2605</span>'; }).join('')+'</div><div style="font-size:.72rem;color:var(--muted,#8a7d5c);margin-top:4px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Overall</div></div>';
+    var dimRows=dims.map(function(k){ var n=window._rc.dims[k]||0; return '<div class="rc-dimrow"><span class="rc-l">'+esc(RATE_DIM_LABELS[k]||k)+'</span><span class="rc-stars" id="rc-'+k+'">'+[1,2,3,4,5].map(function(i){ return '<span class="rc-st'+(i<=n?' on':'')+'" data-v="'+i+'" onclick="_rcSet(\''+k+'\','+i+')">\u2605</span>'; }).join('')+'</span></div>'; }).join('');
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">'+esc(cfg.title||'Rate the work')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+overall+
+        '<div class="rv-sec">Detailed breakdown</div>'+dimRows+
+        '<div class="p-field" style="margin-top:12px"><label>Remark <span class="rc-req">* required \u2014 the '+(role==='graphics'?'designer':'editor')+' will see why</span></label><textarea class="p-area" id="rc-note" placeholder="'+(window._rc.stars>=4?'What was great about this work?':'What needs to improve? Be specific.')+'">'+esc(cur.note||'')+'</textarea></div>'+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button>'+(cfg.allowRemove?'<button class="p-btn" style="color:#b91c1c" onclick="_rcRemove()">Remove</button>':'')+'<button class="p-btn p-btn-primary" id="rc-sub" onclick="_rcSubmit()">Save Rating</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    window._rcCfg=cfg;
+  };
+  window._rcSet=function(k,v){ if(k==='__ov'){ window._rc.stars=v; var b=document.getElementById('rc-ov'); if(b) b.querySelectorAll('.rc-st').forEach(function(s){ s.classList.toggle('on',parseInt(s.getAttribute('data-v'),10)<=v); }); } else { window._rc.dims[k]=v; var bx=document.getElementById('rc-'+k); if(bx) bx.querySelectorAll('.rc-st').forEach(function(s){ s.classList.toggle('on',parseInt(s.getAttribute('data-v'),10)<=v); }); } };
+  window._rcRemove=function(){ var cfg=window._rcCfg||{}; if(cfg.onRemove) cfg.onRemove(); };
+  window._rcSubmit=function(){
+    var cfg=window._rcCfg||{}; var st=window._rc.stars||0;
+    if(!st){ toast('Pick an overall star rating',true); return; }
+    var note=((document.getElementById('rc-note')||{}).value||'').trim();
+    if(!note){ toast('Please write a short remark (required) \u2014 so they know why',true); try{ var n=document.getElementById('rc-note'); if(n){ n.focus(); n.style.borderColor='#d1443a'; } }catch(e){} return; }
+    var b=document.getElementById('rc-sub'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    try{ cfg.onSubmit(st, note, window._rc.dims||{}); }catch(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast('Failed',true); }
+  };
+  window.prodRateForm=function(id,cur){
+    var reg=(window._RATEREG||{})[id+':editor']||{};
+    _rateCapture({role:'editor',title:'Rate the Editor',allowRemove:!!(cur||reg.stars),
+      cur:{stars:parseInt(cur||reg.stars||0,10)||0,note:reg.note||'',dims:reg.dims||{}},
+      onSubmit:function(stars,note,dims){ api(P.production.api+'/tasks/'+id+'/rate','POST',{rating:stars,note:note,dimensions:dims}).then(function(){ prodDismiss(); toast('Rating saved'); _refresh('production'); }).catch(function(e){ var bb=document.getElementById('rc-sub'); if(bb){bb.disabled=false;bb.style.opacity='1';} toast((e&&e.message)||'Failed',true); }); },
+      onRemove:function(){ api(P.production.api+'/tasks/'+id+'/rate','POST',{rating:0}).then(function(){ prodDismiss(); toast('Rating removed'); _refresh('production'); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }});
+  };
+  // unify the post-QC rating prompt onto the same premium capture
+  window.pmRateModal=function(id){ window.prodRateForm(id,0); };
   window.prodRateSet=function(v){ window._prodRate=v; var box=document.getElementById('rate-stars'); if(box){ box.querySelectorAll('.rate-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-v'),10)<=v); }); } };
   window.prodRateRemove=function(id){
     _pBusy(true);

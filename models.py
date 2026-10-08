@@ -725,6 +725,7 @@ class VideoTaskChapter(Base):
     thumb_credited_by  = Column(String(160), default="")     # set when PM credits an existing/off-portal thumbnail
     thumb_direct       = Column(Boolean, default=False)      # thumbnail uploaded/credited directly by PM (no review loop)
     thumb_change_note  = Column(String(600), default="")     # latest PM "changes requested" note on the thumbnail (designer sees it immediately)
+    thumb_quality_dims = Column(Text, default="")            # JSON per-dimension sub-ratings for the chapter thumbnail
     # ---- SEPARATE department deadlines + assignment timestamps (editor vs graphics are independent) ----
     graphics_deadline  = Column(DateTime, nullable=True)     # graphics must finish the thumbnail by (SEPARATE from editor_deadline)
     editor_assigned_at   = Column(DateTime, nullable=True)   # when the editor was assigned (turnaround/perf; distinct from legacy assigned_at)
@@ -1747,7 +1748,8 @@ class GraphicsTask(Base):
     deadline       = Column(DateTime, nullable=True)          # graphics-specific deadline
     priority       = Column(String(12), default="normal")    # normal | urgent
     quality_rating = Column(Integer, nullable=True)          # PM thumbnail quality 1-5
-    quality_note   = Column(String(400), default="")
+    quality_note   = Column(String(400), default="")         # PM remark — WHY this rating (mandatory in UI)
+    quality_dims   = Column(Text, default="")                # JSON per-dimension sub-ratings (concept/design/text/colors/brief)
     revision_count = Column(Integer, default=0)
     started_at     = Column(DateTime, nullable=True)
     submitted_at   = Column(DateTime, nullable=True)
