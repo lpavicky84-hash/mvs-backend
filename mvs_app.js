@@ -12034,24 +12034,45 @@ window.tReviewChanges=function(id){
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
   try{ _reviewEnsureCss(); }catch(e){}
   const v=(window._trevMap||{})[id]||{};
+  window._trvChgImgs=[];
   const old=document.getElementById('prod-modal'); if(old) old.remove();
   const dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
   dr.innerHTML='<div class="p-modal" style="max-width:460px">'+
     '<div class="pd-head"><div class="h-title">Request Changes</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
     '<div class="p-modal-body">'+
       '<div class="p-field"><label>What should change?</label><textarea class="p-area" id="trv-chg-note" rows="4" placeholder="Describe the changes for the editor"></textarea></div>'+
+      '<div class="p-field"><label>Screenshots <span style="color:var(--text-muted,#8a7d5c);font-weight:600">(optional — mark exactly what to fix)</span></label>'+
+        '<div class="gfx-paste" id="trvchg-paste" tabindex="0"><div class="gfx-paste-i">Paste (Ctrl+V), drop, or click to add screenshots</div><input type="file" id="trvchg-file" accept="image/*" multiple style="display:none"></div>'+
+        '<div class="gfx-prev" id="trvchg-prev"></div></div>'+
+      '<div style="font-size:.74rem;color:var(--text-muted,#8a7d5c);background:rgba(209,68,58,.07);border:1px solid rgba(209,68,58,.2);border-radius:10px;padding:9px 11px;line-height:1.5">'+(typeof ic==='function'?ic('edit'):'')+' This moves the video to <b>Changes</b> and opens the chat. Plain chat messages do <b>not</b> request changes.</div>'+
     '</div>'+
     '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="tReviewOpen('+id+')">'+(window._BACKIC||'')+' Back</button>'+
       '<button class="p-btn p-btn-warn" onclick="tReviewChangesSubmit('+id+')">Send to editor</button></div></div>'+
     '</div>';
   dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
   document.body.appendChild(dr);
+  // wire the screenshot picker (click / file / paste / drop)
+  var pb=document.getElementById('trvchg-paste'), fi=document.getElementById('trvchg-file');
+  if(pb) pb.addEventListener('click',function(){ if(fi) fi.click(); });
+  if(fi) fi.addEventListener('change',function(e){ Array.prototype.forEach.call(e.target.files||[],_trvChgAddFile); });
+  if(pb){ pb.addEventListener('dragover',function(e){ e.preventDefault(); }); pb.addEventListener('drop',function(e){ e.preventDefault(); Array.prototype.forEach.call((e.dataTransfer&&e.dataTransfer.files)||[],_trvChgAddFile); }); }
+  if(window._trvChgPasteH) document.removeEventListener('paste',window._trvChgPasteH);
+  window._trvChgPasteH=function(e){ if(!document.getElementById('trvchg-paste')){ document.removeEventListener('paste',window._trvChgPasteH); window._trvChgPasteH=null; return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _trvChgAddFile(items[i].getAsFile()); e.preventDefault(); } } };
+  document.addEventListener('paste',window._trvChgPasteH);
   setTimeout(function(){ var t=document.getElementById('trv-chg-note'); if(t) t.focus(); },60);
 };
+function _trvChgAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._trvChgImgs=window._trvChgImgs||[]; if(window._trvChgImgs.length<6){ window._trvChgImgs.push(rd.result); _trvChgRenderPrev(); } }; rd.readAsDataURL(file); }
+function _trvChgRenderPrev(){ var box=document.getElementById('trvchg-prev'); if(!box) return; box.innerHTML=(window._trvChgImgs||[]).map(function(s,i){ return '<div class="gfx-thumb" style="background-image:url('+s+')"><button class="gfx-x" onclick="_trvChgDel('+i+')">&times;</button></div>'; }).join(''); }
+window._trvChgDel=function(i){ (window._trvChgImgs||[]).splice(i,1); _trvChgRenderPrev(); };
 window.tReviewChangesSubmit=function(id){
   const note=((document.getElementById('trv-chg-note')||{}).value||'').trim();
+  const imgs=(window._trvChgImgs||[]).slice();
+  if(!note && !imgs.length){ toast('Describe the change (or add a screenshot) before sending',true); var t=document.getElementById('trv-chg-note'); if(t) t.focus(); return; }
+  if(window._trvChgPasteH){ document.removeEventListener('paste',window._trvChgPasteH); window._trvChgPasteH=null; }
+  window._trvChgImgs=[];
   prodDismiss(); toast('Sending to editor…');
-  api('/api/teacher/tasks/'+id+'/review-changes','POST',{message:note}).then(function(){
+  var body={message:note}; if(imgs.length) body.images=imgs;
+  api('/api/teacher/tasks/'+id+'/review-changes','POST',body).then(function(){
     _apiBust(); try{ loadTReview(); }catch(e){}
     setTimeout(function(){ try{ tReviewChat(id); }catch(e){} },250);
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
@@ -32146,7 +32167,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(_stale(portal,'notifs')) return;
       var ns=r.notifications||[]; if(!ns.length){ body.innerHTML='<div class="p-empty">No notifications yet.</div>'; return; }
       var html='<div class="p-sec">Notifications</div><div class="pn-list">'+ns.map(function(n){
-        return '<div class="pn-item'+(n.is_read?'':' unread')+'"'+(n.task_id?(' onclick="prodOpenTask(\''+portal+'\','+n.task_id+')" style="cursor:pointer"'):'')+'>'+
+        // route by TYPE just like the bell: a chat/review notification opens the actual chat, a rating
+        // opens the task (where the rating now shows), everything else opens the task detail — so
+        // clicking a notification always lands on the real thing, not a blank details panel.
+        return '<div class="pn-item'+(n.is_read?'':' unread')+'"'+(n.task_id?(' onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+',\''+(n.type||'')+'\')" style="cursor:pointer"'):'')+'>'+
           '<div class="pn-title">'+esc(n.title||'')+'</div><div class="pn-msg">'+_msgHtml(n.message||'')+'</div><div class="pn-at">'+esc(n.at||'')+'</div></div>';
       }).join('')+'</div>';
       body.innerHTML=html;
@@ -32559,8 +32583,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       else if(portal==='editor'){ if(_er) _rates.push(_reg('editor','Editor',_er,t.quality_note||'',_edims,'Production Manager')); if(_tr) _rates.push(_reg('teacher','Teacher',_tr,t.teacher_review_note||'',{},'Teacher')); }
       else { if(_er) _rates.push(_reg('editor','Editor',_er,t.quality_note||'',_edims,'Production Manager')); if(_gr) _rates.push(_reg('graphics','Graphics',_gr,_gnote,_gdims,'Production Manager')); if(_tr) _rates.push(_reg('teacher','Teacher',_tr,t.teacher_review_note||'',{},'Teacher')); }
       if(_rates.length) meta.push('<span class="vt-rates">'+_rates.join('')+'</span>');
-      // editor also sees the teacher's written remark (motivation)
-      if(portal==='editor' && _tr && (t.teacher_review_note||'')){ meta.push('<span class="pw-subby" title="Teacher\'s remark on your edit">'+ic('chat')+' Teacher: “'+esc(t.teacher_review_note)+'”</span>'); }
+      // NOTE: the teacher's written remark is NO LONGER printed inline on the card — it now lives
+      // behind the clickable Teacher ★ chip (click -> premium breakdown + "why this rating"),
+      // so the card stays clean and the remark is one tap away.
     }catch(e){ if(t.quality_rating) meta.push('<span class="ptc-stars" title="'+esc(t.quality_note||'')+'">'+_stars(t.quality_rating)+'</span>'); }
     // Deadline date + Video ID — ek clean row, icons ke saath (reference #5)
     var _idParts=[];
@@ -32700,7 +32725,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   var SAVED={
     production:[['','All'],['pm_review','PM Review'],['editing','Editing'],['qc_pending','QC Queue'],['ready_for_youtube','Ready for YouTube'],['__overdue','Delayed']],
-    editor:[['','All Tasks'],['editor_assigned','Pending'],['editing','Editing In Progress'],['editing_paused','Editing Paused'],['qc_changes','Changes Required'],['editing_done','Editing Done'],['uploaded','Uploaded']],
+    editor:[['','All Tasks'],['editor_assigned','Pending'],['editing','Editing In Progress'],['editing_paused','Editing Paused'],['qc_changes','Changes Required'],['editing_done','Editing Done'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded']],
     youtuber:[['','All'],['creator_assigned','To Submit'],['pm_review','Submitted'],['uploaded','Published']],
     graphics:[['','All'],['new','New'],['in_progress','In Progress'],['changes','Changes']]
   };
@@ -32776,31 +32801,90 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(portal==='editor'){
       _edtEnsureCss();
-      var _eopts=(SAVED.editor||[]).map(function(v){ return '<option value="'+v[0]+'"'+((f.status||'')===v[0]?' selected':'')+'>'+esc(v[1])+'</option>'; }).join('');
+      var _cur=(f.status||'');
+      var _curRow=(SAVED.editor||[]).filter(function(v){ return v[0]===_cur; })[0]||['','All Tasks'];
+      var _curCol=_EDT_STCOL[_cur]||'#c98a2e';
+      var _opts=(SAVED.editor||[]).map(function(v){
+        var on=(_cur===v[0]); var col=_EDT_STCOL[v[0]]||'#c98a2e';
+        return '<button type="button" class="edt-dd-opt'+(on?' on':'')+'" role="option" onclick="edtFilterPick(\''+v[0]+'\')">'+
+          '<span class="edt-dd-dot" style="background:'+col+'"></span>'+
+          '<span class="edt-dd-opt-l">'+esc(v[1])+'</span>'+
+          '<svg class="edt-dd-ck" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></button>';
+      }).join('');
       return '<div class="p-filter p-filter-edt">'+
         '<div class="pf-search edt-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="edt-search" placeholder="Search your tasks — title, ref, subject..." value="'+esc(f.q||'')+'" oninput="edtSearch(this.value)"></div>'+
-        '<div class="edt-selwrap"><span class="edt-sellbl">Filter</span><select class="edt-statsel" onchange="prodView(\'editor\',this.value)">'+_eopts+'</select><svg class="edt-selcar" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></div>'+
+        '<div class="edt-dd" id="edt-dd">'+
+          '<button type="button" class="edt-dd-trig" id="edt-dd-trig" aria-haspopup="listbox" aria-expanded="false" onclick="edtFilterMenu(event)">'+
+            '<span class="edt-dd-cap">Filter</span>'+
+            '<span class="edt-dd-cur"><span class="edt-dd-dot" id="edt-dd-dot" style="background:'+_curCol+'"></span><span class="edt-dd-txt" id="edt-dd-txt">'+esc(_curRow[1])+'</span></span>'+
+            '<svg class="edt-dd-car" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>'+
+          '</button>'+
+          '<div class="edt-dd-panel" id="edt-dd-panel" role="listbox"><div class="edt-dd-ph">Filter tasks by stage</div>'+_opts+'</div>'+
+        '</div>'+
         '<button class="p-btn pf-clear edt-clear" onclick="edtClearFilters()">Clear</button>'+
       '</div>';
     }
     return '<div class="p-filter">'+_savedChips(portal)+'</div>';
   }
+  // status -> accent colour for the premium editor filter dropdown (matches the card status palette)
+  var _EDT_STCOL={'':'#c98a2e',editor_assigned:'#d97706',editing:'#7c4fc0',editing_paused:'#c99a2e',qc_changes:'#d1443a',editing_done:'#2563eb',ready_for_youtube:'#e0a52e',uploaded:'#2e9e6b'};
   function _edtEnsureCss(){
     if(document.getElementById('edt-filt-css')) return;
     var s=document.createElement('style'); s.id='edt-filt-css';
     s.textContent='.p-filter-edt{display:flex;flex-wrap:wrap;gap:10px;align-items:center}'+
       '.p-filter-edt .edt-search{flex:1 1 240px;min-width:180px}'+
-      '.edt-selwrap{position:relative;display:inline-flex;align-items:center;flex:0 0 auto}'+
-      '.edt-selwrap .edt-sellbl{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.64rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#998);pointer-events:none}'+
-      '.edt-statsel{appearance:none;-webkit-appearance:none;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#2a2313);font-weight:800;font-size:.9rem;border-radius:12px;padding:11px 40px 11px 62px;cursor:pointer;min-width:210px;box-shadow:0 1px 2px rgba(18,20,45,.04);transition:border-color .15s,box-shadow .15s}'+
-      '.edt-statsel:hover{border-color:#c98a2e}'+
-      '.edt-statsel:focus{outline:none;border-color:#c98a2e;box-shadow:0 0 0 3px rgba(201,138,46,.18)}'+
-      'body.dark .edt-statsel{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
-      '.edt-selwrap .edt-selcar{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--text-muted,#998);pointer-events:none}'+
+      // ---- premium filter dropdown (custom, not a native <select>) ----
+      '.edt-dd{position:relative;flex:0 0 auto}'+
+      '.edt-dd-trig{display:inline-flex;align-items:center;gap:10px;min-width:230px;border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#2a2313);border-radius:13px;padding:9px 14px;cursor:pointer;box-shadow:0 1px 2px rgba(18,20,45,.05);transition:border-color .15s,box-shadow .15s,transform .12s;font-family:inherit}'+
+      '.edt-dd-trig:hover{border-color:#c98a2e;box-shadow:0 4px 14px rgba(201,138,46,.14)}'+
+      '.edt-dd-trig[aria-expanded="true"]{border-color:#c98a2e;box-shadow:0 0 0 3px rgba(201,138,46,.18)}'+
+      '.edt-dd-cap{font-size:.6rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted,#a89a74);flex:0 0 auto}'+
+      '.edt-dd-cur{display:inline-flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}'+
+      '.edt-dd-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 3px rgba(0,0,0,.04)}'+
+      '.edt-dd-txt{font-weight:800;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '.edt-dd-car{color:var(--text-muted,#a89a74);flex:0 0 auto;transition:transform .18s}'+
+      '.edt-dd-trig[aria-expanded="true"] .edt-dd-car{transform:rotate(180deg)}'+
+      '.edt-dd-panel{position:absolute;z-index:60;top:calc(100% + 7px);left:0;right:0;min-width:248px;background:var(--card,#fff);border:1px solid var(--border,#e5ddcb);border-radius:14px;box-shadow:0 18px 44px rgba(18,20,45,.18),0 2px 8px rgba(18,20,45,.08);padding:7px;display:none;animation:edtDdIn .14s ease}'+
+      '.edt-dd.open .edt-dd-panel{display:block}'+
+      '@keyframes edtDdIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}'+
+      '.edt-dd-ph{font-size:.62rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted,#a89a74);padding:7px 11px 5px}'+
+      '.edt-dd-opt{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;border:none;background:none;color:var(--text,#2a2313);font-family:inherit;font-weight:700;font-size:.9rem;text-align:left;padding:10px 11px;border-radius:10px;cursor:pointer;transition:background .12s}'+
+      '.edt-dd-opt:hover{background:var(--surface-2,#f4efe2)}'+
+      '.edt-dd-opt .edt-dd-opt-l{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '.edt-dd-opt .edt-dd-ck{opacity:0;color:#c98a2e;flex:0 0 auto}'+
+      '.edt-dd-opt.on{background:rgba(201,138,46,.1)}'+
+      '.edt-dd-opt.on .edt-dd-opt-l{font-weight:900}'+
+      '.edt-dd-opt.on .edt-dd-ck{opacity:1}'+
+      'body.dark .edt-dd-trig{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
+      'body.dark .edt-dd-panel{background:#122238;border-color:#2c405e}'+
+      'body.dark .edt-dd-opt{color:#eaf0fb}'+
+      'body.dark .edt-dd-opt:hover{background:#1b3251}'+
+      'body.dark .edt-dd-opt.on{background:rgba(224,165,46,.16)}'+
       '.p-filter-edt .edt-clear{flex:0 0 auto}'+
-      '@media(max-width:640px){.p-filter-edt{gap:8px}.p-filter-edt .edt-search{flex-basis:100%}.edt-selwrap{flex:1 1 auto}.edt-statsel{width:100%;min-width:0;flex:1 1 auto}.p-filter-edt .edt-clear{flex:0 0 auto}}';
+      '@media(max-width:640px){.p-filter-edt{gap:8px}.p-filter-edt .edt-search{flex-basis:100%}.edt-dd{flex:1 1 auto}.edt-dd-trig{width:100%;min-width:0}.p-filter-edt .edt-clear{flex:0 0 auto}}';
     document.head.appendChild(s);
   }
+  // premium editor filter dropdown — open/close + pick (keeps prodView('editor',val) behaviour)
+  window.edtFilterMenu=function(ev){ if(ev){ try{ ev.stopPropagation(); }catch(e){} }
+    var dd=document.getElementById('edt-dd'); var trig=document.getElementById('edt-dd-trig'); if(!dd) return;
+    var open=dd.classList.toggle('open'); if(trig) trig.setAttribute('aria-expanded', open?'true':'false');
+    if(open){ setTimeout(function(){ document.addEventListener('click', _edtDdOutside); },0); }
+    else { document.removeEventListener('click', _edtDdOutside); }
+  };
+  function _edtDdOutside(e){ var dd=document.getElementById('edt-dd'); if(!dd){ document.removeEventListener('click',_edtDdOutside); return; }
+    if(dd.contains(e.target)) return; dd.classList.remove('open'); var t=document.getElementById('edt-dd-trig'); if(t) t.setAttribute('aria-expanded','false'); document.removeEventListener('click',_edtDdOutside); }
+  window.edtFilterPick=function(val){
+    var dd=document.getElementById('edt-dd'); if(dd) dd.classList.remove('open');
+    var t=document.getElementById('edt-dd-trig'); if(t) t.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',_edtDdOutside);
+    // reflect selection in the trigger immediately (the list body reloads without rebuilding the bar)
+    var row=(SAVED.editor||[]).filter(function(v){ return v[0]===val; })[0]||['','All Tasks'];
+    var txt=document.getElementById('edt-dd-txt'); if(txt) txt.textContent=row[1];
+    var dot=document.getElementById('edt-dd-dot'); if(dot) dot.style.background=(_EDT_STCOL[val]||'#c98a2e');
+    var panel=document.getElementById('edt-dd-panel');
+    if(panel) panel.querySelectorAll('.edt-dd-opt').forEach(function(b){ b.classList.toggle('on',(b.getAttribute('onclick')||'').indexOf("'"+val+"'")>=0); });
+    prodView('editor', val);
+  };
   window.edtSearch=function(v){ _flt('editor').q=v; _edtApplySearch(); };
   function _edtApplySearch(){
     var q=((_flt('editor').q)||'').trim().toLowerCase();
@@ -35696,6 +35780,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _tabHtml(portal,t,tab){
     var g=t.graphics||{};
     if(tab==='overview'){
+      try{ _reviewEnsureCss(); }catch(e){}
+      // Clickable rating chips INSIDE the details panel — so when a "you were rated" notification
+      // opens this drawer, the editor/graphics member sees the rating here and can tap it to read
+      // the per-dimension breakdown + the rater's "why" remark (same premium viewer as the card).
+      var _ratesOv=(function(){
+        try{
+          var reg=function(roleKey,label,n,note,dims,who){ if(!n) return ''; n=Math.max(0,Math.min(5,n|0));
+            var key=(t.id||'x')+':'+roleKey; window._RATEREG=window._RATEREG||{};
+            window._RATEREG[key]={role:roleKey,label:label,stars:n,note:(note||''),dims:(dims||{}),who:(who||''),title:(t.title||'')};
+            var hi=((note&&note.trim())||(dims&&Object.keys(dims).length));
+            return '<button type="button" class="vt-rate vt-rate-btn" onclick="event.stopPropagation();_rateView(\''+key+'\')" title="Click to see why — breakdown & remark"><span class="vr-k">'+esc(label)+'</span><span class="vr-st">'+'★'.repeat(n)+'<span class="vr-off">'+'★'.repeat(5-n)+'</span></span>'+(hi?'<span class="vr-i">i</span>':'')+'</button>';
+          };
+          var gg=t.graphics||{}; var arr=[];
+          if(t.quality_rating) arr.push(reg('editor','Editor',t.quality_rating,t.quality_note||'',t.quality_dims||{},'Production Manager'));
+          if(gg.quality_rating) arr.push(reg('graphics','Graphics',gg.quality_rating,gg.quality_note||'',gg.quality_dims||{},'Production Manager'));
+          if(t.teacher_review_rating) arr.push(reg('teacher','Teacher',t.teacher_review_rating,t.teacher_review_note||'',{},'Teacher'));
+          return arr.filter(Boolean).join('');
+        }catch(e){ return ''; }
+      })();
       return '<div class="pd-kv">'+
         _kv('Creator', esc(t.creator_badge||''))+
         _kv('Video Type', esc(t.video_type||''))+
@@ -35706,6 +35809,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Deadline', esc(t.deadline||'Not set'))+
         _kv('Current Stage', esc(t.lifecycle_label||''))+
         _kv('Next Action', esc(t.next_action||''))+
+        (_ratesOv?_kv('Rating', '<span class="vt-rates" style="margin:0">'+_ratesOv+'</span>'):'')+
         _kv('Source Drive', t.submitted_link?('<a href="'+esc(t.submitted_link)+'" target="_blank">Open link</a>'):'')+
         _kv('Reference', esc(t.reference||''))+
       '</div>'+_pmSubmissionsHtml(t)+_pmReviewHistoryHtml(t);
@@ -35907,7 +36011,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(page==='thumbboard') return renderThumbBoard(portal,body);
       // Tasks/Videos: agar list already dikh rahi hai to CHUPCHAAP reload karo (skeleton flash nahi,
       // filter/scroll/last-open highlight preserve) — poora renderList sirf pehli baar.
-      if(portal==='editor' && page==='tasks') return renderEditorTasksUnified(portal,body);
+      // Editor Tasks: if the grid is already mounted, reload it SILENTLY (no skeleton blank) exactly
+      // like production/youtuber — so closing a chat / finishing an action never wipes the cards to a
+      // flashing empty state. Full render only on first mount.
+      if(portal==='editor' && page==='tasks'){ if(document.getElementById('editor-results')) return _prodLoadList('editor',true); return renderEditorTasksUnified(portal,body); }
       if(page==='tasks'||page==='videos'){ if(document.getElementById(portal+'-results')) return _prodLoadList(portal,true); var _tf=_flt(portal); _tf._locked=false; _tf.status=''; _tf.deadline=''; _tf.epreset=''; _tf.gpreset=''; _tf.ypreset=''; return renderList(portal,body); }
       if(page==='tracker') return renderTracker(portal,body);
       if(page==='team') return renderTeam(portal,body);
