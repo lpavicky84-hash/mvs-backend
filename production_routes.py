@@ -4814,11 +4814,18 @@ def prod_chapter_thumbnail_review(payload: dict = Body(...), db: Session = Depen
         sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == c.graphics_id).first()
         gid_uid = sp.user_id if sp else None
     if action == "approve":
+        # RACE GUARD: only a set that is currently 'submitted' can be approved. If the designer
+        # resubmitted (or it was already finalised / sent back) the PM's view is stale -> reject.
+        if (getattr(c, "gfx_state", "") or "") != "submitted":
+            raise HTTPException(409, "This thumbnail is no longer awaiting review (it may have been resubmitted or already finalised). Please reload the chapter.")
         final = (payload.get("selected_thumbnail") or payload.get("final") or "").strip()
         if not final and cands:
             final = cands[0]
         if not final:
             raise HTTPException(400, "Select a thumbnail to approve")
+        # the chosen option must belong to the CURRENT submitted set (not a stale/removed one)
+        if cands and final not in cands:
+            raise HTTPException(409, "That option is no longer among the submitted thumbnails (the set changed). Please reload and pick again.")
         try:
             rating = int(payload.get("quality_rating") or payload.get("rating") or 0)
         except Exception:
@@ -5238,14 +5245,17 @@ def pm_project_live_progress(project_id: int, db: Session = Depends(get_db), me=
             _gdl = getattr(c, "graphics_deadline", None) or getattr(c, "deadline", None)
             if _gdl and _gdl < now_ist and _gfx in ("assigned", "in_progress", "changes", "submitted"):
                 attention["graphics_overdue"] += 1
-        # UPLOAD due today / overdue — compare the scheduled upload date to TODAY in IST
+        # UPLOAD due today / overdue — compare the scheduled upload date to TODAY in IST.
+        # Per-row flags drive the frontend filter so the clicked list == the displayed count.
+        _row_due_today = False
+        _row_up_overdue = False
         if lc == "ready_for_youtube":
             _ud = getattr(c, "upload_date", None)
             if _ud:
                 if _ud.date() == today:
-                    attention["upload_due_today"] += 1
+                    attention["upload_due_today"] += 1; _row_due_today = True
                 elif _ud.date() < today:
-                    attention["upload_overdue"] += 1
+                    attention["upload_overdue"] += 1; _row_up_overdue = True
         # team load (active, not published)
         if getattr(c, "editor_id", None) and lc not in ("uploaded", "completed"):
             team_ed[c.editor_id] = team_ed.get(c.editor_id, 0) + 1
@@ -5264,6 +5274,7 @@ def pm_project_live_progress(project_id: int, db: Session = Depends(get_db), me=
             "deadline": (_chap_stage_deadline(c).strftime("%d %b %Y, %I:%M %p") if _chap_stage_deadline(c) else ""),
             "graphics_deadline": ((getattr(c, "graphics_deadline", None) or getattr(c, "deadline", None)).strftime("%d %b %Y, %I:%M %p") if (getattr(c, "graphics_deadline", None) or getattr(c, "deadline", None)) else ""),
             "upload_date": (c.upload_date.strftime("%d %b %Y, %I:%M %p") if getattr(c, "upload_date", None) else ""),
+            "upload_due_today": _row_due_today, "upload_overdue": _row_up_overdue,
             "youtube_url": getattr(c, "youtube_url", "") or "",
             "priority": getattr(c, "priority", "") or "normal",
             "allowed_actions": chapter_allowed_actions(c, role),

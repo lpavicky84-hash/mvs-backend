@@ -2367,7 +2367,13 @@ def _chat_access_ok(db, user, c=None, pid=None):
         except Exception:
             pass
         return False
-    if role in ("editor", "graphics", "youtuber"):
+    if role == "youtuber":
+        # YouTubers carry a YouTuberProfile (not a ProductionStaffProfile) and only touch
+        # publishing-stage work -> judge purely by lifecycle, not by staff assignment.
+        if c is not None:
+            return _chapter_lifecycle(c) in ("ready_for_youtube", "uploaded", "completed")
+        return True
+    if role in ("editor", "graphics"):
         import production_core as _pc
         sp = None
         try:

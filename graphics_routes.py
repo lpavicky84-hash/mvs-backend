@@ -151,8 +151,16 @@ def gfx_project_thumb_submit(cid: int, payload: dict = Body(...), db: Session = 
     Candidates (paste/upload/URL) are stored; a previous round is kept in history. The chapter
     is NOT marked done here — the PM reviews, selects the final one and rates it."""
     import json as _json
+    import video_tasks as _vt
     sp = _me_staff(db, me)
     c = _my_gfx_chapter(db, sp, cid)
+    # RACE GUARD: once the PM has finalised a thumbnail (approved / direct / credited) or the video
+    # is already published, a designer must NOT silently resubmit and reopen it. The PM has to
+    # request changes first (which sets gfx_state='changes' and reopens the loop).
+    if (getattr(c, "gfx_state", "") or "") == "done" or getattr(c, "thumb_approved_at", None):
+        raise HTTPException(409, "This thumbnail is already approved. Ask the PM to request changes before resubmitting.")
+    if _vt._chapter_lifecycle(c) in ("uploaded", "completed"):
+        raise HTTPException(409, "This video is already published — the thumbnail is locked.")
     raw = payload.get("candidates")
     if not isinstance(raw, list) or not raw:
         single = (payload.get("thumbnail_link") or payload.get("thumbnail") or "").strip()

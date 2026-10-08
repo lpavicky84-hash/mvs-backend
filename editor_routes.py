@@ -303,7 +303,9 @@ def editor_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Ses
 
 
 def _assert_editor_chapter(db, me, cid):
-    """AUTHZ: an editor may touch a chapter only if it's their chapter or they own the project."""
+    """AUTHZ: an editor may touch a chapter ONLY if it is explicitly their chapter OR they are the
+    whole-project editor (inherited assignment). Owning a DIFFERENT chapter in the same project is
+    NOT enough — that would leak an unrelated co-editor's chapter. (Matches the central chat guard.)"""
     from models import VideoTaskChapter as _VC
     sp = _me_staff(db, me)
     c = db.query(_VC).filter(_VC.id == int(cid or 0)).first()
@@ -311,7 +313,8 @@ def _assert_editor_chapter(db, me, cid):
         raise HTTPException(404, "Chapter not found")
     if getattr(c, "editor_id", None) == sp.id:
         return c
-    if _editor_in_project(db, sp, c.task_id):
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    if t and getattr(t, "project_editor_id", None) == sp.id:
         return c
     raise HTTPException(403, "You don't have access to this chapter")
 
