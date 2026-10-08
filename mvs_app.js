@@ -35853,12 +35853,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '</div>'+_refGal+_thumbGal;
     }
     if(tab==='qc'){
-      var att=(t.attachments||[]).filter(function(a){ return ['reference','thumbnail','chat','slide'].indexOf(a.kind)<0 && (a.url||'').indexOf('http')===0 && !/\.(pdf|ppt|pptx)(\?|#|$)/i.test(a.url||''); });
+      // BULLETPROOF: "Change Screenshots" shows ONLY images attached to an actual QC "Request Changes"
+      // action — those are stored with kind==="edit" (PM / youtuber qc-changes). Screenshots shared in
+      // plain chat or the teacher<->editor review chat are kind "chat"/"review" and must NEVER leak in
+      // here — they belong in the chat, not QC. (Whitelist, not blacklist, so no future kind can slip in.)
+      var att=(t.attachments||[]).filter(function(a){ return a.kind==='edit' && (/^https?:/.test(a.url||'')||/^data:image\//.test(a.url||'')) && !/\.(pdf|ppt|pptx)(\?|#|$)/i.test(a.url||''); });
       return '<div class="pd-kv">'+
         _kv('QC Status', esc(t.qc_status||'Not started'))+
         _kv('Revisions', String(t.revision_count||0))+
       '</div>'+
-      (att.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+att.map(function(a){ return '<img loading="lazy" src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'<div class="pd-empty">No QC screenshots.</div>');
+      (att.length?'<div class="p-sec">Change Screenshots</div><div class="p-gallery">'+att.map(function(a){ return '<img loading="lazy" src="'+esc(a.url)+'" onclick="prodLightbox(this.src)">'; }).join('')+'</div>':'<div class="pd-empty">No change screenshots yet. Screenshots from “Request Changes” appear here.</div>');
     }
     if(tab==='youtube'){
       if(!t.youtube_url) return '<div class="pd-empty">Not published yet.</div>';
