@@ -154,6 +154,13 @@ def gfx_project_thumb_submit(cid: int, payload: dict = Body(...), db: Session = 
     import video_tasks as _vt
     sp = _me_staff(db, me)
     c = _my_gfx_chapter(db, sp, cid)
+    # CONCURRENCY: take a row lock so a simultaneous PM approve on the same chapter serialises
+    # (no-op on SQLite; SELECT ... FOR UPDATE on MySQL/InnoDB). Whichever commits first wins; the
+    # other sees the updated state and its guard rejects -> exactly one final thumbnail.
+    try:
+        db.refresh(c, with_for_update=True)
+    except Exception:
+        pass
     # RACE GUARD: once the PM has finalised a thumbnail (approved / direct / credited) or the video
     # is already published, a designer must NOT silently resubmit and reopen it. The PM has to
     # request changes first (which sets gfx_state='changes' and reopens the loop).

@@ -4496,6 +4496,16 @@ def _chap_thumb_final(c):
     return bool((getattr(c, "thumbnail_link", "") or "").strip())
 
 
+def _chap_lock(db, c):
+    """Take a row lock on the chapter for the rest of the transaction (optimistic -> pessimistic
+    at the moment of mutation). No-op on SQLite; serialises concurrent writers on MySQL/InnoDB."""
+    try:
+        db.refresh(c, with_for_update=True)
+    except Exception:
+        pass
+    return c
+
+
 def _chapter_thumb_ready(c):
     """The thumbnail obligation is SATISFIED: a final thumbnail exists AND it is approved /
     uploaded-direct / credited (i.e. the graphics side is genuinely done, not just a preview)."""
@@ -4692,6 +4702,9 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "thumb_refs": _chap_json_list(getattr(c, "thumb_refs", "")),
         "thumb_candidates": _chap_json_list(getattr(c, "thumb_candidates", "")),
         "thumb_candidate_history": _chap_json_list(getattr(c, "thumb_candidate_history", "")),
+        # monotonic submission version (how many sets the designer has submitted) — the PM's review
+        # modal passes it back on approve; a mismatch means the designer resubmitted meanwhile.
+        "thumb_submission_version": len(_chap_json_list(getattr(c, "thumb_candidate_history", ""))) + 1,
         "thumb_change_note": getattr(c, "thumb_change_note", "") or "",
         "thumb_revision": int(getattr(c, "thumb_revision", 0) or 0),
         "thumb_instructions": getattr(c, "thumb_instructions", "") or "",
@@ -4806,6 +4819,7 @@ def prod_chapter_thumbnail_review(payload: dict = Body(...), db: Session = Depen
         raise HTTPException(400, "Not available on this server build.")
     import video_tasks as _vt
     c = _chap(db, payload.get("chapter_id"))
+    _chap_lock(db, c)   # serialise against a concurrent designer (re)submission on the same row
     action = (payload.get("action") or "approve").strip()
     note = (payload.get("note") or "").strip()
     cands = _chap_json_list(getattr(c, "thumb_candidates", ""))
@@ -4818,6 +4832,18 @@ def prod_chapter_thumbnail_review(payload: dict = Body(...), db: Session = Depen
         # resubmitted (or it was already finalised / sent back) the PM's view is stale -> reject.
         if (getattr(c, "gfx_state", "") or "") != "submitted":
             raise HTTPException(409, "This thumbnail is no longer awaiting review (it may have been resubmitted or already finalised). Please reload the chapter.")
+        # SUBMISSION-VERSION CHECK: the PM's modal captured a version; if the designer submitted a
+        # newer set since, versions differ -> reject so the PM reviews the latest (even if a URL
+        # happens to repeat). Optional/back-compatible: skipped when the client doesn't send it.
+        _ev = payload.get("expected_version")
+        if _ev not in (None, "", 0):
+            _curv = len(_chap_json_list(getattr(c, "thumb_candidate_history", ""))) + 1
+            try:
+                _ev = int(_ev)
+            except Exception:
+                _ev = -1
+            if _ev != _curv:
+                raise HTTPException(409, "The designer submitted a newer set while you were reviewing. Reload and review the latest submission before approving.")
         final = (payload.get("selected_thumbnail") or payload.get("final") or "").strip()
         if not final and cands:
             final = cands[0]
