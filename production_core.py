@@ -9,6 +9,8 @@ Used by: production_routes, editor_routes, youtuber_routes, graphics_routes.
 """
 from datetime import datetime, timezone, timedelta
 import json
+import re as _re
+from fastapi import HTTPException
 
 from models import (
     User, UserRole, VideoTask, GraphicsTask, EditingSession, ProductionEvent,
@@ -613,6 +615,239 @@ def attachments_out(db, t):
         out.append({"id": a.id, "kind": a.kind or "review", "url": url,
                     "mime": a.mime or "", "at": _dt(a.created_at)})
     return out
+
+
+# ============================================================ TEACHER RECORDING FEEDBACK (Editor -> Teacher)
+# A one-directional, constructive channel: the Editor rates the ORIGINAL recording the Teacher made.
+# Captured atomically at edited-video submission. Kept entirely separate from PM Editor rating,
+# Teacher edit review and Graphics rating; it NEVER affects editor performance scores.
+REC_FB_CRITERIA = ["fluency", "introduction", "audio", "presentation", "visual", "editing_readiness"]
+_REC_FB_COL = {"fluency": "fluency_rating", "introduction": "introduction_rating", "audio": "audio_rating",
+               "presentation": "presentation_rating", "visual": "visual_rating",
+               "editing_readiness": "editing_readiness_rating"}
+REC_FB_CRIT_LABELS = {"fluency": "Fluency & Repetition", "introduction": "Video Introduction",
+                      "audio": "Audio Clarity", "presentation": "Presentation & Flow",
+                      "visual": "Visual & Recording Quality", "editing_readiness": "Editing Readiness"}
+REC_FB_TAGS = ["excessive_fumbling", "intro_needs_improvement", "long_pauses_retakes", "audio_mic_issues",
+               "background_noise", "screen_board_visibility", "poor_camera_framing", "unnecessary_length",
+               "frequent_interruptions", "inconsistent_volume", "topic_transitions", "other", "no_major_issues"]
+_REC_FB_TAG_LABELS = {
+    "excessive_fumbling": "Excessive Fumbling / Repetition", "intro_needs_improvement": "Intro Needs Improvement",
+    "long_pauses_retakes": "Long Pauses / Retakes", "audio_mic_issues": "Audio / Microphone Issues",
+    "background_noise": "Background Noise", "screen_board_visibility": "Screen / Board Visibility",
+    "poor_camera_framing": "Poor Camera Framing", "unnecessary_length": "Unnecessary Recording Length",
+    "frequent_interruptions": "Frequent Recording Interruptions", "inconsistent_volume": "Inconsistent Voice Volume",
+    "topic_transitions": "Topic Transitions Need Improvement", "other": "Other", "no_major_issues": "No Major Issues"}
+_REC_FB_PLACEHOLDERS = {"na", "n/a", "none", "nil", "ok", "okay", "good", "nice", "fine", "great", "bad", "test",
+                        "testing", "asdf", "qwerty", "aaa", "xxx", "---", "...", ".", "..", "no comment", "nothing"}
+_REC_FB_TS_RE = _re.compile(r"^\d{1,2}:\d{2}(:\d{2})?$")
+
+
+def rec_fb_applicable(t):
+    """Recording feedback only applies when a TEACHER made the recording (not youtuber-created)."""
+    if not t:
+        return False
+    if (getattr(t, "creator_type", "") or "teacher") == "youtuber":
+        return False
+    return bool(getattr(t, "teacher_id", None))
+
+
+def _rec_fb_parse_ratings(payload):
+    raw = (payload.get("ratings") or {}) if isinstance(payload.get("ratings"), dict) else {}
+    na = (payload.get("na_reasons") or {}) if isinstance(payload.get("na_reasons"), dict) else {}
+    out, na_out = {}, {}
+    for crit in REC_FB_CRITERIA:
+        v = raw.get(crit, None)
+        lbl = REC_FB_CRIT_LABELS.get(crit, crit)
+        if v in (None, "", "na", "NA", "N/A", "n/a"):
+            reason = (na.get(crit) or "").strip()
+            if not reason:
+                raise HTTPException(400, f"Rate '{lbl}' 1-5, or mark it N/A with a short reason.")
+            out[crit] = None
+            na_out[crit] = reason[:200]
+        else:
+            try:
+                iv = int(v)
+            except Exception:
+                raise HTTPException(400, f"Invalid rating for '{lbl}'.")
+            if iv < 1 or iv > 5:
+                raise HTTPException(400, f"Rating for '{lbl}' must be 1-5 (or N/A).")
+            out[crit] = iv
+    return out, na_out
+
+
+def _rec_fb_valid_remark(remarks):
+    s = (remarks or "").strip()
+    if len(s) < 15:
+        raise HTTPException(400, "Write a constructive improvement remark (at least 15 characters).")
+    if len(s) > 1200:
+        raise HTTPException(400, "Remark is too long (max 1200 characters).")
+    low = s.lower()
+    if low in _REC_FB_PLACEHOLDERS:
+        raise HTTPException(400, "Please write a meaningful, actionable remark — not placeholder text.")
+    compact = "".join(low.split())
+    if len(set(compact)) < 5:
+        raise HTTPException(400, "Please write a meaningful remark explaining what to improve next time.")
+    words = [w for w in _re.split(r"\s+", s) if w]
+    if len(words) < 3:
+        raise HTTPException(400, "Please write a fuller remark (a few words at least).")
+    return s[:1200]
+
+
+def _rec_fb_tags(payload):
+    tags = payload.get("issue_tags") or []
+    if not isinstance(tags, list):
+        tags = []
+    seen, clean = set(), []
+    for t in tags:
+        t = str(t)
+        if t in REC_FB_TAGS and t not in seen:
+            seen.add(t)
+            clean.append(t)
+    if "no_major_issues" in clean and len(clean) > 1:
+        raise HTTPException(400, "'No Major Issues' can't be combined with other issue tags.")
+    return clean
+
+
+def _rec_fb_notes(payload):
+    notes = payload.get("timestamped_notes") or []
+    if not isinstance(notes, list):
+        return []
+    out = []
+    for n in notes[:30]:
+        if not isinstance(n, dict):
+            continue
+        ts = (str(n.get("ts") or n.get("timestamp") or "")).strip()
+        note = (str(n.get("note") or "")).strip()
+        cat = (str(n.get("category") or "")).strip()
+        if not ts and not note:
+            continue
+        if ts and not _REC_FB_TS_RE.match(ts):
+            raise HTTPException(400, f"Invalid timestamp '{ts}' — use mm:ss or hh:mm:ss.")
+        out.append({"ts": ts[:9], "category": cat[:40], "note": note[:300]})
+    return out
+
+
+def _rec_fb_overall(ratings):
+    vals = [v for v in ratings.values() if isinstance(v, int)]
+    if not vals:
+        return None
+    return round(sum(vals) / float(len(vals)), 2)
+
+
+def _rec_fb_sig(ratings, na, tags, remarks, notes):
+    return json.dumps({"r": ratings, "na": na, "t": sorted(tags),
+                       "rem": (remarks or "").strip(), "n": notes}, sort_keys=True)
+
+
+def validate_recording_feedback(payload):
+    """Run all validators WITHOUT touching the DB — call this before mutating submission state so a
+    bad feedback payload rolls the whole submit back (editing is never marked complete on failure).
+    Raises HTTPException(400) on invalid input."""
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Recording feedback is required to submit the edited video.")
+    _rec_fb_parse_ratings(payload)
+    _rec_fb_valid_remark(payload.get("remarks"))
+    _rec_fb_tags(payload)
+    _rec_fb_notes(payload)
+    return True
+
+
+def save_recording_feedback(db, work_type, video_task_id, chapter_id, editor_id, teacher_id, revision, payload):
+    """Validate + upsert the ACTIVE recording feedback for a work-item, preserving history.
+    Raises HTTPException(400) on invalid input (so the whole submit transaction rolls back)."""
+    from models import TeacherRecordingFeedback as _FB
+    ratings, na = _rec_fb_parse_ratings(payload)
+    remarks = _rec_fb_valid_remark(payload.get("remarks"))
+    tags = _rec_fb_tags(payload)
+    notes = _rec_fb_notes(payload)
+    overall = _rec_fb_overall(ratings)
+    sig = _rec_fb_sig(ratings, na, tags, remarks, notes)
+    q = db.query(_FB).filter(_FB.is_active == True)
+    if work_type == "chapter":
+        q = q.filter(_FB.chapter_id == chapter_id)
+    else:
+        q = q.filter(_FB.video_task_id == video_task_id, _FB.chapter_id == None)
+    cur = q.first()
+    if cur is not None:
+        cur_sig = _rec_fb_sig(
+            {c: getattr(cur, _REC_FB_COL[c]) for c in REC_FB_CRITERIA},
+            json.loads(cur.na_reasons_json or "{}"),
+            json.loads(cur.issue_tags_json or "[]"),
+            cur.remarks or "",
+            json.loads(cur.timestamped_notes_json or "[]"))
+        if cur_sig == sig:
+            cur.submission_revision = revision  # unchanged on resubmit -> no new version/history
+            db.flush()
+            return cur
+        cur.is_active = False  # changed -> archive old version, keep history
+        db.flush()
+    row = _FB(work_type=work_type, video_task_id=video_task_id, chapter_id=chapter_id,
+              editor_id=editor_id, teacher_id=teacher_id, submission_revision=revision,
+              na_reasons_json=json.dumps(na), overall_rating=overall,
+              issue_tags_json=json.dumps(tags), remarks=remarks,
+              timestamped_notes_json=json.dumps(notes), is_active=True)
+    for c in REC_FB_CRITERIA:
+        setattr(row, _REC_FB_COL[c], ratings[c])
+    db.add(row)
+    db.flush()
+    return row
+
+
+def get_active_recording_feedback(db, video_task_id=None, chapter_id=None):
+    from models import TeacherRecordingFeedback as _FB
+    q = db.query(_FB).filter(_FB.is_active == True)
+    if chapter_id:
+        q = q.filter(_FB.chapter_id == chapter_id)
+    elif video_task_id:
+        q = q.filter(_FB.video_task_id == video_task_id, _FB.chapter_id == None)
+    else:
+        return None
+    return q.order_by(_FB.id.desc()).first()
+
+
+def recording_feedback_out(db, row):
+    if row is None:
+        return None
+    def _staffn(sid):
+        try:
+            sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == sid).first()
+            if sp:
+                u = db.query(User).filter(User.id == sp.user_id).first()
+                return (u.name if u else "") or ""
+        except Exception:
+            pass
+        return ""
+    ratings = {c: getattr(row, _REC_FB_COL[c]) for c in REC_FB_CRITERIA}
+    tags = json.loads(row.issue_tags_json or "[]")
+    return {
+        "id": row.id, "work_type": row.work_type,
+        "video_task_id": row.video_task_id, "chapter_id": row.chapter_id,
+        "editor_id": row.editor_id, "editor_name": _staffn(row.editor_id),
+        "teacher_id": row.teacher_id, "revision": row.submission_revision,
+        "criteria_labels": REC_FB_CRIT_LABELS,
+        "ratings": ratings, "na_reasons": json.loads(row.na_reasons_json or "{}"),
+        "overall": row.overall_rating,
+        "issue_tags": tags, "issue_tag_labels": [_REC_FB_TAG_LABELS.get(t, t) for t in tags],
+        "remarks": row.remarks or "",
+        "timestamped_notes": json.loads(row.timestamped_notes_json or "[]"),
+        "submitted_at": _dt(row.created_at), "updated_at": _dt(row.updated_at),
+        "acknowledged": bool(row.acknowledged_at), "acknowledged_at": _dt(row.acknowledged_at),
+    }
+
+
+def recording_feedback_summary(db, row):
+    """Compact card summary (overall + #improvement areas + ack state). None when no feedback exists
+    (so legacy videos show "no feedback" rather than a fake zero-star rating)."""
+    if row is None:
+        return None
+    tags = json.loads(row.issue_tags_json or "[]")
+    rvals = [getattr(row, _REC_FB_COL[c]) for c in REC_FB_CRITERIA]
+    low = sum(1 for v in rvals if isinstance(v, int) and v <= 2)
+    areas = len([t for t in tags if t != "no_major_issues"])
+    return {"has": True, "overall": row.overall_rating,
+            "improvement_areas": max(areas, low),
+            "acknowledged": bool(row.acknowledged_at)}
 
 
 # ---------------------------------------------------------------- serializers
@@ -1335,6 +1570,16 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         out["attachments"] = attachments_out(db, t)
         out["submissions"] = submissions_out(db, t)
         out["review_history"] = review_history_out(db, t)
+        # Editor -> Teacher recording feedback (full + compact summary). Only ever set when real
+        # feedback exists, so legacy videos show "no feedback" rather than a fake zero rating.
+        try:
+            _rfb = get_active_recording_feedback(db, video_task_id=t.id)
+            out["recording_feedback"] = recording_feedback_out(db, _rfb)
+            out["recording_feedback_summary"] = recording_feedback_summary(db, _rfb)
+            out["recording_feedback_applicable"] = rec_fb_applicable(t)
+        except Exception:
+            out["recording_feedback"] = None
+            out["recording_feedback_summary"] = None
     return out
 
 

@@ -1729,6 +1729,41 @@ class TaskAttachment(Base):
     created_at       = Column(DateTime, default=func.now())
 
 
+class TeacherRecordingFeedback(Base):
+    """Editor -> Teacher constructive feedback about the ORIGINAL recording quality, captured
+    atomically at edited-video submission. One ACTIVE row per work-item (normal task OR project
+    chapter); older versions are kept with is_active=False so history is preserved. This is a
+    distinct, one-directional channel — NOT the PM Editor rating, Teacher edit review, or Graphics
+    rating, and it never affects editor performance scores."""
+    __tablename__ = "teacher_recording_feedback"
+
+    id             = Column(Integer, primary_key=True)
+    work_type      = Column(String(20), default="task", index=True)   # task | chapter
+    # exactly ONE of these is set (enforced in code): a normal VideoTask, or a chapter (+ its parent)
+    video_task_id  = Column(Integer, ForeignKey("video_tasks.id"), nullable=True, index=True)
+    chapter_id     = Column(Integer, ForeignKey("video_task_chapters.id"), nullable=True, index=True)
+    editor_id      = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True, index=True)
+    teacher_id     = Column(Integer, ForeignKey("teacher_profiles.id"), nullable=True, index=True)
+    submission_revision = Column(Integer, default=1)
+    # per-criterion 1-5; NULL = N/A (reason captured in na_reasons_json)
+    fluency_rating          = Column(Integer, nullable=True)
+    introduction_rating     = Column(Integer, nullable=True)
+    audio_rating            = Column(Integer, nullable=True)
+    presentation_rating     = Column(Integer, nullable=True)
+    visual_rating           = Column(Integer, nullable=True)
+    editing_readiness_rating = Column(Integer, nullable=True)
+    na_reasons_json    = Column(Text, default="")      # {criterion: reason} for N/A criteria
+    overall_rating     = Column(Float, nullable=True)  # mean of APPLICABLE criteria only (null if all N/A)
+    issue_tags_json    = Column(Text, default="")      # JSON array of issue-tag slugs
+    remarks            = Column(Text, default="")      # mandatory constructive improvement remark
+    timestamped_notes_json = Column(Text, default="")  # JSON array of {ts, category, note} (source recording)
+    is_active          = Column(Boolean, default=True, index=True)  # latest version for this work-item
+    acknowledged_at    = Column(DateTime, nullable=True)
+    acknowledged_by    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at         = Column(DateTime, default=func.now())
+    updated_at         = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class GraphicsTask(Base):
     """Thumbnail work tracked independently of the video's editing lifecycle."""
     __tablename__ = "graphics_tasks"

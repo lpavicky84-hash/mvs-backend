@@ -4700,6 +4700,10 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
     _label = _vt.CHAPTER_STATE_LABELS.get(lc, lc)
     if _blocked:
         _label = "Waiting for Thumbnail"   # QC done, required thumbnail still pending (publish gate)
+    try:
+        _rfb_row = pc.get_active_recording_feedback(db, chapter_id=c.id)
+    except Exception:
+        _rfb_row = None
     return {
         "work_type": "project_chapter",
         "id": c.id,
@@ -4771,6 +4775,8 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
                     "pm_thumbnail_note": getattr(c, "thumb_quality_note", "") or "",
                     "pm_thumbnail_dims": pc._dims_out(getattr(c, "thumb_quality_dims", ""))},
         "allowed_actions": chapter_allowed_actions(c, role),
+        "recording_feedback": pc.recording_feedback_out(db, _rfb_row),
+        "recording_feedback_summary": pc.recording_feedback_summary(db, _rfb_row),
         "updated_at": _dt(getattr(c, "changed_at", None)),
     }
 

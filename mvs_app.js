@@ -1318,6 +1318,12 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   try{ refreshNotifBadge(role); }catch(e){}
   // Real URL -> open in a new tab
   if(/^https?:\/\//i.test(link)){ if(link) window.open(link,'_blank','noopener'); openNotifPanel(role); return; }
+  // Recording feedback (Editor -> Teacher) -> open the feedback panel directly (link = "taskId" or "taskId:chapterId")
+  if(role==='teacher' && (ntype||'')==='recording_feedback'){
+    try{ closeModal(); }catch(e){}
+    var _rp=(link||'').split(':'); var _rtid=parseInt(_rp[0],10)||0; var _rcid=(_rp.length>1)?(parseInt(_rp[1],10)||0):0;
+    try{ if(typeof tRecFbOpen==='function' && _rtid){ tRecFbOpen(_rtid, _rcid); openNotifPanel(role); return; } }catch(e){}
+  }
   // Support deep links -> open the exact record INSIDE the portal
   if(link.indexOf('/support/')===0){
     closeModal();
@@ -12015,6 +12021,10 @@ window.tReviewOpen=function(id){
       (v.editor_name?('<div class="trv-meta" style="margin-bottom:10px">'+ic('edit')+' Editor: <b>'+esc(v.editor_name)+'</b></div>'):'')+
       (v.edited_link?('<a class="trv-watch" href="'+esc(v.edited_link)+'" target="_blank" rel="noopener">'+ic('play')+' Watch edited video</a>'):'<div class="trv-empty">No edited link yet</div>')+
       noteBox+
+      // the editor's recording feedback for THIS video (clickable -> full breakdown + Acknowledge)
+      ((v.recording_feedback && v.recording_feedback_summary)
+        ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('trev:'+id, v.recording_feedback_summary, v.recording_feedback, {video_title:(v.title||'')}, true, {fid:(v.recording_feedback||{}).id, taskId:id, chapterId:0}, true):'')+'</div>')
+        : (v.recording_feedback_applicable? '<div class="trv-empty" style="margin-top:10px;font-size:.78rem;color:var(--text-muted)">No recording feedback available.</div>' : ''))+
     '</div>'+
     '<div class="pd-foot"><div class="p-acts">'+acts+'</div></div>'+
     '</div>';
@@ -29298,20 +29308,276 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(what==='task'){ try{ prodOpenTask(portal,id); }catch(e){} return; }
     if(portal==='editor'){ try{ edtReviewChat(id); }catch(e){} } else { try{ prodReviewChat(id); }catch(e){} }
   };
-  // ---- Editor: rich submit modal (drive link + remarks + attachments) ----
+  // ================= EDITOR -> TEACHER RECORDING FEEDBACK (shared premium step) =================
+  // Captured with the edited-video submit (normal task + every project chapter). Constructive and
+  // one-directional; separate from PM/teacher/graphics ratings and never affects the editor's score.
+  var REC_FB_CRIT=[
+    ['fluency','Fluency & Repetition','Fumbling, repeated explanations, unnecessary retakes.'],
+    ['introduction','Video Introduction','Opening clarity, topic introduction, overly long intro.'],
+    ['audio','Audio Clarity','Mic volume, background noise, inconsistent sound.'],
+    ['presentation','Presentation & Flow','Long pauses, interruptions, transitions, continuity.'],
+    ['visual','Visual & Recording Quality','Lighting, camera framing, screen / board visibility.'],
+    ['editing_readiness','Editing Readiness','Avoidable cuts, cleanup effort, overall recording preparation.']];
+  var REC_FB_TAGS=[['excessive_fumbling','Excessive Fumbling / Repetition'],['intro_needs_improvement','Intro Needs Improvement'],
+    ['long_pauses_retakes','Long Pauses / Retakes'],['audio_mic_issues','Audio / Microphone Issues'],
+    ['background_noise','Background Noise'],['screen_board_visibility','Screen / Board Visibility'],
+    ['poor_camera_framing','Poor Camera Framing'],['unnecessary_length','Unnecessary Recording Length'],
+    ['frequent_interruptions','Frequent Recording Interruptions'],['inconsistent_volume','Inconsistent Voice Volume'],
+    ['topic_transitions','Topic Transitions Need Improvement'],['other','Other'],['no_major_issues','No Major Issues']];
+  var REC_FB_NOTE_CATS=['Introduction','Repetition','Audio','Pause','Visual','Transition','Other'];
+  var REC_FB_CRIT_LBL={}; REC_FB_CRIT.forEach(function(c){ REC_FB_CRIT_LBL[c[0]]=c[1]; });
+  var REC_FB_TAG_LBL={}; REC_FB_TAGS.forEach(function(t){ REC_FB_TAG_LBL[t[0]]=t[1]; });
+  window._recFb={ratings:{},na:{},tags:[],notes:[]};
+  function _recFbReset(){ window._recFb={ratings:{},na:{},tags:[],notes:[]}; }
+  function _recFbCss(){
+    if(document.getElementById('recfb-css')) return;
+    var s=document.createElement('style'); s.id='recfb-css';
+    s.textContent='.rfb-wrap{margin-top:6px;border-top:1px dashed var(--border,#e5ddcb);padding-top:12px}'+
+      '.rfb-sec-h{display:flex;align-items:center;gap:8px;font-weight:900;font-size:.92rem;color:var(--text,#2a2313)}'+
+      '.rfb-sec-h svg{width:16px;height:16px}'+
+      '.rfb-req{font-size:.58rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#d1443a;border-radius:999px;padding:2px 8px}'+
+      '.rfb-req2{font-size:.58rem;font-weight:900;color:#d1443a;text-transform:uppercase;letter-spacing:.04em}'+
+      '.rfb-note{font-size:.76rem;color:var(--text-muted,#8a7d5c);line-height:1.5;margin:6px 0 10px;background:rgba(201,138,46,.07);border:1px solid rgba(201,138,46,.18);border-radius:10px;padding:8px 11px}'+
+      '.rfb-overall{font-size:.8rem;font-weight:800;color:var(--text,#2a2313);margin-bottom:8px}.rfb-overall b{color:#c98a2e;font-size:1rem}'+
+      '.rfb-crit{padding:9px 0;border-bottom:1px solid var(--surface-2,#f1ead9)}'+
+      '.rfb-crit-top{display:flex;align-items:center;justify-content:space-between;gap:8px}'+
+      '.rfb-crit-l{display:flex;align-items:center;gap:6px;min-width:0}'+
+      '.rfb-crit-name{font-weight:800;font-size:.86rem;color:var(--text,#2a2313)}'+
+      '.rfb-crit-tip{position:relative;width:15px;height:15px;border-radius:50%;background:var(--surface-2,#eadfca);color:var(--text-muted,#8a7d5c);font-size:.62rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:help;flex:0 0 auto}'+
+      '.rfb-tipbox{display:none;position:absolute;left:0;top:20px;z-index:5;width:210px;background:#2a2313;color:#fff;font-size:.72rem;font-weight:600;line-height:1.45;border-radius:8px;padding:7px 9px;box-shadow:0 8px 22px rgba(0,0,0,.26)}'+
+      '.rfb-crit-tip:hover .rfb-tipbox,.rfb-crit-tip:focus .rfb-tipbox{display:block}'+
+      '.rfb-na{border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text-muted,#8a7d5c);font-weight:800;font-size:.68rem;border-radius:999px;padding:3px 10px;cursor:pointer;flex:0 0 auto}'+
+      '.rfb-na.on{background:#64748b;border-color:#64748b;color:#fff}'+
+      '.rfb-stars{display:flex;gap:4px;margin-top:5px;font-size:1.5rem;line-height:1}'+
+      '.rfb-star{color:#dcd2b8;cursor:pointer;transition:color .12s,transform .1s;outline:none}'+
+      '.rfb-star:hover,.rfb-star:focus{transform:scale(1.12)}.rfb-star.on{color:#e6ad4e}'+
+      '.rfb-crit.rfb-na-on .rfb-stars{opacity:.35;pointer-events:none}'+
+      '.rfb-crit.rfb-miss{background:rgba(209,68,58,.06);border-radius:8px}'+
+      '.rfb-crit.rfb-miss .rfb-crit-name{color:#d1443a}'+
+      '.rfb-nareason{margin-top:6px}'+
+      '.rfb-sub-h{font-weight:800;font-size:.8rem;color:var(--text,#2a2313);margin:12px 0 6px}.rfb-sub-h span{font-weight:600;color:var(--text-muted,#8a7d5c);font-size:.72rem}'+
+      '.rfb-tags{display:flex;flex-wrap:wrap;gap:6px}'+
+      '.rfb-tag{border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#4a4330);font-weight:700;font-size:.74rem;border-radius:999px;padding:5px 11px;cursor:pointer;transition:background .12s,border-color .12s}'+
+      '.rfb-tag:hover{border-color:#c98a2e}.rfb-tag.on{background:#c98a2e;border-color:#c98a2e;color:#fff}'+
+      '.rfb-tag.on[data-t="no_major_issues"]{background:#2e9e6b;border-color:#2e9e6b}'+
+      '.rfb-remmeta{font-size:.7rem;color:var(--text-muted,#8a7d5c);margin-top:3px}'+
+      '.rfb-noteadd{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}'+
+      '.rfb-noteadd .rfb-ts{width:78px;flex:0 0 78px}.rfb-noteadd .rfb-ncat{width:120px;flex:0 0 120px}.rfb-noteadd .rfb-nnote{flex:1 1 140px;min-width:120px}'+
+      '.rfb-noterow{display:flex;align-items:center;gap:8px;background:var(--surface-2,#f6f1e4);border-radius:9px;padding:6px 10px;margin-bottom:5px;font-size:.78rem}'+
+      '.rfb-noterow .rfb-nt-ts{font-weight:800;color:#c98a2e;flex:0 0 auto}.rfb-noterow .rfb-nt-cat{font-weight:700;color:var(--text-muted,#8a7d5c);flex:0 0 auto}.rfb-noterow .rfb-nt-note{flex:1 1 auto;min-width:0}'+
+      '.rfb-nt-x{border:0;background:none;color:#b91c1c;font-size:1.1rem;cursor:pointer;line-height:1;flex:0 0 auto}'+
+      '.rfb-err{display:none;color:#b91c1c;font-weight:700;font-size:.78rem;margin-top:8px;background:rgba(209,68,58,.08);border-radius:8px;padding:7px 10px}'+
+      'body.dark .rfb-na,body.dark .rfb-tag{background:#152a45;border-color:#2c405e;color:#d6def0}'+
+      'body.dark .rfb-crit-name,body.dark .rfb-sec-h,body.dark .rfb-sub-h,body.dark .rfb-overall{color:#eaf0fb}'+
+      '@media(prefers-reduced-motion:reduce){.rfb-star,.rfb-tag,.rfb-na{transition:none}.rfb-star:hover,.rfb-star:focus{transform:none}}'+
+      '@media(max-width:560px){.rfb-noteadd .rfb-ncat{width:100%;flex:1 1 100%}.rfb-stars{font-size:1.7rem}}';
+    document.head.appendChild(s);
+  }
+  function _recFbStepHtml(){
+    _recFbCss();
+    var crit=REC_FB_CRIT.map(function(c){ var k=c[0];
+      return '<div class="rfb-crit" id="rfb-crit-'+k+'">'+
+        '<div class="rfb-crit-top"><div class="rfb-crit-l"><span class="rfb-crit-name">'+esc(c[1])+'</span>'+
+          '<span class="rfb-crit-tip" tabindex="0">i<span class="rfb-tipbox">'+esc(c[2])+'</span></span></div>'+
+          '<button type="button" class="rfb-na" onclick="_recFbNA(\''+k+'\')">N/A</button></div>'+
+        '<div class="rfb-stars" id="rfb-st-'+k+'" role="radiogroup" aria-label="'+esc(c[1])+'">'+[1,2,3,4,5].map(function(i){
+          return '<span class="rfb-star" role="radio" aria-label="'+i+' star" tabindex="0" data-v="'+i+'" onclick="_recFbStar(\''+k+'\','+i+')" onkeydown="_recFbStarKey(event,\''+k+'\','+i+')">★</span>'; }).join('')+'</div>'+
+        '<div class="rfb-nareason" id="rfb-nar-'+k+'" style="display:none"><input class="p-input" id="rfb-narin-'+k+'" maxlength="200" placeholder="Why N/A? (short reason)" oninput="window._recFb.na[\''+k+'\']=this.value"></div>'+
+      '</div>';
+    }).join('');
+    var tags=REC_FB_TAGS.map(function(t){ return '<button type="button" class="rfb-tag" data-t="'+t[0]+'" onclick="_recFbTag(\''+t[0]+'\')">'+esc(t[1])+'</button>'; }).join('');
+    return '<div class="rfb-wrap">'+
+      '<div class="rfb-sec-h">'+ic('video')+' Teacher Recording Feedback <span class="rfb-req">required</span></div>'+
+      '<div class="rfb-note">Constructive, actionable notes about the <b>original recording</b> so the teacher can record better next time. This is separate from editing quality and never affects your score. Keep it professional — no personal or appearance-based comments.</div>'+
+      '<div class="rfb-overall">Overall (applicable only): <b id="rfb-ov">—</b></div>'+
+      '<div class="rfb-crits">'+crit+'</div>'+
+      '<div class="rfb-sub-h">Issues observed <span>(optional)</span></div><div class="rfb-tags" id="rfb-tags">'+tags+'</div>'+
+      '<div class="rfb-sub-h">Improvement remark <span class="rfb-req2">required</span></div>'+
+      '<textarea class="p-area" id="rfb-remark" rows="3" maxlength="1200" placeholder="What should the teacher improve next time? Be specific and actionable." oninput="_recFbRemCount()"></textarea>'+
+      '<div class="rfb-remmeta"><span id="rfb-remcount">0</span>/1200 · professional &amp; actionable</div>'+
+      '<div class="rfb-sub-h">Timestamped notes <span>(optional — points to the ORIGINAL recording)</span></div>'+
+      '<div id="rfb-notes"></div>'+
+      '<div class="rfb-noteadd"><input class="p-input rfb-ts" id="rfb-nts" placeholder="mm:ss"><select class="p-input rfb-ncat" id="rfb-ncat">'+REC_FB_NOTE_CATS.map(function(c){return '<option>'+esc(c)+'</option>';}).join('')+'</select><input class="p-input rfb-nnote" id="rfb-nnote" placeholder="short note" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_recFbAddNote();}"><button type="button" class="p-btn rfb-addbtn" onclick="_recFbAddNote()">+ Add</button></div>'+
+      '<div class="rfb-err" id="rfb-err"></div>'+
+    '</div>';
+  }
+  function _recFbOverall(){
+    var vals=[]; REC_FB_CRIT.forEach(function(c){ var v=window._recFb.ratings[c[0]]; if(typeof v==='number'&&!window._recFb.na[c[0]]) vals.push(v); });
+    var ov=document.getElementById('rfb-ov'); if(ov) ov.textContent=vals.length?((vals.reduce(function(a,b){return a+b;},0)/vals.length).toFixed(1)+' / 5'):'—';
+  }
+  window._recFbStar=function(k,n){ window._recFb.ratings[k]=n; if(window._recFb.na[k]){ delete window._recFb.na[k]; var btn=document.querySelector('#rfb-crit-'+k+' .rfb-na'); if(btn) btn.classList.remove('on'); var box0=document.getElementById('rfb-crit-'+k); if(box0) box0.classList.remove('rfb-na-on'); var nar=document.getElementById('rfb-nar-'+k); if(nar) nar.style.display='none'; }
+    var box=document.getElementById('rfb-st-'+k); if(box) box.querySelectorAll('.rfb-star').forEach(function(s){ s.classList.toggle('on', parseInt(s.getAttribute('data-v'),10)<=n); });
+    var c=document.getElementById('rfb-crit-'+k); if(c) c.classList.remove('rfb-miss'); _recFbOverall(); };
+  window._recFbStarKey=function(e,k,n){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); _recFbStar(k,n); } else if(e.key==='ArrowRight'&&n<5){ _recFbStar(k,n+1); } else if(e.key==='ArrowLeft'&&n>1){ _recFbStar(k,n-1); } };
+  window._recFbNA=function(k){ var on=!window._recFb.na.hasOwnProperty(k); var box=document.getElementById('rfb-crit-'+k); var btn=document.querySelector('#rfb-crit-'+k+' .rfb-na'); var nar=document.getElementById('rfb-nar-'+k);
+    if(on){ window._recFb.na[k]=(document.getElementById('rfb-narin-'+k)||{}).value||''; delete window._recFb.ratings[k]; var sb=document.getElementById('rfb-st-'+k); if(sb) sb.querySelectorAll('.rfb-star').forEach(function(s){s.classList.remove('on');}); if(box){box.classList.add('rfb-na-on');box.classList.remove('rfb-miss');} if(btn) btn.classList.add('on'); if(nar){ nar.style.display='block'; var inp=document.getElementById('rfb-narin-'+k); if(inp) inp.focus(); } }
+    else { delete window._recFb.na[k]; if(box) box.classList.remove('rfb-na-on'); if(btn) btn.classList.remove('on'); if(nar) nar.style.display='none'; }
+    _recFbOverall(); };
+  window._recFbTag=function(t){ var S=window._recFb; var i=S.tags.indexOf(t);
+    if(i>=0){ S.tags.splice(i,1); } else {
+      if(t==='no_major_issues'){ S.tags=['no_major_issues']; } else { S.tags=S.tags.filter(function(x){return x!=='no_major_issues';}); S.tags.push(t); }
+    }
+    var box=document.getElementById('rfb-tags'); if(box) box.querySelectorAll('.rfb-tag').forEach(function(b){ b.classList.toggle('on', S.tags.indexOf(b.getAttribute('data-t'))>=0); }); };
+  window._recFbRemCount=function(){ var el=document.getElementById('rfb-remark'); var c=document.getElementById('rfb-remcount'); if(el&&c) c.textContent=(el.value||'').length; };
+  window._recFbAddNote=function(){ var ts=((document.getElementById('rfb-nts')||{}).value||'').trim(); var cat=((document.getElementById('rfb-ncat')||{}).value||'').trim(); var note=((document.getElementById('rfb-nnote')||{}).value||'').trim();
+    var err=document.getElementById('rfb-err'); var fail=function(m){ if(err){err.textContent=m;err.style.display='block';} };
+    if(!ts && !note){ return; }
+    if(ts && !/^\d{1,2}:\d{2}(:\d{2})?$/.test(ts)){ fail('Timestamp must be mm:ss or hh:mm:ss (e.g. 08:20).'); return; }
+    if(err) err.style.display='none';
+    window._recFb.notes.push({ts:ts,category:cat,note:note}); _recFbRenderNotes();
+    var a=document.getElementById('rfb-nts'); if(a) a.value=''; var n=document.getElementById('rfb-nnote'); if(n) n.value=''; };
+  window._recFbDelNote=function(i){ window._recFb.notes.splice(i,1); _recFbRenderNotes(); };
+  function _recFbRenderNotes(){ var box=document.getElementById('rfb-notes'); if(!box) return;
+    box.innerHTML=window._recFb.notes.map(function(n,i){ return '<div class="rfb-noterow"><span class="rfb-nt-ts">'+esc(n.ts||'—')+'</span>'+(n.category?'<span class="rfb-nt-cat">'+esc(n.category)+'</span>':'')+'<span class="rfb-nt-note">'+esc(n.note||'')+'</span><button type="button" class="rfb-nt-x" onclick="_recFbDelNote('+i+')" aria-label="remove">&times;</button></div>'; }).join(''); }
+  // collect + inline-validate; returns {ok:true,payload} or {ok:false}
+  window._recFbCollect=function(){
+    var S=window._recFb; var err=document.getElementById('rfb-err');
+    var fail=function(m,focusId){ if(err){err.textContent=m;err.style.display='block';err.scrollIntoView({block:'nearest'});} if(focusId){var el=document.getElementById(focusId); if(el) el.focus();} return {ok:false}; };
+    if(err){err.style.display='none';err.textContent='';}
+    var ratings={}, na={};
+    for(var i=0;i<REC_FB_CRIT.length;i++){ var k=REC_FB_CRIT[i][0]; var box=document.getElementById('rfb-crit-'+k);
+      if(S.na.hasOwnProperty(k)){ var reason=((document.getElementById('rfb-narin-'+k)||{}).value||S.na[k]||'').trim(); if(!reason){ if(box) box.classList.add('rfb-miss'); return fail('Add a short reason for N/A on "'+REC_FB_CRIT[i][1]+'".','rfb-narin-'+k); } ratings[k]=''; na[k]=reason; }
+      else if(typeof S.ratings[k]==='number'){ ratings[k]=S.ratings[k]; }
+      else { if(box){ box.classList.add('rfb-miss'); box.scrollIntoView({block:'nearest'}); } return fail('Rate "'+REC_FB_CRIT[i][1]+'" (1–5), or mark it N/A with a reason.'); }
+    }
+    var rem=((document.getElementById('rfb-remark')||{}).value||'').trim();
+    if(rem.length<15) return fail('Write a constructive improvement remark (at least 15 characters).','rfb-remark');
+    var low=rem.toLowerCase(); var distinct={}; low.replace(/\s/g,'').split('').forEach(function(ch){distinct[ch]=1;});
+    if(['good','ok','okay','na','n/a','nice','fine','test','nothing','no comment'].indexOf(low)>=0 || Object.keys(distinct).length<5 || rem.split(/\s+/).filter(Boolean).length<3) return fail('Please write a meaningful, specific remark — not placeholder text.','rfb-remark');
+    var tags=S.tags.slice();
+    if(tags.indexOf('no_major_issues')>=0 && tags.length>1) return fail("'No Major Issues' can't be combined with other tags.");
+    return {ok:true, payload:{ratings:ratings, na_reasons:na, issue_tags:tags, remarks:rem, timestamped_notes:S.notes.slice()}};
+  };
+  window._recFbPrefill=function(fb){
+    if(!fb) return;
+    REC_FB_CRIT.forEach(function(c){ var k=c[0]; var v=(fb.ratings||{})[k];
+      if(v===null||v===undefined){ var reason=(fb.na_reasons||{})[k]||''; window._recFb.na[k]=reason; var nar=document.getElementById('rfb-nar-'+k); if(nar){ nar.style.display='block'; var inp=document.getElementById('rfb-narin-'+k); if(inp) inp.value=reason; } var btn=document.querySelector('#rfb-crit-'+k+' .rfb-na'); if(btn) btn.classList.add('on'); var box=document.getElementById('rfb-crit-'+k); if(box) box.classList.add('rfb-na-on'); }
+      else { _recFbStar(k, v); } });
+    (fb.issue_tags||[]).forEach(function(t){ if(window._recFb.tags.indexOf(t)<0){ window._recFb.tags.push(t); } });
+    var tb=document.getElementById('rfb-tags'); if(tb) tb.querySelectorAll('.rfb-tag').forEach(function(b){ b.classList.toggle('on', window._recFb.tags.indexOf(b.getAttribute('data-t'))>=0); });
+    var rem=document.getElementById('rfb-remark'); if(rem){ rem.value=fb.remarks||''; _recFbRemCount(); }
+    window._recFb.notes=(fb.timestamped_notes||[]).slice(); _recFbRenderNotes(); _recFbOverall();
+  };
+  // inject the step into a slot + prefill if resubmitting; returns a promise
+  function _recFbLoadInto(slotId, apiUrl){
+    _recFbReset();
+    return api(apiUrl).then(function(r){
+      var slot=document.getElementById(slotId); if(!slot) return {applicable:false};
+      if(!r || r.applicable===false){ slot.innerHTML=''; slot.setAttribute('data-rfb','0'); return {applicable:false}; }
+      slot.innerHTML=_recFbStepHtml(); slot.setAttribute('data-rfb','1');
+      if(r.feedback){ try{ _recFbPrefill(r.feedback); }catch(e){} }
+      return {applicable:true, had:!!r.feedback};
+    }).catch(function(){ var slot=document.getElementById(slotId); if(slot){ slot.innerHTML=''; slot.setAttribute('data-rfb','0'); } return {applicable:false}; });
+  }
+
+  // ---------- VIEWER (teacher + PM/Admin): premium read-only feedback modal + clickable summary chip ----------
+  function _recFbViewCss(){
+    if(document.getElementById('recfbv-css')) return;
+    var s=document.createElement('style'); s.id='recfbv-css';
+    s.textContent='.rfv-hero{display:flex;align-items:center;gap:14px;padding:16px 18px;background:linear-gradient(135deg,#c98a2e,#a66a1e);color:#fff;border-radius:16px 16px 0 0}'+
+      '.rfv-big{font-size:2rem;font-weight:900;line-height:1;flex:0 0 auto}'+
+      '.rfv-h{font-weight:900;font-size:1.02rem}.rfv-sub{font-size:.74rem;opacity:.92;margin-top:2px;line-height:1.4}'+
+      '.rfv-note-banner{font-size:.76rem;color:var(--text-muted,#8a7d5c);line-height:1.5;background:rgba(201,138,46,.07);border:1px solid rgba(201,138,46,.18);border-radius:10px;padding:8px 11px;margin-bottom:10px}'+
+      '.rfv-sec{font-weight:900;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#a89a74);margin:12px 0 6px}'+
+      '.rfv-crit{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:9px;margin-bottom:4px;background:var(--surface-2,#f6f1e4)}'+
+      '.rfv-crit.low{background:rgba(209,68,58,.09)}.rfv-crit.na{opacity:.75}'+
+      '.rfv-cl{font-weight:700;font-size:.84rem;color:var(--text,#2a2313);min-width:0}'+
+      '.rfv-nareason{font-weight:600;color:var(--text-muted,#8a7d5c);font-size:.76rem}'+
+      '.rfv-st{letter-spacing:1px;font-size:1rem;flex:0 0 auto}.rfv-na{font-weight:800;font-size:.72rem;color:#64748b}'+
+      '.rfv-tags{display:flex;flex-wrap:wrap;gap:6px}.rfv-tag{font-size:.74rem;font-weight:700;color:#8a5a12;background:rgba(201,138,46,.14);border-radius:999px;padding:4px 10px}'+
+      '.rfv-remark{font-size:.86rem;line-height:1.55;color:var(--text,#2a2313);background:var(--surface-2,#f6f1e4);border-radius:10px;padding:10px 12px;white-space:pre-wrap}'+
+      '.rfv-note{display:flex;align-items:center;gap:8px;font-size:.8rem;padding:6px 10px;border-bottom:1px solid var(--surface-2,#f1ead9)}'+
+      '.rfv-nts{font-weight:800;color:#c98a2e;flex:0 0 auto}.rfv-ncat{font-weight:700;color:var(--text-muted,#8a7d5c);flex:0 0 auto}.rfv-nn{flex:1 1 auto;min-width:0}'+
+      '.rfv-ackd{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:.78rem;color:#2e9e6b}.rfv-ackd svg{width:14px;height:14px}'+
+      // compact summary chip (teacher card / PM drawer)
+      '.recfb-chip{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;border:1px solid var(--border,#e5ddcb);background:linear-gradient(180deg,rgba(201,138,46,.06),transparent);border-radius:12px;padding:9px 12px;cursor:pointer;text-align:left;transition:border-color .14s,box-shadow .14s;font-family:inherit}'+
+      '.recfb-chip:hover{border-color:#c98a2e;box-shadow:0 5px 14px rgba(201,138,46,.14)}'+
+      '.recfb-chip-ic{width:30px;height:30px;border-radius:9px;background:rgba(201,138,46,.15);color:#a66a1e;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}.recfb-chip-ic svg{width:16px;height:16px}'+
+      '.recfb-chip-main{flex:1 1 auto;min-width:0}.recfb-chip-t{display:block;font-weight:800;font-size:.8rem;color:var(--text,#2a2313)}'+
+      '.recfb-chip-m{display:block;font-size:.74rem;color:var(--text-muted,#8a7d5c);margin-top:1px}.recfb-chip-m b{color:#c98a2e}'+
+      '.recfb-chip-cta{font-weight:800;font-size:.76rem;color:#c98a2e;flex:0 0 auto}'+
+      'body.dark .rfv-crit,body.dark .rfv-remark{background:#152a45}body.dark .rfv-cl{color:#eaf0fb}body.dark .recfb-chip{background:#152a45;border-color:#2c405e}body.dark .recfb-chip-t{color:#eaf0fb}';
+    document.head.appendChild(s);
+  }
+  function _recFbCritStars(v){ if(v===null||v===undefined) return '<span class="rfv-na">N/A</span>'; var s=''; for(var i=1;i<=5;i++) s+='<span style="color:'+(i<=v?'#e6ad4e':'#dcd2b8')+'">★</span>'; return '<span class="rfv-st">'+s+'</span>'; }
+  function _recFbViewHtml(fb, ctx, opts){
+    opts=opts||{}; ctx=ctx||{}; _recFbViewCss();
+    var crit=REC_FB_CRIT.map(function(c){ var k=c[0]; var v=(fb.ratings||{})[k]; var na=(v===null||v===undefined);
+      var reason=na?((fb.na_reasons||{})[k]||'N/A'):'';
+      return '<div class="rfv-crit'+(na?' na':((typeof v==='number'&&v<=2)?' low':''))+'"><div class="rfv-cl">'+esc(c[1])+(na?('<span class="rfv-nareason"> · '+esc(reason)+'</span>'):'')+'</div>'+_recFbCritStars(v)+'</div>';
+    }).join('');
+    var tlabels=fb.issue_tag_labels||((fb.issue_tags||[]).map(function(t){return REC_FB_TAG_LBL[t]||t;}));
+    var tags=(tlabels&&tlabels.length)?('<div class="rfv-sec">Issues observed</div><div class="rfv-tags">'+tlabels.map(function(l){ return '<span class="rfv-tag">'+esc(l)+'</span>'; }).join('')+'</div>'):'';
+    var notes=(fb.timestamped_notes||[]).length?('<div class="rfv-sec">Timestamped notes <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#8a7d5c)">(original recording)</span></div>'+fb.timestamped_notes.map(function(n){ return '<div class="rfv-note"><span class="rfv-nts">'+esc(n.ts||'—')+'</span>'+(n.category?'<span class="rfv-ncat">'+esc(n.category)+'</span>':'')+'<span class="rfv-nn">'+esc(n.note||'')+'</span></div>'; }).join('')):'';
+    var ov=(fb.overall!=null)?(fb.overall+'<span style="font-size:.9rem;opacity:.75"> /5</span>'):'—';
+    var cl=[]; if(ctx.project_title) cl.push('Project: '+esc(ctx.project_title)); if(ctx.video_title) cl.push(esc(ctx.video_title)); if(fb.editor_name) cl.push(ic('edit')+' '+esc(fb.editor_name)); if(fb.submitted_at) cl.push(esc(fb.submitted_at));
+    var ack=fb.acknowledged?('<span class="rfv-ackd">'+ic('check')+' Acknowledged'+(fb.acknowledged_at?(' · '+esc(fb.acknowledged_at)):'')+'</span>'):'';
+    var ackBtn=(opts.canAck && !fb.acknowledged)?('<button class="p-btn p-btn-primary" id="rfv-ack" onclick="'+opts.ackCall+'">'+ic('check')+' Acknowledge Feedback</button>'):'';
+    return '<div class="p-modal rfv-modal" style="max-width:480px;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden">'+
+      '<div class="rfv-hero"><div class="rfv-big">'+ov+'</div><div style="min-width:0"><div class="rfv-h">Recording Feedback</div><div class="rfv-sub">'+cl.join(' · ')+'</div></div><button class="pd-x" style="margin-left:auto;background:rgba(255,255,255,.18);color:#fff;flex:0 0 auto" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body" style="overflow-y:auto">'+
+        '<div class="rfv-note-banner">'+(opts.forTeacher?'Your editor’s constructive feedback on your original recording — to help your next recording. It’s separate from the edited-video review, and acknowledging it is optional.':'Editor → Teacher feedback on the original recording. Separate from the PM/editor and teacher review ratings.')+'</div>'+
+        '<div class="rfv-sec">Per-criterion</div>'+crit+tags+
+        '<div class="rfv-sec">Improvement remark</div><div class="rfv-remark">'+esc(fb.remarks||'')+'</div>'+
+        notes+(ack?('<div style="margin-top:12px">'+ack+'</div>'):'')+
+      '</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button>'+ackBtn+'</div></div>'+
+    '</div>';
+  }
+  window._RECFBREG={};
+  function _recFbRegister(key, fb, ctx, canAck, ackArgs, forTeacher){ window._RECFBREG[key]={fb:fb,ctx:ctx||{},canAck:!!canAck,ackArgs:ackArgs||null,forTeacher:!!forTeacher}; }
+  window._recFbShow=function(key){ var d=window._RECFBREG[key]; if(!d||!d.fb){ toast('No recording feedback available',true); return; }
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; window._recFbAckArgs=d.ackArgs;
+    dr.innerHTML=_recFbViewHtml(d.fb, d.ctx, {canAck:d.canAck, ackCall:'_recFbAck()', forTeacher:d.forTeacher});
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  // compact clickable summary (shown on teacher card + PM/Admin drawers). Registers the full data.
+  function _recFbSummaryChip(key, summary, fb, ctx, canAck, ackArgs, forTeacher){
+    if(!summary || !summary.has) return '';
+    _recFbViewCss();
+    if(fb) _recFbRegister(key, fb, ctx, canAck, ackArgs, forTeacher);
+    var ov=(summary.overall!=null)?(summary.overall+'/5'):'—';
+    var areas=summary.improvement_areas||0;
+    return '<button type="button" class="recfb-chip" onclick="event.stopPropagation();_recFbShow(\''+key+'\')">'+
+      '<span class="recfb-chip-ic">'+ic('video')+'</span>'+
+      '<span class="recfb-chip-main"><span class="recfb-chip-t">Editor’s Recording Feedback</span>'+
+      '<span class="recfb-chip-m"><b>'+ov+'</b>'+(areas?(' · '+areas+' improvement area'+(areas>1?'s':'')):'')+(summary.acknowledged?' · ✓ seen':'')+'</span></span>'+
+      '<span class="recfb-chip-cta">View ›</span></button>';
+  }
+  window._recFbAck=function(){
+    var a=window._recFbAckArgs||{}; var b=document.getElementById('rfv-ack'); if(b){ b.disabled=true; b.style.opacity='.6'; b.textContent='Saving…'; }
+    api('/api/teacher/recording-feedback/acknowledge','POST',{feedback_id:a.fid, task_id:a.taskId, chapter_id:a.chapterId}).then(function(){
+      toast('Feedback acknowledged ✓'); prodDismiss(); try{ if(typeof loadTReview==='function') loadTReview(); }catch(e){} try{ if(typeof loadTVTasks==='function') loadTVTasks(); }catch(e){}
+    }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; b.textContent='Acknowledge Feedback'; } toast((e&&e.message)||'Failed',true); });
+  };
+  // Teacher deep-link opener (from a notification): fetch + open with Acknowledge
+  window.tRecFbOpen=function(taskId, chapterId){
+    var qs=chapterId?('chapter_id='+chapterId):('task_id='+taskId);
+    api('/api/teacher/recording-feedback?'+qs).then(function(r){
+      if(!r || !r.feedback){ toast('No recording feedback available',true); return; }
+      _recFbRegister('tfb:'+(chapterId||taskId), r.feedback, r.context, true,
+                     {fid:r.feedback.id, taskId:taskId, chapterId:chapterId}, true);
+      _recFbShow('tfb:'+(chapterId||taskId));
+    }).catch(function(e){ toast((e&&e.message)||'Could not load feedback',true); });
+  };
+
+  // ---- Editor: rich submit modal (drive link + remarks + attachments + recording feedback) ----
   window._edtImgs=[];
   window.edtSubmitModal=function(id){
     window._edtImgs=[]; window._edtId=id;
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    dr.innerHTML='<div class="p-modal" style="max-width:470px">'+
+    dr.innerHTML='<div class="p-modal" style="max-width:500px;max-height:92vh;display:flex;flex-direction:column">'+
       '<div class="pd-head"><div class="h-title">Submit Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body">'+
+      '<div class="p-modal-body" style="overflow-y:auto">'+
         '<div class="p-field"><label>Edited video Drive link (required)</label><input class="p-input" id="edt-link" placeholder="https://drive.google.com/..."></div>'+
-        '<div class="p-field"><label>Remarks (optional)</label><textarea class="p-area" id="edt-rem" placeholder="Anything the PM should know"></textarea></div>'+
+        '<div class="p-field"><label>Remarks for PM (optional)</label><textarea class="p-area" id="edt-rem" rows="2" placeholder="Anything the PM should know"></textarea></div>'+
         '<div class="p-field"><label>Attachments (optional)</label><div class="gfx-paste" id="edt-paste" tabindex="0"><div class="gfx-paste-i">Paste (Ctrl+V) or click to add screenshots</div><input type="file" id="edt-file" accept="image/*" multiple style="display:none"></div><div class="gfx-prev" id="edt-prev"></div></div>'+
+        '<div id="edt-fb-slot" data-rfb="0"></div>'+
       '</div>'+
-      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="edtDoSubmit()">Submit for QC</button></div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="edt-sub-btn" onclick="edtDoSubmit()">Submit for QC</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
@@ -29320,20 +29586,28 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     fi.addEventListener('change',function(e){ Array.prototype.forEach.call(e.target.files||[],_edtAddFile); });
     window._edtPasteH=function(e){ var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _edtAddFile(items[i].getAsFile()); e.preventDefault(); } } };
     document.addEventListener('paste',window._edtPasteH);
+    // load the mandatory recording-feedback step (prefilled on a QC resubmit)
+    _recFbLoadInto('edt-fb-slot', P.editor.api+'/tasks/'+id+'/recording-feedback');
   };
   function _edtAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._edtImgs.length<6){ window._edtImgs.push(rd.result); var box=document.getElementById('edt-prev'); if(box) box.innerHTML=window._edtImgs.map(function(s,i){ return '<div class="gfx-thumb" style="background-image:url('+s+')"><button class="gfx-x" onclick="_edtDel('+i+')">&times;</button></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window._edtDel=function(i){ window._edtImgs.splice(i,1); var box=document.getElementById('edt-prev'); if(box) box.innerHTML=window._edtImgs.map(function(s,j){ return '<div class="gfx-thumb" style="background-image:url('+s+')"><button class="gfx-x" onclick="_edtDel('+j+')">&times;</button></div>'; }).join(''); };
   window.edtDoSubmit=function(){
     var link=((document.getElementById('edt-link')||{}).value||'').trim();
-    if(!link){ toast('Edited video Drive link is required',true); return; }
+    if(!link){ toast('Edited video Drive link is required',true); var l=document.getElementById('edt-link'); if(l) l.focus(); return; }
     var body={edited_link:link,remarks:((document.getElementById('edt-rem')||{}).value||'').trim()};
     if(window._edtImgs.length) body.images=window._edtImgs.slice();
+    // mandatory recording feedback (when the step is present for this task)
+    var slot=document.getElementById('edt-fb-slot');
+    if(slot && slot.getAttribute('data-rfb')==='1'){
+      var fb=_recFbCollect(); if(!fb.ok){ return; }
+      body.recording_feedback=fb.payload;
+    }
     var _eid=window._edtId;
+    var b=document.getElementById('edt-sub-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; b.textContent='Submitting\u2026'; }
     if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; }
-    prodDismiss(); toast('Submitting\u2026');
     api(P.editor.api+'/tasks/'+_eid+'/submit','POST',body).then(function(){
-      toast('Submitted for QC'); _apiBust(); _refresh('editor');
-    }).catch(function(e){ toast((e&&e.message)||'Submit failed \u2014 please try again',true); });
+      prodDismiss(); toast('Submitted for QC'); _apiBust(); _refresh('editor');
+    }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; b.textContent='Submit for QC'; } toast((e&&e.message)||'Submit failed \u2014 please try again',true); });
   };
   // ---- PM: Edit QC review (edited video + approve/changes/reject + screenshots + drive refs) ----
   window._qcImgs=[];
@@ -31518,19 +31792,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.edtPvSubmit=function(cid){
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    dr.innerHTML='<div class="p-modal" style="max-width:440px"><div class="pd-head"><div class="h-title">Submit Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
-      '<div class="p-modal-body"><div class="p-field"><label>Edited video drive link</label><input class="p-input" id="pjv-link" placeholder="https://drive.google.com/..." autocomplete="off"></div></div>'+
+    dr.innerHTML='<div class="p-modal" style="max-width:500px;max-height:92vh;display:flex;flex-direction:column"><div class="pd-head"><div class="h-title">Submit Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body" style="overflow-y:auto"><div class="p-field"><label>Edited video drive link</label><input class="p-input" id="pjv-link" placeholder="https://drive.google.com/..." autocomplete="off"></div>'+
+        '<div id="pjv-fb-slot" data-rfb="0"></div></div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pjv-sub-btn" onclick="edtPvSubmitDo('+cid+')">'+ic('check')+' Submit</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
     setTimeout(function(){ var el=document.getElementById('pjv-link'); if(el) el.focus(); },60);
+    // each chapter carries its OWN recording feedback (prefilled on a QC resubmit)
+    _recFbLoadInto('pjv-fb-slot', P.editor.api+'/project-videos/'+cid+'/recording-feedback');
   };
   window.edtPvSubmitDo=function(cid){
     var link=((document.getElementById('pjv-link')||{}).value||'').trim();
-    if(!link){ toast('Please paste the edited video link',true); return; }
+    if(!link){ toast('Please paste the edited video link',true); var l=document.getElementById('pjv-link'); if(l) l.focus(); return; }
+    var body={edited_link:link};
+    var slot=document.getElementById('pjv-fb-slot');
+    if(slot && slot.getAttribute('data-rfb')==='1'){ var fb=_recFbCollect(); if(!fb.ok){ return; } body.recording_feedback=fb.payload; }
     var b=document.getElementById('pjv-sub-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; }
-    api(P.editor.api+'/project-videos/'+cid+'/submit','POST',{edited_link:link})
+    api(P.editor.api+'/project-videos/'+cid+'/submit','POST',body)
       .then(function(){ prodDismiss(); toast('Edited video submitted'); _refresh('editor'); })
       .catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
@@ -34559,7 +34839,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         _kv('Edited', _link(wi.edited_link,'Open edited'))+
         _kv('Thumbnail', _link(wi.thumbnail,'Open thumbnail'))+
         _kv('YouTube', _link(wi.youtube_url,'On YouTube'))+
-      '</div>';
+      '</div>'+
+      // this chapter's own Editor -> Teacher recording feedback (read-only for PM/Admin)
+      ((wi.recording_feedback && wi.recording_feedback_summary)
+        ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('chfb:'+(wi.id||'x'), wi.recording_feedback_summary, wi.recording_feedback, {project_title:(wi.project_title||''), video_title:(wi.title||'')}, false, null, false):'')+'</div>')
+        : '');
     }
     if(tab==='teacher'){
       return '<div class="pd-kv">'+
@@ -35849,7 +36133,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (_ratesOv?_kv('Rating', '<span class="vt-rates" style="margin:0">'+_ratesOv+'</span>'):'')+
         _kv('Source Drive', t.submitted_link?('<a href="'+esc(t.submitted_link)+'" target="_blank">Open link</a>'):'')+
         _kv('Reference', esc(t.reference||''))+
-      '</div>'+_pmSubmissionsHtml(t)+_pmReviewHistoryHtml(t);
+      '</div>'+
+      // Editor -> Teacher recording feedback (read-only for PM/Admin; distinct from the ratings above)
+      ((t.recording_feedback && t.recording_feedback_summary)
+        ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('ovfb:'+(t.id||'x'), t.recording_feedback_summary, t.recording_feedback, {video_title:(t.title||'')}, false, null, false):'')+'</div>')
+        : '')+
+      _pmSubmissionsHtml(t)+_pmReviewHistoryHtml(t);
     }
     if(tab==='timeline'){
       var rows=(t.timeline||[]);
@@ -36123,7 +36412,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         else if(pf.kind==='post-yt') prodLinkForm('production',pf.id,'/youtube','youtube_url','Published YouTube URL');
       } else if(portal==='editor'){
         if(pf.kind==='progress') prodProgForm(pf.id);
-        else if(pf.kind==='submit') prodLinkForm('editor',pf.id,'/submit','edited_link','Edited video Drive link');
+        else if(pf.kind==='submit') edtSubmitModal(pf.id);   // rich modal: link + mandatory recording feedback
         else if(pf.kind==='deadline') prodDeadlineReq(pf.id);
       } else if(portal==='graphics'){
         if(pf.kind==='submit') gfxSubmitModal(pf.id);

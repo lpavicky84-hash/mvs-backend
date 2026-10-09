@@ -199,6 +199,13 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
     if not link:
         raise HTTPException(400, "Edited video drive link is required")
     from video_tasks import set_chapter_state
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    # Mandatory Teacher Recording Feedback for THIS chapter — validate BEFORE any mutation (atomic).
+    # Each chapter carries its own independent feedback (never stored only on the parent project).
+    _fb_needed = pc.rec_fb_applicable(t)
+    _fb = payload.get("recording_feedback")
+    if _fb_needed:
+        pc.validate_recording_feedback(_fb)
     _re = (getattr(c, "qc_status", "") or "") in ("changes",)  # re-submit after QC changes?
     c.edited_link = link
     c.edited_at = datetime.utcnow()
@@ -210,13 +217,28 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
         except Exception: c.qc_revision = 1
     # ---- atomic transition: edited video submitted -> QC pending (NOT ready_for_youtube) ----
     set_chapter_state(db, c, "qc_pending", actor=me, note="Edited video submitted for QC", force=True)
-    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    # save this chapter's recording feedback atomically (history-preserving, independent per chapter)
+    _fb_row = None
+    if _fb_needed:
+        _fb_row = pc.save_recording_feedback(db, "chapter", c.task_id, c.id, sp.id,
+                                             getattr(t, "teacher_id", None),
+                                             int(getattr(c, "qc_revision", 0) or 0) + 1, _fb)
     proj = (t.title or t.subject or "project") if t else "project"
-    _msg = f'{me.name} submitted the edited "{c.title}" from "{proj}". Please review.'
+    _sfx = (' · recording feedback given (%s/5)' % _fb_row.overall_rating) if (_fb_row and _fb_row.overall_rating is not None) else (' · recording feedback given' if _fb_row else '')
+    _msg = f'{me.name} submitted the edited "{c.title}" from "{proj}". Please review.{_sfx}'
     try:
         pc.notify_pms(db, "Edited video ready for QC", _msg, "production", link=str(c.task_id))
     except Exception:
         pass
+    # notify the project teacher(s): recording feedback available for THIS chapter (deep-link carries chapter)
+    if _fb_row is not None:
+        try:
+            for _uid in _project_teacher_user_ids(db, t):
+                pc.notify(db, _uid, "Recording feedback available",
+                          f'Recording feedback is available for "{c.title}" ({proj}).',
+                          "recording_feedback", link=("%d:%d" % (c.task_id, c.id)))
+        except Exception:
+            pass
     # notify the project's teacher(s) so they can check the edit too
     try:
         for _uid in _project_teacher_user_ids(db, t):
@@ -878,6 +900,13 @@ def editor_submit(tid: int, payload: dict = Body(...),
         raise HTTPException(400, "Edited video drive link is required")
     if t.lifecycle not in ("editing_done", "editing", "editing_paused", "qc_changes"):
         raise HTTPException(400, "Task is not ready to submit")
+    # Mandatory Teacher Recording Feedback — VALIDATE FIRST, before any state mutation, so an invalid
+    # (or missing) feedback rolls the whole submit back and never marks editing complete. Only applies
+    # when a teacher made the recording (youtuber-created tasks skip it).
+    _fb_needed = pc.rec_fb_applicable(t)
+    _fb = payload.get("recording_feedback")
+    if _fb_needed:
+        pc.validate_recording_feedback(_fb)
     if t.lifecycle in ("editing", "editing_paused"):
         _close_open_session(db, sp, t)
     t.edited_link = link
@@ -893,8 +922,19 @@ def editor_submit(tid: int, payload: dict = Body(...),
     pc.set_state(db, t, "qc_pending", actor=me,
                  event="revision_submitted" if is_revision else "edited_video_submitted",
                  meta={"link": link, "note": _rem[:200]})
+    # save the structured recording feedback ATOMICALLY in the same transaction (history-preserving).
+    _fb_row = None
+    if _fb_needed:
+        _fb_row = pc.save_recording_feedback(db, "task", t.id, None, sp.id, t.teacher_id,
+                                             (getattr(t, "revision_count", 0) or 0) + 1, _fb)
+        try:
+            pc.log_event(db, t, me, "recording_feedback_added",
+                         meta={"overall": _fb_row.overall_rating, "revision": _fb_row.submission_revision})
+        except Exception:
+            pass
+    _pm_sfx = (' · recording feedback given (%s/5)' % _fb_row.overall_rating) if (_fb_row and _fb_row.overall_rating is not None) else (' · recording feedback given' if _fb_row else '')
     pc.notify_pms(db, "Edited Video Submitted",
-                  f'{me.name} submitted the edited "{t.title}" for QC.', "production", link=str(t.id))
+                  f'{me.name} submitted the edited "{t.title}" for QC.{_pm_sfx}', "production", link=str(t.id))
     # teacher (creator/collab) ko batao ki edited video review ke liye ready hai.
     # fresh/revised cut -> purana teacher review reset, taaki nayi video dubara check ho.
     try:
@@ -913,6 +953,19 @@ def editor_submit(tid: int, payload: dict = Body(...),
                               "video_review", link=str(t.id))
     except Exception:
         pass
+    # notify the teacher(s) that recording feedback is now available (deep-links to the feedback panel)
+    if _fb_row is not None:
+        try:
+            from models import TeacherProfile as _TP2
+            from video_tasks import _collab_all_ids as _cai2
+            for teach_id in _cai2(t):
+                tp2 = db.query(_TP2).filter(_TP2.id == teach_id).first()
+                if tp2 and tp2.user_id:
+                    pc.notify(db, tp2.user_id, "Recording feedback available",
+                              f'Recording feedback is available for "{t.title}".',
+                              "recording_feedback", link=str(t.id))
+        except Exception:
+            pass
     # on-time appreciation (§23) — one positive nudge, only once, only on an on-time submission
     try:
         _edl = getattr(t, "editor_deadline", None) or t.deadline
@@ -925,6 +978,24 @@ def editor_submit(tid: int, payload: dict = Body(...),
         pass
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle}
+
+
+# -------------------- Teacher Recording Feedback: prefill (so a QC resubmit shows the last feedback) --------------------
+@router.get("/tasks/{tid}/recording-feedback")
+def editor_task_rec_feedback(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    row = pc.get_active_recording_feedback(db, video_task_id=t.id)
+    return {"applicable": pc.rec_fb_applicable(t), "feedback": pc.recording_feedback_out(db, row)}
+
+
+@router.get("/project-videos/{cid}/recording-feedback")
+def editor_chapter_rec_feedback(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    row = pc.get_active_recording_feedback(db, chapter_id=c.id)
+    return {"applicable": pc.rec_fb_applicable(t), "feedback": pc.recording_feedback_out(db, row)}
 
 
 # ============================================================ NOTIFICATIONS

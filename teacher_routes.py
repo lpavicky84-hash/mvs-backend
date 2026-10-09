@@ -3567,6 +3567,110 @@ def teacher_review_approve(tid: int, payload: dict = Body(...),
             "teacher_reviewer_name": t.teacher_reviewer_name}
 
 
+# ==================== TEACHER RECORDING FEEDBACK (Editor -> Teacher): view, acknowledge, trends ====================
+def _teacher_owns_task(db, tp, t):
+    """The teacher is the creator or a verified collaborator of this task/project."""
+    if not t:
+        return False
+    try:
+        from video_tasks import _collab_all_ids as _cai
+        ids = _cai(t) or []
+        if ids:
+            return tp.id in ids
+    except Exception:
+        pass
+    return getattr(t, "teacher_id", None) == tp.id
+
+
+@router.get("/recording-feedback")
+def teacher_get_recording_feedback(task_id: int = 0, chapter_id: int = 0,
+                                   db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """The editor's recording feedback for a video the teacher owns. Backend-enforced access —
+    unrelated teachers can't read another teacher's feedback by guessing numeric ids."""
+    import production_core as _pc
+    from models import VideoTask as _VT, VideoTaskChapter as _VC
+    tp = get_teacher_profile(current_user, db)
+    ctx = {}
+    if chapter_id:
+        c = db.query(_VC).filter(_VC.id == chapter_id).first()
+        if not c:
+            raise HTTPException(404, "Not found")
+        t = db.query(_VT).filter(_VT.id == c.task_id).first()
+        if not _teacher_owns_task(db, tp, t):
+            raise HTTPException(403, "You don't have access to this feedback")
+        row = _pc.get_active_recording_feedback(db, chapter_id=chapter_id)
+        ctx = {"video_title": c.title or "", "project_title": (t.title or t.subject or "Project") if t else "",
+               "is_chapter": True}
+    else:
+        t = db.query(_VT).filter(_VT.id == task_id).first()
+        if not _teacher_owns_task(db, tp, t):
+            raise HTTPException(403, "You don't have access to this feedback")
+        row = _pc.get_active_recording_feedback(db, video_task_id=task_id)
+        ctx = {"video_title": (t.title or "") if t else "", "is_chapter": False}
+    return {"feedback": _pc.recording_feedback_out(db, row), "context": ctx}
+
+
+@router.post("/recording-feedback/acknowledge")
+def teacher_ack_recording_feedback(payload: dict = Body(...),
+                                   db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import production_core as _pc
+    from models import TeacherRecordingFeedback as _FB, VideoTask as _VT
+    tp = get_teacher_profile(current_user, db)
+    row = None
+    fid = 0
+    try:
+        fid = int(payload.get("feedback_id") or 0)
+    except Exception:
+        fid = 0
+    if fid:
+        row = db.query(_FB).filter(_FB.id == fid).first()
+    if row is None:
+        if payload.get("chapter_id"):
+            row = _pc.get_active_recording_feedback(db, chapter_id=int(payload.get("chapter_id")))
+        elif payload.get("task_id"):
+            row = _pc.get_active_recording_feedback(db, video_task_id=int(payload.get("task_id")))
+    if row is None:
+        raise HTTPException(404, "Feedback not found")
+    t = db.query(_VT).filter(_VT.id == row.video_task_id).first()
+    if not _teacher_owns_task(db, tp, t):
+        raise HTTPException(403, "You don't have access to this feedback")
+    if not row.acknowledged_at:
+        row.acknowledged_at = datetime.utcnow()
+        row.acknowledged_by = getattr(current_user, "id", None)
+        db.commit()
+    return {"ok": True, "acknowledged": True, "acknowledged_at": _pc._dt(row.acknowledged_at)}
+
+
+@router.get("/recording-feedback/my-trends")
+def teacher_recording_trends(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """The teacher's own private recording-improvement trends. No public ranking/leaderboard;
+    shows N/A below a minimum sample so a couple of subjective ratings aren't over-read."""
+    import production_core as _pc, json as _j
+    from collections import Counter
+    from models import TeacherRecordingFeedback as _FB
+    tp = get_teacher_profile(current_user, db)
+    rows = (db.query(_FB).filter(_FB.teacher_id == tp.id, _FB.is_active == True)
+            .order_by(_FB.created_at.asc()).all())
+    n = len(rows)
+    MIN = 3
+    if n < MIN:
+        return {"enough": False, "min_sample": MIN, "count": n}
+    overalls = [r.overall_rating for r in rows if r.overall_rating is not None]
+    avg = round(sum(overalls) / len(overalls), 2) if overalls else None
+    cnt = Counter()
+    for r in rows:
+        for tg in _j.loads(r.issue_tags_json or "[]"):
+            if tg != "no_major_issues":
+                cnt[tg] += 1
+    top = [{"tag": k, "label": _pc._REC_FB_TAG_LABELS.get(k, k), "count": v} for k, v in cnt.most_common(5)]
+    recent = [{"overall": r.overall_rating, "at": _pc._dt(r.created_at)} for r in rows[-8:]]
+    improvement = None
+    if len(overalls) >= 6:
+        improvement = round((sum(overalls[-3:]) / 3.0) - (sum(overalls[-6:-3]) / 3.0), 2)
+    return {"enough": True, "count": n, "average": avg, "top_issues": top,
+            "recent": recent, "improvement": improvement}
+
+
 @router.get("/perf-history")
 def teacher_perf_history(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Phase 8: available months (current + frozen past) — leaderboard month selector."""
