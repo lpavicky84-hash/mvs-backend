@@ -28879,18 +28879,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var l=document.getElementById('pn-list'); if(!l) return;
     if(!list.length){ l.innerHTML='<div class="pn-empty">No notifications yet.</div>'; return; }
     l.innerHTML=list.map(function(n){
-      return '<div class="pn-item'+(n.is_read?'':' unread')+'" onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+',\''+(n.type||'')+'\')">'+
+      return '<div class="pn-item'+(n.is_read?'':' unread')+'" onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+',\''+(n.type||'')+'\','+(n.chapter_id||'null')+')">'+
         '<div class="pn-t">'+esc(n.title||'Update')+'</div>'+
         (n.message?'<div class="pn-m">'+_msgHtml(n.message)+'</div>':'')+
         '<div class="pn-at">'+esc(n.at||'')+'</div></div>';
     }).join('');
   }
-  window.prodNotifClick=function(portal,nid,taskId,ntype){
+  window.prodNotifClick=function(portal,nid,taskId,ntype,chapterId){
     window._pmChatReturn=null;   // opened straight from a notification -> Back should just close
     api(P[portal].api+'/notifications/'+nid+'/read','POST',{}).catch(function(){});
     var p=document.getElementById('pn-panel'); if(p) p.remove();
     document.removeEventListener('click',_prodBellOutside);
     prodNotifRefreshDot(portal);
+    chapterId=(chapterId&&chapterId!=='null')?chapterId:0;
+    // CHAPTER deep-link ("task:chapter") -> open the exact chapter (brief viewer for the editor,
+    // chapter drawer for PM/Admin). Was previously a dead click (task_id came back null).
+    if(chapterId){
+      if(ntype==='creative_brief' && portal==='editor'){ try{ edtBriefOpen(taskId||0, chapterId); return; }catch(e){} }
+      try{ if(typeof window.prodOpenChapter==='function'){ window.prodOpenChapter((portal==='admin')?'admin':'production', chapterId); return; } }catch(e){}
+    }
     if(taskId){
       if(ntype==='gfx_chat'){
         if(portal==='graphics'){ try{ gfxChat(taskId); return; }catch(e){} }
@@ -29729,11 +29736,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._cbrTag=function(t){ var i=_cbr.tags.indexOf(t); if(i>=0) _cbr.tags.splice(i,1); else _cbr.tags.push(t);
     var b=document.getElementById('cbr-tags'); if(b) b.querySelectorAll('.cbr-chip').forEach(function(x){ x.classList.toggle('on',_cbr.tags.indexOf(x.getAttribute('data-t'))>=0); }); };
   function _cbrSubBtn(){ var id=_cbr.submitBtn; return id?document.getElementById(id):null; }
-  function _cbrAddImg(file){ if(!file || _cbr.imgs.length>=12) return;
-    if(!/^image\//.test(file.type||'')){ return; }   // validate actual MIME, not just extension
+  var CBR_IMG_MAX=12, CBR_IMG_MAXBYTES=6*1024*1024;   // keep in sync with backend _creative_images cap (12)
+  function _cbrImgErr(msg){ var e=document.getElementById('cbr-err'); if(e){ e.textContent=msg; e.style.display='block'; } else { try{ toast(msg,true); }catch(_){} } }
+  function _cbrImgErrClear(){ var e=document.getElementById('cbr-err'); if(e) e.style.display='none'; }
+  function _cbrReleaseIfIdle(){ if(_cbr.pending<=0){ _cbr.pending=0; var s=_cbrSubBtn(); if(s){ s.disabled=false; s.style.opacity='1'; } } }
+  function _cbrAddImg(file){
+    if(!file) return;
+    // LIMIT across BOTH committed images AND in-flight reads — the FileReader callbacks are async, so
+    // a multi-file select used to let every reader start (length still 0) and overflow the cap. Count
+    // pending uploads too so the (max+1)th file is rejected up front.
+    if((_cbr.imgs.length + _cbr.pending) >= CBR_IMG_MAX){ _cbrImgErr('You can add up to '+CBR_IMG_MAX+' reference images.'); return; }
+    if(!/^image\//.test(file.type||'')){ _cbrImgErr('Only image files can be added as references.'); return; }   // actual MIME, not extension
+    if(file.size && file.size > CBR_IMG_MAXBYTES){ _cbrImgErr('Each image must be under 6 MB — "'+(file.name||'that file')+'" is too large.'); return; }
+    _cbrImgErrClear();
     _cbr.pending++; var sb=_cbrSubBtn(); if(sb){ sb.disabled=true; sb.style.opacity='.6'; }
-    var rd=new FileReader(); rd.onload=function(){ _cbr.pending=Math.max(0,_cbr.pending-1); if((''+rd.result).indexOf('data:image/')===0) _cbr.imgs.push(rd.result); _cbrRenderImgs(); if(_cbr.pending===0){ var s2=_cbrSubBtn(); if(s2){ s2.disabled=false; s2.style.opacity='1'; } } };
-    rd.onerror=function(){ _cbr.pending=Math.max(0,_cbr.pending-1); if(_cbr.pending===0){ var s3=_cbrSubBtn(); if(s3){ s3.disabled=false; s3.style.opacity='1'; } } };
+    var rd=new FileReader();
+    rd.onload=function(){ _cbr.pending=Math.max(0,_cbr.pending-1);
+      // re-check the cap at commit time too (defensive against concurrent reads)
+      if((''+rd.result).indexOf('data:image/')===0 && _cbr.imgs.length < CBR_IMG_MAX){ _cbr.imgs.push(rd.result); }
+      else if(_cbr.imgs.length >= CBR_IMG_MAX){ _cbrImgErr('You can add up to '+CBR_IMG_MAX+' reference images.'); }
+      _cbrRenderImgs(); _cbrReleaseIfIdle(); };
+    rd.onerror=function(){ _cbr.pending=Math.max(0,_cbr.pending-1); _cbrImgErr('Could not read "'+(file.name||'that image')+'". Please try another.'); _cbrReleaseIfIdle(); };
     rd.readAsDataURL(file); }
   window._cbrDelImg=function(i){ _cbr.imgs.splice(i,1); _cbrRenderImgs(); };
   function _cbrRenderImgs(){ var g=document.getElementById('cbr-gal'); if(!g) return; g.innerHTML=_cbr.imgs.map(function(s,i){ return '<div class="cbr-thumb" style="background-image:url('+s+')" onclick="prodLightbox(\''+s+'\')"><button class="cbr-x" type="button" onclick="event.stopPropagation();_cbrDelImg('+i+')">&times;</button></div>'; }).join(''); }
@@ -29839,20 +29862,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(base).then(function(r){
       if(!r || !r.brief){ toast('No creative brief added',true); return; }
       var ctx=(r.context||{}); ctx.pm_instructions=ctx.pm_instructions||'';
-      var chatFn=chapterId?('prodDismiss();edtProjectChat('+ (window._edtBriefProj||0) +",'')"):('prodDismiss();edtChatMenu('+taskId+')');
-      // for chapters we fall back to the task-level teacher chat if project chat id unknown
+      // CHAPTER -> the per-chapter collaboration thread (/chapters/{cid}/chat); TASK -> the editor chat menu.
       _cbrRegister('ebr:'+(chapterId||taskId), r.brief, ctx, {fn:(chapterId?('prodDismiss();_edtChapChat('+chapterId+')'):('prodDismiss();edtChatMenu('+taskId+')')), label:'Chat with Teacher'});
       _cbrShow('ebr:'+(chapterId||taskId));
     }).catch(function(e){ toast((e&&e.message)||'Could not load brief',true); });
   };
-  window._edtChapChat=function(chapterId){ try{ edtReviewChat(chapterId); }catch(e){ try{ edtChatMenu(chapterId); }catch(_){} } };
+  // Editor opens the canonical PER-CHAPTER collaboration chat (Teacher<->Editor, PM/Admin oversight).
+  // FIX: earlier this sent a chapter id to /tasks/{id}/review-chat (task route) — an identity mismatch
+  // that opened an unrelated task's thread. Now routes by chapter id to /chapters/{cid}/chat.
+  window._edtChapChat=function(chapterId, title){
+    if(typeof _pjChatOpen!=='function'){ toast('Chat is unavailable',true); return; }
+    var t=title; if(!t){ try{ var d=window._CBRREG&&window._CBRREG['ebr:'+chapterId]; t=(d&&d.ctx&&d.ctx.video_title)||''; }catch(e){ t=''; } }
+    _pjChatOpen((P.editor&&P.editor.api)||'/api/editor', chapterId, t, 'editor');
+  };
+  // Teacher opens the same per-chapter collaboration chat (routes by chapter id, not the parent task).
+  window._tChapChat=function(chapterId, title){
+    if(typeof _pjChatOpen!=='function'){ toast('Chat is unavailable',true); return; }
+    var t=title; if(!t){ try{ var d=window._CBRREG&&window._CBRREG['tbr:'+chapterId]; t=(d&&d.ctx&&d.ctx.video_title)||''; }catch(e){ t=''; } }
+    _pjChatOpen('/api/teacher', chapterId, t, 'teacher');
+  };
   // Teacher opener + Chat-with-Editor shortcut (only when an editor is assigned)
   window.tBriefOpen=function(taskId, chapterId){
     var qs=chapterId?('chapter_id='+chapterId):('task_id='+taskId);
     api('/api/teacher/creative-brief?'+qs).then(function(r){
       if(!r || !r.brief){ toast('No creative brief added',true); return; }
       var ctx=r.context||{}; var chat=null;
-      if(ctx.editor_assigned){ chat={fn:('prodDismiss();tReviewChat('+taskId+')'), label:'Chat with Editor'}; }
+      // CHAPTER -> per-chapter chat (by chapter id); TASK -> the task review chat. (Was always the task
+      // review chat, which for a chapter opened the PARENT PROJECT's thread — wrong conversation.)
+      if(ctx.editor_assigned){ chat={fn:(chapterId?('prodDismiss();_tChapChat('+chapterId+')'):('prodDismiss();tReviewChat('+taskId+')')), label:'Chat with Editor'}; }
       _cbrRegister('tbr:'+(chapterId||taskId), r.brief, ctx, chat);
       _cbrShow('tbr:'+(chapterId||taskId));
     }).catch(function(e){ toast((e&&e.message)||'Could not load brief',true); });
@@ -32790,7 +32827,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         // route by TYPE just like the bell: a chat/review notification opens the actual chat, a rating
         // opens the task (where the rating now shows), everything else opens the task detail — so
         // clicking a notification always lands on the real thing, not a blank details panel.
-        return '<div class="pn-item'+(n.is_read?'':' unread')+'"'+(n.task_id?(' onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+',\''+(n.type||'')+'\')" style="cursor:pointer"'):'')+'>'+
+        return '<div class="pn-item'+(n.is_read?'':' unread')+'"'+((n.task_id||n.chapter_id)?(' onclick="prodNotifClick(\''+portal+'\','+n.id+','+(n.task_id||'null')+',\''+(n.type||'')+'\','+(n.chapter_id||'null')+')" style="cursor:pointer"'):'')+'>'+
           '<div class="pn-title">'+esc(n.title||'')+'</div><div class="pn-msg">'+_msgHtml(n.message||'')+'</div><div class="pn-at">'+esc(n.at||'')+'</div></div>';
       }).join('')+'</div>';
       body.innerHTML=html;
@@ -35154,7 +35191,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('chfb:'+(wi.id||'x'), wi.recording_feedback_summary, wi.recording_feedback, {project_title:(wi.project_title||''), video_title:(wi.title||'')}, false, null, false):'')+'</div>')
         : '')+
       // this chapter's own Creative Editing Brief + PM Add/Edit
-      '<div style="margin-top:10px">'+(typeof _cbrSummaryChip==='function'?_cbrSummaryChip('chcbr:'+(wi.id||'x'), wi.creative_brief_summary, wi.creative_brief, {project_title:(wi.project_title||''), video_title:(wi.title||''), pm_instructions:(wi.editor_instructions||''), source_video:(wi.source_video||'')}, {fn:'prodDismiss();prodChapChat&&prodChapChat('+(wi.parent_project_id||0)+')', label:'Open Collaboration Chat'}):'')+
+      '<div style="margin-top:10px">'+(typeof _cbrSummaryChip==='function'?_cbrSummaryChip('chcbr:'+(wi.id||'x'), wi.creative_brief_summary, wi.creative_brief, {project_title:(wi.project_title||''), video_title:(wi.title||''), pm_instructions:(wi.editor_instructions||''), source_video:(wi.source_video||'')}, {fn:'prodDismiss();_pjChatOpen(\''+_chapPrefix(portal)+'\','+(wi.id||0)+',\''+_esc1(wi.title||'')+'\',\''+((portal==='admin')?'admin':'production_manager')+'\')', label:'Open Collaboration Chat'}):'')+
         '<button class="p-btn" style="margin-top:7px;font-size:.78rem" onclick="cbrEditOpen({title:\'Creative Brief\',saveUrl:P.production.api+\'/creative-brief\',getUrl:P.production.api+\'/chapters/'+(wi.id||0)+'/work-item\',ref:{chapter_id:'+(wi.id||0)+'},after:function(){try{prodOpenChapter(\'production\','+(wi.id||0)+');}catch(e){}}})">'+(wi.creative_brief_summary&&wi.creative_brief_summary.has?'Edit':'+ Add')+' Creative Brief</button>'+
       '</div>';
     }

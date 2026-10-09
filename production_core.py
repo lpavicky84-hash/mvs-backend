@@ -2148,14 +2148,21 @@ def notifications_out(db, user, limit=40):
     out = []
     for n in rows:
         tid = None
+        cid = None
         try:
-            if n.link and str(n.link).isdigit():
-                tid = int(n.link)
+            lk = str(n.link or "")
+            if lk.isdigit():
+                tid = int(lk)
+            else:
+                # chapter deep-link "taskId:chapterId" (creative_brief / recording_feedback on a chapter)
+                m = _re.match(r"^(\d+):(\d+)$", lk)
+                if m:
+                    tid = int(m.group(1)); cid = int(m.group(2))
         except Exception:
-            tid = None
+            tid = None; cid = None
         out.append({"id": n.id, "title": n.title or "", "message": n.message or "",
                     "type": n.notif_type or "", "is_read": bool(n.is_read),
-                    "task_id": tid, "at": _dt(n.created_at)})
+                    "task_id": tid, "chapter_id": cid, "at": _dt(n.created_at)})
     return out
 
 
