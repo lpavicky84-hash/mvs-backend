@@ -593,6 +593,15 @@ def pm_submit_link(tid: int, payload: dict = Body(...), db: Session = Depends(ge
         raise HTTPException(400, "This video is not awaiting submission anymore.")
     role = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
     pc.submit_creator_link(db, t, link, actor_name=(getattr(me, "name", "") or role), actor_role=role)
+    # OPTIONAL creative brief authored BY the PM/Admin (clearly attributed; never faked as the teacher)
+    try:
+        _cbp = payload.get("creative_brief")
+        if _cbp:
+            pc.attach_creative_brief(db, "task", t.id, None, me, role, _cbp, task_for_timeline=t,
+                                     editor_started=pc.creative_editor_started_task(t),
+                                     editor_staff_id=getattr(t, "editor_id", None), title=(t.title or ""))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "on_time": t.on_time, "lifecycle": t.lifecycle,
             "submitted_by_name": t.submitted_by_name or "", "submitted_by_role": t.submitted_by_role or ""}
@@ -1226,6 +1235,13 @@ def assign_editor(tid: int, payload: dict = Body(...),
     if ed.user_id:
         pc.notify(db, ed.user_id, "New Editing Task",
                   f'You have been assigned to edit: "{t.title}".', "video_task", link=str(t.id))
+        # if a creative editing brief is attached, point the newly-assigned editor straight to it
+        try:
+            if pc.get_active_creative_brief(db, video_task_id=t.id) is not None:
+                pc.notify(db, ed.user_id, "Creative Editing Brief available",
+                          f'Creative editing brief is available for "{t.title}".', "creative_brief", link=str(t.id))
+        except Exception:
+            pass
     # teacher sees updated status
     _notify_task_teacher(db, t, "Editor Assigned",
                          f'Your video "{t.title}" was approved and assigned to an editor.', link=str(t.id))
@@ -4704,6 +4720,10 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         _rfb_row = pc.get_active_recording_feedback(db, chapter_id=c.id)
     except Exception:
         _rfb_row = None
+    try:
+        _cb_row = pc.get_active_creative_brief(db, chapter_id=c.id)
+    except Exception:
+        _cb_row = None
     return {
         "work_type": "project_chapter",
         "id": c.id,
@@ -4777,6 +4797,8 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "allowed_actions": chapter_allowed_actions(c, role),
         "recording_feedback": pc.recording_feedback_out(db, _rfb_row),
         "recording_feedback_summary": pc.recording_feedback_summary(db, _rfb_row),
+        "creative_brief": pc.creative_brief_out(db, _cb_row),
+        "creative_brief_summary": pc.creative_brief_summary(db, _cb_row),
         "updated_at": _dt(getattr(c, "changed_at", None)),
     }
 
@@ -4832,8 +4854,46 @@ def prod_chapter_submit_link(payload: dict = Body(...), db: Session = Depends(ge
         _vt._chap_event(c, "link_updated",
                         "Video link updated by %s · %s" % (_actor_name(me),
                         "Admin" if _actor_role(me) == "admin" else "Production Manager"))
+    # OPTIONAL per-chapter creative brief authored by the PM/Admin (attributed, not faked as teacher)
+    try:
+        _cbp = payload.get("creative_brief")
+        if _cbp:
+            _t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+            pc.attach_creative_brief(db, "project_chapter", c.task_id, c.id, me, _actor_role(me), _cbp,
+                                     task_for_timeline=_t, editor_started=pc.creative_editor_started_chapter(c),
+                                     editor_staff_id=getattr(c, "editor_id", None),
+                                     title=(c.title or (_t.title if _t else "") or ""))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "chapter_id": c.id, "lifecycle": c.lifecycle}
+
+
+@router.post("/creative-brief")
+def pm_save_creative_brief(payload: dict = Body(...), db: Session = Depends(get_db),
+                           me=Depends(get_pm_or_admin)):
+    """PM/Admin authors or updates the creative brief for a task OR chapter (clearly attributed).
+    Versions after the editor has started and notifies the assigned editor."""
+    role = "admin" if getattr(me, "role", "") == "admin" else "production_manager"
+    cid = int(payload.get("chapter_id") or 0)
+    tid = int(payload.get("task_id") or 0)
+    if cid:
+        if not _PROJECT_OK:
+            raise HTTPException(400, "Not available on this server build.")
+        c = _chap(db, cid)
+        t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+        row, changed = pc.attach_creative_brief(
+            db, "project_chapter", c.task_id, c.id, me, role, payload, task_for_timeline=t,
+            editor_started=pc.creative_editor_started_chapter(c), editor_staff_id=getattr(c, "editor_id", None),
+            title=(c.title or (t.title if t else "") or ""))
+    else:
+        t = _task(db, tid)
+        row, changed = pc.attach_creative_brief(
+            db, "task", t.id, None, me, role, payload, task_for_timeline=t,
+            editor_started=pc.creative_editor_started_task(t), editor_staff_id=getattr(t, "editor_id", None),
+            title=(t.title or ""))
+    db.commit()
+    return {"ok": True, "changed": bool(changed), "brief": pc.creative_brief_out(db, row)}
 
 
 @router.post("/chapter-reshoot")
@@ -5569,6 +5629,13 @@ def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get
                 pc.notify(db, ep.user_id, "Project video assigned for editing",
                           f'"{row.title}" from "{proj}" has been assigned to you for editing.',
                           "video_task", link=str(row.task_id))
+                try:
+                    if pc.get_active_creative_brief(db, chapter_id=row.id) is not None:
+                        pc.notify(db, ep.user_id, "Creative Editing Brief available",
+                                  f'Creative editing brief is available for "{row.title}" ({proj}).',
+                                  "creative_brief", link=("%d:%d" % (row.task_id, row.id)))
+                except Exception:
+                    pass
         if gid:
             gp = db.query(_SP).filter(_SP.id == gid).first()
             if gp and gp.user_id:

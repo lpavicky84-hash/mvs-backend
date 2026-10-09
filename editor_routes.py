@@ -998,6 +998,28 @@ def editor_chapter_rec_feedback(cid: int, db: Session = Depends(get_db), me=Depe
     return {"applicable": pc.rec_fb_applicable(t), "feedback": pc.recording_feedback_out(db, row)}
 
 
+# -------------------- Creative Editing Brief: the assigned editor views the brief for their work-item --------------------
+@router.get("/tasks/{tid}/creative-brief")
+def editor_task_brief(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    row = pc.get_active_creative_brief(db, video_task_id=t.id)
+    return {"brief": pc.creative_brief_out(db, row),
+            "context": {"video_title": t.title or "", "teacher": pc.creator_info(db, t)[0] if hasattr(pc, "creator_info") else "",
+                        "pm_instructions": getattr(t, "editor_instructions", "") or ""}}
+
+
+@router.get("/project-videos/{cid}/creative-brief")
+def editor_chapter_brief(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    sp = _me_staff(db, me)
+    c = _my_pv_chapter(db, sp, cid)
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    row = pc.get_active_creative_brief(db, chapter_id=c.id)
+    return {"brief": pc.creative_brief_out(db, row),
+            "context": {"video_title": c.title or "", "project_title": (t.title or t.subject or "Project") if t else "",
+                        "is_chapter": True, "pm_instructions": getattr(c, "editor_instructions", "") or ""}}
+
+
 # ============================================================ NOTIFICATIONS
 @router.get("/notifications")
 def _pnotifs(db: Session = Depends(get_db), me=Depends(get_editor)):

@@ -1764,6 +1764,31 @@ class TeacherRecordingFeedback(Base):
     updated_at         = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class CreativeEditingBrief(Base):
+    """OPTIONAL creative editing ideas the source submitter (Teacher / PM / authorized YouTuber)
+    attaches to a video so the assigned Editor knows how to cut it. Work-item scoped (a normal task
+    OR one project chapter — exactly one ref). Separate from the PM's Editor Assignment Brief
+    (VideoTask.editor_instructions). History is kept via is_active=False older versions."""
+    __tablename__ = "creative_editing_briefs"
+
+    id               = Column(Integer, primary_key=True)
+    work_type        = Column(String(20), default="task", index=True)   # task | project_chapter
+    video_task_id    = Column(Integer, ForeignKey("video_tasks.id"), nullable=True, index=True)
+    chapter_id       = Column(Integer, ForeignKey("video_task_chapters.id"), nullable=True, index=True)
+    submitted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    submitted_by_role    = Column(String(20), default="")   # teacher | production_manager | admin | youtuber
+    submitted_by_name    = Column(String(160), default="")
+    instructions     = Column(Text, default="")
+    editing_style_tags_json       = Column(Text, default="")   # JSON array of style-tag slugs
+    reference_images_json         = Column(Text, default="")   # JSON array of R2 image URLs
+    reference_video_links_json    = Column(Text, default="")   # JSON array of {url,title,note}
+    timestamped_instructions_json = Column(Text, default="")   # JSON array of {ts,note} (source recording)
+    version          = Column(Integer, default=1)
+    is_active        = Column(Boolean, default=True, index=True)
+    created_at       = Column(DateTime, default=func.now())
+    updated_at       = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class GraphicsTask(Base):
     """Thumbnail work tracked independently of the video's editing lifecycle."""
     __tablename__ = "graphics_tasks"

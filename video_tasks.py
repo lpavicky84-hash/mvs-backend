@@ -2351,8 +2351,8 @@ def _notify_project_chat(db, project, author_id, author_name, message):
 def _chat_access_ok(db, user, c=None, pid=None):
     """CENTRAL participant check for project/chapter chat + timeline (defense-in-depth on top of
     the per-portal route guards). PM/Admin: full. Teacher: own/collaborator project only. Editor:
-    own chapter OR whole-project-editor. Graphics: own chapter only. YouTuber: ready/published only.
-    Unknown role -> allowed (the route-level guard still applies; we never lock out a known-good flow)."""
+    own chapter OR whole-project-editor. Graphics: own chapter only. YouTuber: only genuine
+    publishing-stage work (ready/uploaded/completed). ANY other / unknown role -> DENY."""
     role = (getattr(user, "role", "") or "")
     if role in ("admin", "production_manager"):
         return True
@@ -2370,9 +2370,17 @@ def _chat_access_ok(db, user, c=None, pid=None):
     if role == "youtuber":
         # YouTubers carry a YouTuberProfile (not a ProductionStaffProfile) and only touch
         # publishing-stage work -> judge purely by lifecycle, not by staff assignment.
+        from models import VideoTaskChapter as _VC
         if c is not None:
             return _chapter_lifecycle(c) in ("ready_for_youtube", "uploaded", "completed")
-        return True
+        # project-level: allowed ONLY if the project has at least one genuine publishing-stage
+        # chapter (otherwise a YouTuber has no business in that project's chat yet).
+        if not pid:
+            return False
+        for x in db.query(_VC).filter(_VC.task_id == int(pid)).all():
+            if _chapter_lifecycle(x) in ("ready_for_youtube", "uploaded", "completed"):
+                return True
+        return False
     if role in ("editor", "graphics"):
         import production_core as _pc
         sp = None
@@ -2393,11 +2401,8 @@ def _chat_access_ok(db, user, c=None, pid=None):
             if c is not None:
                 return getattr(c, "graphics_id", None) == sp.id
             return db.query(_VC).filter(_VC.task_id == int(pid or 0), _VC.graphics_id == sp.id).first() is not None
-        if role == "youtuber":
-            if c is not None:
-                return _chapter_lifecycle(c) in ("ready_for_youtube", "uploaded", "completed")
-            return True
-    return True
+    # DENY by default — no permissive fall-through for unknown/unexpected roles (students, etc.).
+    return False
 
 
 def _assert_chat_access(db, user, c=None, pid=None):
@@ -4942,6 +4947,16 @@ def vt_submit(task_id: int, payload: dict = Body(...), db: Session = Depends(get
                            "production", link=str(t.id))
     except Exception:
         pass
+    # OPTIONAL creative editing brief attached with the source video (never blocks submission)
+    try:
+        _cbp = payload.get("creative_brief")
+        if _cbp:
+            import production_core as _pcb
+            _pcb.attach_creative_brief(db, "task", t.id, None, current_user, "teacher", _cbp,
+                                       task_for_timeline=(t if (getattr(t, "lifecycle", "") or "") else None),
+                                       editor_started=False, title=(t.title or ""))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "on_time": t.on_time}
 
@@ -4997,6 +5012,16 @@ def vt_chapter_link(task_id: int, payload: dict = Body(...), db: Session = Depen
     else:
         _hist_add(t, "progress", '"%s" video re-submitted for review (%d/%d approved)' % (row.title, done, total))
     _recompute_special_completion(db, t)
+    # OPTIONAL per-chapter creative editing brief (independent of the parent project)
+    try:
+        _cbp = payload.get("creative_brief")
+        if _cbp and not removing:
+            import production_core as _pcb
+            _pcb.attach_creative_brief(db, "project_chapter", t.id, row.id, current_user, "teacher", _cbp,
+                                       task_for_timeline=t, editor_started=False,
+                                       title=(row.title or t.title or ""))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True, "done": done, "total": total, "pending": pending,
             "completed": bool(total and done == total),

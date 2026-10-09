@@ -3671,6 +3671,64 @@ def teacher_recording_trends(db: Session = Depends(get_db), current_user=Depends
             "recent": recent, "improvement": improvement}
 
 
+# ==================== CREATIVE EDITING BRIEF (teacher authors / views their own) ====================
+@router.get("/creative-brief")
+def teacher_get_creative_brief(task_id: int = 0, chapter_id: int = 0,
+                               db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import production_core as _pc
+    from models import VideoTask as _VT, VideoTaskChapter as _VC
+    tp = get_teacher_profile(current_user, db)
+    if chapter_id:
+        c = db.query(_VC).filter(_VC.id == chapter_id).first()
+        if not c:
+            raise HTTPException(404, "Not found")
+        t = db.query(_VT).filter(_VT.id == c.task_id).first()
+        if not _teacher_owns_task(db, tp, t):
+            raise HTTPException(403, "You don't have access to this brief")
+        row = _pc.get_active_creative_brief(db, chapter_id=chapter_id)
+        ctx = {"video_title": c.title or "", "project_title": (t.title or t.subject or "Project") if t else "",
+               "is_chapter": True, "editor_assigned": bool(getattr(c, "editor_id", None))}
+    else:
+        t = db.query(_VT).filter(_VT.id == task_id).first()
+        if not _teacher_owns_task(db, tp, t):
+            raise HTTPException(403, "You don't have access to this brief")
+        row = _pc.get_active_creative_brief(db, video_task_id=task_id)
+        ctx = {"video_title": (t.title or "") if t else "", "is_chapter": False,
+               "editor_assigned": bool(getattr(t, "editor_id", None))}
+    return {"brief": _pc.creative_brief_out(db, row), "context": ctx}
+
+
+@router.post("/creative-brief")
+def teacher_save_creative_brief(payload: dict = Body(...),
+                                db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    import production_core as _pc
+    from models import VideoTask as _VT, VideoTaskChapter as _VC
+    tp = get_teacher_profile(current_user, db)
+    chapter_id = int(payload.get("chapter_id") or 0)
+    task_id = int(payload.get("task_id") or 0)
+    if chapter_id:
+        c = db.query(_VC).filter(_VC.id == chapter_id).first()
+        if not c:
+            raise HTTPException(404, "Not found")
+        t = db.query(_VT).filter(_VT.id == c.task_id).first()
+        if not _teacher_owns_task(db, tp, t):
+            raise HTTPException(403, "Not allowed")
+        row, changed = _pc.attach_creative_brief(
+            db, "project_chapter", c.task_id, c.id, current_user, "teacher", payload,
+            task_for_timeline=t, editor_started=_pc.creative_editor_started_chapter(c),
+            editor_staff_id=getattr(c, "editor_id", None), title=(c.title or (t.title if t else "") or ""))
+    else:
+        t = db.query(_VT).filter(_VT.id == task_id).first()
+        if not _teacher_owns_task(db, tp, t):
+            raise HTTPException(403, "Not allowed")
+        row, changed = _pc.attach_creative_brief(
+            db, "task", t.id, None, current_user, "teacher", payload,
+            task_for_timeline=t, editor_started=_pc.creative_editor_started_task(t),
+            editor_staff_id=getattr(t, "editor_id", None), title=(t.title or ""))
+    db.commit()
+    return {"ok": True, "changed": bool(changed), "brief": _pc.creative_brief_out(db, row)}
+
+
 @router.get("/perf-history")
 def teacher_perf_history(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Phase 8: available months (current + frozen past) — leaderboard month selector."""

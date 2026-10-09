@@ -850,6 +850,278 @@ def recording_feedback_summary(db, row):
             "acknowledged": bool(row.acknowledged_at)}
 
 
+# ============================================================ CREATIVE EDITING BRIEF (source submitter -> Editor)
+# OPTIONAL editing ideas attached at source-video submission. Never blocks submission. Distinct from
+# the PM's Editor Assignment Brief (VideoTask.editor_instructions).
+CREATIVE_STYLE_TAGS = ["clean_transitions", "minimal_animation", "formula_highlight", "short_intro",
+                       "chapter_name_first", "captions", "subtle_bgm", "fast_paced", "color_grade",
+                       "remove_silences", "zoom_emphasis", "lower_thirds"]
+_CREATIVE_STYLE_LABELS = {
+    "clean_transitions": "Clean transitions", "minimal_animation": "Minimal animation",
+    "formula_highlight": "Highlight formulas (zoom)", "short_intro": "Keep intro short",
+    "chapter_name_first": "Show chapter name first", "captions": "Add captions",
+    "subtle_bgm": "Subtle background music", "fast_paced": "Fast paced",
+    "color_grade": "Colour grading", "remove_silences": "Remove long silences",
+    "zoom_emphasis": "Zoom to emphasise", "lower_thirds": "Lower-thirds / labels"}
+
+
+def _url_safe(u):
+    """Only http/https external links allowed (no javascript:, data:, file:, etc.)."""
+    u = (u or "").strip()
+    if not u:
+        return ""
+    if not _re.match(r"^https?://", u, _re.I):
+        return ""
+    if len(u) > 800:
+        u = u[:800]
+    return u
+
+
+def _creative_tags(payload):
+    tags = payload.get("editing_style_tags") or payload.get("style_tags") or []
+    if not isinstance(tags, list):
+        tags = []
+    seen, out = set(), []
+    for t in tags:
+        t = str(t)
+        if t in CREATIVE_STYLE_TAGS and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _creative_links(payload):
+    raw = payload.get("reference_video_links") or payload.get("reference_links") or []
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw[:12]:
+        if isinstance(item, str):
+            url = _url_safe(item)
+            if url:
+                out.append({"url": url, "title": "", "note": ""})
+        elif isinstance(item, dict):
+            url = _url_safe(item.get("url") or "")
+            if not url:
+                continue
+            out.append({"url": url, "title": (str(item.get("title") or "")).strip()[:160],
+                        "note": (str(item.get("note") or "")).strip()[:400]})
+    return out
+
+
+def _creative_timestamps(payload):
+    raw = payload.get("timestamped_instructions") or payload.get("timestamped_notes") or []
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for n in raw[:40]:
+        if not isinstance(n, dict):
+            continue
+        ts = (str(n.get("ts") or n.get("timestamp") or "")).strip()
+        note = (str(n.get("note") or n.get("instruction") or "")).strip()
+        if not ts and not note:
+            continue
+        if ts and not _REC_FB_TS_RE.match(ts):
+            raise HTTPException(400, f"Invalid timestamp '{ts}' — use mm:ss or hh:mm:ss.")
+        out.append({"ts": ts[:9], "note": note[:400]})
+    return out
+
+
+def _creative_images(db, t, payload):
+    """Accept a mix of already-stored URLs and new base64 data-URIs; return the final URL list.
+    New images go through the existing R2 save_images (kind 'brief'); never store base64 in the row."""
+    raw = payload.get("reference_images") or []
+    if not isinstance(raw, list):
+        return []
+    urls, to_upload = [], []
+    for img in raw[:12]:
+        s = img if isinstance(img, str) else (img.get("url") if isinstance(img, dict) else "")
+        s = s or ""
+        if s.startswith("http"):
+            urls.append(s)
+        elif s.startswith("data:") or len(s) > 200:
+            to_upload.append(s)
+    if to_upload and t is not None:
+        try:
+            new_urls = save_images(db, t, to_upload, "brief", None, None, return_urls=True) or []
+            urls.extend([u for u in new_urls if u])
+        except Exception:
+            pass
+    # cap total and keep only http(s)/data uris
+    return [u for u in urls if (str(u).startswith("http") or str(u).startswith("data:"))][:12]
+
+
+def creative_brief_is_empty(payload):
+    """A brief with no content at all -> treat as 'no brief' (skip silently, never a fake brief)."""
+    if not isinstance(payload, dict):
+        return True
+    if (payload.get("instructions") or "").strip():
+        return False
+    for key in ("editing_style_tags", "style_tags", "reference_images",
+                "reference_video_links", "reference_links", "timestamped_instructions"):
+        v = payload.get(key)
+        if isinstance(v, list) and len(v) > 0:
+            return False
+    return True
+
+
+def save_creative_brief(db, work_type, video_task_id, chapter_id, author_user, author_role,
+                        payload, editor_started=False):
+    """Validate + upsert the ACTIVE creative brief for a work-item. Returns (row, changed_bool).
+    Returns (None, False) when the payload is empty (no brief). Raises HTTPException(400) only on
+    genuinely invalid structured data (e.g. a bad timestamp) — it never blocks on an empty brief."""
+    from models import CreativeEditingBrief as _CB
+    if creative_brief_is_empty(payload):
+        return None, False
+    t = db.query(VideoTask).filter(VideoTask.id == (video_task_id if work_type != "project_chapter" else video_task_id)).first()
+    instructions = (payload.get("instructions") or "").strip()[:4000]
+    tags = _creative_tags(payload)
+    links = _creative_links(payload)
+    stamps = _creative_timestamps(payload)
+    images = _creative_images(db, t, payload)
+    sig = json.dumps({"i": instructions, "t": sorted(tags), "l": links, "s": stamps, "im": images}, sort_keys=True)
+    q = db.query(_CB).filter(_CB.is_active == True)
+    if work_type == "project_chapter":
+        q = q.filter(_CB.chapter_id == chapter_id)
+    else:
+        q = q.filter(_CB.video_task_id == video_task_id, _CB.chapter_id == None)
+    cur = q.first()
+    author_name = (getattr(author_user, "name", "") or "") if author_user else ""
+    if cur is not None:
+        cur_sig = json.dumps({"i": cur.instructions or "", "t": sorted(json.loads(cur.editing_style_tags_json or "[]")),
+                              "l": json.loads(cur.reference_video_links_json or "[]"),
+                              "s": json.loads(cur.timestamped_instructions_json or "[]"),
+                              "im": json.loads(cur.reference_images_json or "[]")}, sort_keys=True)
+        if cur_sig == sig:
+            return cur, False   # unchanged -> no new version
+        if editor_started:
+            # editor already started -> keep the old version for accountability, create a new one
+            cur.is_active = False
+            db.flush()
+            row = _CB(work_type=work_type, video_task_id=video_task_id, chapter_id=chapter_id,
+                      submitted_by_user_id=getattr(author_user, "id", None), submitted_by_role=author_role,
+                      submitted_by_name=author_name, instructions=instructions,
+                      editing_style_tags_json=json.dumps(tags), reference_images_json=json.dumps(images),
+                      reference_video_links_json=json.dumps(links),
+                      timestamped_instructions_json=json.dumps(stamps),
+                      version=(cur.version or 1) + 1, is_active=True)
+            db.add(row); db.flush()
+            return row, True
+        # before editor starts -> update in place
+        cur.instructions = instructions
+        cur.editing_style_tags_json = json.dumps(tags)
+        cur.reference_images_json = json.dumps(images)
+        cur.reference_video_links_json = json.dumps(links)
+        cur.timestamped_instructions_json = json.dumps(stamps)
+        cur.submitted_by_user_id = getattr(author_user, "id", None) or cur.submitted_by_user_id
+        cur.submitted_by_role = author_role or cur.submitted_by_role
+        cur.submitted_by_name = author_name or cur.submitted_by_name
+        db.flush()
+        return cur, True
+    row = _CB(work_type=work_type, video_task_id=video_task_id, chapter_id=chapter_id,
+              submitted_by_user_id=getattr(author_user, "id", None), submitted_by_role=author_role,
+              submitted_by_name=author_name, instructions=instructions,
+              editing_style_tags_json=json.dumps(tags), reference_images_json=json.dumps(images),
+              reference_video_links_json=json.dumps(links),
+              timestamped_instructions_json=json.dumps(stamps), version=1, is_active=True)
+    db.add(row); db.flush()
+    return row, True
+
+
+def get_active_creative_brief(db, video_task_id=None, chapter_id=None):
+    from models import CreativeEditingBrief as _CB
+    q = db.query(_CB).filter(_CB.is_active == True)
+    if chapter_id:
+        q = q.filter(_CB.chapter_id == chapter_id)
+    elif video_task_id:
+        q = q.filter(_CB.video_task_id == video_task_id, _CB.chapter_id == None)
+    else:
+        return None
+    return q.order_by(_CB.id.desc()).first()
+
+
+def creative_brief_out(db, row):
+    if row is None:
+        return None
+    tags = json.loads(row.editing_style_tags_json or "[]")
+    return {
+        "id": row.id, "work_type": row.work_type,
+        "video_task_id": row.video_task_id, "chapter_id": row.chapter_id,
+        "author": row.submitted_by_name or "", "author_role": row.submitted_by_role or "",
+        "instructions": row.instructions or "",
+        "style_tags": tags, "style_tag_labels": [_CREATIVE_STYLE_LABELS.get(t, t) for t in tags],
+        "reference_images": json.loads(row.reference_images_json or "[]"),
+        "reference_links": json.loads(row.reference_video_links_json or "[]"),
+        "timestamped_instructions": json.loads(row.timestamped_instructions_json or "[]"),
+        "version": row.version or 1,
+        "submitted_at": _dt(row.created_at), "updated_at": _dt(row.updated_at),
+    }
+
+
+def creative_brief_summary(db, row):
+    """Compact card summary (counts). None when no brief -> card shows 'No Creative Brief Added'."""
+    if row is None:
+        return None
+    imgs = len(json.loads(row.reference_images_json or "[]"))
+    links = len(json.loads(row.reference_video_links_json or "[]"))
+    stamps = len(json.loads(row.timestamped_instructions_json or "[]"))
+    has_instr = bool((row.instructions or "").strip())
+    tags = len(json.loads(row.editing_style_tags_json or "[]"))
+    return {"has": True, "images": imgs, "videos": links, "timestamps": stamps,
+            "instructions": has_instr, "style_tags": tags, "version": row.version or 1,
+            "author": row.submitted_by_name or "", "author_role": row.submitted_by_role or ""}
+
+
+def creative_editor_started_task(t):
+    return (getattr(t, "lifecycle", "") or "") in (
+        "editing", "editing_paused", "editing_done", "qc_pending", "qc_changes",
+        "ready_for_youtube", "uploaded", "completed")
+
+
+def creative_editor_started_chapter(c):
+    return (getattr(c, "edit_state", "") or "") in ("editing", "paused", "edited") or \
+           (getattr(c, "qc_status", "") or "") in ("pending", "approved", "changes")
+
+
+def _editor_user_id_for(db, editor_staff_id):
+    if not editor_staff_id:
+        return None
+    try:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == editor_staff_id).first()
+        return sp.user_id if sp else None
+    except Exception:
+        return None
+
+
+def attach_creative_brief(db, work_type, video_task_id, chapter_id, author_user, author_role,
+                          payload, task_for_timeline=None, editor_started=False,
+                          editor_staff_id=None, title=""):
+    """Save (optional) brief + write a timeline event + notify the assigned editor on a post-start
+    change. Returns (row, changed). (None, False) when there's no brief content."""
+    row, changed = save_creative_brief(db, work_type, video_task_id, chapter_id, author_user,
+                                       author_role, payload, editor_started=editor_started)
+    if row is None:
+        return None, False
+    try:
+        if task_for_timeline is not None:
+            ev = "creative_brief_updated" if (changed and (row.version or 1) > 1) else "creative_brief_added"
+            log_event(db, task_for_timeline, author_user, ev,
+                      meta={"version": row.version, "work": work_type, "chapter_id": chapter_id})
+    except Exception:
+        pass
+    try:
+        if changed and (row.version or 1) > 1:
+            euid = _editor_user_id_for(db, editor_staff_id)
+            if euid:
+                notify(db, euid, "Creative Brief Updated",
+                       f'The creative editing brief for "{title}" was updated — please re-check.',
+                       "creative_brief",
+                       link=(("%d:%d" % (video_task_id, chapter_id)) if work_type == "project_chapter" else str(video_task_id)))
+    except Exception:
+        pass
+    return row, changed
+
+
 # ---------------------------------------------------------------- serializers
 def _dt(x):
     """UTC-stored times (created / submitted / events / progress) -> IST display."""
@@ -1580,6 +1852,17 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         except Exception:
             out["recording_feedback"] = None
             out["recording_feedback_summary"] = None
+        # OPTIONAL creative editing brief (source submitter -> editor). Distinct from editor_instructions.
+        try:
+            _cb = get_active_creative_brief(db, video_task_id=t.id)
+            out["creative_brief"] = creative_brief_out(db, _cb)
+        except Exception:
+            out["creative_brief"] = None
+    # brief summary is cheap + wanted on list cards too (light mode), so compute it outside `timeline`
+    try:
+        out["creative_brief_summary"] = creative_brief_summary(db, get_active_creative_brief(db, video_task_id=t.id))
+    except Exception:
+        out["creative_brief_summary"] = None
     return out
 
 

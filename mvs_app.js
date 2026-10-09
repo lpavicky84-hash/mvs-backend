@@ -1324,6 +1324,12 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
     var _rp=(link||'').split(':'); var _rtid=parseInt(_rp[0],10)||0; var _rcid=(_rp.length>1)?(parseInt(_rp[1],10)||0):0;
     try{ if(typeof tRecFbOpen==='function' && _rtid){ tRecFbOpen(_rtid, _rcid); openNotifPanel(role); return; } }catch(e){}
   }
+  // Creative editing brief updated -> open the teacher's brief panel directly
+  if(role==='teacher' && (ntype||'')==='creative_brief'){
+    try{ closeModal(); }catch(e){}
+    var _bp=(link||'').split(':'); var _btid=parseInt(_bp[0],10)||0; var _bcid=(_bp.length>1)?(parseInt(_bp[1],10)||0):0;
+    try{ if(typeof tBriefOpen==='function' && _btid){ tBriefOpen(_btid, _bcid); openNotifPanel(role); return; } }catch(e){}
+  }
   // Support deep links -> open the exact record INSIDE the portal
   if(link.indexOf('/support/')===0){
     closeModal();
@@ -11712,6 +11718,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           <div class="vt-subm-row"><input id="tvt-link-${t.id}" class="input" placeholder="https://drive.google.com/file/d/...">
           <button class="btn btn-primary btn-sm" onclick="tvtSubmit(${t.id})">${ic('send')} ${t.status==='assigned'?'Submit Video':'Re-submit Video'}</button></div>
           <div class="vt-subm-note">Upload the video to the MVS drive folder first, then paste its shareable link here. Submit before the deadline for on-time credit.</div>
+          <div style="margin-top:8px"><span class="vt-refvid-btn" style="background:rgba(37,99,235,.1);color:#2563eb" onclick="tBriefEdit(${t.id},0)">${ic('clipboard')} Add Editing Brief <span style="opacity:.75;font-weight:600">(optional)</span></span></div>
         </div>`:'';
       const doneBox=(t.submitted_link&&!_open)?`
         <div class="vt-subm done">
@@ -12025,6 +12032,9 @@ window.tReviewOpen=function(id){
       ((v.recording_feedback && v.recording_feedback_summary)
         ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('trev:'+id, v.recording_feedback_summary, v.recording_feedback, {video_title:(v.title||'')}, true, {fid:(v.recording_feedback||{}).id, taskId:id, chapterId:0}, true):'')+'</div>')
         : (v.recording_feedback_applicable? '<div class="trv-empty" style="margin-top:10px;font-size:.78rem;color:var(--text-muted)">No recording feedback available.</div>' : ''))+
+      // the teacher's own creative editing brief for this video (view / edit)
+      '<div style="margin-top:10px">'+(typeof _cbrSummaryChip==='function'?_cbrSummaryChip('trevcbr:'+id, v.creative_brief_summary, v.creative_brief, {video_title:(v.title||''), pm_instructions:(v.editor_instructions||'')}, (v.editor_name?{fn:'prodDismiss();tReviewChat('+id+')', label:'Chat with Editor'}:null)):'')+
+        '<button class="p-btn" style="margin-top:7px;font-size:.78rem" onclick="tBriefEdit('+id+',0)">'+(v.creative_brief_summary&&v.creative_brief_summary.has?'Edit':'+ Add')+' Editing Brief</button></div>'+
     '</div>'+
     '<div class="pd-foot"><div class="p-acts">'+acts+'</div></div>'+
     '</div>';
@@ -12086,6 +12096,14 @@ window.tReviewChangesSubmit=function(id){
     _apiBust(); try{ loadTReview(); }catch(e){}
     setTimeout(function(){ try{ tReviewChat(id); }catch(e){} },250);
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+// Teacher: add / edit / view their own Creative Editing Brief for a task or chapter
+window.tBriefEdit=function(taskId, chapterId){
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  var qs=chapterId?('chapter_id='+chapterId):('task_id='+taskId);
+  cbrEditOpen({title:'Creative Editing Brief', saveUrl:'/api/teacher/creative-brief',
+    getUrl:'/api/teacher/creative-brief?'+qs, ref:(chapterId?{chapter_id:chapterId}:{task_id:taskId}),
+    after:function(){ try{ loadTVTasks(); }catch(e){} try{ loadTReview(); }catch(e){} }});
 };
 window.tReviewApprove=function(id){
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
@@ -28825,6 +28843,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         if(portal==='editor'){ try{ edtReviewChat(taskId); return; }catch(e){} }
         else { try{ prodReviewChat(taskId); return; }catch(e){} }
       }
+      // creative editing brief available / updated -> open the brief viewer directly
+      if(ntype==='creative_brief'){
+        if(portal==='editor'){ try{ edtBriefOpen(taskId, 0); return; }catch(e){} }
+        else { try{ prodOpenTask(portal, taskId); return; }catch(e){} }
+      }
       prodOpenTask(portal, taskId);
     }
   };
@@ -29561,6 +29584,215 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
                      {fid:r.feedback.id, taskId:taskId, chapterId:chapterId}, true);
       _recFbShow('tfb:'+(chapterId||taskId));
     }).catch(function(e){ toast((e&&e.message)||'Could not load feedback',true); });
+  };
+
+  // ================= CREATIVE EDITING BRIEF (optional, source submitter -> editor) =================
+  var CBR_STYLE=[['clean_transitions','Clean transitions'],['minimal_animation','Minimal animation'],['formula_highlight','Highlight formulas (zoom)'],['short_intro','Keep intro short'],['chapter_name_first','Show chapter name first'],['captions','Add captions'],['subtle_bgm','Subtle BGM'],['fast_paced','Fast paced'],['color_grade','Colour grading'],['remove_silences','Remove long silences'],['zoom_emphasis','Zoom to emphasise'],['lower_thirds','Lower-thirds / labels']];
+  var CBR_STYLE_LBL={}; CBR_STYLE.forEach(function(s){ CBR_STYLE_LBL[s[0]]=s[1]; });
+  window._cbr={imgs:[],links:[],stamps:[],tags:[],pending:0};
+  function _cbrReset(){ window._cbr={imgs:[],links:[],stamps:[],tags:[],pending:0}; }
+  function _cbrCss(){
+    if(document.getElementById('cbr-css')) return;
+    var s=document.createElement('style'); s.id='cbr-css';
+    s.textContent='.cbr-collapse{border:1px solid var(--border,#e5ddcb);border-radius:12px;margin-top:10px;overflow:hidden;background:linear-gradient(180deg,rgba(201,138,46,.05),transparent)}'+
+      '.cbr-collapse>summary{list-style:none;cursor:pointer;padding:11px 13px;font-weight:800;font-size:.86rem;color:var(--text,#2a2313);display:flex;align-items:center;gap:8px}'+
+      '.cbr-collapse>summary::-webkit-details-marker{display:none}'+
+      '.cbr-collapse>summary .cbr-opt{margin-left:auto;font-size:.6rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#a66a1e;background:rgba(201,138,46,.14);border-radius:999px;padding:2px 8px}'+
+      '.cbr-collapse>summary .cbr-caret{transition:transform .18s}.cbr-collapse[open]>summary .cbr-caret{transform:rotate(90deg)}'+
+      '.cbr-body{padding:4px 13px 13px}'+
+      '.cbr-lbl{font-weight:800;font-size:.8rem;color:var(--text,#2a2313);margin:10px 0 5px}.cbr-lbl span{font-weight:600;color:var(--text-muted,#8a7d5c);font-size:.72rem}'+
+      '.cbr-chips{display:flex;flex-wrap:wrap;gap:6px}'+
+      '.cbr-chip{border:1px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text,#4a4330);font-weight:700;font-size:.74rem;border-radius:999px;padding:5px 11px;cursor:pointer;transition:background .12s,border-color .12s}'+
+      '.cbr-chip:hover{border-color:#c98a2e}.cbr-chip.on{background:#c98a2e;border-color:#c98a2e;color:#fff}'+
+      '.cbr-drop{border:2px dashed rgba(201,138,46,.5);border-radius:11px;padding:16px;text-align:center;cursor:pointer;color:var(--text-muted,#8a7d5c);background:rgba(201,138,46,.05);font-size:.8rem}'+
+      '.cbr-gal{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}'+
+      '.cbr-thumb{position:relative;width:84px;height:54px;border-radius:8px;background-size:cover;background-position:center;border:1px solid var(--border,#e5ddcb);cursor:zoom-in}'+
+      '.cbr-x{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;border:0;background:#d1443a;color:#fff;font-size:13px;line-height:1;cursor:pointer}'+
+      '.cbr-linkrow,.cbr-stamprow{display:flex;align-items:center;gap:7px;background:var(--surface-2,#f6f1e4);border-radius:9px;padding:7px 10px;margin-bottom:5px;font-size:.78rem}'+
+      '.cbr-linkrow .cbr-lk-main{flex:1 1 auto;min-width:0}.cbr-lk-url{font-weight:700;color:#2563eb;word-break:break-all}.cbr-lk-meta{color:var(--text-muted,#8a7d5c);font-size:.72rem}'+
+      '.cbr-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}'+
+      '.cbr-add .p-input{flex:1 1 140px;min-width:120px}.cbr-add .cbr-ts{flex:0 0 78px;width:78px}'+
+      '.cbr-rm{border:0;background:none;color:#b91c1c;font-size:1.1rem;cursor:pointer;line-height:1;flex:0 0 auto}'+
+      '.cbr-err{display:none;color:#b91c1c;font-weight:700;font-size:.76rem;margin-top:6px}'+
+      'body.dark .cbr-chip{background:#152a45;border-color:#2c405e;color:#d6def0}body.dark .cbr-collapse{border-color:#2c405e}body.dark .cbr-linkrow,body.dark .cbr-stamprow{background:#152a45}'+
+      // viewer
+      '.cbrv-sec{font-weight:900;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#a89a74);margin:13px 0 6px;display:flex;align-items:center;gap:7px}'+
+      '.cbrv-instr{font-size:.88rem;line-height:1.55;color:var(--text,#2a2313);background:var(--surface-2,#f6f1e4);border-radius:10px;padding:10px 12px;white-space:pre-wrap}'+
+      '.cbrv-tags{display:flex;flex-wrap:wrap;gap:6px}.cbrv-tag{font-size:.74rem;font-weight:700;color:#8a5a12;background:rgba(201,138,46,.14);border-radius:999px;padding:4px 10px}'+
+      '.cbrv-imgs{display:flex;flex-wrap:wrap;gap:8px}.cbrv-img{width:110px;height:70px;border-radius:9px;background-size:cover;background-position:center;border:1px solid var(--border,#e5ddcb);cursor:zoom-in}'+
+      '.cbrv-link{display:block;background:var(--surface-2,#f6f1e4);border-radius:10px;padding:9px 11px;margin-bottom:6px;text-decoration:none}'+
+      '.cbrv-link .cbrv-lt{font-weight:800;color:var(--text,#2a2313);font-size:.85rem}.cbrv-link .cbrv-lu{color:#2563eb;font-size:.76rem;word-break:break-all}.cbrv-link .cbrv-ln{color:var(--text-muted,#8a7d5c);font-size:.78rem;margin-top:2px}'+
+      '.cbrv-stamp{display:flex;gap:8px;font-size:.82rem;padding:5px 0;border-bottom:1px solid var(--surface-2,#f1ead9)}.cbrv-sts{font-weight:800;color:#c98a2e;flex:0 0 auto}'+
+      '.cbrv-pm{font-size:.84rem;line-height:1.5;color:var(--text,#2a2313);background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.18);border-radius:10px;padding:9px 11px;white-space:pre-wrap}'+
+      // card chip (shared look with recfb)
+      '.cbr-sumchip{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;border:1px solid var(--border,#e5ddcb);background:linear-gradient(180deg,rgba(37,99,235,.05),transparent);border-radius:12px;padding:9px 12px;cursor:pointer;text-align:left;transition:border-color .14s,box-shadow .14s;font-family:inherit}'+
+      '.cbr-sumchip:hover{border-color:#2563eb;box-shadow:0 5px 14px rgba(37,99,235,.12)}'+
+      '.cbr-sumchip.none{cursor:default;opacity:.8;background:none}.cbr-sumchip.none:hover{border-color:var(--border,#e5ddcb);box-shadow:none}'+
+      '.cbr-sc-ic{width:30px;height:30px;border-radius:9px;background:rgba(37,99,235,.13);color:#2563eb;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}.cbr-sc-ic svg{width:16px;height:16px}'+
+      '.cbr-sc-main{flex:1 1 auto;min-width:0}.cbr-sc-t{display:block;font-weight:800;font-size:.8rem;color:var(--text,#2a2313)}.cbr-sc-m{display:block;font-size:.74rem;color:var(--text-muted,#8a7d5c);margin-top:1px}'+
+      '.cbr-sc-cta{font-weight:800;font-size:.76rem;color:#2563eb;flex:0 0 auto}'+
+      'body.dark .cbrv-instr,body.dark .cbrv-link{background:#152a45}body.dark .cbr-sumchip{background:#152a45;border-color:#2c405e}body.dark .cbr-sc-t,body.dark .cbrv-lt{color:#eaf0fb}'+
+      '@media(prefers-reduced-motion:reduce){.cbr-chip,.cbr-caret{transition:none}}';
+    document.head.appendChild(s);
+  }
+  function _cbrFormHtml(){
+    _cbrCss();
+    var tags=CBR_STYLE.map(function(s){ return '<button type="button" class="cbr-chip" data-t="'+s[0]+'" onclick="_cbrTag(\''+s[0]+'\')">'+esc(s[1])+'</button>'; }).join('');
+    return '<div class="cbr-body">'+
+      '<div class="cbr-lbl">Editing instructions <span>(what should the editor do?)</span></div>'+
+      '<textarea class="p-area" id="cbr-instr" rows="3" maxlength="4000" placeholder="e.g. Use clean transitions, highlight formulas with a subtle zoom, keep the intro short."></textarea>'+
+      '<div class="cbr-lbl">Editing style <span>(optional)</span></div><div class="cbr-chips" id="cbr-tags">'+tags+'</div>'+
+      '<div class="cbr-lbl">Reference images <span>(optional — drag, paste or click)</span></div>'+
+      '<div class="cbr-drop" id="cbr-drop" tabindex="0">Click, drop or paste (Ctrl+V) reference images<input type="file" id="cbr-file" accept="image/*" multiple style="display:none"></div>'+
+      '<div class="cbr-gal" id="cbr-gal"></div>'+
+      '<div class="cbr-lbl">Reference videos <span>(optional)</span></div><div id="cbr-links"></div>'+
+      '<div class="cbr-add"><input class="p-input" id="cbr-lk-url" placeholder="https://..."><input class="p-input" id="cbr-lk-title" placeholder="title (optional)"><input class="p-input" id="cbr-lk-note" placeholder="what to copy / learn"><button type="button" class="p-btn" onclick="_cbrAddLink()">+ Add</button></div>'+
+      '<div class="cbr-lbl">Timestamped instructions <span>(optional — of the ORIGINAL recording)</span></div><div id="cbr-stamps"></div>'+
+      '<div class="cbr-add"><input class="p-input cbr-ts" id="cbr-st-ts" placeholder="mm:ss"><input class="p-input" id="cbr-st-note" placeholder="instruction" onkeydown="if(event.key===\'Enter\'){event.preventDefault();_cbrAddStamp();}"><button type="button" class="p-btn" onclick="_cbrAddStamp()">+ Add</button></div>'+
+      '<div class="cbr-err" id="cbr-err"></div>'+
+    '</div>';
+  }
+  function _cbrCollapsibleHtml(){ _cbrCss(); return '<details class="cbr-collapse"><summary>'+ic('clipboard')+' Creative Editing Brief<span class="cbr-opt">Optional</span><svg class="cbr-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" style="margin-left:8px"><path d="M9 6l6 6-6 6"/></svg></summary>'+_cbrFormHtml()+'</details>'; }
+  function _cbrWire(submitBtnId){
+    _cbr.submitBtn=submitBtnId||'';
+    var drop=document.getElementById('cbr-drop'), fi=document.getElementById('cbr-file');
+    if(drop) drop.addEventListener('click',function(){ if(fi) fi.click(); });
+    if(fi) fi.addEventListener('change',function(e){ Array.prototype.forEach.call(e.target.files||[],_cbrAddImg); });
+    if(drop){ drop.addEventListener('dragover',function(e){e.preventDefault();}); drop.addEventListener('drop',function(e){e.preventDefault(); Array.prototype.forEach.call((e.dataTransfer&&e.dataTransfer.files)||[],_cbrAddImg); }); }
+    if(window._cbrPasteH) document.removeEventListener('paste',window._cbrPasteH);
+    window._cbrPasteH=function(e){ if(!document.getElementById('cbr-drop')){ document.removeEventListener('paste',window._cbrPasteH); window._cbrPasteH=null; return; } var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type&&items[i].type.indexOf('image')===0){ _cbrAddImg(items[i].getAsFile()); } } };
+    document.addEventListener('paste',window._cbrPasteH);
+  }
+  window._cbrTag=function(t){ var i=_cbr.tags.indexOf(t); if(i>=0) _cbr.tags.splice(i,1); else _cbr.tags.push(t);
+    var b=document.getElementById('cbr-tags'); if(b) b.querySelectorAll('.cbr-chip').forEach(function(x){ x.classList.toggle('on',_cbr.tags.indexOf(x.getAttribute('data-t'))>=0); }); };
+  function _cbrSubBtn(){ var id=_cbr.submitBtn; return id?document.getElementById(id):null; }
+  function _cbrAddImg(file){ if(!file || _cbr.imgs.length>=12) return;
+    if(!/^image\//.test(file.type||'')){ return; }   // validate actual MIME, not just extension
+    _cbr.pending++; var sb=_cbrSubBtn(); if(sb){ sb.disabled=true; sb.style.opacity='.6'; }
+    var rd=new FileReader(); rd.onload=function(){ _cbr.pending=Math.max(0,_cbr.pending-1); if((''+rd.result).indexOf('data:image/')===0) _cbr.imgs.push(rd.result); _cbrRenderImgs(); if(_cbr.pending===0){ var s2=_cbrSubBtn(); if(s2){ s2.disabled=false; s2.style.opacity='1'; } } };
+    rd.onerror=function(){ _cbr.pending=Math.max(0,_cbr.pending-1); if(_cbr.pending===0){ var s3=_cbrSubBtn(); if(s3){ s3.disabled=false; s3.style.opacity='1'; } } };
+    rd.readAsDataURL(file); }
+  window._cbrDelImg=function(i){ _cbr.imgs.splice(i,1); _cbrRenderImgs(); };
+  function _cbrRenderImgs(){ var g=document.getElementById('cbr-gal'); if(!g) return; g.innerHTML=_cbr.imgs.map(function(s,i){ return '<div class="cbr-thumb" style="background-image:url('+s+')" onclick="prodLightbox(\''+s+'\')"><button class="cbr-x" type="button" onclick="event.stopPropagation();_cbrDelImg('+i+')">&times;</button></div>'; }).join(''); }
+  window._cbrAddLink=function(){ var url=((document.getElementById('cbr-lk-url')||{}).value||'').trim(); var title=((document.getElementById('cbr-lk-title')||{}).value||'').trim(); var note=((document.getElementById('cbr-lk-note')||{}).value||'').trim();
+    var err=document.getElementById('cbr-err'); if(!url) return;
+    if(!/^https?:\/\//i.test(url)){ if(err){ err.textContent='Reference links must start with http:// or https://'; err.style.display='block'; } return; }
+    if(err) err.style.display='none';
+    _cbr.links.push({url:url,title:title,note:note}); _cbrRenderLinks();
+    ['cbr-lk-url','cbr-lk-title','cbr-lk-note'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); };
+  window._cbrDelLink=function(i){ _cbr.links.splice(i,1); _cbrRenderLinks(); };
+  function _cbrRenderLinks(){ var b=document.getElementById('cbr-links'); if(!b) return; b.innerHTML=_cbr.links.map(function(l,i){ return '<div class="cbr-linkrow"><div class="cbr-lk-main"><div class="cbr-lk-url">'+esc(l.title||l.url)+'</div>'+(l.note?'<div class="cbr-lk-meta">'+esc(l.note)+'</div>':'')+'</div><button type="button" class="cbr-rm" onclick="_cbrDelLink('+i+')">&times;</button></div>'; }).join(''); }
+  window._cbrAddStamp=function(){ var ts=((document.getElementById('cbr-st-ts')||{}).value||'').trim(); var note=((document.getElementById('cbr-st-note')||{}).value||'').trim();
+    var err=document.getElementById('cbr-err'); if(!ts && !note) return;
+    if(ts && !/^\d{1,2}:\d{2}(:\d{2})?$/.test(ts)){ if(err){ err.textContent='Timestamp must be mm:ss or hh:mm:ss (e.g. 02:15).'; err.style.display='block'; } return; }
+    if(err) err.style.display='none';
+    _cbr.stamps.push({ts:ts,note:note}); _cbrRenderStamps();
+    var a=document.getElementById('cbr-st-ts'); if(a) a.value=''; var n=document.getElementById('cbr-st-note'); if(n) n.value=''; };
+  window._cbrDelStamp=function(i){ _cbr.stamps.splice(i,1); _cbrRenderStamps(); };
+  function _cbrRenderStamps(){ var b=document.getElementById('cbr-stamps'); if(!b) return; b.innerHTML=_cbr.stamps.map(function(s,i){ return '<div class="cbr-stamprow"><span class="cbrv-sts">'+esc(s.ts||'—')+'</span><span style="flex:1 1 auto;min-width:0">'+esc(s.note||'')+'</span><button type="button" class="cbr-rm" onclick="_cbrDelStamp('+i+')">&times;</button></div>'; }).join(''); }
+  // collect -> payload (or null when totally empty). Blocks while images are still reading.
+  window._cbrCollect=function(){
+    if(_cbr.pending>0){ toast('Reference images are still loading…',true); return {busy:true}; }
+    var instr=((document.getElementById('cbr-instr')||{}).value||'').trim();
+    if(!instr && !_cbr.imgs.length && !_cbr.links.length && !_cbr.stamps.length && !_cbr.tags.length) return {empty:true};
+    return {payload:{instructions:instr, editing_style_tags:_cbr.tags.slice(), reference_images:_cbr.imgs.slice(),
+      reference_video_links:_cbr.links.slice(), timestamped_instructions:_cbr.stamps.slice()}};
+  };
+  window._cbrPrefill=function(brief){
+    if(!brief) return;
+    var inp=document.getElementById('cbr-instr'); if(inp) inp.value=brief.instructions||'';
+    _cbr.tags=(brief.style_tags||[]).slice(); var tb=document.getElementById('cbr-tags'); if(tb) tb.querySelectorAll('.cbr-chip').forEach(function(x){ x.classList.toggle('on',_cbr.tags.indexOf(x.getAttribute('data-t'))>=0); });
+    _cbr.imgs=(brief.reference_images||[]).slice(); _cbrRenderImgs();
+    _cbr.links=(brief.reference_links||[]).map(function(l){ return {url:l.url,title:l.title||'',note:l.note||''}; }); _cbrRenderLinks();
+    _cbr.stamps=(brief.timestamped_instructions||[]).map(function(s){ return {ts:s.ts||'',note:s.note||''}; }); _cbrRenderStamps();
+  };
+  // Standalone premium editor modal (Add / Edit Brief) — used by teacher + PM for any work-item.
+  window.cbrEditOpen=function(cfg){
+    cfg=cfg||{}; _cbrReset(); _cbrCss();
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:520px;max-height:92vh;display:flex;flex-direction:column">'+
+      '<div class="pd-head"><div class="h-title">'+esc(cfg.title||'Creative Editing Brief')+'</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body" style="overflow-y:auto">'+_cbrFormHtml()+'</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="cbr-save-btn" onclick="_cbrSaveStandalone()">Save Brief</button></div></div>'+
+    '</div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+    _cbrWire('cbr-save-btn');
+    window._cbrSaveCfg=cfg;
+    if(cfg.getUrl){ api(cfg.getUrl).then(function(r){ var br=r&&(r.brief||r.creative_brief); if(br) _cbrPrefill(br); }).catch(function(){}); }
+  };
+  window._cbrSaveStandalone=function(){
+    var cfg=window._cbrSaveCfg||{}; var c=_cbrCollect(); if(c.busy) return;
+    if(c.empty){ toast('Add at least one instruction, image, reference or timestamp',true); return; }
+    var body=c.payload; if(cfg.ref) for(var k in cfg.ref){ body[k]=cfg.ref[k]; }
+    var b=document.getElementById('cbr-save-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; b.textContent='Saving…'; }
+    if(window._cbrPasteH){ document.removeEventListener('paste',window._cbrPasteH); window._cbrPasteH=null; }
+    api(cfg.saveUrl,'POST',body).then(function(){ prodDismiss(); toast('Creative brief saved ✓'); try{ if(cfg.after) cfg.after(); }catch(e){} }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; b.textContent='Save Brief'; } toast((e&&e.message)||'Failed',true); });
+  };
+
+  // ---------- VIEWER (editor / PM / teacher): premium read-only brief + Chat shortcut ----------
+  window._CBRREG={};
+  function _cbrRegister(key, brief, ctx, chat){ window._CBRREG[key]={brief:brief,ctx:ctx||{},chat:chat||null}; }
+  function _cbrViewHtml(brief, ctx, chat){
+    _cbrCss(); ctx=ctx||{};
+    var instr=brief.instructions?('<div class="cbrv-sec">'+ic('edit')+' Editing instructions</div><div class="cbrv-instr">'+esc(brief.instructions)+'</div>'):'';
+    var tlabels=brief.style_tag_labels||((brief.style_tags||[]).map(function(t){return CBR_STYLE_LBL[t]||t;}));
+    var tags=(tlabels&&tlabels.length)?('<div class="cbrv-sec">Editing style</div><div class="cbrv-tags">'+tlabels.map(function(l){return '<span class="cbrv-tag">'+esc(l)+'</span>';}).join('')+'</div>'):'';
+    var imgs=(brief.reference_images||[]).length?('<div class="cbrv-sec">'+ic('image')+' Reference images ('+brief.reference_images.length+')</div><div class="cbrv-imgs">'+brief.reference_images.map(function(u){ return '<div class="cbrv-img" style="background-image:url('+esc(u)+')" onclick="prodLightbox(\''+esc(u)+'\')" title="Zoom"></div>'; }).join('')+'</div>'):'';
+    var links=(brief.reference_links||[]).length?('<div class="cbrv-sec">'+ic('play')+' Reference videos</div>'+brief.reference_links.map(function(l){ var u=esc(l.url||''); return /^https?:\/\//i.test(l.url||'')?('<a class="cbrv-link" href="'+u+'" target="_blank" rel="noopener noreferrer"><div class="cbrv-lt">'+esc(l.title||'Open reference')+'</div><div class="cbrv-lu">'+u+'</div>'+(l.note?'<div class="cbrv-ln">'+esc(l.note)+'</div>':'')+'</a>'):''; }).join('')):'';
+    var stamps=(brief.timestamped_instructions||[]).length?('<div class="cbrv-sec">Timestamped instructions <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#8a7d5c)">(original recording)</span></div>'+brief.timestamped_instructions.map(function(st){ return '<div class="cbrv-stamp"><span class="cbrv-sts">'+esc(st.ts||'—')+'</span><span>'+esc(st.note||'')+'</span></div>'; }).join('')):'';
+    var pm=(ctx.pm_instructions&&(''+ctx.pm_instructions).trim())?('<div class="cbrv-sec">'+ic('user')+' PM Assignment Instructions <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted)">(separate from the brief)</span></div><div class="cbrv-pm">'+esc(ctx.pm_instructions)+'</div>'):'';
+    var cl=[]; if(ctx.project_title) cl.push('Project: '+esc(ctx.project_title)); if(ctx.video_title) cl.push(esc(ctx.video_title)); if(brief.author) cl.push('Brief by '+esc(brief.author)+(brief.author_role?(' · '+({teacher:'Teacher',production_manager:'PM',admin:'Admin',youtuber:'YouTuber'}[brief.author_role]||brief.author_role)):'')); if(brief.submitted_at) cl.push(esc(brief.submitted_at)); if((brief.version||1)>1) cl.push('v'+brief.version);
+    var chatBtn=(chat&&chat.fn)?('<button class="p-btn p-btn-primary" onclick="'+chat.fn+'">'+ic('chat')+' '+esc(chat.label||'Chat')+'</button>'):'';
+    var srcBtn=(ctx.source_video)?('<a class="p-btn" href="'+esc(ctx.source_video)+'" target="_blank" rel="noopener">'+ic('play')+' Open original</a>'):'';
+    return '<div class="p-modal" style="max-width:500px;max-height:92vh;display:flex;flex-direction:column">'+
+      '<div class="pd-head"><div><div class="h-title">Creative Editing Brief</div><div style="font-size:.74rem;color:var(--muted);margin-top:3px">'+cl.join(' · ')+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body" style="overflow-y:auto">'+(instr||tags||imgs||links||stamps?(instr+tags+imgs+links+stamps):'<div class="pd-empty">No creative brief content.</div>')+pm+'</div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button>'+srcBtn+chatBtn+'</div></div>'+
+    '</div>';
+  }
+  window._cbrShow=function(key){ var d=window._CBRREG[key]; if(!d||!d.brief){ toast('No creative brief',true); return; }
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML=_cbrViewHtml(d.brief, d.ctx, d.chat);
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  // compact card summary chip ("Creative Brief Available / No Creative Brief Added")
+  function _cbrSummaryChip(key, summary, brief, ctx, chat){
+    _cbrCss();
+    if(!summary || !summary.has){ return '<div class="cbr-sumchip none"><span class="cbr-sc-ic" style="background:rgba(138,125,92,.12);color:var(--text-muted,#8a7d5c)">'+ic('clipboard')+'</span><span class="cbr-sc-main"><span class="cbr-sc-t">No Creative Brief Added</span></span></div>'; }
+    if(brief) _cbrRegister(key, brief, ctx, chat);
+    var parts=[]; if(summary.images) parts.push(summary.images+' Image'+(summary.images>1?'s':'')); if(summary.videos) parts.push(summary.videos+' Video'+(summary.videos>1?'s':'')); if(summary.instructions) parts.push('Instructions'); if(summary.timestamps) parts.push(summary.timestamps+' Timestamp'+(summary.timestamps>1?'s':''));
+    return '<button type="button" class="cbr-sumchip" onclick="event.stopPropagation();_cbrShow(\''+key+'\')">'+
+      '<span class="cbr-sc-ic">'+ic('clipboard')+'</span>'+
+      '<span class="cbr-sc-main"><span class="cbr-sc-t">Creative Brief Available</span><span class="cbr-sc-m">'+(parts.join(' · ')||'Details')+(summary.author?(' · by '+esc(summary.author)):'')+'</span></span>'+
+      '<span class="cbr-sc-cta">View ›</span></button>';
+  }
+  // Editor opener (fetch by task/chapter) + Chat-with-Teacher shortcut
+  window.edtBriefOpen=function(taskId, chapterId){
+    var base=chapterId?(P.editor.api+'/project-videos/'+chapterId+'/creative-brief'):(P.editor.api+'/tasks/'+taskId+'/creative-brief');
+    api(base).then(function(r){
+      if(!r || !r.brief){ toast('No creative brief added',true); return; }
+      var ctx=(r.context||{}); ctx.pm_instructions=ctx.pm_instructions||'';
+      var chatFn=chapterId?('prodDismiss();edtProjectChat('+ (window._edtBriefProj||0) +",'')"):('prodDismiss();edtChatMenu('+taskId+')');
+      // for chapters we fall back to the task-level teacher chat if project chat id unknown
+      _cbrRegister('ebr:'+(chapterId||taskId), r.brief, ctx, {fn:(chapterId?('prodDismiss();_edtChapChat('+chapterId+')'):('prodDismiss();edtChatMenu('+taskId+')')), label:'Chat with Teacher'});
+      _cbrShow('ebr:'+(chapterId||taskId));
+    }).catch(function(e){ toast((e&&e.message)||'Could not load brief',true); });
+  };
+  window._edtChapChat=function(chapterId){ try{ edtReviewChat(chapterId); }catch(e){ try{ edtChatMenu(chapterId); }catch(_){} } };
+  // Teacher opener + Chat-with-Editor shortcut (only when an editor is assigned)
+  window.tBriefOpen=function(taskId, chapterId){
+    var qs=chapterId?('chapter_id='+chapterId):('task_id='+taskId);
+    api('/api/teacher/creative-brief?'+qs).then(function(r){
+      if(!r || !r.brief){ toast('No creative brief added',true); return; }
+      var ctx=r.context||{}; var chat=null;
+      if(ctx.editor_assigned){ chat={fn:('prodDismiss();tReviewChat('+taskId+')'), label:'Chat with Editor'}; }
+      _cbrRegister('tbr:'+(chapterId||taskId), r.brief, ctx, chat);
+      _cbrShow('tbr:'+(chapterId||taskId));
+    }).catch(function(e){ toast((e&&e.message)||'Could not load brief',true); });
   };
 
   // ---- Editor: rich submit modal (drive link + remarks + attachments + recording feedback) ----
@@ -32921,6 +33153,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(['editor_assigned','editing','editing_paused','editing_done','qc_changes'].indexOf(_elc)>=0)
         acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodCardAct(\'editor\',\'deadline\','+t.id+')">'+(t.deadline_req_status==='pending'?'Extension Pending':'Request Deadline')+'</button>';
       if((t.editor_instructions||'').trim()||(t.editor_reference||'').trim()) acts+='<button class="ptc-btn ptc-ref-blink" onclick="event.stopPropagation();edtBrief('+t.id+')"><span class="rev-dot"></span>PM Brief</button>';
+      // Creative Editing Brief (teacher/PM's editing ideas) — separate from the PM assignment brief above
+      if(t.creative_brief_summary && t.creative_brief_summary.has) acts+='<button class="ptc-btn" style="border-color:rgba(37,99,235,.4)" onclick="event.stopPropagation();edtBriefOpen('+t.id+',0)">'+ic('clipboard')+' Creative Brief</button>';
       var _euc=t.unread_total||0; var _eb=(_euc>0?' <span class="chat-badge">'+_euc+'</span>':''); var _ebl=(_euc>0?' chat-blink':'');
       // Editor sabse hamesha PM se hi baat karega (youtuber se direct nahi) \u2014 PM hi coordinate karega
       acts+='<button class="ptc-btn'+_ebl+'" onclick="event.stopPropagation();edtChatMenu('+t.id+')">\uD83D\uDCAC Chat'+_eb+'</button>';
@@ -34843,7 +35077,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       // this chapter's own Editor -> Teacher recording feedback (read-only for PM/Admin)
       ((wi.recording_feedback && wi.recording_feedback_summary)
         ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('chfb:'+(wi.id||'x'), wi.recording_feedback_summary, wi.recording_feedback, {project_title:(wi.project_title||''), video_title:(wi.title||'')}, false, null, false):'')+'</div>')
-        : '');
+        : '')+
+      // this chapter's own Creative Editing Brief + PM Add/Edit
+      '<div style="margin-top:10px">'+(typeof _cbrSummaryChip==='function'?_cbrSummaryChip('chcbr:'+(wi.id||'x'), wi.creative_brief_summary, wi.creative_brief, {project_title:(wi.project_title||''), video_title:(wi.title||''), pm_instructions:(wi.editor_instructions||''), source_video:(wi.source_video||'')}, {fn:'prodDismiss();prodChapChat&&prodChapChat('+(wi.parent_project_id||0)+')', label:'Open Collaboration Chat'}):'')+
+        '<button class="p-btn" style="margin-top:7px;font-size:.78rem" onclick="cbrEditOpen({title:\'Creative Brief\',saveUrl:P.production.api+\'/creative-brief\',getUrl:P.production.api+\'/chapters/'+(wi.id||0)+'/work-item\',ref:{chapter_id:'+(wi.id||0)+'},after:function(){try{prodOpenChapter(\'production\','+(wi.id||0)+');}catch(e){}}})">'+(wi.creative_brief_summary&&wi.creative_brief_summary.has?'Edit':'+ Add')+' Creative Brief</button>'+
+      '</div>';
     }
     if(tab==='teacher'){
       return '<div class="pd-kv">'+
@@ -35101,12 +35339,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var wi=_chWi();
     _chModal('Submit Video Link', wi.title||'Chapter',
       '<div class="p-field"><label>Teacher\'s source video link</label><input class="p-input" id="pcsl-url" placeholder="https://drive.google.com/..." value="'+_esc1(wi.source_video||'')+'"></div>'+
-      '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">You are submitting on behalf of the teacher \u2014 the timeline records it as submitted by you.</div>',
-      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapSubmitLinkDo('+cid+')">Submit</button>');
+      '<div style="font-size:.78rem;color:var(--muted,#8a7d5c)">You are submitting on behalf of the teacher \u2014 the timeline records it as submitted by you.</div>'+
+      _cbrCollapsibleHtml(),
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pcsl-sub" onclick="prodChapSubmitLinkDo('+cid+')">Submit</button>');
+    _cbrReset(); setTimeout(function(){ _cbrWire('pcsl-sub'); },30);
   };
   window.prodChapSubmitLinkDo=function(cid){
     var url=((document.getElementById('pcsl-url')||{}).value||'').trim(); if(!url){ toast('Paste the video link',true); return; }
-    api(P.production.api+'/chapter-submit-link','POST',{chapter_id:cid,link:url}).then(function(){ prodDismiss(); toast('Submitted \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+    var body={chapter_id:cid,link:url}; var c=_cbrCollect(); if(c.busy) return; if(c.payload) body.creative_brief=c.payload;
+    api(P.production.api+'/chapter-submit-link','POST',body).then(function(){ prodDismiss(); toast('Submitted \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodChapReshoot=function(cid){
     _chModal('Request Reshoot', _chWi().title||'Chapter',
@@ -36138,6 +36379,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       ((t.recording_feedback && t.recording_feedback_summary)
         ? ('<div style="margin-top:10px">'+(typeof _recFbSummaryChip==='function'?_recFbSummaryChip('ovfb:'+(t.id||'x'), t.recording_feedback_summary, t.recording_feedback, {video_title:(t.title||'')}, false, null, false):'')+'</div>')
         : '')+
+      // Creative Editing Brief (source submitter -> editor) + Add/Edit (PM). Separate from editor_instructions.
+      '<div style="margin-top:10px">'+(typeof _cbrSummaryChip==='function'?_cbrSummaryChip('ovcbr:'+(t.id||'x'), t.creative_brief_summary, t.creative_brief, {video_title:(t.title||''), pm_instructions:(t.editor_instructions||''), source_video:(t.submitted_link||'')}, {fn:'prodDismiss();prodReviewChat('+(t.id||0)+')', label:'Open Collaboration Chat'}):'')+
+        ((portal==='production'||portal==='admin')?('<button class="p-btn" style="margin-top:7px;font-size:.78rem" onclick="cbrEditOpen({title:\'Creative Brief\',saveUrl:P.production.api+\'/creative-brief\',getUrl:P.production.api+\'/tasks/'+(t.id||0)+'\',ref:{task_id:'+(t.id||0)+'},after:function(){try{prodOpenTask(\''+portal+'\','+(t.id||0)+');}catch(e){}}})">'+(t.creative_brief_summary&&t.creative_brief_summary.has?'Edit':'+ Add')+' Creative Brief</button>'):'')+
+      '</div>'+
       _pmSubmissionsHtml(t)+_pmReviewHistoryHtml(t);
     }
     if(tab==='timeline'){
@@ -36722,19 +36967,21 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '<div class="p-modal-body">'+
         '<div style="font-size:.82rem;color:var(--muted);margin-bottom:12px;line-height:1.5">Urgent case — agar creator ne WhatsApp pe link bhej diya hai to yahin submit kar do. Aapka naam card pe "Submitted by" mein sabko dikhega, aur creator ke portal se submit option hat jaayega.</div>'+
         '<div class="p-field"><label>Google Drive link</label><input class="p-input" id="psl-link" placeholder="https://drive.google.com/..." autocomplete="off" onkeydown="if(event.key===\'Enter\')prodSubmitLinkSave('+id+')"></div>'+
+        _cbrCollapsibleHtml()+
       '</div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Cancel</button>'+
         '<button class="p-btn p-btn-primary" id="psl-btn" onclick="prodSubmitLinkSave('+id+')">'+ic('check')+' Submit Link</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
     document.body.appendChild(dr);
-    setTimeout(function(){ var i=document.getElementById('psl-link'); if(i) i.focus(); },40);
+    _cbrReset(); setTimeout(function(){ _cbrWire('psl-btn'); var i=document.getElementById('psl-link'); if(i) i.focus(); },40);
   };
   window.prodSubmitLinkSave=function(id){
     var v=((document.getElementById('psl-link')||{}).value||'').trim();
     if(!v){ toast('Please paste the drive link',true); return; }
     var b=document.getElementById('psl-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; }
-    api(P.production.api+'/tasks/'+id+'/submit-link','POST',{drive_link:v}).then(function(r){
+    var _body={drive_link:v}; var _c=_cbrCollect(); if(_c.busy){ if(b){b.disabled=false;b.style.opacity='';} return; } if(_c.payload) _body.creative_brief=_c.payload;
+    api(P.production.api+'/tasks/'+id+'/submit-link','POST',_body).then(function(r){
       var m=document.getElementById('prod-modal2'); if(m) m.remove();
       toast((r&&r.on_time===false)?'Submitted (delayed)':'Submitted on time');
       try{ _apiBust(); }catch(e){}
