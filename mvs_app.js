@@ -28795,6 +28795,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).join('');
   }
   window.prodNotifClick=function(portal,nid,taskId,ntype){
+    window._pmChatReturn=null;   // opened straight from a notification -> Back should just close
     api(P[portal].api+'/notifications/'+nid+'/read','POST',{}).catch(function(){});
     var p=document.getElementById('pn-panel'); if(p) p.remove();
     document.removeEventListener('click',_prodBellOutside);
@@ -29654,6 +29655,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ if(typeof _cmLoad==='function') _cmLoad(true); }catch(e){}
   };
   window._chatCloseUnified=function(){
+    window._pmChatReturn=null;   // a full close drops any pending "return to chooser"
     var pane=document.getElementById('cm-thread-pane');
     if(pane && pane.getClientRects().length && pane.classList.contains('has-thread')){ window._cmClosePane(); }
     else { prodDismiss(); }
@@ -29665,6 +29667,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // stop live-poll for the chat we're leaving
     try{ if(window._chatPollTimer){ clearInterval(window._chatPollTimer); window._chatPollTimer=null; } }catch(e){}
     if(typeof f==='function'){ try{ f(); return; }catch(e){} }
+    // fall back to the PM chat chooser if this chat was opened from it (survives send re-renders)
+    var r=window._pmChatReturn; window._pmChatReturn=null;
+    if(typeof r==='function'){ try{ r(); return; }catch(e){} }
     window._chatCloseUnified();
   };
   function _ytcRender(comments, presence){
@@ -30002,7 +30007,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _pgChatRender(id, comments, presence){
     var thread=comments.length?comments.map(function(c){ return _chatBubble(c,'production_manager'); }).join(''):'<div style="color:var(--muted);font-size:.82rem;padding:10px 0;text-align:center">No messages yet. Start the conversation with the graphics designer. (Teacher ko ye chat nahi dikhta.)</div>';
     var inner=(
-      '<div class="pd-head"><div><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div><button class="p-btn" style="padding:6px 11px;font-size:.78rem;font-weight:800;margin-right:6px" onclick="_chatCloseUnified();pmThumbReview('+id+')">\uD83D\uDDBC Thumbnails</button><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div>'+
+      '<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatBack()">'+_BACKIC+'</button><div><div class="h-title">Chat with Graphics <span style="font-size:.66rem;font-weight:700;color:var(--muted)">\u00b7 internal</span></div><div id="chat-presence" class="chat-presence"></div></div></div><button class="p-btn" style="padding:6px 11px;font-size:.78rem;font-weight:800;margin-right:6px" onclick="_chatCloseUnified();pmThumbReview('+id+')">\uD83D\uDDBC Thumbnails</button><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div>'+
       '<div class="p-modal-body">'+_prodChatBar(id,'production')+'<div id="chat-thread" style="flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0">'+thread+'</div></div>'+
       _chatFooter(id,'prodGfxChatSend'));
     _chatShow(inner);
@@ -30085,21 +30090,49 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ prodDismiss(); }catch(e){}
     try{ prodOpenTask(portal,id); }catch(e){}
   };
-  window.prodChatMenu=function(id, tc, gc, ec){
-    tc=tc||0; gc=gc||0; ec=ec||0;
+  window.prodChatMenu=function(id, tc, gc, ec, rc){
+    tc=tc||0; gc=gc||0; ec=ec||0; rc=rc||0;
+    // remember these args so a chat opened from here can rebuild THIS exact chooser on Back
+    window._pcmArgs={id:id,tc:tc,gc:gc,ec:ec,rc:rc};
     var _b=function(n){ return n>0?' <span class="pcm-badge chat-blink">'+n+'</span>':''; };
+    _pcmEnsureCss();
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
-    dr.innerHTML='<div class="p-modal" style="max-width:380px">'+
+    dr.innerHTML='<div class="p-modal" style="max-width:390px">'+
       '<div class="pd-head"><div class="h-title">Chat about this video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body"><div class="pcm-list">'+
-        '<button class="pcm-opt" onclick="prodDismiss();prodConvo('+id+')">'+ic('users')+'<span class="pcm-label">Chat with Teacher</span>'+_b(tc)+'<span class="pcm-arw">\u203a</span></button>'+
-        '<button class="pcm-opt" onclick="prodDismiss();prodGfxChat('+id+')">'+ic('image')+'<span class="pcm-label">Chat with Graphics</span>'+_b(gc)+'<span class="pcm-arw">\u203a</span></button>'+
-        '<button class="pcm-opt" onclick="prodDismiss();prodEdtChat('+id+')">'+ic('play')+'<span class="pcm-label">Chat with Editor</span>'+_b(ec)+'<span class="pcm-arw">\u203a</span></button>'+
+        '<button class="pcm-opt" onclick="prodChatPick(\'teacher\','+id+')">'+ic('users')+'<span class="pcm-label">Chat with Teacher</span>'+_b(tc)+'<span class="pcm-arw">\u203a</span></button>'+
+        '<button class="pcm-opt" onclick="prodChatPick(\'graphics\','+id+')">'+ic('image')+'<span class="pcm-label">Chat with Graphics</span>'+_b(gc)+'<span class="pcm-arw">\u203a</span></button>'+
+        '<button class="pcm-opt" onclick="prodChatPick(\'editor\','+id+')">'+ic('play')+'<span class="pcm-label">Chat with Editor</span>'+_b(ec)+'<span class="pcm-arw">\u203a</span></button>'+
+        '<div class="pcm-div"><span>Oversight</span></div>'+
+        '<button class="pcm-opt pcm-opt-rv" onclick="prodChatPick(\'review\','+id+')">'+ic('team')+'<span class="pcm-label">Teacher \u2194 Editor<span class="pcm-sub2">See what they discussed on the edit</span></span>'+_b(rc)+'<span class="pcm-arw">\u203a</span></button>'+
       '</div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
+  };
+  function _pcmEnsureCss(){
+    if(document.getElementById('pcm-xcss')) return;
+    var s=document.createElement('style'); s.id='pcm-xcss';
+    s.textContent='.pcm-div{display:flex;align-items:center;gap:9px;margin:6px 2px 2px;font-size:.6rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted,#a89a74)}'+
+      '.pcm-div::before,.pcm-div::after{content:"";flex:1 1 auto;height:1px;background:var(--border,#e7dfc6)}'+
+      'body.dark .pcm-div::before,body.dark .pcm-div::after{background:#2c405e}'+
+      '.pcm-opt-rv{border-color:rgba(201,138,46,.45);background:linear-gradient(180deg,rgba(201,138,46,.07),transparent)}'+
+      '.pcm-opt-rv:hover{border-color:#c98a2e}'+
+      '.pcm-label .pcm-sub2{display:block;font-size:.68rem;font-weight:600;color:var(--text-muted,#8a7d5c);margin-top:1px;letter-spacing:0;text-transform:none}';
+    document.head.appendChild(s);
+  }
+  // open a chat from the chooser; its Back arrow returns to THIS chooser instead of the card.
+  // We use a PERSISTENT return pointer (_pmChatReturn) rather than _chatBackFn, because sending a
+  // message re-renders the chat (which can reset _chatBackFn) — the return-to-chooser must survive that.
+  window.prodChatPick=function(which, id){
+    var a=window._pcmArgs||{id:id};
+    if(which==='teacher') prodConvo(id);
+    else if(which==='graphics') prodGfxChat(id);
+    else if(which==='editor') prodEdtChat(id);
+    else prodReviewChat(id);
+    window._chatBackFn=null;   // clear any stale per-chat back (e.g. a previous QC-review back)
+    window._pmChatReturn=function(){ prodChatMenu(a.id, a.tc, a.gc, a.ec, a.rc); };
   };
   // Editor side: Chat with PM (same audience=editor thread)
   window.edtChatPM=function(id){ _ytcOpen({getUrl:P.editor.api+'/tasks/'+id+'/comments',postUrl:P.editor.api+'/tasks/'+id+'/comments',audience:'editor',mineRole:'editor',title:'Chat with PM',taskId:id,barPortal:'editor',pingUrl:P.editor.api+'/tasks/'+id+'/chat-ping'}); };
@@ -34188,12 +34221,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else if(k==='channel'){ delete f.channel_id; }
     else if(k==='video_type_id'){ delete f.video_type; }
     else if(k==='video_type'){ delete f.video_type_id; }
-    f._page=1;   // any filter change resets to page 1
+    f._page=1; f._size=40;   // any filter change resets to the first page
     // keep the filter-bar status dropdown in sync when status changed via a count-bar chip
     if(k==='status' && portal==='production'){
       try{ var sel=document.querySelector('#production-body .p-filter .pf-sel[onchange*="status"]'); if(sel) sel.value=(v||''); }catch(e){}
+      // instant feedback — light up the clicked count-bar chip right away, before the reload lands
+      try{ var bar=document.querySelector('#production-results .pcb-wrap'); if(bar){ bar.querySelectorAll('.pcb-chip').forEach(function(c){ var m=(c.getAttribute('onclick')||'').match(/'status','([^']*)'/); c.classList.toggle('on', (m?m[1]:'')===(v||'')); }); } }catch(e){}
     }
-    _prodLoadList(portal);
+    // NON-BLANKING reload: if the list is already on screen, keep the current cards visible while the
+    // new set loads (silent = no skeleton flash). Fresh first load still shows the skeleton.
+    _prodLoadList(portal, !!document.getElementById(portal+'-results'));
   };
   window.prodSearch=function(portal,v){ var f=_flt(portal); f.q=v; f._page=1; clearTimeout(window._prodSearchT); window._prodSearchT=setTimeout(function(){ _prodLoadList(portal); },300); };
 
@@ -35722,7 +35759,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       .catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodCloseTask=function(){ _stopEditTimer(); var d=document.getElementById('prod-drawer'); if(d) d.remove(); };
-  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){} try{ window._pasfPrevActs=null; window._pasfPause=null; }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
+  window.prodDismiss=function(){ try{ _stopEditTimer(); }catch(e){} try{ if(window._awAutoSave){ clearInterval(window._awAutoSave); window._awAutoSave=null; } }catch(e){} try{ window._pasfPrevActs=null; window._pasfPause=null; }catch(e){} try{ window._pmChatReturn=null; }catch(e){} ['prod-modal','prod-drawer'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
     try{ if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; } }catch(e){}
     try{ if(window._pmPasteH){ document.removeEventListener('paste',window._pmPasteH); window._pmPasteH=null; } }catch(e){}
     try{ if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; } }catch(e){}
