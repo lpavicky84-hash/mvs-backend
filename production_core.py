@@ -1093,6 +1093,29 @@ def _editor_user_id_for(db, editor_staff_id):
         return None
 
 
+def notify_brief_stakeholders(db, work_type, video_task_id, chapter_id, editor_staff_id, author_name, title, is_update=False):
+    """When a TEACHER attaches/updates a creative brief, let everyone who needs to know see it:
+    the assigned editor (if any), the admins, and the PMs. Notification deep-links to the brief."""
+    link = ("%d:%d" % (video_task_id, chapter_id)) if work_type == "project_chapter" else str(video_task_id)
+    ttl = "Creative Brief Updated" if is_update else "Creative Brief Added"
+    msg = f'{author_name or "The teacher"} {"updated" if is_update else "added"} an editing brief for "{title}".'
+    try:
+        euid = _editor_user_id_for(db, editor_staff_id)
+        if euid:
+            notify(db, euid, ttl, msg, "creative_brief", link=link)
+    except Exception:
+        pass
+    try:
+        for a in db.query(User).filter(User.role == "admin", User.is_active == True).all():
+            notify(db, a.id, ttl, msg, "creative_brief", link=link)
+    except Exception:
+        pass
+    try:
+        notify_pms(db, ttl, msg, "creative_brief", link=link)
+    except Exception:
+        pass
+
+
 def attach_creative_brief(db, work_type, video_task_id, chapter_id, author_user, author_role,
                           payload, task_for_timeline=None, editor_started=False,
                           editor_staff_id=None, title=""):

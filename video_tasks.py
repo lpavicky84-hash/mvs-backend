@@ -4664,6 +4664,19 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
             _ccm[_tid] = _cnt
     _ts2 = _thumb_id_set(db, _mtids)
     out = [_task_out(db, t, tname_map=_tnm2, cc_map=_ccm, thumb_set=_ts2) for t in active + rest]
+    # creative-brief availability — one batch query so each card knows whether a brief already exists
+    try:
+        from models import CreativeEditingBrief as _CB
+        _bset = set()
+        if _mtids:
+            for (_bid,) in (db.query(_CB.video_task_id)
+                            .filter(_CB.video_task_id.in_(_mtids), _CB.chapter_id == None,
+                                    _CB.is_active == True).all()):
+                _bset.add(_bid)
+        for _o in out:
+            _o["has_creative_brief"] = (_o.get("id") in _bset)
+    except Exception:
+        pass
     nxt = active[0] if active else None
     # teacher ke apne stats: kitni upload hui, pending, on-time, delayed + is mahine type-wise
     now = _now_ist()

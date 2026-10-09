@@ -3399,7 +3399,9 @@ def teacher_review_videos(db: Session = Depends(get_db), current_user=Depends(ge
                 continue
         if not (getattr(t, "edited_link", "") or ""):
             continue
-        d = _pc.task_out(db, t)
+        # timeline=True so the teacher's review card also carries the editor's recording feedback
+        # and the creative brief (both are otherwise only attached in the detailed serializer).
+        d = _pc.task_out(db, t, timeline=True)
         out.append(d)
     # pending (not yet approved) first, then most recent
     out.sort(key=lambda d: ((d.get("teacher_review_status") == "approved"), -(d.get("id") or 0)))
@@ -3706,6 +3708,7 @@ def teacher_save_creative_brief(payload: dict = Body(...),
     tp = get_teacher_profile(current_user, db)
     chapter_id = int(payload.get("chapter_id") or 0)
     task_id = int(payload.get("task_id") or 0)
+    _author = getattr(current_user, "name", "") or "Teacher"
     if chapter_id:
         c = db.query(_VC).filter(_VC.id == chapter_id).first()
         if not c:
@@ -3713,18 +3716,29 @@ def teacher_save_creative_brief(payload: dict = Body(...),
         t = db.query(_VT).filter(_VT.id == c.task_id).first()
         if not _teacher_owns_task(db, tp, t):
             raise HTTPException(403, "Not allowed")
+        _title = (c.title or (t.title if t else "") or "")
+        _exist = _pc.get_active_creative_brief(db, chapter_id=c.id) is not None
+        # editor_staff_id=None here: we send the stakeholder notifications ourselves (admins + PMs + editor)
         row, changed = _pc.attach_creative_brief(
             db, "project_chapter", c.task_id, c.id, current_user, "teacher", payload,
             task_for_timeline=t, editor_started=_pc.creative_editor_started_chapter(c),
-            editor_staff_id=getattr(c, "editor_id", None), title=(c.title or (t.title if t else "") or ""))
+            editor_staff_id=None, title=_title)
+        if row is not None and changed:
+            _pc.notify_brief_stakeholders(db, "project_chapter", c.task_id, c.id,
+                                          getattr(c, "editor_id", None), _author, _title, is_update=_exist)
     else:
         t = db.query(_VT).filter(_VT.id == task_id).first()
         if not _teacher_owns_task(db, tp, t):
             raise HTTPException(403, "Not allowed")
+        _title = (t.title or "")
+        _exist = _pc.get_active_creative_brief(db, video_task_id=t.id) is not None
         row, changed = _pc.attach_creative_brief(
             db, "task", t.id, None, current_user, "teacher", payload,
             task_for_timeline=t, editor_started=_pc.creative_editor_started_task(t),
-            editor_staff_id=getattr(t, "editor_id", None), title=(t.title or ""))
+            editor_staff_id=None, title=_title)
+        if row is not None and changed:
+            _pc.notify_brief_stakeholders(db, "task", t.id, None,
+                                          getattr(t, "editor_id", None), _author, _title, is_update=_exist)
     db.commit()
     return {"ok": True, "changed": bool(changed), "brief": _pc.creative_brief_out(db, row)}
 

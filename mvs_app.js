@@ -1330,6 +1330,12 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
     var _bp=(link||'').split(':'); var _btid=parseInt(_bp[0],10)||0; var _bcid=(_bp.length>1)?(parseInt(_bp[1],10)||0):0;
     try{ if(typeof tBriefOpen==='function' && _btid){ tBriefOpen(_btid, _bcid); openNotifPanel(role); return; } }catch(e){}
   }
+  // Creative editing brief added by teacher -> admin sees it directly on click
+  if(role==='admin' && (ntype||'')==='creative_brief'){
+    try{ closeModal(); }catch(e){}
+    var _ap=(link||'').split(':'); var _atid=parseInt(_ap[0],10)||0; var _acid=(_ap.length>1)?(parseInt(_ap[1],10)||0):0;
+    try{ if(typeof window.admBriefOpen==='function' && (_atid||_acid)){ window.admBriefOpen(_atid, _acid); openNotifPanel(role); return; } }catch(e){}
+  }
   // Support deep links -> open the exact record INSIDE the portal
   if(link.indexOf('/support/')===0){
     closeModal();
@@ -11751,6 +11757,20 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           reviewBox=`<button class="vt-rev-btn blink" onclick="tReviewOpen(${t.id})">${ic('video')} Review Edited Video${_ru?` <b class="vt-chat-badge">${_ru}</b>`:''}</button>`;
         }
       }
+      _tCardChipCss();
+      // Editor's recording feedback — shown right on the card (not hidden behind the review modal)
+      let _recFbChip='';
+      const _rfs=(_rev&&_rev.recording_feedback_summary)||null;
+      if(_rfs && _rfs.has){ _recFbChip=`<button class="vt-ccx rf" onclick="tRecFbOpen(${t.id},0)">${ic('video')} Recording feedback<b>${_rfs.overall!=null?' '+_rfs.overall+'/5':''}</b>${_rfs.improvement_areas?` · ${_rfs.improvement_areas} to improve`:''}<span class="vt-ccx-cta">View ›</span></button>`; }
+      // Creative Editing Brief — after submit the teacher can still add one; keeps blinking until added
+      let _briefChip='';
+      const _hasBrief=(t.has_creative_brief===true)||(_rev&&_rev.creative_brief_summary&&_rev.creative_brief_summary.has);
+      if(t.submitted_link||t.submitted_at){
+        _briefChip=_hasBrief
+          ? `<button class="vt-ccx br" onclick="tBriefOpen(${t.id},0)">${ic('clipboard')} Editing brief added<span class="vt-ccx-cta">View ›</span></button>`
+          : `<button class="vt-ccx br blink" onclick="tBriefEdit(${t.id},0)">${ic('clipboard')} + Add Editing Brief <span style="opacity:.7;font-weight:600">(optional)</span></button>`;
+      }
+      const _tExtras=(_recFbChip||_briefChip)?`<div class="vt-ccx-row">${_recFbChip}${_briefChip}</div>`:'';
       return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}">${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
@@ -11766,7 +11786,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
-        ${reviewBox}${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}
+        ${reviewBox}${_tExtras}${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}
       </div></div>`;
     };
     // ---- v73: master Task/Project cards + subject & type filters ----
@@ -12097,6 +12117,30 @@ window.tReviewChangesSubmit=function(id){
     setTimeout(function(){ try{ tReviewChat(id); }catch(e){} },250);
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
 };
+function _tCardChipCss(){
+  if(document.getElementById('tccx-css')) return;
+  var s=document.createElement('style'); s.id='tccx-css';
+  s.textContent='.vt-ccx-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}'+
+    '.vt-ccx{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border,#e5ddcb);border-radius:11px;padding:8px 12px;font-size:.78rem;font-weight:700;cursor:pointer;background:var(--card,#fff);color:var(--text,#2a2313);font-family:inherit;transition:border-color .14s,box-shadow .14s;flex:1 1 auto;justify-content:flex-start}'+
+    '.vt-ccx b{color:#c98a2e}.vt-ccx svg{width:15px;height:15px;flex:0 0 auto}'+
+    '.vt-ccx .vt-ccx-cta{margin-left:auto;font-weight:800;color:inherit;opacity:.8}'+
+    '.vt-ccx.rf{border-color:rgba(201,138,46,.45);background:linear-gradient(180deg,rgba(201,138,46,.07),transparent)}'+
+    '.vt-ccx.rf:hover{border-color:#c98a2e;box-shadow:0 5px 14px rgba(201,138,46,.14)}'+
+    '.vt-ccx.br{border-color:rgba(37,99,235,.4);background:linear-gradient(180deg,rgba(37,99,235,.06),transparent);color:#2563eb}'+
+    '.vt-ccx.br:hover{border-color:#2563eb;box-shadow:0 5px 14px rgba(37,99,235,.14)}'+
+    '.vt-ccx.br.blink{animation:tccxBlink 1.6s ease-in-out infinite}'+
+    '@keyframes tccxBlink{0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,.0)}50%{box-shadow:0 0 0 4px rgba(37,99,235,.14)}}'+
+    '@media(prefers-reduced-motion:reduce){.vt-ccx.br.blink{animation:none}}'+
+    'body.dark .vt-ccx{background:#152a45;border-color:#2c405e;color:#eaf0fb}body.dark .vt-ccx.br{color:#9ec0ff}'+
+    // premium post-submit brief prompt
+    '.bprompt-card{text-align:center;padding:6px 4px}'+
+    '.bprompt-ic{width:56px;height:56px;border-radius:16px;margin:4px auto 12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;animation:bpPop .4s cubic-bezier(.2,.9,.3,1.3)}'+
+    '.bprompt-ic svg{width:26px;height:26px}'+
+    '@keyframes bpPop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}'+
+    '.bprompt-h{font-weight:900;font-size:1.05rem;color:var(--text,#2a2313)}.bprompt-s{font-size:.84rem;color:var(--text-muted,#8a7d5c);margin-top:5px;line-height:1.5}'+
+    '@media(prefers-reduced-motion:reduce){.bprompt-ic{animation:none}}';
+  document.head.appendChild(s);
+}
 // Teacher: add / edit / view their own Creative Editing Brief for a task or chapter
 window.tBriefEdit=function(taskId, chapterId){
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
@@ -12491,8 +12535,27 @@ async function tvtSubmit(id){  const link=document.getElementById('tvt-link-'+id
     const r=await api(`/api/teacher/video-tasks/${id}/submit`,'POST',{link});
     toast(r.on_time?'Submitted on time — great job!':'Submitted (after deadline).');
     loadTVTasks();
+    // premium optional prompt: add an editing brief now, or skip and move on
+    try{ _briefPromptAfterSubmit(id); }catch(e){}
   }catch(e){ toast(e.message||'Could not submit'); }
 }
+// premium "add editing brief?" transition after a source-video submit (optional — can skip)
+window._briefPromptAfterSubmit=function(id){
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  _tCardChipCss();
+  var old=document.getElementById('prod-modal'); if(old) old.remove();
+  var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+  dr.innerHTML='<div class="p-modal" style="max-width:420px">'+
+    '<div class="p-modal-body" style="padding:22px 20px 6px">'+
+      '<div class="bprompt-card"><div class="bprompt-ic">'+ic('clipboard')+'</div>'+
+      '<div class="bprompt-h">Video submitted ✓</div>'+
+      '<div class="bprompt-s">Want to add a quick <b>editing brief</b> for the editor? Share how you’d like it cut — instructions, reference clips, timestamps. Completely optional.</div></div>'+
+    '</div>'+
+    '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Skip for now</button><button class="p-btn p-btn-primary" onclick="prodDismiss();tBriefEdit('+id+',0)">'+ic('clipboard')+' Add Editing Brief</button></div></div>'+
+  '</div>';
+  dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+  document.body.appendChild(dr);
+};
 /* dashboard countdown banner */
 async function loadVTBanner(){
   const el=document.getElementById('t-vt-banner'); if(!el) return;
@@ -29792,6 +29855,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(ctx.editor_assigned){ chat={fn:('prodDismiss();tReviewChat('+taskId+')'), label:'Chat with Editor'}; }
       _cbrRegister('tbr:'+(chapterId||taskId), r.brief, ctx, chat);
       _cbrShow('tbr:'+(chapterId||taskId));
+    }).catch(function(e){ toast((e&&e.message)||'Could not load brief',true); });
+  };
+  // Admin opener (from a "teacher added a brief" notification) — fetch via production API, show read-only
+  window.admBriefOpen=function(taskId, chapterId){
+    var url=chapterId?('/api/production/chapters/'+chapterId+'/work-item'):('/api/production/tasks/'+taskId);
+    api(url).then(function(r){
+      var brief=r&&r.creative_brief;
+      if(!brief){ toast('No creative brief added',true); return; }
+      var ctx={ video_title:(r.title||r.video_title||''), project_title:(r.project_title||''),
+                pm_instructions:(r.editor_instructions||''), source_video:(r.source_video||r.source_link||'') };
+      _cbrRegister('abr:'+(chapterId||taskId), brief, ctx, null);
+      _cbrShow('abr:'+(chapterId||taskId));
     }).catch(function(e){ toast((e&&e.message)||'Could not load brief',true); });
   };
 
