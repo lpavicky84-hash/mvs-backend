@@ -11762,13 +11762,18 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
       let _recFbChip='';
       const _rfs=(_rev&&_rev.recording_feedback_summary)||null;
       if(_rfs && _rfs.has){ _recFbChip=`<button class="vt-ccx rf" onclick="tRecFbOpen(${t.id},0)">${ic('video')} Recording feedback<b>${_rfs.overall!=null?' '+_rfs.overall+'/5':''}</b>${_rfs.improvement_areas?` · ${_rfs.improvement_areas} to improve`:''}<span class="vt-ccx-cta">View ›</span></button>`; }
-      // Creative Editing Brief — after submit the teacher can still add one; keeps blinking until added
+      // Creative Editing Brief — teacher can ADD one only while it still helps (before editing is done).
+      // Once editing is done: if a brief exists, offer a VIEW button; if none, show nothing.
       let _briefChip='';
       const _hasBrief=(t.has_creative_brief===true)||(_rev&&_rev.creative_brief_summary&&_rev.creative_brief_summary.has);
+      const _editDone=(t.edit_done===true)||!!_rev;
       if(t.submitted_link||t.submitted_at){
-        _briefChip=_hasBrief
-          ? `<button class="vt-ccx br" onclick="tBriefOpen(${t.id},0)">${ic('clipboard')} Editing brief added<span class="vt-ccx-cta">View ›</span></button>`
-          : `<button class="vt-ccx br blink" onclick="tBriefEdit(${t.id},0)">${ic('clipboard')} + Add Editing Brief <span style="opacity:.7;font-weight:600">(optional)</span></button>`;
+        if(_hasBrief){
+          _briefChip=`<button class="vt-ccx br" onclick="tBriefOpen(${t.id},0)">${ic('clipboard')} ${_editDone?'View editing brief':'Editing brief added'}<span class="vt-ccx-cta">View ›</span></button>`;
+        } else if(!_editDone){
+          _briefChip=`<button class="vt-ccx br blink" onclick="tBriefEdit(${t.id},0)">${ic('clipboard')} + Add Editing Brief <span style="opacity:.7;font-weight:600">(optional)</span></button>`;
+        }
+        // editing done + no brief -> no button (too late to add, nothing to view)
       }
       const _tExtras=(_recFbChip||_briefChip)?`<div class="vt-ccx-row">${_recFbChip}${_briefChip}</div>`:'';
       return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}">${_vtThumb(t,'t')}<div class="vt-body">
@@ -29567,10 +29572,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _recFbViewCss(){
     if(document.getElementById('recfbv-css')) return;
     var s=document.createElement('style'); s.id='recfbv-css';
-    s.textContent='.rfv-hero{display:flex;align-items:center;gap:14px;padding:16px 18px;background:linear-gradient(135deg,#c98a2e,#a66a1e);color:#fff;border-radius:16px 16px 0 0}'+
-      '.rfv-big{font-size:2rem;font-weight:900;line-height:1;flex:0 0 auto}'+
-      '.rfv-h{font-weight:900;font-size:1.02rem}.rfv-sub{font-size:.74rem;opacity:.92;margin-top:2px;line-height:1.4}'+
-      '.rfv-note-banner{font-size:.76rem;color:var(--text-muted,#8a7d5c);line-height:1.5;background:rgba(201,138,46,.07);border:1px solid rgba(201,138,46,.18);border-radius:10px;padding:8px 11px;margin-bottom:10px}'+
+    s.textContent='.rfv-hero{position:relative;display:flex;align-items:center;gap:13px;padding:16px 46px 16px 17px;background:linear-gradient(135deg,#c98a2e,#a4671b);color:#fff;border-radius:16px 16px 0 0}'+
+      '.rfv-av{width:48px;height:48px;border-radius:50%;flex:0 0 auto;background:rgba(255,255,255,.22) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.05rem;color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.6),0 4px 12px rgba(0,0,0,.2)}'+
+      '.rfv-hmain{min-width:0;flex:1 1 auto}'+
+      '.rfv-h{font-weight:900;font-size:1.05rem;line-height:1.12}'+
+      '.rfv-by{font-size:.77rem;opacity:.96;margin-top:2px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '.rfv-vt{font-size:.72rem;opacity:.85;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+      '.rfv-score{flex:0 0 auto;text-align:center;background:rgba(255,255,255,.18);border-radius:12px;padding:6px 11px 7px;line-height:1}'+
+      '.rfv-score-n{font-size:1.5rem;font-weight:900}.rfv-score-n small{font-size:.62rem;opacity:.82;font-weight:700}'+
+      '.rfv-score-st{font-size:.58rem;letter-spacing:1px;margin-top:3px;opacity:.95}'+
+      '.rfv-x{position:absolute;top:11px;right:12px;width:26px;height:26px;border:none;border-radius:8px;background:rgba(255,255,255,.2);color:#fff;font-size:1.1rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}'+
+      '.rfv-x:hover{background:rgba(255,255,255,.34)}'+
       '.rfv-sec{font-weight:900;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#a89a74);margin:12px 0 6px}'+
       '.rfv-crit{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:9px;margin-bottom:4px;background:var(--surface-2,#f6f1e4)}'+
       '.rfv-crit.low{background:rgba(209,68,58,.09)}.rfv-crit.na{opacity:.75}'+
@@ -29578,7 +29590,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.rfv-nareason{font-weight:600;color:var(--text-muted,#8a7d5c);font-size:.76rem}'+
       '.rfv-st{letter-spacing:1px;font-size:1rem;flex:0 0 auto}.rfv-na{font-weight:800;font-size:.72rem;color:#64748b}'+
       '.rfv-tags{display:flex;flex-wrap:wrap;gap:6px}.rfv-tag{font-size:.74rem;font-weight:700;color:#8a5a12;background:rgba(201,138,46,.14);border-radius:999px;padding:4px 10px}'+
-      '.rfv-remark{font-size:.86rem;line-height:1.55;color:var(--text,#2a2313);background:var(--surface-2,#f6f1e4);border-radius:10px;padding:10px 12px;white-space:pre-wrap}'+
+      // HIGHLIGHTED improvement remark — the main takeaway for the teacher
+      '.rfv-remark{font-size:.9rem;line-height:1.6;color:var(--text,#2a2313);background:linear-gradient(180deg,rgba(201,138,46,.14),rgba(201,138,46,.05));border:1px solid rgba(201,138,46,.32);border-left:4px solid #c98a2e;border-radius:11px;padding:12px 14px;white-space:pre-wrap;font-weight:600;box-shadow:0 2px 8px rgba(201,138,46,.08)}'+
       '.rfv-note{display:flex;align-items:center;gap:8px;font-size:.8rem;padding:6px 10px;border-bottom:1px solid var(--surface-2,#f1ead9)}'+
       '.rfv-nts{font-weight:800;color:#c98a2e;flex:0 0 auto}.rfv-ncat{font-weight:700;color:var(--text-muted,#8a7d5c);flex:0 0 auto}.rfv-nn{flex:1 1 auto;min-width:0}'+
       '.rfv-ackd{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:.78rem;color:#2e9e6b}.rfv-ackd svg{width:14px;height:14px}'+
@@ -29589,7 +29602,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.recfb-chip-main{flex:1 1 auto;min-width:0}.recfb-chip-t{display:block;font-weight:800;font-size:.8rem;color:var(--text,#2a2313)}'+
       '.recfb-chip-m{display:block;font-size:.74rem;color:var(--text-muted,#8a7d5c);margin-top:1px}.recfb-chip-m b{color:#c98a2e}'+
       '.recfb-chip-cta{font-weight:800;font-size:.76rem;color:#c98a2e;flex:0 0 auto}'+
-      'body.dark .rfv-crit,body.dark .rfv-remark{background:#152a45}body.dark .rfv-cl{color:#eaf0fb}body.dark .recfb-chip{background:#152a45;border-color:#2c405e}body.dark .recfb-chip-t{color:#eaf0fb}';
+      'body.dark .rfv-crit{background:#152a45}body.dark .rfv-remark{color:#f3ead6}body.dark .rfv-cl{color:#eaf0fb}body.dark .recfb-chip{background:#152a45;border-color:#2c405e}body.dark .recfb-chip-t{color:#eaf0fb}';
     document.head.appendChild(s);
   }
   function _recFbCritStars(v){ if(v===null||v===undefined) return '<span class="rfv-na">N/A</span>'; var s=''; for(var i=1;i<=5;i++) s+='<span style="color:'+(i<=v?'#e6ad4e':'#dcd2b8')+'">★</span>'; return '<span class="rfv-st">'+s+'</span>'; }
@@ -29602,16 +29615,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var tlabels=fb.issue_tag_labels||((fb.issue_tags||[]).map(function(t){return REC_FB_TAG_LBL[t]||t;}));
     var tags=(tlabels&&tlabels.length)?('<div class="rfv-sec">Issues observed</div><div class="rfv-tags">'+tlabels.map(function(l){ return '<span class="rfv-tag">'+esc(l)+'</span>'; }).join('')+'</div>'):'';
     var notes=(fb.timestamped_notes||[]).length?('<div class="rfv-sec">Timestamped notes <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#8a7d5c)">(original recording)</span></div>'+fb.timestamped_notes.map(function(n){ return '<div class="rfv-note"><span class="rfv-nts">'+esc(n.ts||'—')+'</span>'+(n.category?'<span class="rfv-ncat">'+esc(n.category)+'</span>':'')+'<span class="rfv-nn">'+esc(n.note||'')+'</span></div>'; }).join('')):'';
-    var ov=(fb.overall!=null)?(fb.overall+'<span style="font-size:.9rem;opacity:.75"> /5</span>'):'—';
-    var cl=[]; if(ctx.project_title) cl.push('Project: '+esc(ctx.project_title)); if(ctx.video_title) cl.push(esc(ctx.video_title)); if(fb.editor_name) cl.push(ic('edit')+' '+esc(fb.editor_name)); if(fb.submitted_at) cl.push(esc(fb.submitted_at));
+    // premium header: editor avatar (photo or initials) + name/role + overall score chip
+    var edName=(fb.editor_name||ctx.editor_name||'').trim();
+    var edRole=(ctx.editor_role||'Video Editor');
+    var edPhoto=(ctx.editor_photo||'').trim();
+    var avInner=edPhoto?'':esc((typeof initials==='function'?initials(edName||'Editor'):(edName||'E').slice(0,1).toUpperCase()));
+    var avStyle=edPhoto?(' style="background-image:url('+edPhoto+')"'):'';
+    var byBits=[]; if(edName) byBits.push(esc(edName)); byBits.push(esc(edRole)); if(fb.submitted_at) byBits.push(esc(fb.submitted_at));
+    var vtBits=[]; if(ctx.project_title) vtBits.push('Project: '+esc(ctx.project_title)); if(ctx.video_title) vtBits.push(esc(ctx.video_title));
+    var ovNum=(fb.overall!=null)?fb.overall:'—';
+    var ovStars=''; if(fb.overall!=null){ var r=Math.round(fb.overall); for(var si=1;si<=5;si++) ovStars+=(si<=r?'★':'☆'); }
+    var scoreChip=(fb.overall!=null)?('<div class="rfv-score"><div class="rfv-score-n">'+ovNum+'<small>/5</small></div><div class="rfv-score-st">'+ovStars+'</div></div>'):'';
     var ack=fb.acknowledged?('<span class="rfv-ackd">'+ic('check')+' Acknowledged'+(fb.acknowledged_at?(' · '+esc(fb.acknowledged_at)):'')+'</span>'):'';
     var ackBtn=(opts.canAck && !fb.acknowledged)?('<button class="p-btn p-btn-primary" id="rfv-ack" onclick="'+opts.ackCall+'">'+ic('check')+' Acknowledge Feedback</button>'):'';
     return '<div class="p-modal rfv-modal" style="max-width:480px;max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden">'+
-      '<div class="rfv-hero"><div class="rfv-big">'+ov+'</div><div style="min-width:0"><div class="rfv-h">Recording Feedback</div><div class="rfv-sub">'+cl.join(' · ')+'</div></div><button class="pd-x" style="margin-left:auto;background:rgba(255,255,255,.18);color:#fff;flex:0 0 auto" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="rfv-hero">'+
+        '<div class="rfv-av"'+avStyle+'>'+avInner+'</div>'+
+        '<div class="rfv-hmain"><div class="rfv-h">Recording Feedback</div><div class="rfv-by">'+byBits.join(' · ')+'</div>'+(vtBits.length?('<div class="rfv-vt">'+vtBits.join(' · ')+'</div>'):'')+'</div>'+
+        scoreChip+
+        '<button class="rfv-x" onclick="prodDismiss()" aria-label="Close">&times;</button>'+
+      '</div>'+
       '<div class="p-modal-body" style="overflow-y:auto">'+
-        '<div class="rfv-note-banner">'+(opts.forTeacher?'Your editor’s constructive feedback on your original recording — to help your next recording. It’s separate from the edited-video review, and acknowledging it is optional.':'Editor → Teacher feedback on the original recording. Separate from the PM/editor and teacher review ratings.')+'</div>'+
         '<div class="rfv-sec">Per-criterion</div>'+crit+tags+
-        '<div class="rfv-sec">Improvement remark</div><div class="rfv-remark">'+esc(fb.remarks||'')+'</div>'+
+        '<div class="rfv-sec">Improvement remark</div><div class="rfv-remark">'+(fb.remarks?esc(fb.remarks):'<span style="opacity:.6;font-weight:500">No remark added.</span>')+'</div>'+
         notes+(ack?('<div style="margin-top:12px">'+ack+'</div>'):'')+
       '</div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Close</button>'+ackBtn+'</div></div>'+

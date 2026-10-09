@@ -3609,6 +3609,18 @@ def teacher_get_recording_feedback(task_id: int = 0, chapter_id: int = 0,
             raise HTTPException(403, "You don't have access to this feedback")
         row = _pc.get_active_recording_feedback(db, video_task_id=task_id)
         ctx = {"video_title": (t.title or "") if t else "", "is_chapter": False}
+    # premium header: the editor's photo + name (fetched on-demand only, never bloats list payloads)
+    if row is not None and getattr(row, "editor_id", None):
+        try:
+            from models import ProductionStaffProfile as _SP, User as _U
+            sp = db.query(_SP).filter(_SP.id == row.editor_id).first()
+            if sp:
+                ctx["editor_photo"] = sp.photo_b64 or ""
+                u = db.query(_U).filter(_U.id == sp.user_id).first()
+                ctx["editor_name"] = (u.name if u else "") or ""
+                ctx["editor_role"] = "Video Editor"
+        except Exception:
+            pass
     return {"feedback": _pc.recording_feedback_out(db, row), "context": ctx}
 
 

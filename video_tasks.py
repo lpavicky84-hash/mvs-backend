@@ -3027,6 +3027,10 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=Non
         "is_old": bool(getattr(t, "is_old", False)),
         "submitted_link": t.submitted_link or "",
         "submitted_at": t.submitted_at.strftime("%d %b %Y, %I:%M %p") if t.submitted_at else "",
+        # editing finished = the editor has submitted an edited video (edited_link set) OR the task is
+        # past editing. Teacher card uses this to stop offering "Add Editing Brief" once editing is done.
+        "edit_done": bool((getattr(t, "edited_link", "") or "")) or ((getattr(t, "lifecycle", "") or "") in (
+            "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed")),
         # on_time HAMESHA current deadline se — admin ne submission ke baad deadline aage
         # kar di ho to stale 'delayed' apne aap 'on time' ho jaaye (live compute).
         "on_time": (bool(t.submitted_at <= t.deadline) if (t.submitted_at and t.deadline) else t.on_time),
