@@ -8726,7 +8726,17 @@ function _ytIsNew(t){
 function _ytNeedsEditor(t){ return _ytIsNew(t) && !_ytHasEditor(t); }
 function _ytDelayed(t){ return !!(t.deadline_flag&&t.deadline_flag.kind==='overdue')&&_YT_DONE.indexOf(t.lifecycle||'')<0; }
 // Status dropdown (image-4 jaisa) — value = lifecycle
-var _YT_STATUS_OPTS=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editing_soon','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending — Review'],['qc_changes','Changes'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['completed','Completed']];
+var _YT_STATUS_OPTS=[['','All Status'],['shoot_pending','Assigned — Shoot Pending'],['pm_review','PM Review'],['approved','Approved'],['editing_soon','Editing Soon'],['editing','Editing In Progress'],['editing_done','Editing Done'],['qc_pending','QC Pending — Review'],['qc_changes','Changes'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['completed','Completed']];
+// "Shoot Pending" = video assigned but not yet submitted (spans a few lifecycles). Every other status
+// matches the lifecycle exactly. Shared by the youtuber portal (_ytMyApply) and the admin YT manager.
+window._ytStatusMatch=function(t, st){
+  if(!st) return true;
+  var lc=(t&&t.lifecycle)||'';
+  if(st==='shoot_pending') return ['created','creator_assigned','creator_working'].indexOf(lc)>=0;
+  if(st==='editing_soon') return lc==='editor_assigned'||lc==='editing_soon';
+  return lc===st;
+};
+window._ytStatusLabel=function(st){ for(var i=0;i<_YT_STATUS_OPTS.length;i++){ if(_YT_STATUS_OPTS[i][0]===st) return _YT_STATUS_OPTS[i][1]; } return ''; };
 function _ytNum(n){ try{ return (n||0).toLocaleString(); }catch(e){ return String(n||0); } }
 function _ytUrl(u){ u=String(u||''); return /^(https?:|data:)/i.test(u)?u.replace(/"/g,'%22'):''; }
 
@@ -9133,7 +9143,7 @@ function _ytClientFilter(){
       if(f.creator && (t.creator_name||'')!==f.creator) show=false;
       if(show && f.channel && (t.channel_name||'')!==f.channel) show=false;
       if(show && f.video_type && (t.video_type||'')!==f.video_type) show=false;
-      if(show && f.status && (t.lifecycle||'')!==f.status) show=false;
+      if(show && f.status && !window._ytStatusMatch(t, f.status)) show=false;
       if(show && f.bucket){ if(f.bucket==='over'){ show=_ytDelayed(t); } else if(f.bucket==='new'){ show=_ytIsNew(t); } else if(f.bucket!=='all'){ show=_ytBucket(t)===f.bucket; } }
       if(show && f.q){ var txt=((t.title||'')+' '+(t.creator_name||'')+' '+(t.channel_name||'')+' '+(t.subject||'')+' '+(t.video_type||'')+' '+(t.ref_code||'')).toLowerCase(); show=txt.indexOf(f.q)>=0; }
     } else {
@@ -11776,10 +11786,15 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
         // editing done + no brief -> no button (too late to add, nothing to view)
       }
       const _tExtras=(_recFbChip||_briefChip)?`<div class="vt-ccx-row">${_recFbChip}${_briefChip}</div>`:'';
-      return `<div class="vt-card st-${t.status}" data-tid-card="${t.id}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}">${_vtThumb(t,'t')}<div class="vt-body">
-        <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
-        <div class="vt-title">${esc(t.title)}</div>
-        <div class="vt-meta">
+      _tCardChipCss();
+      // Attention: an edited video waiting for THIS teacher's review, a reshoot/rejection, or a delayed
+      // task -> the whole card border + status chip blink in the attention colour, so it stands out.
+      let _tAttnCol='';
+      if(_rev && !_revApproved) _tAttnCol='#2563eb';
+      else if(t.status==='reshoot'||t.status==='rejected') _tAttnCol='#dc2626';
+      else if(t.overdue===true) _tAttnCol='#dc2626';
+      const _tAttn=!!_tAttnCol;
+      const _collapseInner=`<div class="vt-meta">
           ${t.deadline_nice?`<span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b></span>`:''}
           ${_open&&t.seconds_left!=null?`<span data-tvt-cd="${t.id}" data-secs="${t.seconds_left}" style="font-weight:800"></span>`:''}
           ${t.reference?_refText:''}
@@ -11791,7 +11806,12 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           ${!_open&&t.review_remarks?`<span>Review remarks: ${esc(t.review_remarks)}</span>`:''}
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
-        ${reviewBox}${_tExtras}${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}
+        ${reviewBox}${_tExtras}${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}`;
+      return `<div class="vt-card st-${t.status} vt-col vt-collapsed${_tAttn?' vt-attn':''}" data-tid-card="${t.id}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}"${_tAttn?` style="--tatt:${_tAttnCol}"`:''}>${_vtThumb(t,'t')}<div class="vt-body">
+        <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
+        <div class="vt-title">${esc(t.title)}</div>
+        <button type="button" class="vt-viewdet" onclick="event.stopPropagation();tCardToggle(this)">${ic('chev-down')}<span>View Details</span></button>
+        <div class="vt-collapse">${_collapseInner}</div>
       </div></div>`;
     };
     // ---- v73: master Task/Project cards + subject & type filters ----
@@ -12143,9 +12163,28 @@ function _tCardChipCss(){
     '.bprompt-ic svg{width:26px;height:26px}'+
     '@keyframes bpPop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}'+
     '.bprompt-h{font-weight:900;font-size:1.05rem;color:var(--text,#2a2313)}.bprompt-s{font-size:.84rem;color:var(--text-muted,#8a7d5c);margin-top:5px;line-height:1.5}'+
-    '@media(prefers-reduced-motion:reduce){.bprompt-ic{animation:none}}';
+    '@media(prefers-reduced-motion:reduce){.bprompt-ic{animation:none}}'+
+    // ---- collapsible teacher card + "View Details" ----
+    '.vt-card.vt-collapsed .vt-collapse{display:none}'+
+    '.vt-card .vt-collapse{animation:vtExpand .22s ease}'+
+    '@keyframes vtExpand{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}'+
+    '.vt-viewdet{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:11px;padding:9px 12px;border:1px solid var(--border,#e5ddcb);border-radius:11px;background:linear-gradient(180deg,rgba(201,138,46,.08),transparent);color:var(--text,#2a2313);font-family:inherit;font-weight:800;font-size:.8rem;cursor:pointer;transition:border-color .14s,box-shadow .14s}'+
+    '.vt-viewdet:hover{border-color:#c98a2e;box-shadow:0 5px 14px rgba(201,138,46,.14)}'+
+    '.vt-viewdet svg{width:15px;height:15px;transition:transform .2s}.vt-viewdet.on svg{transform:rotate(180deg)}'+
+    'body.dark .vt-viewdet{background:#152a45;border-color:#2c405e;color:#eaf0fb}'+
+    // attention blink: border + status chip pulse in --tatt
+    '.vt-card.vt-attn{animation:vtAttn 1.5s ease-in-out infinite}'+
+    '@keyframes vtAttn{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px var(--tatt,#c98a2e),0 8px 22px rgba(0,0,0,.08)}}'+
+    '@media(prefers-reduced-motion:reduce){.vt-card.vt-attn,.vt-card .vt-collapse{animation:none}}';
   document.head.appendChild(s);
 }
+window.tCardToggle=function(btn){
+  var card=btn&&btn.closest?btn.closest('.vt-card'):null; if(!card) return;
+  var open=!card.classList.contains('vt-open');
+  card.classList.toggle('vt-open', open); card.classList.toggle('vt-collapsed', !open);
+  btn.classList.toggle('on', open);
+  var lbl=btn.querySelector('span'); if(lbl) lbl.textContent=open?'Hide Details':'View Details';
+};
 // Teacher: add / edit / view their own Creative Editing Brief for a task or chapter
 window.tBriefEdit=function(taskId, chapterId){
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
@@ -31533,6 +31572,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(document.getElementById('yt-css')) return;
     var s=document.createElement('style'); s.id='yt-css';
     s.textContent=[
+      '.yt-my-count{display:flex;align-items:center;gap:7px;margin:-4px 0 14px;font-size:.84rem;font-weight:700;color:var(--text-muted,#8a7d5c)}',
+      '.yt-my-count .ytc-n{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:24px;padding:0 8px;border-radius:999px;background:linear-gradient(135deg,#c98a2e,#a4671b);color:#fff;font-weight:900;font-size:.82rem}',
+      '.yt-my-count .ytc-f{color:var(--text-muted,#8a7d5c);font-weight:700}',
       '.ytf{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}',
       '.ytf-search{flex:1;min-width:200px;position:relative}',
       '.ytf-search input{width:100%;padding:11px 14px 11px 40px;border:1px solid var(--border);border-radius:12px;background:var(--card);font:inherit;font-size:.9rem;color:inherit}',
@@ -31784,7 +31826,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<select id="yt-st" onchange="_ytMyApply()">'+_YT_STATUS_OPTS.map(function(o){return '<option value="'+o[0]+'">'+esc(o[1])+'</option>';}).join('')+'</select>'+
         '<select id="yt-dt" onchange="_ytMyApply()"><option value="">Any date</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="overdue">Delayed</option><option value="nodl">No deadline</option></select>'+
         '<button class="ytf-add" onclick="ytAddChannel()">+ Channel</button>'+
-        '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div><div id="yt-my-grid"></div>';
+        '<button class="ytf-clear" onclick="_ytMyClear()">Clear</button></div>'+
+        '<div class="yt-my-count" id="yt-my-count"></div><div id="yt-my-grid"></div>';
       _ytFillChannels('yt-ch',channels);
       _ytMyApply();
       try{ _ytLoadProjectChapters(); }catch(e){}
@@ -31803,7 +31846,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var out=tasks.filter(function(t){
       if(q){ var hay=((t.title||'')+' '+(t.channel_name||'')+' '+(t.video_type||'')+' '+(t.creator_name||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
       if(ch && (t.channel_name||'')!==ch) return false;
-      if(st && (t.lifecycle||'')!==st) return false;
+      if(!window._ytStatusMatch(t, st)) return false;
       if(dt){ var ms=_ytDlMs(t);
         if(dt==='nodl'){ if(ms!=null) return false; }
         else if(ms==null) return false;
@@ -31815,6 +31858,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     });
     grid.innerHTML=out.length?('<div class="ptc-grid">'+out.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
       :_pEmpty('list','No tasks match','Try a different channel or date, or clear the search.');
+    // live count — updates on every filter change ("5 videos · Shoot Pending")
+    var _cnt=document.getElementById('yt-my-count');
+    if(_cnt){
+      var _bits=[]; var _sl=(st?window._ytStatusLabel(st):''); if(_sl) _bits.push(_sl);
+      if(ch) _bits.push(ch);
+      var _dl={today:'Due today',week:'Next 7 days',overdue:'Delayed',nodl:'No deadline'}[dt]; if(_dl) _bits.push(_dl);
+      var _filtered=(st||ch||dt||q);
+      _cnt.innerHTML='<span class="ytc-n">'+out.length+'</span> '+(out.length===1?'video':'videos')+(_bits.length?(' <span class="ytc-f">· '+_bits.map(function(x){return esc(x);}).join(' · ')+'</span>'):(_filtered?'':' <span class="ytc-f">· all</span>'));
+      _cnt.style.display=(tasks.length?'flex':'none');
+    }
   };
   // ---- Project chapters ready to publish (QC-approved) -> YouTuber publishes each one ----
   function _ytLoadProjectChapters(){
@@ -33404,21 +33457,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       (meta.length?'<div class="ptc-meta">'+meta.join(' \u00b7 ')+'</div>':'')+
       '<div class="ptc-acts">'+acts+'</div>';
     var _hw='<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>';
-    // YouTuber: premium COLLAPSED card \u2014 thumbnail + title + "View Details". Click expands inline to
-    // reveal chips/deadline/ratings/actions. (No card-level open; details stay on the youtuber's page.)
-    if(portal==='youtuber'){
-      _ytCardCss();
-      return '<div class="ptc ptc-tint yt-card yt-collapsed'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';border-left:5px solid '+scol+';position:relative">'+
-        _hw+
-        '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
-        '<button type="button" class="yt-viewdet" onclick="event.stopPropagation();ytCardToggle('+t.id+',this)">'+ic('chev-down')+'<span>View Details</span></button>'+
-        '<div class="ptc-collapse">'+_cardInner+'</div>'+
-        '</div></div>';
-    }
-    return '<div class="ptc ptc-tint'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';border-left:5px solid '+scol+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-      _hw+
-      '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
-      _cardInner+'</div></div>';
+    // ATTENTION: a video needing review/action, or one that's delayed -> the corner status badge AND the
+    // whole card border blink in the status colour, so any reviewer spots "what needs checking" at a glance.
+    var _ATTN_LC={pm_review:1,creator_submitted:1,qc_pending:1,qc_changes:1,changes_required:1,reshoot:1};
+    var _gss=(t.graphics&&t.graphics.status)||'';
+    var _attn=(df&&df.kind==='overdue')||t.overdue===true||!!_ATTN_LC[lc]||_gss==='submitted'||_gss==='changes';
+    _ytCardCss();
+    // premium COLLAPSED card for EVERY portal \u2014 thumbnail + title + "View Details"; expands inline to
+    // reveal chips/deadline/ratings/actions. Non-youtuber cards still open the full drawer on body click.
+    var _sv='--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';--stg-g:'+_hexA(scol,.5)+';--stg-h:'+_hexA(scol,.28);
+    var _cls='ptc ptc-tint yt-card yt-collapsed'+(_urgentCard?' urgent-task':'')+(_attn?' ptc-attn':'');
+    var _body='<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
+      '<button type="button" class="yt-viewdet" onclick="event.stopPropagation();ytCardToggle('+t.id+',this)">'+ic('chev-down')+'<span>View Details</span></button>'+
+      '<div class="ptc-collapse">'+_cardInner+'</div></div>';
+    var _openAttr=(portal==='youtuber')?'':(' onclick="prodOpenTask(\''+portal+'\','+t.id+')"');
+    return '<div class="'+_cls+'" data-ptc="'+t.id+'" style="'+_sv+';border-left:5px solid '+scol+';position:relative"'+_openAttr+'>'+
+      _hw+_body+'</div>';
   }
   function _ytCardCss(){
     if(document.getElementById('ytcard-css')) return;
@@ -33430,10 +33484,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.yt-viewdet.on svg{transform:rotate(180deg)}'+
       '.ptc.yt-card .ptc-collapse{animation:ytExpand .22s ease}'+
       '@keyframes ytExpand{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}'+
-      '@media(prefers-reduced-motion:reduce){.ptc.yt-card .ptc-collapse{animation:none}}'+
+      // attention blink \u2014 border + badge pulse in the status colour
+      '.ptc.ptc-attn{animation:ptcAttn 1.5s ease-in-out infinite}'+
+      '@keyframes ptcAttn{0%,100%{box-shadow:0 0 0 0 var(--stg-a,rgba(0,0,0,0))}50%{box-shadow:0 0 0 3px var(--stg-g,rgba(0,0,0,.25)),0 8px 22px var(--stg-h,rgba(0,0,0,.18))}}'+
+      '.ptc.ptc-attn .ptc-badge{animation:ptcBadge 1.1s ease-in-out infinite}'+
+      '@keyframes ptcBadge{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.05)}}'+
+      '@media(prefers-reduced-motion:reduce){.ptc.yt-card .ptc-collapse,.ptc.ptc-attn,.ptc.ptc-attn .ptc-badge{animation:none}}'+
       'body.dark .yt-viewdet{background:#152a45;border-color:#2c405e;color:#eaf0fb}';
     document.head.appendChild(s);
   }
+  window.prodCardToggle=function(id,btn){ return window.ytCardToggle(id,btn); };
   window.ytCardToggle=function(id, btn){
     var card=btn&&btn.closest?btn.closest('.ptc'):null; if(!card) return;
     var open=!card.classList.contains('yt-open');
