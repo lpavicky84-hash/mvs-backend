@@ -1018,7 +1018,10 @@ def yt_project_chapters(db: Session = Depends(get_db), me=Depends(get_youtuber))
     from models import VideoTaskChapter as _VC
     import video_tasks as _vt
     yp = _me_yt(db, me)
+    # ONLY this youtuber's own project videos — never other creators'/teachers' projects.
     rows = db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
+                                      VideoTask.creator_type == "youtuber",
+                                      VideoTask.youtuber_id == yp.id,
                                       VideoTask.kind.in_(["one_shot", "rapid_revision", "project"])).all()
     tmap = {t.id: t for t in rows}
     out = []

@@ -1951,7 +1951,8 @@ def _chat_inbox(db, user, role):
                     task_ids.add(t.id)
         elif role == "youtuber":
             auds = {"creator", "editor"}
-            from models import YoutuberProfile as _YP
+            from models import YouTuberProfile as _YP   # class name is YouTuberProfile (capital T/P) —
+            # the old 'YoutuberProfile' raised ImportError, caught below, so the inbox was ALWAYS empty.
             yp = db.query(_YP).filter(_YP.user_id == uid).first()
             if yp:
                 for t in db.query(VideoTask.id).filter(

@@ -1799,7 +1799,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "teacher_review_note": (getattr(t, "teacher_review_note", "") or ""),
         "teacher_review_rating": (getattr(t, "teacher_review_rating", None)),
         "teacher_reviewer_name": (getattr(t, "teacher_reviewer_name", "") or ""),
-        "teacher_reviewed_at": (t.teacher_reviewed_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "teacher_reviewed_at", None) else ""),
+        "teacher_reviewed_at": _dt(getattr(t, "teacher_reviewed_at", None)),   # stored UTC -> show IST
         # youtuber videos skip the teacher gate; teacher/collab videos need it
         "teacher_review_required": ((getattr(t, "creator_type", "") or "teacher") != "youtuber"),
         "approval_required": needs_pm_approval(db, t),
@@ -1932,7 +1932,8 @@ def submissions_out(db, t):
                     "link": link, "event": e.event})
     # include the current link even if the event meta didn't carry it
     if t.submitted_link and (not out or out[0].get("link") != t.submitted_link):
-        out.insert(0, {"at": _dt(t.submitted_at), "by": "", "link": t.submitted_link,
+        # VideoTask.submitted_at is stored IST (now_ist) -> show as-is, do NOT shift again.
+        out.insert(0, {"at": _dt_raw(t.submitted_at), "by": "", "link": t.submitted_link,
                        "event": "current"})
     return out
 

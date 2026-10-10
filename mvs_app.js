@@ -33400,13 +33400,47 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     var prog=(portal==='editor'&&(lc==='editing'||lc==='editing_paused'||lc==='editing_done')&&t.editing_progress!=null)?'<div class="ptc-prog"><i style="width:'+(t.editing_progress||0)+'%"></i></div><div class="ptc-prog-l">'+(t.editing_progress||0)+'% edited</div>':'';
     var _urgentCard=(t.priority==='urgent')||(lc==='pm_review')||(lc==='creator_submitted')||(t.deadline_flag&&t.deadline_flag.kind==='overdue');
-    return '<div class="ptc ptc-tint'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';border-left:5px solid '+scol+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
-      '<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>'+
-      '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
-      (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+_dlRow+_idrow+
+    var _cardInner=(chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+prog+_dlRow+_idrow+
       (meta.length?'<div class="ptc-meta">'+meta.join(' \u00b7 ')+'</div>':'')+
-      '<div class="ptc-acts">'+acts+'</div></div></div>';
+      '<div class="ptc-acts">'+acts+'</div>';
+    var _hw='<div class="ptc-hw">'+header+badge+((lc==='pm_review'||lc==='creator_submitted')&&portal==='production'?'<span class="pt-badge review"><i class="rp-dot"></i>REVIEW PENDING</span>':'')+((t.priority==='urgent')?'<span class="ptc-urgent">URGENT</span>':'')+'</div>';
+    // YouTuber: premium COLLAPSED card \u2014 thumbnail + title + "View Details". Click expands inline to
+    // reveal chips/deadline/ratings/actions. (No card-level open; details stay on the youtuber's page.)
+    if(portal==='youtuber'){
+      _ytCardCss();
+      return '<div class="ptc ptc-tint yt-card yt-collapsed'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';border-left:5px solid '+scol+';position:relative">'+
+        _hw+
+        '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
+        '<button type="button" class="yt-viewdet" onclick="event.stopPropagation();ytCardToggle('+t.id+',this)">'+ic('chev-down')+'<span>View Details</span></button>'+
+        '<div class="ptc-collapse">'+_cardInner+'</div>'+
+        '</div></div>';
+    }
+    return '<div class="ptc ptc-tint'+(_urgentCard?' urgent-task':'')+'" data-ptc="'+t.id+'" style="--stg:'+scol+';--stg-a:'+_hexA(scol,.07)+';--stg-b:'+_hexA(scol,.16)+';border-left:5px solid '+scol+';position:relative" onclick="prodOpenTask(\''+portal+'\','+t.id+')">'+
+      _hw+
+      '<div class="ptc-body"><div class="ptc-title">'+esc(t.title||'Untitled')+'</div>'+
+      _cardInner+'</div></div>';
   }
+  function _ytCardCss(){
+    if(document.getElementById('ytcard-css')) return;
+    var s=document.createElement('style'); s.id='ytcard-css';
+    s.textContent='.ptc.yt-collapsed .ptc-collapse{display:none}'+
+      '.yt-viewdet{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:11px;padding:9px 12px;border:1px solid var(--border,#e5ddcb);border-radius:11px;background:linear-gradient(180deg,rgba(201,138,46,.08),transparent);color:var(--text,#2a2313);font-family:inherit;font-weight:800;font-size:.8rem;cursor:pointer;transition:border-color .14s,box-shadow .14s}'+
+      '.yt-viewdet:hover{border-color:#c98a2e;box-shadow:0 5px 14px rgba(201,138,46,.14)}'+
+      '.yt-viewdet svg{width:15px;height:15px;transition:transform .2s}'+
+      '.yt-viewdet.on svg{transform:rotate(180deg)}'+
+      '.ptc.yt-card .ptc-collapse{animation:ytExpand .22s ease}'+
+      '@keyframes ytExpand{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}'+
+      '@media(prefers-reduced-motion:reduce){.ptc.yt-card .ptc-collapse{animation:none}}'+
+      'body.dark .yt-viewdet{background:#152a45;border-color:#2c405e;color:#eaf0fb}';
+    document.head.appendChild(s);
+  }
+  window.ytCardToggle=function(id, btn){
+    var card=btn&&btn.closest?btn.closest('.ptc'):null; if(!card) return;
+    var open=!card.classList.contains('yt-open');
+    card.classList.toggle('yt-open', open); card.classList.toggle('yt-collapsed', !open);
+    btn.classList.toggle('on', open);
+    var lbl=btn.querySelector('span'); if(lbl) lbl.textContent=open?'Hide Details':'View Details';
+  };
   function _taskRow(portal,t){
     var badge=(t.creator_type==='youtuber')?'<span class="pt-badge b-youtuber">YouTuber</span>':'<span class="pt-badge b-teacher">Teacher</span>';
     var meta=[]; if(t.creator_name) meta.push(esc(t.creator_name)+((t.creator_type==='youtuber')?' (YouTuber)':'')); if(t.subject) meta.push(esc(t.subject));

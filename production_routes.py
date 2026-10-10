@@ -4244,7 +4244,7 @@ def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_p
                           "graphics_id": c.graphics_id, "graphics_name": nm.get(c.graphics_id, ""),
                           "edit_state": (getattr(c, "edit_state", "") or ""),
                           "edited_link": (getattr(c, "edited_link", "") or ""),
-                          "edited_at": (c.edited_at.strftime("%d %b %Y, %I:%M %p") if getattr(c, "edited_at", None) else ""),
+                          "edited_at": pc._dt(getattr(c, "edited_at", None)),   # stored UTC -> IST
                           "qc_status": (getattr(c, "qc_status", "") or ""),
                           "qc_note": (getattr(c, "qc_note", "") or ""),
                           "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
@@ -4749,7 +4749,7 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "source_video": c.link or "",
         "submitted_by_name": getattr(c, "submitted_by_name", "") or "",
         "submitted_by_role": getattr(c, "submitted_by_role", "") or "",
-        "submitted_at": _dt(getattr(c, "submitted_at", None)),
+        "submitted_at": pc._dt(getattr(c, "submitted_at", None)),   # stored UTC -> IST
         "on_time": getattr(c, "on_time", None),
         "review_status": getattr(c, "review_status", "") or "",
         "review_note": getattr(c, "review_note", "") or "",
@@ -4757,7 +4757,7 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "editor_id": getattr(c, "editor_id", None),
         "editor": nm.get(getattr(c, "editor_id", None), ""),
         "editor_deadline": _dt(getattr(c, "editor_deadline", None)),
-        "editor_assigned_at": _dt(getattr(c, "editor_assigned_at", None) or getattr(c, "assigned_at", None)),
+        "editor_assigned_at": pc._dt(getattr(c, "editor_assigned_at", None) or getattr(c, "assigned_at", None)),   # UTC -> IST
         "editor_instructions": getattr(c, "editor_instructions", "") or "",
         "editor_reference": getattr(c, "editor_reference", "") or "",
         "editing_progress": getattr(c, "editing_progress", 0) or 0,
@@ -4772,7 +4772,7 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "graphics": nm.get(getattr(c, "graphics_id", None), ""),
         "graphics_state": getattr(c, "gfx_state", "") or "",
         "graphics_deadline": _dt(getattr(c, "graphics_deadline", None) or getattr(c, "deadline", None)),
-        "graphics_assigned_at": _dt(getattr(c, "graphics_assigned_at", None) or getattr(c, "assigned_at", None)),
+        "graphics_assigned_at": pc._dt(getattr(c, "graphics_assigned_at", None) or getattr(c, "assigned_at", None)),   # UTC -> IST
         "thumbnail": getattr(c, "thumbnail_link", "") or "",
         "thumb_refs": _chap_json_list(getattr(c, "thumb_refs", "")),
         "thumb_candidates": _chap_json_list(getattr(c, "thumb_candidates", "")),
