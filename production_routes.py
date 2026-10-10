@@ -611,6 +611,12 @@ def pm_submit_link(tid: int, payload: dict = Body(...), db: Session = Depends(ge
 def pm_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     t = _task(db, tid)
     out = pc.task_out(db, t, timeline=True)
+    # single-item view: attach the editor's photo so the recording-feedback modal shows the avatar
+    try:
+        if out.get("recording_feedback"):
+            pc.recording_feedback_enrich_editor(db, out["recording_feedback"])
+    except Exception:
+        pass
     # collab info for the edit modal (pre-checks collaborators)
     try:
         from video_tasks import (_collab_all_ids as _cai, _collab_vmap as _cvm,
@@ -4795,7 +4801,7 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
                     "pm_thumbnail_note": getattr(c, "thumb_quality_note", "") or "",
                     "pm_thumbnail_dims": pc._dims_out(getattr(c, "thumb_quality_dims", ""))},
         "allowed_actions": chapter_allowed_actions(c, role),
-        "recording_feedback": pc.recording_feedback_out(db, _rfb_row),
+        "recording_feedback": pc.recording_feedback_enrich_editor(db, pc.recording_feedback_out(db, _rfb_row)),
         "recording_feedback_summary": pc.recording_feedback_summary(db, _rfb_row),
         "creative_brief": pc.creative_brief_out(db, _cb_row),
         "creative_brief_summary": pc.creative_brief_summary(db, _cb_row),

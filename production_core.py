@@ -806,6 +806,31 @@ def get_active_recording_feedback(db, video_task_id=None, chapter_id=None):
     return q.order_by(_FB.id.desc()).first()
 
 
+def staff_photo(db, staff_id):
+    """Base64 profile photo for a production-staff id (editor/graphics), or '' if none. Kept OUT of
+    the default serializer to avoid bloating list payloads — callers add it to single-item responses."""
+    if not staff_id:
+        return ""
+    try:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == staff_id).first()
+        return (getattr(sp, "photo_b64", "") or "") if sp else ""
+    except Exception:
+        return ""
+
+
+def recording_feedback_enrich_editor(db, fb_dict):
+    """Add the editor's photo (+ role) to a recording_feedback dict for a premium single-item view.
+    No-op when there is no feedback or no editor. Lists should NOT call this (payload size)."""
+    if not fb_dict:
+        return fb_dict
+    try:
+        fb_dict["editor_photo"] = staff_photo(db, fb_dict.get("editor_id"))
+        fb_dict["editor_role"] = "Video Editor"
+    except Exception:
+        pass
+    return fb_dict
+
+
 def recording_feedback_out(db, row):
     if row is None:
         return None
@@ -1964,18 +1989,16 @@ def edited_versions_out(db, t):
             seq.append({"link": link, "at": _dt(e.created_at)})
     # make sure the current edited_link is represented (older data without events)
     if t.edited_link and (not seq or seq[-1]["link"] != t.edited_link):
-        # only append if this exact link isn't already the last one recorded
+        # only append if this exact link isn't already recorded
         if not any(s["link"] == t.edited_link for s in seq):
             seq.append({"link": t.edited_link, "at": _dt(getattr(t, "editing_done_at", None))})
-    # collapse consecutive duplicate links, then number
+    # Number EACH submission as its own version. editor_submit logs exactly one submission event per
+    # call, so every event is a genuine QC round — never collapsed, even when the editor re-uses the
+    # same Drive link across rounds (collapsing was hiding real revisions, e.g. showing "revision 1"
+    # after revision 2 was submitted).
     out = []
-    last = None
     for s in seq:
-        if s["link"] == last:
-            out[-1]["at"] = s["at"] or out[-1]["at"]
-            continue
         out.append({"version": len(out) + 1, "link": s["link"], "at": s["at"]})
-        last = s["link"]
     return out
 
 

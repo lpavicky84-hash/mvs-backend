@@ -200,9 +200,11 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
         raise HTTPException(400, "Edited video drive link is required")
     from video_tasks import set_chapter_state
     t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
-    # Mandatory Teacher Recording Feedback for THIS chapter — validate BEFORE any mutation (atomic).
-    # Each chapter carries its own independent feedback (never stored only on the parent project).
-    _fb_needed = pc.rec_fb_applicable(t)
+    # Recording feedback for THIS chapter is captured ONCE (first submission of the chapter) — it is
+    # about the original recording and is never re-asked on a QC revision. Validate BEFORE any mutation
+    # (atomic). Each chapter carries its own independent feedback (never stored only on the parent).
+    _fb_existing = pc.get_active_recording_feedback(db, chapter_id=c.id) is not None
+    _fb_needed = pc.rec_fb_applicable(t) and not _fb_existing
     _fb = payload.get("recording_feedback")
     if _fb_needed:
         pc.validate_recording_feedback(_fb)
@@ -900,10 +902,13 @@ def editor_submit(tid: int, payload: dict = Body(...),
         raise HTTPException(400, "Edited video drive link is required")
     if t.lifecycle not in ("editing_done", "editing", "editing_paused", "qc_changes"):
         raise HTTPException(400, "Task is not ready to submit")
-    # Mandatory Teacher Recording Feedback — VALIDATE FIRST, before any state mutation, so an invalid
-    # (or missing) feedback rolls the whole submit back and never marks editing complete. Only applies
-    # when a teacher made the recording (youtuber-created tasks skip it).
-    _fb_needed = pc.rec_fb_applicable(t)
+    # Teacher Recording Feedback is captured ONCE — on the FIRST edited-video submission. It describes
+    # the ORIGINAL recording, which does not change between QC revisions, so it is NEVER asked again on
+    # a resubmit. Require (and later save) only when no active feedback exists yet for this task.
+    # VALIDATE FIRST, before any state mutation, so an invalid/missing first feedback rolls the whole
+    # submit back. Only applies when a teacher made the recording (youtuber-created tasks skip it).
+    _fb_existing = pc.get_active_recording_feedback(db, video_task_id=t.id) is not None
+    _fb_needed = pc.rec_fb_applicable(t) and not _fb_existing
     _fb = payload.get("recording_feedback")
     if _fb_needed:
         pc.validate_recording_feedback(_fb)

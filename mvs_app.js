@@ -29562,9 +29562,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     return api(apiUrl).then(function(r){
       var slot=document.getElementById(slotId); if(!slot) return {applicable:false};
       if(!r || r.applicable===false){ slot.innerHTML=''; slot.setAttribute('data-rfb','0'); return {applicable:false}; }
+      // Already given on the FIRST submission -> do NOT ask again on a QC resubmit. Show a calm,
+      // read-only confirmation and mark the slot inactive so edtDoSubmit never requires/collects it.
+      if(r.feedback){
+        try{ _recFbViewCss(); }catch(e){}
+        var _ov=(r.feedback.overall!=null)?(' · '+r.feedback.overall+'/5'):'';
+        slot.innerHTML='<div class="rfb-done">'+ic('check')+' <span>Recording feedback already submitted'+_ov+' — not needed again for revisions.</span></div>';
+        slot.setAttribute('data-rfb','0');
+        return {applicable:true, had:true};
+      }
       slot.innerHTML=_recFbStepHtml(); slot.setAttribute('data-rfb','1');
-      if(r.feedback){ try{ _recFbPrefill(r.feedback); }catch(e){} }
-      return {applicable:true, had:!!r.feedback};
+      return {applicable:true, had:false};
     }).catch(function(){ var slot=document.getElementById(slotId); if(slot){ slot.innerHTML=''; slot.setAttribute('data-rfb','0'); } return {applicable:false}; });
   }
 
@@ -29595,6 +29603,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.rfv-note{display:flex;align-items:center;gap:8px;font-size:.8rem;padding:6px 10px;border-bottom:1px solid var(--surface-2,#f1ead9)}'+
       '.rfv-nts{font-weight:800;color:#c98a2e;flex:0 0 auto}.rfv-ncat{font-weight:700;color:var(--text-muted,#8a7d5c);flex:0 0 auto}.rfv-nn{flex:1 1 auto;min-width:0}'+
       '.rfv-ackd{display:inline-flex;align-items:center;gap:6px;font-weight:800;font-size:.78rem;color:#2e9e6b}.rfv-ackd svg{width:14px;height:14px}'+
+      '.rfb-done{display:flex;align-items:center;gap:9px;margin-top:12px;padding:11px 13px;border-radius:11px;background:rgba(46,158,107,.1);border:1px solid rgba(46,158,107,.3);color:#1f7a52;font-weight:700;font-size:.82rem;line-height:1.45}.rfb-done svg{width:17px;height:17px;flex:0 0 auto}'+
+      'body.dark .rfb-done{background:rgba(46,158,107,.16);color:#7fe3b4}'+
       // compact summary chip (teacher card / PM drawer)
       '.recfb-chip{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;border:1px solid var(--border,#e5ddcb);background:linear-gradient(180deg,rgba(201,138,46,.06),transparent);border-radius:12px;padding:9px 12px;cursor:pointer;text-align:left;transition:border-color .14s,box-shadow .14s;font-family:inherit}'+
       '.recfb-chip:hover{border-color:#c98a2e;box-shadow:0 5px 14px rgba(201,138,46,.14)}'+
@@ -29617,8 +29627,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var notes=(fb.timestamped_notes||[]).length?('<div class="rfv-sec">Timestamped notes <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--text-muted,#8a7d5c)">(original recording)</span></div>'+fb.timestamped_notes.map(function(n){ return '<div class="rfv-note"><span class="rfv-nts">'+esc(n.ts||'—')+'</span>'+(n.category?'<span class="rfv-ncat">'+esc(n.category)+'</span>':'')+'<span class="rfv-nn">'+esc(n.note||'')+'</span></div>'; }).join('')):'';
     // premium header: editor avatar (photo or initials) + name/role + overall score chip
     var edName=(fb.editor_name||ctx.editor_name||'').trim();
-    var edRole=(ctx.editor_role||'Video Editor');
-    var edPhoto=(ctx.editor_photo||'').trim();
+    var edRole=(ctx.editor_role||fb.editor_role||'Video Editor');
+    var edPhoto=(ctx.editor_photo||fb.editor_photo||'').trim();
     var avInner=edPhoto?'':esc((typeof initials==='function'?initials(edName||'Editor'):(edName||'E').slice(0,1).toUpperCase()));
     var avStyle=edPhoto?(' style="background-image:url('+edPhoto+')"'):'';
     var byBits=[]; if(edName) byBits.push(esc(edName)); byBits.push(esc(edRole)); if(fb.submitted_at) byBits.push(esc(fb.submitted_at));
@@ -29646,6 +29656,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._RECFBREG={};
   function _recFbRegister(key, fb, ctx, canAck, ackArgs, forTeacher){ window._RECFBREG[key]={fb:fb,ctx:ctx||{},canAck:!!canAck,ackArgs:ackArgs||null,forTeacher:!!forTeacher}; }
   window._recFbShow=function(key){ var d=window._RECFBREG[key]; if(!d||!d.fb){ toast('No recording feedback available',true); return; }
+    // the premium viewer uses the production modal shell (.p-modal-wrap/.p-modal). The TEACHER portal
+    // does not load that CSS by default, so ensure it first — otherwise the modal renders unstyled
+    // (no backdrop/centering) and the layout breaks.
+    try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+    try{ _recFbViewCss(); }catch(e){}
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal'; window._recFbAckArgs=d.ackArgs;
     dr.innerHTML=_recFbViewHtml(d.fb, d.ctx, {canAck:d.canAck, ackCall:'_recFbAck()', forTeacher:d.forTeacher});
