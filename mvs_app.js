@@ -33620,7 +33620,22 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _flt(portal){ return (window._prodFilter=window._prodFilter||{})[portal]=(window._prodFilter[portal]||{}); }
   // Date-wise master filter -> production portal (Tasks list, Production Board, Thumbnail Board).
-  try{ window._pdfApplyFns=window._pdfApplyFns||{}; window._pdfApplyFns['prod']=function(){ try{ window._prodAutoRefresh(); }catch(e){} }; }catch(e){}
+  // Pehle sirf _prodAutoRefresh() call hota tha jo CACHE bust + nav badges hi karta tha, view ko
+  // dobara render NAHI karta tha. Is wajah se "Today"/"Yesterday"/koi bhi date chunne par board
+  // turant filter nahi hota tha — sirf tab lagta tha jab user section change karke wapas aata (jis
+  // par page dobara render hota aur saved date-state padh leta). Ab date chunte hi production portal
+  // ka CURRENT page (Board / Thumbnail Board / Tasks-Videos list) CHUPCHAAP dobara render hota hai:
+  // cache busted hone se fresh (date-filtered) data aata hai, aur silent re-render me scroll +
+  // khuli hui cards preserve rehti hain, koi skeleton flash nahi (board fetch resolve hone ke baad
+  // hi innerHTML swap karta hai). Sirf tabhi re-render jab production body actually visible ho —
+  // warna koi side-effect/mount nahi.
+  try{ window._pdfApplyFns=window._pdfApplyFns||{}; window._pdfApplyFns['prod']=function(){
+    try{ window._prodAutoRefresh(); }catch(e){}
+    try{
+      var _pb=document.getElementById('production-body');
+      if(_pb && _pb.offsetParent!==null && typeof _refresh==='function'){ _refresh('production'); }
+    }catch(e){}
+  }; }catch(e){}
   function _prodQuery(portal){
     var f=_flt(portal); var p=[];
     if(f.status) p.push('status='+encodeURIComponent(f.status));
