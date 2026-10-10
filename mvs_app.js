@@ -797,6 +797,73 @@ window.addEventListener('online', function(){
 });
 // Halka periodic auto-refresh — koi bhi portal khula ho to har 60s me chupchaap fresh data.
 setInterval(function(){ if(TOKEN) _autoRefreshNow(false); }, 60000);
+
+// ============================================================
+//  SILENT LIVE SYNC — har portal ki list apne aap, bina glitch update ho
+//  (naya assigned video / status change turant dikhe — manual refresh ki zaroorat nahi).
+//  Rules: koi modal/drawer/chat khula ho, ya user type kar raha ho, to SKIP (kuch disturb na ho).
+// ============================================================
+function _silentSafe(){
+  try{
+    if(typeof TOKEN==='undefined' || !TOKEN) return false;
+    if(document.visibilityState!=='visible') return false;
+    if(typeof navigator!=='undefined' && navigator.onLine===false) return false;
+    // any modal / drawer / overlay / notif panel open -> don't disturb it
+    if(document.getElementById('prod-modal')) return false;
+    if(document.getElementById('prod-drawer')) return false;
+    if(document.getElementById('prod-chap-drawer')) return false;
+    if(document.getElementById('pj-ov')) return false;
+    if(document.getElementById('pn-panel')) return false;
+    if(document.getElementById('notif-pop')) return false;
+    var _m=document.getElementById('modal'); if(_m && _m.classList.contains('open')) return false;
+    try{ if(window._chatOpen && window._chatOpen()) return false; }catch(e){}
+    // user is typing / interacting with a control -> skip (never steal focus or input)
+    var ae=document.activeElement; if(ae){ var tg=(ae.tagName||'').toLowerCase(); if(tg==='input'||tg==='textarea'||tg==='select'||ae.isContentEditable) return false; }
+    return true;
+  }catch(e){ return false; }
+}
+function _activePortal(){
+  var ids=['production','editor','graphics','youtuber','teacher','admin','student'];
+  for(var i=0;i<ids.length;i++){ var a=document.getElementById(ids[i]+'-app'); if(a&&a.classList.contains('active')) return ids[i]; }
+  return '';
+}
+// capture which premium cards are expanded (so a silent re-render keeps them open)
+function _collectOpenCards(root){ var m={}; try{ root=root||document;
+  root.querySelectorAll('.ptc.yt-open[data-ptc]').forEach(function(c){ m['p'+c.getAttribute('data-ptc')]=1; });
+  root.querySelectorAll('.vt-card.vt-open[data-tid-card]').forEach(function(c){ m['t'+c.getAttribute('data-tid-card')]=1; });
+}catch(e){} return m; }
+function _forceOpenCard(c, kind){ try{ c.classList.add(kind+'-open'); c.classList.remove(kind+'-collapsed'); var b=c.querySelector('.'+kind+'-viewdet'); if(b){ b.classList.add('on'); var s=b.querySelector('span'); if(s) s.textContent='Hide Details'; } }catch(e){} }
+function _applyOpenCards(root, m){ if(!m) return; try{ root=root||document;
+  root.querySelectorAll('.ptc[data-ptc]').forEach(function(c){ if(m['p'+c.getAttribute('data-ptc')]) _forceOpenCard(c,'yt'); });
+  root.querySelectorAll('.vt-card[data-tid-card]').forEach(function(c){ if(m['t'+c.getAttribute('data-tid-card')]) _forceOpenCard(c,'vt'); });
+}catch(e){} }
+window._silentAutoSync=function(){
+  try{
+    if(!_silentSafe()) return;
+    var portal=_activePortal(); if(!portal) return;
+    try{ _apiBust(); }catch(e){}
+    if(portal==='teacher'){ try{ if(typeof _tSilentSync==='function') _tSilentSync(); }catch(e){} return; }
+    if(portal==='student') return;   // student lists refresh on their own flows
+    if(portal==='admin'){
+      var av=document.getElementById('a-vtasks-content');
+      if(av && av.offsetParent!==null && typeof loadAVTasks==='function'){ _silentRerender(av, loadAVTasks); return; }
+      var ah=document.getElementById(window._ytHost||'a-ytasks-content');
+      if(ah && ah.offsetParent!==null && typeof loadAYtTasks==='function'){ _silentRerender(ah, loadAYtTasks); return; }
+      return;
+    }
+    // production / editor / graphics / youtuber -> handled inside the production module (has _prodLoadList etc.)
+    if(typeof window._prodLiveSync==='function') window._prodLiveSync(portal);
+  }catch(e){}
+};
+// generic silent re-render for full-rebuild pages (admin) — preserve open cards + scroll
+function _silentRerender(container, fn){
+  var m=_collectOpenCards(container);
+  var sc=(container.closest&&container.closest('.appmain,.prodmain,main'))||null; var top=sc?sc.scrollTop:(window.scrollY||0);
+  try{ fn(); }catch(e){}
+  setTimeout(function(){ try{ _applyOpenCards(container, m); if(sc){ sc.scrollTop=top; } else { window.scrollTo(0, top); } }catch(e){} }, 250);
+}
+// dedicated live-sync heartbeat (lighter than the 60s cache-bust) — ~30s
+setInterval(function(){ try{ window._silentAutoSync(); }catch(e){} }, 30000);
 // "Saving..." pe dead nahi dikhti; percent chalta rehta hai.
 function _xhrJson(url,payload,onProgress){
   return new Promise((resolve,reject)=>{
@@ -1425,7 +1492,7 @@ async function pollNotifs(role){
   if(badge){ badge.style.display=unread.length?'flex':'none'; badge.textContent=unread.length; }
   _setBellUnread(role,unread.length>0);
   const prev=_lastUnread[role]||0;
-  if(unread.length>prev){ showNotifPop(role,unread); }
+  if(unread.length>prev){ showNotifPop(role,unread); try{ window._silentAutoSync(); }catch(e){} }   // new activity -> refresh the open list silently, right away
   _lastUnread[role]=unread.length;
   if(role==='admin') _avtBadgePoll();   // v115: Task Manager badge bhi saath refresh
   if(role==='student'){ try{ refreshCommunityBadge(); }catch(e){} try{ _maybeCommPopup('student',list); }catch(e){} }
@@ -11673,7 +11740,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
   try{ _reviewEnsureCss(); }catch(e){}
   const el=document.getElementById('t-vtasks-content');
   if(!el) return;
-  softSpin(el);
+  if(!window._tvtSilent) softSpin(el);   // silent live-sync: keep the old cards visible (no skeleton flash)
   if(_tvtTimer){ clearInterval(_tvtTimer); _tvtTimer=null; }
   try{
     const d=await api('/api/teacher/video-tasks/my');
@@ -12041,6 +12108,17 @@ function _reviewEnsureCss(){
 // ===== TEACHER: VIDEO REVIEW — review action lives ON the task card now =====
 // loadTReview simply refreshes the task list so the card's review button updates.
 async function loadTReview(){ try{ if(typeof loadTVTasks==='function') return loadTVTasks(); }catch(e){} }
+// Teacher My Tasks silent live-sync — re-render with fresh data, preserving scroll + expanded cards,
+// with no skeleton flash. (The teacher's view/filter state lives in module globals, so it persists.)
+function _tSilentSync(){
+  var el=document.getElementById('t-vtasks-content'); if(!el || el.offsetParent===null) return;
+  var m=_collectOpenCards(el);
+  var sc=(el.closest&&el.closest('.appmain,main'))||null; var top=sc?sc.scrollTop:(window.scrollY||0);
+  window._tvtSilent=true;
+  var done=function(){ window._tvtSilent=false; try{ _applyOpenCards(el, m); if(sc){ sc.scrollTop=top; } else { window.scrollTo(0, top); } }catch(e){} };
+  try{ var p=loadTVTasks(); if(p && p.then){ p.then(done, done); } else { setTimeout(done, 350); } }
+  catch(e){ window._tvtSilent=false; }
+}
 // Open the review for an edited video (Watch / Chat / Approve / Changes) as a premium modal.
 window.tReviewOpen=function(id){
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
@@ -28865,6 +28943,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _list=r.notifications||[];
       window._prodNotifCache=_list;
       var u=r.unread||0;
+      // new activity (a video got assigned / status changed) -> refresh the open list silently, now
+      try{ window._prodLastUnread=window._prodLastUnread||{}; var _pv=window._prodLastUnread[portal];
+        if(_pv!=null && u>_pv){ try{ window._silentAutoSync(); }catch(e){} }
+        window._prodLastUnread[portal]=u; }catch(e){}
       var dot=document.getElementById(portal+'-bell-dot'); if(dot){ dot.textContent=u>99?'99+':u; dot.style.display=u>0?'flex':'none'; }
       // sidebar Notifications counter (red)
       var app=document.getElementById(portal+'-app');
@@ -31834,6 +31916,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load. '+esc(e&&e.message||'')+'</div>'; });
   }
   window._ytMyClear=function(){ ['yt-q','yt-ch','yt-st','yt-dt'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); _ytMyApply(); };
+  // SILENT live sync for the youtuber My Tasks — re-fetch videos + re-render the grid ONLY (filters,
+  // search, scroll and expanded cards all preserved). A newly-assigned video appears on its own.
+  window._ytMyLiveSync=function(){
+    var grid=document.getElementById('yt-my-grid'); if(!grid) return;
+    api(P.youtuber.api+'/videos').then(function(r){
+      window._ytMyRaw=(r&&r.videos)||[];
+      try{ var sel=document.getElementById('yt-ch'); if(sel){ var cur=sel.value; var chs=[],seen={}; window._ytMyRaw.forEach(function(t){ var c=t.channel_name||''; if(c&&!seen[c]){seen[c]=1;chs.push(c);} }); chs.sort(); _ytFillChannels('yt-ch',chs); sel.value=cur; } }catch(e){}
+      try{ _ytMyApply(); }catch(e){}
+      try{ _ytLoadProjectChapters(); }catch(e){}
+    }).catch(function(){});
+  };
   window._ytMyApply=function(){
     var grid=document.getElementById('yt-my-grid'); if(!grid) return;
     var tasks=window._ytMyRaw||[];
@@ -31856,8 +31949,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       return true;
     });
+    var _openM=(typeof _collectOpenCards==='function')?_collectOpenCards(grid):null;   // keep expanded cards open on silent sync / filter
     grid.innerHTML=out.length?('<div class="ptc-grid">'+out.map(function(t){return _prodTaskCard('youtuber',t);}).join('')+'</div>')
       :_pEmpty('list','No tasks match','Try a different channel or date, or clear the search.');
+    try{ if(_openM) _applyOpenCards(grid, _openM); }catch(e){}
     // live count — updates on every filter change ("5 videos · Shoot Pending")
     var _cnt=document.getElementById('yt-my-count');
     if(_cnt){
@@ -34768,6 +34863,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(!res) return;
       var backendTotal=(r && typeof r.total==='number')?r.total:null;
       var _finish=function(extraCards){
+        var _openM=(typeof _collectOpenCards==='function')?_collectOpenCards(res):null;   // keep expanded cards open across the swap
         var taskCards=arr.map(function(t){ return _prodTaskCard(portal,t); }).join('');
         var extraHtml=(extraCards&&extraCards.html)||'', extraCount=(extraCards&&extraCards.count)||0;
         var pageCount=arr.length+extraCount;
@@ -34777,6 +34873,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var countBar=(portal==='production' && r && r.counts)?_prodCountBar(r.counts, r.counts_total, total0, f.status||''):'';
         var grid=pageCount?('<div class="ptc-grid">'+taskCards+extraHtml+'</div>'+foot):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
         res.innerHTML=countBar+grid;
+        try{ if(_openM) _applyOpenCards(res, _openM); }catch(e){}
         try{ _prodMarkOpenedCard(); }catch(e){}
         if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }
         if(silent && _scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
@@ -34797,6 +34894,16 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       _finish(null);
     }).catch(function(e){ if(myseq!==_prodSeqCur(portal)) return; if(res && !append) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); else if(res && append){ var b=res.querySelector('.pl-more'); if(b){ b.disabled=false; b.textContent='Load more'; } } });
   }
+  // Silent live sync for the production family (production/editor/graphics/youtuber). Uses the
+  // existing scroll-preserving, skeleton-less reload paths; never runs while a modal/chat is open
+  // (the global _silentSafe gate guarantees that before this is called).
+  window._prodLiveSync=function(portal){
+    try{
+      if(portal==='youtuber'){ var g=document.getElementById('yt-my-grid'); if(g && typeof window._ytMyLiveSync==='function'){ window._ytMyLiveSync(); return; } }
+      var res=document.getElementById(portal+'-results');
+      if(res && res.children.length && res.textContent.indexOf('Loading')<0){ _prodLoadList(portal, true); return; }
+    }catch(e){}
+  };
   window.prodKpiGo=function(portal,key){
     var nav=(KPI_NAV[portal]||{})[key]; if(!nav) return;
     // Har KPI card ko ek FILTER-PRESERVING "q:" page par bhejo. Pehle 'tasks' page par bhejte
