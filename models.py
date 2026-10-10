@@ -1740,8 +1740,9 @@ class TeacherRecordingFeedback(Base):
     id             = Column(Integer, primary_key=True)
     work_type      = Column(String(20), default="task", index=True)   # task | chapter
     # exactly ONE of these is set (enforced in code): a normal VideoTask, or a chapter (+ its parent)
-    video_task_id  = Column(Integer, ForeignKey("video_tasks.id"), nullable=True, index=True)
-    chapter_id     = Column(Integer, ForeignKey("video_task_chapters.id"), nullable=True, index=True)
+    # ondelete CASCADE applies to FRESH DBs (create_all); existing DBs are cleaned by _purge_* on delete.
+    video_task_id  = Column(Integer, ForeignKey("video_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    chapter_id     = Column(Integer, ForeignKey("video_task_chapters.id", ondelete="CASCADE"), nullable=True, index=True)
     editor_id      = Column(Integer, ForeignKey("production_staff_profiles.id"), nullable=True, index=True)
     teacher_id     = Column(Integer, ForeignKey("teacher_profiles.id"), nullable=True, index=True)
     submission_revision = Column(Integer, default=1)
@@ -1773,8 +1774,9 @@ class CreativeEditingBrief(Base):
 
     id               = Column(Integer, primary_key=True)
     work_type        = Column(String(20), default="task", index=True)   # task | project_chapter
-    video_task_id    = Column(Integer, ForeignKey("video_tasks.id"), nullable=True, index=True)
-    chapter_id       = Column(Integer, ForeignKey("video_task_chapters.id"), nullable=True, index=True)
+    # ondelete CASCADE applies to FRESH DBs (create_all); existing DBs are cleaned by _purge_* on delete.
+    video_task_id    = Column(Integer, ForeignKey("video_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    chapter_id       = Column(Integer, ForeignKey("video_task_chapters.id", ondelete="CASCADE"), nullable=True, index=True)
     submitted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     submitted_by_role    = Column(String(20), default="")   # teacher | production_manager | admin | youtuber
     submitted_by_name    = Column(String(160), default="")

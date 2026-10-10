@@ -927,6 +927,7 @@ def _prune_tma(db, t, tma_titles):
     hit = [c for c in rows if (c.title or "").strip().lower() in tset]
     if not hit:
         return False
+    _purge_feedback_and_briefs(db, chapter_ids=[c.id for c in hit])   # FK-safe: clear chapter-scoped rows first
     for c in hit:
         db.delete(c)
     _hist_add(t, "edited",
@@ -1048,6 +1049,7 @@ def _dedupe_special(db, teacher_id, kind):
                 else:
                     if (c.link or "").strip() and not (tgt.link or "").strip():
                         tgt.link, tgt.submitted_at = c.link, c.submitted_at
+                    _purge_feedback_and_briefs(db, chapter_ids=[c.id])   # FK-safe before dropping the dup chapter
                     db.delete(c)
             if (getattr(extra, "last_link_at", None) or datetime.min) > \
                (getattr(keep, "last_link_at", None) or datetime.min):
@@ -4181,9 +4183,41 @@ def vt_edit(task_id: int, payload: dict = Body(...),
     return {"ok": True, "changed": changes}
 
 
+def _purge_feedback_and_briefs(db, task_id=None, chapter_ids=None):
+    """Delete TeacherRecordingFeedback + CreativeEditingBrief rows that FK-reference a video_task OR
+    any of the given chapters — BEFORE that task/those chapters are deleted. Without this, MySQL
+    rejects the parent delete with error 1451 (foreign key constraint fails). Table/row absence is
+    tolerated. This is the single source of truth for cleaning up these two work-item tables."""
+    chapter_ids = [c for c in (chapter_ids or []) if c]
+    try:
+        from models import TeacherRecordingFeedback as _RF, CreativeEditingBrief as _CB
+    except Exception:
+        return
+    for _M in (_RF, _CB):
+        conds = []
+        if task_id:
+            conds.append(_M.video_task_id == task_id)
+        if chapter_ids:
+            conds.append(_M.chapter_id.in_(chapter_ids))
+        if not conds:
+            continue
+        try:
+            db.query(_M).filter(or_(*conds)).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+
 def _purge_task_children(db, task_id):
     """Delete every child row that references a video_task via FK, so deleting the task
     does not hit a foreign-key constraint (MySQL error 1451). Safe if a table/row is absent."""
+    # Collect this task's chapter ids FIRST — recording-feedback / creative-brief rows FK the chapters
+    # too, so they must go before the chapters are deleted (else the chapter delete hits 1451).
+    try:
+        _chap_ids = [row[0] for row in db.query(VideoTaskChapter.id)
+                     .filter(VideoTaskChapter.task_id == task_id).all()]
+    except Exception:
+        _chap_ids = []
+    _purge_feedback_and_briefs(db, task_id=task_id, chapter_ids=_chap_ids)
     try:
         db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == task_id).delete(synchronize_session=False)
     except Exception:
