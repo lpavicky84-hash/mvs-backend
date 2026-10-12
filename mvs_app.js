@@ -13005,6 +13005,9 @@ var _CHAP_PILL={
   editing_paused:['Editing Paused','#c99a2e','#fef3c7','#92400e',false],
   qc_pending:['QC Pending','#2a7fb8','#dbeafe','#1e40af',true],
   qc_changes:['QC Changes','#d1443a','#fee2e2','#b91c1c',true],
+  // QC ho chuka hai par final thumbnail pending -> publish gate pe held (qc_pending stored). Badge
+  // "Waiting for Thumbnail" dikhao taaki PM ko lage status aage badha (QC ho gaya), ruka nahi.
+  waiting_thumbnail:['Waiting for Thumbnail','#c99a2e','#fef3c7','#92400e',true],
   ready_for_youtube:['Ready for YouTube','#e0a52e','#fef3c7','#8a5a12',true],
   uploaded:['Uploaded','#2e9e6b','#d1fae5','#065f46',false],
   completed:['Published','#2e9e6b','#d1fae5','#065f46',false]
@@ -13025,10 +13028,12 @@ function _chapLc(c){
   if(c.editor_id||c.editor_name) return 'editor_assigned';
   return 'approved';
 }
+// view-level lifecycle: QC approved par thumbnail gate pe ruka -> 'waiting_thumbnail' (badge ke liye).
+function _chapLcView(c){ var lc=_chapLc(c); if(lc==='qc_pending' && c && (c.qc_status==='approved')) return 'waiting_thumbnail'; return lc; }
 // [label, solidColor, blink] — for solid white-text badges (.ptc-badge)
-window._chapStatusPill=function(c){ var m=_CHAP_PILL[_chapLc(c)]||_CHAP_PILL.approved; return [m[0],m[1],m[4]]; };
+window._chapStatusPill=function(c){ var m=_CHAP_PILL[_chapLcView(c)]||_CHAP_PILL.approved; return [m[0],m[1],m[4]]; };
 function _pjPill(c){
-  var lc=_chapLc(c), m=_CHAP_PILL[lc]||_CHAP_PILL.approved;
+  var lc=_chapLcView(c), m=_CHAP_PILL[lc]||_CHAP_PILL.approved;
   var mark=(lc==='approved'?'✓':(lc==='completed'||lc==='uploaded'?'✓':'●'));
   return '<span class="pjcc-st'+(m[4]?' pjcc-blink':'')+'" style="background:'+m[2]+';color:'+m[3]+'">'+mark+' '+esc(m[0])+'</span>';
 }
@@ -35217,12 +35222,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       b.push('<button class="'+cls+'" onclick="'+stop+'prodChapAssignGraphics(\''+portal+'\','+cid+')">'+(ch.graphics_name?'Graphics · '+esc(ch.graphics_name):'Assign Graphics')+'</button>');
       if(asg) b.push('<button class="'+cls+'" onclick="'+stop+'prodChapUnassign(\''+portal+'\','+taskId+','+cid+')">Remove</button>');
     }
-    // PM/Admin QC on the editor's EDITED video (like task QC) — only when an edit is submitted
-    if((portal==='production'||portal==='admin') && ch.edit_state==='edited' && ch.qc_status!=='approved'){
+    // ⚠ Lifecycle rules backend ki "chapter_allowed_actions" se match hone chahiye — JS yahan
+    //   apne hisaab se guess na kare (warna QC-pending card pe "Post YouTube URL" jaisa IMPOSSIBLE
+    //   button aa jaata tha). Authority = ch.lifecycle (backend _chapter_lifecycle), NOT ch.qc_status.
+    var _isPM=(portal==='production'||portal==='admin');
+    // "Waiting for Thumbnail" hold: QC paas (qc_status=approved) PAR lifecycle abhi ready_for_youtube
+    // nahi (thumbnail final nahi) -> chapter publish gate pe ruka hai. Na Review Edit, na Post URL.
+    var _ytUrl=(''+(ch.youtube_url||'')).trim();
+    var _heldThumb=(ch.qc_status==='approved' && ch.lifecycle!=='ready_for_youtube'
+                    && ch.lifecycle!=='uploaded' && ch.lifecycle!=='completed' && !_ytUrl);
+    // PM/Admin QC — SIRF jab genuinely QC ke liye pending ho (qc ho chuka ho to dobara review nahi).
+    if(_isPM && ch.lifecycle==='qc_pending' && ch.qc_status!=='approved'){
       b.push('<button class="'+cls+okc+' ptc-review-blink" onclick="'+stop+'prodChapQc(\''+portal+'\','+taskId+','+cid+')"><span class="rev-dot"></span>Review Edit</button>');
     }
-    // PM/Admin: post the published YouTube URL once a chapter is QC-approved (ready_for_youtube, not yet uploaded)
-    if((portal==='production'||portal==='admin') && (ch.lifecycle==='ready_for_youtube' || (ch.qc_status==='approved' && !ch.youtube_url && (ch.edit_status||'')!=='uploaded'))){
+    // Held-for-thumbnail: saaf status chip. Click par chapter drawer khulta hai jahan PM thumbnail
+    // review/approve kar sakta hai — approve hote hi ye apne aap Ready for YouTube ho jayega.
+    if(_isPM && _heldThumb){
+      b.push('<button class="'+cls+'" onclick="'+stop+'prodOpenChapter(\''+portal+'\','+cid+')" title="QC approved — ab final thumbnail ka intezaar hai. Thumbnail review/approve karo, uske baad ye apne aap Ready for YouTube ho jayega." style="opacity:.85">'+ic('clock')+' Waiting for Thumbnail</button>');
+    }
+    // PM/Admin: Post YouTube URL SIRF jab chapter ACTUALLY ready_for_youtube ho (qc_status approved
+    // hona kaafi nahi — thumbnail gate pass hona zaroori). Isse held/qc-pending card pe kabhi nahi aata.
+    if(_isPM && ch.lifecycle==='ready_for_youtube' && !_ytUrl && (ch.edit_status||'')!=='uploaded'){
       b.push('<button class="'+cls+pric+'" onclick="'+stop+'prodChapYoutube(\''+portal+'\','+taskId+','+cid+',\''+tnm+'\')">'+ic('upload')+' Post YouTube URL</button>');
     }
     if(ch.youtube_url) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.youtube_url)+'\',\'_blank\',\'noopener\')">'+ic('play')+' On YouTube</button>');
