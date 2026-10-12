@@ -335,6 +335,26 @@ def _sel_batch_subjects(db, sp, batch=None):
     return stu
 
 
+def _exam_subject_cond(db, sp):
+    """SUBJECT scope for TESTS = the student's OWN enrolled subjects (sp.subjects), name-variant
+    tolerant. IMPORTANT: ye batch ki BatchSubject-mapping se INTERSECT nahi karta.
+    Kyun: pehle `_sel_batch_subjects` batch-map se intersect karta tha, jिससे agar batch-map me
+    student ka ek subject (e.g. Hindi) listed nahi tha to uska Hindi test CHHUP jaata tha — bug.
+    Ab rule simple + bulletproof hai: 'student jo subject padhta hai, SIRF unhi ke test dikhein' —
+    na us se zyada (jaise Maths/Home Science jo woh nahi padhta), na us se kam (Hindi jo padhta hai).
+    Student ke paas koi subject hi na ho to over-restrict mat karo (true)."""
+    from models import Exam
+    from sqlalchemy import true as _true, or_ as _or
+    own = list(getattr(sp, "subjects", None) or [])
+    if not own:
+        return _true()
+    scope = list(_subj_scope_for(db, Exam, own))
+    if not scope:
+        return _true()
+    # subject-less test (koi subject set hi nahi) ko block mat karo (legacy-safe).
+    return _or(Exam.subject.in_(scope), Exam.subject.is_(None), Exam.subject == "")
+
+
 def _exam_batch_filter(db, sp, only_batch_id=None):
     """Self-contained test scoping (mirrors _dpp_batch_filter) for the Exam model."""
     from models import Exam, TimetableEntry, Material, DppPack
@@ -563,14 +583,11 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     # ---- online exams (ExamAttempt-based)
     pending_exams = []
     try:
-        exams = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch)).all() if subs else []
-        _ex_bids_dash = set(_student_batch_ids(db, sp, batch))
+        # SAME rule as the Tests page: selected batch (strict) + student ke APNE subjects ka test.
+        exams = db.query(Exam).filter(Exam.is_active == True,
+                                      _exam_batch_filter(db, sp, batch),
+                                      _exam_subject_cond(db, sp)).all()
         for ex in exams:
-            # batch-targeted test (teacher ne is batch ke liye banaya) -> subject-scope bypass,
-            # taaki poore batch ko dikhe; sirf global (batch_id NULL) test subject-scoped.
-            _bt_dash = (getattr(ex, "batch_id", None) is not None and ex.batch_id in _ex_bids_dash)
-            if (not _bt_dash) and ex.subject and subs and ex.subject not in subs:
-                continue
             att = db.query(ExamAttempt).filter(
                 ExamAttempt.exam_id == ex.id, ExamAttempt.student_id == sp.id).first()
             if not att:
@@ -2379,23 +2396,14 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
     _ensure_batch_cols(db)
     if not batch and getattr(sp, "batch_id", None):
         batch = sp.batch_id
-    subs = _sel_batch_subjects(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
-    q = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch))
-    if subs:
-        # Naam-variant tolerant ('PHYSICS' wala student bhi 'Physics' ka test dekhe).
-        # BUG FIX: jo test teacher ne EXPLICITLY is batch ke liye banaya hai (batch_id set), use
-        # subject-scoping se MAT chhupao. Pehle "UDAAN Crash Course" ke liye bheja Hindi test us
-        # batch ke us student ko nahi dikhta tha jiske apne subjects me Hindi nahi tha — chahe
-        # teacher ne poore batch ko diya ho. Ab batch-targeted test poore batch ko dikhta hai;
-        # sirf GLOBAL (batch_id NULL) tests hi subject-scoped rehte hain.
-        from sqlalchemy import or_ as _or_sx
-        _ss = list(_subj_scope_for(db, Exam, subs))
-        _bids_sx = _student_batch_ids(db, sp, batch)
-        if _bids_sx:
-            q = q.filter(_or_sx(Exam.batch_id.in_(_bids_sx), Exam.subject.in_(_ss)))
-        else:
-            q = q.filter(Exam.subject.in_(_ss))
+    # TEST VISIBILITY = (1) student ka selected batch (strict: crash/own-test batch me global/doosre
+    # batch ke test kabhi leak na ho) AUR (2) test ka subject student ke APNE enrolled subjects me ho
+    # (na zyada: Maths/Home Science jo woh nahi padhta -> nahi; na kam: Hindi jo padhta -> haan) AUR
+    # (3) class match (neeche loop me). Ye teenon condition saath — single source of truth.
+    q = db.query(Exam).filter(Exam.is_active == True,
+                              _exam_batch_filter(db, sp, batch),
+                              _exam_subject_cond(db, sp))
     rows = q.order_by(Exam.created_at.desc()).all()
     # Har exam me kitni copies evaluate ho chuki — Ranking button isi se dikhta hai
     # (taaki jis student ne attempt nahi kiya usko bhi ranking/marks dekhne ko mile)
@@ -3131,7 +3139,8 @@ def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db
     from models import Exam
     from datetime import datetime, timedelta
     sp = get_student_profile(current_user, db)
-    ex = db.query(Exam).filter(Exam.id == exam_id).filter(_exam_batch_filter(db, sp)).first()
+    ex = db.query(Exam).filter(Exam.id == exam_id).filter(
+        _exam_batch_filter(db, sp), _exam_subject_cond(db, sp)).first()
     if not ex or not ex.q_pdf:
         raise HTTPException(status_code=404, detail="Not found")
     if kind == "a":
@@ -3837,8 +3846,10 @@ def student_performance(batch: int = 0, db: Session = Depends(get_db), current_u
 
     exam_attempts = db.query(ExamAttempt).filter(ExamAttempt.student_id == sp.id).all()
     graded = [a for a in exam_attempts if (a.status or "") == "graded"]
-    exams_all = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch)).all()
-    exams_mine = [e for e in exams_all if (not e.subject) or (e.subject in subs)]
+    exams_all = db.query(Exam).filter(Exam.is_active == True,
+                                      _exam_batch_filter(db, sp, batch),
+                                      _exam_subject_cond(db, sp)).all()
+    exams_mine = exams_all
     test_total = len(exams_mine)
     test_done = len(exam_attempts)
     # avg test score %
