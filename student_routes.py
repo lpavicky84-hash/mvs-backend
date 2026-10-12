@@ -233,6 +233,38 @@ def _bids_standalone(db, bids):
     return False
 
 
+def _bids_crash(db, bids):
+    """True agar koi bhi selected batch ek CRASH COURSE hai (naam me 'crash').
+    Crash course by-design SELF-CONTAINED hota hai — system isse hamesha standalone maanta hai
+    (heal migration bhi crash courses ko jaan-boojh ke standalone chhodti hai). Agar kisi crash
+    batch ka standalone flag galti se False (global-inherit) set ho gaya ho, to bhi uske TESTS
+    sirf uske apne hone chahiye — doosre batch ya global test kabhi leak na ho. Isi liye exam
+    scoping me ye flag se upar hai."""
+    if not bids:
+        return False
+    from models import Batch
+    try:
+        for (_nm,) in db.query(Batch.name).filter(Batch.id.in_(bids)).all():
+            if "crash" in (_nm or "").lower():
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _has_own_exam(db, bids):
+    """True agar in batch(es) ka apna koi test (Exam.batch_id in bids) hai. Aisa batch jise teacher
+    ne EXPLICITLY tests assign kiye hain, uske students ko SIRF us batch ke apne tests dikhne chahiye
+    (global/doosre batch ke nahi) — 'mein jo batch select karun, only uske tests' wala rule."""
+    if not bids:
+        return False
+    from models import Exam
+    try:
+        return db.query(Exam.id).filter(Exam.batch_id.in_(bids)).first() is not None
+    except Exception:
+        return False
+
+
 def _bids_inherit_global(db, bids):
     """True agar koi bhi selected batch EXPLICITLY global-inherit pe set hai (standalone=False).
     Aise legacy batches (Oct 2026 / April 2027) ko HAMESHA global (batch_id NULL) + apna content
@@ -312,6 +344,14 @@ def _exam_batch_filter(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Exam.batch_id.is_(None)
+    # STRICT per-batch test isolation (user: "mein jo batch select karun, only uske tests dikhein").
+    # (1) Crash Course -> hamesha strict (standalone flag galti se False ho tab bhi). (2) Jis batch
+    # ko teacher ne apne tests assign kiye hain, wo bhi strict -> us batch ke students ko SIRF us
+    # batch ke apne tests dikhein, GLOBAL/doosre batch ke NAHI. Ye inherit-global se UPAR hai taaki
+    # ek crash/own-test batch me doosre batch ya global ke tests kabhi leak na ho. (Materials/DPP/
+    # timetable apne alag filters se waise hi chalte hain — unpe koi asar nahi.)
+    if _bids_crash(db, bids) or _has_own_exam(db, bids):
+        return Exam.batch_id.in_(bids)
     if _bids_standalone(db, bids):
         return Exam.batch_id.in_(bids)
     if _bids_inherit_global(db, bids):
