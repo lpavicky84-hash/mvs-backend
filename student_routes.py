@@ -524,8 +524,12 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     pending_exams = []
     try:
         exams = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch)).all() if subs else []
+        _ex_bids_dash = set(_student_batch_ids(db, sp, batch))
         for ex in exams:
-            if ex.subject and subs and ex.subject not in subs:
+            # batch-targeted test (teacher ne is batch ke liye banaya) -> subject-scope bypass,
+            # taaki poore batch ko dikhe; sirf global (batch_id NULL) test subject-scoped.
+            _bt_dash = (getattr(ex, "batch_id", None) is not None and ex.batch_id in _ex_bids_dash)
+            if (not _bt_dash) and ex.subject and subs and ex.subject not in subs:
                 continue
             att = db.query(ExamAttempt).filter(
                 ExamAttempt.exam_id == ex.id, ExamAttempt.student_id == sp.id).first()
@@ -2339,8 +2343,19 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     q = db.query(Exam).filter(Exam.is_active == True, _exam_batch_filter(db, sp, batch))
     if subs:
-        # Naam-variant tolerant ('PHYSICS' wala student bhi 'Physics' ka test dekhe)
-        q = q.filter(Exam.subject.in_(list(_subj_scope_for(db, Exam, subs))))
+        # Naam-variant tolerant ('PHYSICS' wala student bhi 'Physics' ka test dekhe).
+        # BUG FIX: jo test teacher ne EXPLICITLY is batch ke liye banaya hai (batch_id set), use
+        # subject-scoping se MAT chhupao. Pehle "UDAAN Crash Course" ke liye bheja Hindi test us
+        # batch ke us student ko nahi dikhta tha jiske apne subjects me Hindi nahi tha — chahe
+        # teacher ne poore batch ko diya ho. Ab batch-targeted test poore batch ko dikhta hai;
+        # sirf GLOBAL (batch_id NULL) tests hi subject-scoped rehte hain.
+        from sqlalchemy import or_ as _or_sx
+        _ss = list(_subj_scope_for(db, Exam, subs))
+        _bids_sx = _student_batch_ids(db, sp, batch)
+        if _bids_sx:
+            q = q.filter(_or_sx(Exam.batch_id.in_(_bids_sx), Exam.subject.in_(_ss)))
+        else:
+            q = q.filter(Exam.subject.in_(_ss))
     rows = q.order_by(Exam.created_at.desc()).all()
     # Har exam me kitni copies evaluate ho chuki — Ranking button isi se dikhta hai
     # (taaki jis student ne attempt nahi kiya usko bhi ranking/marks dekhne ko mile)

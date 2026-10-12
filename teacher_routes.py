@@ -4112,8 +4112,15 @@ def _notify_new_content(db, batch_id, subject, teacher_name, kind):
             sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).filter(StudentProfile.id.in_(list(ids))).all()
         else:
             sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+        # BUG FIX: ek test jo EXPLICITLY ek batch ke liye bheja gaya hai, uska notification us
+        # batch ke SABHI students ko jaana chahiye (chahe unke apne subject list me ye subject na
+        # ho) — kyunki teacher ne poore batch ko target kiya. Ye visibility fix se consistent hai.
+        # Global content (batch_id None) hamesha subject-scoped rehta hai.
+        _notify_whole_batch = bool(batch_id) and kind == "test"
         for sp in sps:
-            if sp.user and sp.subjects and nk in {_subj_norm(x) for x in sp.subjects}:
+            if not sp.user:
+                continue
+            if _notify_whole_batch or (sp.subjects and nk in {_subj_norm(x) for x in sp.subjects}):
                 notify(db, sp.user_id, title, body, ntype)
         db.commit()
     except Exception:
