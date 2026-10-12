@@ -14439,9 +14439,11 @@ async function vtpChaptersPreview(){
   try{
     const r=await api('/api/admin/video-tasks/project-chapters?subject='+encodeURIComponent(subject)+(level?'&class_level='+level:'')+'&scope='+scope+(grp!==undefined?'&group='+encodeURIComponent(grp):''));
     const gw=document.getElementById('vtp-group-wrap'); if(gw) gw.style.display=r.has_categories?'block':'none';
-    box.innerHTML=r.count
-      ?`<b>${r.count} chapters</b> will become the video items — ${esc(r.titles.slice(0,3).join(' · '))}${r.count>3?' …':''}`
-      :'No chapters found for this scope — choose a different scope, or set Connect to No and enter videos manually';
+    box.innerHTML=r.need_class
+      ?`<b style="color:#b45309">⚠ Select the class (10 or 12) first</b> — this subject exists in both Class 10 and Class 12, so the chapters differ.`
+      :(r.count
+        ?`<b>${r.count} chapters</b> will become the video items — ${esc(r.titles.slice(0,3).join(' · '))}${r.count>3?' …':''}`
+        :'No chapters found for this scope — choose a different scope, or set Connect to No and enter videos manually');
   }catch(e){ box.textContent='Could not fetch the chapter count'; }
 }
 function vtpItemAdd(v){

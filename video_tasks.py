@@ -722,35 +722,60 @@ def _chapters_for(db, tid, name, cls, scope="", group=""):
     group = (group or "").strip().lower()
     if group not in ("chapters", "categories"):
         group = ""
-    lv0 = _class_level(cls)
-    if lv0:
-        levels = [lv0]   # class pata ho to SIRF usi class ka syllabus — doosri
-                         # class ke chapters kabhi merge nahi (bulletproof)
-    else:
-        levels = ["12", "10"]
-    for lv in levels:
-        code = None
+    # ---- code resolution for a given class (AvailableSubject -> registry -> name map) ----
+    def _code_in(_lv):
+        _c = None
         # AUTHORITATIVE: (class_level, exact name) from the DB subject list — unambiguous
         # even when the same name exists in both classes (Painting 225 vs 332).
         try:
             from models import AvailableSubject as _AVS
-            _av = db.query(_AVS).filter(_AVS.class_level == lv, _AVS.name == name).first()
+            _av = db.query(_AVS).filter(_AVS.class_level == _lv, _AVS.name == name).first()
             if _av and _av.code:
-                code = _av.code
+                _c = _av.code
         except Exception:
-            code = None
-        if not code:
+            _c = None
+        if not _c:
             try:
-                r = canon_subject(name, lv)
+                r = canon_subject(name, _lv)
                 if r and r.get("code"):
-                    code = r["code"]
+                    _c = r["code"]
             except Exception:
                 pass
-        if not code:
+        if not _c:
             try:
-                code = SR.subject_code_for_name(db, lv, name)
+                _c = SR.subject_code_for_name(db, _lv, name)
             except Exception:
-                code = None
+                _c = None
+        return _c
+
+    # Class pata ho (ya subject naam me "10"/"12" ho) to SIRF usi class ka syllabus — doosri class
+    # ke chapters kabhi merge nahi. Agar naam me class laga ho ("Home Science 10") to class nikaal
+    # lo AUR naam saaf kar do (warna "Home Science 10" subject-code lookup me match nahi karta).
+    _lv_name = _class_level(name)
+    if _lv_name:
+        _cn = re.sub(r"\s*(?:class\s*)?(?:10|12)\s*$", "", name, flags=re.I).strip()
+        if _cn:
+            name = _cn
+    lv0 = _class_level(cls) or _lv_name
+    if lv0:
+        levels = [lv0]
+    else:
+        # BUG FIX (bulletproof): class bataye bina, GALAT class ka chapter kabhi mat do. Pehle yahan
+        # ["12","10"] tha -> class khaali hone par CHUPCHAAP Class 12 ke chapters aa jaate the (jaise
+        # "Home Science 10" project me Class 12 ke lessons). Ab:
+        #   - subject SIRF ek class me hai -> wahi class lo (unambiguous, e.g. sirf-10 ya sirf-12 subject)
+        #   - subject DONO class (10 & 12) me same naam se hai (Home Science, Painting, Economics,
+        #     Psychology, Business Studies, Accountancy, DEO...) -> AMBIGUOUS: koi chapter mat do,
+        #     caller/admin class chune. Isse kabhi doosri class ke chapters leak nahi honge.
+        _present = [lv for lv in ("10", "12") if _code_in(lv)]
+        if len(_present) == 1:
+            levels = _present
+        elif len(_present) >= 2:
+            return [], "ambiguous"
+        else:
+            levels = ["12", "10"]   # registry me kahin nahi -> purana timetable fallback chale
+    for lv in levels:
+        code = _code_in(lv)
         if not code:
             continue
         subj = SR.get_subject(db, lv, code)
@@ -964,30 +989,48 @@ def _tagged_chapters_for(db, name, cls):
     from subjects_registry import canon_subject
     import syllabus_routes as SR
     import syllabus_data as SD
-    lv0 = _class_level(cls)
-    levels = [lv0] if lv0 else ["12", "10"]
-    for lv in levels:
-        code = None
-        # AUTHORITATIVE: (class_level, exact name) from DB — unambiguous across classes.
+    def _code_in(_lv):
+        _c = None
         try:
             from models import AvailableSubject as _AVS
-            _av = db.query(_AVS).filter(_AVS.class_level == lv, _AVS.name == name).first()
+            _av = db.query(_AVS).filter(_AVS.class_level == _lv, _AVS.name == name).first()
             if _av and _av.code:
-                code = _av.code
+                _c = _av.code
         except Exception:
-            code = None
-        if not code:
+            _c = None
+        if not _c:
             try:
-                r = canon_subject(name, lv)
+                r = canon_subject(name, _lv)
                 if r and r.get("code"):
-                    code = r["code"]
+                    _c = r["code"]
             except Exception:
                 pass
-        if not code:
+        if not _c:
             try:
-                code = SR.subject_code_for_name(db, lv, name)
+                _c = SR.subject_code_for_name(db, _lv, name)
             except Exception:
-                code = None
+                _c = None
+        return _c
+    # naam me class laga ho to nikaalo + naam saaf karo
+    _lv_name = _class_level(name)
+    if _lv_name:
+        _cn = re.sub(r"\s*(?:class\s*)?(?:10|12)\s*$", "", name, flags=re.I).strip()
+        if _cn:
+            name = _cn
+    lv0 = _class_level(cls) or _lv_name
+    if lv0:
+        levels = [lv0]
+    else:
+        # ambiguity guard: dono class me same naam -> galat class guess mat karo (no wrong chapters)
+        _present = [lv for lv in ("10", "12") if _code_in(lv)]
+        if len(_present) == 1:
+            levels = _present
+        elif len(_present) >= 2:
+            return [], "ambiguous"
+        else:
+            levels = ["12", "10"]
+    for lv in levels:
+        code = _code_in(lv)
         if not code:
             continue
         subj = SR.get_subject(db, lv, code)
@@ -4380,6 +4423,14 @@ def vt_create_project(payload: dict = Body(...),
     if class_level not in ("10", "12"):
         class_level = ""
     connect = bool(payload.get("connect"))
+    # BULLETPROOF class: agar class explicitly nahi aayi to TITLE/SUBJECT se infer karo
+    # ("Home Science 10" -> "10"). Warna syllabus-connect galti se Class 12 ke chapters utha leta tha.
+    if not class_level:
+        class_level = _class_level(payload.get("title") or "") or _class_level(subject) or ""
+    # Syllabus se chapters chahiye par class ab bhi pata nahi -> galat class guess mat karo: saaf error.
+    if connect and subject and class_level not in ("10", "12"):
+        raise HTTPException(400, "Is subject ki class chuno (10 ya 12) — tabhi us class ke sahi "
+                                 "syllabus chapters aayenge (10th aur 12th ke chapters alag hote hain).")
     final_dl = _parse_deadline(payload.get("deadline"))
     if not final_dl:
         raise HTTPException(400, "Final deadline is required")
@@ -4424,6 +4475,9 @@ def vt_create_project(payload: dict = Body(...),
     if connect and subject:
         items, _src = _chapters_for(db, tp.id, subject, class_level, chapter_scope, chapter_group)
         item_source = "syllabus"
+        if _src == "ambiguous":
+            raise HTTPException(400, "Ye subject Class 10 aur 12 dono me hai — pehle class (10 ya 12) "
+                                     "chuno taaki sahi class ke chapters aayein.")
         if not items:
             raise HTTPException(400, "No chapters found for this scope in the syllabus "
                                      "manager — choose a different chapter scope or enter "
@@ -4522,6 +4576,11 @@ def vt_admin_project_chapters(subject: str = "", class_level: str = "",
     tp = _teacher_profile(db, teacher_id) if teacher_id else None
     titles, src = _chapters_for(db, tp.id if tp else 0, subject, class_level, scope, group)
     _catp, _ = _chapters_for(db, tp.id if tp else 0, subject, class_level, "", "categories")
+    # ambiguous = subject Class 10 aur 12 dono me hai, par class nahi chuni -> admin ko bata do.
+    if src == "ambiguous":
+        return {"count": 0, "titles": [], "source": "ambiguous", "has_categories": False,
+                "need_class": True,
+                "message": "Ye subject Class 10 aur 12 dono me hai — pehle class chuno."}
     return {"count": len(titles), "titles": titles[:8], "source": src,
             "has_categories": len(_catp) > 0}
 
