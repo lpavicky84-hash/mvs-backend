@@ -1426,6 +1426,7 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
       // EDITOR: project chapters uske My Tasks grid me aate hain -> wahan ja ke us chapter ka
       // detail kholo (grid load hone par _edtChapData[cid] bhar jaata hai, isliye thoda poll).
       if(role==='editor'){
+        if(typeof window._edtOpenChapFromNotif==='function'){ try{ window._edtOpenChapFromNotif(_cc); }catch(e){} return; }
         try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
         var _ecTries=0, _openEc=function(){
           var v=(window._edtChapData||{})[_cc];
@@ -29050,8 +29051,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(chapterId){
       if(ntype==='creative_brief' && portal==='editor'){ try{ edtBriefOpen(taskId||0, chapterId); return; }catch(e){} }
       // EDITOR: apna chapter detail kholo (My Tasks grid se — PM wala prodOpenChapter nahi, warna
-      // "not assigned to you" aata tha). Grid load hone par _edtChapData[cid] bharta hai -> poll.
+      // "not assigned to you" aata tha). Helper filter clear karke, chapter seedha fetch karke
+      // drawer kholta hai + us card tak scroll/flash karta hai (grid filter par depend nahi).
       if(portal==='editor'){
+        if(typeof window._edtOpenChapFromNotif==='function'){ try{ window._edtOpenChapFromNotif(chapterId); }catch(e){} return; }
         try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
         var _ecN=0, _openEc=function(){
           var v=(window._edtChapData||{})[chapterId];
@@ -34832,6 +34835,50 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       (chips.length?'<div class="pw-chips">'+chips.join('')+'</div>':'')+progBar+dlBox+idrow+
       '<div class="ptc-acts">'+acts+'</div></div></div>';
   }
+  // Notification se aaya project-chapter ko editor ke My Tasks me RELIABLY kholo + highlight karo.
+  // Pehle poll-only tareeka tha: grid render par hi _edtChapData[cid] bharta tha, aur agar koi
+  // status/preset filter laga ho (ya chapter us filter me match na kare) to card kabhi render nahi
+  // hota -> _edtChapData[cid] khaali -> drawer khula hi nahi. Ab: (1) editor filter clear, (2) My
+  // Tasks pe jao, (3) /project-videos seedha fetch karke chapter cache+drawer kholo (grid ka wait
+  // nahi), (4) grid paint hote hi us card tak scroll + flash.
+  window._edtOpenChapFromNotif=function(cid){
+    cid=parseInt(cid,10); if(!cid) return;
+    // 1) koi bhi active editor filter/preset/search hata do -> chapter filter se out na ho
+    try{ var f=_flt('editor'); f.status=''; f.epreset=''; f.deadline=''; f.priority=''; f.q=''; f._locked=false;
+         var s=document.getElementById('edt-search'); if(s) s.value=''; }catch(e){}
+    // 2) My Tasks page
+    try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
+    var _open=function(v){
+      try{ window._edtChapData=window._edtChapData||{}; window._edtChapData[cid]=v; }catch(e){}
+      try{ if(typeof window._edtChapOpen==='function') window._edtChapOpen(cid); }catch(e){}
+      // 4) grid paint hone ke baad us chapter card tak scroll + flash (filter clear hai to zaroor dikhega)
+      var _n=0, _hl=function(){
+        var card=document.querySelector('[data-edtchap="'+cid+'"]');
+        if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+                  try{ if(typeof _flashCard==='function') _flashCard(card); }catch(e){} return; }
+        if(_n++<12){ setTimeout(_hl, 350); }
+      };
+      setTimeout(_hl, 500);
+    };
+    // 3) chapter seedha fetch -> drawer turant khule (grid ke async render par depend na kare)
+    try{
+      api(P.editor.api+'/project-videos').then(function(pv){
+        var vids=(pv&&pv.videos)||[]; var hit=null;
+        try{ window._edtChapData=window._edtChapData||{}; vids.forEach(function(v){ if(v&&v.chapter_id) window._edtChapData[v.chapter_id]=v; }); }catch(e){}
+        for(var i=0;i<vids.length;i++){ if(vids[i] && vids[i].chapter_id===cid){ hit=vids[i]; break; } }
+        if(hit){ _open(hit); return; }
+        var cached=(window._edtChapData||{})[cid];
+        if(cached){ _open(cached); }
+        else { try{ toast('Yeh chapter aapko assigned nahi mila',true); }catch(e){} }
+      }).catch(function(){
+        // fetch fail -> purane grid-poll par gir jao
+        var cached=(window._edtChapData||{})[cid];
+        if(cached){ _open(cached); return; }
+        var _m=0, _p=function(){ var v=(window._edtChapData||{})[cid]; if(v){ _open(v); return; } if(_m++<10){ setTimeout(_p,400); } };
+        setTimeout(_p,400);
+      });
+    }catch(e){}
+  };
   // match a chapter against the editor's current filter (dropdown `status` OR sidebar `epreset`)
   function _edtChapMatch(v, status, epreset){
     var st=_edtChapState(v);
