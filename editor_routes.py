@@ -77,7 +77,11 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
         for c in (db.query(_VC).filter(_VC.task_id.in_(list(pmap.keys())),
                                        _VC.editor_id == sp.id).all()):
             t = pmap.get(c.task_id)
-            _dl = getattr(c, "deadline", None) or (t.deadline if t else None)
+            # EDITOR deadline = per-chapter editor_deadline (admin/PM ne assign pe jo set kiya), fir
+            # chapter.deadline, fir project deadline. Pehle sirf c.deadline padha jaata tha isliye
+            # editor ko admin ka naya "Editor deadline" (14 Oct) nahi, purana 10 Oct dikhta tha.
+            _dl = (getattr(c, "editor_deadline", None) or getattr(c, "deadline", None)
+                   or (t.deadline if t else None))
             _sa = getattr(c, "editing_started_at", None)
             vids.append({
                 "chapter_id": c.id, "title": c.title,
@@ -97,10 +101,14 @@ def editor_project_videos(db: Session = Depends(get_db), me=Depends(get_editor))
                 "edit_review_status": (getattr(c, "edit_review_status", "") or ""),
                 "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
                 "thumbnail": (getattr(c, "thumbnail_link", "") or ""),
-                "started_at": pc._dt(_sa),
+                "started_at": pc._dt(_sa),            # editing_started_at UTC -> IST
                 "started_at_iso": (_sa.strftime("%Y-%m-%dT%H:%M:%S") if _sa else ""),
-                "deadline": pc._dt(_dl),
+                # deadline IST-naive (user-entered) -> RAW dikhao (pehle pc._dt se +5:30 shift ho jaata tha).
+                "deadline": pc._dt_raw(_dl),
                 "deadline_iso": (_dl.strftime("%Y-%m-%dT%H:%M:%S") if _dl else ""),
+                # editor ki deadline-extension request ki sthiti (pending/approved/rejected)
+                "deadline_req_status": (getattr(c, "deadline_req_status", "") or ""),
+                "deadline_req": pc._dt_raw(getattr(c, "deadline_req", None)),
             })
     whole = [{"project_id": t.id, "title": t.title or t.subject or "Project",
               "subject": t.subject or "", "kind": t.kind, "deadline": pc._dt(t.deadline)}
@@ -365,6 +373,46 @@ def editor_chapter_chat_ping(cid: int, payload: dict = Body(default={}), db: Ses
     _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_ping
     return chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")))
+
+
+@router.post("/project-videos/{cid}/request-deadline")
+def editor_chapter_request_deadline(cid: int, payload: dict = Body(...),
+                                    db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Editor asks the PM for a NEW editor deadline on a PROJECT CHAPTER (parity with the normal
+    task /tasks/{tid}/request-deadline). PM must approve before it changes."""
+    c = _assert_editor_chapter(db, me, cid)
+    raw = (payload.get("deadline") or "").strip()
+    reason = (payload.get("reason") or "").strip()
+    if not raw:
+        raise HTTPException(400, "Please choose the new deadline you need.")
+    if not reason:
+        raise HTTPException(400, "Please add a short reason for the PM.")
+    try:
+        newdl = datetime.fromisoformat(raw.replace("Z", ""))
+    except Exception:
+        raise HTTPException(400, "Invalid date/time.")
+    c.deadline_req = newdl
+    c.deadline_req_reason = reason[:400]
+    c.deadline_req_status = "pending"
+    try:
+        import video_tasks as _vt
+        _vt._chap_event(c, "deadline_requested",
+                        "New deadline requested: %s — %s" % (newdl.strftime("%d %b %Y, %I:%M %p"), reason[:120]),
+                        actor=me)
+    except Exception:
+        pass
+    t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+    try:
+        pc.notify_pms(db, "Deadline Extension Requested",
+                      '%s requested a new deadline for "%s"%s.' % (
+                          getattr(me, "name", "Editor"), (c.title or "a chapter"),
+                          (' (%s)' % t.title) if t else ""),
+                      "production", link=("chap:%d" % c.id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "deadline_req_status": c.deadline_req_status,
+            "deadline_req": pc._dt_raw(c.deadline_req)}
 
 
 @router.get("/chapters/{cid}/timeline")

@@ -1418,10 +1418,30 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
     if(_m){ var _cid=parseInt(_m[1],10); setTimeout(function(){ try{ (role==='admin')?amcCmpOpen(_cid):scOpenDetail(_cid); }catch(e){} }, 420); }
     return;
   }
-  // Project-chapter deep link (chap:<chapter_id>) -> open that exact chapter drawer.
+  // Project-chapter deep link (chap:<chapter_id>) -> open that exact chapter in the viewer's portal.
   if(link.indexOf('chap:')===0){
     const _cc=parseInt(link.slice(5),10);
-    if(_cc){ try{ closeModal(); }catch(e){} try{ if(typeof window.prodOpenChapter==='function'){ window.prodOpenChapter((role==='admin')?'admin':'production', _cc); openNotifPanel(role); return; } }catch(e){} }
+    if(_cc){
+      try{ closeModal(); }catch(e){}
+      // EDITOR: project chapters uske My Tasks grid me aate hain -> wahan ja ke us chapter ka
+      // detail kholo (grid load hone par _edtChapData[cid] bhar jaata hai, isliye thoda poll).
+      if(role==='editor'){
+        try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
+        var _ecTries=0, _openEc=function(){
+          var v=(window._edtChapData||{})[_cc];
+          if(v && typeof window._edtChapOpen==='function'){ try{ window._edtChapOpen(_cc); }catch(e){} openNotifPanel(role); return; }
+          if(_ecTries++<8){ setTimeout(_openEc, 400); } else { openNotifPanel(role); }
+        };
+        setTimeout(_openEc, 450); return;
+      }
+      // GRAPHICS: project thumbnails page pe le jao (wahan ye chapter dikhega).
+      if(role==='graphics'){
+        try{ if(typeof prodNav==='function') prodNav('graphics','projectthumbs'); }catch(e){}
+        openNotifPanel(role); return;
+      }
+      // PM / Admin: chapter drawer seedha kholo.
+      try{ if(typeof window.prodOpenChapter==='function'){ window.prodOpenChapter((role==='admin')?'admin':'production', _cc); openNotifPanel(role); return; } }catch(e){}
+    }
   }
   // Numeric task id -> navigate INSIDE the app to that task and highlight it
   const tid=parseInt(link,10);
@@ -31304,14 +31324,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._pqSetFilter=function(k){ window._pqFilter=(window._pqFilter===k?'':k); _renderQueues(); };
   function _dreqCardHtml(t){
     var by=(t.requested_by||t.editor_name||'').trim();
-    return '<div class="pq-dreq blink" onclick="_ytpOpen('+t.id+')" title="Tap to open task details">'+
+    // project CHAPTER request -> chapter drawer kholo + chapter decision endpoint use karo
+    var isChap=!!t.is_chapter;
+    var openFn=isChap?('prodOpenChapter(\'production\','+(t.chapter_id||0)+')'):('_ytpOpen('+t.id+')');
+    var apFn=isChap?('prodChapDeadlineDecision(\'production\','+(t.chapter_id||0)+',\'approve\')'):('prodDeadlineDecision('+t.id+',\'approve\')');
+    var rjFn=isChap?('prodChapDeadlineDecision(\'production\','+(t.chapter_id||0)+',\'reject\')'):('prodDeadlineDecision('+t.id+',\'reject\')');
+    var ttl=isChap?((t.title||'Chapter')+(t.project_title?(' \u00b7 '+t.project_title):'')):(t.title||'Untitled');
+    return '<div class="pq-dreq blink" onclick="'+openFn+'" title="Tap to open details">'+
       '<div class="pq-dreq-body">'+
         '<div class="pq-dreq-head">'+
           '<span class="pq-dreq-tag">'+ic('clock')+' DEADLINE EXTENSION</span>'+
-          (t.video_type?'<span class="vt-type">'+esc(t.video_type)+'</span>':'')+
+          (isChap?'<span class="vt-type" style="background:#8f3d6622;color:#8f3d66">PROJECT CHAPTER</span>':(t.video_type?'<span class="vt-type">'+esc(t.video_type)+'</span>':''))+
           '<span class="pq-dreq-tap">Tap for details \u203a</span>'+
         '</div>'+
-        '<div class="pq-dreq-title">'+esc(t.title||'Untitled')+'</div>'+
+        '<div class="pq-dreq-title">'+esc(ttl)+'</div>'+
         '<div class="pq-dreq-by">'+ic('user')+'<span><small>Requested by</small> '+esc(by||'\u2014')+'</span></div>'+
         '<div class="pq-dl">'+
           '<div class="pq-dl-col"><span>Current deadline</span><b>'+esc(t.deadline_prev||'\u2014')+'</b></div>'+
@@ -31320,8 +31346,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '</div>'+
         (t.deadline_req_reason?'<div class="pq-dreq-reason">\u201c'+esc(t.deadline_req_reason)+'\u201d</div>':'')+
         '<div class="pq-dreq-acts">'+
-          '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();prodDeadlineDecision('+t.id+',\'approve\')">'+ic('check')+' Approve</button>'+
-          '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();prodDeadlineDecision('+t.id+',\'reject\')">Reject</button>'+
+          '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();'+apFn+'">'+ic('check')+' Approve</button>'+
+          '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();'+rjFn+'">Reject</button>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -34661,10 +34687,39 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     else { if(v.edited_link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.edited_link)+'\',\'_blank\',\'noopener\')">Edited Video</button>';
       acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtPvReopen('+cid+')">Change</button>'; }
     if(v.link) acts+='<button class="ptc-btn" onclick="event.stopPropagation();window.open(\''+_esc1(v.link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Source</button>';
+    // Deadline-extension request (normal task jaisa) — jab tak edit active hai (submit se pehle).
+    if(st==='assigned'||st==='editing'||st==='paused'||st==='changes'){
+      var _drp=(v.deadline_req_status==='pending');
+      if(_drp) acts+='<button class="ptc-btn" disabled style="opacity:.7">'+ic('clock')+' Extension Pending</button>';
+      else acts+='<button class="ptc-btn" onclick="event.stopPropagation();edtChapReqDeadline('+cid+')">'+ic('clock')+' Request Deadline</button>';
+    }
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjChatOpen(\'/api/editor\','+cid+',\''+tnm+'\',\'editor\')">💬 Chat</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();_pjTimelineOpen(\'/api/editor\','+cid+')">Timeline</button>';
     return acts;
   }
+  // Editor: project chapter ke liye nayi deadline request (normal task ki tarah) — PM approve karega.
+  window.edtChapReqDeadline=function(cid){
+    var v=(window._edtChapData||{})[cid]||{};
+    var old=document.getElementById('prod-modal'); if(old) old.remove();
+    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
+    dr.innerHTML='<div class="p-modal" style="max-width:440px"><div class="pd-head"><div><div class="h-title">Request New Deadline</div><div style="font-size:.8rem;color:var(--muted,#8a7d5c);margin-top:2px">'+esc(v.title||'Chapter')+'</div></div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
+      '<div class="p-modal-body">'+(v.deadline?('<div class="p-field" style="font-size:.82rem;color:var(--muted,#8a7d5c)">Current deadline: <b>'+esc(v.deadline)+'</b></div>'):'')+
+      '<div class="p-field"><label>New deadline you need</label><input class="p-input" id="edcr-dl" type="datetime-local"></div>'+
+      '<div class="p-field"><label>Reason (PM will see this)</label><textarea class="p-area" id="edcr-rs" placeholder="Why do you need more time?"></textarea></div></div>'+
+      '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="edcr-sub" onclick="edtChapReqDeadlineDo('+cid+')">Send Request</button></div></div></div>';
+    dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
+    document.body.appendChild(dr);
+  };
+  window.edtChapReqDeadlineDo=function(cid){
+    var dt=((document.getElementById('edcr-dl')||{}).value||'').trim();
+    var rs=((document.getElementById('edcr-rs')||{}).value||'').trim();
+    if(!dt){ toast('Pick the new deadline',true); return; }
+    if(!rs){ toast('Add a reason',true); return; }
+    var b=document.getElementById('edcr-sub'); if(b){ b.disabled=true; b.style.opacity='.6'; }
+    api(P.editor.api+'/project-videos/'+cid+'/request-deadline','POST',{deadline:dt,reason:rs}).then(function(){
+      prodDismiss(); toast('Request sent to PM'); try{ _edtChapClose(); }catch(e){} _refresh('editor');
+    }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
+  };
   function _edtChapTabHtml(v){
     var st=_edtChapState(v);
     var stLbl=(_EDT_CHST[(st==='edited'&&v.qc_status==='approved')?'approved':st]||_EDT_CHST.assigned)[0];
@@ -35512,6 +35567,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         (wi.editor_instructions?_kv('Instructions', esc(wi.editor_instructions)):'')+
         (wi.editor_reference?_kv('Reference', _link(wi.editor_reference,'Open reference')):'')+
         _kv('Editor deadline', esc(wi.editor_deadline||wi.deadline||'Not set'))+
+        (wi.deadline_req_status==='pending'?_kv('Extension requested', '<span class="pd-hot">'+esc(wi.deadline_req||'')+'</span>'+(wi.deadline_req_reason?(' — '+esc(wi.deadline_req_reason)):'')+' <span style="color:var(--muted,#8a7d5c)">(approve/reject below)</span>'):'')+
         _kv('Progress', (wi.editing_progress!=null?(wi.editing_progress+'%'):'—'))+
         _kv('Edited link', _link(wi.edited_link,'Open edited')+(wi.edited_direct?' <span style="color:var(--muted,#8a7d5c)">(credited)</span>':''))+
         _kv('QC status', esc({'':'—',pending:'QC pending',approved:'QC approved',changes:'Changes requested'}[wi.qc_status||'']||wi.qc_status||'—'))+
@@ -35555,6 +35611,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(A.schedule_upload) add('','Set Upload Date','prodChapSchedule('+cid+')');
       if(A.post_youtube) add('p-btn-primary',''+ic('upload')+' Post YouTube URL','prodChapYoutube(\''+portal+'\','+tid+','+cid+',\''+_esc1(wi.title)+'\')');
       if(A.link_existing_youtube) add('','Link Existing YouTube','prodChapLinkYT('+cid+')');
+      // PM/Admin: editor deadline change + pending extension-request approve/reject (normal task jaisa)
+      if((portal==='production'||portal==='admin') && wi.editor){
+        if(wi.deadline_req_status==='pending'){
+          add('p-btn-ok ptc-review-blink','<span class="rev-dot"></span>Approve Extension','prodChapDeadlineDecision(\''+portal+'\','+cid+',\'approve\')');
+          add('p-btn-danger','Reject Extension','prodChapDeadlineDecision(\''+portal+'\','+cid+',\'reject\')');
+        }
+        add('',ic('clock')+' Change Deadline','prodChapDeadline(\''+portal+'\','+cid+')');
+      }
     } else {
       // fallback: legacy state-machine buttons from the cached chapter
       var legacy=_chapActBtns(portal, wi._legacy||wi, tid, 'panel'); if(legacy) return '<div class="p-acts">'+legacy+'</div>';
@@ -35903,6 +35967,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(c && typeof _wiFromCached==='function'){ try{ return _wiFromCached(c,cid); }catch(e){} }
     return {id:cid, title:(c&&c.title)||'Chapter', parent_project_id:(c&&c.task_id)};
   }
+  // PM/Admin: chapter ki EDITOR deadline seedha set/extend karo (request ka wait nahi).
+  window.prodChapDeadline=function(portal,cid){
+    portal=portal||'production'; var wi=_chWiFor(cid);
+    var cur=(wi.editor_deadline_iso||'').slice(0,16);
+    _chModal('Change Editor Deadline', wi.title||'Chapter',
+      (wi.editor_deadline?('<div class="p-field" style="font-size:.82rem;color:var(--muted,#8a7d5c)">Current: <b>'+esc(wi.editor_deadline)+'</b></div>'):'')+
+      (wi.deadline_req_status==='pending'?('<div class="p-field" style="font-size:.82rem;color:#b45309">Editor requested: <b>'+esc(wi.deadline_req||'')+'</b>'+(wi.deadline_req_reason?(' — '+esc(wi.deadline_req_reason)):'')+'</div>'):'')+
+      '<div class="p-field"><label>New editor deadline</label><input class="p-input" id="pcdl-dl" type="datetime-local"'+(cur?(' value="'+esc(cur)+'"'):'')+'></div>',
+      '<button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" onclick="prodChapDeadlineDo('+cid+')">Save</button>', 460);
+  };
+  window.prodChapDeadlineDo=function(cid){
+    var dt=((document.getElementById('pcdl-dl')||{}).value||'').trim();
+    if(!dt){ toast('Pick the new deadline',true); return; }
+    api(P.production.api+'/chapter-deadline','POST',{chapter_id:cid, editor_deadline:dt}).then(function(){
+      prodDismiss(); toast('Editor deadline updated'); _chapAfterAny(cid);
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
+  // PM/Admin: editor ki deadline-extension request approve/reject.
+  window.prodChapDeadlineDecision=function(portal,cid,decision){
+    api(P.production.api+'/chapter-deadline-decision','POST',{chapter_id:cid, decision:decision}).then(function(){
+      toast(decision==='approve'?'Deadline extended':'Request rejected'); _chapAfterAny(cid);
+    }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
+  };
   window.prodChapAssignEditor=function(portal,cid){
     portal=portal||'production';
     var wi=_chWiFor(cid);

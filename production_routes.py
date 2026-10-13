@@ -4430,6 +4430,94 @@ def prod_chapter_qc(payload: dict = Body(...), db: Session = Depends(get_db),
     raise HTTPException(400, "Unknown action")
 
 
+@router.post("/chapter-deadline")
+def prod_chapter_deadline(payload: dict = Body(...), db: Session = Depends(get_db),
+                          me=Depends(get_pm_or_admin)):
+    """PM/Admin DIRECTLY sets/extends a chapter's EDITOR deadline (no request needed). Parity with
+    the normal-task editor deadline edit. Old value kept in the chapter timeline."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(payload.get("chapter_id") or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    raw = (payload.get("editor_deadline") or payload.get("deadline") or "").strip()
+    if not raw:
+        raise HTTPException(400, "Please choose the new editor deadline.")
+    try:
+        newdl = datetime.fromisoformat(raw.replace("Z", ""))
+    except Exception:
+        raise HTTPException(400, "Invalid date/time.")
+    old = getattr(row, "editor_deadline", None)
+    row.editor_deadline = newdl
+    # agar koi pending request thi to use bhi resolve kar do (PM ne manually set kar diya)
+    if (getattr(row, "deadline_req_status", "") or "") == "pending":
+        row.deadline_req_status = "approved"
+    _vt._chap_event(row, "deadline_extended",
+                    "Editor deadline set: %s → %s" % (
+                        (old.strftime("%d %b %Y, %I:%M %p") if old else "none"),
+                        newdl.strftime("%d %b %Y, %I:%M %p")), actor=me)
+    # editor ko notify karo
+    try:
+        if getattr(row, "editor_id", None):
+            ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == row.editor_id).first()
+            if ep and ep.user_id:
+                pc.notify(db, ep.user_id, "Editor deadline updated",
+                          'New deadline for "%s": %s.' % (row.title or "chapter",
+                                                          newdl.strftime("%d %b %Y, %I:%M %p")),
+                          "video_task", link=("chap:%d" % row.id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "chapter_id": row.id,
+            "editor_deadline": (newdl.strftime("%d %b %Y, %I:%M %p"))}
+
+
+@router.post("/chapter-deadline-decision")
+def prod_chapter_deadline_decision(payload: dict = Body(...), db: Session = Depends(get_db),
+                                   me=Depends(get_pm_or_admin)):
+    """PM/Admin approves or rejects an editor's deadline-extension request on a CHAPTER.
+    approve -> editor_deadline = requested value; reject -> current deadline stands."""
+    if not _PROJECT_OK:
+        raise HTTPException(400, "Not available on this server build.")
+    import video_tasks as _vt
+    row = db.query(_PVChapter).filter(_PVChapter.id == int(payload.get("chapter_id") or 0)).first()
+    if not row:
+        raise HTTPException(404, "Video not found")
+    if (getattr(row, "deadline_req_status", "") or "") != "pending":
+        raise HTTPException(400, "No pending deadline request on this chapter.")
+    decision = (payload.get("decision") or "").strip().lower()
+    if decision not in ("approve", "reject"):
+        raise HTTPException(400, "decision must be approve or reject")
+    old = getattr(row, "editor_deadline", None)
+    new = getattr(row, "deadline_req", None)
+    if decision == "approve":
+        if new:
+            row.editor_deadline = new
+        row.deadline_req_status = "approved"
+        _vt._chap_event(row, "deadline_extended",
+                        "Editor deadline extended: %s → %s" % (
+                            (old.strftime("%d %b %Y, %I:%M %p") if old else "none"),
+                            (new.strftime("%d %b %Y, %I:%M %p") if new else "none")), actor=me)
+        _msg = 'Your deadline request for "%s" was approved. New deadline: %s.' % (
+            row.title or "chapter", new.strftime("%d %b %Y, %I:%M %p") if new else "")
+    else:
+        row.deadline_req_status = "rejected"
+        _vt._chap_event(row, "deadline_rejected", "Deadline extension rejected", actor=me)
+        _msg = 'Your deadline request for "%s" was not approved. Current deadline stands.' % (row.title or "chapter")
+    try:
+        if getattr(row, "editor_id", None):
+            ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == row.editor_id).first()
+            if ep and ep.user_id:
+                pc.notify(db, ep.user_id, "Deadline Request " + ("Approved" if decision == "approve" else "Rejected"),
+                          _msg, "video_task", link=("chap:%d" % row.id))
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "chapter_id": row.id, "decision": decision,
+            "editor_deadline": (row.editor_deadline.strftime("%d %b %Y, %I:%M %p") if getattr(row, "editor_deadline", None) else "")}
+
+
 @router.post("/chapter-upload-schedule")
 def prod_chapter_upload_schedule(payload: dict = Body(...), db: Session = Depends(get_db),
                                  me=Depends(get_pm_or_admin)):
@@ -4757,7 +4845,12 @@ def chapter_work_item(db, c, t=None, role="pm", name_map=None):
         "editor_id": getattr(c, "editor_id", None),
         "editor": nm.get(getattr(c, "editor_id", None), ""),
         "editor_deadline": _dt(getattr(c, "editor_deadline", None)),
+        "editor_deadline_iso": (c.editor_deadline.strftime("%Y-%m-%dT%H:%M:%S") if getattr(c, "editor_deadline", None) else ""),
         "editor_assigned_at": pc._dt(getattr(c, "editor_assigned_at", None) or getattr(c, "assigned_at", None)),   # UTC -> IST
+        # editor ki deadline-extension request (pending ho to PM ko approve/reject dikhega)
+        "deadline_req_status": getattr(c, "deadline_req_status", "") or "",
+        "deadline_req": _dt(getattr(c, "deadline_req", None)),
+        "deadline_req_reason": getattr(c, "deadline_req_reason", "") or "",
         "editor_instructions": getattr(c, "editor_instructions", "") or "",
         "editor_reference": getattr(c, "editor_reference", "") or "",
         "editing_progress": getattr(c, "editing_progress", 0) or 0,
@@ -5632,9 +5725,12 @@ def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get
         if eid:
             ep = db.query(_SP).filter(_SP.id == eid).first()
             if ep and ep.user_id:
+                # link=chap:<cid> -> editor ke notification click se SEEDHA us chapter ka detail
+                # khule (pehle parent task_id tha isliye editor portal pe us video pe redirect nahi
+                # hota tha — normal task ki tarah ab chapter bhi deep-link hota hai).
                 pc.notify(db, ep.user_id, "Project video assigned for editing",
                           f'"{row.title}" from "{proj}" has been assigned to you for editing.',
-                          "video_task", link=str(row.task_id))
+                          "video_task", link=("chap:%d" % row.id))
                 try:
                     if pc.get_active_creative_brief(db, chapter_id=row.id) is not None:
                         pc.notify(db, ep.user_id, "Creative Editing Brief available",
@@ -5647,7 +5743,7 @@ def pm_assign_project_video(payload: dict = Body(...), db: Session = Depends(get
             if gp and gp.user_id:
                 pc.notify(db, gp.user_id, "Project thumbnail assigned",
                           f'A thumbnail for "{row.title}" from "{proj}" has been assigned to you.',
-                          "graphics_task", link=str(row.task_id))
+                          "graphics_task", link=("chap:%d" % row.id))
     except Exception:
         pass
     # ---- URGENT PAUSE-REQUEST parity: PM ne editor ke ek active task ko pause + new deadline
@@ -6285,6 +6381,26 @@ def pm_deadline_requests(db: Session = Depends(get_db), me=Depends(get_pm_or_adm
         d["deadline_prev"] = pc._dt(_prev)
         d["requested_by"] = pc._name_for_staff(db, t.editor_id) if t.editor_id else ""
         out.append(d)
+    # ---- project CHAPTER deadline requests (parity) ----
+    try:
+        if _PROJECT_OK:
+            for c in (db.query(_PVChapter).filter(_PVChapter.deadline_req_status == "pending").all()):
+                t = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+                _prev = (getattr(c, "editor_deadline", None) or getattr(c, "deadline", None)
+                         or (t.deadline if t else None))
+                out.append({
+                    "id": (t.id if t else c.task_id),
+                    "chapter_id": c.id, "is_chapter": True,
+                    "title": (c.title or "Chapter"),
+                    "project_title": ((t.title or t.subject or "Project") if t else "Project"),
+                    "subject": (t.subject if t else ""),
+                    "deadline_req": pc._dt_raw(getattr(c, "deadline_req", None)),
+                    "deadline_req_reason": getattr(c, "deadline_req_reason", "") or "",
+                    "deadline_prev": pc._dt_raw(_prev),
+                    "requested_by": (pc._name_for_staff(db, c.editor_id) if getattr(c, "editor_id", None) else ""),
+                })
+    except Exception:
+        pass
     return {"requests": out, "count": len(out)}
 
 

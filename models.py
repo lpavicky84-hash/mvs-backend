@@ -709,6 +709,10 @@ class VideoTaskChapter(Base):
     editor_instructions = Column(Text, default="")           # PM brief for the editor
     editor_reference    = Column(Text, default="")           # editor reference link / notes
     priority            = Column(String(10), default="normal")  # normal | urgent
+    # ---- editor DEADLINE-EXTENSION request (parity with VideoTask.deadline_req) ----
+    deadline_req        = Column(DateTime, nullable=True)    # editor-requested new editor_deadline (pending PM approval)
+    deadline_req_reason = Column(String(400), default="")    # editor's reason for the extension
+    deadline_req_status = Column(String(20), default="")     # '' | pending | approved | rejected
     # ---- PM editor QUALITY rating (SEPARATE from teacher's edit_review_rating) ----
     quality_rating    = Column(Integer, nullable=True)       # PM 1-5 rating of the editor's work
     quality_note      = Column(String(400), default="")      # PM quality note

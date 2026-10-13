@@ -1278,6 +1278,10 @@ def _ensure_production_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN graphics_assigned_at DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_quality_dims TEXT",
         "ALTER TABLE graphics_tasks ADD COLUMN quality_dims TEXT",
+        # ---- per-chapter editor DEADLINE-EXTENSION request (parity with normal task) ----
+        "ALTER TABLE video_task_chapters ADD COLUMN deadline_req DATETIME",
+        "ALTER TABLE video_task_chapters ADD COLUMN deadline_req_reason VARCHAR(400)",
+        "ALTER TABLE video_task_chapters ADD COLUMN deadline_req_status VARCHAR(20)",
     ]
     for _s in _stmts:
         try:

@@ -255,7 +255,9 @@ def get_editor_work_items(db, staff_id, now=None):
         edited = bool(done_at) or lc in _EDITED_LC or (getattr(c, "edit_state", "") == "edited")
         approved = lc in _APPROVED_LC or (getattr(c, "qc_status", "") == "approved")
         published = lc in _PUBLISHED_LC or bool(getattr(c, "youtube_url", "") or getattr(c, "published_at", None))
-        dl = getattr(c, "deadline", None)
+        # editor ko EDITOR deadline pe judge karo (c.editor_deadline), fir chapter deadline. Pehle
+        # sirf c.deadline (purana/earlier) use hota tha -> tasks jhuthe "delayed"/overdue dikhte the.
+        dl = getattr(c, "editor_deadline", None) or getattr(c, "deadline", None)
         st = getattr(c, "editing_started_at", None)
         ta = ((done_at - st).total_seconds() / 3600.0) if (st and done_at and done_at >= st) else None
         on_time = None
