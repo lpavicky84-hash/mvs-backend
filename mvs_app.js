@@ -29046,6 +29046,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     document.removeEventListener('click',_prodBellOutside);
     prodNotifRefreshDot(portal);
     chapterId=(chapterId&&chapterId!=='null')?chapterId:0;
+    // notification cache se us notif ka message nikaalo -> usme quoted chapter-title hota hai
+    // ("L-12. Supreme Court..." from "..."). Yeh editor resolver ko EXACT chapter dhoondhne deta hai
+    // chahe notification me chapter_id na aaya ho (purani notif / backend deploy baaki).
+    var _notifTitle='';
+    try{ var _nl=window._prodNotifCache||[]; for(var _ni=0;_ni<_nl.length;_ni++){ if(_nl[_ni] && _nl[_ni].id===nid){
+           var _tx=(_nl[_ni].message||'')+' — '+(_nl[_ni].title||'');
+           var _mq=_tx.match(/[“"]([^”"]+)[”"]/); if(_mq) _notifTitle=_mq[1]; break; } } }catch(e){}
     // CHAPTER deep-link ("task:chapter") -> open the exact chapter (brief viewer for the editor,
     // chapter drawer for PM/Admin). Was previously a dead click (task_id came back null).
     if(chapterId){
@@ -29054,7 +29061,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       // "not assigned to you" aata tha). Helper filter clear karke, chapter seedha fetch karke
       // drawer kholta hai + us card tak scroll/flash karta hai (grid filter par depend nahi).
       if(portal==='editor'){
-        if(typeof window._edtOpenChapFromNotif==='function'){ try{ window._edtOpenChapFromNotif(chapterId); }catch(e){} return; }
+        if(typeof window._edtOpenChapFromNotif==='function'){ try{ window._edtOpenChapFromNotif(chapterId, taskId, _notifTitle); }catch(e){} return; }
         try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
         var _ecN=0, _openEc=function(){
           var v=(window._edtChapData||{})[chapterId];
@@ -29087,6 +29094,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(ntype==='creative_brief'){
         if(portal==='editor'){ try{ edtBriefOpen(taskId, 0); return; }catch(e){} }
         else { try{ prodOpenTask(portal, taskId); return; }catch(e){} }
+      }
+      // EDITOR: ab tak koi special type match nahi hua (assign/generic task notif). Notification me
+      // chapter_id na aaya ho (purani notif / backend deploy baaki) tab bhi — quoted chapter-title
+      // se (ya parent task se) us project ka editor-assigned chapter dhoondh ke kholo; genuine
+      // whole-task ho to task khulega.
+      if(portal==='editor' && typeof window._edtOpenChapFromNotif==='function'){
+        try{ window._edtOpenChapFromNotif(0, taskId, _notifTitle); }catch(e){} return;
       }
       prodOpenTask(portal, taskId);
     }
@@ -34841,40 +34855,78 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // hota -> _edtChapData[cid] khaali -> drawer khula hi nahi. Ab: (1) editor filter clear, (2) My
   // Tasks pe jao, (3) /project-videos seedha fetch karke chapter cache+drawer kholo (grid ka wait
   // nahi), (4) grid paint hote hi us card tak scroll + flash.
-  window._edtOpenChapFromNotif=function(cid){
-    cid=parseInt(cid,10); if(!cid) return;
+  //
+  // RESOLUTION (sabse reliable se kam reliable):
+  //   1) cid (chapter_id, chap:<cid> deep-link se)  -> exact chapter.
+  //   2) chapTitle (notification message me quoted chapter ka naam, e.g. "L-12. Supreme Court...")
+  //      -> title se exact chapter match. Yeh tab bhi kaam karta hai jab notification me chapter_id
+  //      na ho AUR ek hi "All Chapters" project ke editor ko KAI chapters assigned ho (parent task
+  //      se disambiguate nahi hota, title se hota hai). parentTaskId ho to usi project me prefer.
+  //   3) parentTaskId -> us project ka editor-assigned chapter (agar sirf ek ho).
+  // chapTitle string optional hai (purani build/notif cache na ho to blank).
+  function _edtNorm(s){ return (''+(s||'')).toLowerCase().replace(/\s+/g,' ').replace(/[“”"']/g,'').trim(); }
+  function _edtLessonCode(s){ var m=(''+(s||'')).match(/^\s*([a-z]+\s*[-.]?\s*\d+)/i); return m?_edtNorm(m[1]).replace(/[-.\s]/g,''):''; }
+  window._edtOpenChapFromNotif=function(cid, parentTaskId, chapTitle){
+    cid=parseInt(cid,10)||0; parentTaskId=parseInt(parentTaskId,10)||0;
+    var wantT=_edtNorm(chapTitle), wantCode=_edtLessonCode(chapTitle);
+    if(!cid && !parentTaskId && !wantT) return;
     // 1) koi bhi active editor filter/preset/search hata do -> chapter filter se out na ho
     try{ var f=_flt('editor'); f.status=''; f.epreset=''; f.deadline=''; f.priority=''; f.q=''; f._locked=false;
          var s=document.getElementById('edt-search'); if(s) s.value=''; }catch(e){}
     // 2) My Tasks page
     try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
-    var _open=function(v){
-      try{ window._edtChapData=window._edtChapData||{}; window._edtChapData[cid]=v; }catch(e){}
-      try{ if(typeof window._edtChapOpen==='function') window._edtChapOpen(cid); }catch(e){}
-      // 4) grid paint hone ke baad us chapter card tak scroll + flash (filter clear hai to zaroor dikhega)
+    var _flashId=function(id){
       var _n=0, _hl=function(){
-        var card=document.querySelector('[data-edtchap="'+cid+'"]');
+        var card=document.querySelector('[data-edtchap="'+id+'"]');
         if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
                   try{ if(typeof _flashCard==='function') _flashCard(card); }catch(e){} return; }
         if(_n++<12){ setTimeout(_hl, 350); }
       };
       setTimeout(_hl, 500);
     };
+    var _open=function(v){
+      try{ window._edtChapData=window._edtChapData||{}; window._edtChapData[v.chapter_id]=v; }catch(e){}
+      try{ if(typeof window._edtChapOpen==='function') window._edtChapOpen(v.chapter_id); }catch(e){}
+      _flashId(v.chapter_id);   // grid paint hone par us card tak scroll + flash
+    };
+    var _fallbackTask=function(){
+      // koi chapter match nahi hua -> ya to genuine whole-task assignment hai ya fetch fail —
+      // last resort task drawer try karo (editor ka apna task ho to khulega).
+      if(parentTaskId){ try{ if(typeof window.prodOpenTask==='function') window.prodOpenTask('editor', parentTaskId); }catch(e){} }
+      else { try{ toast('Yeh chapter aapko assigned nahi mila',true); }catch(e){} }
+    };
     // 3) chapter seedha fetch -> drawer turant khule (grid ke async render par depend na kare)
     try{
       api(P.editor.api+'/project-videos').then(function(pv){
-        var vids=(pv&&pv.videos)||[]; var hit=null;
+        var vids=(pv&&pv.videos)||[];
         try{ window._edtChapData=window._edtChapData||{}; vids.forEach(function(v){ if(v&&v.chapter_id) window._edtChapData[v.chapter_id]=v; }); }catch(e){}
-        for(var i=0;i<vids.length;i++){ if(vids[i] && vids[i].chapter_id===cid){ hit=vids[i]; break; } }
+        var hit=null, matches=[], i;
+        // (1) chapter_id se exact
+        if(cid){ for(i=0;i<vids.length;i++){ if(vids[i] && vids[i].chapter_id===cid){ hit=vids[i]; break; } } }
+        // (2) notification me quoted chapter-title se exact (parent project me prefer)
+        if(!hit && wantT){
+          var tHits=vids.filter(function(v){ return v && _edtNorm(v.title)===wantT; });
+          if(!tHits.length && wantCode){ tHits=vids.filter(function(v){ return v && _edtLessonCode(v.title)===wantCode; }); }
+          if(parentTaskId){ var inProj=tHits.filter(function(v){ return v.project_id===parentTaskId; }); if(inProj.length) tHits=inProj; }
+          if(tHits.length) hit=tHits[0];
+        }
+        // (3) sirf parent task se (us project ka akela editor-chapter)
+        if(!hit && parentTaskId){ matches=vids.filter(function(v){ return v && v.project_id===parentTaskId; });
+                                  if(matches.length===1) hit=matches[0]; }
         if(hit){ _open(hit); return; }
-        var cached=(window._edtChapData||{})[cid];
-        if(cached){ _open(cached); }
-        else { try{ toast('Yeh chapter aapko assigned nahi mila',true); }catch(e){} }
-      }).catch(function(){
-        // fetch fail -> purane grid-poll par gir jao
-        var cached=(window._edtChapData||{})[cid];
+        if(matches.length>1){
+          // ek project ke kai chapters, title bhi nahi mila -> pehla kholo + baaki flash (best-effort)
+          _open(matches[0]); matches.slice(1).forEach(function(v){ if(v&&v.chapter_id) _flashId(v.chapter_id); }); return;
+        }
+        var cached=cid?((window._edtChapData||{})[cid]):null;
         if(cached){ _open(cached); return; }
-        var _m=0, _p=function(){ var v=(window._edtChapData||{})[cid]; if(v){ _open(v); return; } if(_m++<10){ setTimeout(_p,400); } };
+        _fallbackTask();
+      }).catch(function(){
+        // fetch fail -> cache dekho, warna task fallback
+        var cached=cid?((window._edtChapData||{})[cid]):null;
+        if(cached){ _open(cached); return; }
+        if(parentTaskId){ _fallbackTask(); return; }
+        var _m=0, _p=function(){ var v=cid?((window._edtChapData||{})[cid]):null; if(v){ _open(v); return; } if(_m++<10){ setTimeout(_p,400); } };
         setTimeout(_p,400);
       });
     }catch(e){}
