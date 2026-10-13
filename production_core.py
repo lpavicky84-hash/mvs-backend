@@ -2186,6 +2186,11 @@ def notifications_out(db, user, limit=40):
                 m = _re.match(r"^(\d+):(\d+)$", lk)
                 if m:
                     tid = int(m.group(1)); cid = int(m.group(2))
+                else:
+                    # project-chapter deep-link "chap:<chapterId>" (assign / deadline notifications)
+                    m2 = _re.match(r"^chap:(\d+)$", lk)
+                    if m2:
+                        cid = int(m2.group(1))
         except Exception:
             tid = None; cid = None
         out.append({"id": n.id, "title": n.title or "", "message": n.message or "",

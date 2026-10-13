@@ -29049,6 +29049,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // chapter drawer for PM/Admin). Was previously a dead click (task_id came back null).
     if(chapterId){
       if(ntype==='creative_brief' && portal==='editor'){ try{ edtBriefOpen(taskId||0, chapterId); return; }catch(e){} }
+      // EDITOR: apna chapter detail kholo (My Tasks grid se — PM wala prodOpenChapter nahi, warna
+      // "not assigned to you" aata tha). Grid load hone par _edtChapData[cid] bharta hai -> poll.
+      if(portal==='editor'){
+        try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e){}
+        var _ecN=0, _openEc=function(){
+          var v=(window._edtChapData||{})[chapterId];
+          if(v && typeof window._edtChapOpen==='function'){ try{ window._edtChapOpen(chapterId); }catch(e){} return; }
+          if(_ecN++<10){ setTimeout(_openEc, 400); }
+        };
+        setTimeout(_openEc, 350); return;
+      }
+      // GRAPHICS: project thumbnails page.
+      if(portal==='graphics'){ try{ if(typeof prodNav==='function') prodNav('graphics','projectthumbs'); }catch(e){} return; }
+      // PM / Admin: chapter drawer.
       try{ if(typeof window.prodOpenChapter==='function'){ window.prodOpenChapter((portal==='admin')?'admin':'production', chapterId); return; } }catch(e){}
     }
     if(taskId){
@@ -36635,7 +36649,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(portal==='production'){ try{ _loadChapters(id); }catch(e){} }
       if(portal==='production'){ try{ _prodRunPendingForm(); }catch(e){} }
       else { try{ _prodRunPendingForm(); }catch(e){} }
-    }).catch(function(e){ toast((e&&e.message)||'Could not open task',true); });
+    }).catch(function(e){
+      var _m=(e&&e.message)||'Could not open task';
+      // Editor ne apne project ka CONTAINER task khola (e.g. purana chapter-assign notification jisme
+      // parent task-id tha) -> wo task editor ka nahi hota. Scary error ke bajaye uske My Tasks pe
+      // le jao, jahan us project ke chapters dikhte hain.
+      if(portal==='editor' && /not assigned/i.test(_m)){
+        try{ if(typeof prodNav==='function') prodNav('editor','tasks'); }catch(e2){}
+        return;
+      }
+      toast(_m,true);
+    });
   };
   function _loadChapters(id){
     var box=document.getElementById('pd-chapters'); if(!box) return;
