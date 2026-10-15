@@ -28,6 +28,7 @@ breaks.
 import os
 import re
 import time
+import threading
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -285,20 +286,54 @@ def _filter_for_teacher(mats, tp):
     return out, {"subjects": subs}
 
 
-def _fetch_list(refresh=False):
+_refreshing = {"on": False}
+
+
+def _do_fetch():
+    """Blocking external fetch (Student Portal) -> normalize -> cache mein daalo."""
     url, key = _cfg()
-    now = time.time()
-    if not refresh and _list_cache["data"] is not None and (now - _list_cache["ts"]) < CACHE_SECONDS:
-        return _list_cache["data"], True, False
+    r = httpx.get(url + "/api/integration/materials",
+                  headers={"X-MVS-KEY": key}, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    raw = data.get("materials") if isinstance(data, dict) else data
+    mats = _normalize(raw)
+    _list_cache["data"] = mats
+    _list_cache["ts"] = time.time()
+    return mats
+
+
+def _bg_refresh():
     try:
-        r = httpx.get(url + "/api/integration/materials",
-                      headers={"X-MVS-KEY": key}, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-        raw = data.get("materials") if isinstance(data, dict) else data
-        mats = _normalize(raw)
-        _list_cache["data"] = mats
-        _list_cache["ts"] = now
+        _do_fetch()
+    except Exception:
+        pass   # stale data chalta rahega; agli baar phir try
+    finally:
+        _refreshing["on"] = False
+
+
+def _fetch_list(refresh=False):
+    """SWR: pehle ye endpoint cache stale hote hi external portal ko SYNCHRONOUSLY hit karta tha
+    (httpx timeout 30s) -> har 5 min par kisi student ko 1.5-2.4s block jhelna padta tha. Ab stale
+    hone par TURANT purana data do aur background thread me refresh karo -> student kabhi wait nahi
+    karta. Sirf pehli-baar (cache bilkul khaali) ya explicit refresh par hi blocking fetch."""
+    now = time.time()
+    have = _list_cache["data"] is not None
+    fresh = have and (now - _list_cache["ts"]) < CACHE_SECONDS
+    if not refresh and fresh:
+        return _list_cache["data"], True, False
+    # stale + purana data maujood (aur explicit refresh nahi) -> instant stale + background refresh
+    if have and not refresh:
+        if not _refreshing["on"]:
+            _refreshing["on"] = True
+            try:
+                threading.Thread(target=_bg_refresh, daemon=True).start()
+            except Exception:
+                _refreshing["on"] = False
+        return _list_cache["data"], True, True
+    # cache khaali (pehli baar) ya explicit refresh -> yahan blocking majboori hai
+    try:
+        mats = _do_fetch()
         return mats, False, False
     except Exception as e:
         if _list_cache["data"] is not None:
