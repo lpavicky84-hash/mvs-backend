@@ -287,6 +287,14 @@ def get_graphics_work_items(db, staff_id, now=None):
     items = []
 
     gts = db.query(GraphicsTask).filter(GraphicsTask.graphics_id == staff_id).all()
+    # N+1 fix: pehle har GraphicsTask ke liye parent VideoTask alag-alag query hoti thi (ek-ek).
+    # Ab saare parent tasks ek hi IN() query me prefetch -> neeche dict lookup. Output bilkul same,
+    # bas queries N se 1 (chapter-loop ke pmap pattern jaisa hi, jo pehle se optimized hai).
+    _gpids = {g.task_id for g in gts if getattr(g, "task_id", None)}
+    _gpmap = {}
+    if _gpids:
+        for _p in db.query(VideoTask).filter(VideoTask.id.in_(list(_gpids))).all():
+            _gpmap[_p.id] = _p
     for g in gts:
         status = (g.status or "")
         approved = (status == "approved")
@@ -302,7 +310,7 @@ def get_graphics_work_items(db, staff_id, now=None):
         # format inherited from the parent VideoTask (thumbnail belongs to that video)
         fmt = FMT_LONG
         try:
-            pt = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+            pt = _gpmap.get(g.task_id)
             if pt:
                 fmt = get_video_format(pt.video_type, pt.kind, getattr(pt, "content_format", ""))
         except Exception:

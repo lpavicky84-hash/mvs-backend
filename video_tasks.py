@@ -5164,6 +5164,14 @@ def vt_admin_chapter_status(payload: dict = Body(...), db: Session = Depends(get
         raise HTTPException(404, "Chapter not found")
     if not (row.link or "").strip():
         raise HTTPException(400, "Video link is not submitted yet — status can be set only after that")
+    # INVARIANT: "uploaded" ka matlab video YouTube par LIVE hai. Pehle sirf drive/shooting `link`
+    # hone par bhi uploaded set ho jaata tha (data galat — views-sync/student-notify toot-te the).
+    # Ab uploaded tabhi jab ek VALID YouTube URL persist ho. Purane records par koi asar nahi (ye
+    # check sirf NAYE transition par chalta hai).
+    if status == "uploaded":
+        _yt = (getattr(row, "youtube_url", "") or "").strip()
+        if not _yt_extract_id(_yt):
+            raise HTTPException(400, "Post a valid YouTube link first — “Uploaded” means the video is live on YouTube, not just a drive/shooting link.")
     t = db.query(VideoTask).filter(VideoTask.id == row.task_id).first()
     if not t or (getattr(t, "kind", "") or "") not in ("one_shot", "rapid_revision", "project"):
         raise HTTPException(404, "Special task not found")

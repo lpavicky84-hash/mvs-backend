@@ -2464,12 +2464,19 @@ def editor_rank_and_streak(db, sp):
         eds = db.query(ProductionStaffProfile).filter(
             ProductionStaffProfile.staff_role == "editor",
             ProductionStaffProfile.is_active == True).all()
-        scored = []
-        for e in eds:
-            cnt = db.query(VideoTask).filter(VideoTask.editor_id == e.id,
-                                             VideoTask.lifecycle.in_(done_states),
-                                             VideoTask.updated_at >= month_start).count()
-            scored.append((e.id, cnt))
+        # N+1 fix: pehle har editor ke liye ek COUNT query (N editors = N query). Ab ek hi GROUP BY
+        # query se saare counts -> dict lookup. Output same (wahi per-editor count).
+        _eids = [e.id for e in eds]
+        _cmap = {}
+        if _eids:
+            from sqlalchemy import func as _f
+            for _eid, _cnt in (db.query(VideoTask.editor_id, _f.count(VideoTask.id))
+                               .filter(VideoTask.editor_id.in_(_eids),
+                                       VideoTask.lifecycle.in_(done_states),
+                                       VideoTask.updated_at >= month_start)
+                               .group_by(VideoTask.editor_id).all()):
+                _cmap[_eid] = _cnt
+        scored = [(e.id, _cmap.get(e.id, 0)) for e in eds]
         scored.sort(key=lambda x: -x[1])
         rank = 0; my_cnt = 0
         for i, (eid, cnt) in enumerate(scored):

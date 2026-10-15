@@ -587,11 +587,16 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
         exams = db.query(Exam).filter(Exam.is_active == True,
                                       _exam_batch_filter(db, sp, batch),
                                       _exam_subject_cond(db, sp)).all()
-        for ex in exams:
-            att = db.query(ExamAttempt).filter(
-                ExamAttempt.exam_id == ex.id, ExamAttempt.student_id == sp.id).first()
-            if not att:
-                pending_exams.append(ex)
+        # N+1 fix: pehle har exam ke liye ExamAttempt alag-alag query hoti thi. Ab student ke saare
+        # attempts ek hi IN() query me -> jin exam_ids me attempt hai woh set; baaki pending.
+        # (Sirf exam_id column laate hain -> halka.) Output same: attempt nahi = pending.
+        _eids = [ex.id for ex in exams]
+        _attempted = set()
+        if _eids:
+            for _r in db.query(ExamAttempt.exam_id).filter(
+                    ExamAttempt.student_id == sp.id, ExamAttempt.exam_id.in_(_eids)).all():
+                _attempted.add(_r[0])
+        pending_exams = [ex for ex in exams if ex.id not in _attempted]
     except Exception:
         pass
 
@@ -1232,23 +1237,38 @@ def student_doubt_resp_attach(rid: int, db: Session = Depends(get_db), current_u
 def my_doubts(db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
     out = []
-    for d in db.query(Doubt).filter(Doubt.student_id == sp.id).order_by(Doubt.created_at.desc()).all():
+    _dlist = db.query(Doubt).filter(Doubt.student_id == sp.id).order_by(Doubt.created_at.desc()).all()
+    # N+1 fix: pehle har doubt ke liye teacher aur thread-responses ALAG-ALAG query hote the
+    # (N doubts = N teacher + N response query). Ab dono BATCH: teachers ek IN() query (user eager-
+    # loaded), responses ek IN() query (doubt_id,created_at,id order se grouped). Output same.
+    from sqlalchemy.orm import joinedload as _jl
+    from models import DoubtResponse
+    _tids = {d.teacher_id for d in _dlist if d.teacher_id}
+    _tmap = {}
+    if _tids:
+        for _tp in (db.query(TeacherProfile).options(_jl(TeacherProfile.user))
+                    .filter(TeacherProfile.id.in_(list(_tids))).all()):
+            _tmap[_tp.id] = _tp
+    _dids = [d.id for d in _dlist]
+    _rmap = {}
+    if _dids:
+        for _r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id.in_(_dids))
+                   .order_by(DoubtResponse.doubt_id.asc(), DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+            _rmap.setdefault(_r.doubt_id, []).append(_r)
+    for d in _dlist:
         # teacher ka naam + photo (reply card ke avatar ke liye)
         tname, tph = "", bool(False)
         try:
-            tp = d.teacher or (db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
-                               if d.teacher_id else None)
+            tp = _tmap.get(d.teacher_id) if d.teacher_id else None
             if tp:
                 tname = tp.user.name if tp.user else ""
                 tph = bool(tp.photo_b64)
         except Exception:
             pass
-        # v93: thread responses (student/teacher/admin sab ke replies)
+        # v93: thread responses (student/teacher/admin sab ke replies) — ab prefetched map se
         resps = []
         try:
-            from models import DoubtResponse
-            for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == d.id)
-                      .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+            for r in _rmap.get(d.id, []):
                 resps.append({"id": r.id, "role": r.role, "author_name": r.author_name,
                               "body": r.body, "mine": (r.role == "student"),
                               "has_attach": bool(getattr(r, "attach_key", None)),
@@ -2419,14 +2439,30 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
         _and(ExamQuestion.correct_option.isnot(None), ExamQuestion.correct_option != ""),
         _and(ExamQuestion.explanation.isnot(None), ExamQuestion.explanation != ""),
     )).distinct().all())
+    # N+1 fix: pehle har exam ke liye (a) latest ExamAttempt aur (b) ExamQuestion count — dono per-row
+    # query hoti thi (ek exam = 2 extra query). Ab dono ek-ek batch query me prefetch -> dict lookup.
+    # Output bilkul same: att = us student ka latest attempt (submitted_at desc), nq = question count.
+    _eids = [e.id for e in rows]
+    _att_map = {}
+    _nq_map = {}
+    if _eids:
+        for _a in (db.query(ExamAttempt)
+                   .filter(ExamAttempt.student_id == sp.id, ExamAttempt.exam_id.in_(_eids))
+                   .order_by(ExamAttempt.submitted_at.desc()).all()):
+            if _a.exam_id not in _att_map:
+                _att_map[_a.exam_id] = _a   # desc order -> pehla = latest (same as .first())
+        for _eid, _cnt in (db.query(ExamQuestion.exam_id, _func.count(ExamQuestion.id))
+                           .filter(ExamQuestion.exam_id.in_(_eids))
+                           .group_by(ExamQuestion.exam_id).all()):
+            _nq_map[_eid] = _cnt
     out = []
     for e in rows:
         # Class-targeted test: sirf usi class ke students ko dikhe ("" = sabhi classes)
         ex_cls = _class_digits(getattr(e, "class_name", ""))
         if my_cls and ex_cls and ex_cls != my_cls:
             continue
-        att = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.student_id == sp.id).order_by(ExamAttempt.submitted_at.desc()).first()
-        nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
+        att = _att_map.get(e.id)
+        nq = _nq_map.get(e.id, 0)
         _is_pdf = bool(getattr(e, "q_pdf", None))
         _scheduled = getattr(e, "scheduled_at", None) is not None
         _end_utc = None

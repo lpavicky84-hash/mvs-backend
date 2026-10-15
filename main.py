@@ -402,6 +402,22 @@ def ensure_indexes():
         "CREATE INDEX ix_material_teacher ON materials (teacher_id)",
         "CREATE INDEX ix_material_subject ON materials (subject)",
         "CREATE INDEX ix_material_type ON materials (material_type)",
+        # --- v-perf: project-chapter + production state + notification hot paths ---
+        # Editor/Graphics portal har load pe chapters ko editor_id/graphics_id se filter karte hain
+        # (editor_project_videos, performance_core.get_editor_work_items). Ye plain INTEGER cols hain
+        # (FK nahi) -> inpe koi index NAHI tha -> poore video_task_chapters ka table scan har baar.
+        "CREATE INDEX ix_vtc_editor ON video_task_chapters (editor_id)",
+        "CREATE INDEX ix_vtc_graphics ON video_task_chapters (graphics_id)",
+        "CREATE INDEX ix_vtc_task ON video_task_chapters (task_id)",
+        # Production/admin lists naye state-engine fields pe filter karte hain (status alag field hai)
+        "CREATE INDEX ix_vt_lifecycle ON video_tasks (lifecycle)",
+        "CREATE INDEX ix_vt_creator_type ON video_tasks (creator_type)",
+        "CREATE INDEX ix_vt_project_editor ON video_tasks (project_editor_id)",
+        # Notifications — HAR portal poll karta hai (bell + unread count). user_id FK pe to index hai,
+        # par ye COMPOSITE unread-count (user_id,is_read) aur ordered-fetch (user_id,created_at) ko
+        # cover karte hain -> poll fast + sort bina filesort.
+        "CREATE INDEX ix_notif_user_read ON notifications (user_id, is_read)",
+        "CREATE INDEX ix_notif_user_created ON notifications (user_id, created_at)",
     ]
     for s in idx:
         try:

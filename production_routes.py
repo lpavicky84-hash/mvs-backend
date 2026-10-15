@@ -1850,6 +1850,18 @@ def pm_report(period: str = "daily", date: str = "",
             return ("leave", o.get("remark") or "")
         return ("leave", "")   # no work + no override -> Leave (default)
 
+    # N+1 fix: ye report ek hi VideoTask ko baar-baar alag-alag query karta tha (editor-chapters,
+    # graphics done/pending, aur uploaded-events monitor). Ek memoized getter -> har task sirf EK
+    # baar fetch. Output bilkul same (wahi .first() row; same session ka identity-map hone se views
+    # refresh ke updates bhi isi object me dikhte hain).
+    _vt_memo = {}
+    def _vt_get(tid):
+        if not tid:
+            return None
+        if tid not in _vt_memo:
+            _vt_memo[tid] = db.query(VideoTask).filter(VideoTask.id == tid).first()
+        return _vt_memo[tid]
+
     # ---- editors: completed (period, with channel+title) + current working (snapshot) ----
     editors = []
     tot_completed = 0
@@ -1877,7 +1889,7 @@ def pm_report(period: str = "daily", date: str = "",
         # (Jannat etc. edit project videos via start/pause — these must show, not read as Leave.)
         from models import VideoTaskChapter as _VC
         for c in db.query(_VC).filter(_VC.editor_id == eid).all():
-            pt = db.query(VideoTask).filter(VideoTask.id == c.task_id).first()
+            pt = _vt_get(c.task_id)
             if pt is not None and getattr(pt, "cancelled", False):
                 continue
             ptitle = ((pt.title if pt else "") or (pt.subject if pt else "") or "Project")
@@ -1940,7 +1952,7 @@ def pm_report(period: str = "daily", date: str = "",
             if g.task_id in _seen_dt:
                 continue
             _seen_dt.add(g.task_id)
-            t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+            t = _vt_get(g.task_id)
             if t is not None and getattr(t, "cancelled", False):
                 continue
             done.append({"title": ((t.title if t else "") or "Untitled")[:90], "channel": _ch(t)})
@@ -1949,7 +1961,7 @@ def pm_report(period: str = "daily", date: str = "",
             GraphicsTask.status.in_(["new", "in_progress", "changes"])).all()
         pend_by_ch = {}
         for g in pend_rows:
-            t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+            t = _vt_get(g.task_id)
             c = _ch(t)
             pend_by_ch[c] = pend_by_ch.get(c, 0) + 1
         # Leave is decided ONLY by the designer's OWN-portal work today (a thumbnail they
@@ -2009,7 +2021,7 @@ def pm_report(period: str = "daily", date: str = "",
         if uev.task_id in _seen_up:   # a video can get the "added" event more than once
             continue
         _seen_up.add(uev.task_id)
-        t = db.query(VideoTask).filter(VideoTask.id == uev.task_id).first()
+        t = _vt_get(uev.task_id)
         ch = _ch(t)
         title = ((t.title if t else "") or "Untitled")[:90]
         views = int(getattr(t, "yt_views", 0) or 0) if t else 0
