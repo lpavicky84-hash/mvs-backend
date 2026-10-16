@@ -10780,6 +10780,16 @@ function _gmMcqCss(){
     '.gmo-cor{border-color:#2e9e6b;border-style:dashed}',
     '.gmo-cor .gmo-k{background:#2e9e6b;color:#fff} .gmo-cor .gmo-b{background:rgba(46,158,107,.16);color:#1f7a44}',
     '.gmo-skip{font-size:.8rem;color:#b91c1c;font-weight:700;margin:3px 2px 2px}',
+    '.gmo-hi{color:#5a5340;font-weight:600}',
+    '.gm-qhi{color:#4a4d55;font-weight:600;font-size:.95rem;margin-top:3px}',
+    '.gm-lang{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 14px}',
+    '.gm-lang-l{font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted,#8a7c55);margin-right:2px}',
+    '.gm-lang button{border:1.5px solid var(--border,#e8e0cf);background:var(--card,#fffdf7);color:var(--text,#4a4330);border-radius:999px;padding:6px 14px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s}',
+    '.gm-lang button:hover{border-color:#b8941f}',
+    '.gm-lang button.on{background:linear-gradient(135deg,#b8941f,#a37d1c);color:#fff;border-color:transparent;box-shadow:0 4px 10px -5px rgba(184,148,31,.8)}',
+    'body.dark .gmo-hi{color:#b9c2d6}',
+    'body.dark .gm-qhi{color:#aab4c9}',
+    'body.dark .gm-lang button{background:#152a45;border-color:#2c405e;color:#d6def0}',
     'body.dark .gmo{background:#152a45;border-color:#2c405e;color:#d6def0}',
     'body.dark .gmo-k{background:rgba(255,255,255,.1);color:#d6def0}',
     'body.dark .gmo-ok{background:rgba(46,158,107,.2);border-color:#2e9e6b}',
@@ -10787,7 +10797,9 @@ function _gmMcqCss(){
   ].join('');
   document.head.appendChild(s);
 }
-function _mcqReviewHtml(q, sel, selfView){
+function _mcqReviewHtml(q, sel, selfView, med){
+  // med: 'en' | 'hi' | 'hg' — jo medium chuna hai usi me options dikhao.
+  // med na ho (legacy caller, e.g. student result) to purana behavior: Hindi ho to Hindi.
   var opts=(q&&q.options)||[]; if(!opts.length) return '';
   var optsHi=(Array.isArray(q.options_hi)?q.options_hi:[]);
   var selN=(sel==null?'':String(sel).trim().toLowerCase());
@@ -10795,7 +10807,12 @@ function _mcqReviewHtml(q, sel, selfView){
   var answered=(selN!=='');
   var who=selfView?'You':'Student';
   var html='<div class="gmo-list">'+opts.map(function(o,oi){
-    var disp=(optsHi[oi]&&String(optsHi[oi]).trim())?optsHi[oi]:o;   // Hindi option ho to wahi dikhao
+    var en=String(o), hiv=(optsHi[oi]&&String(optsHi[oi]).trim())?String(optsHi[oi]):'';
+    var dispHtml;   // grading HAMESHA English option value (o) pe hoti hai; ye sirf dikhne ke liye
+    if(med==='en') dispHtml=_fmtRich(en);
+    else if(med==='hi') dispHtml=_fmtRich(hiv||en);
+    else if(med==='hg') dispHtml=(hiv&&hiv!==en.trim())?(_fmtRich(en)+'<span class="gmo-hi"> · '+_fmtRich(hiv)+'</span>'):_fmtRich(en);
+    else dispHtml=_fmtRich(hiv||en);   // legacy
     var oN=String(o).trim().toLowerCase();
     var isSel=(answered&&oN===selN);
     var isCor=(corN!==''&&oN===corN);
@@ -10803,10 +10820,32 @@ function _mcqReviewHtml(q, sel, selfView){
     if(isSel&&isCor){ cls+=' gmo-ok'; badge=who+' · Correct'; }
     else if(isSel&&!isCor){ cls+=' gmo-bad'; badge=(selfView?'Your choice':'Student’s choice'); }
     else if(isCor){ cls+=' gmo-cor'; badge='Correct answer'; }
-    return '<div class="'+cls+'"><span class="gmo-k">'+String.fromCharCode(65+oi)+'</span><span class="gmo-t">'+_fmtRich(disp)+'</span>'+(badge?'<span class="gmo-b">'+esc(badge)+'</span>':'')+'</div>';
+    return '<div class="'+cls+'"><span class="gmo-k">'+String.fromCharCode(65+oi)+'</span><span class="gmo-t">'+dispHtml+'</span>'+(badge?'<span class="gmo-b">'+esc(badge)+'</span>':'')+'</div>';
   }).join('')+'</div>';
   if(!answered) html+='<div class="gmo-skip">⚠ '+(selfView?'You did not answer this':'Not answered by the student')+'</div>';
   return html;
+}
+// question text selected medium me (teacher grading view ke liye)
+function _gmQText(q, med){
+  var en=(q&&q.question_text)||'', hi=((q&&q.question_text_hi)||'').trim();
+  if(med==='hi') return _fmtRich(hi||en);
+  if(med==='hg' && hi && hi!==en.trim()) return _fmtRich(en)+'<div class="gm-qhi">'+_fmtRich(hi)+'</div>';
+  return _fmtRich(en);
+}
+function _gmHasHi(qs){
+  return (qs||[]).some(function(q){
+    if(((q.question_text_hi||'')).trim()) return true;
+    return Array.isArray(q.options_hi) && q.options_hi.some(function(o){return (o||'').toString().trim();});
+  });
+}
+function _gmSetMed(m){
+  var c=window._gmCtx; if(!c)return; c.med=m;
+  ['en','hi','hg'].forEach(function(x){ var b=document.getElementById('gmlang-'+x); if(b)b.classList.toggle('on',x===m); });
+  (c.qs||[]).forEach(function(q){
+    var qt=document.getElementById('gm-qt-'+q.q_no); if(qt)qt.innerHTML=_gmQText(q,m);
+    var rv=document.getElementById('gm-rv-'+q.q_no);
+    if(rv){ var sel=(c.mcqAns[String(q.q_no)]!=null?c.mcqAns[String(q.q_no)]:c.mcqAns[q.q_no]); rv.innerHTML=_mcqReviewHtml(q,sel,false,m); }
+  });
 }
 function gradeManual(attId,examId){
   const d=window._examAttData; if(!d){ toast('Please reopen Results and try again.',true); return; }
@@ -10819,15 +10858,20 @@ function gradeManual(attId,examId){
   const saved={}; (att.results||[]).forEach(r=>{ saved[r.q_no]=r; });
   try{ _gmMcqCss(); }catch(e){}
   const mcqAns=att.mcq_answers||{};
+  // Teacher jo language chunega sab (question + options) usi me dikhega. Default English.
+  const _gmHiAvail=!isSubj && _gmHasHi(qs);
+  const med=(window._gmMed==='hi'||window._gmMed==='hg'||window._gmMed==='en')?window._gmMed:'en';
+  window._gmCtx={qs:qs, mcqAns:mcqAns, med:med};
+  const langBar=_gmHiAvail?`<div class="gm-lang"><span class="gm-lang-l">Language</span><button id="gmlang-en" class="${med==='en'?'on':''}" onclick="window._gmMed='en';_gmSetMed('en')">English</button><button id="gmlang-hi" class="${med==='hi'?'on':''}" onclick="window._gmMed='hi';_gmSetMed('hi')">हिंदी</button><button id="gmlang-hg" class="${med==='hg'?'on':''}" onclick="window._gmMed='hg';_gmSetMed('hg')">Hinglish</button></div>`:'';
   const rows=qs.map(q=>{
     const sv=saved[q.q_no]||{};
     const mv=(sv.marks==null||sv.marks==='')?'':String(sv.marks);
     // MCQ: Google-Form jaisa review — student ne jo option choose kiya + correct answer highlight
     let optHtml='';
     if(!isSubj && Array.isArray(q.options) && q.options.length){
-      optHtml=_mcqReviewHtml(q, (mcqAns[String(q.q_no)]!=null?mcqAns[String(q.q_no)]:mcqAns[q.q_no]));
+      optHtml=`<div class="gm-rv" id="gm-rv-${q.q_no}">`+_mcqReviewHtml(q, (mcqAns[String(q.q_no)]!=null?mcqAns[String(q.q_no)]:mcqAns[q.q_no]), false, med)+`</div>`;
     }
-    return `<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> ${_fmtRich(q.question_text)}</div>${optHtml}<div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" value="${esc(mv)}" placeholder="0" min="0" max="${q.max_marks}" step="0.5" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" value="${esc(sv.remark||'')}" placeholder="Remark for this question (optional)"></div></div>`;
+    return `<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> <span class="gm-qt" id="gm-qt-${q.q_no}">${_gmQText(q,med)}</span></div>${optHtml}<div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" value="${esc(mv)}" placeholder="0" min="0" max="${q.max_marks}" step="0.5" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" value="${esc(sv.remark||'')}" placeholder="Remark for this question (optional)"></div></div>`;
   }).join('');
   const hasSaved=(att.results||[]).length>0;
   // Agar attempt graded hai lekin per-question marks nahi aaye, matlab backend
@@ -10842,7 +10886,7 @@ function gradeManual(attId,examId){
   const vOpt=v=>`<option${vd===v?' selected':''}>${v}</option>`;
   showModal((hasSaved?'Edit Marks \u2014 ':'Grade Manually \u2014 ')+esc(att.student_name||'Student'),
     `<button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${examId})" style="margin-bottom:12px">${ic('back')} Back to Results</button>`
-    +savedNote+ansBlock+`<div class="gm-list">${rows}</div>`
+    +savedNote+ansBlock+langBar+`<div class="gm-list">${rows}</div>`
     +`<div class="form-group" style="margin-top:14px"><label>Overall feedback (shown to student)</label><textarea id="gm-fb" class="form-control" rows="2" placeholder="e.g. Good attempt. Work on diagrams.">${esc(att.feedback||'')}</textarea></div>`
     +`<div class="form-group"><label>Verdict</label><select id="gm-verdict" class="form-control">${vOpt('Excellent')}${vOpt('Good')}${vOpt('Needs Improvement')}</select></div>`
     +`<div class="gm-total" id="gm-total"></div>`
