@@ -21,6 +21,7 @@ import production_routes
 import editor_routes
 import youtuber_routes
 import graphics_routes
+import public_routes   # public shareable MCQ tests (Google-Form style)
 import translation_routes
 import category_routes  # category workspace API (Phase 4)
 import homework_models  # Homework Checker tables (register before create_all)
@@ -852,6 +853,7 @@ app.include_router(video_tasks.router)
 app.include_router(production_routes.router)
 app.include_router(editor_routes.router)
 app.include_router(youtuber_routes.router)
+app.include_router(public_routes.router)
 app.include_router(graphics_routes.router)
 app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
@@ -907,6 +909,19 @@ def _serve_app_js(request: _Request):
     if os.path.exists(_APP_JS_FILE):
         return _cached_file(request, _APP_JS_FILE, "application/javascript")
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
+
+
+# ===== Public shareable test page (guest, no login) — /t/<token> =====
+_PUBLIC_TEST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public_test.html")
+
+@app.get("/t/{token}")
+def _serve_public_test(token: str, request: _Request):
+    """Standalone guest test page. The page itself reads the token from the URL and calls
+    /api/public/exam/<token>. No portal login required."""
+    if os.path.exists(_PUBLIC_TEST_FILE):
+        return _cached_file(request, _PUBLIC_TEST_FILE, "text/html; charset=utf-8")
+    from fastapi.responses import HTMLResponse as _H
+    return _H(content="<h1>Test page not available</h1>", status_code=404)
 
 
 # ===== CACHE-BUSTING portal HTML =====

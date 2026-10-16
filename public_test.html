@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>MVS Foundation — Test</title>
+<style>
+  :root{
+    --navy:#14243f; --navy2:#1f3357; --gold:#b8941f; --gold2:#d9b64e;
+    --ink:#23252c; --muted:#6b7280; --line:#e8e0cf; --card:#fffdf7; --bg:#f3f1ea;
+    --ok:#2e9e6b; --bad:#d1443a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:0 16px 60px}
+  .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:0 0 22px 22px;padding:26px 20px 30px;box-shadow:0 10px 30px -12px rgba(20,36,63,.5)}
+  .hero-in{max-width:760px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .logo{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#2a3f66,#14243f);display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--gold2);border:2px solid rgba(217,182,78,.5);flex:0 0 auto;font-size:.9rem;letter-spacing:.5px}
+  .brand .bt{font-weight:800;letter-spacing:.5px;font-size:1.15rem}
+  .brand .bs{font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.65);margin-top:1px}
+  .hero h1{margin:18px 0 6px;font-size:1.5rem;line-height:1.25}
+  .hero .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:5px 12px;font-size:.78rem;font-weight:700}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:18px;box-shadow:0 4px 18px -12px rgba(40,30,10,.25)}
+  .lead{color:var(--muted);font-size:.92rem;margin:2px 0 16px}
+  label.fl{display:block;font-weight:700;font-size:.85rem;margin:14px 0 6px;color:#3a3d45}
+  label.fl .req{color:var(--bad)}
+  .inp{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;font-size:1rem;background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+  .inp:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,148,31,.15)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 18px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--gold),#a37d1c);color:#fff;font-weight:800;font-size:1rem;cursor:pointer;box-shadow:0 8px 20px -10px rgba(184,148,31,.7);transition:transform .1s,box-shadow .15s}
+  .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.6;cursor:wait}
+  .btn.sec{background:#fff;color:var(--navy);border:1.5px solid var(--line);box-shadow:none}
+  .err{display:none;background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.3);color:#b91c1c;border-radius:10px;padding:10px 13px;font-size:.88rem;font-weight:600;margin-top:12px}
+  .q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin-top:14px}
+  .q-h{font-weight:800;font-size:1.02rem;margin-bottom:4px}
+  .q-hi{color:#4a4d55;font-weight:600;font-size:.95rem;margin:2px 0 4px}
+  .q-img{max-width:100%;border-radius:10px;margin:8px 0}
+  .opts{display:flex;flex-direction:column;gap:9px;margin-top:11px}
+  .opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;transition:border-color .12s,background .12s;font-size:.96rem}
+  .opt:hover{border-color:var(--gold)}
+  .opt .k{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(120,110,80,.12);font-weight:800;font-size:.8rem}
+  .opt.sel{border-color:var(--gold);background:rgba(184,148,31,.09)}
+  .opt.sel .k{background:var(--gold);color:#fff}
+  .opt input{display:none}
+  /* result */
+  .score{display:flex;align-items:center;justify-content:space-between;gap:14px;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:16px;padding:20px 22px;margin-top:18px}
+  .score .big{font-size:2.2rem;font-weight:900;line-height:1}
+  .score .sub{font-size:.82rem;color:rgba(255,255,255,.7);margin-top:3px}
+  .score .ring{text-align:center}
+  .score .pct{font-size:1.5rem;font-weight:900;color:var(--gold2)}
+  .rv .opt.ok{border-color:var(--ok);background:rgba(46,158,107,.12)} .rv .opt.ok .k{background:var(--ok);color:#fff}
+  .rv .opt.bad{border-color:var(--bad);background:rgba(209,68,58,.1)} .rv .opt.bad .k{background:var(--bad);color:#fff}
+  .rv .opt.cor{border-color:var(--ok);border-style:dashed} .rv .opt.cor .k{background:var(--ok);color:#fff}
+  .badge{margin-left:auto;font-size:.64rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:999px;white-space:nowrap}
+  .badge.g{background:rgba(46,158,107,.16);color:#1f7a44}.badge.r{background:rgba(209,68,58,.14);color:#b91c1c}
+  .expl{margin-top:9px;background:rgba(184,148,31,.07);border-left:3px solid var(--gold);border-radius:8px;padding:9px 12px;font-size:.88rem;color:#4a4330}
+  .center{text-align:center;padding:60px 20px;color:var(--muted)}
+  .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 14px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .note{font-size:.8rem;color:var(--muted);margin-top:10px;text-align:center}
+  @media(max-width:480px){ .hero h1{font-size:1.25rem} .score .big{font-size:1.8rem} }
+</style>
+</head>
+<body>
+  <div class="hero"><div class="hero-in">
+    <div class="brand"><div class="logo">MVS</div><div><div class="bt">MVS Foundation</div><div class="bs">Manish Verma Classes</div></div></div>
+    <h1 id="h-title">Loading test…</h1>
+    <div class="meta" id="h-meta"></div>
+  </div></div>
+  <div class="wrap" id="app">
+    <div class="center"><div class="spin"></div>Please wait…</div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  var token=(location.pathname.split("/t/")[1]||"").split(/[?#/]/)[0];
+  var APP=document.getElementById("app");
+  var H1=document.getElementById("h-title"), HM=document.getElementById("h-meta");
+  var EX=null, ANS={};
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function api(path,method,body){
+    return fetch("/api/public"+path,{method:method||"GET",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):null})
+      .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error((j&&j.detail)||("Error "+r.status)); return j; }); });
+  }
+  function meta(){ var m=[]; if(EX.subject)m.push(EX.subject); if(EX.question_count)m.push(EX.question_count+" questions"); if(EX.total_marks)m.push(EX.total_marks+" marks"); if(EX.teacher_name)m.push("By "+EX.teacher_name);
+    HM.innerHTML=m.map(function(x){return '<span class="pill">'+esc(x)+'</span>';}).join(""); }
+
+  // ---------- 1) REGISTER ----------
+  function screenRegister(){
+    meta();
+    var extra=(EX.fields||[]).map(function(f){
+      return '<label class="fl">'+esc(f.label)+' <span class="req">*</span></label><input class="inp" id="f-'+esc(f.key)+'" autocomplete="off">';
+    }).join("");
+    APP.innerHTML=
+      '<div class="card">'
+      +'<div style="font-weight:800;font-size:1.1rem">Enter your details to begin</div>'
+      +'<div class="lead">Fill the form below, then start the test. You can attempt it only once.</div>'
+      +'<label class="fl">Full Name <span class="req">*</span></label><input class="inp" id="f-name" autocomplete="name">'
+      +'<label class="fl">Phone Number <span class="req">*</span></label><input class="inp" id="f-phone" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number">'
+      +extra
+      +'<div class="err" id="reg-err"></div>'
+      +'<button class="btn" id="reg-go" style="margin-top:18px">Start Test →</button>'
+      +'<div class="note">Your details are shared only with MVS Foundation.</div>'
+      +'</div>';
+    document.getElementById("reg-go").onclick=function(){
+      var name=(val("f-name")).trim(), phone=(val("f-phone")).replace(/[^0-9]/g,"");
+      if(!name) return regErr("Please enter your name.");
+      if(phone.length<10) return regErr("Please enter a valid 10-digit phone number.");
+      for(var i=0;i<(EX.fields||[]).length;i++){ var f=EX.fields[i]; if(!val("f-"+f.key).trim()) return regErr("Please fill: "+f.label); }
+      window._reg={name:name,phone:phone}; (EX.fields||[]).forEach(function(f){ window._reg[f.key]=val("f-"+f.key).trim(); });
+      screenTest();
+    };
+  }
+  function regErr(m){ var e=document.getElementById("reg-err"); if(e){ e.textContent=m; e.style.display="block"; } }
+  function val(id){ var el=document.getElementById(id); return el?el.value:""; }
+
+  // ---------- 2) TEST ----------
+  function screenTest(){
+    window.scrollTo(0,0); ANS={};
+    var qs=(EX.questions||[]).map(function(q){
+      var opts=(q.options||[]).map(function(o,oi){
+        var oh=(Array.isArray(q.options_hi)&&(q.options_hi[oi]||"").trim())?q.options_hi[oi]:null;
+        return '<label class="opt" data-q="'+q.q_no+'" data-v="'+esc(o)+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+esc(oh||o)+'</span><input type="radio" name="q'+q.q_no+'"></label>';
+      }).join("");
+      var img=q.image_b64?'<img class="q-img" src="'+esc(q.image_b64)+'">':'';
+      var hi=(q.question_text_hi&&EX.medium&&/bi/i.test(EX.medium))?'<div class="q-hi">'+esc(q.question_text_hi)+'</div>':'';
+      return '<div class="q"><div class="q-h">Q'+q.q_no+'. '+esc(q.question_text)+'</div>'+hi+img+'<div class="opts">'+opts+'</div></div>';
+    }).join("");
+    APP.innerHTML='<div class="card" style="padding:14px 16px"><b>'+esc(window._reg.name)+'</b> · '+esc(window._reg.phone)+'<div class="lead" style="margin:4px 0 0">Choose one answer per question, then submit.</div></div>'
+      +qs+'<div class="err" id="t-err"></div>'
+      +'<button class="btn" id="sub" style="margin-top:18px">Submit Test</button>';
+    Array.prototype.forEach.call(document.querySelectorAll(".opt"),function(el){
+      el.onclick=function(){ var q=el.getAttribute("data-q"); ANS[q]=el.getAttribute("data-v");
+        Array.prototype.forEach.call(document.querySelectorAll('.opt[data-q="'+q+'"]'),function(o){ o.classList.remove("sel"); });
+        el.classList.add("sel"); };
+    });
+    document.getElementById("sub").onclick=submit;
+  }
+  function submit(){
+    var btn=document.getElementById("sub"); var answered=Object.keys(ANS).length, total=(EX.questions||[]).length;
+    if(answered<total){ var e=document.getElementById("t-err"); e.textContent="Please answer all "+total+" questions ("+answered+" done)."; e.style.display="block";
+      window.scrollTo(0,document.body.scrollHeight); return; }
+    btn.disabled=true; btn.textContent="Submitting…";
+    api("/exam/"+encodeURIComponent(token)+"/submit","POST",{details:window._reg,mcq_answers:ANS})
+      .then(screenResult)
+      .catch(function(err){ btn.disabled=false; btn.textContent="Submit Test"; var e=document.getElementById("t-err"); e.textContent=err.message||"Could not submit. Try again."; e.style.display="block"; window.scrollTo(0,document.body.scrollHeight); });
+  }
+
+  // ---------- 3) RESULT ----------
+  function screenResult(r){
+    window.scrollTo(0,0);
+    var pct=r.total_marks?Math.round(r.total_awarded/r.total_marks*100):0;
+    var rev=(r.results||[]).map(function(it){
+      var yourN=(it.your_answer==null?"":String(it.your_answer).trim().toLowerCase());
+      var corN=String(it.correct_answer==null?"":it.correct_answer).trim().toLowerCase();
+      var opts=(it.options||[]).map(function(o,oi){
+        var oh=(Array.isArray(it.options_hi)&&(it.options_hi[oi]||"").trim())?it.options_hi[oi]:null;
+        var oN=String(o).trim().toLowerCase(), cls="opt", badge="";
+        var isSel=(yourN!==""&&oN===yourN), isCor=(corN!==""&&oN===corN);
+        if(isSel&&isCor){ cls+=" ok"; badge='<span class="badge g">Your answer · Correct</span>'; }
+        else if(isSel&&!isCor){ cls+=" bad"; badge='<span class="badge r">Your answer</span>'; }
+        else if(isCor){ cls+=" cor"; badge='<span class="badge g">Correct answer</span>'; }
+        return '<div class="'+cls+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+esc(oh||o)+'</span>'+badge+'</div>';
+      }).join("");
+      var skip=(yourN==="")?'<div class="note" style="text-align:left;color:#b91c1c;font-weight:700">⚠ You did not answer this</div>':"";
+      var expl=(it.explanation&&String(it.explanation).trim())?'<div class="expl"><b>Explanation:</b> '+esc(it.explanation)+'</div>':"";
+      return '<div class="q rv"><div class="q-h">Q'+it.q_no+'. '+esc(it.question_text)+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
+    }).join("");
+    APP.innerHTML=
+      '<div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
+      +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc(window._reg.name)+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
+      +rev
+      +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div>';
+    H1.textContent="Your Result"; HM.innerHTML="";
+  }
+
+  // ---------- boot ----------
+  function fail(msg){ H1.textContent="Test unavailable"; HM.innerHTML=""; APP.innerHTML='<div class="card center" style="padding:40px 20px"><div style="font-size:2rem">🔒</div><p style="font-weight:700;margin:10px 0 4px">'+esc(msg)+'</p><div class="lead">Please check the link with MVS Foundation.</div></div>'; }
+  if(!token){ fail("Invalid test link."); return; }
+  api("/exam/"+encodeURIComponent(token)).then(function(ex){
+    EX=ex; H1.textContent=ex.title||"Test"; screenRegister();
+  }).catch(function(err){ fail(err.message||"This test link is not available."); });
+})();
+</script>
+</body>
+</html>

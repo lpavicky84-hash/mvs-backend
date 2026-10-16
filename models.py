@@ -949,6 +949,32 @@ class Exam(Base):
     s_pdf       = Column(_BIGTEXT, nullable=True)   # answer/solution paper (students ko time khatam hone par)
     q_count     = Column(Integer, default=0)        # PDF test — total questions (attempted-count ke liye)
     created_at  = Column(DateTime, default=func.now())
+    # ---- Public shareable test (Google-Form style link; guests bina login de sakein) ----
+    public_token   = Column(String(40), nullable=True, index=True)  # random slug — /t/<token>
+    public_enabled = Column(Boolean, default=False)                 # link ON/OFF
+    public_fields  = Column(String(200), default="")                # guest se maangne wale optional fields (CSV: email,class,city,nios_ref). name+phone hamesha required.
+
+
+class PublicExamAttempt(Base):
+    """Guest (non-portal) student ka attempt jo shareable public link se aaya. Portal ke asli
+    StudentProfile se bilkul alag — ye sirf lead/exam data capture karta hai, export ke liye."""
+    __tablename__ = "public_exam_attempts"
+    id            = Column(Integer, primary_key=True)
+    exam_id       = Column(Integer, ForeignKey("exams.id"), index=True)
+    name          = Column(String(160))
+    phone         = Column(String(20), index=True)
+    email         = Column(String(160), nullable=True)
+    class_course  = Column(String(120), nullable=True)
+    city          = Column(String(120), nullable=True)
+    nios_ref      = Column(String(60), nullable=True)
+    extra         = Column(JSON, nullable=True)        # future custom fields
+    mcq_answers   = Column(JSON, nullable=True)         # q_no -> selected option text
+    total_awarded = Column(Float, default=0)
+    total_marks   = Column(Integer, default=0)
+    correct_count = Column(Integer, default=0)
+    q_total       = Column(Integer, default=0)
+    ip            = Column(String(50), nullable=True)
+    created_at    = Column(DateTime, default=func.now(), index=True)
 
 class ExamQuestion(Base):
     __tablename__ = "exam_questions"

@@ -4000,6 +4000,13 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN reupload_allowed INTEGER DEFAULT 0"),
         ("ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL",
          "ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL"),
+        # public shareable MCQ test (Google-Form style link)
+        ("ALTER TABLE exams ADD COLUMN public_token VARCHAR(40) NULL",
+         "ALTER TABLE exams ADD COLUMN public_token TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN public_enabled BOOLEAN DEFAULT 0",
+         "ALTER TABLE exams ADD COLUMN public_enabled INTEGER DEFAULT 0"),
+        ("ALTER TABLE exams ADD COLUMN public_fields VARCHAR(200) NULL",
+         "ALTER TABLE exams ADD COLUMN public_fields TEXT NULL"),
     ]
     for group in stmts:
         for s in group:
@@ -4634,6 +4641,9 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
             "reupload_allowed": bool(getattr(a, "reupload_allowed", False)),
             "reupload_remark": (getattr(a, "reupload_remark", None) or ""),
             "feedback": a.overall_feedback,
+            # student ne MCQ me konsa option choose kiya (q_no -> selected option text) — taaki
+            # teacher/student ko Google-Form jaisa answer-review dikhaya ja sake.
+            "mcq_answers": (a.mcq_answers or {}),
             "results": [{"q_no": rr.q_no, "marks": rr.marks_awarded,
                          "max": rr.max_marks, "remark": rr.remark or ""}
                         for rr in db.query(ExamResult)
@@ -4666,6 +4676,78 @@ def exam_attempts(exam_id: int, db: Session = Depends(get_db), current_user=Depe
                      "q_count": int(getattr(ex, "q_count", 0) or 0),
                      "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None},
             "questions": questions, "attempts": out}
+
+
+# ===================== PUBLIC SHAREABLE MCQ TEST (Google-Form style) =====================
+@router.post("/exam/{exam_id}/public-share")
+def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                      current_user=Depends(get_teacher)):
+    """Turn the public link ON/OFF for an MCQ test + choose which guest fields to collect."""
+    import secrets
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Exam not found")
+    if (ex.test_type or "") != "mcq":
+        raise HTTPException(400, "Only objective (MCQ) tests can be shared via a public link.")
+    enabled = bool(payload.get("enabled"))
+    allow = {"email", "class", "city", "nios_ref"}
+    fields = [f for f in (payload.get("fields") or []) if f in allow]
+    ex.public_fields = ",".join(fields)
+    ex.public_enabled = enabled
+    if enabled and not (ex.public_token or "").strip():
+        ex.public_token = secrets.token_urlsafe(9)   # ~12-char unguessable slug
+    db.commit()
+    return {"ok": True, "enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
+            "link": (("/t/" + ex.public_token) if ex.public_token else ""), "fields": fields}
+
+
+@router.get("/exam/{exam_id}/public-responses")
+def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
+                          current_user=Depends(get_teacher)):
+    from models import PublicExamAttempt
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Exam not found")
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
+            .order_by(PublicExamAttempt.created_at.desc()).all())
+    return {"enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
+            "link": (("/t/" + ex.public_token) if ex.public_token else ""),
+            "fields": [f.strip() for f in (ex.public_fields or "").split(",") if f.strip()],
+            "total_marks": (ex.total_marks or 0), "count": len(rows),
+            "responses": [{"id": r.id, "name": r.name, "phone": r.phone, "email": r.email,
+                           "class_course": r.class_course, "city": r.city, "nios_ref": r.nios_ref,
+                           "score": r.total_awarded, "total": r.total_marks,
+                           "correct": r.correct_count, "q_total": r.q_total,
+                           "at": (r.created_at.isoformat() if r.created_at else None)} for r in rows]}
+
+
+@router.get("/exam/{exam_id}/public-export")
+def exam_public_export(exam_id: int, db: Session = Depends(get_db),
+                       current_user=Depends(get_teacher)):
+    import csv as _csv, io as _io, re as _re2
+    from fastapi.responses import Response as _Resp
+    from models import PublicExamAttempt
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Exam not found")
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
+            .order_by(PublicExamAttempt.created_at.desc()).all())
+    buf = _io.StringIO()
+    buf.write("﻿")   # BOM -> Excel me Hindi/UTF-8 sahi khule
+    w = _csv.writer(buf)
+    w.writerow(["Name", "Phone", "Email", "Class/Course", "City", "NIOS Ref",
+                "Score", "Out of", "Correct", "Questions", "Submitted At"])
+    for r in rows:
+        w.writerow([r.name or "", r.phone or "", r.email or "", r.class_course or "",
+                    r.city or "", r.nios_ref or "", r.total_awarded, r.total_marks,
+                    r.correct_count, r.q_total,
+                    (r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "")])
+    fn = "responses-%s.csv" % ((_re2.sub(r"[^A-Za-z0-9]+", "-", (ex.title or "test")).strip("-")[:40]) or "test")
+    return _Resp(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                 headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
 
 
 def _exam_verdict_t(aw, tot):

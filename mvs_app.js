@@ -6399,6 +6399,7 @@ async function loadTTests(){
             <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
+            ${isM?`<button class="btn btn-ghost btn-sm" title="Share this objective test as a public link — guests can attempt without login" onclick="examShareModal(${e.id})">${ic('link')} Share Link</button>`:''}
             ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-ghost btn-sm" title="View the formatted test (no download)" onclick="examPdfHub(${e.id},1)">${ic('eye')} View</button>
             <button class="btn btn-primary btn-sm tst-pdfbtn" title="Download the formatted PDF" aria-label="Download PDF" onclick="examPdfHub(${e.id})">${ic('download')}</button>`}
@@ -10610,6 +10611,75 @@ async function _reupSubmit(attId, examId){
     toast(e.message||'Could not allow re-upload',true);
   }
 }
+// ===== Public shareable MCQ test (teacher): enable link, pick guest fields, responses, export =====
+var _PUB_FIELDS=[['email','Email'],['class','Class / Course'],['city','City'],['nios_ref','NIOS Reference Number']];
+async function examShareModal(id){
+  showModal('Share Test as Public Link','<div style="padding:34px;text-align:center;color:var(--text-muted)">Loading…</div>','');
+  try{ const d=await api('/api/teacher/exam/'+id+'/public-responses'); _renderShareModal(id,d); }
+  catch(e){ toast(e.message||'Could not load',true); }
+}
+function _renderShareModal(id,d){
+  _pshCss();
+  var link=d.link?(location.origin+d.link):'';
+  var fset={}; (d.fields||[]).forEach(function(f){ fset[f]=1; });
+  var fieldChecks=_PUB_FIELDS.map(function(f){ return '<label class="psh-chk"><input type="checkbox" id="psh-f-'+f[0]+'" '+(fset[f[0]]?'checked':'')+'><span>'+esc(f[1])+'</span></label>'; }).join('');
+  var linkBlock=(d.enabled&&link)
+    ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
+    : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
+  var resp=(d.responses||[]);
+  var rows=resp.length?resp.map(function(r){ return '<tr><td>'+esc(r.name||'')+'</td><td>'+esc(r.phone||'')+'</td><td>'+(esc(r.class_course||'')||'—')+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
+    : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px">No responses yet — share the link to start collecting.</td></tr>';
+  var html=
+    '<div class="psh-row"><div><b>Public link</b><div class="psh-sub">Anyone with the link can attempt (no login). Name &amp; phone are always required.</div></div>'
+    +'<label class="psh-switch"><input type="checkbox" id="psh-en" '+(d.enabled?'checked':'')+'><span class="psh-sl"></span></label></div>'
+    +linkBlock
+    +'<div class="psh-fl"><b>Also collect from each student:</b><div class="psh-checks">'+fieldChecks+'</div></div>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
+    +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export CSV</button>'):'')+'</div>'
+    +'<div class="psh-table-wrap"><table class="psh-table"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Score</th><th>Correct</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  showModal('Share Test as Public Link', html,'');
+}
+function _examCopyLink(){ var i=document.getElementById('psh-link'); if(!i) return; try{ i.select(); }catch(e){}
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(i.value).then(function(){toast('Link copied!');},function(){document.execCommand('copy');toast('Link copied!');}); } else { document.execCommand('copy'); toast('Link copied!'); } }catch(e){ toast('Copy failed — long-press to copy',true); } }
+async function _examShareSave(id){
+  var en=document.getElementById('psh-en'); var enabled=!!(en&&en.checked);
+  var fields=_PUB_FIELDS.filter(function(f){ var c=document.getElementById('psh-f-'+f[0]); return c&&c.checked; }).map(function(f){ return f[0]; });
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,fields:fields}); toast(enabled?'Public link is ON':'Public link turned OFF'); examShareModal(id); }
+  catch(e){ toast(e.message||'Failed',true); }
+}
+async function examExportResponses(id){
+  try{ toast('Preparing CSV…');
+    var r=await fetch(API+'/api/teacher/exam/'+id+'/public-export',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Export failed'); var b=await r.blob(); var u=URL.createObjectURL(b);
+    var a=document.createElement('a'); a.href=u; a.download='test-responses.csv'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(u); },4000);
+  }catch(e){ toast(e.message||'Export failed',true); }
+}
+function _pshCss(){ if(document.getElementById('psh-css')) return; var s=document.createElement('style'); s.id='psh-css'; s.textContent=[
+  '.psh-row{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:2px 0 12px}',
+  '.psh-sub{font-size:.8rem;color:var(--text-muted);margin-top:3px;max-width:400px}',
+  '.psh-switch{position:relative;display:inline-block;width:48px;height:27px;flex:0 0 auto}',
+  '.psh-switch input{display:none}',
+  '.psh-sl{position:absolute;inset:0;background:#cbc3ad;border-radius:999px;transition:.2s;cursor:pointer}',
+  '.psh-sl:before{content:"";position:absolute;width:21px;height:21px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}',
+  '.psh-switch input:checked + .psh-sl{background:#2e9e6b}',
+  '.psh-switch input:checked + .psh-sl:before{transform:translateX(21px)}',
+  '.psh-link{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 14px}',
+  '.psh-link .form-control{flex:1;min-width:180px;font-size:.84rem;background:rgba(184,148,31,.06);font-weight:600}',
+  '.psh-off{font-size:.85rem;color:var(--text-muted);background:rgba(0,0,0,.03);border-radius:10px;padding:11px 13px;margin:4px 0 14px}',
+  '.psh-fl{border-top:1px solid var(--border);padding-top:13px;margin-top:2px}',
+  '.psh-checks{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}',
+  '.psh-chk{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--border);border-radius:999px;padding:7px 13px;font-size:.84rem;font-weight:600;cursor:pointer}',
+  '.psh-chk input{width:15px;height:15px;accent-color:#2e9e6b}',
+  '.psh-resp{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}',
+  '.psh-resp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px;flex-wrap:wrap}',
+  '.psh-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}',
+  '.psh-table{width:100%;border-collapse:collapse;font-size:.85rem;min-width:430px}',
+  '.psh-table th{text-align:left;background:rgba(184,148,31,.06);padding:9px 11px;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted)}',
+  '.psh-table td{padding:9px 11px;border-top:1px solid var(--border)}',
+  'body.dark .psh-off,body.dark .psh-table th{background:rgba(255,255,255,.05)}',
+  'body.dark .psh-sl{background:#3a4a63}'
+].join(''); document.head.appendChild(s); }
 async function viewExamAttempts(id){
   try{
     const d=await api('/api/teacher/exam/'+id+'/attempts');
@@ -10692,6 +10762,52 @@ async function loadAnsImg(attId,imgId){
     if(wrap) wrap.innerHTML='<div class="gm-noimg">The answer sheet could not be loaded. Please try again.</div>';
   }
 }
+// Premium MCQ answer-review (Google-Form jaisa): har option card, student ka chosen option aur
+// correct answer highlight. Teacher + student dono portal isi helper ko use karte hain.
+function _gmMcqCss(){
+  if(document.getElementById('gm-mcq-css')) return;
+  var s=document.createElement('style'); s.id='gm-mcq-css';
+  s.textContent=[
+    '.gmo-list{display:flex;flex-direction:column;gap:8px;margin:11px 0 6px}',
+    '.gmo{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1.5px solid var(--border,#e8e0cf);border-radius:12px;background:var(--card,#fffdf7);font-size:.9rem;transition:border-color .15s,background .15s}',
+    '.gmo-k{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(120,110,80,.12);font-weight:800;font-size:.8rem;color:var(--text,#4a4330)}',
+    '.gmo-t{flex:1;min-width:0;line-height:1.4}',
+    '.gmo-b{flex:0 0 auto;font-size:.66rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:4px 9px;border-radius:999px;white-space:nowrap}',
+    '.gmo-ok{border-color:#2e9e6b;background:rgba(46,158,107,.12)}',
+    '.gmo-ok .gmo-k{background:#2e9e6b;color:#fff} .gmo-ok .gmo-b{background:rgba(46,158,107,.18);color:#1f7a44}',
+    '.gmo-bad{border-color:#d1443a;background:rgba(209,68,58,.10)}',
+    '.gmo-bad .gmo-k{background:#d1443a;color:#fff} .gmo-bad .gmo-b{background:rgba(209,68,58,.16);color:#b91c1c}',
+    '.gmo-cor{border-color:#2e9e6b;border-style:dashed}',
+    '.gmo-cor .gmo-k{background:#2e9e6b;color:#fff} .gmo-cor .gmo-b{background:rgba(46,158,107,.16);color:#1f7a44}',
+    '.gmo-skip{font-size:.8rem;color:#b91c1c;font-weight:700;margin:3px 2px 2px}',
+    'body.dark .gmo{background:#152a45;border-color:#2c405e;color:#d6def0}',
+    'body.dark .gmo-k{background:rgba(255,255,255,.1);color:#d6def0}',
+    'body.dark .gmo-ok{background:rgba(46,158,107,.2);border-color:#2e9e6b}',
+    'body.dark .gmo-bad{background:rgba(209,68,58,.2);border-color:#d1443a}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _mcqReviewHtml(q, sel, selfView){
+  var opts=(q&&q.options)||[]; if(!opts.length) return '';
+  var optsHi=(Array.isArray(q.options_hi)?q.options_hi:[]);
+  var selN=(sel==null?'':String(sel).trim().toLowerCase());
+  var corN=String((q&&q.correct_option)||'').trim().toLowerCase();
+  var answered=(selN!=='');
+  var who=selfView?'You':'Student';
+  var html='<div class="gmo-list">'+opts.map(function(o,oi){
+    var disp=(optsHi[oi]&&String(optsHi[oi]).trim())?optsHi[oi]:o;   // Hindi option ho to wahi dikhao
+    var oN=String(o).trim().toLowerCase();
+    var isSel=(answered&&oN===selN);
+    var isCor=(corN!==''&&oN===corN);
+    var cls='gmo', badge='';
+    if(isSel&&isCor){ cls+=' gmo-ok'; badge=who+' · Correct'; }
+    else if(isSel&&!isCor){ cls+=' gmo-bad'; badge=(selfView?'Your choice':'Student’s choice'); }
+    else if(isCor){ cls+=' gmo-cor'; badge='Correct answer'; }
+    return '<div class="'+cls+'"><span class="gmo-k">'+String.fromCharCode(65+oi)+'</span><span class="gmo-t">'+_fmtRich(disp)+'</span>'+(badge?'<span class="gmo-b">'+esc(badge)+'</span>':'')+'</div>';
+  }).join('')+'</div>';
+  if(!answered) html+='<div class="gmo-skip">⚠ '+(selfView?'You did not answer this':'Not answered by the student')+'</div>';
+  return html;
+}
 function gradeManual(attId,examId){
   const d=window._examAttData; if(!d){ toast('Please reopen Results and try again.',true); return; }
   try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
@@ -10701,10 +10817,17 @@ function gradeManual(attId,examId){
   const ansBlock=isSubj?`<div class="gm-ans"><div class="gm-ans-lbl" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">Student's answer sheet<span style="display:flex;gap:8px"><button type="button" class="btn btn-ghost btn-sm" onclick="viewStudentAnswer(${attId},'student')">${ic('eye')} View</button><button type="button" class="btn btn-ghost btn-sm" onclick="downloadStudentAnswer(${attId},'student')">${ic('download')} Download</button></span></div><div id="gm-ans-img-wrap"><img loading="lazy" id="gm-ans-img" class="gm-ans-img" style="display:none"></div></div>`:'';
   // pehle diye hue marks/remark wapas bhar do - warna edit karte waqt sab 0 dikhta tha
   const saved={}; (att.results||[]).forEach(r=>{ saved[r.q_no]=r; });
+  try{ _gmMcqCss(); }catch(e){}
+  const mcqAns=att.mcq_answers||{};
   const rows=qs.map(q=>{
     const sv=saved[q.q_no]||{};
     const mv=(sv.marks==null||sv.marks==='')?'':String(sv.marks);
-    return `<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> ${_fmtRich(q.question_text)}</div><div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" value="${esc(mv)}" placeholder="0" min="0" max="${q.max_marks}" step="0.5" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" value="${esc(sv.remark||'')}" placeholder="Remark for this question (optional)"></div></div>`;
+    // MCQ: Google-Form jaisa review — student ne jo option choose kiya + correct answer highlight
+    let optHtml='';
+    if(!isSubj && Array.isArray(q.options) && q.options.length){
+      optHtml=_mcqReviewHtml(q, (mcqAns[String(q.q_no)]!=null?mcqAns[String(q.q_no)]:mcqAns[q.q_no]));
+    }
+    return `<div class="gm-q"><div class="gm-qtext"><b>Q${q.q_no}.</b> ${_fmtRich(q.question_text)}</div>${optHtml}<div class="gm-qin"><input type="number" id="gm-m-${q.q_no}" class="form-control" value="${esc(mv)}" placeholder="0" min="0" max="${q.max_marks}" step="0.5" style="width:84px"><span class="gm-max">/ ${q.max_marks}</span><input id="gm-r-${q.q_no}" class="form-control" value="${esc(sv.remark||'')}" placeholder="Remark for this question (optional)"></div></div>`;
   }).join('');
   const hasSaved=(att.results||[]).length>0;
   // Agar attempt graded hai lekin per-question marks nahi aaye, matlab backend
@@ -22010,12 +22133,18 @@ async function openExamResult(id){
     const vClass=r.verdict==='Excellent'?'exc':r.verdict==='Good'?'good':'imp';
     const biling=r.medium==='Bilingual';
     const isMcq=r.test_type==='mcq';
+    try{ if(isMcq) _gmMcqCss(); }catch(e){}
     const items=r.results.map(it=>{
       if(isMcq&&it.correct_answer!==undefined){
         const ok=!!it.is_correct;
         const your=(it.your_answer===null||it.your_answer===undefined||it.your_answer==='')?'Not answered':it.your_answer;
         const ex_=(biling&&it.explanation_hi)?(it.explanation||'')+'\n'+it.explanation_hi:(it.explanation||'');
-        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div><div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?ic('check'):'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</span><span><b>Your answer:</b> ${_fmtRich(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${_fmtRich(String(it.correct_answer||''))}</span></div>`}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(ex_)}</div>`:''}</div>`;
+        // Premium Google-Form jaisa review: saare options, tumhara chosen + correct highlight.
+        // Options na ho (purana data) to purana "Your/Correct answer" text fallback.
+        const review=(Array.isArray(it.options)&&it.options.length)
+          ? _mcqReviewHtml({options:it.options, options_hi:it.options_hi, correct_option:it.correct_answer}, it.your_answer, true)
+          : `<div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?ic('check'):'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</span><span><b>Your answer:</b> ${_fmtRich(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${_fmtRich(String(it.correct_answer||''))}</span></div>`}`;
+        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${review}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(ex_)}</div>`:''}</div>`;
       }
       return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${it.remark?`<div class="rs-remark">${esc(it.remark)}</div>`:''}</div>`;
     }).join('');

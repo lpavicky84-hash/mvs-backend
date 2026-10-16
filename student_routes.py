@@ -2332,6 +2332,13 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN reupload_allowed INTEGER DEFAULT 0"),
         ("ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL",
          "ALTER TABLE exam_attempts ADD COLUMN reupload_remark TEXT NULL"),
+        # public shareable MCQ test (Google-Form style link)
+        ("ALTER TABLE exams ADD COLUMN public_token VARCHAR(40) NULL",
+         "ALTER TABLE exams ADD COLUMN public_token TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN public_enabled BOOLEAN DEFAULT 0",
+         "ALTER TABLE exams ADD COLUMN public_enabled INTEGER DEFAULT 0"),
+        ("ALTER TABLE exams ADD COLUMN public_fields VARCHAR(200) NULL",
+         "ALTER TABLE exams ADD COLUMN public_fields TEXT NULL"),
     ]
     for group in stmts:
         for st in group:
