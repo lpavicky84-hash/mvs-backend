@@ -13,14 +13,15 @@
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
-  .wrap{max-width:760px;margin:0 auto;padding:0 16px 60px}
-  .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:0 0 22px 22px;padding:26px 20px 30px;box-shadow:0 10px 30px -12px rgba(20,36,63,.5)}
-  .hero-in{max-width:760px;margin:0 auto}
-  .brand{display:flex;align-items:center;gap:12px}
-  .brand .logo{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#2a3f66,#14243f);display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--gold2);border:2px solid rgba(217,182,78,.5);flex:0 0 auto;font-size:.9rem;letter-spacing:.5px}
-  .brand .bt{font-weight:800;letter-spacing:.5px;font-size:1.15rem}
+  .wrap{max-width:780px;margin:0 auto;padding:0 16px 70px}
+  .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:0 0 22px 22px;padding:22px 20px 26px;box-shadow:0 10px 30px -12px rgba(20,36,63,.5)}
+  .hero-in{max-width:780px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:13px}
+  .brand .logo{width:50px;height:50px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#2a3f66,#14243f);display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--gold2);border:2px solid rgba(217,182,78,.55);flex:0 0 auto;font-size:.95rem;letter-spacing:.5px;overflow:hidden}
+  .brand .logo img{width:100%;height:100%;object-fit:cover;display:block}
+  .brand .bt{font-weight:800;letter-spacing:.5px;font-size:1.18rem}
   .brand .bs{font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.65);margin-top:1px}
-  .hero h1{margin:18px 0 6px;font-size:1.5rem;line-height:1.25}
+  .hero h1{margin:16px 0 6px;font-size:1.5rem;line-height:1.25}
   .hero .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:5px 12px;font-size:.78rem;font-weight:700}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:18px;box-shadow:0 4px 18px -12px rgba(40,30,10,.25)}
@@ -34,9 +35,43 @@
   .btn[disabled]{opacity:.6;cursor:wait}
   .btn.sec{background:#fff;color:var(--navy);border:1.5px solid var(--line);box-shadow:none}
   .err{display:none;background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.3);color:#b91c1c;border-radius:10px;padding:10px 13px;font-size:.88rem;font-weight:600;margin-top:12px}
-  .q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin-top:14px}
+
+  /* ---- medium picker ---- */
+  .mp-t{font-weight:800;font-size:1.15rem;text-align:center}
+  .mp-s{color:var(--muted);font-size:.88rem;text-align:center;margin:4px 0 2px}
+  .mp-grid{display:flex;flex-direction:column;gap:11px;margin-top:18px}
+  .mp-opt{display:flex;align-items:center;gap:14px;padding:15px 16px;border:1.5px solid var(--line);border-radius:14px;background:#fff;cursor:pointer;text-align:left;transition:border-color .12s,background .12s,transform .08s;width:100%;font-family:inherit}
+  .mp-opt:hover{border-color:var(--gold);background:rgba(184,148,31,.05)}
+  .mp-opt:active{transform:translateY(1px)}
+  .mp-ic{width:42px;height:42px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:11px;background:linear-gradient(135deg,var(--gold),#a37d1c);color:#fff;font-weight:900;font-size:1.05rem}
+  .mp-tx b{display:block;font-size:1.02rem}
+  .mp-tx small{color:var(--muted);font-size:.8rem}
+
+  /* ---- sticky test bar ---- */
+  .tbar{position:sticky;top:0;z-index:30;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:14px;padding:11px 14px;margin-top:16px;box-shadow:0 8px 22px -12px rgba(20,36,63,.6)}
+  .tbar-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tbar .tt{font-weight:800;font-size:.98rem;flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .msel{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:9px;padding:7px 10px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit}
+  .msel option{color:#14243f}
+  .timer{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:9px;padding:7px 11px;font-weight:800;font-size:.92rem;font-variant-numeric:tabular-nums}
+  .timer.over{background:rgba(209,68,58,.9);border-color:transparent;animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.6}}
+  .attc{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.85);margin-top:9px}
+  .attc b{color:var(--gold2)}
+  .attbar{height:6px;border-radius:999px;background:rgba(255,255,255,.15);margin-top:6px;overflow:hidden}
+  .attbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold2),var(--gold));border-radius:999px;transition:width .25s}
+
+  /* ---- question palette ---- */
+  .pal{display:flex;flex-wrap:wrap;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-top:14px}
+  .pal-t{width:100%;font-size:.74rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  .pn{width:38px;height:38px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-weight:800;font-size:.9rem;cursor:pointer;transition:all .12s;font-family:inherit}
+  .pn:hover{border-color:var(--gold)}
+  .pn.done{background:linear-gradient(135deg,var(--gold),#a37d1c);color:#fff;border-color:transparent;box-shadow:0 4px 10px -5px rgba(184,148,31,.8)}
+
+  /* ---- questions ---- */
+  .q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin-top:14px;scroll-margin-top:84px}
   .q-h{font-weight:800;font-size:1.02rem;margin-bottom:4px}
-  .q-hi{color:#4a4d55;font-weight:600;font-size:.95rem;margin:2px 0 4px}
+  .q-hi{color:#4a4d55;font-weight:600;font-size:.96rem;margin:3px 0 2px}
   .q-img{max-width:100%;border-radius:10px;margin:8px 0}
   .opts{display:flex;flex-direction:column;gap:9px;margin-top:11px}
   .opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;transition:border-color .12s,background .12s;font-size:.96rem}
@@ -44,8 +79,10 @@
   .opt .k{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(120,110,80,.12);font-weight:800;font-size:.8rem}
   .opt.sel{border-color:var(--gold);background:rgba(184,148,31,.09)}
   .opt.sel .k{background:var(--gold);color:#fff}
+  .opt .ohi{color:#5a5d65;font-weight:600}
   .opt input{display:none}
-  /* result */
+
+  /* ---- result ---- */
   .score{display:flex;align-items:center;justify-content:space-between;gap:14px;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:16px;padding:20px 22px;margin-top:18px}
   .score .big{font-size:2.2rem;font-weight:900;line-height:1}
   .score .sub{font-size:.82rem;color:rgba(255,255,255,.7);margin-top:3px}
@@ -61,12 +98,15 @@
   .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 14px}
   @keyframes sp{to{transform:rotate(360deg)}}
   .note{font-size:.8rem;color:var(--muted);margin-top:10px;text-align:center}
-  @media(max-width:480px){ .hero h1{font-size:1.25rem} .score .big{font-size:1.8rem} }
+  @media(max-width:480px){ .hero h1{font-size:1.25rem} .score .big{font-size:1.8rem} .pn{width:36px;height:36px} }
 </style>
 </head>
 <body>
   <div class="hero"><div class="hero-in">
-    <div class="brand"><div class="logo">MVS</div><div><div class="bt">MVS Foundation</div><div class="bs">Manish Verma Classes</div></div></div>
+    <div class="brand">
+      <div class="logo"><span id="lg-fb">MVS</span><img id="lg-img" alt="MVS" style="display:none"></div>
+      <div><div class="bt">MVS Foundation</div><div class="bs">Manish Verma Classes</div></div>
+    </div>
     <h1 id="h-title">Loading test…</h1>
     <div class="meta" id="h-meta"></div>
   </div></div>
@@ -80,14 +120,45 @@
   var token=(location.pathname.split("/t/")[1]||"").split(/[?#/]/)[0];
   var APP=document.getElementById("app");
   var H1=document.getElementById("h-title"), HM=document.getElementById("h-meta");
-  var EX=null, ANS={};
+  var EX=null, ANS={}, MED="en", HASHI=false, STARTMS=0, TIMER=null, SUBMITTED=false;
+
+  // premium: asli MVS logo (public /api/student/logo); na mile to gold 'MVS' box
+  (function(){ var im=document.getElementById("lg-img"), fb=document.getElementById("lg-fb");
+    im.onload=function(){ fb.style.display="none"; im.style.display="block"; };
+    im.onerror=function(){ im.remove(); };
+    im.src="/api/student/logo"; })();
+
   function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
   function api(path,method,body){
     return fetch("/api/public"+path,{method:method||"GET",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):null})
       .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error((j&&j.detail)||("Error "+r.status)); return j; }); });
   }
-  function meta(){ var m=[]; if(EX.subject)m.push(EX.subject); if(EX.question_count)m.push(EX.question_count+" questions"); if(EX.total_marks)m.push(EX.total_marks+" marks"); if(EX.teacher_name)m.push("By "+EX.teacher_name);
+  function val(id){ var el=document.getElementById(id); return el?el.value:""; }
+  function meta(){ var m=[]; if(EX.subject)m.push(EX.subject); if(EX.question_count)m.push(EX.question_count+" questions"); if(EX.total_marks)m.push(EX.total_marks+" marks"); if(EX.duration_min)m.push(EX.duration_min+" min"); if(EX.teacher_name)m.push("By "+EX.teacher_name);
     HM.innerHTML=m.map(function(x){return '<span class="pill">'+esc(x)+'</span>';}).join(""); }
+
+  // kya test me Hindi content hai? (teacher ne bilingual banaya ho to hi medium choice dikhao)
+  function hasHindi(){
+    return (EX.questions||[]).some(function(q){
+      if((q.question_text_hi||"").trim()) return true;
+      return Array.isArray(q.options_hi) && q.options_hi.some(function(o){return (o||"").trim();});
+    });
+  }
+  // question text selected medium me
+  function qText(q){
+    var en=(q.question_text||""), hi=(q.question_text_hi||"").trim();
+    if(MED==="hi") return esc(hi||en);
+    if(MED==="hg" && hi && hi!==en.trim()) return esc(en)+'<div class="q-hi">'+esc(hi)+'</div>';
+    return esc(en);
+  }
+  // option display selected medium me (grading value HAMESHA English hi rehti hai)
+  function optText(q,i){
+    var en=(q.options&&q.options[i]!=null)?String(q.options[i]):"";
+    var hi=(Array.isArray(q.options_hi)&&(q.options_hi[i]||"").trim())?String(q.options_hi[i]):"";
+    if(MED==="hi") return esc(hi||en);
+    if(MED==="hg" && hi && hi!==en.trim()) return esc(en)+' <span class="ohi">· '+esc(hi)+'</span>';
+    return esc(en);
+  }
 
   // ---------- 1) REGISTER ----------
   function screenRegister(){
@@ -103,7 +174,7 @@
       +'<label class="fl">Phone Number <span class="req">*</span></label><input class="inp" id="f-phone" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number">'
       +extra
       +'<div class="err" id="reg-err"></div>'
-      +'<button class="btn" id="reg-go" style="margin-top:18px">Start Test →</button>'
+      +'<button class="btn" id="reg-go" style="margin-top:18px">Continue →</button>'
       +'<div class="note">Your details are shared only with MVS Foundation.</div>'
       +'</div>';
     document.getElementById("reg-go").onclick=function(){
@@ -112,63 +183,138 @@
       if(phone.length<10) return regErr("Please enter a valid 10-digit phone number.");
       for(var i=0;i<(EX.fields||[]).length;i++){ var f=EX.fields[i]; if(!val("f-"+f.key).trim()) return regErr("Please fill: "+f.label); }
       window._reg={name:name,phone:phone}; (EX.fields||[]).forEach(function(f){ window._reg[f.key]=val("f-"+f.key).trim(); });
-      screenTest();
+      if(HASHI) screenMedium(); else { MED="en"; screenTest(); }
     };
   }
   function regErr(m){ var e=document.getElementById("reg-err"); if(e){ e.textContent=m; e.style.display="block"; } }
-  function val(id){ var el=document.getElementById(id); return el?el.value:""; }
+
+  // ---------- 1b) SELECT MEDIUM ----------
+  function screenMedium(){
+    window.scrollTo(0,0);
+    APP.innerHTML=
+      '<div class="card">'
+      +'<div class="mp-t">Select Medium · माध्यम चुनें</div>'
+      +'<div class="mp-s">Choose the language in which you want to attempt this test. You can change it anytime during the test.</div>'
+      +'<div class="mp-grid">'
+      +'<button class="mp-opt" data-m="en"><span class="mp-ic">A</span><span class="mp-tx"><b>English</b><small>Questions &amp; options in English</small></span></button>'
+      +'<button class="mp-opt" data-m="hi"><span class="mp-ic">अ</span><span class="mp-tx"><b>हिंदी</b><small>प्रश्न और विकल्प हिंदी में</small></span></button>'
+      +'<button class="mp-opt" data-m="hg"><span class="mp-ic" style="font-size:.86rem">Aअ</span><span class="mp-tx"><b>Hinglish</b><small>English + हिंदी — bilingual</small></span></button>'
+      +'</div></div>';
+    Array.prototype.forEach.call(APP.querySelectorAll(".mp-opt"),function(b){
+      b.onclick=function(){ MED=b.getAttribute("data-m"); screenTest(); };
+    });
+  }
 
   // ---------- 2) TEST ----------
   function screenTest(){
-    window.scrollTo(0,0); ANS={};
+    window.scrollTo(0,0);
+    if(!STARTMS){ STARTMS=Date.now(); ANS={}; }   // timer + answers sirf pehli baar reset (medium switch pe nahi)
+    renderTest();
+    startTimer();
+  }
+  function renderTest(){
+    var medSel=HASHI
+      ? '<select class="msel" id="msel" title="Language / माध्यम">'
+        +'<option value="en"'+(MED==="en"?" selected":"")+'>English</option>'
+        +'<option value="hi"'+(MED==="hi"?" selected":"")+'>हिंदी</option>'
+        +'<option value="hg"'+(MED==="hg"?" selected":"")+'>Hinglish</option></select>'
+      : '';
+    var timer=EX.duration_min?'<span class="timer" id="timer">⏱ --:--:--</span>':'';
+    var N=(EX.questions||[]).length;
+    var pal='<div class="pal"><div class="pal-t">Questions — tap a number to jump</div>'
+      +(EX.questions||[]).map(function(q){ var a=ANS[q.q_no]!=null; return '<button type="button" class="pn'+(a?" done":"")+'" id="pn-'+q.q_no+'" data-go="'+q.q_no+'">'+q.q_no+'</button>'; }).join("")
+      +'</div>';
     var qs=(EX.questions||[]).map(function(q){
       var opts=(q.options||[]).map(function(o,oi){
-        var oh=(Array.isArray(q.options_hi)&&(q.options_hi[oi]||"").trim())?q.options_hi[oi]:null;
-        return '<label class="opt" data-q="'+q.q_no+'" data-v="'+esc(o)+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+esc(oh||o)+'</span><input type="radio" name="q'+q.q_no+'"></label>';
+        var sel=(ANS[q.q_no]!=null && String(ANS[q.q_no])===String(o))?" sel":"";
+        return '<label class="opt'+sel+'" data-q="'+q.q_no+'" data-v="'+esc(o)+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+optText(q,oi)+'</span><input type="radio" name="q'+q.q_no+'"></label>';
       }).join("");
       var img=q.image_b64?'<img class="q-img" src="'+esc(q.image_b64)+'">':'';
-      var hi=(q.question_text_hi&&EX.medium&&/bi/i.test(EX.medium))?'<div class="q-hi">'+esc(q.question_text_hi)+'</div>':'';
-      return '<div class="q"><div class="q-h">Q'+q.q_no+'. '+esc(q.question_text)+'</div>'+hi+img+'<div class="opts">'+opts+'</div></div>';
+      return '<div class="q" id="pq-'+q.q_no+'"><div class="q-h">Q'+q.q_no+'. '+qText(q)+'</div>'+img+'<div class="opts">'+opts+'</div></div>';
     }).join("");
-    APP.innerHTML='<div class="card" style="padding:14px 16px"><b>'+esc(window._reg.name)+'</b> · '+esc(window._reg.phone)+'<div class="lead" style="margin:4px 0 0">Choose one answer per question, then submit.</div></div>'
-      +qs+'<div class="err" id="t-err"></div>'
+    APP.innerHTML=
+      '<div class="tbar"><div class="tbar-row"><span class="tt">'+esc(window._reg.name)+'</span>'+medSel+timer+'</div>'
+      +'<div class="attc"><span id="attc-t"><b>0</b> / '+N+' answered</span></div>'
+      +'<div class="attbar"><i id="attbar-i"></i></div></div>'
+      +pal
+      +qs
+      +'<div class="err" id="t-err"></div>'
       +'<button class="btn" id="sub" style="margin-top:18px">Submit Test</button>';
-    Array.prototype.forEach.call(document.querySelectorAll(".opt"),function(el){
+    // option select
+    Array.prototype.forEach.call(APP.querySelectorAll(".opt"),function(el){
       el.onclick=function(){ var q=el.getAttribute("data-q"); ANS[q]=el.getAttribute("data-v");
-        Array.prototype.forEach.call(document.querySelectorAll('.opt[data-q="'+q+'"]'),function(o){ o.classList.remove("sel"); });
-        el.classList.add("sel"); };
+        Array.prototype.forEach.call(APP.querySelectorAll('.opt[data-q="'+q+'"]'),function(o){ o.classList.remove("sel"); });
+        el.classList.add("sel");
+        var pn=document.getElementById("pn-"+q); if(pn) pn.classList.add("done");
+        updAtt(); };
     });
-    document.getElementById("sub").onclick=submit;
+    // palette jump
+    Array.prototype.forEach.call(APP.querySelectorAll(".pn"),function(b){
+      b.onclick=function(){ var t=document.getElementById("pq-"+b.getAttribute("data-go")); if(t) t.scrollIntoView({behavior:"smooth",block:"start"}); };
+    });
+    var ms=document.getElementById("msel"); if(ms) ms.onchange=function(){ MED=ms.value; renderTest(); startTimer(); };
+    document.getElementById("sub").onclick=function(){ doSubmit(false); };
+    updAtt();
   }
-  function submit(){
-    var btn=document.getElementById("sub"); var answered=Object.keys(ANS).length, total=(EX.questions||[]).length;
-    if(answered<total){ var e=document.getElementById("t-err"); e.textContent="Please answer all "+total+" questions ("+answered+" done)."; e.style.display="block";
-      window.scrollTo(0,document.body.scrollHeight); return; }
-    btn.disabled=true; btn.textContent="Submitting…";
+  function updAtt(){
+    var N=(EX.questions||[]).length, a=0;
+    (EX.questions||[]).forEach(function(q){ if(ANS[q.q_no]!=null) a++; });
+    var t=document.getElementById("attc-t"); if(t) t.innerHTML="<b>"+a+"</b> / "+N+" answered";
+    var bar=document.getElementById("attbar-i"); if(bar) bar.style.width=(N?Math.round(a/N*100):0)+"%";
+    var sub=document.getElementById("sub"); if(sub && !SUBMITTED) sub.textContent=(a>=N?"Submit Test":"Submit Test ("+a+"/"+N+")");
+  }
+
+  // ---------- timer ----------
+  function startTimer(){
+    if(TIMER){ clearInterval(TIMER); TIMER=null; }
+    if(!EX.duration_min) return;
+    var totalMs=EX.duration_min*60000;
+    function tick(){
+      var el=document.getElementById("timer"); if(!el){ clearInterval(TIMER); TIMER=null; return; }
+      var left=totalMs-(Date.now()-STARTMS); var over=left<=0; if(over)left=0;
+      var s=Math.floor(left/1000);
+      var h=String(Math.floor(s/3600)).padStart(2,"0"), m=String(Math.floor((s%3600)/60)).padStart(2,"0"), ss=String(s%60).padStart(2,"0");
+      el.innerHTML="⏱ "+h+":"+m+":"+ss; el.classList.toggle("over",over); el.title=over?"Time over":"Time remaining";
+      if(over && !SUBMITTED){ clearInterval(TIMER); TIMER=null; doSubmit(true); }
+    }
+    tick(); TIMER=setInterval(tick,1000);
+  }
+
+  // ---------- submit ----------
+  function doSubmit(auto){
+    if(SUBMITTED) return;
+    var answered=Object.keys(ANS).length, total=(EX.questions||[]).length;
+    if(!auto && answered<total){
+      var e=document.getElementById("t-err");
+      if(e){ e.textContent="Please answer all "+total+" questions ("+answered+" done). Tap a number above to jump to a skipped question."; e.style.display="block"; }
+      window.scrollTo(0,0); return;
+    }
+    SUBMITTED=true; if(TIMER){ clearInterval(TIMER); TIMER=null; }
+    var btn=document.getElementById("sub"); if(btn){ btn.disabled=true; btn.textContent=auto?"Time up — submitting…":"Submitting…"; }
     api("/exam/"+encodeURIComponent(token)+"/submit","POST",{details:window._reg,mcq_answers:ANS})
       .then(screenResult)
-      .catch(function(err){ btn.disabled=false; btn.textContent="Submit Test"; var e=document.getElementById("t-err"); e.textContent=err.message||"Could not submit. Try again."; e.style.display="block"; window.scrollTo(0,document.body.scrollHeight); });
+      .catch(function(err){ SUBMITTED=false; if(btn){ btn.disabled=false; btn.textContent="Submit Test"; }
+        var e=document.getElementById("t-err"); if(e){ e.textContent=err.message||"Could not submit. Try again."; e.style.display="block"; } window.scrollTo(0,document.body.scrollHeight); });
   }
 
   // ---------- 3) RESULT ----------
   function screenResult(r){
-    window.scrollTo(0,0);
+    window.scrollTo(0,0); if(TIMER){ clearInterval(TIMER); TIMER=null; }
     var pct=r.total_marks?Math.round(r.total_awarded/r.total_marks*100):0;
     var rev=(r.results||[]).map(function(it){
       var yourN=(it.your_answer==null?"":String(it.your_answer).trim().toLowerCase());
       var corN=String(it.correct_answer==null?"":it.correct_answer).trim().toLowerCase();
       var opts=(it.options||[]).map(function(o,oi){
-        var oh=(Array.isArray(it.options_hi)&&(it.options_hi[oi]||"").trim())?it.options_hi[oi]:null;
         var oN=String(o).trim().toLowerCase(), cls="opt", badge="";
         var isSel=(yourN!==""&&oN===yourN), isCor=(corN!==""&&oN===corN);
         if(isSel&&isCor){ cls+=" ok"; badge='<span class="badge g">Your answer · Correct</span>'; }
         else if(isSel&&!isCor){ cls+=" bad"; badge='<span class="badge r">Your answer</span>'; }
         else if(isCor){ cls+=" cor"; badge='<span class="badge g">Correct answer</span>'; }
-        return '<div class="'+cls+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+esc(oh||o)+'</span>'+badge+'</div>';
+        return '<div class="'+cls+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+optText(it,oi)+'</span>'+badge+'</div>';
       }).join("");
       var skip=(yourN==="")?'<div class="note" style="text-align:left;color:#b91c1c;font-weight:700">⚠ You did not answer this</div>':"";
       var expl=(it.explanation&&String(it.explanation).trim())?'<div class="expl"><b>Explanation:</b> '+esc(it.explanation)+'</div>':"";
-      return '<div class="q rv"><div class="q-h">Q'+it.q_no+'. '+esc(it.question_text)+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
+      return '<div class="q rv" id="pq-'+it.q_no+'"><div class="q-h">Q'+it.q_no+'. '+qText(it)+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
     }).join("");
     APP.innerHTML=
       '<div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
@@ -182,7 +328,7 @@
   function fail(msg){ H1.textContent="Test unavailable"; HM.innerHTML=""; APP.innerHTML='<div class="card center" style="padding:40px 20px"><div style="font-size:2rem">🔒</div><p style="font-weight:700;margin:10px 0 4px">'+esc(msg)+'</p><div class="lead">Please check the link with MVS Foundation.</div></div>'; }
   if(!token){ fail("Invalid test link."); return; }
   api("/exam/"+encodeURIComponent(token)).then(function(ex){
-    EX=ex; H1.textContent=ex.title||"Test"; screenRegister();
+    EX=ex; HASHI=hasHindi(); H1.textContent=ex.title||"Test"; screenRegister();
   }).catch(function(err){ fail(err.message||"This test link is not available."); });
 })();
 </script>
