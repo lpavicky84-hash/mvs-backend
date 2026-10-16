@@ -398,8 +398,12 @@ def _dims_out(s):
 
 def creator_info(db, t):
     """(name, type_label) for the task's creator."""
-    if (t.creator_type or "teacher") == "youtuber":
+    _ct = (t.creator_type or "teacher")
+    if _ct == "youtuber":
         return _name_for_youtuber(db, t.youtuber_id), "YOUTUBER"
+    if _ct == "editor":
+        # Direct editing task — koi teacher/youtuber creator nahi; editor hi "creator" hai.
+        return _name_for_staff(db, t.editor_id), "EDITOR"
     return _name_for_teacher(db, t.teacher_id), "TEACHER"
 
 
@@ -1216,6 +1220,8 @@ def _ensure_production_columns():
         "ALTER TABLE graphics_tasks ADD COLUMN reference_images TEXT",
         "ALTER TABLE graphics_tasks ADD COLUMN thumbnail_candidates TEXT",
         "ALTER TABLE graphics_tasks ADD COLUMN final_note VARCHAR(400)",
+        "ALTER TABLE video_tasks ADD COLUMN edited_direct BOOLEAN DEFAULT 0",
+        "ALTER TABLE video_tasks ADD COLUMN editor_credited_by VARCHAR(160)",
         "ALTER TABLE video_tasks ADD COLUMN quality_dims TEXT",
         "ALTER TABLE video_tasks ADD COLUMN ontime_appreciated BOOLEAN DEFAULT 0",
         "ALTER TABLE video_tasks ADD COLUMN description TEXT",
@@ -1363,6 +1369,13 @@ def stage_filter(status):
             _or(VideoTask.lifecycle == "approved",
                 _and(_blank, VideoTask.status == "approved")),
             VideoTask.editor_id == None)                                      # noqa: E711
+    if s == "shoot_pending":
+        # Assigned to a creator (teacher/youtuber), video NOT yet submitted — i.e. shoot pending.
+        # lifecycle is the source of truth; legacy status only matches when lifecycle is blank so a
+        # task that has really moved ahead (pm_review/editing/...) can never leak in via stale status.
+        return _or(
+            VideoTask.lifecycle.in_(["created", "creator_assigned", "creator_working"]),
+            _and(_blank, VideoTask.status.in_(["assigned", "new", "in_progress"])))
     if s == "editor_assigned":
         # assigned to editor, editing NOT started (legacy match only when lifecycle is blank,
         # so a task that has really moved to 'editing' can never leak in via a stale status)
@@ -1805,7 +1818,7 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         "teacher_reviewer_name": (getattr(t, "teacher_reviewer_name", "") or ""),
         "teacher_reviewed_at": _dt(getattr(t, "teacher_reviewed_at", None)),   # stored UTC -> show IST
         # youtuber videos skip the teacher gate; teacher/collab videos need it
-        "teacher_review_required": ((getattr(t, "creator_type", "") or "teacher") != "youtuber"),
+        "teacher_review_required": ((getattr(t, "creator_type", "") or "teacher") not in ("youtuber", "editor")),
         "approval_required": needs_pm_approval(db, t),
         "on_hold": bool(t.on_hold),
         "cancelled": bool(t.cancelled),

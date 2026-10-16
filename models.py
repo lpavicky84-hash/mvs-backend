@@ -612,6 +612,8 @@ class VideoTask(Base):
     editing_done_at    = Column(DateTime, nullable=True)
     editing_seconds    = Column(Integer, default=0)        # accumulated ACTIVE editing time (from sessions)
     edited_link     = Column(String(600), default="")      # editor-submitted final drive link
+    edited_direct   = Column(Boolean, default=False)       # PM ne already-edited video seedha credit ki (no start/submit loop)
+    editor_credited_by = Column(String(160), default="")   # kis PM/admin ne direct edit credit ki
     qc_status       = Column(String(20), default="")       # "" | pending | approved | changes
     revision_count  = Column(Integer, default=0)
     # TEACHER REVIEW of the edited video (creator / collab teacher checks before PM approves).

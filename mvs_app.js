@@ -9080,6 +9080,21 @@ window._pdfQS = function(scope){
 window._pdfApply = function(scope){
   var cb=window._pdfApplyFns[scope];
   if(typeof cb==='function'){ try{ cb(); }catch(e){} }
+  // BUG FIX (date filter): production Tasks ka silent reload sirf active-chips update karta tha,
+  // date-filter BUTTON ka label stale reh jaata tha — user "Today" chunta to chip "Today" dikhta
+  // par button "All dates" hi reh jaata. Ab button + uska menu current state se sync kar do.
+  // Ye har scope (prod/yt/board/thumb...) par chalta hai jo premDateFilter use karta hai.
+  try{ window._pdfResync(scope); }catch(e){}
+};
+// Date-filter button+menu ko current _pdfState se in-place dobara render karta hai (menu khula ho
+// to kuch nahi — taaki live-sync reload user ka open dropdown band na kare).
+window._pdfResync = function(scope){
+  try{
+    var el=document.getElementById(window._pdfId(scope)); if(!el) return;
+    if(el.classList.contains('open')) return;
+    var w=document.createElement('div'); w.innerHTML=window.premDateFilter(scope);
+    if(w.firstChild) el.parentNode.replaceChild(w.firstChild, el);
+  }catch(e){}
 };
 
 async function loadAYtTasks(hostId){
@@ -33960,6 +33975,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){
       if(f.creator_type) p.push('creator_type='+encodeURIComponent(f.creator_type));
       if(f.teacher_id) p.push('teacher_id='+encodeURIComponent(f.teacher_id));
+      if(f.editor_id) p.push('editor_id='+encodeURIComponent(f.editor_id));
       // Channel / type: prefer the stable ID, fall back to legacy name string.
       if(f.channel_id) p.push('channel_id='+encodeURIComponent(f.channel_id));
       else if(f.channel) p.push('channel='+encodeURIComponent(f.channel));
@@ -33989,12 +34005,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var f=_flt(portal);
     if(portal==='production'){
       var fd=window._prodFD||{};
-      var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
-      var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+      var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]), editors=(fd.editors||[]);
+      var statuses=[['','All Status'],['shoot_pending','Assigned — Shoot Pending'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
       var thumbs=[['','All Thumbnails'],['pending','Thumbnail Pending'],['assigned','Thumbnail Assigned'],['review','Thumbnail Review'],['changes','Thumbnail Changes'],['done','Thumbnail Done']];
+      var _edOpt=function(ed){ var done=(ed.done!=null?ed.done:(ed.total||0)); return '<option value="'+ed.id+'"'+((f.editor_id||'')==String(ed.id)?' selected':'')+'>'+esc(ed.name)+' · '+done+' edited</option>'; };
       var html='<div class="p-filter p-filter-prod">'+
         '<div class="pf-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="prod-search" placeholder="Search tasks \u2014 title, ref, subject..." value="'+esc(f.q||'')+'" oninput="prodSearch(\'production\',this.value)"></div>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'teacher_id\',this.value)"><option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('')+'</select>'+
+        '<select class="p-select pf-sel pf-editor" onchange="prodSetFilter(\'production\',\'editor_id\',this.value)" title="Filter by editor — konsi video kon edit kar raha hai">'+'<option value="">All Editors</option>'+editors.map(_edOpt).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'channel_id\',this.value)"><option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+ch.id+'"'+((f.channel_id||'')==String(ch.id)?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join('')+'</select>'+
         '<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'video_type_id\',this.value)"><option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+ty.id+'"'+((f.video_type_id||'')==String(ty.id)?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join('')+'</select>'+
         ((f._locked&&f.status)?'':'<select class="p-select pf-sel" onchange="prodSetFilter(\'production\',\'status\',this.value)">'+statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>')+
@@ -34120,7 +34138,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       api(P.production.api+'/channels').catch(function(){return {};}),
       api(P.production.api+'/video-types').catch(function(){return {};})
     ]).then(function(res){
-      window._prodFD={teachers:(res[0].teachers)||[],channels:(res[1].channels)||[],types:(res[2].types)||[]};
+      window._prodFD={teachers:(res[0].teachers)||[],channels:(res[1].channels)||[],types:(res[2].types)||[],editors:(res[0].editors)||[]};
       // re-render the filter bar area if we're on a list page
       var bar=document.querySelector('#production-body .p-filter');
       if(bar){ var wrap=document.createElement('div'); wrap.innerHTML=_filterBar('production'); bar.parentNode.replaceChild(wrap.firstChild,bar); }
@@ -34128,8 +34146,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.prodFilterDrawer=function(){
     var f=_flt('production'); var fd=window._prodFD||{};
-    var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]);
-    var statuses=[['','All Status'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
+    var teachers=(fd.teachers||[]), channels=(fd.channels||[]), types=(fd.types||[]), editors=(fd.editors||[]);
+    var statuses=[['','All Status'],['shoot_pending','Assigned — Shoot Pending'],['pm_review','PM Review'],['approved','Approved'],['editor_assigned','Editing Soon'],['editing','Editing In Progress'],['qc_pending','QC Pending'],['ready_for_youtube','Ready for YouTube'],['uploaded','Uploaded'],['changes_required','Changes']];
     var sel=function(field,ph,opts){ return '<div class="p-field"><label>'+ph+'</label><select class="p-select" onchange="prodSetFilter(\'production\',\''+field+'\',this.value);prodCloseDrawer()">'+opts+'</select></div>'; };
     var deadlines=[['','Any deadline'],['overdue','Delayed'],['today','Due Today'],['week','This Week'],['none','No deadline']];
     var priorities=[['','Any priority'],['urgent','Urgent'],['normal','Normal']];
@@ -34139,6 +34157,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dr=document.createElement('div'); dr.className='pfd-wrap'; dr.id='prod-fdrawer';
     dr.innerHTML='<div class="pfd"><div class="pfd-grip"></div><div class="pfd-h"><span class="t">Filters</span><button class="pd-x" onclick="prodCloseDrawer()">&times;</button></div>'+
       sel('teacher_id','Teacher','<option value="">All Teachers</option>'+teachers.map(function(t){ return '<option value="'+t.id+'"'+((f.teacher_id||'')==String(t.id)?' selected':'')+'>'+esc(t.name)+'</option>'; }).join(''))+
+      sel('editor_id','Editor','<option value="">All Editors</option>'+editors.map(function(ed){ var done=(ed.done!=null?ed.done:(ed.total||0)); return '<option value="'+ed.id+'"'+((f.editor_id||'')==String(ed.id)?' selected':'')+'>'+esc(ed.name)+' · '+done+' edited</option>'; }).join(''))+
       sel('channel_id','Channel','<option value="">All Channels</option>'+channels.map(function(ch){ return '<option value="'+ch.id+'"'+((f.channel_id||'')==String(ch.id)?' selected':'')+'>'+esc(ch.name)+'</option>'; }).join(''))+
       sel('video_type_id','Type','<option value="">All Types</option>'+types.map(function(ty){ return '<option value="'+ty.id+'"'+((f.video_type_id||'')==String(ty.id)?' selected':'')+'>'+esc(ty.name)+'</option>'; }).join(''))+
       sel('status','Status',statuses.map(function(o){ return '<option value="'+o[0]+'"'+((f.status||'')===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join(''))+
@@ -34152,7 +34171,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     setTimeout(function(){ dr.classList.add('open'); },10);
   };
   window.prodCloseDrawer=function(){ var dr=document.getElementById('prod-fdrawer'); if(dr){ dr.classList.remove('open'); setTimeout(function(){ dr.remove(); },240); } };
-  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','channel','channel_id','video_type','video_type_id','thumb','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); f._page=1; try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to='';_ds.field=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
+  window.prodClearFilters=function(){ var f=_flt('production'); f._locked=false; ['q','teacher_id','editor_id','channel','channel_id','video_type','video_type_id','thumb','status','priority','deadline','creator_type'].forEach(function(k){ delete f[k]; }); f._page=1; try{ var _ds=window._pdfGet('prod'); _ds.range='';_ds.from='';_ds.to='';_ds.field=''; }catch(e){} var body=document.getElementById('production-body'); if(body) renderList('production',body); };
   function renderList(portal,body){
     body.innerHTML=_filterBar(portal)+'<div id="'+portal+'-active"></div><div id="'+portal+'-results">'+_pSkelRows(5)+'</div>';
     return _prodLoadList(portal);
@@ -34911,6 +34930,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(f.status) chips.push(['Status: '+(_ST_LABEL[f.status]||f.status),'status']);
     if(portal==='production'&&f.creator_type) chips.push(['Creator: '+(f.creator_type==='youtuber'?'YouTuber':'Teacher'),'creator_type']);
     if(portal==='production'&&f.teacher_id) chips.push(['Teacher: '+_prodTeacherName(f.teacher_id),'teacher_id']);
+    if(portal==='production'&&f.editor_id){ var _en=''; try{ var _eds=(window._prodFD&&window._prodFD.editors)||[]; for(var _i=0;_i<_eds.length;_i++){ if(String(_eds[_i].id)===String(f.editor_id)){ _en=_eds[_i].name; break; } } }catch(e){} chips.push(['Editor: '+(_en||('#'+f.editor_id)),'editor_id']); }
     if(portal==='production'&&(f.channel_id||f.channel)) chips.push(['Channel: '+_prodChannelName(f),'channel']);
     if(portal==='production'&&(f.video_type_id||f.video_type)) chips.push(['Type: '+_prodTypeName(f),'video_type']);
     if(portal==='production'&&f.thumb) chips.push(['Thumbnail: '+(_TH_LABEL[f.thumb]||f.thumb),'thumb']);
@@ -35243,7 +35263,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _prodSeqCur(portal){ return (window._prodSeq||{})[portal]||0; }
   // premium per-status COUNT BAR (production Tasks): clickable chips with live counts + a big
   // running total for whatever status/filter is selected. Driven by the backend `counts`.
-  var _PCB=[['pm_review','PM Review','#c99a2e'],['approved','Approved','#2e9e6b'],
+  var _PCB=[['shoot_pending','Shoot Pending','#0891b2'],['pm_review','PM Review','#c99a2e'],['approved','Approved','#2e9e6b'],
     ['editor_assigned','Editing Soon','#7c4fc0'],['editing','Editing','#2563eb'],
     ['qc_pending','QC Pending','#2a7fb8'],['ready_for_youtube','Ready for YouTube','#e0a52e'],
     ['uploaded','Uploaded','#2e9e6b'],['changes_required','Changes','#d1443a']];
@@ -35287,6 +35307,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // silent background refreshes keep the current limit so an expanded view is not shrunk.
     if(portal==='production' && !silent){ f._size=40; }
     var act=document.getElementById(portal+'-active'); if(act) act.innerHTML=_activeChips(portal);
+    // date-filter button ko bhi active-chips ke saath sync rakho (silent reload par label stale na ho)
+    if(portal==='production'){ try{ window._pdfResync('prod'); }catch(e){} }
     // keep saved-view chip highlight in sync
     var bar=document.querySelector('#'+portal+'-app .p-filter');
     if(bar){ var chips=bar.querySelectorAll('.p-chip'); var views=SAVED[portal]||[];
@@ -35382,7 +35404,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(k==='q'){ var s=document.getElementById('prod-search'); if(s) s.value=''; }
     f._page=1;
     // the filter bar's own selects must reflect the cleared state
-    try{ var body=document.getElementById(portal+'-body'); if(body && (k==='teacher_id'||k==='channel'||k==='video_type'||k==='status'||k==='thumb'||k==='date')){ var pf=body.querySelector('.p-filter'); if(pf){ var w=document.createElement('div'); w.innerHTML=_filterBar(portal); pf.parentNode.replaceChild(w.firstChild,pf); } } }catch(e){}
+    try{ var body=document.getElementById(portal+'-body'); if(body && (k==='teacher_id'||k==='editor_id'||k==='channel'||k==='video_type'||k==='status'||k==='thumb'||k==='date')){ var pf=body.querySelector('.p-filter'); if(pf){ var w=document.createElement('div'); w.innerHTML=_filterBar(portal); pf.parentNode.replaceChild(w.firstChild,pf); } } }catch(e){}
     _prodLoadList(portal);
   };
   // ONE reset — clears every production filter including the (separate) date-range state.
@@ -38401,7 +38423,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(g('aw-channel')!==undefined)d.channel_name=g('aw-channel').trim();
       if(g('aw-subject')!==undefined)d.subject=g('aw-subject').trim();
       if(g('aw-stream')!==undefined)d.streaming=g('aw-stream').trim();
-      if(g('aw-creator')!==undefined){ var v=g('aw-creator'); if(d.creator_type==='teacher')d.teacher_id=v?parseInt(v,10):0; else d.youtuber_id=v?parseInt(v,10):0; }
+      if(g('aw-creator')!==undefined){ var v=g('aw-creator'); if(d.creator_type==='teacher')d.teacher_id=v?parseInt(v,10):0; else if(d.creator_type==='editor')d.editor_id=v?parseInt(v,10):0; else d.youtuber_id=v?parseInt(v,10):0; }
       if(g('aw-priority')!==undefined)d.priority=g('aw-priority');
       if(g('aw-deadline')!==undefined)d.deadline=g('aw-deadline');
       if(g('aw-refvid')!==undefined)d.reference_video=g('aw-refvid').trim();
@@ -38421,6 +38443,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     else if(s===3){
       // Editor section
+      var esg=document.getElementById('aw-editing-status'); if(esg)d.editing_status=(esg.value==='done'?'done':'pending');
+      // "Editing done" case: edited link + optional editor credit + rating
+      if(g('aw-edited-link')!==undefined)d.edited_link=g('aw-edited-link').trim();
+      if(g('aw-edited-editor')!==undefined)d.edited_editor_id=g('aw-edited-editor')?parseInt(g('aw-edited-editor'),10):0;
+      if(g('aw-edited-rating')!==undefined)d.edited_rating=g('aw-edited-rating')?parseInt(g('aw-edited-rating'),10):0;
       var etog=document.getElementById('aw-editor-collab-toggle'); if(etog)d.editor_collab_on=(etog.value==='yes');
       if(d.editor_collab_on){
         // editor_all_ids taps se maintain hoti hai; primary = pehla, baaki collab
@@ -38649,14 +38676,18 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var html=modeTabs+steps;
     if(aw.step===1){
       var chList=(aw.channels||[]), tyList=(aw.types||[]);
-      var ppl=aw.people||{}; var list=(d.creator_type==='teacher')?(ppl.teachers||[]):(ppl.youtubers||[]);
-      var sel=(d.creator_type==='teacher')?d.teacher_id:d.youtuber_id;
+      var ppl=aw.people||{}; var list=(d.creator_type==='teacher')?(ppl.teachers||[]):(d.creator_type==='editor')?(ppl.editors||[]):(ppl.youtubers||[]);
+      var sel=(d.creator_type==='teacher')?d.teacher_id:(d.creator_type==='editor')?d.editor_id:d.youtuber_id;
       var chSel='<select class="p-select" id="aw-channel" style="flex:1"><option value="">Select channel</option>'+chList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.channel_name===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.channel_name&&chList.filter(function(c){return c.name===d.channel_name;}).length===0?'<option value="'+esc(d.channel_name)+'" selected>'+esc(d.channel_name)+'</option>':'')+'</select>';
       var tySel='<select class="p-select" id="aw-vtype" style="flex:1"><option value="">Select type</option>'+tyList.map(function(c){ return '<option value="'+esc(c.name)+'"'+((d.video_type===c.name)?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+(d.video_type&&tyList.filter(function(c){return c.name===d.video_type;}).length===0?'<option value="'+esc(d.video_type)+'" selected>'+esc(d.video_type)+'</option>':'')+'</select>';
       // 1) creator type
       html+='<div class="p-field"><label>Creator Type</label><div class="aw-toggle">'+
         '<button class="'+(d.creator_type==='teacher'?'on':'')+'" onclick="awSetCreatorType(\'teacher\')">Teacher</button>'+
-        '<button class="'+(d.creator_type==='youtuber'?'on':'')+'" onclick="awSetCreatorType(\'youtuber\')">YouTuber</button></div></div>';
+        '<button class="'+(d.creator_type==='youtuber'?'on':'')+'" onclick="awSetCreatorType(\'youtuber\')">YouTuber</button>'+
+        '<button class="'+(d.creator_type==='editor'?'on':'')+'" onclick="awSetCreatorType(\'editor\')">Editor</button></div></div>';
+      if(d.creator_type==='editor'){
+        html+='<div class="aw-note" style="background:rgba(124,79,192,.1);border:1px solid rgba(124,79,192,.32);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.82rem;color:#6a3fae;line-height:1.45">Direct editing task — <b>no shooting needed</b>. The editor gets a <b>Start Editing</b> button right away, then the normal flow runs: editing → QC → Ready for YouTube. Give the reference video and remarks below.</div>';
+      }
       // 2) collaboration (teachers only) — asked FIRST like admin
       var isCollab=false;
       if(d.creator_type==='teacher'){
@@ -38679,7 +38710,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       } else {
         var _selInList=(sel&&list.filter(function(m){return m.id===sel;}).length>0);
         var _selExtra=(sel&&!_selInList&&d.creator_name)?('<option value="'+sel+'" selected>'+esc(d.creator_name)+'</option>'):'';
-        html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?('Teacher (subjects filter to this teacher)'):'YouTuber')+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
+        html+='<div class="p-field"><label>'+(d.creator_type==='teacher'?('Teacher (subjects filter to this teacher)'):(d.creator_type==='editor'?'Editor (who will edit this)':'YouTuber'))+'</label><select class="p-select" id="aw-creator" onchange="awPickCreator()">'+
           '<option value="">Choose...</option>'+_selExtra+list.map(function(m){ return '<option value="'+m.id+'"'+(sel===m.id?' selected':'')+'>'+esc(m.name)+(m.approval_required!==undefined?(m.approval_required?' (approval on)':' (approval off)'):'')+'</option>'; }).join('')+'</select></div>';
       }
       // 4) subject — teacher only (YouTubers make topic-based videos, no subject)
@@ -38702,12 +38733,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Streaming</label><select class="p-select" id="aw-stream"><option value="">Select</option>'+_awOpts('streaming').map(function(o){ return '<option value="'+esc(o)+'"'+((d.streaming===o)?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
       // ---- Teacher details: priority + teacher deadline + reference video + brief + remarks
       // (sab kuch jo teacher ko dikhega, ek hi section mein)
-      html+='<div class="aw-sechead">'+ic('user')+' Teacher details</div>'+
+      var _isEd=(d.creator_type==='editor');
+      html+='<div class="aw-sechead">'+ic('user')+' '+(_isEd?'Editor details':'Teacher details')+'</div>'+
         '<div class="p-field"><label>Priority <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-priority"><option value="normal"'+((d.priority!=='urgent'&&d.priority!=='most_urgent')?' selected':'')+'>— Normal (no priority) —</option><option value="urgent"'+((d.priority==='urgent'||d.priority==='most_urgent')?' selected':'')+'>Urgent</option></select></div>'+
-        '<div class="p-field"><label>'+(d.creator_type==='youtuber'?'YouTuber':'Teacher')+' deadline <span style="color:var(--muted);font-weight:600">(submit the video by)</span></label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
-        '<div class="p-field"><label>Reference Video link <span style="color:var(--muted);font-weight:600">(teacher taps a blinking button to open)</span></label><input class="p-input" id="aw-refvid" placeholder="https://drive.google.com/... or YouTube" value="'+esc(d.reference_video||'')+'"></div>'+
+        '<div class="p-field"><label>'+(_isEd?'Editor':(d.creator_type==='youtuber'?'YouTuber':'Teacher'))+' deadline <span style="color:var(--muted);font-weight:600">('+(_isEd?'finish editing by':'submit the video by')+')</span></label><input class="p-input" id="aw-deadline" type="datetime-local" value="'+esc(d.deadline||'')+'"></div>'+
+        '<div class="p-field"><label>'+(_isEd?'Reference video to edit':'Reference Video link')+' <span style="color:var(--muted);font-weight:600">('+(_isEd?'the raw / source footage — editor opens this':'teacher taps a blinking button to open')+')</span></label><input class="p-input" id="aw-refvid" placeholder="https://drive.google.com/... or YouTube" value="'+esc(d.reference_video||'')+'"></div>'+
         '<div class="p-field"><label>Reference / Instructions <span style="color:var(--muted);font-weight:600">(link or notes)</span></label><input class="p-input" id="aw-reference" placeholder="Reference link or notes (optional)" value="'+esc(d.reference||'')+'"></div>'+
-        '<div class="p-field"><label>Remarks for creator <span style="color:var(--muted);font-weight:600">(how to shoot — shows as a "Video Needs" button)</span></label><textarea class="p-area" id="aw-remarks" placeholder="Any specific instructions...">'+esc(d.remarks||'')+'</textarea></div>'+
+        '<div class="p-field"><label>'+(_isEd?'Remarks / editing instructions':'Remarks for creator')+' <span style="color:var(--muted);font-weight:600">('+(_isEd?'what to cut, add, style':'how to shoot — shows as a "Video Needs" button')+')</span></label><textarea class="p-area" id="aw-remarks" placeholder="Any specific instructions...">'+esc(d.remarks||'')+'</textarea></div>'+
         (d.creator_type==='youtuber'?'<div class="p-field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="aw-approval"'+(d.approval_required?' checked':'')+'> Require PM approval before production</label><div class="p-opt">If off, this creator’s videos go straight into production after they submit.</div></div>':'');
     } else if(aw.step===2){
       // ===== GRAPHICS section =====
@@ -38752,9 +38784,27 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     } else if(aw.step===3){
       // ===== EDITOR section =====
       var ppl3=aw.people||{}; var edList=ppl3.editors||[];
-      var edOn=!!d.editor_collab_on;
+      var estat=(d.editing_status==='done')?'done':'pending'; d.editing_status=estat;
       html+='<div class="aw-sechead">'+ic('play')+' Editor</div>'+
-        '<div class="p-field"><label>Assign editor(s)?</label><select class="p-select" id="aw-editor-collab-toggle" onchange="awEditorCollabToggle(this.value)">'+
+        '<div class="p-field"><label>Editing status</label><select class="p-select" id="aw-editing-status" onchange="awEditingStatusToggle(this.value)">'+
+          '<option value="pending"'+(estat!=='done'?' selected':'')+'>Editing pending \u2014 assign an editor to edit</option>'+
+          '<option value="done"'+(estat==='done'?' selected':'')+'>Editing done \u2014 video already edited</option></select></div>';
+      if(estat==='done'){
+        // DONE: edited video link + optional editor credit + rating -> seedha Ready for YouTube
+        var _rOpt=function(v,l){ return '<option value="'+v+'"'+(d.edited_rating==v?' selected':'')+'>'+l+'</option>'; };
+        html+='<div class="aw-note" style="background:rgba(224,165,46,.12);border:1px solid rgba(224,165,46,.4);border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:.82rem;color:#8a5e17;line-height:1.45">Marking <b>Editing done</b> sends this video straight to <b>Ready for YouTube</b> \u2014 no editing step. The selected editor (optional) sees it in <b>Ready for YouTube</b> with <b>no Start button</b> and gets your rating. Teacher &amp; graphics have nothing to do.</div>'+
+          '<div class="p-field"><label>Edited video link</label><input class="p-input" id="aw-edited-link" placeholder="https://drive.google.com/... or YouTube" value="'+esc(d.edited_link||'')+'"></div>'+
+          '<div class="p-field"><label>Editor who edited this <span style="color:var(--muted);font-weight:600">(optional \u2014 credit + rate)</span></label><select class="p-select" id="aw-edited-editor"><option value="">\u2014 Not set \u2014</option>'+
+            edList.map(function(ed){ return '<option value="'+ed.id+'"'+((d.edited_editor_id||d.editor_id)===ed.id?' selected':'')+'>'+esc(ed.name)+'</option>'; }).join('')+'</select></div>'+
+          '<div class="p-field"><label>Rate the editor <span style="color:var(--muted);font-weight:600">(optional)</span></label><select class="p-select" id="aw-edited-rating"><option value="">No rating</option>'+_rOpt(5,'5 - Excellent')+_rOpt(4,'4 - Good')+_rOpt(3,'3 - Average')+_rOpt(2,'2 - Below average')+_rOpt(1,'1 - Poor')+'</select></div>';
+        body.innerHTML=html;
+        var _bk=aw.step>1?'<button class="p-btn" onclick="awBack()">Back</button>':'<button class="p-btn" onclick="prodAwCancel()">Cancel</button>';
+        var _nx='<button class="p-btn p-btn-primary" onclick="awNext()">Next</button>';
+        if(foot) foot.innerHTML='<div class="p-acts" style="justify-content:space-between">'+_bk+_nx+'</div>';
+        return;
+      }
+      var edOn=!!d.editor_collab_on;
+      html+='<div class="p-field"><label>Assign editor(s)?</label><select class="p-select" id="aw-editor-collab-toggle" onchange="awEditorCollabToggle(this.value)">'+
           '<option value="no"'+(!edOn?' selected':'')+'>Single editor</option>'+
           '<option value="yes"'+(edOn?' selected':'')+'>Collab \u2014 2 editors (urgent video)</option></select></div>';
       if(edOn){
@@ -38918,6 +38968,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awThumbToggle=function(v){ _awSave(); window._aw.data.thumbnail_required=(v==='yes'); if(v==='yes'&&!window._aw.data.graphics_status) window._aw.data.graphics_status='pending'; _awRender(); };
   window.awGfxStatusToggle=function(v){ _awSave(); window._aw.data.graphics_status=(v==='done'?'done':'pending'); _awRender(); };
   window.awVideoStatusToggle=function(v){ _awSave(); window._aw.data.video_status=(v==='done'?'done':'pending'); _awRender(); };
+  window.awEditingStatusToggle=function(v){ _awSave(); window._aw.data.editing_status=(v==='done'?'done':'pending'); _awRender(); };
   function _awReadImg(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ window._aw.data.thumb_upload=r.result; _awRender(); }; r.readAsDataURL(file); }
   function _awReadRef(file){ if(!file||!/^image\//.test(file.type)) { toast('Please choose an image file',true); return; } if(file.size>5*1024*1024){ toast('Image too large (max 5MB)',true); return; } var r=new FileReader(); r.onload=function(){ var d=window._aw.data; d.graphics_reference_uploads=d.graphics_reference_uploads||[]; if(d.graphics_reference_uploads.length>=6){ toast('Up to 6 reference images',true); return; } d.graphics_reference_uploads.push(r.result); _awRender(); }; r.readAsDataURL(file); }
   window.awThumbFile=function(e){ _awSave(); var f=e.target.files&&e.target.files[0]; _awReadImg(f); };
@@ -38938,9 +38989,11 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.awCollabMulti=function(){ var s=document.getElementById('aw-collab-multi'); if(!s) return; var ids=[]; for(var i=0;i<s.options.length;i++){ if(s.options[i].selected) ids.push(parseInt(s.options[i].value,10)); } window._aw.data.collab_teacher_ids=ids; var opt=document.querySelector('#aw-body .p-opt'); };
   window.awCreate=function(){ _awSave(); var aw=window._aw, d=aw.data;
     if(!(d.title||'').trim()){ toast('Title is required',true); window._aw.step=1; _awRender(); return; }
+    if(d.creator_type==='editor' && !d.editor_id){ toast('Select the editor for this editing task',true); window._aw.step=1; _awRender(); return; }
     if(d.thumbnail_required && !d.graphics_id){ toast('Select a graphics designer (thumbnail is required)',true); window._aw.step=2; _awRender(); return; }
     if(d.editor_collab_on && (d.editor_all_ids||[]).length===1){ toast('Pick 2 editors for a collab (or switch to Single editor)',true); window._aw.step=3; _awRender(); return; }
     if(d.video_status==='done' && !(d.youtube_url||'').trim()){ toast('Paste the uploaded YouTube link (or switch to "Upload pending")',true); window._aw.step=4; _awRender(); return; }
+    if(d.editing_status==='done' && !(d.edited_link||'').trim()){ toast('Paste the edited video link (or switch to "Editing pending")',true); window._aw.step=3; _awRender(); return; }
     // ---- EDIT MODE: existing task update (create nahi) ----
     if(aw.editId){
       var eid=aw.editId;
@@ -38993,7 +39046,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       return;
     }
     var body={title:d.title, creator_type:d.creator_type, subject:d.subject||'', video_type:d.video_type||'', channel_name:d.channel_name||'', streaming:d.streaming||'', reference:d.reference||'', reference_video:d.reference_video||'', remarks:d.remarks||'', priority:d.priority||'normal'};
-    if(d.creator_type==='teacher'){ body.teacher_id=d.teacher_id; if((d.collab_teacher_ids||[]).length) body.collab_teacher_ids=d.collab_teacher_ids; } else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
+    if(d.creator_type==='teacher'){ body.teacher_id=d.teacher_id; if((d.collab_teacher_ids||[]).length) body.collab_teacher_ids=d.collab_teacher_ids; }
+    else if(d.creator_type==='editor'){ body.editor_id=d.editor_id; if(d.deadline) body.editor_deadline=d.deadline; }
+    else { body.youtuber_id=d.youtuber_id; body.approval_required=!!d.approval_required; }
     if(d.deadline) body.deadline=d.deadline;
     body.thumbnail_required=!!d.thumbnail_required;
     if(d.thumbnail_required && d.graphics_id) body.graphics_id=d.graphics_id;
@@ -39016,6 +39071,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(d.editor_deadline) body.editor_deadline=d.editor_deadline;
     if(d.editor_instructions) body.editor_instructions=d.editor_instructions;
     if(d.editor_reference) body.editor_reference=d.editor_reference;
+    // Editor section: "Editing done" -> video already edited, seedha Ready for YouTube + editor credit/rating
+    if(d.editing_status==='done'){
+      body.editing_status='done';
+      body.edited_link=(d.edited_link||'').trim();
+      if(d.edited_editor_id) body.editor_id=d.edited_editor_id;   // jisne edit kiya usko credit
+      if(d.edited_rating) body.editor_rating=d.edited_rating;
+    }
     // Upload section: create the task already uploaded (video edited + live) + credit/rate editor
     if(d.video_status==='done'){
       body.video_status='done';

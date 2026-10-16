@@ -356,8 +356,8 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     # ---- PER-STATUS COUNTS for the premium count bar (computed from ALL non-status filters) ----
     # One cheap COUNT per status key on the shared base query; the grand total is every card that
     # matches the current teacher/channel/type/thumb/date/search selection across all statuses.
-    _ckeys = ["pm_review", "approved", "editor_assigned", "editing", "qc_pending",
-              "ready_for_youtube", "uploaded", "changes_required"]
+    _ckeys = ["shoot_pending", "pm_review", "approved", "editor_assigned", "editing",
+              "qc_pending", "ready_for_youtube", "uploaded", "changes_required"]
     _counts = {}
     for _k in _ckeys:
         _cf = pc.stage_filter(_k)
@@ -839,6 +839,77 @@ def _apply_upload_done(db, t, payload, me):
     return True
 
 
+def _apply_editing_done(db, t, payload, me):
+    """Assign Work ka 'Editor' section: agar video PEHLE SE edit ho chuki hai
+    (editing_status=='done') to poora editor flow (start/submit/QC) skip karke seedha
+    READY FOR YOUTUBE. Edited video ka link store hota hai, jis editor ne edit kiya (optional)
+    usko credit + rating milti hai, aur usko notify hota hai. Editor ke portal par ye video
+    Ready-for-YouTube me dikhti hai — koi 'Start Editing' button NAHI. Teacher/graphics ko bhi
+    kuch nahi karna (ye stage unke action se aage hai).
+    Returns True agar editing-done apply hua (warna normal flow chalta rahe)."""
+    # Upload-done (already live) alag path hai aur wo jeetta hai.
+    if (payload.get("video_status") or "").strip().lower() == "done":
+        return False
+    es = (payload.get("editing_status") or "").strip().lower()
+    if es != "done":
+        return False
+    link = (payload.get("edited_link") or payload.get("edited_video_url") or "").strip()
+    if not link:
+        raise HTTPException(400, "Paste the edited video link (or switch to 'Editing pending')")
+    # jis editor ne edit kiya — optional credit (editor step ka editor_id, ya alag field)
+    try:
+        eid = int(payload.get("editor_id") or payload.get("edit_editor_id") or 0)
+    except Exception:
+        eid = 0
+    if eid:
+        ep = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.id == eid,
+            ProductionStaffProfile.staff_role == "editor").first()
+        if ep:
+            t.editor_id = eid
+    t.edited_link = link
+    try:
+        t.edited_direct = True
+        t.editor_credited_by = _actor_name(me)
+    except Exception:
+        pass
+    _now = datetime.utcnow()
+    try:
+        if not t.editing_started_at:
+            t.editing_started_at = _now
+        t.editing_done_at = _now
+    except Exception:
+        pass
+    # optional editor rating
+    try:
+        rt = int(payload.get("editor_rating") or payload.get("upload_rating") or 0)
+    except Exception:
+        rt = 0
+    if rt and 1 <= rt <= 5:
+        t.quality_rating = rt
+    # editing + QC satisfied (PM ne already-edited video di) -> seedha ready for youtube
+    pc.set_state(db, t, "ready_for_youtube", actor=me, event="editor_credited", force=True)
+    try:
+        pc.log_event(db, t, me, "edited_direct", new_state="ready_for_youtube",
+                     meta={"note": "Already-edited video credited directly by production manager"
+                           + ((" (rated %d/5)" % rt) if rt else "")})
+    except Exception:
+        pass
+    # credited editor ko notify — Ready-for-YouTube me dikhega, start button nahi, rating mil jaayegi
+    try:
+        if t.editor_id:
+            ed = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
+            if ed and ed.user_id:
+                _m = f'"{t.title}" is marked already edited and is now Ready for YouTube.'
+                if rt:
+                    _m += " Rated %d/5." % rt
+                pc.notify(db, ed.user_id, "Edit credited",
+                          _m, "appreciation" if (rt or 0) >= 4 else "editor_task", link=str(t.id))
+    except Exception:
+        pass
+    return True
+
+
 @router.post("/tasks")
 def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                    me=Depends(get_pm_or_admin)):
@@ -846,8 +917,13 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
     if not title:
         raise HTTPException(400, "A title is required")
     ctype = (payload.get("creator_type") or "teacher").strip().lower()
-    if ctype not in ("teacher", "youtuber"):
-        raise HTTPException(400, "creator_type must be teacher or youtuber")
+    if ctype not in ("teacher", "youtuber", "editor"):
+        raise HTTPException(400, "creator_type must be teacher, youtuber or editor")
+    # Already-edited video? (Editor step -> "Editing done"). Tab creator/editor ko "naya task"
+    # notify mat karo — video to pehle se ban chuki hai; _apply_editing_done seedha ready_for_youtube
+    # pe le jaata hai aur credited editor ko apni alag (rating wali) notification bhejta hai.
+    _editing_done = ((payload.get("editing_status") or "").strip().lower() == "done"
+                     and (payload.get("video_status") or "").strip().lower() != "done")
     t = VideoTask(title=title, creator_type=ctype,
                   subject=(payload.get("subject") or "").strip(),
                   video_type=(payload.get("video_type") or "").strip(),
@@ -888,6 +964,16 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
                 t.collab_teacher_ids = _jc.dumps(collab)
             except Exception:
                 pass
+    elif ctype == "editor":
+        # Direct-to-editor task (trailer etc.) — NO shooting. The chosen editor is the "creator";
+        # it starts at editor_assigned so the editor can Start Editing right away.
+        _eid = int(payload.get("editor_id") or 0)
+        _ep = db.query(ProductionStaffProfile).filter(
+            ProductionStaffProfile.id == _eid,
+            ProductionStaffProfile.staff_role == "editor").first()
+        if not _ep:
+            raise HTTPException(400, "Valid editor_id required for a direct editing task")
+        t.editor_id = _eid
     else:
         yid = int(payload.get("youtuber_id") or 0)
         yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == yid).first()
@@ -949,8 +1035,13 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
     _eref = (payload.get("editor_reference") or "").strip()
     if _eref:
         t.editor_reference = _eref
-    pc.set_state(db, t, "creator_assigned", actor=me, event="task_created")
-    pc.log_event(db, t, me, "creator_assigned", new_state="creator_assigned")
+    if ctype == "editor" and not _editing_done:
+        # Direct editing task: koi shoot / creator-review nahi — editor abhi se edit shuru kar sakta hai.
+        pc.set_state(db, t, "editor_assigned", actor=me, event="editor_assigned", force=True)
+        pc.log_event(db, t, me, "editor_assigned", new_state="editor_assigned")
+    else:
+        pc.set_state(db, t, "creator_assigned", actor=me, event="task_created")
+        pc.log_event(db, t, me, "creator_assigned", new_state="creator_assigned")
     db.flush()
     # create the graphics sub-task now that the task has an id, and notify the designer
     if t.thumbnail_required and t.graphics_id:
@@ -1029,31 +1120,47 @@ def pm_create_task(payload: dict = Body(...), db: Session = Depends(get_db),
             else:
                 pc.notify(db, gp.user_id, "New Thumbnail Task",
                           f'A thumbnail has been requested for "{title}".', "graphics_task", link=str(t.id))
-    if t.editor_id:
+    if t.editor_id and not _editing_done:
         ep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == t.editor_id).first()
         if ep and ep.user_id:
-            pc.notify(db, ep.user_id, "You are the editor for an upcoming video",
-                      f'You have been pre-assigned to edit "{title}" once it is ready.', "video_task", link=str(t.id))
-    for _cei in pc.collab_editor_ids(t):
+            if ctype == "editor":
+                # direct editing task — editor abhi se edit shuru kar sakta hai
+                pc.notify(db, ep.user_id, "New editing task",
+                          f'"{title}" has been assigned to you to edit. Tap Start Editing to begin.',
+                          "editor_task", link=str(t.id))
+            else:
+                pc.notify(db, ep.user_id, "You are the editor for an upcoming video",
+                          f'You have been pre-assigned to edit "{title}" once it is ready.', "video_task", link=str(t.id))
+    for _cei in (pc.collab_editor_ids(t) if not _editing_done else []):
         _cep = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == _cei).first()
         if _cep and _cep.user_id:
             pc.notify(db, _cep.user_id, "You are a co-editor for an upcoming video",
                       f'You have been added as a co-editor on "{title}".', "video_task", link=str(t.id))
-    # notify creator
-    if ctype == "teacher":
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
-        if tp and tp.user_id:
-            pc.notify(db, tp.user_id, "New Video Task", f'You have been assigned: "{title}".',
-                      "video_task", link=str(t.id))
-    else:
-        yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
-        if yp and yp.user_id:
-            pc.notify(db, yp.user_id, "New Video Request", f'A new video has been requested: "{title}".',
-                      "video_request", link=str(t.id))
+    # notify creator (already-edited video pe creator ko "naya task" notify karne ka matlab nahi)
+    if not _editing_done:
+        if ctype == "teacher":
+            tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
+            if tp and tp.user_id:
+                pc.notify(db, tp.user_id, "New Video Task", f'You have been assigned: "{title}".',
+                          "video_task", link=str(t.id))
+        elif ctype == "youtuber":
+            yp = db.query(YouTuberProfile).filter(YouTuberProfile.id == t.youtuber_id).first()
+            if yp and yp.user_id:
+                pc.notify(db, yp.user_id, "New Video Request", f'A new video has been requested: "{title}".',
+                          "video_request", link=str(t.id))
+        # ctype == "editor": creator hi editor hai — uski "New editing task" notification upar ja chuki.
     # Upload section: agar PM/admin ne "Upload done" chuna (video already edited + live) to
     # seedha publish + editor credit/rating (editor-assign flow skip).
     try:
         _apply_upload_done(db, t, payload, me)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+    # Editor section: agar "Editing done" chuna (video already edited, abhi upload nahi hui) to
+    # seedha Ready for YouTube + editor credit/rating. (upload-done ho to ye no-op.)
+    try:
+        _apply_editing_done(db, t, payload, me)
     except HTTPException:
         raise
     except Exception:
@@ -2263,14 +2370,22 @@ def pm_people(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_o
             ProductionStaffProfile.staff_role == "editor",
             ProductionStaffProfile.is_active == True).all()
         out["editors"] = []
+        _done_lc = ["editing_done", "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed"]
         for s in eds:
             active = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == s.id,
                                                 VideoTask.lifecycle.in_(_ed_active)).count()
             pending = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == s.id,
                                                  VideoTask.lifecycle.in_(["editor_assigned", "editing_soon"])).count()
+            # total = har video jo kabhi is editor ko mili (filter dropdown me "kon kitni edit kar raha")
+            total = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                               VideoTask.editor_id == s.id).count()
+            # done = editing complete / aage badh chuki (actually edited count)
+            done = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == s.id,
+                                              VideoTask.lifecycle.in_(_done_lc)).count()
             out["editors"].append({"id": s.id, "name": s.user.name if s.user else "",
                                    "recommended": s.recommended_load or 5,
-                                   "active": active, "pending": pending})
+                                   "active": active, "pending": pending,
+                                   "total": total, "done": done})
     if role in ("", "graphics"):
         out["graphics"] = [{"id": s.id, "name": s.user.name if s.user else "",
                            "recommended": s.recommended_load or 5}
