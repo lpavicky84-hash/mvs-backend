@@ -73,8 +73,12 @@ function _pgSkipLoad(scope,page,ttl){
   try{
     if((_PG_ALWAYS_FRESH[scope]||{})[page]) return false;
     var k=scope+'|'+page, n=Date.now(), prev=window._pgLoadedAt[k];
-    if(prev && (n-prev)<(ttl||25000)) return true;   // recently loaded -> skip (instant)
-    window._pgLoadedAt[k]=n;                          // loading now -> mark time
+    // Skip (instant, no reload) SIRF tab jab: (a) recently load hua, AUR (b) us stamp ke BAAD koi
+    // API load-error nahi aaya. Pehle stamp load START par lagta tha aur fail hone par bhi 25s skip
+    // ho jaata tha -> adhoora/empty section stuck. Ab fail hone par window._pgLastApiErr > prev ho
+    // jaata hai (api() GET-fail par set karta hai) -> skip nahi hoga -> turant retry.
+    if(prev && (n-prev)<(ttl||25000) && prev>(window._pgLastApiErr||0)) return true;
+    window._pgLoadedAt[k]=n;                          // (re)loading now -> mark time
     return false;
   }catch(e){ return false; }
 }
@@ -505,6 +509,21 @@ function _swrRerender(){
   }, 140);
 }
 function _apiBust(){ for(const k in _apiCache){ if(_apiCache[k]){ _apiCache[k].t=0; _apiCache[k]._force=1; } } }  // stale mark + _force: mutation ke baad agla read FRESH aaye (purana stale na de), warna resolve/update ke baad list purani dikhti thi
+// SWR-stale: har cached GET ko stale mark karo PAR _force ke BINA. Agla read kisi bhi key ka cached
+// copy TURANT (0ms) deta hai aur background me refresh kar leta hai — isliye periodic/auto refresh
+// navigation par blocking network-wait kabhi force NAHI karta. (Mutations abhi bhi _apiBust use karte
+// hain taaki user ka APNA change turant fresh dikhe.) Yahi SWR trade perf-plan maangta hai.
+function _apiStale(){ for(const k in _apiCache){ if(_apiCache[k]){ _apiCache[k].t=0; } } }
+// Sirf ek portal-family ka cache hard-drop karo — taaki ACTIVE portal ka silent live-sync re-render
+// FRESH data laaye, jabki baaki har portal ka cache intact rahe (instant navigation).
+function _apiForgetPortal(portal){
+  try{
+    var fam=(portal==='production'||portal==='editor'||portal==='graphics'||portal==='youtuber')
+      ? ['/api/production/','/api/editor/','/api/graphics/','/api/youtuber/']
+      : ['/api/'+portal+'/'];
+    for(const k in _apiCache){ for(var i=0;i<fam.length;i++){ if(k.indexOf(fam[i])>=0){ delete _apiCache[k]; break; } } }
+  }catch(e){}
+}
 // Hard-drop cache entries whose key contains `match` (or all if empty). Use right after a
 // mutation so the very next load fetches FRESH data instead of serving stale cache — the
 // action's result then shows immediately (no waiting for the background refresh).
@@ -528,24 +547,25 @@ async function _apiRefreshBg(path,_ck){
   }catch(e){}
 }
 function _preloadAdmin(){
-  // Login ke baad SAARE sections ka data background me cache kar lo — taaki click karte hi
-  // 0ms me khule (api() cached turant deta hai, fresh bg me aa jaata hai).
+  // Login ke baad admin data background me warm karo — par PRIORITIZED + BOUNDED taaki ye user ki
+  // pehli navigation aur backend se compete na kare (pehle blanket 11 endpoints ek saath 120ms gap
+  // se fire hote the -> login par contention/DB pressure). Ab: pehle sirf 2 critical (landing
+  // dashboard), baaki 1.2s ruk ke ek-ek, bade 500ms gap se. Sab prefetch hi hai — section on-demand
+  // bhi load hota hai, isliye koi correctness risk nahi.
   try{
-    const m=(new Date()).toISOString().slice(0,7);
-    const urls=[
-      '/api/admin/dashboard','/api/admin/portal-overview','/api/admin/teachers',
-      '/api/admin/video-tasks',
+    var critical=['/api/admin/dashboard','/api/admin/portal-overview'];
+    var rest=['/api/admin/live-users','/api/admin/teachers','/api/admin/video-tasks',
       '/api/admin/doubts?status=pending','/api/admin/doubts-overview',
-      '/api/admin/timetable-all','/api/admin/materials-tree','/api/admin/live-users',
+      '/api/admin/timetable-all','/api/admin/materials-tree',
       '/api/admin/student-filter-counts?source=&session=&medium=&cls=',
-      '/api/admin/students-paged?q=&source=&cls=&session=&medium=&batch=&subject=&page=1&page_size=10'
-    ];
-    let i=0;
-    (function next(){
-      if(i>=urls.length) return;
-      const u=urls[i++];
-      api(u).catch(function(){}).finally(function(){ setTimeout(next, 120); });
-    })();
+      '/api/admin/students-paged?q=&source=&cls=&session=&medium=&batch=&subject=&page=1&page_size=10'];
+    critical.forEach(function(u){ try{ api(u).catch(function(){}); }catch(e){} });
+    var i=0;
+    setTimeout(function pump(){
+      if(i>=rest.length) return;
+      var u=rest[i++];
+      api(u).catch(function(){}).finally(function(){ setTimeout(pump, 500); });
+    }, 1200);
   }catch(e){}
 }
 // ===== GLOBAL TOP PROGRESS BAR — instant "something is happening" feedback on every
@@ -701,29 +721,54 @@ async function _apiCore(path, method='GET', body=null) {
   if(_prog) _progStart();
   const _t0=Date.now();
   try{
-  const _delays=_bigBody?[]:[1200,2000,3000,5000,8000,8000];
-  const _tryBases=[API].concat(_API_BASES.filter(function(b){ return b!==API; }));
+  // Bounded cold-start-tolerant backoff. Pehle [1200,2000,3000,5000,8000,8000] (~27s worst-case
+  // hang) tha. Ab ~14.8s — Railway cold-start ke liye kaafi retries, par fail hone par UI itni der
+  // nahi atakti. Offline turant fast-fail hota hai (navigator.onLine neeche). Badi body (uploads)
+  // abhi bhi 0 retry (duplicate save se bachao).
+  const _delays=_bigBody?[]:[800,1500,2500,4000,6000];
+  const _isWrite=(method!=='GET');
+  // Per-attempt HARD timeout (AbortController): bina iske ek "hung" connection (socket khula, koi
+  // response nahi) kabhi reject nahi hota -> UI hamesha ke liye atak jaati thi. GET 30s (cold-start
+  // ke liye kaafi), write 45s, badi upload 120s. Timeout par fetch AbortError throw karta hai.
+  const _PER_TRY_MS=_bigBody?120000:(_isWrite?45000:30000);
+  // WRITES (POST/PATCH/DELETE): sirf EK attempt, sirf primary base — kabhi replay/fallback NAHI.
+  // Kyun: fail hone par pata nahi chalta ki server ne process kiya ya nahi (response gir gaya ho
+  // sakta hai), aur fallback bases bhi usi DB pe jaate hain -> replay = duplicate approve/assign/
+  // payment. Idempotency key backend me nahi hai, isliye safest = ek hi baar bhejo, fail pe user
+  // ko "refresh karke check karo" bolo. GET idempotent hai -> poora backoff + fallback bases.
+  const _tryBases=_isWrite?[API]:[API].concat(_API_BASES.filter(function(b){ return b!==API; }));
   let res=null,_wasOffline=false,_usedBase=API;
   for(let bi=0; bi<_tryBases.length && !res && !_wasOffline; bi++){
     const base=_tryBases[bi];
-    const delays=(bi===0)?_delays:[1500];   // primary: poora backoff; fallback base: quick single retry
+    const delays=_isWrite?[]:((bi===0)?_delays:[1500]);   // write: 0 retry; GET primary: poora backoff; GET fallback: 1 retry
     for(let attempt=0; attempt<=delays.length; attempt++){
-      try{ res=await fetch(base+path, opts); _usedBase=base; break; }
+      var _ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+      var _to=null;
+      if(_ctl){ opts.signal=_ctl.signal; _to=setTimeout(function(){ try{ _ctl.abort(); }catch(e){} }, _PER_TRY_MS); }
+      try{ res=await fetch(base+path, opts); if(_to) clearTimeout(_to); _usedBase=base; break; }
       catch(e){
+        if(_to) clearTimeout(_to);
         res=null;
         if(typeof navigator!=='undefined' && navigator.onLine===false){ _wasOffline=true; break; }
+        if(_isWrite) break;   // write fail -> replay NAHI (duplicate se bachao); neeche clear error
         if(attempt<delays.length) await new Promise(r=>setTimeout(r, delays[attempt]));
       }
     }
   }
+  try{ delete opts.signal; }catch(e){}
   if(res && _usedBase!==API) _apiSetBase(_usedBase);
   if(!res){
+    // GET (page data) fail -> stamp karo taaki _pgSkipLoad us section ko "loaded" na maane aur
+    // turant retry ho (failed load 25s ke liye skip na rahe).
+    if(!_isWrite){ try{ window._pgLastApiErr=Date.now(); }catch(e){} }
     if(_wasOffline) throw new Error('You appear to be offline. Please check your internet — the page will update on its own once you are back online.');
+    if(_isWrite) throw new Error('This could not be confirmed (slow or dropped connection). Please REFRESH and check whether it already went through before trying again.');
     throw new Error('The server is just waking up. Please wait a few seconds and tap the button again — it will work.');
   }
   let data;
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
+ if(method==='GET'){ try{ window._pgLastApiErr=Date.now(); }catch(e){} }   // failed page load -> retry allowed
  const msg = (data && data.detail) ? data.detail : ('Error ' + res.status);
  const err = new Error(msg); err.status = res.status; throw err;
   }
@@ -778,11 +823,12 @@ function _autoRefreshNow(force){
     const now=Date.now();
     if(!force && (now-_lastAutoRefresh)<8000) return;   // throttle — flood na ho
     _lastAutoRefresh=now;
-    // SILENT background refresh: just mark the cache stale so the next navigation/action
-    // shows fresh data. We do NOT re-render the current view here — a passive re-render
-    // resets what the user is looking at (drilled-in subject, scroll position, etc.).
-    // The user's OWN actions still refresh visibly; the timer must stay invisible.
-    try{ _apiBust(); }catch(e){}
+    // SILENT background refresh: cache ko sirf STALE mark karo (SWR) — _force NAHI. Isse agli
+    // navigation cached content TURANT dikhati hai (blank/wait nahi) aur fresh data background me
+    // aa jaata hai. (Pehle _apiBust _force set karta tha -> har 60s baad har section ki agli
+    // navigation network ka wait karti thi = "slow feel". Mutations abhi bhi _apiBust karte hain.)
+    // Hum current view ko yahan re-render NAHI karte — wo user ka drill-in/scroll reset kar deta.
+    try{ _apiStale(); }catch(e){}
   }catch(e){}
 }
 // Tab wapas focus me aane par: turant fresh data + backend jagao.
@@ -841,7 +887,11 @@ window._silentAutoSync=function(){
   try{
     if(!_silentSafe()) return;
     var portal=_activePortal(); if(!portal) return;
-    try{ _apiBust(); }catch(e){}
+    // Pehle global _apiBust() har 30s SAARE portals ka cache _force kar deta tha -> dusre sections ki
+    // agli navigation network-wait karti thi. Ab sirf ACTIVE portal ka cache hard-forget karte hain
+    // (uska re-render FRESH aaye); baaki sab cache intact -> instant navigation. Correctness same:
+    // ek session me user ek hi portal me hota hai, isliye active portal hi relevant hai.
+    try{ _apiForgetPortal(portal); }catch(e){}
     if(portal==='teacher'){ try{ if(typeof _tSilentSync==='function') _tSilentSync(); }catch(e){} return; }
     if(portal==='student') return;   // student lists refresh on their own flows
     if(portal==='admin'){
@@ -1233,7 +1283,14 @@ function _isUserActive(){ try{ if(document.hidden||document.visibilityState!=='v
   function _autoFresh(){
     if(document.hidden) return;
     var n=Date.now(); if(n-_lf<4000) return; _lf=n;
-    try{ if(typeof _apiBust==='function') _apiBust(); }catch(e){}
+    // Pehle global _apiBust() har focus/tab-return par SAARE cache ko _force kar deta tha -> har
+    // dusre section ki agli navigation network-wait (SWR fayda khatam). Ab sirf ACTIVE portal ka
+    // cache forget (uska re-render fresh), baaki portals ka cache intact -> instant navigation.
+    try{
+      var _ap=(typeof _activePortal==='function')?_activePortal():'';
+      if(_ap && typeof _apiForgetPortal==='function') _apiForgetPortal(_ap);
+      else if(typeof _apiStale==='function') _apiStale();
+    }catch(e){}
     try{ if(typeof window._prodAutoRefresh==='function') window._prodAutoRefresh(); }catch(e){}
   }
   try{ document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') _autoFresh(); }); }catch(e){}
@@ -21306,6 +21363,15 @@ async function examPdfStudent(id,medium,withSol){
   try{
     toast('Preparing PDF\u2026');
     const ex=await api('/api/student/exam/'+id);
+    // PDF TEST (Mission 75): teacher ne poora question-paper PDF upload kiya hai, structured
+    // questions nahi. Aise test me paper GENERATE mat karo (warna sirf placeholder "Attempt the
+    // full question paper..." wala BLANK paper aata tha) -> seedha wahi uploaded PDF kholo jo test
+    // ke andar bhi dikhti hai. (_m75View khud answer-lock 403 handle karta hai.)
+    if(ex.has_qpdf){
+      try{ w.close(); }catch(_){}
+      try{ _m75View(id, 'student', withSol?'a':'q'); }catch(e){ toast('Could not open the PDF',true); }
+      return;
+    }
     const qs=ex.questions||[];
     if(!qs.length){ toast('No questions found.',true); try{w.close();}catch(_){} return; }
     if(withSol&&!ex.expired){ toast('Solutions will be available after the test window ends.',true); try{w.close();}catch(_){} return; }
@@ -21405,7 +21471,7 @@ function examCardHTML(e){
       ${right}
     </div>
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap">
-      ${(_future||_exp)?'':`<button class="btn btn-ghost btn-sm" onclick="downloadPaper(${e.id})">${ic('download')} Paper</button>`}
+      ${(_future||_exp)?'':`<button class="btn btn-ghost btn-sm" onclick="${e.is_pdf?`_m75View(${e.id},'student','q')`:`downloadPaper(${e.id})`}">${ic('download')} Paper</button>`}
       ${(_canSol&&_hasSol)?`<button class="btn btn-success btn-sm" onclick="_solHub(${e.id})">${ic('book')} Solution</button>`:''}
       ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test — attempt na bhi kiya ho to dikh sakta hai" onclick="openExamRanking(${e.id},'student')">${ic('chart')} Ranking</button>`:''}
       ${action}
@@ -30371,7 +30437,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // ---- Graphics: rich thumbnail submit (clipboard paste + upload + drive + reference + remarks) ----
   window._gfxImgs=[];
   window.gfxSubmitModal=function(id){
-    window._gfxImgs=[]; window._gfxTaskId=id;
+    window._gfxImgs=[]; window._gfxTaskId=id; window._gfxSubmitting=false;
     var old=document.getElementById('prod-modal'); if(old) old.remove();
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     dr.innerHTML='<div class="p-modal" style="max-width:500px">'+
@@ -30405,17 +30471,29 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window._gfxDel=function(i){ window._gfxImgs.splice(i,1); _gfxRenderPrev(); };
   window.gfxDoSubmit=function(){
+    if(window._gfxSubmitting) return;   // DOUBLE-SUBMIT LOCK — do-do baar tap se duplicate submission na ho
     var g=function(x){return (document.getElementById(x)||{}).value||'';};
     var drive=g('gfx-drive').trim();
     if(!window._gfxImgs.length && !drive){ toast('Paste/upload an image or add a Drive link',true); return; }
     var body={images:window._gfxImgs,drive_link:drive,reference:g('gfx-ref').trim(),remarks:g('gfx-remarks').trim()};
     var tid=window._gfxTaskId;
     // Optimistic: close now and upload in the background — no 10s blocking wait.
-    if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; }
-    prodDismiss(); toast('Submitting thumbnail\u2026');
+    // NO optimistic close: modal + draft (paste ki hui images) tab tak RAKHO jab tak server confirm
+    // na kare. Pehle submit se PEHLE hi prodDismiss() hota tha -> fail hone par saari pasted images
+    // gayab, dubara karni padti. Ab: button lock + "Submitting", success par hi band+clear, fail par
+    // button wapas + draft safe (bina dubara kiye retry).
+    var btn=document.getElementById('gfx-sub'); window._gfxSubmitting=true;
+    if(btn){ btn._old=btn.textContent; btn.disabled=true; btn.textContent='Submitting\u2026'; }
+    toast('Submitting thumbnail\u2026');
     api(P.graphics.api+'/tasks/'+tid+'/submit','POST',body).then(function(){
-      toast('Thumbnail submitted for review'); _apiBust(); _refresh('graphics');
-    }).catch(function(e){ toast((e&&e.message)||'Submit failed \u2014 please try again',true); });
+      window._gfxSubmitting=false;
+      if(window._gfxPasteH){ document.removeEventListener('paste',window._gfxPasteH); window._gfxPasteH=null; }
+      prodDismiss(); toast('Thumbnail submitted for review'); _apiBust(); _refresh('graphics');
+    }).catch(function(e){
+      window._gfxSubmitting=false;
+      if(btn){ btn.disabled=false; btn.textContent=btn._old||'Submit for Review'; }
+      toast((e&&e.message)||'Submit failed \u2014 your images are still here, please try again',true);
+    });
   };
   // ---- Graphics: Changes Required view (remarks + PM attachments + previous thumbnail + resubmit) ----
   window.gfxChangesView=function(id){
@@ -35082,7 +35160,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         }).catch(function(){ _finish(null); });
       }
       _finish(null);
-    }).catch(function(e){ if(myseq!==_prodSeqCur(portal)) return; if(res && !append) res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true); else if(res && append){ var b=res.querySelector('.pl-more'); if(b){ b.disabled=false; b.textContent='Load more'; } } });
+    }).catch(function(e){
+      if(myseq!==_prodSeqCur(portal)) return;
+      if(!res) return;
+      // BUG FIX: pehle yahan `append` ko refer kiya jaata tha jo is function me declare hi nahi hai
+      // -> har FAILED list-load par ReferenceError -> "Could not load" UI kabhi nahi dikhti aur
+      // skeleton hamesha ke liye atak jaati thi. Ab `silent`+`hasRows` se sahi branch:
+      if(silent && hasRows){
+        // background / "Load more" fail -> jo dikh raha hai use mat hatao; sirf button restore karo
+        var b=res.querySelector('.pl-more'); if(b){ b.disabled=false; b.textContent='Load more'; }
+      } else {
+        // fresh load fail -> saaf error dikhao (atki hui skeleton ki jagah), retry allowed
+        res.innerHTML=_pEmpty('alert','Could not load',(e&&e.message)||'Please try again.',true);
+      }
+    });
   }
   // Silent live sync for the production family (production/editor/graphics/youtuber). Uses the
   // existing scroll-preserving, skeleton-less reload paths; never runs while a modal/chat is open
@@ -37146,7 +37237,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   // taaki agli CLICK pe fresh data mile par view waisa ka waisa rahe. User ke apne actions
   // (assign/approve/delete) abhi bhi seedha _refresh() call karke visibly refresh karte hain.
   window._prodAutoRefresh=function(){
-    try{ if(typeof _apiBust==='function') _apiBust(); }catch(e){}
+    // Pehle global _apiBust() (_force) karta tha -> focus par har section ki agli CLICK network-wait
+    // karti thi. Ye function re-render karta hi NAHI (comment: "agli click pe fresh, view waisa
+    // rahe"), isliye sirf STALE mark kaafi hai -> agli click INSTANT cached + background fresh.
+    try{ if(typeof _apiStale==='function') _apiStale(); else if(typeof _apiBust==='function') _apiBust(); }catch(e){}
     try{ var pp=_activeProdPortal(); if(pp==='production' && typeof _prodNavBadges==='function') _prodNavBadges(); }catch(e){}
   };
   function _refresh(portal){ try{ if(portal) window._hbUrl='/api/'+portal+'/heartbeat'; }catch(e){}
