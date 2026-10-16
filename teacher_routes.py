@@ -463,8 +463,8 @@ def upload_dpp(req: DPPCreate, db: Session = Depends(get_db), current_user=Depen
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and (dpp.subject or "").strip() in sp.subjects and sp.user:
                 notify(db, sp.user_id,
-                       f"📝 New DPP: {(dpp.subject or '').strip()}",
-                       f"{current_user.name} ne {(dpp.subject or '').strip()} ({dpp.reference or 'General'}) ka naya DPP diya hai. DPP section mein dekho!",
+                       f"\U0001F4DD New DPP: {(dpp.subject or '').strip()}",
+                       f"{_name_honorific(current_user.name, tp.gender)} has posted a new {(dpp.subject or '').strip()} DPP ({dpp.reference or 'General'}). Tap to open the DPP section.",
                        "new_dpp")
         db.commit()
     except Exception:
@@ -491,8 +491,8 @@ def create_test(req: TestCreate, db: Session = Depends(get_db), current_user=Dep
         for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
             if sp.subjects and (test.subject or "").strip() in sp.subjects and sp.user:
                 notify(db, sp.user_id,
-                       f"🧪 New Test Scheduled: {(test.subject or '').strip()}",
-                       f"{current_user.name} ne {(test.subject or '').strip()} ka test schedule kiya hai — {when}. Tests section mein dekho!",
+                       f"\U0001F9EA New Test Scheduled: {(test.subject or '').strip()}",
+                       f"{_name_honorific(current_user.name, tp.gender)} has scheduled a new {(test.subject or '').strip()} test — {when}. Tap to open the Tests section.",
                        "test_reminder")
         db.commit()
     except Exception:
@@ -1605,11 +1605,18 @@ async def upload_material(
         label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(m.material_type, (m.category or "Material"))
         sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
         _nk = _subj_norm(subject.strip())
+        _disp = _name_honorific(current_user.name, getattr(tp, "gender", None))
         for sp in sps:
-            if sp.subjects and _nk in {_subj_norm(x) for x in sp.subjects} and sp.user:
-                notify(db, sp.user_id, f"📚 New {label}: {subject.strip()}",
-                       f"{current_user.name} ne {subject.strip()} ({chapter.strip() or 'General'}) ke liye {label} upload ki hai. Materials section mein dekho!",
-                       "new_material")
+            if not (sp.subjects and _nk in {_subj_norm(x) for x in sp.subjects} and sp.user):
+                continue
+            # CLASS scope: Class 10 ka material Class 12 ko na jaaye (teacher merging fix)
+            if _cls_fixed:
+                s_cls = _cls_digits_t(getattr(sp, "class_level", "") or getattr(sp, "class_name", "") or "")
+                if s_cls and s_cls != _cls_fixed:
+                    continue
+            notify(db, sp.user_id, f"\U0001F4DA New {label}: {subject.strip()}",
+                   f"{_disp} has uploaded new {label} for {subject.strip()} ({chapter.strip() or 'General'}). Tap to open the Materials section.",
+                   "new_material")
         db.commit()
     except Exception:
         db.rollback()
@@ -2155,7 +2162,7 @@ def copy_dpp_to_batch(pid: int, payload: dict = Body(...), db: Session = Depends
     db.commit()
     for tb in targets:
         try:
-            _notify_new_content(db, tb, src.subject, current_user.name, "dpp")
+            _notify_new_content(db, tb, src.subject, current_user.name, "dpp", class_name=getattr(src,"class_name",""), gender=tp.gender)
         except Exception:
             pass
     return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
@@ -2381,7 +2388,7 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
     db.commit()
     for pk, _tb in made:
         try:
-            _notify_new_content(db, _tb, subject, current_user.name, "dpp")
+            _notify_new_content(db, _tb, subject, current_user.name, "dpp", class_name=(data.get("class_name") if isinstance(data,dict) else ""), gender=tp.gender)
         except Exception:
             pass
     first = made[0][0] if made else None
@@ -2518,7 +2525,7 @@ async def teacher_dpp_upload(subject: str = Form(...), chapter: str = Form(""), 
     db.commit()
     for pk, _tb in made:
         try:
-            _notify_new_content(db, _tb, subject.strip(), current_user.name, "dpp")
+            _notify_new_content(db, _tb, subject.strip(), current_user.name, "dpp", gender=tp.gender)
         except Exception:
             pass
     first = made[0][0] if made else None
@@ -4088,20 +4095,50 @@ def _batch_ids_from_str(s):
     return out or [None]
 
 
-def _notify_new_content(db, batch_id, subject, teacher_name, kind):
-    """kind: 'dpp' | 'test'. Target batch ke (batch_id None ho to sabhi) students ko jinke paas
-    ye subject hai, notification bhejo. Copy-to-batch AUR normal create dono isse use karte hain —
-    isiliye ab test create/copy pe bhi student ko bell notification milta hai."""
+def _name_honorific(name, gender):
+    """Teacher ka naam + gender-based honorific (professional): female -> Ma'am, male -> Sir.
+    Gender unknown ho to sirf naam (galat honorific na lage)."""
+    nm = (name or "Teacher").strip()
+    g = (gender or "").strip().lower()
+    if g.startswith("f"):
+        return nm + " Ma'am"
+    if g.startswith("m"):
+        return nm + " Sir"
+    return nm
+
+
+def _cls_digits_t(x):
+    import re as _r
+    m = _r.search(r"(\d{1,2})", str(x or ""))
+    return m.group(1) if m else ""
+
+
+def _notify_new_content(db, batch_id, subject, teacher_name, kind, exam_id=None,
+                        class_name=None, gender=None):
+    """kind: 'dpp' | 'test'. Notify the right students (correct CLASS only) in professional English.
+    Fix: pehle ek GLOBAL (no-batch) test har class ke 'English' students ko chala jaata tha ->
+    Class 10 ki English test Class 12 ko bhi dikhti thi (teacher merging). Ab test/DPP ki apni CLASS
+    ke students ko hi jaata hai. Naam ke aage Sir/Ma'am, aur text saaf English me."""
     try:
-        from models import StudentProfile, StudentBatch
+        from models import StudentProfile, StudentBatch, Exam as _Exam
         subj = (subject or "").strip()
         if not subj:
             return
         nk = _subj_norm(subj)
         label = "DPP" if kind == "dpp" else "Test"
         ntype = "new_dpp" if kind == "dpp" else "new_test"
+        disp = _name_honorific(teacher_name, gender)
+        # class scope: exam se (ya seedhe class_name se) nikaalo -> sirf usi class ke students
+        _cls = class_name
+        if exam_id and not _cls:
+            try:
+                _ex = db.query(_Exam).filter(_Exam.id == exam_id).first()
+                _cls = getattr(_ex, "class_name", "") if _ex else ""
+            except Exception:
+                _cls = ""
+        want_cls = _cls_digits_t(_cls or "")
         title = "\U0001F4DD New %s: %s" % (label, subj)
-        body = "%s ne %s ka naya %s diya hai. Dekho!" % (teacher_name or "Teacher", subj, label)
+        body = "%s has posted a new %s %s. Tap to view." % (disp, subj, ("DPP" if kind == "dpp" else "test"))
         if batch_id:
             ids = set()
             try:
@@ -4127,6 +4164,12 @@ def _notify_new_content(db, batch_id, subject, teacher_name, kind):
         for sp in sps:
             if not sp.user:
                 continue
+            # CLASS scope: agar content kisi ek class ka hai to sirf usi class ke students ko
+            # (Class 10 ki English test Class 12 ko na jaaye). Student ki class pata na ho to bhejo.
+            if want_cls:
+                s_cls = _cls_digits_t(getattr(sp, "class_level", "") or getattr(sp, "class_name", "") or "")
+                if s_cls and s_cls != want_cls:
+                    continue
             if _notify_whole_batch or (sp.subjects and nk in {_subj_norm(x) for x in sp.subjects}):
                 notify(db, sp.user_id, title, body, ntype)
         db.commit()
@@ -4193,7 +4236,7 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
     # Har target batch ke (ya global ho to sabhi) students ko notification.
     for _eid, _tb in _made:
         try:
-            _notify_new_content(db, _tb, _subj_in, current_user.name, "test")
+            _notify_new_content(db, _tb, _subj_in, current_user.name, "test", exam_id=_eid, gender=tp.gender)
         except Exception:
             pass
     # Bilingual Hindi is now filled on-demand by the portal (free). Paid Gemini
@@ -4269,7 +4312,7 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
     db.commit()
     for _eid, _tb in made:
         try:
-            _notify_new_content(db, _tb, (subject or "").strip(), current_user.name, "test")
+            _notify_new_content(db, _tb, (subject or "").strip(), current_user.name, "test", exam_id=_eid, gender=tp.gender)
         except Exception:
             pass
     return {"ok": True, "id": (made[0][0] if made else None), "batches": len(made)}
@@ -4552,7 +4595,7 @@ def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depend
     db.commit()
     for tb in targets:
         try:
-            _notify_new_content(db, tb, src.subject, current_user.name, "test")
+            _notify_new_content(db, tb, src.subject, current_user.name, "test", class_name=getattr(src,"class_name",""), gender=tp.gender)
         except Exception:
             pass
     return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
