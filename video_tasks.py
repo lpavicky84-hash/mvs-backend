@@ -3101,6 +3101,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=Non
         "yt_views": (t.yt_views if getattr(t, "yt_views", None) is not None else None),
         "yt_views_at": t.yt_views_at.strftime("%d %b %Y, %I:%M %p") if getattr(t, "yt_views_at", None) else "",
         "created_at": t.created_at.strftime("%d %b %Y") if t.created_at else "",
+        "created_date": t.created_at.strftime("%Y-%m-%d") if t.created_at else "",  # admin date-filter (machine-sortable)
         # ALWAYS use the full merged timeline (ProductionEvents + status_history) so
         # legacy/admin tasks (blank lifecycle) bhi sabhi stepwise events dikhayein —
         # deadline change, editor assign, editing, approve, upload sab. _full_hist_out

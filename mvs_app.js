@@ -12967,7 +12967,7 @@ async function loadVTBanner(){
 }
 
 /* ================= VIDEO TASK MANAGER (admin) ================= */
-let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:'',collab:'',q:''}, _vtTimer=null;
+let _vtTeachers=[], _vtChannels=[], _vtTypes=[], _vtF={teacher_id:0,status:'',channel_id:0,video_type:'',collab:'',q:'',editor_id:0}, _vtTimer=null;
 // v134: video type ko streaming (live/recorded/both) ke hisaab se filter karo
 function _vtScopeOk(t,stream){ const sc=(t&&t.streaming_scope)||'both'; return !stream||sc==='both'||sc===stream; }
 function _vtTypeOptsHtml(types,streamVal,selectedName,placeholder){
@@ -13515,7 +13515,7 @@ function _avtCard(t){
       const asgThumbBtn=`<button class="btn btn-ghost btn-sm" onclick="prodThumbUpload('admin',${t.id})" title="Upload / change / remove the thumbnail">${ic('image')} Thumbnail</button>`;
       const asgInfo=(t.editor_name||t.graphics_name)
         ?`<span class="vt-pill editing_soon" style="cursor:default">${[t.editor_name?('Editor: '+esc(t.editor_name)):'',t.graphics_name?('Graphics: '+esc(t.graphics_name)):''].filter(Boolean).join(' · ')}</span>`:'';
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}">${_vtThumb(t,'a')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}" data-editorid="${t.editor_id||0}" data-created="${esc(t.created_date||'')}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.submitted_by_name||(t.is_collab?'Collab':t.teacher))}${t.is_collab?' (collab)':''}</span>`:''}</div>
         <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}${asgInfo}</div>
         <div class="vt-meta">
@@ -13880,6 +13880,8 @@ async function loadAVTasks(fromCache){
   const el=document.getElementById('a-vtasks-content');
   softSpin(el);
   if(_vtTimer){ clearInterval(_vtTimer); _vtTimer=null; }
+  // Admin date filter (premDateFilter scope 'avt') -> client-side re-filter of loaded cards.
+  try{ window._pdfApplyFns=window._pdfApplyFns||{}; window._pdfApplyFns['avt']=function(){ try{ _vtClientFilter(); }catch(e){} }; }catch(e){}
   try{
     let stats,ch,ts,ty,list,spec;
     if(fromCache && window._avtCache){
@@ -13909,6 +13911,11 @@ async function loadAVTasks(fromCache){
     const cOpt=`<option value="0">All Channels</option>`+_vtChannels.map(c=>`<option value="${c.id}" ${_vtF.channel_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('');
     const tyOpt=`<option value="">All Types</option>`+_vtTypes.map(c=>`<option value="${esc(c.name)}" ${_vtF.video_type===c.name?'selected':''}>${esc(c.name)}</option>`).join('');
     const sOpt=['<option value="">All Status</option>','assigned','submitted','approved','editing_soon','editing_done','uploaded','reshoot','rejected'].map(v=>v==='<option value="">All Status</option>'?v:`<option value="${v}" ${_vtF.status===v?'selected':''}>${VT_LBL[v]}</option>`).join('');
+    // Editor filter — loaded tasks se unique editors + per-editor video count (kon kitni edit kar raha)
+    const _edCount={}, _edName={};
+    Object.keys(window._avtMap||{}).forEach(k=>{ const t=window._avtMap[k]; const eid=t&&t.editor_id; if(eid){ _edCount[eid]=(_edCount[eid]||0)+1; if(t.editor_name)_edName[eid]=t.editor_name; } });
+    const _edIds=Object.keys(_edCount).sort((a,b)=>(_edName[a]||'').localeCompare(_edName[b]||''));
+    const edOpt=`<option value="0">All Editors</option>`+_edIds.map(id=>`<option value="${id}" ${_vtF.editor_id==id?'selected':''}>${esc(_edName[id]||('#'+id))} · ${_edCount[id]} edited</option>`).join('');
     const propHtml=(list.proposals||[]).length?`<div class="card vt-approve-card" style="margin-bottom:16px;border:2px solid rgba(220,38,38,.5)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip vt-approve-chip">${list.proposals.length} pending</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
       <div class="vt-card vt-prop-blink"><div class="vt-body">
         <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
@@ -13967,8 +13974,10 @@ async function loadAVTasks(fromCache){
         <select class="vt-filt-sel" onchange="_vtF.teacher_id=+this.value;_vtClientFilter()">${tOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.channel_id=+this.value;_vtClientFilter()">${cOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.video_type=this.value;_vtClientFilter()">${tyOpt}</select>
+        <select class="vt-filt-sel" onchange="_vtF.editor_id=+this.value;_vtClientFilter()" title="Filter by editor — konsi video kon edit kar raha hai">${edOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.status=this.value;_vtClientFilter()">${sOpt}</select>
         <select class="vt-filt-sel" onchange="_vtF.collab=this.value;_vtClientFilter()"><option value="">All Videos</option><option value="1" ${_vtF.collab==='1'?'selected':''}>Collab only</option><option value="pending" ${_vtF.collab==='pending'?'selected':''}>Collab \u2014 not completed</option><option value="0" ${_vtF.collab==='0'?'selected':''}>Single only</option></select>
+        ${(typeof window.premDateFilter==='function')?window.premDateFilter('avt'):''}
         <button class="vt-filt-clear" onclick="_vtClearFilters()" title="Clear all filters">× Clear</button>
         <div style="flex:1"></div>
         <button class="btn btn-gold btn-sm" onclick="vtDownloadReport()">${ic('download')} Download Report</button>
@@ -13983,7 +13992,7 @@ async function loadAVTasks(fromCache){
       let s=+sp.dataset.secs; if(isNaN(s)) return; s--; sp.dataset.secs=s;
       sp.innerHTML=_vtCdText(s); sp.className=s<0?'vt-over':''; }); };
     tick(); _vtTimer=setInterval(tick,1000);
-    if(_vtF.teacher_id||_vtF.channel_id||_vtF.video_type||_vtF.status||window._vtBucket) _vtClientFilter();
+    if(_vtF.teacher_id||_vtF.channel_id||_vtF.video_type||_vtF.status||_vtF.editor_id||window._vtBucket||(function(){try{return !!window._pdfGet('avt').range;}catch(e){return false;}})()) _vtClientFilter();
     if(window._vtPjNewWant){ window._vtPjNewWant=0; _vtProjNewFilter(); }
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -15145,6 +15154,19 @@ function _vtStatusFilter(status){
   if(sSel) sSel.value=_vtF.status;
   _vtClientFilter();
 }
+function _vtDateMatch(created){
+  var s; try{ s=window._pdfGet('avt'); }catch(e){ return true; }
+  if(!s||!s.range) return true;
+  if(!created) return false;
+  var now=new Date(); function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  var today=ymd(now);
+  if(s.range==='today') return created===today;
+  if(s.range==='yesterday'){ var y=new Date(now); y.setDate(y.getDate()-1); return created===ymd(y); }
+  if(s.range==='week'){ var w=new Date(now); w.setDate(w.getDate()-6); return created>=ymd(w) && created<=today; }
+  if(s.range==='month'){ var m=new Date(now); m.setDate(m.getDate()-29); return created>=ymd(m) && created<=today; }
+  if(s.range==='custom'){ var cf=(s.from||'').slice(0,10), ct=(s.to||'').slice(0,10); if(cf&&created<cf) return false; if(ct&&created>ct) return false; return true; }
+  return true;
+}
 function _vtClientFilter(){
   const f=_vtF, b=window._vtBucket;
   document.querySelectorAll('.vt-stat[data-bucket]').forEach(c=>c.classList.toggle('vt-stat-on', !!b && c.dataset.bucket===b));
@@ -15155,6 +15177,8 @@ function _vtClientFilter(){
     if(show && f.channel_id && c.dataset.cid!=String(f.channel_id)) show=false;
     if(show && f.video_type){ if(f.video_type==='__none__'){ if(c.dataset.vt) show=false; } else if(c.dataset.vt!==f.video_type) show=false; }
     if(show && f.status && c.dataset.vstatus!==f.status) show=false;
+    if(show && f.editor_id && c.dataset.editorid!=String(f.editor_id)) show=false;
+    if(show && !_vtDateMatch(c.dataset.created||'')) show=false;
     if(show && f.collab==='1' && c.dataset.collab!=='1') show=false;
     if(show && f.collab==='pending' && !(c.dataset.collab==='1' && c.dataset.collabdone==='0')) show=false;
     if(show && f.collab==='0' && c.dataset.collab==='1') show=false;
@@ -15166,7 +15190,8 @@ function _vtClientFilter(){
   });
 }
 function _vtClearFilters(){
-  _vtF.teacher_id=0; _vtF.channel_id=0; _vtF.video_type=''; _vtF.status=''; _vtF.q=''; window._vtBucket=null;
+  _vtF.teacher_id=0; _vtF.channel_id=0; _vtF.video_type=''; _vtF.status=''; _vtF.q=''; _vtF.editor_id=0; window._vtBucket=null;
+  try{ var ds=window._pdfGet('avt'); ds.range='';ds.from='';ds.to='';ds.field=''; window._pdfResync&&window._pdfResync('avt'); }catch(e){}
   document.querySelectorAll('.vt-filt-sel').forEach(s=>{ s.selectedIndex=0; });
   const _s=document.getElementById('vt-search'); if(_s) _s.value='';
   _vtClientFilter();
