@@ -2394,6 +2394,74 @@ def _notify_project_chat(db, project, author_id, author_name, message):
                 pass
 
 
+def _chapter_chat_user_ids(db, project, chapter):
+    """Recipients for a CHAPTER message: teacher(+collab), all admins & PMs, this chapter's
+    assigned editor + graphics, and the whole-project editor. (Chapter-scoped — isse doosri
+    chapter ke log unnecessarily notify nahi hote, aur isolation bana rehta hai.)"""
+    ids = set()
+    try:
+        tp = _teacher_profile(db, project.teacher_id)
+        if tp and tp.user_id:
+            ids.add(tp.user_id)
+        for cid2 in (_collab_extra_ids(project) or []):
+            ctp = db.query(TeacherProfile).filter(TeacherProfile.id == cid2).first()
+            if ctp and ctp.user_id:
+                ids.add(ctp.user_id)
+    except Exception:
+        pass
+    try:
+        for u in db.query(User).filter(User.role.in_(["admin", "production_manager"]),
+                                       User.is_active == True).all():
+            ids.add(u.id)
+    except Exception:
+        pass
+    try:
+        from models import ProductionStaffProfile as _SP
+        sids = set()
+        if getattr(chapter, "editor_id", None):
+            sids.add(chapter.editor_id)
+        if getattr(chapter, "graphics_id", None):
+            sids.add(chapter.graphics_id)
+        if getattr(project, "project_editor_id", None):
+            sids.add(project.project_editor_id)
+        if sids:
+            for s in db.query(_SP).filter(_SP.id.in_(list(sids))).all():
+                if s.user_id:
+                    ids.add(s.user_id)
+    except Exception:
+        pass
+    return ids
+
+
+def _notify_chapter_chat(db, project, chapter, author_id, author_name, message):
+    label = (getattr(chapter, "title", "") or "").strip() or (project.title or project.subject or "chapter")
+    body = "%s: %s" % (author_name or "Someone", (message or "")[:120])
+    link = "chap:%d" % int(getattr(chapter, "id", 0) or 0)   # frontend notifLinkOpen() isse exact chapter kholta hai
+    for uid in _chapter_chat_user_ids(db, project, chapter):
+        if uid and uid != author_id:
+            try:
+                _vt_notify(db, uid, "Chapter chat — %s" % label, body, link=link)
+            except Exception:
+                pass
+
+
+def _chat_resolve_urls(db, t, payload, user):
+    """Chat message ke attachments resolve karo. Pehle se resolved attachment_url, ya up to 8
+    inline images (base64/url) — SAARI preserve hoti hain (pehle sirf [:1] rakhi jaati thi)."""
+    direct = (payload.get("attachment_url") or "").strip()
+    if direct:
+        return [direct]
+    imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
+    imgs = [i for i in (imgs or []) if i]
+    if not imgs:
+        return []
+    try:
+        import production_core as pc
+        return pc.save_images(db, t, imgs[:8], "chat", None, user, return_urls=True) or []
+    except Exception:
+        return []
+
+
 def _chat_access_ok(db, user, c=None, pid=None):
     """CENTRAL participant check for project/chapter chat + timeline (defense-in-depth on top of
     the per-portal route guards). PM/Admin: full. Teacher: own/collaborator project only. Editor:
@@ -2469,31 +2537,31 @@ def project_chat_get(db, user, pid):
 def project_chat_add(db, user, pid, payload, role):
     t = _project_or_404(db, pid)
     _assert_chat_access(db, user, pid=pid)
-    _att = (payload.get("attachment_url") or "").strip()
-    if not _att:
-        _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
-        if _imgs:
-            try:
-                import production_core as pc
-                urls = pc.save_images(db, t, _imgs[:1], "chat", None, user, return_urls=True) or []
-                if urls:
-                    _att = urls[0]
-            except Exception:
-                _att = ""
-    c = _vtc_add(db, pid, user, payload.get("message"), role, attachment_url=_att, audience="project")
+    urls = _chat_resolve_urls(db, t, payload, user)
+    msg = (payload.get("message") or "")
+    made = []
+    if not urls:
+        c = _vtc_add(db, pid, user, msg, role, attachment_url="", audience="project")
+        if c:
+            made.append(c)
+    else:
+        for i, u in enumerate(urls):   # har image ek alag message — saari preserve
+            c = _vtc_add(db, pid, user, (msg if i == 0 else ""), role, attachment_url=u, audience="project")
+            if c:
+                made.append(c)
     try:
         _chat_touch(db, user, pid, "project", typing=False)
     except Exception:
         pass
-    if not c:
+    if not made:
         raise HTTPException(400, "Message cannot be empty")
     try:
         _notify_project_chat(db, t, getattr(user, "id", None),
-                             getattr(user, "name", ""), c.message)
+                             getattr(user, "name", ""), made[0].message)
     except Exception:
         pass
     db.commit()
-    return {"ok": True, "comment": _vtc_out(db, c)}
+    return {"ok": True, "comment": _vtc_out(db, made[0])}
 
 
 def project_chat_ping(db, user, pid, typing=False):
@@ -2549,27 +2617,32 @@ def chapter_chat_add(db, user, cid, payload, role):
     _assert_chat_access(db, user, c=c)
     pid = c.task_id
     aud = _chap_aud(cid)
-    _att = (payload.get("attachment_url") or "").strip()
-    if not _att:
-        _imgs = payload.get("images") or ([payload.get("attachment")] if payload.get("attachment") else [])
-        if _imgs:
-            try:
-                import production_core as pc
-                t = _project_or_404(db, pid)
-                urls = pc.save_images(db, t, _imgs[:1], "chat", None, user, return_urls=True) or []
-                if urls:
-                    _att = urls[0]
-            except Exception:
-                _att = ""
-    cc = _vtc_add(db, pid, user, payload.get("message"), role, attachment_url=_att, audience=aud)
+    t = _project_or_404(db, pid)
+    urls = _chat_resolve_urls(db, t, payload, user)
+    msg = (payload.get("message") or "")
+    made = []
+    if not urls:
+        cc = _vtc_add(db, pid, user, msg, role, attachment_url="", audience=aud)
+        if cc:
+            made.append(cc)
+    else:
+        for i, u in enumerate(urls):   # har image ek alag message — saari preserve
+            cc = _vtc_add(db, pid, user, (msg if i == 0 else ""), role, attachment_url=u, audience=aud)
+            if cc:
+                made.append(cc)
     try:
         _chat_touch(db, user, pid, aud, typing=False)
     except Exception:
         pass
-    if not cc:
+    if not made:
         raise HTTPException(400, "Message cannot be empty")
+    try:
+        _notify_chapter_chat(db, t, c, getattr(user, "id", None),
+                             getattr(user, "name", ""), made[0].message)
+    except Exception:
+        pass
     db.commit()
-    return {"ok": True, "comment": _vtc_out(db, cc)}
+    return {"ok": True, "comment": _vtc_out(db, made[0])}
 
 
 def chapter_chat_ping(db, user, cid, typing=False):

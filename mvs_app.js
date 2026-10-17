@@ -13389,8 +13389,10 @@ function _vtReviewBadge(c){
 function _pjChCss(){
   if(document.getElementById('mvs-pjch-css')) return;
   var s=document.createElement('style'); s.id='mvs-pjch-css';
+  // Semantic theme tokens (dark/light dono safe). Purple header + gold/accent buttons decorative
+  // hain (white text par readable); baaki surfaces var(--card/border/text/text-muted) use karti hain.
   s.textContent='.pj-chcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:12px;padding:6px 2px}'
-  +'.pjcc{background:#fffdf6;border:1px solid #e7dfc6;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(90,70,15,.1);border-left:4px solid #8f3d66}'
+  +'.pjcc{background:var(--card,#fffdf6);border:1px solid var(--border,#e7dfc6);border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(90,70,15,.1);border-left:4px solid #8f3d66}'
   +'.pjcc-top{background:linear-gradient(135deg,#5a2f6b,#8f3d66);color:#fff;padding:13px 14px;position:relative;min-height:58px}'
   +'.pjcc-no{position:absolute;right:13px;top:9px;font-size:2rem;font-weight:900;opacity:.3;line-height:1}'
   +'.pjcc-badge{display:inline-block;font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.22)}'
@@ -13398,20 +13400,20 @@ function _pjChCss(){
   +'.pjcc-bd{padding:12px 14px}'
   +'.pjcc-st{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;padding:5px 11px;border-radius:999px}'
   +'.pjcc-blink{animation:pjBlink 1.15s ease-in-out infinite}@keyframes pjBlink{0%,100%{opacity:1}50%{opacity:.4}}'
-  +'.pjcc-who{font-size:.72rem;color:#6f6a5c;margin-top:9px;line-height:1.5}'
+  +'.pjcc-who{font-size:.72rem;color:var(--text-muted,#6f6a5c);margin-top:9px;line-height:1.5}'
   +'.pjcc-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}'
-  +'.pjcc-acts button,.pjcc-acts a{font-size:.72rem;font-weight:700;padding:6px 11px;border-radius:9px;border:1px solid #e7dfc6;background:#fff;color:#2e2716;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px}'
+  +'.pjcc-acts button,.pjcc-acts a{font-size:.72rem;font-weight:700;padding:6px 11px;border-radius:9px;border:1px solid var(--border,#e7dfc6);background:var(--card,#fff);color:var(--text,#2e2716);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px}'
   +'.pjcc-acts button:hover,.pjcc-acts a:hover{border-color:#b8941f}'
   +'.pjcc-acts button.primary{background:linear-gradient(135deg,#b8941f,#9a7b16);color:#fff;border:0}'
   +'.pjcc-acts button.ok{background:#16a34a;color:#fff;border:0}.pjcc-acts button.no{background:#dc2626;color:#fff;border:0}'
   +'.pjcc .input{width:100%;margin-bottom:6px;font-size:.8rem}'
   +'.pj-ov{position:fixed;inset:0;z-index:99998;background:rgba(15,20,30,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px}'
-  +'.pj-ov-card{background:#fffdf6;border:1px solid #e7dfc6;border-radius:18px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:16px 18px;max-height:80vh;overflow:auto}'
+  +'.pj-ov-card{background:var(--card,#fffdf6);color:var(--text,#2e2716);border:1px solid var(--border,#e7dfc6);border-radius:18px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:16px 18px;max-height:80vh;overflow:auto}'
   +'.pj-tl{display:flex;flex-direction:column;gap:0}'
   +'.pj-tl-row{display:flex;gap:11px;padding:8px 0;position:relative}'
   +'.pj-tl-dot{flex:0 0 auto;width:11px;height:11px;border-radius:50%;background:#b8941f;margin-top:4px;box-shadow:0 0 0 3px rgba(184,148,31,.18)}'
-  +'.pj-tl-row:not(:last-child)::after{content:"";position:absolute;left:5px;top:18px;bottom:-4px;width:2px;background:#e7dfc6}'
-  +'.pj-tl-l{font-weight:700;font-size:.86rem;color:#2e2716}.pj-tl-at{font-size:.74rem;color:#8a7c55;margin-top:1px}';
+  +'.pj-tl-row:not(:last-child)::after{content:"";position:absolute;left:5px;top:18px;bottom:-4px;width:2px;background:var(--border,#e7dfc6)}'
+  +'.pj-tl-l{font-weight:700;font-size:.86rem;color:var(--text,#2e2716)}.pj-tl-at{font-size:.74rem;color:var(--text-muted,#8a7c55);margin-top:1px}';
   document.head.appendChild(s);
 }
 function _pjOv(html){
@@ -13429,7 +13431,7 @@ function _pjChatOpen(prefix, cid, title, mineRole){
     getUrl:prefix+'/chapters/'+cid+'/chat', postUrl:prefix+'/chapters/'+cid+'/chat',
     pingUrl:prefix+'/chapters/'+cid+'/chat-ping',
     audience:'chap'+cid, mineRole:mineRole||'production_manager',
-    title:'Chapter Chat — '+(title||''), taskId:cid, barPortal:''
+    title:'Chapter Chat — '+(title||''), taskId:cid, barPortal:'', multiTray:true, roleFilter:true
   });
 }
 function _pjTimelineOpen(prefix, cid){
@@ -31095,11 +31097,14 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   function _ytcRender(comments, presence){
     try{ _reviewEnsureCss(); }catch(e){}
     var cfg=window._chatCfg||{};
-    var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:120px;overflow-y:auto;padding:4px 2px">'+(comments.length?comments.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet \u2014 start the conversation below.</div>')+'</div>';
+    window._chatLastComments=comments||[]; window._chatLastPresence=presence;
+    var _fc=_chatApplyRoleFilter(comments);
+    var _emptyMsg=(comments&&comments.length)?'<div style="color:var(--muted);text-align:center;padding:22px">No messages in this view yet.</div>':'<div style="color:var(--muted);text-align:center;padding:22px">No messages yet \u2014 start the conversation below.</div>';
+    var body='<div id="chat-scroll" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:120px;overflow-y:auto;padding:4px 2px">'+(_fc.length?_fc.map(function(c){return _chatBubble(c,cfg.mineRole);}).join(''):_emptyMsg)+'</div>';
     var _rvtag=(cfg.audience==='review')?' <span class="chat-rvtag">'+ic('video')+' Reviewing edited video</span>':'';
     var _hdr=(cfg._adminPills && window._vtAdminHead)?window._vtAdminHead(cfg._adminAud):('<div class="h-title">'+esc(cfg.title||'Chat')+_rvtag+'</div>');
     var _pills=(cfg._adminPills && window._vtAdminPills)?window._vtAdminPills(cfg._adminAud):'';
-    var inner='<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatBack()">'+_BACKIC+'</button><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
+    var inner='<div class="pd-head"><div style="display:flex;align-items:center;gap:10px"><button class="chat-back" title="Back" onclick="_chatBack()">'+_BACKIC+'</button><div>'+_hdr+'<div id="chat-presence" class="chat-presence"></div></div></div><button class="pd-x" onclick="_chatCloseUnified()">&times;</button></div><div class="p-modal-body">'+_pills+(cfg.taskId?_prodChatBar(cfg.taskId,cfg.barPortal||''):'')+_chatRoleChipsHtml()+body+'</div><div class="pd-foot" style="display:block">'+_chatFootInner('ytcSend()')+'</div>';
     _chatShow(inner);
     _chatWireInputs();
     _chatPresenceBar(presence);
@@ -31111,7 +31116,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     window._chatMeta={portal:portal||'', taskId:taskId||0, audience:audience||'creator', ptUrl:ptUrl||''};
     window._chatAttachTask=null; window._chatPartyTasks=null;
   }
-  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; window._chatImgs=[]; window._chatBackFn=cfg.onBack||null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||'';
+  function _ytcOpen(cfg){ window._chatCfg=cfg; window._chatImg=null; window._chatImgs=[]; window._chatRoleFilter=''; window._chatBackFn=cfg.onBack||null; if(cfg.barPortal) window._chatDirty=cfg.barPortal; window._chatPingUrl=cfg.pingUrl||'';
     var _ptu=(cfg.getUrl||'').replace('/pair-comments','/party-tasks').replace('/comments','/party-tasks');
     _chatSetMeta(cfg.barPortal||'', cfg.taskId||0, cfg.audience||'creator', _ptu);
     api(cfg.getUrl).then(function(r){ _ytcRender((r&&r.comments)||[], r&&r.presence); _chatLivePoll(function(){ api(cfg.getUrl).then(function(rr){ _chatUpdateThread((rr&&rr.comments)||[], cfg.mineRole, rr&&rr.presence); }); }); }).catch(function(e){ toast((e&&e.message)||'Could not load chat',true); }); }
@@ -31199,9 +31204,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _chatUpdateThread(comments, mineRole, presence){
     var th=document.getElementById('chat-thread')||document.getElementById('chat-scroll'); if(!th) return;
+    window._chatLastComments=comments||[]; window._chatLastPresence=presence;
+    var _fc=_chatApplyRoleFilter(comments);
+    var _emptyMsg=(comments&&comments.length)?'No messages in this view yet.':'No messages yet.';
     var nearBottom=(th.scrollHeight-th.scrollTop-th.clientHeight)<70;
     var typing=presence&&presence.typing;
-    th.innerHTML=(comments.length?comments.map(function(c){return _chatBubble(c,mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:14px">No messages yet.</div>')+(typing?'<div class="chat-typing"><span></span><span></span><span></span> '+esc((presence.name||'They')+' is typing\u2026')+'</div>':'');
+    th.innerHTML=(_fc.length?_fc.map(function(c){return _chatBubble(c,mineRole);}).join(''):'<div style="color:var(--muted);text-align:center;padding:14px">'+_emptyMsg+'</div>')+(typing?'<div class="chat-typing"><span></span><span></span><span></span> '+esc((presence.name||'They')+' is typing\u2026')+'</div>':'');
     if(nearBottom) th.scrollTop=th.scrollHeight;
     _chatPresenceBar(presence);
   }
@@ -31236,6 +31244,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var tick=mine?('<span title="'+(c.seen?'Seen':'Sent')+'" style="margin-left:5px;font-weight:900;letter-spacing:-2px;color:'+(c.seen?'#2f80ed':'#9aa0a6')+'">\u2713\u2713</span>'):'';
     return '<div class="chat-bub'+(mine?' mine':' them')+'" style="max-width:82%;padding:7px 11px;border-radius:12px;font-size:.83rem;'+(mine?'align-self:flex-end;background:rgba(46,158,107,.14);border:1px solid rgba(46,158,107,.3)':'align-self:flex-start;background:var(--surface-2,#f0ead9);border:1px solid var(--border)')+'"><div style="font-weight:800;font-size:.7rem;color:var(--muted);margin-bottom:2px">'+esc(c.author||'')+' \u00b7 '+who+'</div>'+_chatRefHtml(c)+(c.message?'<div>'+_msgHtml(c.message)+'</div>':'')+img+'<div style="font-size:.66rem;color:var(--muted);margin-top:3px">'+esc(c.at||'')+tick+'</div></div>';
   }
+  // ===== Role filter chips (chapter chat: shared thread + "channel" feel without private pairs) =====
+  function _chatApplyRoleFilter(comments){
+    var cfg=window._chatCfg||{}; var f=window._chatRoleFilter||'';
+    if(!cfg.roleFilter||!f) return comments||[];
+    return (comments||[]).filter(function(c){
+      var r=(c.role||'');
+      if(f==='production_manager') return r==='production_manager'||r==='admin';   // PM chip = management
+      return r===f;
+    });
+  }
+  function _chatChipsCss(){
+    if(document.getElementById('chat-rchip-css')) return;
+    var s=document.createElement('style'); s.id='chat-rchip-css'; s.textContent=[
+      '.chat-rolechips{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 9px;margin-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
+      '.chat-rolechips::-webkit-scrollbar{display:none}',
+      '.chat-rchip{flex:0 0 auto;border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text-muted,#8a7c55);font-weight:800;font-size:.72rem;padding:6px 13px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:all .12s;font-family:inherit}',
+      '.chat-rchip:hover{border-color:#b8941f}',
+      '.chat-rchip.on{background:linear-gradient(135deg,#14243f,#1f3357);color:#fff;border-color:transparent;box-shadow:0 4px 12px -5px rgba(20,36,63,.6)}'
+    ].join(''); document.head.appendChild(s);
+  }
+  function _chatRoleChipsHtml(){
+    var cfg=window._chatCfg||{}; if(!cfg.roleFilter) return '';
+    _chatChipsCss();
+    var f=window._chatRoleFilter||'';
+    var list=[['','All'],['production_manager','PM'],['teacher','Teacher'],['editor','Editor'],['graphics','Graphics']];
+    return '<div id="chat-rolechips" class="chat-rolechips">'+list.map(function(x){
+      return '<button type="button" class="chat-rchip'+(f===x[0]?' on':'')+'" data-rf="'+x[0]+'" onclick="_chatSetRoleFilter(\''+x[0]+'\')">'+x[1]+'</button>';
+    }).join('')+'</div>';
+  }
+  window._chatSetRoleFilter=function(r){
+    window._chatRoleFilter=r||'';
+    var box=document.getElementById('chat-rolechips');
+    if(box){ Array.prototype.forEach.call(box.querySelectorAll('.chat-rchip'),function(b){ b.classList.toggle('on',(b.getAttribute('data-rf')||'')===(window._chatRoleFilter||'')); }); }
+    _chatUpdateThread(window._chatLastComments||[], (window._chatCfg||{}).mineRole, window._chatLastPresence);
+  };
   function _chatReadImg(file, prevId){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ window._chatImg=rd.result; var p=document.getElementById(prevId); if(p) p.innerHTML='<div style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:4px 8px"><img loading="lazy" src="'+rd.result+'" style="height:34px;border-radius:4px"><button class="p-btn" style="padding:2px 8px" onclick="window._chatImg=null;var e=document.getElementById(\''+prevId+'\');if(e)e.innerHTML=\'\'">\u00d7</button></div>'; }; rd.readAsDataURL(file); }
   // ===== MULTI-IMAGE TRAY (opt-in via cfg.multiTray) \u2014 paste/attach several screenshots, send together =====
   window._chatImgs=window._chatImgs||[];
@@ -33075,6 +33118,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         else if(v.gfx_state==='submitted'){ acts+='<span class="pj-btn" style="opacity:.7;cursor:default">\u23f3 Waiting for PM review</span><button class="pj-btn" onclick="gfxSubmitThumbs('+v.chapter_id+')">Submit More / Replace</button>'; }
         if(v.video_link) acts+='<button class="pj-btn" onclick="window.open(\''+_esc1(v.video_link)+'\',\'_blank\',\'noopener\')">'+ic('play')+' Open Video</button>';
         acts+='<button class="pj-btn" onclick="gfxProjectChat('+v.project_id+',\''+pj+'\')">\ud83d\udcac Chat</button>';
+        acts+='<button class="pj-btn" onclick="_pjChatOpen(\'/api/graphics\','+v.chapter_id+',\''+_esc1(v.title||'')+'\',\'graphics\')">\ud83d\udcac Chapter Chat</button>';
         acts+='<button class="pj-btn" onclick="gfxProjTimeline('+v.chapter_id+')">Timeline</button>';
         return '<div class="pj-card2 gpt-card" style="--pj0:#3a2c1e;--pj1:'+st[1]+'">'+
           '<div class="gpt-head"><div class="gpt-l"><span class="pj-badge">'+esc(v.project_title||'Project')+'</span><span class="gpt-title">'+esc(v.title||'')+'</span></div>'+
