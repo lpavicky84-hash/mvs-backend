@@ -22157,7 +22157,15 @@ async function _plRender(id){
   const reupBanner=ex.reupload_allowed?`<div style="display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.13),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.4);border-left:4px solid var(--primary,#b8941f);border-radius:14px;padding:13px 15px;margin:4px 0 14px">${ic('refresh')}<div style="min-width:0"><div style="font-weight:800;font-size:.95rem;color:var(--text,#2e2716)">Re-upload allowed by your teacher</div>${ex.reupload_remark?`<div style="font-size:.88rem;color:var(--text,#2e2716);margin-top:3px;line-height:1.45">“${esc(ex.reupload_remark)}”</div>`:''}<div style="font-size:.78rem;color:var(--text-muted,#8a7c55);margin-top:5px">Please upload your complete answer sheet again below, then submit.</div></div></div>`:'';
   el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${reupBanner}<div class="pls-exam"><div class="pls-main">${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:var(--card,#fffdf7)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:11px"><div style="font-weight:800;font-size:1rem">${ic('book')} Question Paper</div><button type="button" class="btn btn-ghost btn-sm" onclick="_m75View(${id},'student','q')">${ic('download')} Download</button></div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Read the paper below, solve it on paper, then upload a clear photo (or PDF) of your answer sheet.</div><div id="pl-qpdf-frame"><div class="spinner" style="margin:30px auto"></div></div></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button></div>${side}</div>${mbar}`;
   renderMath(el); _plPal(); _plTimerStart(ex); _txLoadLogos(el);
-  if(isM) _plObserve();
+  if(isM){
+    try{ if(window.innerWidth>920) window.scrollTo(0,0); }catch(e){}
+    _plFrameFit(); _plObserve();
+    setTimeout(function(){ _plFrameFit(); _plObserve(); },90);   // banners/logos settle hone ke baad dobara fit
+    if(!window._plFrameBound){ window._plFrameBound=true;
+      window.addEventListener('resize',function(){ if(!document.querySelector('.pls-exam'))return; try{window.scrollTo(0,0);}catch(e){} _plFrameFit(); _plObserve(); });
+      window.addEventListener('orientationchange',function(){ if(!document.querySelector('.pls-exam'))return; setTimeout(function(){ _plFrameFit(); _plObserve(); },160); });
+    }
+  }
   if(ex.has_qpdf) setTimeout(function(){ _m75EmbedQ(id); },40);
 }
 async function _m75EmbedQ(id){
@@ -22189,16 +22197,27 @@ function _plPal(){
 // mobile palette bottom-sheet + jump + current-highlight (NTA feel)
 function _plSheet(open){ const s=document.getElementById('pls-side'), ov=document.getElementById('pls-ov'); if(s) s.classList.toggle('open',!!open); if(ov) ov.classList.toggle('open',!!open); }
 function _plJump(qno){ const t=document.getElementById('plq-'+qno); if(t) t.scrollIntoView({behavior:'smooth',block:'center'}); _plSheet(false); }
+// Desktop frame fit: questions column ko andar-scroll banao taaki palette+header fixed rahein
+function _plFrameFit(){
+  var exam=document.querySelector('.pls-exam'); if(!exam) return;
+  if(window.innerWidth<=920){ exam.classList.remove('pls-frame'); exam.style.height=''; return; }
+  exam.classList.add('pls-frame');
+  var top=exam.getBoundingClientRect().top;          // viewport-top se exam ki doori
+  var h=Math.max(340, Math.round(window.innerHeight - top - 14));
+  exam.style.height=h+'px';
+}
 function _plObserve(){
   if(window._plIO){ try{ window._plIO.disconnect(); }catch(e){} window._plIO=null; }
   if(!('IntersectionObserver' in window)) return;
+  const frame=(window.innerWidth>920);
+  const root=frame?document.querySelector('.pls-main'):null;   // frame me main scroll hota hai
   const vis={};
   window._plIO=new IntersectionObserver(function(es){
     es.forEach(function(e){ const n=e.target.getAttribute('data-qn'); if(e.isIntersecting) vis[n]=1; else delete vis[n]; });
     let cur=null; Object.keys(vis).forEach(function(k){ const n=parseInt(k,10); if(cur==null||n<cur) cur=n; });
     document.querySelectorAll('.pls-pn.cur').forEach(function(b){ b.classList.remove('cur'); });
     if(cur!=null){ const pn=document.getElementById('plpn-'+cur); if(pn) pn.classList.add('cur'); }
-  },{rootMargin:'-96px 0px -55% 0px',threshold:0.01});
+  },{root:root,rootMargin:(frame?'-6px 0px -60% 0px':'-96px 0px -55% 0px'),threshold:0.01});
   document.querySelectorAll('.pl-q').forEach(function(q){ window._plIO.observe(q); });
 }
 function _plExamCss(){
@@ -22244,6 +22263,18 @@ function _plExamCss(){
     '  .pls-ov{display:block}',
     '  .pls-mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:38;align-items:center;gap:10px;background:linear-gradient(120deg,#14243f,#1f3357);padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px -8px rgba(0,0,0,.45)}',
     '  .pls-main{padding-bottom:16px}',
+    '}',
+    // DESKTOP: NTA-style self-contained frame — page scroll nahi, sirf questions column
+    // andar scroll hota hai; palette + header hamesha fixed. (portal ke overflow-x:hidden
+    // ki wajah se nested position:sticky toot jaata tha — ye usse poori tarah bypass karta hai.)
+    '@media(min-width:921px){',
+    '  .pls-exam.pls-frame{align-items:stretch;overflow:hidden}',
+    '  .pls-frame .pls-main{overflow-y:auto;overflow-x:hidden;min-height:0;padding-right:8px;scrollbar-width:thin}',
+    '  .pls-frame .pls-main::-webkit-scrollbar{width:8px}',
+    '  .pls-frame .pls-main::-webkit-scrollbar-thumb{background:rgba(120,110,80,.3);border-radius:8px}',
+    '  .pls-frame .pls-side{position:static;top:auto;height:100%;align-self:stretch;display:flex;flex-direction:column}',
+    '  .pls-frame .pls-grid{max-height:none;flex:1 1 auto}',
+    '  .pls-frame .pls-foot{flex:0 0 auto}',
     '}',
     '@media(max-width:480px){ .pls-grid{grid-template-columns:repeat(5,1fr)} }'
   ].join(''); document.head.appendChild(s);
