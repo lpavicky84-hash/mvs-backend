@@ -8377,6 +8377,12 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
         ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
          "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+        # Public shareable-test columns — model me ye hain, isliye admin Tests Tracker
+        # ka `db.query(Exam)` inke bina "Unknown column" 500 deta tha. Yahin self-heal.
+        ("ALTER TABLE exams ADD COLUMN public_field_config TEXT NULL",
+         "ALTER TABLE exams ADD COLUMN public_field_config TEXT"),
+        ("ALTER TABLE exams ADD COLUMN public_views INT DEFAULT 0",
+         "ALTER TABLE exams ADD COLUMN public_views INTEGER DEFAULT 0"),
     ]
     for group in stmts:
         for st in group:

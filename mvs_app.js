@@ -261,6 +261,27 @@ function _mvsLogoImg(px,rad,bg){
   return '<img loading="lazy" src="'+_logoSrc()+'" alt="MVS Foundation" onerror="_logoFallback(this)" '+
     'style="width:'+px+'px;height:'+px+'px;border-radius:'+rad+'px;object-fit:contain;background:'+(bg||'#0d1b2a')+';display:block">';
 }
+// Admin ke paas personal photo nahi hoti — isliye bottom-left avatar (#a-avatar) me
+// initials ki jagah asli MVS logo dikhao (fallback gold SVG). Sub-admin (Academic Head)
+// ke liye bhi same, taaki wahan blank/initials na rahe.
+function _setAdminAvatarLogo(){
+  try{
+    var av=document.getElementById('a-avatar'); if(!av) return;
+    av.textContent='';
+    av.style.backgroundImage='';
+    av.classList.remove('has-photo');
+    av.style.overflow='hidden';
+    var im=av.querySelector('img.a-ava-logo');
+    if(!im){
+      im=document.createElement('img');
+      im.className='a-ava-logo'; im.loading='lazy'; im.alt='MVS Foundation';
+      im.setAttribute('onerror','_logoFallback(this)');
+      im.style.cssText='width:100%;height:100%;border-radius:inherit;object-fit:contain;background:#0d1b2a;display:block';
+      av.appendChild(im);
+    }
+    im.src=_logoSrc();
+  }catch(e){}
+}
 function _faviconApply(href,isSvg){
   var l=document.querySelector("link[rel~='icon']");
   if(!l){ l=document.createElement('link'); l.setAttribute('rel','icon'); document.head.appendChild(l); }
@@ -8671,7 +8692,9 @@ async function loadATests(){
     if(window._aTestBatch===undefined) window._aTestBatch='';
     _renderATests();
   }catch(e){
-    el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>The Tests Tracker needs one small backend endpoint</b></p><small>Once <code>GET /api/admin/exams</code> is added, all tests with submission tracking appear here, subject-wise.<br>Ready-made code: <b>mvs_backend_exam_update.py</b> — paste it at the end of admin_routes.py and redeploy.</small></div></div></div>`;
+    const msg=(e&&e.message)||'Could not load tests.';
+    const perm=/403|access to this section|do not have access/i.test(msg);
+    el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>${perm?'This section is not enabled for your login':'Tests could not be loaded'}</b></p><small>${perm?'Ask a super-admin to switch ON the <b>Tests</b> section for your account.':esc(msg)}</small>${perm?'':`<div style="margin-top:12px"><button class="btn btn-primary btn-sm" onclick="loadATests()">${ic('refresh')} Retry</button></div>`}</div></div></div>`;
   }
 }
 // ===== Admin PUBLIC TEST tracker (full personal details — teacher sees only name+score) =====
@@ -11782,7 +11805,7 @@ function openAdmin(){
   [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }); }catch(e){} }, d); });
   setTimeout(function(){ try{ _preloadAdmin(); }catch(e){} }, 800);
   document.getElementById('a-name').textContent=NAME;
-  document.getElementById('a-avatar').textContent=initials(NAME);
+  _setAdminAvatarLogo();
   document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#admin-app .nav-item').classList.add('active');
   window._adminMe=null;
@@ -19668,7 +19691,7 @@ async function aaSaveEdit(id){
     toast(r.message||'Admin updated.');
     if(window._adminMe&&window._adminMe.id===id){
       const an=document.getElementById('a-name'); if(an) an.textContent=name;
-      const av=document.getElementById('a-avatar'); if(av) av.textContent=initials(name);
+      _setAdminAvatarLogo();
       window._adminMe.name=name; NAME=name;
     }
     delete _aaEdit[id];
