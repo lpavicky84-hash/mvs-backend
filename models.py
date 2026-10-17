@@ -955,6 +955,8 @@ class Exam(Base):
     public_token   = Column(String(40), nullable=True, index=True)  # random slug — /t/<token>
     public_enabled = Column(Boolean, default=False)                 # link ON/OFF
     public_fields  = Column(String(200), default="")                # guest se maangne wale optional fields (CSV: email,class,city,nios_ref). name+phone hamesha required.
+    public_field_config = Column(Text, default="")                   # rich JSON config: dropdown (class) + custom fields (Google-Form style)
+    public_views   = Column(Integer, default=0)                      # kitne logo ne public link khola (tracker)
 
 
 class PublicExamAttempt(Base):

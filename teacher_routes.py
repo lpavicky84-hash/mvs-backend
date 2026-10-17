@@ -2059,6 +2059,14 @@ def teacher_get_exam_draft(kind: str = "", db: Session = Depends(get_db), me=Dep
 @router.post("/exam-draft")
 def teacher_save_exam_draft(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_teacher)):
     from models import ExamDraft
+    # ensure exam_drafts.data is LONGTEXT (bilingual 200-MCQ drafts > 64KB) before saving
+    try:
+        _ensure_exam_columns(db)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
     k = ((payload.get("kind") or "test").strip() or "test")[:40]
     data = payload.get("data")
     if data is None:
@@ -4014,6 +4022,15 @@ def _ensure_exam_columns(db):
          "ALTER TABLE exams ADD COLUMN public_enabled INTEGER DEFAULT 0"),
         ("ALTER TABLE exams ADD COLUMN public_fields VARCHAR(200) NULL",
          "ALTER TABLE exams ADD COLUMN public_fields TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN public_field_config TEXT NULL",
+         "ALTER TABLE exams ADD COLUMN public_field_config TEXT NULL"),
+        ("ALTER TABLE exams ADD COLUMN public_views INTEGER DEFAULT 0",
+         "ALTER TABLE exams ADD COLUMN public_views INTEGER DEFAULT 0"),
+        # FIX: exam_drafts.data purani MySQL table me TEXT (64KB) tha -> bilingual 200-MCQ draft
+        # usme nahi samaata tha ("Data too long for column 'data'"). LONGTEXT (4GB) me upgrade karo.
+        # (SQLite me MODIFY nahi hota aur wahan koi length-limit bhi nahi -> SELECT 1 harmless no-op.)
+        ("ALTER TABLE exam_drafts MODIFY data LONGTEXT",
+         "SELECT 1"),
     ]
     for group in stmts:
         for s in group:
@@ -4733,22 +4750,52 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
         raise HTTPException(404, "Exam not found")
     if (ex.test_type or "") != "mcq":
         raise HTTPException(400, "Only objective (MCQ) tests can be shared via a public link.")
+    import json as _json
+    import public_routes as _pr
     enabled = bool(payload.get("enabled"))
-    allow = {"email", "class", "city", "nios_ref"}
-    fields = [f for f in (payload.get("fields") or []) if f in allow]
-    ex.public_fields = ",".join(fields)
+    # NEW: rich field config (Google-Form style) — dropdown (class) + custom fields.
+    # Falls back to the legacy simple `fields` list for older clients.
+    cfg = payload.get("field_config")
+    if isinstance(cfg, list):
+        clean, known_order = [], []
+        for f in cfg:
+            if not isinstance(f, dict):
+                continue
+            k = str(f.get("key") or "").strip()[:40]
+            if not k:
+                continue
+            lbl = (str(f.get("label") or "").strip()
+                   or _pr.PUBLIC_FIELD_LABELS.get(k, k))[:60]
+            typ = "select" if (f.get("type") in ("select", "dropdown")) else "text"
+            opts = ([str(o).strip()[:60] for o in (f.get("options") or []) if str(o).strip()][:20]
+                    if typ == "select" else [])
+            req = bool(f.get("required", True))
+            clean.append({"key": k, "label": lbl, "type": typ, "options": opts, "required": req})
+            if k in _pr.PUBLIC_FIELD_LABELS:
+                known_order.append(k)
+        ex.public_field_config = _json.dumps({"fields": clean})
+        ex.public_fields = ",".join(known_order)
+    else:
+        allow = {"email", "class", "city", "nios_ref"}
+        fields = [f for f in (payload.get("fields") or []) if f in allow]
+        ex.public_fields = ",".join(fields)
+        ex.public_field_config = ""   # clear -> fallback to CSV
     ex.public_enabled = enabled
     if enabled and not (ex.public_token or "").strip():
         ex.public_token = secrets.token_urlsafe(9)   # ~12-char unguessable slug
     db.commit()
     return {"ok": True, "enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
-            "link": (("/t/" + ex.public_token) if ex.public_token else ""), "fields": fields}
+            "link": (("/t/" + ex.public_token) if ex.public_token else ""),
+            "field_config": _pr.public_fields_cfg(ex)}
 
 
 @router.get("/exam/{exam_id}/public-responses")
 def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
                           current_user=Depends(get_teacher)):
+    """TEACHER view — privacy: ONLY name + score. Phone / email / city / NIOS ref and every
+    custom detail are NEVER returned here; those live only in the admin tracker."""
     from models import PublicExamAttempt
+    import public_routes as _pr
     tp = get_teacher_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
     if not ex:
@@ -4757,10 +4804,11 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
             .order_by(PublicExamAttempt.created_at.desc()).all())
     return {"enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
-            "fields": [f.strip() for f in (ex.public_fields or "").split(",") if f.strip()],
+            "field_config": _pr.public_fields_cfg(ex),
+            "views": int(getattr(ex, "public_views", 0) or 0),
             "total_marks": (ex.total_marks or 0), "count": len(rows),
-            "responses": [{"id": r.id, "name": r.name, "phone": r.phone, "email": r.email,
-                           "class_course": r.class_course, "city": r.city, "nios_ref": r.nios_ref,
+            # name + score ONLY — no personal details for the teacher
+            "responses": [{"id": r.id, "name": r.name,
                            "score": r.total_awarded, "total": r.total_marks,
                            "correct": r.correct_count, "q_total": r.q_total,
                            "at": (r.created_at.isoformat() if r.created_at else None)} for r in rows]}
@@ -4769,6 +4817,7 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
 @router.get("/exam/{exam_id}/public-export")
 def exam_public_export(exam_id: int, db: Session = Depends(get_db),
                        current_user=Depends(get_teacher)):
+    """TEACHER export — name + score only (personal details are admin-only)."""
     import csv as _csv, io as _io, re as _re2
     from fastapi.responses import Response as _Resp
     from models import PublicExamAttempt
@@ -4781,14 +4830,12 @@ def exam_public_export(exam_id: int, db: Session = Depends(get_db),
     buf = _io.StringIO()
     buf.write("﻿")   # BOM -> Excel me Hindi/UTF-8 sahi khule
     w = _csv.writer(buf)
-    w.writerow(["Name", "Phone", "Email", "Class/Course", "City", "NIOS Ref",
-                "Score", "Out of", "Correct", "Questions", "Submitted At"])
+    w.writerow(["Name", "Score", "Out of", "Correct", "Questions", "Submitted At"])
     for r in rows:
-        w.writerow([r.name or "", r.phone or "", r.email or "", r.class_course or "",
-                    r.city or "", r.nios_ref or "", r.total_awarded, r.total_marks,
+        w.writerow([r.name or "", r.total_awarded, r.total_marks,
                     r.correct_count, r.q_total,
                     (r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "")])
-    fn = "responses-%s.csv" % ((_re2.sub(r"[^A-Za-z0-9]+", "-", (ex.title or "test")).strip("-")[:40]) or "test")
+    fn = "scores-%s.csv" % ((_re2.sub(r"[^A-Za-z0-9]+", "-", (ex.title or "test")).strip("-")[:40]) or "test")
     return _Resp(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
                  headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
 

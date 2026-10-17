@@ -54,9 +54,11 @@
   .tbar .tt{font-weight:800;font-size:.98rem;flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .msel{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:9px;padding:7px 10px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit}
   .msel option{color:#14243f}
-  .timer{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:9px;padding:7px 11px;font-weight:800;font-size:.92rem;font-variant-numeric:tabular-nums}
-  .timer.over{background:rgba(209,68,58,.9);border-color:transparent;animation:pulse 1s infinite}
-  @keyframes pulse{50%{opacity:.6}}
+  .timer{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#2a2008;border:none;border-radius:10px;padding:8px 13px;font-weight:900;font-size:1rem;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px -4px rgba(184,148,31,.75);letter-spacing:.02em}
+  .timer .clk{font-size:.95em;line-height:1}
+  .timer.warn{background:linear-gradient(135deg,#ff7a6b,#e0453a);color:#fff;box-shadow:0 4px 16px -3px rgba(209,68,58,.8);animation:blink 1s steps(2,start) infinite}
+  .timer.over{background:#d1443a;color:#fff;animation:blink .7s steps(2,start) infinite}
+  @keyframes blink{50%{opacity:.32}}
   .attc{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.85);margin-top:9px}
   .attc b{color:var(--gold2)}
   .attbar{height:6px;border-radius:999px;background:rgba(255,255,255,.15);margin-top:6px;overflow:hidden}
@@ -177,7 +179,14 @@
   function screenRegister(){
     meta();
     var extra=(EX.fields||[]).map(function(f){
-      return '<label class="fl">'+esc(f.label)+' <span class="req">*</span></label><input class="inp" id="f-'+esc(f.key)+'" autocomplete="off">';
+      var req=(f.required!==false);
+      var star=req?' <span class="req">*</span>':' <span style="color:#9a9284;font-weight:600;font-size:.82em">(optional)</span>';
+      // dropdown (e.g. Class / Course) vs plain text — Google-Form style
+      if(f.type==="select"){
+        var opts='<option value="">Select…</option>'+(f.options||[]).map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join("");
+        return '<label class="fl">'+esc(f.label)+star+'</label><select class="inp" id="f-'+esc(f.key)+'">'+opts+'</select>';
+      }
+      return '<label class="fl">'+esc(f.label)+star+'</label><input class="inp" id="f-'+esc(f.key)+'" autocomplete="off">';
     }).join("");
     APP.innerHTML=
       '<div class="card">'
@@ -194,7 +203,7 @@
       var name=(val("f-name")).trim(), phone=(val("f-phone")).replace(/[^0-9]/g,"");
       if(!name) return regErr("Please enter your name.");
       if(phone.length<10) return regErr("Please enter a valid 10-digit phone number.");
-      for(var i=0;i<(EX.fields||[]).length;i++){ var f=EX.fields[i]; if(!val("f-"+f.key).trim()) return regErr("Please fill: "+f.label); }
+      for(var i=0;i<(EX.fields||[]).length;i++){ var f=EX.fields[i]; if(f.required!==false && !val("f-"+f.key).trim()) return regErr((f.type==="select"?"Please select: ":"Please fill: ")+f.label); }
       window._reg={name:name,phone:phone}; (EX.fields||[]).forEach(function(f){ window._reg[f.key]=val("f-"+f.key).trim(); });
       if(HASHI) screenMedium(); else { MED="en"; screenTest(); }
     };
@@ -232,7 +241,7 @@
         +'<option value="hi"'+(MED==="hi"?" selected":"")+'>हिंदी</option>'
         +'<option value="hg"'+(MED==="hg"?" selected":"")+'>Hinglish</option></select>'
       : '';
-    var timer=EX.duration_min?'<span class="timer" id="timer">⏱ --:--:--</span>':'';
+    var timer=EX.duration_min?'<span class="timer" id="timer"><span class="clk">⏱</span> --:--:--</span>':'';
     var N=(EX.questions||[]).length;
     var pal='<div class="pal"><div class="pal-t">Questions — tap a number to jump</div>'
       +(EX.questions||[]).map(function(q){ var a=ANS[q.q_no]!=null; return '<button type="button" class="pn'+(a?" done":"")+'" id="pn-'+q.q_no+'" data-go="'+q.q_no+'">'+q.q_no+'</button>'; }).join("")
@@ -287,7 +296,9 @@
       var left=totalMs-(Date.now()-STARTMS); var over=left<=0; if(over)left=0;
       var s=Math.floor(left/1000);
       var h=String(Math.floor(s/3600)).padStart(2,"0"), m=String(Math.floor((s%3600)/60)).padStart(2,"0"), ss=String(s%60).padStart(2,"0");
-      el.innerHTML="⏱ "+h+":"+m+":"+ss; el.classList.toggle("over",over); el.title=over?"Time over":"Time remaining";
+      var warn=(!over && left<=5*60000);   // 5 min se kam -> blink
+      el.innerHTML='<span class="clk">⏱</span> '+h+":"+m+":"+ss; el.classList.toggle("over",over); el.classList.toggle("warn",warn);
+      el.title=over?"Time over":(warn?"Less than 5 minutes left!":"Time remaining");
       if(over && !SUBMITTED){ clearInterval(TIMER); TIMER=null; doSubmit(true); }
     }
     tick(); TIMER=setInterval(tick,1000);

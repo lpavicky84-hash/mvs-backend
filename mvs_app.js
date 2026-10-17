@@ -1612,8 +1612,28 @@ async function openAdminNotify(){
       <input type="file" accept="image/*" id="an-imgfile" style="display:none" onchange="anPickImg(this)">
       <div id="an-imgbox"><button class="btn btn-ghost btn-sm" onclick="document.getElementById('an-imgfile').click()">${ic('upload')} Choose image</button></div>
     </div>`,
-   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">${ic('bell')} Send Notification</button>`);
+   `<button class="btn btn-ghost" onclick="openAdminSentLog()">${ic('chart')} Sent &amp; Views</button><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">${ic('bell')} Send Notification</button>`);
   anScope();
+}
+// ===== Admin "Sent by Me" — notification view tracking (like teacher) =====
+async function openAdminSentLog(){
+  showModal('Sent Notifications — Views','<div style="padding:34px;text-align:center;color:var(--text-muted)">Loading…</div>','');
+  let log=[]; try{ log=await api('/api/admin/notify-log'); }catch(e){ showModal('Sent Notifications — Views',errHtml(e)); return; }
+  const rows=log.length?log.map(b=>`<div class="ntlog-row"><div class="ntlog-ic">${ic('bell')}</div><div style="min-width:0;flex:1"><div style="font-weight:800;font-size:.88rem">${esc(b.title)}</div><div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">${esc(b.label)} · ${b.sent} recipient${b.sent===1?'':'s'}${b.created_at?' · '+new Date(b.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div></div><div class="ntlog-views" onclick="openANtViews('${b.batch_key}')" title="See who viewed"><div class="nv-n">${b.viewed}/${b.sent}</div><div class="nv-t">Views</div></div></div>`).join('')
+    : '<div class="empty-state" style="padding:30px"><p>No notifications sent yet.</p><small>Send one above — its view tracking will appear here.</small></div>';
+  showModal('Sent Notifications — Views',
+   `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">Tap <b>Views</b> on any notification to see exactly who read it.</div><div class="hide-scroll" style="max-height:460px;overflow:auto">${rows}</div>`,
+   `<button class="btn btn-ghost" onclick="openAdminNotify()">${ic('back')} Back</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
+}
+async function openANtViews(batch){
+  showModal('Notification Views','<div class="spinner"></div>','');
+  let d; try{ d=await api('/api/admin/notify-log/'+batch); }catch(e){ showModal('Notification Views',errHtml(e)); return; }
+  const recips=d.recipients||[];
+  const seen=recips.filter(r=>r.read).length, total=recips.length;
+  const rows=recips.map(r=>`<div class="ntv-row"><div class="ntv-ava">${esc(initials(r.name))}</div><div style="min-width:0;font-weight:700;font-size:.86rem">${esc(r.name)}${r.role?` <span style="font-size:.68rem;color:var(--text-muted);font-weight:600">(${esc(r.role)})</span>`:''}</div>${r.read?`<div class="ntv-seen">✓ Viewed${r.read_at?' · '+new Date(r.read_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div>`:'<div class="ntv-pend">Not viewed yet</div>'}</div>`).join('');
+  showModal('Notification Views',
+   `<div class="ntf-scope"><div class="ns-n">${seen}/${total}</div><div class="ns-t"><b>${esc(d.title||'Notification')}</b><br>${esc(d.label||'')} — ${seen} of ${total} ${total===1?'person has':'people have'} viewed it.</div></div><div class="hide-scroll" style="max-height:340px;overflow:auto">${rows||'<div class="empty-state"><p>No recipients.</p></div>'}</div>`,
+   `<button class="btn btn-ghost" onclick="openAdminSentLog()">${ic('back')} Back</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 function anClassChange(){
   const cl=val('an-class');
@@ -1678,10 +1698,12 @@ async function openTeacherNotify(){
   let tg={subjects:[],all_count:0,scoped:false};
   try{ tg=await api('/api/teacher/notify-targets'); }catch(e){}
   window._tnTargets=tg;
-  const opts=[`<option value="">All My Students (${tg.all_count})</option>`]
+  // Student counts sirf My Students access wale teachers ko dikhein; baaki ko sirf naam.
+  const _canCnt=!!window._tCanSeeStudents;
+  const opts=[`<option value="">All My Students${_canCnt?` (${tg.all_count})`:''}</option>`]
     .concat((tg.subjects||[]).map(s=>{
       const clsTxt=(s.class&&s.class!=='?')?` (Class ${s.class})`:'';
-      return `<option value="${esc(s.key||s.name)}">${esc(s.name)}${clsTxt} (${s.count})</option>`;
+      return `<option value="${esc(s.key||s.name)}">${esc(s.name)}${clsTxt}${_canCnt?` (${s.count})`:''}</option>`;
     })).join('');
   showModal(' Notify Students',
  `<div class="form-group"><label>Send To</label><select class="form-control" id="tn-target" onchange="tnScope()">${opts}</select></div><div class="ntf-scope" id="tn-scope"></div><div class="form-group"><label>Title</label><input class="form-control" id="tn-title" placeholder="e.g. Today's class timing"></div><div class="form-group"><label>Message</label><textarea class="form-control" id="tn-msg" rows="4" placeholder="Write your message..."></textarea></div>`,
@@ -1694,7 +1716,12 @@ function tnScope(){
   if(!t||!box) return;
   const v=t.value; let label='All My Students', n=tg.all_count;
   if(v){ const s=(tg.subjects||[]).find(x=>(x.key||x.name)===v); if(s){ const clsTxt=(s.class&&s.class!=='?')?' (Class '+s.class+')':''; label=s.name+clsTxt+' Students'; n=s.count; } else { label=v+' Students'; n=0; } }
-  box.innerHTML=`<div class="ns-n">${n}</div><div class="ns-t"><b>${esc(label)}</b><br>This notification will reach ${n} student${n===1?'':'s'}.</div>`;
+  // Count sirf My Students access par; warna sirf kis group ko ja raha hai (bina ginti ke).
+  if(window._tCanSeeStudents){
+    box.innerHTML=`<div class="ns-n">${n}</div><div class="ns-t"><b>${esc(label)}</b><br>This notification will reach ${n} student${n===1?'':'s'}.</div>`;
+  } else {
+    box.innerHTML=`<div class="ns-t"><b>${esc(label)}</b><br>Your message will be sent to this group.</div>`;
+  }
 }
 async function submitTeacherNotify(){
   const title=val('tn-title'), message=document.getElementById('tn-msg').value.trim(), subject=val('tn-target');
@@ -8647,6 +8674,68 @@ async function loadATests(){
     el.innerHTML=`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clipboard')}</div><p><b>The Tests Tracker needs one small backend endpoint</b></p><small>Once <code>GET /api/admin/exams</code> is added, all tests with submission tracking appear here, subject-wise.<br>Ready-made code: <b>mvs_backend_exam_update.py</b> — paste it at the end of admin_routes.py and redeploy.</small></div></div></div>`;
   }
 }
+// ===== Admin PUBLIC TEST tracker (full personal details — teacher sees only name+score) =====
+function _aptCss(){ if(document.getElementById('apt-css')) return; var s=document.createElement('style'); s.id='apt-css'; s.textContent=[
+  '.apt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}',
+  '.apt-card{border:1px solid var(--border);border-radius:16px;padding:16px;background:var(--card,#fff);box-shadow:0 4px 18px -14px rgba(40,30,10,.3);transition:transform .12s,box-shadow .12s}',
+  '.apt-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px -14px rgba(40,30,10,.4);border-color:#d9b64e}',
+  '.apt-ttl{font-weight:800;font-size:1rem;line-height:1.3}',
+  '.apt-meta{font-size:.76rem;color:var(--text-muted);margin-top:3px}',
+  '.apt-badge{display:inline-block;font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-radius:999px;padding:3px 9px;margin-top:8px}',
+  '.apt-on{background:rgba(46,158,107,.16);color:#1f7a44}.apt-off{background:rgba(120,113,108,.16);color:#78716c}',
+  '.apt-stats{display:flex;gap:10px;margin:12px 0 10px}',
+  '.apt-stat{flex:1;text-align:center;background:linear-gradient(135deg,rgba(184,148,31,.1),rgba(184,148,31,.02));border:1px solid rgba(184,148,31,.22);border-radius:12px;padding:10px 6px}',
+  '.apt-stat b{display:block;font-size:1.4rem;font-weight:900;color:#14243f}',
+  'body.dark .apt-stat b{color:#eaf0fb}',
+  '.apt-stat span{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);font-weight:700}',
+  '.apt-acts{display:flex;gap:8px;flex-wrap:wrap}',
+  '.apt-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;margin-top:12px}',
+  '.apt-table{width:100%;border-collapse:collapse;font-size:.84rem;min-width:620px}',
+  '.apt-table th{position:sticky;top:0;text-align:left;background:#14243f;color:#fff;padding:10px 12px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}',
+  '.apt-table td{padding:9px 12px;border-top:1px solid var(--border);white-space:nowrap}',
+  '.apt-table tr:nth-child(even) td{background:rgba(184,148,31,.035)}'
+].join(''); document.head.appendChild(s); }
+async function loadAPublicTests(){
+  const el=document.getElementById('a-tests-content'); if(!el)return; _aptCss(); softSpin(el);
+  let d; try{ d=await api('/api/admin/public-tests'); }catch(e){ el.innerHTML=errHtml(e); return; }
+  const tests=(d&&d.tests)||[];
+  const cards=tests.length?tests.map(t=>{
+    const link=location.origin+(t.link||'');
+    return `<div class="apt-card"><div class="apt-ttl">${esc(t.title||'Untitled')}</div>
+      <div class="apt-meta">${esc(t.subject||'')}${t.teacher_name?' · By '+esc(t.teacher_name):''} · ${t.total_marks||0} marks</div>
+      <span class="apt-badge ${t.enabled?'apt-on':'apt-off'}">${t.enabled?'Link ON':'Link OFF'}</span>
+      <div class="apt-stats"><div class="apt-stat"><b>${t.views||0}</b><span>Opened</span></div><div class="apt-stat"><b>${t.attempts||0}</b><span>Attempted</span></div></div>
+      <div class="apt-acts"><button class="btn btn-primary btn-sm" onclick="openAPublicTest(${t.exam_id})">${ic('eye')} View responses</button>${(t.attempts||0)?`<button class="btn btn-ghost btn-sm" onclick="exportAPublicTest(${t.exam_id})">${ic('download')} Export</button>`:''}${t.enabled&&t.link?`<button class="btn btn-ghost btn-sm" onclick="(function(){try{navigator.clipboard.writeText('${esc(link)}');toast('Link copied!');}catch(e){}})()">${ic('copy')} Link</button>`:''}</div></div>`;
+  }).join(''):'';
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Public Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Shareable (no-login) tests · opens, attempts &amp; all collected details</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('back')} Back to Tests</button><button class="btn btn-ghost btn-sm" onclick="loadAPublicTests()">${ic('refresh')} Refresh</button></div></div>`
+    +(cards?`<div class="apt-grid">${cards}</div>`:`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('link')}</div><p><b>No public tests yet</b></p><small>When a teacher turns ON a shareable link for an objective test, it appears here with full tracking.</small></div></div></div>`);
+}
+async function openAPublicTest(id){
+  showModal('Public Test Responses','<div style="padding:34px;text-align:center;color:var(--text-muted)">Loading…</div>','');
+  let d; try{ d=await api('/api/admin/public-tests/'+id+'/responses'); }catch(e){ showModal('Public Test Responses',errHtml(e)); return; }
+  _aptCss();
+  const cc=(d.custom_cols||[]);
+  const resp=(d.responses||[]);
+  const head='<tr><th>Name</th><th>Phone</th><th>Email</th><th>Class/Course</th><th>City</th><th>NIOS Ref</th>'+cc.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th>Score</th><th>Correct</th><th>Submitted</th></tr>';
+  const rows=resp.length?resp.map(r=>{
+    const at=r.at?new Date(r.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    return '<tr><td><b>'+esc(r.name||'')+'</b></td><td>'+esc(r.phone||'')+'</td><td>'+esc(r.email||'—')+'</td><td>'+esc(r.class_course||'—')+'</td><td>'+esc(r.city||'—')+'</td><td>'+esc(r.nios_ref||'—')+'</td>'
+      +cc.map(c=>'<td>'+esc((r.extra&&r.extra[c.key])||'—')+'</td>').join('')
+      +'<td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td><td>'+esc(at)+'</td></tr>';
+  }).join(''):'<tr><td colspan="'+(9+cc.length)+'" style="text-align:center;color:var(--text-muted);padding:20px">No responses yet.</td></tr>';
+  const html=`<div class="apt-stats"><div class="apt-stat"><b>${d.views||0}</b><span>Opened</span></div><div class="apt-stat"><b>${d.count||0}</b><span>Attempted</span></div></div>`
+    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px"><div style="font-size:.8rem;color:var(--text-muted)">${esc(d.title||'')}${d.teacher_name?' · By '+esc(d.teacher_name):''}</div>${(d.count||0)?`<button class="btn btn-primary btn-sm" onclick="exportAPublicTest(${id})">${ic('download')} Export CSV</button>`:''}</div>`
+    +`<div class="apt-table-wrap"><table class="apt-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+  showModal('Public Test — '+esc(d.title||'Responses'), html,'<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function exportAPublicTest(id){
+  try{ toast('Preparing CSV…');
+    const r=await fetch(API+'/api/admin/public-tests/'+id+'/export',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) throw new Error('Export failed'); const b=await r.blob(); const u=URL.createObjectURL(b);
+    const a=document.createElement('a'); a.href=u; a.download='public-test-responses.csv'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(u); },4000);
+  }catch(e){ toast(e.message||'Export failed',true); }
+}
 function aTestSubPick(s){ window._aTestSub=(window._aTestSub===s?'':s); _renderATests(); }
 function _testTrFiltered(){
   const all=_admBatchFilter(window._aTestsRows||[], window._aTestBatch||'');
@@ -8673,7 +8762,7 @@ function _renderATests(){
   };
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
   const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aTestClassPick('${v}')">${lbl}</button>`;
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="loadAPublicTests()">${ic('link')} Public Tests</button><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
     +`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center"><span style="font-size:.74rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Class</span>${clsPill('all','All Classes')}${clsPill('10','Class 10')}${clsPill('12','Class 12')}${_admBatchDropdown(window._aTestBatch||'','aTestBatchPick')}</div>`
     +`<div class="tx-stats">`
     +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total tests</span></div>`
@@ -10633,33 +10722,80 @@ async function examShareModal(id){
   try{ const d=await api('/api/teacher/exam/'+id+'/public-responses'); _renderShareModal(id,d); }
   catch(e){ toast(e.message||'Could not load',true); }
 }
+var _PUB_LABEL={email:'Email','class':'Class / Course',city:'City',nios_ref:'NIOS Reference Number'};
 function _renderShareModal(id,d){
   _pshCss();
   var link=d.link?(location.origin+d.link):'';
-  var fset={}; (d.fields||[]).forEach(function(f){ fset[f]=1; });
-  var fieldChecks=_PUB_FIELDS.map(function(f){ return '<label class="psh-chk"><input type="checkbox" id="psh-f-'+f[0]+'" '+(fset[f[0]]?'checked':'')+'><span>'+esc(f[1])+'</span></label>'; }).join('');
+  // ---- working field config (Google-Form style: dropdown + custom fields) ----
+  var cfg=d.field_config||[]; var byKey={}; cfg.forEach(function(f){ byKey[f.key]=f; });
+  window._pshF=[];
+  ['email','class','city','nios_ref'].forEach(function(k){
+    var e=byKey[k];
+    window._pshF.push({key:k,label:_PUB_LABEL[k],type:(k==='class'?'select':'text'),
+      options:(k==='class'?((e&&e.options&&e.options.length)?e.options:['Class 10','Class 12']):[]),
+      required:true,custom:false,on:!!e});
+  });
+  cfg.forEach(function(f){ if(['email','class','city','nios_ref'].indexOf(f.key)<0){
+    window._pshF.push({key:f.key,label:f.label,type:(f.type==='select'?'select':'text'),options:f.options||[],required:(f.required!==false),custom:true,on:true}); } });
   var linkBlock=(d.enabled&&link)
     ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
     : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
   var resp=(d.responses||[]);
-  var rows=resp.length?resp.map(function(r){ return '<tr><td>'+esc(r.name||'')+'</td><td>'+esc(r.phone||'')+'</td><td>'+(esc(r.class_course||'')||'—')+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
-    : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px">No responses yet — share the link to start collecting.</td></tr>';
+  // TEACHER: name + score ONLY (phone/personal details admin panel me hain)
+  var rows=resp.length?resp.map(function(r){ return '<tr><td>'+esc(r.name||'')+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
+    : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:18px">No responses yet — share the link to start collecting.</td></tr>';
+  var statLine=(d.enabled)?'<div class="psh-stat"><span><b>'+(d.views||0)+'</b> opened</span><span><b>'+(d.count||0)+'</b> attempted</span></div>':'';
   var html=
     '<div class="psh-row"><div><b>Public link</b><div class="psh-sub">Anyone with the link can attempt (no login). Name &amp; phone are always required.</div></div>'
     +'<label class="psh-switch"><input type="checkbox" id="psh-en" '+(d.enabled?'checked':'')+'><span class="psh-sl"></span></label></div>'
-    +linkBlock
-    +'<div class="psh-fl"><b>Also collect from each student:</b><div class="psh-checks">'+fieldChecks+'</div></div>'
+    +linkBlock+statLine
+    +'<div class="psh-fl"><b>Details to collect from each student</b><div class="psh-subtle">Name &amp; phone are always asked. Toggle the rest, make Class a dropdown, or add your own fields.</div>'
+    +'<div id="psh-fields" class="psh-fields">'+_pshFieldsHtml()+'</div>'
+    +'<button class="psh-add" onclick="_pshAdd()">+ Add custom field</button></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
-    +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export CSV</button>'):'')+'</div>'
-    +'<div class="psh-table-wrap"><table class="psh-table"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Score</th><th>Correct</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
+    +'<div class="psh-note2">You see each student&#39;s <b>name &amp; score</b> only. Phone and all personal details are in the <b>Admin panel</b>.</div>'
+    +'<div class="psh-table-wrap"><table class="psh-table"><thead><tr><th>Name</th><th>Score</th><th>Correct</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
   showModal('Share Test as Public Link', html,'');
 }
+function _pshFieldsHtml(){
+  var F=window._pshF||[];
+  return F.map(function(f,i){
+    if(!f.custom){
+      var tag=(f.type==='select')?' <span class="psh-tag">dropdown</span>':'';
+      var optRow=(f.type==='select'&&f.on)?'<input class="psh-op" id="psh-op-'+i+'" placeholder="Class 10, Class 12" value="'+esc((f.options||[]).join(', '))+'">':'';
+      return '<div class="psh-frow"><label class="psh-chk"><input type="checkbox" id="psh-on-'+i+'" '+(f.on?'checked':'')+' onchange="_pshReaRender()"><span>'+esc(f.label)+tag+'</span></label>'+optRow+'</div>';
+    }
+    var opt=(f.type==='select')?'<input class="psh-op" id="psh-op-'+i+'" placeholder="Option 1, Option 2, …" value="'+esc((f.options||[]).join(', '))+'">':'';
+    return '<div class="psh-fcard"><div class="psh-fcard-top"><input class="psh-lb" id="psh-lb-'+i+'" placeholder="Field label (e.g. Father&#39;s Name)" value="'+esc(f.label||'')+'"><button type="button" class="psh-xb" onclick="_pshRemove('+i+')" title="Remove">&times;</button></div>'
+      +'<div class="psh-fcard-ctl"><select class="psh-ty" id="psh-ty-'+i+'" onchange="_pshReaRender()"><option value="text"'+(f.type!=='select'?' selected':'')+'>Text</option><option value="select"'+(f.type==='select'?' selected':'')+'>Dropdown</option></select>'+opt
+      +'<label class="psh-rql"><input type="checkbox" id="psh-rq-'+i+'" '+(f.required?'checked':'')+'> Required</label></div></div>';
+  }).join('');
+}
+function _pshCollect(){
+  (window._pshF||[]).forEach(function(f,i){
+    var on=document.getElementById('psh-on-'+i); if(on) f.on=on.checked;
+    if(f.custom){ var lb=document.getElementById('psh-lb-'+i); if(lb)f.label=lb.value; var ty=document.getElementById('psh-ty-'+i); if(ty)f.type=(ty.value==='select'?'select':'text'); var rq=document.getElementById('psh-rq-'+i); if(rq)f.required=rq.checked; }
+    if(f.type==='select'){ var op=document.getElementById('psh-op-'+i); if(op) f.options=op.value.split(',').map(function(s){return s.trim();}).filter(Boolean); }
+  });
+}
+function _pshRenderFields(){ var box=document.getElementById('psh-fields'); if(box) box.innerHTML=_pshFieldsHtml(); }
+window._pshReaRender=function(){ _pshCollect(); _pshRenderFields(); };
+window._pshRemove=function(i){ _pshCollect(); (window._pshF||[]).splice(i,1); _pshRenderFields(); };
+window._pshAdd=function(){ _pshCollect(); (window._pshF=window._pshF||[]).push({key:'c_'+Date.now(),label:'',type:'text',options:[],required:false,custom:true,on:true}); _pshRenderFields(); };
 function _examCopyLink(){ var i=document.getElementById('psh-link'); if(!i) return; try{ i.select(); }catch(e){}
   try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(i.value).then(function(){toast('Link copied!');},function(){document.execCommand('copy');toast('Link copied!');}); } else { document.execCommand('copy'); toast('Link copied!'); } }catch(e){ toast('Copy failed — long-press to copy',true); } }
 async function _examShareSave(id){
   var en=document.getElementById('psh-en'); var enabled=!!(en&&en.checked);
-  var fields=_PUB_FIELDS.filter(function(f){ var c=document.getElementById('psh-f-'+f[0]); return c&&c.checked; }).map(function(f){ return f[0]; });
-  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,fields:fields}); toast(enabled?'Public link is ON':'Public link turned OFF'); examShareModal(id); }
+  _pshCollect();
+  var field_config=[];
+  (window._pshF||[]).forEach(function(f){
+    if(f.custom){ if(!(f.label||'').trim()) return; }   // custom bina label -> skip
+    else if(!f.on) return;                               // predefined off -> skip
+    if(f.type==='select' && !(f.options||[]).length){ f.type='text'; }   // empty dropdown -> text
+    field_config.push({key:f.key,label:(f.label||'').trim(),type:f.type,options:(f.type==='select'?f.options:[]),required:(f.custom?!!f.required:true)});
+  });
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config}); toast(enabled?'Public link saved':'Public link turned OFF'); examShareModal(id); }
   catch(e){ toast(e.message||'Failed',true); }
 }
 async function examExportResponses(id){
@@ -10686,6 +10822,25 @@ function _pshCss(){ if(document.getElementById('psh-css')) return; var s=documen
   '.psh-checks{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}',
   '.psh-chk{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--border);border-radius:999px;padding:7px 13px;font-size:.84rem;font-weight:600;cursor:pointer}',
   '.psh-chk input{width:15px;height:15px;accent-color:#2e9e6b}',
+  '.psh-subtle{font-size:.78rem;color:var(--text-muted);margin:4px 0 10px}',
+  '.psh-stat{display:flex;gap:10px;margin:0 0 12px}',
+  '.psh-stat span{flex:1;background:rgba(184,148,31,.08);border:1px solid rgba(184,148,31,.22);border-radius:10px;padding:8px 12px;font-size:.82rem;color:var(--text-muted);font-weight:600}',
+  '.psh-stat b{color:var(--text);font-size:1.05rem;margin-right:4px}',
+  '.psh-fields{display:flex;flex-direction:column;gap:8px;margin-top:4px}',
+  '.psh-frow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+  '.psh-tag{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:rgba(37,99,235,.14);color:#2563eb;border-radius:999px;padding:2px 7px;margin-left:5px}',
+  '.psh-op{flex:1;min-width:160px;border:1.5px solid var(--border);border-radius:9px;padding:7px 11px;font-size:.84rem;font-weight:600;background:var(--card,#fff);color:var(--text)}',
+  '.psh-fcard{border:1.5px solid var(--border);border-radius:12px;padding:11px;background:rgba(0,0,0,.015)}',
+  '.psh-fcard-top{display:flex;gap:8px;align-items:center}',
+  '.psh-lb{flex:1;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:.88rem;font-weight:700;background:var(--card,#fff);color:var(--text)}',
+  '.psh-xb{flex:0 0 auto;width:30px;height:30px;border:none;border-radius:8px;background:rgba(209,68,58,.12);color:#d1443a;font-size:1.2rem;line-height:1;cursor:pointer}',
+  '.psh-fcard-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}',
+  '.psh-ty{border:1.5px solid var(--border);border-radius:9px;padding:7px 10px;font-size:.82rem;font-weight:700;background:var(--card,#fff);color:var(--text)}',
+  '.psh-rql{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:600;color:var(--text-muted);cursor:pointer}',
+  '.psh-rql input{width:15px;height:15px;accent-color:#b8941f}',
+  '.psh-add{margin-top:10px;width:100%;border:1.5px dashed var(--border);background:transparent;color:#a9791f;border-radius:10px;padding:10px;font-weight:800;font-size:.85rem;cursor:pointer}',
+  '.psh-add:hover{border-color:#b8941f;background:rgba(184,148,31,.05)}',
+  '.psh-note2{font-size:.76rem;color:var(--text-muted);background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.18);border-radius:9px;padding:8px 11px;margin-bottom:10px}',
   '.psh-resp{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}',
   '.psh-resp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px;flex-wrap:wrap}',
   '.psh-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}',
@@ -11535,7 +11690,9 @@ async function loadTNotif(){
   softSpin(el);
   let log=[]; try{ log=await api('/api/teacher/notify-log'); }catch(e){}
   await loadNotif('/api/teacher/notifications','t-notif-content');
-  if(log.length){
+  // "Sent by Me" views-tracking sirf un teachers ko jinke pass My Students section ON hai
+  // (warna student counts/views leak na ho — baaki teachers notification bhej to sakte hain).
+  if(log.length && window._tCanSeeStudents){
     const sentHtml=`<div class="card" style="margin-bottom:16px"><div class="card-header"><h3> Sent by Me <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">— tap Views to see exactly who read it</span></h3></div><div class="card-body">`+
       log.map(b=>`<div class="ntlog-row"><div class="ntlog-ic"></div><div style="min-width:0;flex:1"><div style="font-weight:800;font-size:.88rem">${esc(b.title)}</div><div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">${esc(b.label)} \u00b7 ${b.sent} recipient${b.sent===1?'':'s'}${b.created_at?' \u00b7 '+new Date(b.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div></div><div class="ntlog-views" onclick="openNtViews('${b.batch_key}')" title="See who viewed"><div class="nv-n">${b.viewed}/${b.sent}</div><div class="nv-t">Views</div></div></div>`).join('')+`</div></div>`;
     el.insertAdjacentHTML('afterbegin',sentHtml);
@@ -16300,7 +16457,10 @@ window._commStuCard=function(uid){
 function _commHydrateImgs(root){
   (root||document).querySelectorAll('[data-cimg]').forEach(function(elm){
     var u=elm.getAttribute('data-cimg'); if(!u||elm._done) return; elm._done=1;
-    try{ fetch(API+u,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){return r.blob();}).then(function(bl){ var o=URL.createObjectURL(bl); elm.style.backgroundImage='url('+o+')'; elm.setAttribute('data-cobj',o); }).catch(function(){}); }catch(e){}
+    try{ fetch(API+u,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){return r.blob();}).then(function(bl){ var o=URL.createObjectURL(bl);
+      // IMG tag -> src (natural aspect ratio, no crop); warna background-image (bubble thumbnails)
+      if(elm.tagName==='IMG'){ elm.src=o; } else { elm.style.backgroundImage='url('+o+')'; }
+      elm.setAttribute('data-cobj',o); }).catch(function(){}); }catch(e){}
   });
 }
 window._commLightbox=function(u){
@@ -16388,7 +16548,8 @@ function _sPopupShow(ps,i){
   var old=document.getElementById('scp-ov'); if(old) old.remove();
   var ov=document.createElement('div'); ov.id='scp-ov';
   ov.style.cssText='position:fixed;inset:0;background:rgba(15,12,8,.62);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px';
-  var imgH=img?'<div class="scp-img" data-cimg="'+esc(img.url)+'" style="height:180px;background:#eee var(--x) center/cover no-repeat;background-size:cover;background-position:center"></div>':'';
+  // Thumbnail (16:9) poori dikhe — crop nahi. Real <img> natural aspect ratio pe, neutral letterbox bg.
+  var imgH=img?'<img class="scp-img" data-cimg="'+esc(img.url)+'" alt="" style="display:block;width:100%;height:auto;max-height:62vh;object-fit:contain;background:#f3f1ea">':'';
   var linkH=p.link?'<a href="'+esc(p.link)+'" target="_blank" rel="noopener" onclick="_sPopupClick('+p.id+')" style="display:block;text-align:center;background:'+col+';color:#fff;text-decoration:none;padding:12px;border-radius:12px;font-weight:800;margin-top:12px">'+ic('link2')+' Open Link</a>':'';
   var fileH=files.map(function(a){return '<div class="cmy-fileline" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
   ov.innerHTML='<div style="background:var(--card,#fff);border-radius:20px;max-width:420px;width:100%;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto">'+

@@ -774,9 +774,18 @@ def _batch_label(db, sp):
     bt = getattr(sp, "batch", None)
     return getattr(bt, "value", bt) if bt else ""
 
-def notify(db, user_id: int, title: str, message: str, notif_type: str, link=None, image_url=None):
+def notify(db, user_id: int, title: str, message: str, notif_type: str, link=None, image_url=None,
+           batch_key=None, batch_label=None, sender_id=None, sender_role=None):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
                      link=link, image_url=image_url)
+    # view-tracking fields (batch) — admin "Sent by Me" views, same as teacher
+    for _a, _v in (("batch_key", batch_key), ("batch_label", batch_label),
+                   ("sender_id", sender_id), ("sender_role", sender_role)):
+        if _v is not None:
+            try:
+                setattr(n, _a, _v)
+            except Exception:
+                pass
     db.add(n)
 
 
@@ -2912,7 +2921,7 @@ def admin_notify_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
 
 
 @router.post("/notify")
-def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+def admin_notify(payload: dict, db: Session = Depends(get_db), me=Depends(get_admin)):
     from models import StudentProfile
     title = (payload.get("title") or "").strip()
     message = (payload.get("message") or "").strip()
@@ -2951,9 +2960,27 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), _=Depends(get_adm
             if subject:
                 q = q.filter(StudentProfile.subjects.like("%" + subject + "%"))
     users = q.all()
+    # view-tracking batch + human label (admin "Sent by Me")
+    import uuid as _uuid
+    batch = _uuid.uuid4().hex[:24]
+    if target == "teachers":
+        label = "All Teachers"
+    elif target == "students":
+        if subject and cls:
+            label = "%s (Class %s) Students" % (subject, cls)
+        elif cls:
+            label = "Class %s Students" % cls
+        elif subject:
+            label = "%s Students" % subject
+        else:
+            label = "All Students"
+    else:
+        label = "Everyone (Teachers + Students)"
+    _sid = getattr(me, "id", None)
     for u in users:
         notify(db, u.id, "\U0001f4e2 " + title, message, "admin_broadcast",
-               link=link, image_url=image_url)
+               link=link, image_url=image_url,
+               batch_key=batch, batch_label=label, sender_id=_sid, sender_role="admin")
     db.commit()
     _scope = target if target != "students" else (
         "students" + (" · " + cls if cls else "") + (" · " + subject if subject else ""))
@@ -9761,3 +9788,145 @@ def reset_production_password(uid: int, payload: dict = None, db: Session = Depe
             sp.plain_password = new_pass
     db.commit()
     return {"ok": True, "user_id": u.user_id, "password": new_pass}
+
+
+# ===================== PUBLIC TEST TRACKER (admin-only, FULL details) =====================
+# Har public shareable test ka alag tracker: opens (views) + attempts + saare personal details
+# (phone/email/city/NIOS ref + custom fields) + CSV export. Teacher ko sirf name+score dikhta hai;
+# yahan admin ko sab kuch.
+@router.get("/public-tests")
+def admin_public_tests(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Exam, PublicExamAttempt
+    from sqlalchemy import func as _f
+    rows = (db.query(Exam).filter(Exam.public_token != None, Exam.public_token != "")  # noqa: E711
+            .order_by(Exam.id.desc()).all())
+    cmap = dict(db.query(PublicExamAttempt.exam_id, _f.count(PublicExamAttempt.id))
+                .group_by(PublicExamAttempt.exam_id).all())
+    out = []
+    for ex in rows:
+        out.append({
+            "exam_id": ex.id, "title": ex.title or "", "subject": ex.subject or "",
+            "teacher_name": ex.teacher_name or "",
+            "enabled": bool(ex.public_enabled), "token": ex.public_token or "",
+            "link": (("/t/" + ex.public_token) if ex.public_token else ""),
+            "views": int(getattr(ex, "public_views", 0) or 0),
+            "attempts": int(cmap.get(ex.id, 0) or 0),
+            "total_marks": ex.total_marks or 0,
+            "created_at": ex.created_at.isoformat() if getattr(ex, "created_at", None) else None,
+        })
+    return {"tests": out, "count": len(out)}
+
+
+def _pub_extra_vals(r):
+    ev = {}
+    try:
+        for k, v in (r.extra or {}).items():
+            ev[k] = (v.get("value") if isinstance(v, dict) else v)
+    except Exception:
+        pass
+    return ev
+
+
+@router.get("/public-tests/{exam_id}/responses")
+def admin_public_test_responses(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Exam, PublicExamAttempt
+    import public_routes as _pr
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
+            .order_by(PublicExamAttempt.created_at.desc()).all())
+    cfg = _pr.public_fields_cfg(ex)
+    custom_cols = [{"key": f["key"], "label": f["label"]} for f in cfg if f["key"] not in _pr._KNOWN_KEYS]
+    return {
+        "exam_id": ex.id, "title": ex.title or "", "teacher_name": ex.teacher_name or "",
+        "subject": ex.subject or "", "enabled": bool(ex.public_enabled),
+        "token": ex.public_token or "", "link": (("/t/" + ex.public_token) if ex.public_token else ""),
+        "views": int(getattr(ex, "public_views", 0) or 0),
+        "total_marks": ex.total_marks or 0, "count": len(rows),
+        "custom_cols": custom_cols,
+        "responses": [{
+            "id": r.id, "name": r.name, "phone": r.phone, "email": r.email,
+            "class_course": r.class_course, "city": r.city, "nios_ref": r.nios_ref,
+            "extra": _pub_extra_vals(r),
+            "score": r.total_awarded, "total": r.total_marks,
+            "correct": r.correct_count, "q_total": r.q_total,
+            "at": (r.created_at.isoformat() if r.created_at else None),
+        } for r in rows]}
+
+
+@router.get("/public-tests/{exam_id}/export")
+def admin_public_test_export(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    import csv as _csv, io as _io, re as _re2
+    from fastapi.responses import Response as _Resp
+    from models import Exam, PublicExamAttempt
+    import public_routes as _pr
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
+            .order_by(PublicExamAttempt.created_at.desc()).all())
+    cfg = _pr.public_fields_cfg(ex)
+    custom = [f for f in cfg if f["key"] not in _pr._KNOWN_KEYS]
+    buf = _io.StringIO(); buf.write("﻿")
+    w = _csv.writer(buf)
+    w.writerow(["Name", "Phone", "Email", "Class/Course", "City", "NIOS Ref"]
+               + [f["label"] for f in custom]
+               + ["Score", "Out of", "Correct", "Questions", "Submitted At"])
+    for r in rows:
+        ev = _pub_extra_vals(r)
+        w.writerow([r.name or "", r.phone or "", r.email or "", r.class_course or "",
+                    r.city or "", r.nios_ref or ""]
+                   + [ev.get(f["key"], "") for f in custom]
+                   + [r.total_awarded, r.total_marks, r.correct_count, r.q_total,
+                      (r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "")])
+    fn = "public-test-%s.csv" % ((_re2.sub(r"[^A-Za-z0-9]+", "-", (ex.title or "test")).strip("-")[:40]) or "test")
+    return _Resp(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                 headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
+
+
+# ===================== ADMIN "Sent by Me" — notification view tracking =====================
+# Admin jo notification bheje uske view counts + kaun-kaun ne dekha (teacher wale jaisa).
+@router.get("/notify-log")
+def admin_notify_log(db: Session = Depends(get_db), me=Depends(get_admin)):
+    from models import Notification
+    rows = (db.query(Notification)
+            .filter(Notification.sender_role == "admin",
+                    Notification.batch_key.isnot(None))
+            .order_by(Notification.created_at.desc()).all())
+    batches = {}
+    for n in rows:
+        b = batches.get(n.batch_key)
+        if not b:
+            b = {"batch_key": n.batch_key, "title": n.title, "message": n.message,
+                 "label": n.batch_label or "Everyone", "sent": 0, "viewed": 0,
+                 "created_at": n.created_at.isoformat() if n.created_at else None}
+            batches[n.batch_key] = b
+        b["sent"] += 1
+        if n.is_read:
+            b["viewed"] += 1
+    return sorted(batches.values(), key=lambda b: b["created_at"] or "", reverse=True)
+
+
+@router.get("/notify-log/{batch_key}")
+def admin_notify_log_detail(batch_key: str, db: Session = Depends(get_db), me=Depends(get_admin)):
+    from models import Notification, User
+    rows = (db.query(Notification)
+            .filter(Notification.sender_role == "admin",
+                    Notification.batch_key == batch_key)
+            .order_by(Notification.created_at.asc()).all())
+    if not rows:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    _uids = list({n.user_id for n in rows if n.user_id})
+    _umap = {}
+    if _uids:
+        for uid, nm, role in db.query(User.id, User.name, User.role).filter(User.id.in_(_uids)):
+            _umap[uid] = (nm or "User", getattr(role, "value", str(role)))
+    out = []
+    for n in rows:
+        nm, role = _umap.get(n.user_id, ("User", ""))
+        out.append({"name": nm, "role": role, "read": bool(n.is_read),
+                    "read_at": n.read_at.isoformat() if n.read_at else None})
+    out.sort(key=lambda r: (r["read"], r["name"].lower()), reverse=True)
+    return {"batch_key": batch_key, "title": rows[0].title,
+            "label": rows[0].batch_label or "Everyone", "recipients": out}
