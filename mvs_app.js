@@ -6447,7 +6447,9 @@ async function loadTTests(){
             <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
             <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
             ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
-            ${isM?`<button class="btn btn-ghost btn-sm" title="Share this objective test as a public link — guests can attempt without login" onclick="examShareModal(${e.id})">${ic('link')} Share Link</button>`:''}
+            ${isM?(e.public_enabled
+              ? `<button class="btn btn-sm" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:800;box-shadow:0 5px 14px -5px rgba(5,150,105,.65)" title="Public link is LIVE — guests can attempt without login. Click to manage or copy the link." onclick="examShareModal(${e.id})">${ic('link')} Link ON <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.35);margin-left:5px;vertical-align:middle;animation:txBlink 1.4s ease-in-out infinite"></span></button>`
+              : `<button class="btn btn-ghost btn-sm" title="Share this objective test as a public link — guests can attempt without login" onclick="examShareModal(${e.id})">${ic('link')} Share Link</button>`):''}
             ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
             <button class="btn btn-ghost btn-sm" title="View the formatted test (no download)" onclick="examPdfHub(${e.id},1)">${ic('eye')} View</button>
             <button class="btn btn-primary btn-sm tst-pdfbtn" title="Download the formatted PDF" aria-label="Download PDF" onclick="examPdfHub(${e.id})">${ic('download')}</button>`}
@@ -10818,7 +10820,11 @@ async function _examShareSave(id){
     if(f.type==='select' && !(f.options||[]).length){ f.type='text'; }   // empty dropdown -> text
     field_config.push({key:f.key,label:(f.label||'').trim(),type:f.type,options:(f.type==='select'?f.options:[]),required:(f.custom?!!f.required:true)});
   });
-  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config}); toast(enabled?'Public link saved':'Public link turned OFF'); examShareModal(id); }
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config}); toast(enabled?'Public link saved':'Public link turned OFF');
+    try{ if(window._aTestsRows){ var _r=window._aTestsRows.find(function(x){return x.id===id;}); if(_r)_r.public_enabled=enabled; } }catch(e){}
+    examShareModal(id);
+    try{ loadTTests(); }catch(e){}   // list ka Share Link button turant ON/OFF rang update
+  }
   catch(e){ toast(e.message||'Failed',true); }
 }
 async function examExportResponses(id){
@@ -22137,17 +22143,21 @@ async function _plRender(id){
     const qtext=`<div class="pl-qtop"><div class="pl-qtext-wrap">${qBody}</div><span class="pl-marks">${q.max_marks} marks</span></div>`;
     if(isM){
       const opts=(q.options||[]).map((o,idx)=>`<label class="pl-opt"><input type="radio" name="pl-${q.q_no}" value="${esc(o)}" ${_plAns[q.q_no]===o?'checked':''} onchange="_plPal()"><span>${_fmtRich(_plOptText(q,idx))}</span></label>`).join('');
-      return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}<div class="pl-opts">${opts}</div></div></div>`;
+      return `<div class="pl-q" id="plq-${q.q_no}" data-qn="${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}<div class="pl-opts">${opts}</div></div></div>`;
     }
-    return `<div class="pl-q" id="plq-${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}</div></div>`;
+    return `<div class="pl-q" id="plq-${q.q_no}" data-qn="${q.q_no}"><div class="pl-qnum">${q.q_no}</div><div class="pl-qbody">${qtext}</div></div>`;
   }).join('');
-  const palette=isM?`<div class="pl-pal">${ex.questions.map(q=>`<button type="button" class="pl-pn" id="plpn-${q.q_no}" onclick="document.getElementById('plq-${q.q_no}').scrollIntoView({behavior:'smooth',block:'center'})">${q.q_no}</button>`).join('')}</div>`:'';
+  _plExamCss();
+  const _N=ex.questions.length;
+  const side=isM?`<aside class="pls-side" id="pls-side"><div class="pls-h"><span>Question Palette</span><button type="button" class="pls-close" onclick="_plSheet(false)" aria-label="Close">✕</button></div><div class="pls-legend"><span><i class="pls-dot done"></i>Answered</span><span><i class="pls-dot cur"></i>Current</span><span><i class="pls-dot"></i>Not answered</span></div><div class="pls-grid">${ex.questions.map(q=>`<button type="button" class="pls-pn" id="plpn-${q.q_no}" onclick="_plJump(${q.q_no})">${q.q_no}</button>`).join('')}</div><div class="pls-foot"><div class="pls-att"><b id="pls-a">0</b> / ${_N} answered</div><button class="btn btn-primary" style="width:100%" onclick="_plReview(${id})">Review &amp; Submit</button></div></aside>`:'';
+  const mbar=isM?`<div class="pls-mbar" id="pls-mbar"><span class="pls-prog"><b id="pls-ma">0</b>/${_N}</span><button type="button" class="pls-palbtn" onclick="_plSheet(true)">▦ Questions</button><button class="btn btn-primary pls-mbtn" onclick="_plReview(${id})">Review</button></div><div class="pls-ov" id="pls-ov" onclick="_plSheet(false)"></div>`:'';
   const medToggle=biling?`<select class="pl-msel" title="Language / माध्यम" onchange="_plSetMed(this.value,${id})"><option value="en"${_plMed==='en'?' selected':''}>English</option><option value="hi"${_plMed==='hi'?' selected':''}>हिंदी</option><option value="hg"${_plMed==='hg'?' selected':''}>Hinglish</option></select>`:'';
   const timer=ex.duration_min?`<div class="pl-timer" id="pl-timer">${ic('clock')} <b>--:--:--</b></div>`:'';
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
   const reupBanner=ex.reupload_allowed?`<div style="display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.13),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.4);border-left:4px solid var(--primary,#b8941f);border-radius:14px;padding:13px 15px;margin:4px 0 14px">${ic('refresh')}<div style="min-width:0"><div style="font-weight:800;font-size:.95rem;color:var(--text,#2e2716)">Re-upload allowed by your teacher</div>${ex.reupload_remark?`<div style="font-size:.88rem;color:var(--text,#2e2716);margin-top:3px;line-height:1.45">“${esc(ex.reupload_remark)}”</div>`:''}<div style="font-size:.78rem;color:var(--text-muted,#8a7c55);margin-top:5px">Please upload your complete answer sheet again below, then submit.</div></div></div>`:'';
-  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${reupBanner}${palette}${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:var(--card,#fffdf7)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:11px"><div style="font-weight:800;font-size:1rem">${ic('book')} Question Paper</div><button type="button" class="btn btn-ghost btn-sm" onclick="_m75View(${id},'student','q')">${ic('download')} Download</button></div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Read the paper below, solve it on paper, then upload a clear photo (or PDF) of your answer sheet.</div><div id="pl-qpdf-frame"><div class="spinner" style="margin:30px auto"></div></div></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button>`;
+  el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${reupBanner}<div class="pls-exam"><div class="pls-main">${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:var(--card,#fffdf7)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:11px"><div style="font-weight:800;font-size:1rem">${ic('book')} Question Paper</div><button type="button" class="btn btn-ghost btn-sm" onclick="_m75View(${id},'student','q')">${ic('download')} Download</button></div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Read the paper below, solve it on paper, then upload a clear photo (or PDF) of your answer sheet.</div><div id="pl-qpdf-frame"><div class="spinner" style="margin:30px auto"></div></div></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button></div>${side}</div>${mbar}`;
   renderMath(el); _plPal(); _plTimerStart(ex); _txLoadLogos(el);
+  if(isM) _plObserve();
   if(ex.has_qpdf) setTimeout(function(){ _m75EmbedQ(id); },40);
 }
 async function _m75EmbedQ(id){
@@ -22167,12 +22177,76 @@ async function _m75EmbedQ(id){
 }
 function _plPal(){
   const ex=window._curExam; if(!ex||ex.test_type!=='mcq')return;
+  let a=0;
   ex.questions.forEach(q=>{
     const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked');
-    if(s)_plAns[q.q_no]=s.value;   // har selection turant _plAns me save (review page pe DOM chala jaata hai)
-    const pn=document.getElementById('plpn-'+q.q_no); if(!pn)return;
-    pn.classList.toggle('done',!!s);
+    if(s){_plAns[q.q_no]=s.value; a++;}   // har selection turant _plAns me save (review page pe DOM chala jaata hai)
+    const pn=document.getElementById('plpn-'+q.q_no); if(pn) pn.classList.toggle('done',!!s);
   });
+  const sa=document.getElementById('pls-a'); if(sa) sa.textContent=a;
+  const ma=document.getElementById('pls-ma'); if(ma) ma.textContent=a;
+}
+// mobile palette bottom-sheet + jump + current-highlight (NTA feel)
+function _plSheet(open){ const s=document.getElementById('pls-side'), ov=document.getElementById('pls-ov'); if(s) s.classList.toggle('open',!!open); if(ov) ov.classList.toggle('open',!!open); }
+function _plJump(qno){ const t=document.getElementById('plq-'+qno); if(t) t.scrollIntoView({behavior:'smooth',block:'center'}); _plSheet(false); }
+function _plObserve(){
+  if(window._plIO){ try{ window._plIO.disconnect(); }catch(e){} window._plIO=null; }
+  if(!('IntersectionObserver' in window)) return;
+  const vis={};
+  window._plIO=new IntersectionObserver(function(es){
+    es.forEach(function(e){ const n=e.target.getAttribute('data-qn'); if(e.isIntersecting) vis[n]=1; else delete vis[n]; });
+    let cur=null; Object.keys(vis).forEach(function(k){ const n=parseInt(k,10); if(cur==null||n<cur) cur=n; });
+    document.querySelectorAll('.pls-pn.cur').forEach(function(b){ b.classList.remove('cur'); });
+    if(cur!=null){ const pn=document.getElementById('plpn-'+cur); if(pn) pn.classList.add('cur'); }
+  },{rootMargin:'-96px 0px -55% 0px',threshold:0.01});
+  document.querySelectorAll('.pl-q').forEach(function(q){ window._plIO.observe(q); });
+}
+function _plExamCss(){
+  if(document.getElementById('pls-exam-css')) return;
+  var s=document.createElement('style'); s.id='pls-exam-css'; s.textContent=[
+    '.pls-exam{display:flex;gap:18px;align-items:flex-start}',
+    '.pls-main{flex:1 1 auto;min-width:0}',
+    '.pls-side{flex:0 0 288px;width:288px;position:sticky;top:92px;align-self:flex-start;background:var(--card,#fffdf7);border:1px solid var(--border,#e8e0cf);border-radius:16px;box-shadow:0 10px 28px -16px rgba(40,30,10,.4);overflow:hidden}',
+    '.pls-h{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#14243f,#1f3357);color:#fff;font-weight:800;font-size:.76rem;letter-spacing:.05em;text-transform:uppercase;padding:13px 15px}',
+    '.pls-close{display:none;background:rgba(255,255,255,.16);border:none;color:#fff;width:30px;height:30px;border-radius:9px;font-size:1rem;cursor:pointer;font-family:inherit}',
+    '.pls-legend{display:flex;flex-wrap:wrap;gap:9px 14px;padding:11px 15px;border-bottom:1px solid var(--border,#e8e0cf);font-size:.7rem;font-weight:700;color:var(--text-muted,#8a7c55)}',
+    '.pls-legend span{display:inline-flex;align-items:center;gap:6px}',
+    '.pls-dot{width:13px;height:13px;border-radius:5px;border:1.5px solid var(--border,#e8e0cf);background:var(--card,#fff);display:inline-block;flex:0 0 auto}',
+    '.pls-dot.done{background:#059669;border-color:#059669}',
+    '.pls-dot.cur{border-color:#b8941f;box-shadow:0 0 0 2px rgba(184,148,31,.3)}',
+    '.pls-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:14px 15px;max-height:46vh;overflow-y:auto}',
+    '.pls-pn{height:40px;border:1.5px solid var(--border,#e8e0cf);border-radius:10px;background:var(--card,#fff);color:var(--text,#2e2716);font-weight:800;font-size:.86rem;cursor:pointer;font-variant-numeric:tabular-nums;transition:all .12s;font-family:inherit}',
+    '.pls-pn:hover{border-color:#b8941f}',
+    '.pls-pn:focus{outline:none}.pls-pn:focus-visible{outline:2px solid #14243f;outline-offset:1px}',
+    '.pls-pn.done{background:#059669;border-color:#059669;color:#fff;box-shadow:0 4px 10px -5px rgba(5,150,105,.65)}',
+    '.pls-pn.cur{border-color:#b8941f;box-shadow:0 0 0 3px rgba(184,148,31,.32)}',
+    '.pls-pn.done.cur{box-shadow:0 0 0 3px rgba(184,148,31,.55)}',
+    '.pls-foot{padding:13px 15px;border-top:1px solid var(--border,#e8e0cf)}',
+    '.pls-att{font-size:.8rem;font-weight:700;color:var(--text-muted,#8a7c55);text-align:center;margin-bottom:10px}',
+    '.pls-att b{color:var(--primary,#b8941f);font-size:1.02rem}',
+    '.pls-ov{display:none;position:fixed;inset:0;background:rgba(10,15,25,.5);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s}',
+    '.pls-ov.open{opacity:1;pointer-events:auto}',
+    '.pls-mbar{display:none}',
+    '.pls-prog{display:inline-flex;align-items:center;gap:5px;color:#fff;font-weight:800;font-size:.86rem;font-variant-numeric:tabular-nums}',
+    '.pls-prog b{color:#f0cf6e;font-size:1.02rem}',
+    '.pls-palbtn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.28);color:#fff;border-radius:11px;padding:11px 12px;font-weight:800;font-size:.85rem;cursor:pointer;font-family:inherit}',
+    '.pls-mbtn{width:auto!important;margin:0!important;padding:11px 18px!important;white-space:nowrap}',
+    '.pl-timer.warn{background:linear-gradient(135deg,#ef4444,#b91c1c)!important;box-shadow:0 8px 20px -6px rgba(185,28,28,.6)!important;animation:plsBlink 1s steps(2,start) infinite}',
+    '.pl-timer.warn b{animation:none}',
+    '@keyframes plsBlink{50%{opacity:.42}}',
+    '@media(max-width:920px){',
+    '  .pls-exam{display:block}',
+    '  .pls-side{position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;flex:none;border:none;border-radius:20px 20px 0 0;transform:translateY(112%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:45;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 -12px 34px -10px rgba(0,0,0,.45)}',
+    '  .pls-side.open{transform:translateY(0)}',
+    '  .pls-close{display:inline-flex;align-items:center;justify-content:center}',
+    '  .pls-grid{grid-template-columns:repeat(6,1fr);max-height:54vh}',
+    '  .pls-foot{display:none}',
+    '  .pls-ov{display:block}',
+    '  .pls-mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:38;align-items:center;gap:10px;background:linear-gradient(120deg,#14243f,#1f3357);padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px -8px rgba(0,0,0,.45)}',
+    '  .pls-main{padding-bottom:16px}',
+    '}',
+    '@media(max-width:480px){ .pls-grid{grid-template-columns:repeat(5,1fr)} }'
+  ].join(''); document.head.appendChild(s);
 }
 function _plTimerStart(ex){
   if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
@@ -22181,11 +22255,13 @@ function _plTimerStart(ex){
     const t=document.getElementById('pl-timer'); if(!t){ clearInterval(_plTimerI); _plTimerI=null; return; }
     let left=_plDurLeft(ex); if(left==null)return;
     const over=left<=0; if(over)left=0;
+    const warn=(!over && left<=5*60000);   // 5 min se kam -> red blink
     const s=Math.floor(left/1000);
     const h=String(Math.floor(s/3600)).padStart(2,'0'), m=String(Math.floor((s%3600)/60)).padStart(2,'0'), ss=String(s%60).padStart(2,'0');
     t.innerHTML=`${ic('clock')} <b>${h}:${m}:${ss}</b>`;
     t.classList.toggle('over',over);
-    t.title=over?'Time over — please submit now':'Time remaining';
+    t.classList.toggle('warn',warn);
+    t.title=over?'Time over — please submit now':(warn?'Less than 5 minutes left!':'Time remaining');
   };
   tick(); _plTimerI=setInterval(tick,1000);
 }

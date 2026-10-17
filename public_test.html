@@ -13,9 +13,10 @@
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
-  .wrap{max-width:780px;margin:0 auto;padding:0 16px 70px}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 16px 70px}
+  .narrow{max-width:640px;margin:0 auto}
   .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:0 0 22px 22px;padding:22px 20px 26px;box-shadow:0 10px 30px -12px rgba(20,36,63,.5)}
-  .hero-in{max-width:780px;margin:0 auto}
+  .hero-in{max-width:1140px;margin:0 auto}
   .brand{display:flex;align-items:center;gap:13px}
   .brand .logo{width:54px;height:54px;border-radius:50%;flex:0 0 auto;overflow:hidden;box-shadow:0 3px 12px -3px rgba(0,0,0,.45)}
   .brand .logo svg,.brand .logo img{width:100%;height:100%;display:block}
@@ -64,15 +65,40 @@
   .attbar{height:6px;border-radius:999px;background:rgba(255,255,255,.15);margin-top:6px;overflow:hidden}
   .attbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold2),var(--gold));border-radius:999px;transition:width .25s}
 
-  /* ---- question palette ---- */
-  .pal{display:flex;flex-wrap:wrap;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-top:14px}
-  .pal-t{width:100%;font-size:.74rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
-  .pn{width:38px;height:38px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-weight:800;font-size:.9rem;cursor:pointer;transition:all .12s;font-family:inherit}
+  /* ---- NTA-style exam layout: questions left, sticky palette right ---- */
+  .exam{display:flex;gap:18px;align-items:flex-start;margin-top:14px}
+  .exam-main{flex:1 1 auto;min-width:0}
+  .exam-side{flex:0 0 302px;width:302px;position:sticky;top:104px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 26px -16px rgba(40,30,10,.4);overflow:hidden}
+  .side-h{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;font-weight:800;font-size:.8rem;letter-spacing:.05em;text-transform:uppercase;padding:13px 15px}
+  .side-close{display:none;background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:9px;font-size:1rem;cursor:pointer;font-family:inherit}
+  .legend{display:flex;flex-wrap:wrap;gap:9px 14px;padding:12px 15px;border-bottom:1px solid var(--line);font-size:.72rem;font-weight:700;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .lg-dot{width:14px;height:14px;border-radius:5px;border:1.5px solid var(--line);background:#fff;display:inline-block;flex:0 0 auto}
+  .lg-dot.done{background:linear-gradient(135deg,var(--ok),#1f7a44);border-color:transparent}
+  .lg-dot.cur{border-color:var(--gold);box-shadow:0 0 0 2px rgba(184,148,31,.3)}
+  .side-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:14px 15px;max-height:44vh;overflow-y:auto}
+  .side-foot{padding:13px 15px;border-top:1px solid var(--line)}
+  .side-att{font-size:.82rem;font-weight:700;color:var(--muted);text-align:center;margin-bottom:11px}
+  .side-att b{color:var(--navy);font-size:1.05rem}
+  .pn{height:42px;width:100%;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-weight:800;font-size:.9rem;cursor:pointer;transition:all .12s;font-family:inherit;font-variant-numeric:tabular-nums}
   .pn:hover{border-color:var(--gold)}
-  .pn.done{background:linear-gradient(135deg,var(--gold),#a37d1c);color:#fff;border-color:transparent;box-shadow:0 4px 10px -5px rgba(184,148,31,.8)}
+  .pn:focus{outline:none}
+  .pn:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+  .pn.done{background:linear-gradient(135deg,var(--ok),#1f7a44);color:#fff;border-color:transparent;box-shadow:0 4px 10px -5px rgba(46,158,107,.7)}
+  .pn.cur{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,148,31,.28)}
+  .pn.done.cur{box-shadow:0 0 0 3px rgba(184,148,31,.5)}
+  .sheet-ov{display:none;position:fixed;inset:0;background:rgba(10,15,25,.5);z-index:55;opacity:0;pointer-events:none;transition:opacity .25s}
+  .sheet-ov.open{opacity:1;pointer-events:auto}
+  /* ---- mobile bottom action bar ---- */
+  .mbar{display:none}
+  .mbar-prog{display:inline-flex;align-items:center;gap:5px;color:#fff;font-weight:800;font-size:.86rem;font-variant-numeric:tabular-nums}
+  .mbar-prog b{color:var(--gold2);font-size:1.05rem}
+  .mbar-pal{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.26);color:#fff;border-radius:11px;padding:11px 12px;font-weight:800;font-size:.86rem;cursor:pointer;font-family:inherit}
+  .mbar-sub{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#2a2008;border:none;border-radius:11px;padding:11px 18px;font-weight:900;font-size:.9rem;cursor:pointer;font-family:inherit;box-shadow:0 5px 16px -6px rgba(184,148,31,.8)}
+  .mbar-sub[disabled]{opacity:.65;cursor:wait}
 
   /* ---- questions ---- */
-  .q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin-top:14px;scroll-margin-top:84px}
+  .q{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 17px;margin-top:14px;scroll-margin-top:104px}
   .q-h{font-weight:800;font-size:1.02rem;margin-bottom:4px}
   .q-hi{color:#4a4d55;font-weight:600;font-size:.96rem;margin:3px 0 2px}
   .q-img{max-width:100%;border-radius:10px;margin:8px 0}
@@ -101,7 +127,19 @@
   .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 14px}
   @keyframes sp{to{transform:rotate(360deg)}}
   .note{font-size:.8rem;color:var(--muted);margin-top:10px;text-align:center}
-  @media(max-width:480px){ .hero h1{font-size:1.25rem} .score .big{font-size:1.8rem} .pn{width:36px;height:36px} }
+  /* ---- responsive: palette becomes a bottom-sheet + sticky action bar ---- */
+  @media(max-width:920px){
+    .wrap{padding-bottom:88px}
+    .exam{display:block}
+    .exam-side{position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;flex:none;border:none;border-radius:20px 20px 0 0;transform:translateY(112%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:60;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 -12px 34px -10px rgba(0,0,0,.45)}
+    .exam-side.open{transform:translateY(0)}
+    .side-close{display:inline-flex;align-items:center;justify-content:center}
+    .side-grid{grid-template-columns:repeat(6,1fr);max-height:52vh}
+    .side-foot{display:none}
+    .sheet-ov{display:block}
+    .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;align-items:center;gap:10px;background:linear-gradient(135deg,var(--navy),var(--navy2));padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px -8px rgba(0,0,0,.45)}
+  }
+  @media(max-width:480px){ .hero h1{font-size:1.25rem} .score .big{font-size:1.8rem} .side-grid{grid-template-columns:repeat(5,1fr)} .tbar .tt{min-width:90px;font-size:.9rem} }
 </style>
 </head>
 <body>
@@ -189,7 +227,7 @@
       return '<label class="fl">'+esc(f.label)+star+'</label><input class="inp" id="f-'+esc(f.key)+'" autocomplete="off">';
     }).join("");
     APP.innerHTML=
-      '<div class="card">'
+      '<div class="narrow"><div class="card">'
       +'<div style="font-weight:800;font-size:1.1rem">Enter your details to begin</div>'
       +'<div class="lead">Fill the form below, then start the test. You can attempt it only once.</div>'
       +'<label class="fl">Full Name <span class="req">*</span></label><input class="inp" id="f-name" autocomplete="name">'
@@ -198,7 +236,7 @@
       +'<div class="err" id="reg-err"></div>'
       +'<button class="btn" id="reg-go" style="margin-top:18px">Continue →</button>'
       +'<div class="note">Your details are shared only with MVS Foundation.</div>'
-      +'</div>';
+      +'</div></div>';
     document.getElementById("reg-go").onclick=function(){
       var name=(val("f-name")).trim(), phone=(val("f-phone")).replace(/[^0-9]/g,"");
       if(!name) return regErr("Please enter your name.");
@@ -214,14 +252,14 @@
   function screenMedium(){
     window.scrollTo(0,0);
     APP.innerHTML=
-      '<div class="card">'
+      '<div class="narrow"><div class="card">'
       +'<div class="mp-t">Select Medium · माध्यम चुनें</div>'
       +'<div class="mp-s">Choose the language in which you want to attempt this test. You can change it anytime during the test.</div>'
       +'<div class="mp-grid">'
       +'<button class="mp-opt" data-m="en"><span class="mp-ic">A</span><span class="mp-tx"><b>English</b><small>Questions &amp; options in English</small></span></button>'
       +'<button class="mp-opt" data-m="hi"><span class="mp-ic">अ</span><span class="mp-tx"><b>हिंदी</b><small>प्रश्न और विकल्प हिंदी में</small></span></button>'
       +'<button class="mp-opt" data-m="hg"><span class="mp-ic" style="font-size:.86rem">Aअ</span><span class="mp-tx"><b>Hinglish</b><small>English + हिंदी — bilingual</small></span></button>'
-      +'</div></div>';
+      +'</div></div></div>';
     Array.prototype.forEach.call(APP.querySelectorAll(".mp-opt"),function(b){
       b.onclick=function(){ MED=b.getAttribute("data-m"); screenTest(); };
     });
@@ -243,25 +281,31 @@
       : '';
     var timer=EX.duration_min?'<span class="timer" id="timer"><span class="clk">⏱</span> --:--:--</span>':'';
     var N=(EX.questions||[]).length;
-    var pal='<div class="pal"><div class="pal-t">Questions — tap a number to jump</div>'
-      +(EX.questions||[]).map(function(q){ var a=ANS[q.q_no]!=null; return '<button type="button" class="pn'+(a?" done":"")+'" id="pn-'+q.q_no+'" data-go="'+q.q_no+'">'+q.q_no+'</button>'; }).join("")
-      +'</div>';
+    var palNums=(EX.questions||[]).map(function(q){ var a=ANS[q.q_no]!=null; return '<button type="button" class="pn'+(a?" done":"")+'" id="pn-'+q.q_no+'" data-go="'+q.q_no+'">'+q.q_no+'</button>'; }).join("");
+    var side='<aside class="exam-side" id="exam-side">'
+      +'<div class="side-h"><span>Question Palette</span><button type="button" class="side-close" id="side-close" aria-label="Close">✕</button></div>'
+      +'<div class="legend"><span><i class="lg-dot done"></i>Answered</span><span><i class="lg-dot cur"></i>Current</span><span><i class="lg-dot"></i>Not answered</span></div>'
+      +'<div class="side-grid" id="side-grid">'+palNums+'</div>'
+      +'<div class="side-foot"><div class="side-att"><b id="side-a">0</b> / '+N+' answered</div>'
+      +'<button class="btn js-sub" id="sub-side">Submit Test</button></div>'
+      +'</aside>';
     var qs=(EX.questions||[]).map(function(q){
       var opts=(q.options||[]).map(function(o,oi){
         var sel=(ANS[q.q_no]!=null && String(ANS[q.q_no])===String(o))?" sel":"";
         return '<label class="opt'+sel+'" data-q="'+q.q_no+'" data-v="'+esc(o)+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+optText(q,oi)+'</span><input type="radio" name="q'+q.q_no+'"></label>';
       }).join("");
       var img=q.image_b64?'<img class="q-img" src="'+esc(q.image_b64)+'">':'';
-      return '<div class="q" id="pq-'+q.q_no+'"><div class="q-h">Q'+q.q_no+'. '+qText(q)+'</div>'+img+'<div class="opts">'+opts+'</div></div>';
+      return '<div class="q" id="pq-'+q.q_no+'" data-qn="'+q.q_no+'"><div class="q-h">Q'+q.q_no+'. '+qText(q)+'</div>'+img+'<div class="opts">'+opts+'</div></div>';
     }).join("");
     APP.innerHTML=
       '<div class="tbar"><div class="tbar-row"><span class="tt">'+esc(window._reg.name)+'</span>'+medSel+timer+'</div>'
       +'<div class="attc"><span id="attc-t"><b>0</b> / '+N+' answered</span></div>'
       +'<div class="attbar"><i id="attbar-i"></i></div></div>'
-      +pal
-      +qs
-      +'<div class="err" id="t-err"></div>'
-      +'<button class="btn" id="sub" style="margin-top:18px">Submit Test</button>';
+      +'<div class="exam"><div class="exam-main">'+qs+'<div class="err" id="t-err"></div></div>'+side+'</div>'
+      +'<div class="sheet-ov" id="sheet-ov"></div>'
+      +'<div class="mbar" id="mbar"><span class="mbar-prog"><b id="mbar-a">0</b>/'+N+'</span>'
+      +'<button type="button" class="mbar-pal" id="mbar-pal">▦ Questions</button>'
+      +'<button class="mbar-sub js-sub" id="mbar-sub">Submit</button></div>';
     // option select
     Array.prototype.forEach.call(APP.querySelectorAll(".opt"),function(el){
       el.onclick=function(){ var q=el.getAttribute("data-q"); ANS[q]=el.getAttribute("data-v");
@@ -270,20 +314,43 @@
         var pn=document.getElementById("pn-"+q); if(pn) pn.classList.add("done");
         updAtt(); };
     });
-    // palette jump
+    // palette jump (mobile: sheet band ho jaaye jump ke baad)
     Array.prototype.forEach.call(APP.querySelectorAll(".pn"),function(b){
-      b.onclick=function(){ var t=document.getElementById("pq-"+b.getAttribute("data-go")); if(t) t.scrollIntoView({behavior:"smooth",block:"start"}); };
+      b.onclick=function(){ var t=document.getElementById("pq-"+b.getAttribute("data-go")); if(t) t.scrollIntoView({behavior:"smooth",block:"start"}); sheet(false); };
     });
     var ms=document.getElementById("msel"); if(ms) ms.onchange=function(){ MED=ms.value; renderTest(); startTimer(); };
-    document.getElementById("sub").onclick=function(){ doSubmit(false); };
+    Array.prototype.forEach.call(APP.querySelectorAll(".js-sub"),function(b){ b.onclick=function(){ doSubmit(false); }; });
+    var mp=document.getElementById("mbar-pal"); if(mp) mp.onclick=function(){ sheet(true); };
+    var sc=document.getElementById("side-close"); if(sc) sc.onclick=function(){ sheet(false); };
+    var ov=document.getElementById("sheet-ov"); if(ov) ov.onclick=function(){ sheet(false); };
+    setupObserver();
     updAtt();
+  }
+  // mobile palette bottom-sheet open/close
+  function sheet(open){ var s=document.getElementById("exam-side"), ov=document.getElementById("sheet-ov"); if(s) s.classList.toggle("open",!!open); if(ov) ov.classList.toggle("open",!!open); }
+  // current-question highlight in palette (NTA feel) — jo question screen par hai uska number gold
+  var IO=null;
+  function setupObserver(){
+    if(IO){ IO.disconnect(); IO=null; }
+    if(!("IntersectionObserver" in window)) return;
+    var vis={};
+    IO=new IntersectionObserver(function(ents){
+      ents.forEach(function(e){ var qn=e.target.getAttribute("data-qn"); if(e.isIntersecting) vis[qn]=1; else delete vis[qn]; });
+      var cur=null; Object.keys(vis).forEach(function(k){ var n=parseInt(k,10); if(cur==null||n<cur) cur=n; });
+      Array.prototype.forEach.call(document.querySelectorAll(".pn.cur"),function(b){ b.classList.remove("cur"); });
+      if(cur!=null){ var pn=document.getElementById("pn-"+cur); if(pn) pn.classList.add("cur"); }
+    },{rootMargin:"-104px 0px -55% 0px",threshold:0.01});
+    Array.prototype.forEach.call(document.querySelectorAll(".q"),function(q){ IO.observe(q); });
   }
   function updAtt(){
     var N=(EX.questions||[]).length, a=0;
     (EX.questions||[]).forEach(function(q){ if(ANS[q.q_no]!=null) a++; });
+    var pct=(N?Math.round(a/N*100):0);
     var t=document.getElementById("attc-t"); if(t) t.innerHTML="<b>"+a+"</b> / "+N+" answered";
-    var bar=document.getElementById("attbar-i"); if(bar) bar.style.width=(N?Math.round(a/N*100):0)+"%";
-    var sub=document.getElementById("sub"); if(sub && !SUBMITTED) sub.textContent=(a>=N?"Submit Test":"Submit Test ("+a+"/"+N+")");
+    var bar=document.getElementById("attbar-i"); if(bar) bar.style.width=pct+"%";
+    var sa=document.getElementById("side-a"); if(sa) sa.textContent=a;
+    var ma=document.getElementById("mbar-a"); if(ma) ma.textContent=a;
+    var ss=document.getElementById("sub-side"); if(ss && !SUBMITTED) ss.textContent=(a>=N?"Submit Test":"Submit Test ("+a+"/"+N+")");
   }
 
   // ---------- timer ----------
@@ -305,20 +372,24 @@
   }
 
   // ---------- submit ----------
+  function subBtns(){ return Array.prototype.slice.call(document.querySelectorAll(".js-sub")); }
   function doSubmit(auto){
     if(SUBMITTED) return;
     var answered=Object.keys(ANS).length, total=(EX.questions||[]).length;
     if(!auto && answered<total){
+      sheet(false);
       var e=document.getElementById("t-err");
-      if(e){ e.textContent="Please answer all "+total+" questions ("+answered+" done). Tap a number above to jump to a skipped question."; e.style.display="block"; }
-      window.scrollTo(0,0); return;
+      if(e){ e.textContent="Please answer all "+total+" questions ("+answered+" done). Tap a number in the palette to jump to a skipped question."; e.style.display="block"; e.scrollIntoView({behavior:"smooth",block:"center"}); }
+      return;
     }
-    SUBMITTED=true; if(TIMER){ clearInterval(TIMER); TIMER=null; }
-    var btn=document.getElementById("sub"); if(btn){ btn.disabled=true; btn.textContent=auto?"Time up — submitting…":"Submitting…"; }
+    SUBMITTED=true; sheet(false); if(TIMER){ clearInterval(TIMER); TIMER=null; }
+    subBtns().forEach(function(b){ b.disabled=true; b.textContent="Submitting…"; });
     api("/exam/"+encodeURIComponent(token)+"/submit","POST",{details:window._reg,mcq_answers:ANS})
       .then(screenResult)
-      .catch(function(err){ SUBMITTED=false; if(btn){ btn.disabled=false; btn.textContent="Submit Test"; }
-        var e=document.getElementById("t-err"); if(e){ e.textContent=err.message||"Could not submit. Try again."; e.style.display="block"; } window.scrollTo(0,document.body.scrollHeight); });
+      .catch(function(err){ SUBMITTED=false;
+        subBtns().forEach(function(b){ b.disabled=false; b.textContent=(b.id==="mbar-sub"?"Submit":"Submit Test"); });
+        updAtt();
+        var e=document.getElementById("t-err"); if(e){ e.textContent=err.message||"Could not submit. Try again."; e.style.display="block"; e.scrollIntoView({behavior:"smooth",block:"center"}); } });
   }
 
   // ---------- 3) RESULT ----------
@@ -341,10 +412,10 @@
       return '<div class="q rv" id="pq-'+it.q_no+'"><div class="q-h">Q'+it.q_no+'. '+qText(it)+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
     }).join("");
     APP.innerHTML=
-      '<div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
+      '<div class="narrow"><div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
       +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc(window._reg.name)+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
       +rev
-      +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div>';
+      +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div></div>';
     H1.textContent="Your Result"; HM.innerHTML="";
   }
 

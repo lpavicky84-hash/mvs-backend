@@ -4570,6 +4570,8 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
                     "views": len(views.get(e.id, ())), "downloads": len(downloads.get(e.id, ())),
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "batch_id": getattr(e, "batch_id", None),
+                    "public_enabled": bool(getattr(e, "public_enabled", False)),
+                    "public_token": (getattr(e, "public_token", "") or ""),
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
 
