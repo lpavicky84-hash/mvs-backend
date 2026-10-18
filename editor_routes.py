@@ -258,7 +258,25 @@ def editor_pv_submit(cid: int, payload: dict = Body(...), db: Session = Depends(
     except Exception:
         pass
     db.commit()
-    return {"ok": True, "edit_state": c.edit_state, "qc_status": c.qc_status, "edited_link": link}
+    # ---- PROJECT_BASED editor billing for a project CHAPTER (best-effort, after commit) ----
+    _billing_out = None
+    try:
+        import production_core as _pc2, editor_finance as _ef
+        if _pc2.is_project_based_editor(sp):
+            _urg = (str(getattr(c, "priority", "") or "").lower() == "urgent") or bool(getattr(c, "is_urgent", False))
+            _billing_out = _ef.on_editor_submit(
+                db, sp, "PROJECT_CHAPTER", c.id, link, (payload.get("billing_details") or {}),
+                is_urgent=_urg, deadline=(getattr(c, "editor_deadline", None) or getattr(c, "deadline", None)),
+                project_title=((t.title or t.subject or "") if t else ""), source_title=(c.title or ""))
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _billing_out = None
+    return {"ok": True, "edit_state": c.edit_state, "qc_status": c.qc_status,
+            "edited_link": link, "billing": _billing_out}
 
 
 def _project_teacher_user_ids(db, t):
@@ -1030,7 +1048,24 @@ def editor_submit(tid: int, payload: dict = Body(...),
     except Exception:
         pass
     db.commit()
-    return {"ok": True, "lifecycle": t.lifecycle}
+    # ---- PROJECT_BASED editor billing (best-effort, AFTER operational commit so the video is NEVER lost) ----
+    _billing_out = None
+    try:
+        import production_core as _pc2, editor_finance as _ef
+        if _pc2.is_project_based_editor(sp):
+            _urg = (str(getattr(t, "priority", "") or "").lower() == "urgent") or bool(getattr(t, "is_urgent", False))
+            _billing_out = _ef.on_editor_submit(
+                db, sp, "NORMAL_TASK", t.id, link, (payload.get("billing_details") or {}),
+                is_urgent=_urg, deadline=(getattr(t, "editor_deadline", None) or getattr(t, "deadline", None)),
+                project_title=(t.title or ""), source_title=(t.title or ""))
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _billing_out = None
+    return {"ok": True, "lifecycle": t.lifecycle, "billing": _billing_out}
 
 
 # -------------------- Teacher Recording Feedback: prefill (so a QC resubmit shows the last feedback) --------------------
@@ -1364,5 +1399,96 @@ def editor_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(
     sp = _me_staff(db, me)
     t = _my_task(db, sp, tid)
     pc.edit_task_fields(db, t, payload, me)
+    db.commit()
+    return {"ok": True}
+
+
+# ===== Project-based editor: own finance capability + private earnings (Phase 4) =====
+@router.get("/capability")
+def editor_capability(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Own compensation mode + billing type suggestions (own active plan). Frontend isse decide
+    karta hai ki billing form / earnings dikhane hain."""
+    import production_core as _pc, editor_finance as _ef
+    sp = _me_staff(db, me)
+    pb = _pc.is_project_based_editor(sp)
+    vtypes, etypes = [], []
+    if pb:
+        ag, rules = _ef.active_agreement_with_rules(db, sp.id)
+        for r in rules:
+            if r.active:
+                if r.video_type and r.video_type not in vtypes:
+                    vtypes.append(r.video_type)
+                if r.editing_type and r.editing_type not in etypes:
+                    etypes.append(r.editing_type)
+    return {"compensation_type": _pc.editor_compensation_type(sp),
+            "is_project_based": pb, "video_types": vtypes, "editing_types": etypes}
+
+
+@router.get("/earnings")
+def editor_earnings(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """This editor's OWN private estimates/earnings. SALARIED editors get an empty, inert response."""
+    import production_core as _pc, editor_finance as _ef
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        return {"is_project_based": False, "items": [], "summary": {}}
+    items = _ef.editor_earnings_list(db, sp.id)
+    # own active rate plan summary (own rates view)
+    ag, rules = _ef.active_agreement_with_rules(db, sp.id)
+    pending = sum(1 for it in items if it["match_status"] != "matched")
+    est_total = sum((it["amount_minor"] or 0) for it in items if it["match_status"] == "matched")
+    return {"is_project_based": True, "currency": (ag.currency if ag else "INR"),
+            "has_rate_plan": bool(ag),
+            "items": items,
+            "summary": {"count": len(items), "pending": pending,
+                        "estimate_total_minor": est_total,
+                        "estimate_total_display": _ef.minor_to_display(est_total, (ag.currency if ag else "INR"))},
+            "rates": ([{"label": r.label, "video_type": r.video_type, "editing_type": r.editing_type,
+                        "duration_min_seconds": r.duration_min_seconds, "duration_max_seconds": r.duration_max_seconds,
+                        "is_urgent": bool(r.is_urgent), "days_required": r.days_required,
+                        "amount_display": _ef.minor_to_display(r.amount_minor, (ag.currency if ag else "INR"))}
+                       for r in rules if r.active] if ag else [])}
+
+
+# ===== Project-based editor: own monthly payout statements (Phase 5b) =====
+@router.get("/statements")
+def editor_statements(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Own monthly payout statements (summary). SALARIED editors get an empty list."""
+    import production_core as _pc, editor_finance as _ef
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        return {"is_project_based": False, "items": []}
+    return {"is_project_based": True, "items": _ef.editor_statements_list(db, sp.id)}
+
+
+@router.get("/statements/{statement_id}")
+def editor_statement_detail(statement_id: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Own statement detail (ownership enforced). PM never reaches this router."""
+    import production_core as _pc, editor_finance as _ef
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        raise HTTPException(403, "Not available")
+    d = _ef.statement_detail(db, statement_id)
+    if not d or int(d["staff_id"]) != int(sp.id):
+        raise HTTPException(404, "Statement not found")
+    return d
+
+
+@router.post("/statements/{statement_id}/confirm-receipt")
+def editor_confirm_receipt(statement_id: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Editor confirms they received a recorded payment on their own statement."""
+    import production_core as _pc, editor_finance as _ef
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        raise HTTPException(403, "Not available")
+    d = _ef.statement_detail(db, statement_id)
+    if not d or int(d["staff_id"]) != int(sp.id):
+        raise HTTPException(404, "Statement not found")
+    pid = (payload or {}).get("payment_id")
+    if not pid:
+        raise HTTPException(400, "payment_id required")
+    pm = _ef.confirm_statement_receipt(db, int(pid), sp.id)
+    if not pm:
+        raise HTTPException(404, "Payment not found")
     db.commit()
     return {"ok": True}

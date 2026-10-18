@@ -1655,6 +1655,9 @@ class ProductionStaffProfile(Base):
     target_short        = Column(Integer, nullable=True)    # monthly short/reel output target (editor)
     target_thumbnails   = Column(Integer, nullable=True)    # monthly thumbnail target (graphics)
     notes               = Column(Text, default="")
+    # Compensation arrangement (project-based editor payout). Existing/backfilled rows => SALARIED.
+    # SALARIED editors keep their current portal/performance; only PROJECT_BASED get the new finance.
+    compensation_type   = Column(String(16), default="SALARIED", index=True)  # SALARIED | PROJECT_BASED
     plain_password      = Column(String(255), nullable=True)
     is_active           = Column(Boolean, default=True)
     created_at          = Column(DateTime, default=func.now())
@@ -1693,6 +1696,167 @@ class EditingSession(Base):
     note             = Column(String(300), default="")
 
 
+# ===== Project-based editor compensation — rate plan (Phase 3) =====
+# Confidential finance. Amounts are INTEGER MINOR UNITS (paise). SALARIED editors never use these.
+class EditorCompensationAgreement(Base):
+    """One editor's private rate agreement (versioned). draft -> active -> archived."""
+    __tablename__ = "editor_comp_agreements"
+    id             = Column(Integer, primary_key=True)
+    staff_id       = Column(Integer, ForeignKey("production_staff_profiles.id"), index=True)
+    currency       = Column(String(8), default="INR")
+    version        = Column(Integer, default=1)
+    state          = Column(String(12), default="draft")   # draft | active | archived
+    effective_from = Column(DateTime, nullable=True)
+    effective_to   = Column(DateTime, nullable=True)
+    notes          = Column(Text, default="")
+    created_by     = Column(Integer, nullable=True)         # admin user id
+    created_at     = Column(DateTime, default=func.now())
+    published_at   = Column(DateTime, nullable=True)
+
+
+class EditorRateRule(Base):
+    """A single billing rule inside an agreement. Money in paise (amount_minor)."""
+    __tablename__ = "editor_rate_rules"
+    id                   = Column(Integer, primary_key=True)
+    agreement_id         = Column(Integer, ForeignKey("editor_comp_agreements.id"), index=True)
+    order_index          = Column(Integer, default=0)
+    label                = Column(String(40), default="")
+    video_type           = Column(String(60), default="")    # Update | Teaser | Interview | ...
+    editing_type         = Column(String(80), default="")    # Full Editing | Normal Editing with Intro. | ...
+    duration_min_seconds = Column(Integer, nullable=True)    # inclusive lower bound
+    duration_max_seconds = Column(Integer, nullable=True)    # inclusive upper bound
+    pricing_strategy     = Column(String(30), default="FIXED_BY_DURATION_BAND")
+    amount_minor         = Column(Integer, default=0)        # paise (fixed fee, or per-minute rate)
+    is_urgent            = Column(Boolean, default=False)
+    days_required        = Column(String(40), default="")    # display note e.g. "4 Days"
+    active               = Column(Boolean, default=True)     # False = archived (never hard-delete if used)
+    created_at           = Column(DateTime, default=func.now())
+
+
+class EditorEngagement(Base):
+    """Stable per-work financial engagement for a PROJECT_BASED editor. One per (staff, source).
+    Freezes the agreement version at engagement time so a later rate change can't silently reprice."""
+    __tablename__ = "editor_engagements"
+    id                = Column(Integer, primary_key=True)
+    staff_id          = Column(Integer, ForeignKey("production_staff_profiles.id"), index=True)
+    source_kind       = Column(String(20), index=True)       # NORMAL_TASK | PROJECT_CHAPTER
+    source_id         = Column(Integer, index=True)          # task id OR chapter id (qualified by source_kind)
+    agreement_id      = Column(Integer, nullable=True)       # locked agreement version
+    agreement_version = Column(Integer, nullable=True)
+    is_urgent         = Column(Boolean, default=False)
+    deadline_at       = Column(DateTime, nullable=True)
+    project_title     = Column(String(200), default="")
+    source_title      = Column(String(200), default="")
+    created_at        = Column(DateTime, default=func.now())
+
+
+class EditorWorkSubmission(Base):
+    """Each submitted/corrected edit under an engagement (history-preserving). Not a new charge."""
+    __tablename__ = "editor_work_submissions"
+    id                  = Column(Integer, primary_key=True)
+    engagement_id       = Column(Integer, ForeignKey("editor_engagements.id"), index=True)
+    revision            = Column(Integer, default=1)
+    edited_link         = Column(Text, default="")
+    final_output_seconds = Column(Integer, nullable=True)
+    video_type          = Column(String(60), default="")
+    editing_type        = Column(String(80), default="")
+    is_urgent           = Column(Boolean, default=False)
+    created_at          = Column(DateTime, default=func.now())
+
+
+class EditorEarning(Base):
+    """One base charge per engagement (unique). Holds the private estimate + lifecycle states.
+    Resubmission / link correction updates THIS row (no second full fee)."""
+    __tablename__ = "editor_earnings"
+    id                  = Column(Integer, primary_key=True)
+    engagement_id       = Column(Integer, ForeignKey("editor_engagements.id"), index=True, unique=True)
+    staff_id            = Column(Integer, index=True)
+    amount_minor        = Column(Integer, nullable=True)     # estimate in paise; NULL if pending/ambiguous
+    currency            = Column(String(8), default="INR")
+    match_status        = Column(String(16), default="pending")  # matched | ambiguous | pending
+    matched_rule_id     = Column(Integer, nullable=True)
+    matched_rule_label  = Column(String(40), default="")
+    # financial lifecycle (Phase 5 approval): estimate | pending_verification | approved | on_hold | rejected
+    financial_state     = Column(String(20), default="estimate")
+    technical_ok        = Column(Boolean, default=False)     # QC approved (Phase 5 sets this)
+    final_output_seconds = Column(Integer, nullable=True)
+    video_type          = Column(String(60), default="")
+    editing_type        = Column(String(80), default="")
+    eligible_at         = Column(DateTime, nullable=True)    # stable month-recognition date (Phase 5)
+    note                = Column(Text, default="")
+    created_at          = Column(DateTime, default=func.now())
+    updated_at          = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class EditorPayoutStatement(Base):
+    """Canonical monthly payout statement for ONE project-based editor (spec §14).
+    One per (staff, period, currency). draft -> finalized -> partially_paid -> paid.
+    Totals in paise. A finalized statement is a FROZEN snapshot (see EditorStatementLine);
+    later edits/reopens never move money between months or rewrite a finalized total."""
+    __tablename__ = "editor_payout_statements"
+    __table_args__ = (UniqueConstraint("staff_id", "period", "currency", name="uq_editor_stmt_period"),)
+    id              = Column(Integer, primary_key=True)
+    staff_id        = Column(Integer, ForeignKey("production_staff_profiles.id"), index=True)
+    period          = Column(String(7), index=True)      # IST "YYYY-MM" (eligibility month)
+    currency        = Column(String(8), default="INR")
+    state           = Column(String(16), default="draft")  # draft | finalized | partially_paid | paid
+    statement_no    = Column(String(48), default="")      # stable public ID, assigned at finalize
+    # frozen totals (paise) — set at finalize; for a draft these mirror the live computation
+    standard_minor    = Column(Integer, default=0)
+    urgent_minor      = Column(Integer, default=0)
+    adjustments_minor = Column(Integer, default=0)        # authorized +/- adjustments
+    total_minor       = Column(Integer, default=0)        # standard + urgent + adjustments
+    paid_minor        = Column(Integer, default=0)        # sum of recorded payment allocations
+    adjustment_note = Column(String(300), default="")
+    issue_date      = Column(DateTime, nullable=True)     # set at finalize
+    finalized_at    = Column(DateTime, nullable=True)
+    finalized_by    = Column(Integer, nullable=True)      # admin user id
+    note            = Column(Text, default="")
+    created_at      = Column(DateTime, default=func.now())
+    updated_at      = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class EditorStatementLine(Base):
+    """Immutable frozen snapshot of one approved earning on a FINALIZED statement (spec §14/§15).
+    Created only at finalize-time from the then-current approved ledger; never repriced from
+    today's rate table. Line amounts never change after finalize."""
+    __tablename__ = "editor_statement_lines"
+    id                   = Column(Integer, primary_key=True)
+    statement_id         = Column(Integer, ForeignKey("editor_payout_statements.id"), index=True)
+    earning_id           = Column(Integer, index=True)
+    engagement_id        = Column(Integer, nullable=True)
+    source_kind          = Column(String(20), default="")
+    source_id            = Column(Integer, nullable=True)
+    project_title        = Column(String(200), default="")
+    source_title         = Column(String(200), default="")
+    video_type           = Column(String(60), default="")
+    editing_type         = Column(String(80), default="")
+    final_output_seconds = Column(Integer, nullable=True)
+    is_urgent            = Column(Boolean, default=False)
+    rule_label           = Column(String(40), default="")
+    amount_minor         = Column(Integer, default=0)     # frozen paise
+    eligible_at          = Column(DateTime, nullable=True)
+    submitted_at         = Column(DateTime, nullable=True)
+    note                 = Column(String(300), default="")
+
+
+class EditorStatementPayment(Base):
+    """A recorded payment allocation against a finalized statement (spec §14). Recording a payment
+    does NOT move money — it is a bookkeeping entry. Admin records; editor confirms receipt."""
+    __tablename__ = "editor_statement_payments"
+    id                 = Column(Integer, primary_key=True)
+    statement_id       = Column(Integer, ForeignKey("editor_payout_statements.id"), index=True)
+    amount_minor       = Column(Integer, default=0)
+    method             = Column(String(40), default="")   # bank_transfer | upi | cash | other
+    reference          = Column(String(80), default="")   # masked/short ref only — no full acct no.
+    paid_on            = Column(DateTime, nullable=True)
+    actor_id           = Column(Integer, nullable=True)    # admin user id who recorded
+    receipt_confirmed  = Column(Boolean, default=False)
+    receipt_confirmed_at = Column(DateTime, nullable=True)
+    note               = Column(String(300), default="")
+    created_at         = Column(DateTime, default=func.now())
+
+
 class ProductionAttendance(Base):
     """PM-set attendance override for a production staff member on a given IST day.
     Used by the daily report: no work + no override = Leave (default); PM can mark
@@ -1715,7 +1879,7 @@ class ExamDraft(Base):
     id         = Column(Integer, primary_key=True)
     user_id    = Column(Integer, index=True)
     kind       = Column(String(40), index=True, default="test")   # e.g. test_subjective / test_mcq / dpp_x
-    data       = Column(Text, default="")                          # JSON string (same shape as the local draft)
+    data       = Column(_BIGTEXT, default="")                       # JSON string (LONGTEXT — bilingual 200-MCQ drafts >64KB)
     updated_at = Column(DateTime, default=func.now())
 
 

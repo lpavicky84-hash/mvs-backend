@@ -13454,9 +13454,11 @@ function _pjChatMenu(prefix, cid, title, mineRole){
   else if(mineRole==='teacher'){ main=[['users','Chat with PM','creator'],['play','Chat with Editor','te_ed'],['image','Chat with Graphics','te_gf']]; }
   else { main=[['users','Chat with Teacher','creator'],['image','Chat with Graphics','internal'],['play','Chat with Editor','editor']];
          over=[['team','Teacher ↔ Editor','te_ed','See what they discussed'],['team','Teacher ↔ Graphics','te_gf','Oversight view'],['team','Editor ↔ Graphics','ed_gf','Oversight view']]; }
+  // _esc1 IIFE-scoped hai (yahan top-level me accessible nahi) — local safe-escape use karo
+  var _e1=function(s){ return esc(''+(s==null?'':s)).replace(/'/g,''); };
   var _row=function(o, rv){
     var sub=o[3]?('<span class="pjm-sub2">'+esc(o[3])+'</span>'):'';
-    return '<button class="pcm-opt'+(rv?' pcm-opt-rv':'')+'" onclick="_pjMenuClose();_pjPairOpen(\''+prefix+'\','+cid+',\''+o[2]+'\',\''+_esc1(o[1])+'\',\''+mineRole+'\',\''+_esc1(title||'')+'\')">'+ic(o[0])+'<span class="pcm-label">'+esc(o[1])+sub+'</span><span class="pcm-arw">›</span></button>';
+    return '<button class="pcm-opt'+(rv?' pcm-opt-rv':'')+'" onclick="_pjMenuClose();_pjPairOpen(\''+prefix+'\','+cid+',\''+o[2]+'\',\''+_e1(o[1])+'\',\''+mineRole+'\',\''+_e1(title||'')+'\')">'+ic(o[0])+'<span class="pcm-label">'+esc(o[1])+sub+'</span><span class="pcm-arw">›</span></button>';
   };
   var html='<div class="pcm-list">'+main.map(function(o){return _row(o,false);}).join('')
     +(over.length?('<div class="pjm-div"><span>Oversight</span></div>'+over.map(function(o){return _row(o,true);}).join('')):'')
@@ -26187,6 +26189,86 @@ function _slipHTML(d){
   </div>`;
 }
 
+// ---------- Project Editing Payout Statement (project-based editors) — separate renderer ----------
+// NOT a salary slip. Reuses the shared letterhead/print primitives, own template. Generated from
+// the statement snapshot the backend returns (frozen if finalized), never from today's rates.
+function _periodLabel(p){
+  if(!p||p.length<7) return p||'';
+  var mo=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var m=parseInt(p.slice(5,7),10); return (mo[m-1]||p.slice(5,7))+' '+p.slice(0,4);
+}
+function _secIst(s){ if(s==null) return ''; var sec=((s%60)+100).toString().slice(1); return Math.floor(s/60)+':'+sec; }
+function _stmtStateLabel(st){ return {draft:'DRAFT (unfinalized)',finalized:'Finalized',partially_paid:'Partially paid',paid:'Paid'}[st]||st; }
+function _editorStmtHTML(d){
+  var isDraft=!!d.is_draft;
+  var per=_periodLabel(d.period);
+  var today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  var issue=d.issue_date?new Date(d.issue_date).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}):today;
+  var refNo=d.statement_no||('MVS/PES/'+(d.period||'')+'/E'+d.staff_id+' (draft)');
+  var stCol={draft:'#8a6d10',finalized:'#0F2A54',partially_paid:'#b26a00',paid:'#1b7a3e'}[d.state]||'#0F2A54';
+  var kv=function(k,v){ return '<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px"><span style="color:#5A6B85">'+k+'</span><span style="font-weight:700;color:#1a2a3a">'+esc(v||'—')+'</span></div>'; };
+  var rowsHtml=(d.lines||[]).map(function(l,i){
+    var title=esc(l.source_title||l.project_title||('Item #'+(l.engagement_id||i+1)));
+    var proj=(l.project_title&&l.source_title)?('<div style="font-size:7.5px;color:#8899aa;margin-top:1px">'+esc(l.project_title)+'</div>'):'';
+    var typ=[l.video_type,l.editing_type].filter(Boolean).map(esc).join(' · ')||'—';
+    var el=l.eligible_at?new Date(l.eligible_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):'—';
+    var sb=l.submitted_at?new Date(l.submitted_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):'—';
+    return '<tr style="border-bottom:1px solid #e4ebf5">'
+      +'<td style="padding:5px 8px;color:#8899aa;font-size:8.5px">'+(i+1)+'</td>'
+      +'<td style="padding:5px 8px"><div style="font-weight:600;font-size:9px;color:#1a2a3a">'+title+'</div>'+proj+'</td>'
+      +'<td style="padding:5px 8px;font-size:8.5px;color:#1a2a3a">'+typ+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;font-size:8.5px;color:#1a2a3a">'+(l.final_output_seconds!=null?_secIst(l.final_output_seconds):'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;font-size:8px">'+(l.is_urgent?'<span style="background:#fde3dc;color:#b23229;font-weight:700;border-radius:4px;padding:1px 6px">Urgent</span>':'<span style="color:#5A6B85">Standard</span>')+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;font-size:8px;color:#5A6B85">'+sb+' / '+el+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-weight:700;font-size:9px;color:#0F2A54">'+esc(l.amount_display||'')+'</td>'
+      +'</tr>';
+  }).join('');
+  if(!rowsHtml) rowsHtml='<tr><td colspan="7" style="padding:14px;text-align:center;color:#8899aa;font-size:9px">No approved payable items in this period.</td></tr>';
+  var totRow=function(lbl,val,hl,neg){ return '<div style="display:flex;justify-content:space-between;padding:'+(hl?'7px 12px':'4px 12px')+';'+(hl?'background:linear-gradient(135deg,#0F2A54,#1a3d70);color:#fff;border-radius:6px;margin-top:4px':'')+'"><span style="font-size:'+(hl?'11px':'9.5px')+';font-weight:'+(hl?800:600)+';'+(hl?'':'color:#5A6B85')+'">'+lbl+'</span><span style="font-size:'+(hl?'13px':'9.5px')+';font-weight:'+(hl?900:700)+';'+(hl?'':'color:'+(neg?'#c0392b':'#1a2a3a'))+'">'+esc(val)+'</span></div>'; };
+  var payHtml='';
+  if((d.payments||[]).length){
+    payHtml='<div style="margin-top:14px"><div style="background:#1b7a3e;color:#fff;padding:5px 9px;border-radius:5px 5px 0 0;font-weight:800;font-size:9px;letter-spacing:.5px">PAYMENTS RECORDED</div>'
+      +'<table style="width:100%;border-collapse:collapse;border:1px solid #e4ebf5;border-top:none"><thead><tr style="background:#f7f9fc">'
+      +['Date','Method','Reference','Receipt','Amount'].map(function(h,i){return '<th style="padding:4px 8px;text-align:'+(i===4?'right':(i===3?'center':'left'))+';font-size:8px;color:#5A6B85;font-weight:700">'+h+'</th>';}).join('')+'</tr></thead><tbody>'
+      +d.payments.map(function(p){ var dt=p.paid_on?new Date(p.paid_on).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—';
+        return '<tr style="border-top:1px solid #e4ebf5"><td style="padding:4px 8px;font-size:8.5px">'+dt+'</td><td style="padding:4px 8px;font-size:8.5px">'+esc(p.method||'—')+'</td><td style="padding:4px 8px;font-size:8.5px;color:#5A6B85">'+esc(p.reference||'—')+'</td><td style="padding:4px 8px;text-align:center;font-size:8px">'+(p.receipt_confirmed?'<span style="color:#1b7a3e;font-weight:700">Confirmed</span>':'<span style="color:#8899aa">Pending</span>')+'</td><td style="padding:4px 8px;text-align:right;font-weight:700;font-size:9px;color:#1b7a3e">'+esc(p.amount_display||'')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  var nonpay='';
+  if((d.nonpayable||[]).length){
+    nonpay='<div style="margin-top:14px;border:1px dashed #d6b45a;border-radius:7px;padding:9px 12px;background:#fffbf0">'
+      +'<div style="font-weight:800;font-size:8.5px;color:#9a7016;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Not included in total — pending verification / rate</div>'
+      +d.nonpayable.map(function(n){ return '<div style="display:flex;justify-content:space-between;font-size:8.5px;color:#7a6a3a;padding:2px 0"><span>'+esc(n.title||'Item')+' <span style="opacity:.7">('+esc(n.financial_state)+')</span></span><span>'+esc(n.amount_display||'rate pending')+'</span></div>'; }).join('')+'</div>';
+  }
+  var watermark=isDraft?'<div style="position:absolute;top:44%;left:0;right:0;text-align:center;transform:rotate(-24deg);font-size:84px;font-weight:900;color:rgba(209,68,58,.10);letter-spacing:10px;pointer-events:none;z-index:0">DRAFT</div>':'';
+  return '<div style="position:relative;'+_DOC_FONT+'">'+watermark
+    +'<div style="position:relative;z-index:1">'
+    +_LH(refNo,issue,true)
+    +'<div style="text-align:center;margin-bottom:12px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 24px"><span style="font-weight:800;font-size:12.5px;letter-spacing:2px;color:#0F2A54;text-transform:uppercase">Project Editing Payout Statement</span></div><div style="font-size:9px;color:#5A6B85;margin-top:4px">Period: '+esc(per)+' &nbsp;&middot;&nbsp; <span style="color:'+stCol+';font-weight:800">'+esc(_stmtStateLabel(d.state))+'</span></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
+    +'<div style="border:1px solid #e4ebf5;border-radius:7px;padding:10px 12px;background:#f7f9fc"><div style="font-weight:800;font-size:9.5px;color:#0F2A54;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Editor</div>'+kv('Name',d.editor_name)+kv('Editor ID','E'+d.staff_id)+kv('Engagement','Project-based editing')+'</div>'
+    +'<div style="border:1px solid #e4ebf5;border-radius:7px;padding:10px 12px;background:#f7f9fc"><div style="font-weight:800;font-size:9.5px;color:#0F2A54;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Statement</div>'+kv('Statement ID',d.statement_no||'— (draft)')+kv('Period',per)+kv('Currency',d.currency||'INR')+kv('Issue date',issue)+'</div>'
+    +'</div>'
+    +'<div style="background:#0F2A54;color:#fff;padding:5px 9px;border-radius:5px 5px 0 0;font-weight:800;font-size:9px;letter-spacing:.5px">APPROVED PAYABLE ITEMS</div>'
+    +'<table style="width:100%;border-collapse:collapse;border:1px solid #e4ebf5;border-top:none"><thead><tr style="background:#f7f9fc">'
+    +['#','Task / Chapter','Type','Duration','Scope','Submit / Eligible','Amount'].map(function(h,i){return '<th style="padding:5px 8px;text-align:'+(i===6?'right':(i===3||i===4||i===5?'center':'left'))+';font-size:8px;color:#5A6B85;font-weight:700;text-transform:uppercase;letter-spacing:.3px">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+rowsHtml+'</tbody></table>'
+    +'<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-top:14px">'
+    +'<div>'+payHtml+nonpay+'</div>'
+    +'<div>'+totRow('Standard fees',d.standard_display)+totRow('Urgent fees / add-ons',d.urgent_display)
+      +((d.adjustments_minor||0)!==0?totRow('Adjustments'+(d.adjustment_note?(' ('+esc(d.adjustment_note)+')'):''),d.adjustments_display,false,(d.adjustments_minor||0)<0):'')
+      +totRow('Statement Total',d.total_display,true)
+      +totRow('Paid',d.paid_display)+totRow('Balance outstanding',d.outstanding_display,false,(d.outstanding_minor||0)>0)+'</div>'
+    +'</div>'
+    +'<div style="border:1px solid #e4ebf5;border-radius:6px;padding:8px 12px;background:#f7f9fc;margin-top:14px;font-size:8px;color:#5A6B85;line-height:1.6"><strong style="color:#0F2A54">Note:</strong> This is a Project Editing Payout Statement for project-based editing work recorded on the MVS Foundation portal. It is not an employee salary slip. Amounts are confidential to the editor and authorised finance Admin. Figures reflect Admin-approved, QC-verified deliverables for the stated period. Recording a payment here is a bookkeeping entry and does not itself transfer funds. For any discrepancy, raise it on the portal within 5 working days of issue.</div>'
+    +_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','System-generated — confidential payout document','Project Editing Payout · '+esc(per))
+    +'</div></div>';
+}
+window._downloadEditorStmtById=function(scope,id){
+  var url=(scope==='admin'?'/api/admin/editor-statements/':'/api/editor/statements/')+id;
+  toast('Preparing statement…');
+  api(url).then(function(d){ _printDocHTML(_editorStmtHTML(d)); }).catch(function(e){ toast((e&&e.message)||'Could not load statement',true); });
+};
+
 // ---------- shared earnings components (teacher page + admin detail) ----------
 function _ecard(title,desc,earned,max,subs){
   const pct=max>0?Math.min(earned/max,1):(earned>0?1:0);
@@ -27060,15 +27142,167 @@ async function payoutBioUnlock(){
 function _aPayoutInner(){
   const el=document.getElementById('a-payouts-content');
   _aEarnMonth=_aEarnMonth||curMonth();
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts \u00B7 Earnings Model</h2><p>Live earnings per teacher — appointment-letter rule, auto-calculated from portal activity.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;aEarnFetch();loadADeductions();loadASalaryStatus()"><button class="btn btn-secondary" style="padding:7px 14px" onclick="adDoubtSlaOpen()">Doubt SLA</button><button class="btn btn-primary" style="padding:7px 14px" onclick="loadAIncentives()">Incentives</button><button class="btn btn-secondary" style="padding:7px 14px" onclick="payoutBioRegister()">Add Face/Fingerprint</button><button class="btn btn-secondary" style="padding:7px 14px" onclick="payoutLock()">Lock Payout</button></div></div>
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payouts \u00B7 Earnings Model</h2><p>Live earnings per teacher — appointment-letter rule, auto-calculated from portal activity.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_aEarnMonth}" onchange="_aEarnMonth=this.value;aEarnFetch();loadADeductions();loadASalaryStatus();loadAEditorStatements()"><button class="btn btn-secondary" style="padding:7px 14px" onclick="adDoubtSlaOpen()">Doubt SLA</button><button class="btn btn-primary" style="padding:7px 14px" onclick="loadAIncentives()">Incentives</button><button class="btn btn-secondary" style="padding:7px 14px" onclick="payoutBioRegister()">Add Face/Fingerprint</button><button class="btn btn-secondary" style="padding:7px 14px" onclick="payoutLock()">Lock Payout</button></div></div>
   <div class="ae-stats" id="ae-stats"></div>
   <div id="ae-body" style="margin-top:6px"><div class="spinner"></div></div>
   <div id="ded-panel" style="margin-top:22px"></div>
-  <div id="sal-panel" style="margin-top:22px"></div>`;
+  <div id="sal-panel" style="margin-top:22px"></div>
+  <div id="pee-panel" style="margin-top:22px"></div>
+  <div id="pes-panel" style="margin-top:22px"></div>`;
   aEarnFetch();
   loadADeductions();
   loadASalaryStatus();
+  loadAEditorEarnings();
+  loadAEditorStatements();
 }
+// ===== Project-based Editor Payouts — finance review (payout-unlock ke peeche) =====
+// Yahan amounts dikhte hain (finance Admin only). PM portal me ye kuch bhi nahi aata.
+window._peeStatus=window._peeStatus||'';
+async function loadAEditorEarnings(){
+  const panel=document.getElementById('pee-panel'); if(!panel) return;
+  panel.innerHTML='<div class="card"><div class="card-body"><div class="spinner"></div></div></div>';
+  let d;
+  try{ d=await api('/api/admin/editor-earnings'+(window._peeStatus?('?status='+encodeURIComponent(window._peeStatus)):'')); }
+  catch(e){ panel.innerHTML='<div class="card"><div class="card-body"><div class="alert alert-error">Could not load editor payouts. '+esc(e.message||'')+'</div></div></div>'; return; }
+  window._peeData=d; _peeRender(d);
+}
+function _peePill(fs,ms){
+  const M={estimate:['Estimate','#f3f4f6','#6b7280'],pending_verification:['Under verification','#fef3c7','#92400e'],
+           approved:['Approved ✓','#dcfce7','#166534'],on_hold:['On hold','#ffedd5','#9a3412'],rejected:['Rejected','#fee2e2','#b91c1c']};
+  let x=M[fs]||[fs,'#eee','#333'];
+  let extra='';
+  if(fs==='estimate'||fs==='pending_verification'){ if(ms==='ambiguous') extra=' <span class="chip" style="background:#fef3c7;color:#92400e">rate review</span>'; else if(ms==='pending') extra=' <span class="chip" style="background:#fef3c7;color:#92400e">rate pending</span>'; }
+  return '<span class="chip" style="background:'+x[1]+';color:'+x[2]+'">'+x[0]+'</span>'+extra;
+}
+function _peeRender(d){
+  const panel=document.getElementById('pee-panel'); if(!panel) return;
+  const c=d.counts||{}, items=d.items||[];
+  const tabs=[['','All'],['pending_verification','To verify ('+(c.pending_verification||0)+')'],['estimate','Estimates ('+(c.estimate||0)+')'],['on_hold','On hold ('+(c.on_hold||0)+')'],['approved','Approved ('+(c.approved||0)+')'],['rejected','Rejected ('+(c.rejected||0)+')']];
+  let h='<div class="card"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'
+    +'<div><h3>Project Editor Payouts <span class="chip" style="background:#fde68a;color:#92400e">Confidential</span></h3>'
+    +'<p style="margin:2px 0 0;color:#6b7280;font-size:13px">QC technical approval + aapki financial verify = payable. Amounts sirf yahan (finance) dikhte hain — PM ko nahi.</p></div></div>';
+  h+='<div class="card-body">';
+  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+tabs.map(t=>'<button class="btn '+(window._peeStatus===t[0]?'btn-primary':'btn-secondary')+'" style="padding:5px 12px;font-size:13px" onclick="peeFilter(\''+t[0]+'\')">'+esc(t[1])+'</button>').join('')+'</div>';
+  if(!items.length){ h+='<p style="color:#6b7280;margin:6px 0">Is filter me koi editor payout record nahi.</p>'; }
+  else { items.forEach(function(x){ h+=_peeRow(x); }); }
+  h+='</div></div>';
+  panel.innerHTML=h;
+}
+function _peeRow(x){
+  const title=esc(x.source_title||x.project_title||('Engagement #'+x.engagement_id));
+  const dur=x.final_output_seconds?(Math.floor(x.final_output_seconds/60)+':'+('0'+(x.final_output_seconds%60)).slice(-2)+' min'):'';
+  const meta=[]; if(x.project_title&&x.source_title) meta.push('<b>'+esc(x.project_title)+'</b>');
+  if(x.video_type) meta.push(esc(x.video_type)); if(x.editing_type) meta.push(esc(x.editing_type));
+  if(dur) meta.push(dur); if(x.rule_label) meta.push('rate: '+esc(x.rule_label)); if(x.is_urgent) meta.push('<span style="color:#b91c1c;font-weight:700">urgent</span>');
+  const tech=x.technical_ok?'<span class="chip" style="background:#dcfce7;color:#166534">QC ✓</span>':'<span class="chip" style="background:#f3f4f6;color:#6b7280">QC pending</span>';
+  const amt=x.amount_display?('<b style="font-size:15px">'+esc(x.amount_display)+'</b>'):'<span style="color:#9a3412;font-weight:700">rate pending</span>';
+  const canAct=(x.financial_state!=='approved');
+  const needAmt=(x.amount_minor==null);
+  let acts='';
+  if(canAct){
+    acts='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">'
+      +(needAmt?'<input id="pee-amt-'+x.id+'" type="number" class="form-control" style="width:130px;padding:5px 8px" placeholder="Amount ₹">':'<input id="pee-amt-'+x.id+'" type="number" class="form-control" style="width:130px;padding:5px 8px" placeholder="Override ₹ (optional)">')
+      +'<button class="btn btn-primary" style="padding:5px 12px" onclick="peeDecide('+x.id+',\'approve\')">Approve'+(needAmt?' (set amount)':'')+'</button>'
+      +'<button class="btn btn-secondary" style="padding:5px 12px" onclick="peeDecide('+x.id+',\'hold\')">Hold</button>'
+      +'<button class="btn btn-danger" style="padding:5px 12px" onclick="peeDecide('+x.id+',\'reject\')">Reject</button>'
+      +'</div>';
+  } else {
+    acts='<div style="margin-top:8px"><button class="btn btn-secondary" style="padding:5px 12px" onclick="peeDecide('+x.id+',\'hold\')">Move to hold</button></div>';
+  }
+  return '<div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+    +'<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start">'
+    +'<div style="min-width:0;flex:1"><div style="font-weight:700">'+title+'</div>'
+    +'<div style="font-size:12px;color:#6b7280;margin-top:3px">'+esc(x.editor_name||('Editor #'+x.staff_id))+(meta.length?(' · '+meta.join(' · ')):'')+'</div></div>'
+    +'<div style="text-align:right;display:flex;flex-direction:column;gap:5px;align-items:flex-end">'+amt+'<div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">'+tech+_peePill(x.financial_state,x.match_status)+'</div></div></div>'
+    +(x.note?'<div style="font-size:12px;color:#374151;margin-top:6px;font-style:italic">Note: '+esc(x.note)+'</div>':'')
+    +acts+'</div>';
+}
+window.peeFilter=function(s){ window._peeStatus=s; loadAEditorEarnings(); };
+window.peeDecide=async function(id,decision){
+  const inp=document.getElementById('pee-amt-'+id);
+  const raw=inp?(''+inp.value).trim():'';
+  const body={decision:decision};
+  if(raw!==''){ const n=parseFloat(raw); if(isNaN(n)||n<0){ toast('Enter a valid amount.',true); return; } body.amount_rupees=n; }
+  if(decision==='reject'){ const note=prompt('Reject reason (optional, editor ko dikh sakta hai):',''); if(note===null) return; if(note) body.note=note; }
+  else if(decision==='hold'){ const note=prompt('Hold note (optional):',''); if(note===null) return; if(note) body.note=note; }
+  try{ const r=await api('/api/admin/editor-earnings/'+id+'/decide','POST',body);
+    toast(decision==='approve'?('Approved'+(r.eligible_at?' — now payable':'')):(decision==='hold'?'Moved to hold':'Rejected'));
+    loadAEditorEarnings(); loadAEditorStatements();
+  }catch(e){ toast((e&&e.message)||'Could not save decision.',true); }
+};
+// ===== Project Editor Monthly Statements — settlement (payout-unlock ke peeche) =====
+async function loadAEditorStatements(){
+  const panel=document.getElementById('pes-panel'); if(!panel) return;
+  const per=_aEarnMonth||curMonth();
+  panel.innerHTML='<div class="card"><div class="card-body"><div class="spinner"></div></div></div>';
+  let d;
+  try{ d=await api('/api/admin/editor-statements?period='+encodeURIComponent(per)); }
+  catch(e){ panel.innerHTML='<div class="card"><div class="card-body"><div class="alert alert-error">Could not load statements. '+esc(e.message||'')+'</div></div></div>'; return; }
+  window._pesData=d; _pesRender(d);
+}
+function _pesStateChip(s){
+  const M={draft:['Draft','#f3f4f6','#6b7280'],finalized:['Finalized','#dbeafe','#1e40af'],partially_paid:['Partially paid','#ffedd5','#9a3412'],paid:['Paid','#dcfce7','#166534']};
+  const x=M[s]||[s||'No statement','#f3f4f6','#6b7280'];
+  return '<span class="chip" style="background:'+x[1]+';color:'+x[2]+'">'+esc(x[0])+'</span>';
+}
+function _pesRender(d){
+  const panel=document.getElementById('pes-panel'); if(!panel) return;
+  const items=d.items||[];
+  let h='<div class="card"><div class="card-header"><h3>Project Editor — Monthly Statements <span class="chip" style="background:#fde68a;color:#92400e">Confidential</span></h3>'
+    +'<p style="margin:2px 0 0;color:#6b7280;font-size:13px">Month '+esc(_periodLabel(d.period))+' · approved-eligible earnings roll up into one statement per editor. Finalize = freeze snapshot. "Project Editing Payout Statement" PDF, not a salary slip.</p></div>';
+  h+='<div class="card-body">';
+  if(!items.length){ h+='<p style="color:#6b7280;margin:6px 0">Is month me kisi project-based editor ki approved earning ya statement nahi.</p>'; }
+  else { items.forEach(function(x){ h+=_pesRow(x); }); }
+  h+='</div></div>';
+  panel.innerHTML=h;
+}
+function _pesRow(x){
+  const hasStmt=!!x.statement_id;
+  let right='';
+  if(!hasStmt){
+    right='<button class="btn btn-primary" style="padding:5px 12px" onclick="pesBuild('+x.staff_id+')">Build draft</button>';
+  } else if(x.state==='draft'){
+    right='<button class="btn btn-secondary" style="padding:5px 12px" onclick="_downloadEditorStmtById(\'admin\','+x.statement_id+')">Preview</button>'
+      +'<button class="btn btn-secondary" style="padding:5px 12px" onclick="pesAdjust('+x.statement_id+')">Adjust</button>'
+      +'<button class="btn btn-primary" style="padding:5px 12px" onclick="pesFinalize('+x.statement_id+')">Finalize</button>';
+  } else {
+    right='<button class="btn btn-secondary" style="padding:5px 12px" onclick="_downloadEditorStmtById(\'admin\','+x.statement_id+')">Download</button>';
+    if(x.state!=='paid') right+='<button class="btn btn-primary" style="padding:5px 12px" onclick="pesPay('+x.statement_id+')">Record payment</button>';
+  }
+  const money=hasStmt?('Total <b>'+esc(x.total_display||'')+'</b> · Paid <b>'+esc(x.paid_display||'')+'</b> · Bal <b>'+esc(x.outstanding_display||'')+'</b>')
+                     :('Approved this month: <b>'+esc(x.approved_total_display||'')+'</b> ('+(x.approved_count||0)+' item'+((x.approved_count||0)===1?'':'s')+')');
+  return '<div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">'
+    +'<div style="min-width:0"><div style="font-weight:700">'+esc(x.editor_name||('Editor #'+x.staff_id))+' '+_pesStateChip(x.state)+(x.statement_no?(' <span style="font-size:12px;color:#6b7280">'+esc(x.statement_no)+'</span>'):'')+'</div>'
+    +'<div style="font-size:12px;color:#6b7280;margin-top:3px">'+money+'</div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+right+'</div></div>';
+}
+window.pesBuild=async function(staffId){
+  const per=_aEarnMonth||curMonth();
+  try{ await api('/api/admin/editor-statements/build','POST',{staff_id:staffId,period:per}); toast('Draft ready'); loadAEditorStatements(); }
+  catch(e){ toast((e&&e.message)||'Could not build',true); }
+};
+window.pesAdjust=async function(stmtId){
+  const v=prompt('Adjustment amount in ₹ (minus ke liye - lagao, e.g. -500 credit). Blank = 0:','');
+  if(v===null) return;
+  const note=prompt('Adjustment note (optional):','')||'';
+  try{ await api('/api/admin/editor-statements/'+stmtId+'/adjustment','POST',{amount_rupees:(v.trim()||'0'),note:note}); toast('Adjustment saved'); loadAEditorStatements(); }
+  catch(e){ toast((e&&e.message)||'Could not save',true); }
+};
+window.pesFinalize=async function(stmtId){
+  if(!confirm('Statement finalize karein? Iske baad lines freeze ho jaayengi (snapshot). Baad me approve hue items agle month/correction me jayenge.')) return;
+  try{ await api('/api/admin/editor-statements/'+stmtId+'/finalize','POST',{}); toast('Statement finalized'); loadAEditorStatements(); }
+  catch(e){ toast((e&&e.message)||'Could not finalize',true); }
+};
+window.pesPay=async function(stmtId){
+  const amt=prompt('Payment amount received by editor (₹):','');
+  if(amt===null) return;
+  if(!amt.trim()||isNaN(parseFloat(amt))||parseFloat(amt)<=0){ toast('Enter a valid amount.',true); return; }
+  const method=prompt('Method (bank_transfer / upi / cash / other):','bank_transfer');
+  if(method===null) return;
+  const ref=prompt('Reference (UTR / UPI id / note) — optional:','')||'';
+  try{ await api('/api/admin/editor-statements/'+stmtId+'/payment','POST',{amount_rupees:parseFloat(amt),method:method,reference:ref}); toast('Payment recorded'); loadAEditorStatements(); }
+  catch(e){ toast((e&&e.message)||'Could not record payment',true); }
+};
 async function adDoubtSlaOpen(){
   let cur=15;
   try{ const r=await api('/api/admin/doubt-sla'); cur=r.doubt_sla_hours; }catch(e){}
@@ -28199,7 +28433,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     check:'<path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/>',
     logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
-    chat:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'
+    chat:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+    wallet:'<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4z"/>'
   };
   function icon(n){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(IC[n]||IC.list)+'</svg>'; }
 
@@ -28216,7 +28451,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
              {p:'edt:editing',t:'Editing In Progress',i:'edit'}, {p:'edt:ready',t:'Ready for Submission',i:'upload'},
              {p:'edt:changes',t:'Changes Required',i:'alert'}, {p:'edt:completed',t:'Completed',i:'check'} ]},
             {g:'Published',items:[ {p:'uploads',t:'Published',i:'video'} ]},
-            {g:'Insights',items:[ {p:'performance',t:'Performance',i:'chart'} ]},
+            {g:'Insights',items:[ {p:'performance',t:'Performance',i:'chart'}, {p:'earnings',t:'My Earnings',i:'wallet'} ]},
             {g:'Account',items:[ {p:'notifs',t:'Notifications',i:'bell'}, {p:'profile',t:'Profile',i:'user'} ]} ] },
     youtuber:{ role:'youtuber', title:'Creator', sub:'Studio', api:'/api/youtuber',
       nav:[ {g:'Workspace',items:[ {p:'dashboard',t:'Dashboard',i:'grid'}, {p:'chatmgr',t:'Chat Manager',i:'chat'}, {p:'videos',t:'My Tasks',i:'video'},
@@ -29450,7 +29685,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         var bk=(it.p.indexOf('q:')===0)?it.p.slice(2):(it.p==='urgent'?'urgent':'');
         var badge=bk?'<span class="ps-badge" data-nav-badge="'+bk+'" style="display:none"></span>':'';
         if(it.p==='notifs') badge='<span class="ps-badge ps-notif-badge" data-notif-badge="1" style="display:none"></span>';
-        return '<div class="ps-item" data-page="'+it.p+'" onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span style="flex:1">'+it.t+'</span>'+badge+'</div>';
+        // Earnings nav sirf project-based editors ke liye — default hidden, capability aane par reveal.
+        var _hide=(it.p==='earnings')?' style="display:none"':'';
+        return '<div class="ps-item" data-page="'+it.p+'"'+_hide+' onclick="prodNav(\''+portal+'\',\''+it.p+'\')">'+icon(it.i)+'<span style="flex:1">'+it.t+'</span>'+badge+'</div>';
       }).join('');
       // sabhi groups by default band -> user click karke sub-section khole (accordion)
       return '<div class="ps-group ps-gh" onclick="prodNavGroup(this)">'+grp.g+'</div>'
@@ -29503,6 +29740,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ prodLoadProfilePhoto(portal); }catch(e){}
     // Editor/Graphics: agar aaj apne portal se koi kaam nahi dikha to ek baar leave check-in popup.
     if(portal==='editor'||portal==='graphics'){ try{ setTimeout(function(){ _attSelfCheck(portal); },900); }catch(e){} }
+    if(portal==='editor'){ try{ window._edtApplyNavGate(); }catch(e){} }
     prodStartNotifPoll(portal);
     // v-perf/live: production team ki online presence UserSession me record karo taaki
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
@@ -29877,7 +30115,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(page.indexOf('ytb:')===0){ var yp2=page.slice(4); var yf=_flt(portal); yf.status=''; yf.deadline=''; yf.priority=''; yf.ypreset=yp2; return renderList(portal,body); }
     if(page==='ytviews') return renderYtViews(portal,body);
     if(page==='yttimeline') return renderYtTimeline(portal,body);
-    if(page==='performance') return (portal==='editor')?renderEditorPerf(portal,body):renderGfxPerf(portal,body);
+    if(page==='performance'){
+      // Project-based editors comparative leaderboard/performance nahi dekhte -> Earnings pe bhejo.
+      if(portal==='editor' && window._edtCapCache && window._edtCapCache.is_project_based){ return renderEditorEarnings(portal,body); }
+      return (portal==='editor')?renderEditorPerf(portal,body):renderGfxPerf(portal,body);
+    }
+    if(page==='earnings') return renderEditorEarnings(portal,body);
     if(page==='gviews') return renderGfxViews(portal,body);
     if(page==='uploads') return renderEditorUploads(portal,body);
     if(page==='notifs') return renderProdNotifsPage(portal,body);
@@ -30757,11 +31000,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<div class="p-field"><label>Remarks for PM (optional)</label><textarea class="p-area" id="edt-rem" rows="2" placeholder="Anything the PM should know"></textarea></div>'+
         '<div class="p-field"><label>Attachments (optional)</label><div class="gfx-paste" id="edt-paste" tabindex="0"><div class="gfx-paste-i">Paste (Ctrl+V) or click to add screenshots</div><input type="file" id="edt-file" accept="image/*" multiple style="display:none"></div><div class="gfx-prev" id="edt-prev"></div></div>'+
         '<div id="edt-fb-slot" data-rfb="0"></div>'+
+        '<div id="edt-bill-slot" data-bill="0"></div>'+
       '</div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="edt-sub-btn" onclick="edtDoSubmit()">Submit for QC</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
     document.body.appendChild(dr);
+    _edtLoadBilling('edt-bill-slot');
     var pb=document.getElementById('edt-paste'), fi=document.getElementById('edt-file');
     pb.addEventListener('click',function(){ fi.click(); });
     fi.addEventListener('change',function(e){ Array.prototype.forEach.call(e.target.files||[],_edtAddFile); });
@@ -30772,6 +31017,53 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   function _edtAddFile(file){ if(!file) return; var rd=new FileReader(); rd.onload=function(){ if(window._edtImgs.length<6){ window._edtImgs.push(rd.result); var box=document.getElementById('edt-prev'); if(box) box.innerHTML=window._edtImgs.map(function(s,i){ return '<div class="gfx-thumb" style="background-image:url('+s+')"><button class="gfx-x" onclick="_edtDel('+i+')">&times;</button></div>'; }).join(''); } }; rd.readAsDataURL(file); }
   window._edtDel=function(i){ window._edtImgs.splice(i,1); var box=document.getElementById('edt-prev'); if(box) box.innerHTML=window._edtImgs.map(function(s,j){ return '<div class="gfx-thumb" style="background-image:url('+s+')"><button class="gfx-x" onclick="_edtDel('+j+')">&times;</button></div>'; }).join(''); };
+  // ---- project-based editor: private billing section in the submit dialog ----
+  window._edtCapCache=window._edtCapCache||null;
+  function _edtBillFields(slot, cap){
+    if(!cap||!cap.is_project_based){ slot.setAttribute('data-bill','0'); slot.innerHTML=''; return; }
+    slot.setAttribute('data-bill','1');
+    var vlist=(cap.video_types||[]).map(function(x){return '<option value="'+esc(x)+'">';}).join('');
+    var elist=(cap.editing_types||[]).map(function(x){return '<option value="'+esc(x)+'">';}).join('');
+    slot.innerHTML='<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">'
+      +'<div style="font-weight:800;font-size:.9rem;margin-bottom:2px">Billing details <span style="font-weight:600;color:var(--text-muted);font-size:.76rem">\u2014 project-based, private</span></div>'
+      +'<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:8px">Sirf aapko aur finance Admin ko dikhta hai. PM ko amount nahi dikhta.</div>'
+      +'<div class="p-field"><label>Final output duration (mm:ss)</label><input class="p-input" id="edt-bill-dur" placeholder="12:00"></div>'
+      +'<div class="p-field"><label>Video type</label><input class="p-input" id="edt-bill-vt" list="edt-vt-list" placeholder="Update / Teaser / Interview"><datalist id="edt-vt-list">'+vlist+'</datalist></div>'
+      +'<div class="p-field"><label>Editing type</label><input class="p-input" id="edt-bill-et" list="edt-et-list" placeholder="Full Editing"><datalist id="edt-et-list">'+elist+'</datalist></div>'
+      +'</div>';
+  }
+  window._edtLoadBilling=function(slotId){
+    var slot=document.getElementById(slotId); if(!slot)return;
+    if(window._edtCapCache){ _edtBillFields(slot, window._edtCapCache); return; }
+    api('/api/editor/capability').then(function(c){ window._edtCapCache=c; var s=document.getElementById(slotId); if(s) _edtBillFields(s,c); }).catch(function(){ slot.setAttribute('data-bill','0'); });
+  };
+  // Project-based editor => Earnings nav reveal + comparative Performance nav/page hide.
+  // Salaried (default) => Earnings hidden, Performance as-is. Flicker-safe: Earnings starts hidden.
+  function _edtGateNav(cap){
+    var app=document.getElementById('editor-app'); if(!app) return;
+    var proj=!!(cap&&cap.is_project_based);
+    var earn=app.querySelector('.ps-item[data-page="earnings"]');
+    var perf=app.querySelector('.ps-item[data-page="performance"]');
+    if(earn) earn.style.display=proj?'':'none';
+    if(perf) perf.style.display=proj?'none':'';
+  }
+  window._edtApplyNavGate=function(){
+    if(window._edtCapCache){ _edtGateNav(window._edtCapCache); return; }
+    api('/api/editor/capability').then(function(c){ window._edtCapCache=c; _edtGateNav(c); }).catch(function(){});
+  };
+  function _edtBillCollect(slotId){
+    var slot=document.getElementById(slotId||'edt-bill-slot'); if(!slot||slot.getAttribute('data-bill')!=='1') return null;
+    var pre=(slotId==='pjv-bill-slot')?'pjv-bill-':'edt-bill-';
+    return {duration:((document.getElementById(pre+'dur')||{}).value||'').trim(),
+            video_type:((document.getElementById(pre+'vt')||{}).value||'').trim(),
+            editing_type:((document.getElementById(pre+'et')||{}).value||'').trim()};
+  }
+  window._edtShowEstimate=function(b){
+    if(!b) return;
+    if(b.status==='matched') toast('Private estimate: '+(b.amount_display||'')+(b.is_urgent?' (urgent)':''));
+    else if(b.status==='ambiguous') toast('Estimate pending \u2014 Admin ko rate boundary confirm karni hai.');
+    else toast('Estimate pending \u2014 '+((b.reason||'Admin confirmation pending.')));
+  };
   window.edtDoSubmit=function(){
     var link=((document.getElementById('edt-link')||{}).value||'').trim();
     if(!link){ toast('Edited video Drive link is required',true); var l=document.getElementById('edt-link'); if(l) l.focus(); return; }
@@ -30783,11 +31075,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var fb=_recFbCollect(); if(!fb.ok){ return; }
       body.recording_feedback=fb.payload;
     }
+    var _bill=_edtBillCollect('edt-bill-slot'); if(_bill) body.billing_details=_bill;
     var _eid=window._edtId;
     var b=document.getElementById('edt-sub-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; b.textContent='Submitting\u2026'; }
     if(window._edtPasteH){ document.removeEventListener('paste',window._edtPasteH); window._edtPasteH=null; }
-    api(P.editor.api+'/tasks/'+_eid+'/submit','POST',body).then(function(){
-      prodDismiss(); toast('Submitted for QC'); _apiBust(); _refresh('editor');
+    api(P.editor.api+'/tasks/'+_eid+'/submit','POST',body).then(function(r){
+      prodDismiss(); toast('Submitted for QC'); if(r&&r.billing) _edtShowEstimate(r.billing); _apiBust(); _refresh('editor');
     }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; b.textContent='Submit for QC'; } toast((e&&e.message)||'Submit failed \u2014 please try again',true); });
   };
   // ---- PM: Edit QC review (edited video + approve/changes/reject + screenshots + drive refs) ----
@@ -33061,7 +33354,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal';
     dr.innerHTML='<div class="p-modal" style="max-width:500px;max-height:92vh;display:flex;flex-direction:column"><div class="pd-head"><div class="h-title">Submit Edited Video</div><button class="pd-x" onclick="prodDismiss()">&times;</button></div>'+
       '<div class="p-modal-body" style="overflow-y:auto"><div class="p-field"><label>Edited video drive link</label><input class="p-input" id="pjv-link" placeholder="https://drive.google.com/..." autocomplete="off"></div>'+
-        '<div id="pjv-fb-slot" data-rfb="0"></div></div>'+
+        '<div id="pjv-fb-slot" data-rfb="0"></div><div id="pjv-bill-slot" data-bill="0"></div></div>'+
       '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="prodDismiss()">Cancel</button><button class="p-btn p-btn-primary" id="pjv-sub-btn" onclick="edtPvSubmitDo('+cid+')">'+ic('check')+' Submit</button></div></div>'+
       '</div>';
     dr.addEventListener('click',function(e){ if(e.target===dr) prodDismiss(); });
@@ -33069,6 +33362,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     setTimeout(function(){ var el=document.getElementById('pjv-link'); if(el) el.focus(); },60);
     // each chapter carries its OWN recording feedback (prefilled on a QC resubmit)
     _recFbLoadInto('pjv-fb-slot', P.editor.api+'/project-videos/'+cid+'/recording-feedback');
+    if(typeof window._edtLoadBilling==='function') window._edtLoadBilling('pjv-bill-slot');
   };
   window.edtPvSubmitDo=function(cid){
     var link=((document.getElementById('pjv-link')||{}).value||'').trim();
@@ -33076,9 +33370,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var body={edited_link:link};
     var slot=document.getElementById('pjv-fb-slot');
     if(slot && slot.getAttribute('data-rfb')==='1'){ var fb=_recFbCollect(); if(!fb.ok){ return; } body.recording_feedback=fb.payload; }
+    var _bill=_edtBillCollect('pjv-bill-slot'); if(_bill) body.billing_details=_bill;
     var b=document.getElementById('pjv-sub-btn'); if(b){ b.disabled=true; b.style.opacity='.6'; }
     api(P.editor.api+'/project-videos/'+cid+'/submit','POST',body)
-      .then(function(){ prodDismiss(); toast('Edited video submitted'); _refresh('editor'); })
+      .then(function(r){ prodDismiss(); toast('Edited video submitted'); if(r&&r.billing&&window._edtShowEstimate) _edtShowEstimate(r.billing); _refresh('editor'); })
       .catch(function(e){ if(b){ b.disabled=false; b.style.opacity='1'; } toast((e&&e.message)||'Failed',true); });
   };
   function _pjvCss(){ if(document.getElementById('pjv-css')) return; var s=document.createElement('style'); s.id='pjv-css'; s.textContent=[
@@ -33353,7 +33648,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window.pmtShow=function(id){ var u=(window._pmtUsers||[]).filter(function(x){return x.id===id;})[0]; if(!u){ toast('Not found',true); return; } _pmtCred('Password',{user_id:u.user_id,password:u.password}); };
   window.pmtApproval=function(id,val){ api(P.production.api+'/team-users/'+id,'PATCH',{approval_required:(val===true||val==='true')}).then(function(){ toast('Approval mode updated'); _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.pmtToggle=function(id,val){ api(P.production.api+'/team-users/'+id,'PATCH',{is_active:(val===true||val==='true')}).then(function(){ toast('Updated'); _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
-  window.pmtDelete=function(id,name){ if(!confirm('Delete '+name+'? This removes their account and unassigns their tasks. This cannot be undone.')) return; api(P.production.api+'/team-users/'+id,'DELETE').then(function(r){ toast('Deleted'+((r&&r.unassigned)?(' \u2014 '+r.unassigned+' task(s) unassigned'):'')); _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+  window.pmtDelete=function(id,name){ if(!confirm('Delete '+name+'? This removes their account and unassigns their tasks. This cannot be undone.')) return; api(P.production.api+'/team-users/'+id,'DELETE').then(function(r){ if(r&&r.archived){ toast('Account archived (deactivated) \u2014 payout history preserved.'); } else { toast('Deleted'+((r&&r.unassigned)?(' \u2014 '+r.unassigned+' task(s) unassigned'):'')); } _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.pmtAdd=function(role){
     var meta=_pmtMeta(role);
     var rf='';
@@ -33643,6 +33938,166 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       body.innerHTML=html;
     }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load performance. '+esc(e&&e.message||'')+'</div>'; });
   }
+  // ================= PROJECT-BASED EDITOR: My Earnings (Phase 5a) =================
+  // SALARIED editors is page pe aate hi inert "not applicable" dekhte hain (koi finance data nahi).
+  // Project-based editors apne private estimates/earnings + apne rate plan dekhte hain.
+  // PM ko ye kuch bhi nahi dikhta (alag portal). Amounts sirf editor khud + finance Admin ko.
+  function _edtEarnCss(){
+    if(document.getElementById('edt-earn-css')) return;
+    var css=[
+      '.ee-hero{background:linear-gradient(135deg,rgba(230,173,78,.16),rgba(230,173,78,.04));border:1px solid var(--border);border-radius:18px;padding:20px 22px;margin-bottom:16px}',
+      '.ee-hero-t{font-size:1.25rem;font-weight:900;letter-spacing:-.4px;display:flex;align-items:center;gap:10px}',
+      '.ee-priv{font-size:.68rem;font-weight:800;color:var(--primary);background:rgba(230,173,78,.16);border:1px solid rgba(230,173,78,.35);padding:3px 9px;border-radius:999px}',
+      '.ee-hero-s{font-size:.82rem;color:var(--muted);margin-top:4px}',
+      '.ee-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}',
+      '.ee-sc{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px}',
+      '.ee-sc .v{font-size:1.5rem;font-weight:900;letter-spacing:-.5px}',
+      '.ee-sc .l{font-size:.74rem;color:var(--muted);font-weight:700;margin-top:3px}',
+      '.ee-sec{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:20px 2px 10px}',
+      '.ee-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px}',
+      '.ee-card .main{flex:1;min-width:0}',
+      '.ee-ct{font-weight:800;font-size:.95rem;line-height:1.3;word-break:break-word}',
+      '.ee-meta{font-size:.76rem;color:var(--muted);margin-top:4px;display:flex;flex-wrap:wrap;gap:8px}',
+      '.ee-meta b{color:var(--text);font-weight:700}',
+      '.ee-right{text-align:right;flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px}',
+      '.ee-amt{font-size:1.1rem;font-weight:900;letter-spacing:-.4px;white-space:nowrap}',
+      '.ee-amt.muted{color:var(--muted);font-size:.84rem;font-weight:700}',
+      '.ee-pill{font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}',
+      '.ee-pill.est{background:rgba(138,125,92,.14);color:var(--muted)}',
+      '.ee-pill.ver{background:rgba(224,165,46,.16);color:#9a7016}',
+      '.ee-pill.ok{background:rgba(46,158,107,.16);color:#1f7a44}',
+      '.ee-pill.hold{background:rgba(224,120,46,.16);color:#a85a14}',
+      '.ee-pill.rej{background:rgba(209,68,58,.14);color:#b23229}',
+      '.ee-pill.urg{background:rgba(209,68,58,.14);color:#b23229}',
+      '.ee-rate{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px}',
+      '.ee-rate .rl{font-weight:800;font-size:.88rem}',
+      '.ee-rate .rm{font-size:.72rem;color:var(--muted);margin-top:2px}',
+      '.ee-rate .ra{font-weight:900;white-space:nowrap}',
+      'body.dark .ee-pill.ver{color:#f0c76a}','body.dark .ee-pill.ok{color:#5fd39e}','body.dark .ee-pill.hold{color:#e8a76a}','body.dark .ee-pill.rej{color:#ed8278}',
+      '@media(max-width:640px){.ee-sum{grid-template-columns:1fr 1fr}.ee-sc .v{font-size:1.25rem}}'
+    ].join('');
+    var st=document.createElement('style'); st.id='edt-earn-css'; st.textContent=css; document.head.appendChild(st);
+  }
+  function _edtEarnStatus(it){
+    var fs=it.financial_state||'estimate', ms=it.match_status||'pending';
+    if(fs==='approved') return {cls:'ok', t:'Approved ✓'};
+    if(fs==='rejected') return {cls:'rej', t:'Rejected'};
+    if(fs==='on_hold') return {cls:'hold', t:'On hold'};
+    if(fs==='pending_verification') return {cls:'ver', t:'Under verification'};
+    // estimate state -> match quality batao
+    if(ms==='matched') return {cls:'est', t:'Estimate'};
+    if(ms==='ambiguous') return {cls:'ver', t:'Rate review'};
+    return {cls:'ver', t:'Rate pending'};
+  }
+  function renderEditorEarnings(portal,body){
+    _edtEarnCss(); body.innerHTML='<div class="p-load">Loading earnings...</div>';
+    return api(P.editor.api+'/earnings').then(function(r){
+      if(_stale(portal,'earnings')) return;
+      if(!r||!r.is_project_based){
+        body.innerHTML='<div class="ee-hero"><div class="ee-hero-t">My Earnings</div>'
+          +'<div class="ee-hero-s">Ye section sirf project-based editors ke liye hai. Aapka account salaried hai — aapki salary, performance aur portal pehle jaisa hi chalega.</div></div>'
+          +'<div class="p-empty">Koi project-based earning record nahi.</div>';
+        return;
+      }
+      var sm=r.summary||{}, items=r.items||[];
+      var html='<div class="ee-hero"><div class="ee-hero-t">My Earnings <span class="ee-priv">Private</span></div>'
+        +'<div class="ee-hero-s">Project-based editing payout. Amounts sirf aapko aur finance Admin ko dikhte hain — PM ko nahi. Estimate QC technical approval + Admin verify hone par payable banta hai.</div></div>';
+      html+='<div class="ee-sum">'
+        +'<div class="ee-sc"><div class="v">'+esc(sm.estimate_total_display||('₹'+'0'))+'</div><div class="l">Matched estimate total</div></div>'
+        +'<div class="ee-sc"><div class="v">'+(sm.count||0)+'</div><div class="l">Editing items</div></div>'
+        +'<div class="ee-sc"><div class="v">'+(sm.pending||0)+'</div><div class="l">Rate pending</div></div>'
+        +'</div>';
+      if(!r.has_rate_plan){
+        html+='<div class="p-empty" style="margin-bottom:14px">Aapka rate plan abhi Admin ne publish nahi kiya. Aap videos submit kar sakte hain — payout rate confirm hone par estimate aa jayega (koi video lost nahi hoga).</div>';
+      }
+      html+='<div class="ee-sec">Earnings</div>';
+      if(!items.length){
+        html+='<div class="p-empty">Abhi koi submission nahi. Jab aap project/task video submit karenge, uska private estimate yahan aayega.</div>';
+      } else {
+        html+=items.map(function(it){
+          var stt=_edtEarnStatus(it);
+          var title=esc(it.source_title||it.project_title||('Engagement #'+it.engagement_id));
+          var sub=it.project_title&&it.source_title?('<b>'+esc(it.project_title)+'</b>'):'';
+          var dur=it.final_output_seconds?(Math.floor(it.final_output_seconds/60)+':'+('0'+(it.final_output_seconds%60)).slice(-2)):'';
+          var meta=[];
+          if(sub) meta.push(sub);
+          if(it.video_type) meta.push('<b>'+esc(it.video_type)+'</b>');
+          if(it.editing_type) meta.push(esc(it.editing_type));
+          if(dur) meta.push(dur+' min');
+          if(it.rule_label) meta.push('rate: '+esc(it.rule_label));
+          var amt;
+          if(it.amount_display){ var apr=(it.financial_state==='approved'); amt='<div class="ee-amt">'+esc(it.amount_display)+(apr?'':' <span style="font-size:.64rem;font-weight:700;color:var(--muted)">est.</span>')+'</div>'; }
+          else amt='<div class="ee-amt muted">Pending rate</div>';
+          return '<div class="ee-card"><div class="main"><div class="ee-ct">'+title+(it.is_urgent?' <span class="ee-pill urg">Urgent</span>':'')+'</div>'
+            +'<div class="ee-meta">'+meta.join('<span style="opacity:.4">·</span>')+'</div>'
+            +(it.note?'<div class="ee-meta" style="font-style:italic">'+esc(it.note)+'</div>':'')+'</div>'
+            +'<div class="ee-right">'+amt+'<span class="ee-pill '+stt.cls+'">'+stt.t+'</span></div></div>';
+        }).join('');
+      }
+      html+='<div class="ee-sec">Monthly Statements</div><div id="ee-stmts"><div class="p-load" style="padding:8px">Loading statements…</div></div>';
+      if((r.rates||[]).length){
+        html+='<div class="ee-sec">Your Rate Plan</div>';
+        html+=r.rates.map(function(rt){
+          var lo=rt.duration_min_seconds, hi=rt.duration_max_seconds;
+          var band=(lo!=null||hi!=null)?((lo!=null?Math.floor(lo/60):'0')+'–'+(hi!=null?Math.floor(hi/60):'∞')+' min'):'any length';
+          var m=[]; if(rt.video_type) m.push(esc(rt.video_type)); if(rt.editing_type) m.push(esc(rt.editing_type)); m.push(band); if(rt.is_urgent) m.push('urgent');
+          return '<div class="ee-rate"><div><div class="rl">'+esc(rt.label||'Rate')+'</div><div class="rm">'+m.join(' · ')+(rt.days_required?(' · '+rt.days_required+'d'):'')+'</div></div><div class="ra">'+esc(rt.amount_display||'')+'</div></div>';
+        }).join('');
+      }
+      body.innerHTML=html;
+      _edtLoadStatements();
+    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load earnings. '+esc(e&&e.message||'')+'</div>'; });
+  }
+  function _stmtStatePill(st){
+    var M={draft:['Draft','ver'],finalized:['Finalized','est'],partially_paid:['Partially paid','hold'],paid:['Paid ✓','ok']};
+    var x=M[st]||[st,'est']; return '<span class="ee-pill '+x[1]+'">'+esc(x[0])+'</span>';
+  }
+  function _edtLoadStatements(){
+    var slot=document.getElementById('ee-stmts'); if(!slot) return;
+    api(P.editor.api+'/statements').then(function(r){
+      var s=document.getElementById('ee-stmts'); if(!s) return;
+      var items=(r&&r.items)||[];
+      if(!items.length){ s.innerHTML='<div class="p-empty">Abhi koi monthly statement nahi. Admin month-end par aapka statement finalize karega.</div>'; return; }
+      s.innerHTML=items.map(function(it){
+        return '<div class="ee-card" style="cursor:pointer" onclick="edtStmtOpen('+it.id+')"><div class="main"><div class="ee-ct">'+esc(_periodLabel(it.period))+(it.statement_no?(' <span style="font-size:.7rem;font-weight:600;color:var(--muted)">'+esc(it.statement_no)+'</span>'):'')+'</div>'
+          +'<div class="ee-meta">Total <b>'+esc(it.total_display)+'</b><span style="opacity:.4">·</span>Paid <b>'+esc(it.paid_display)+'</b><span style="opacity:.4">·</span>Balance <b>'+esc(it.outstanding_display)+'</b></div></div>'
+          +'<div class="ee-right">'+_stmtStatePill(it.state)+'<button class="btn btn-ghost btn-sm" style="font-size:.7rem;padding:3px 8px" onclick="event.stopPropagation();_downloadEditorStmtById(\'editor\','+it.id+')">Download</button></div></div>';
+      }).join('');
+    }).catch(function(){ var s=document.getElementById('ee-stmts'); if(s) s.innerHTML='<div class="p-empty">Statements load nahi ho paye.</div>'; });
+  }
+  window.edtStmtOpen=function(id){
+    api(P.editor.api+'/statements/'+id).then(function(d){ _edtStmtModal(d); }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  function _edtStmtModal(d){
+    _edtEarnCss();
+    var ov=document.getElementById('edt-stmt-ov'); if(ov) ov.remove();
+    ov=document.createElement('div'); ov.id='edt-stmt-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(20,18,12,.5);backdrop-filter:blur(3px);z-index:99998;display:flex;align-items:flex-end;justify-content:center';
+    var lines=(d.lines||[]).map(function(l){
+      var title=esc(l.source_title||l.project_title||'Item');
+      var typ=[l.video_type,l.editing_type].filter(Boolean).map(esc).join(' · ');
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="min-width:0"><div style="font-weight:700;font-size:.85rem">'+title+(l.is_urgent?' <span class="ee-pill urg">Urgent</span>':'')+'</div><div style="font-size:.72rem;color:var(--muted)">'+typ+'</div></div><div style="font-weight:800;white-space:nowrap">'+esc(l.amount_display||'')+'</div></div>';
+    }).join('')||'<div style="color:var(--muted);font-size:.8rem;padding:8px 0">No payable items.</div>';
+    var pays=(d.payments||[]).map(function(p){
+      var dt=p.paid_on?new Date(p.paid_on).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
+      var btn=p.receipt_confirmed?'<span class="ee-pill ok">Receipt confirmed</span>':'<button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:4px 10px" onclick="edtConfirmReceipt('+d.id+','+p.id+')">Confirm receipt</button>';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-weight:700;font-size:.82rem">'+esc(p.amount_display||'')+' <span style="font-weight:500;color:var(--muted)">'+esc(p.method||'')+'</span></div><div style="font-size:.7rem;color:var(--muted)">'+esc(dt)+(p.reference?(' · '+esc(p.reference)):'')+'</div></div>'+btn+'</div>';
+    }).join('')||'<div style="color:var(--muted);font-size:.8rem;padding:8px 0">Abhi koi payment record nahi hui.</div>';
+    ov.innerHTML='<div style="background:var(--card);width:min(560px,100%);max-height:90vh;overflow:auto;border-radius:18px 18px 0 0;padding:20px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px"><div><div style="font-weight:900;font-size:1.1rem">'+esc(_periodLabel(d.period))+'</div><div style="font-size:.74rem;color:var(--muted)">'+esc(d.statement_no||'Draft')+' · '+esc(_stmtStateLabel(d.state))+'</div></div><button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'edt-stmt-ov\').remove()">Close</button></div>'
+      +'<div class="ee-sum" style="grid-template-columns:1fr 1fr 1fr"><div class="ee-sc"><div class="v" style="font-size:1.1rem">'+esc(d.total_display)+'</div><div class="l">Total</div></div><div class="ee-sc"><div class="v" style="font-size:1.1rem">'+esc(d.paid_display)+'</div><div class="l">Paid</div></div><div class="ee-sc"><div class="v" style="font-size:1.1rem">'+esc(d.outstanding_display)+'</div><div class="l">Balance</div></div></div>'
+      +'<div class="ee-sec" style="margin-top:14px">Items</div>'+lines
+      +'<div class="ee-sec">Payments</div>'+pays
+      +'<button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="_downloadEditorStmtById(\'editor\','+d.id+')">Download PDF statement</button>'
+      +'</div>';
+    ov.addEventListener('mousedown',function(e){ if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+  window.edtConfirmReceipt=function(stmtId,payId){
+    api(P.editor.api+'/statements/'+stmtId+'/confirm-receipt','POST',{payment_id:payId}).then(function(){
+      toast('Receipt confirmed'); window.edtStmtOpen(stmtId);
+    }).catch(function(e){ toast((e&&e.message)||'Could not confirm',true); });
+  };
   window.edtPerfSeg=function(s){ window._edtPerfSeg=s; var body=document.getElementById('editor-body'); if(body) renderEditorPerf('editor',body); };
   window.edtPerfPeriod=function(p){ window._edtPerfPeriod=p; var body=document.getElementById('editor-body'); if(body) renderEditorPerf('editor',body); };
   window.gfxPerfPeriod=function(p){ window._gfxPerfPeriod=p; var body=document.getElementById('graphics-body'); if(body) renderGfxPerf('graphics',body); };
@@ -40671,12 +41126,14 @@ function _apCard(u){
   return '<div class="ap-card'+clkAttr+'">'+
     '<div class="ap-hd"><div class="ap-avatar" id="apav-'+u.role+'-'+u.profile_id+'">'+_apInitials(u.name)+'</div>'+
       '<div><div class="ap-nm">'+_ape(u.name)+'</div><div class="ap-uid">'+_ape(u.user_id)+'</div></div></div>'+
-    '<div class="ap-row"><span class="ap-pill '+(active?'ap-on':'ap-off')+'">'+(active?'Active':'Inactive')+'</span>'+extra+'</div>'+
+    '<div class="ap-row"><span class="ap-pill '+(active?'ap-on':'ap-off')+'">'+(active?'Active':'Inactive')+'</span>'+((u.role==='editor'&&u.compensation_type==='PROJECT_BASED')?'<span class="ap-pill" style="background:rgba(124,79,192,.16);color:#6d3fb0;border:1px solid rgba(124,79,192,.3)">Project-Based</span>':'')+extra+'</div>'+
     statsHtml+
     '<div class="ap-actions" onclick="event.stopPropagation()">'+
       '<button class="ap-btn" onclick="apReset('+u.id+')">Reset Password</button>'+
       (u.password?'<button class="ap-btn" onclick="apShowPass('+u.id+')">Show Password</button>':'')+
       ((u.role==='editor'||u.role==='graphics')?'<button class="ap-btn" onclick="apPerfSet('+u.id+',\''+u.role+'\',\''+(u.editor_specialization||'')+'\','+(u.target_long||'null')+','+(u.target_short||'null')+','+(u.target_thumbnails||'null')+')">Performance</button>':'')+
+      (u.role==='editor'?'<button class="ap-btn" onclick="apSetComp('+u.id+',\''+(u.compensation_type==='PROJECT_BASED'?'SALARIED':'PROJECT_BASED')+'\')">'+(u.compensation_type==='PROJECT_BASED'?'Make Salaried':'Make Project-Based')+'</button>':'')+
+      ((u.role==='editor'&&u.compensation_type==='PROJECT_BASED'&&u.profile_id)?'<button class="ap-btn" style="border-color:rgba(184,148,31,.5);color:#9a7d1a" onclick="apRates('+u.profile_id+',\''+_ape(u.name).replace(/\x27/g,"")+'\')">Compensation &amp; Rates</button>':'')+
       toggles+
       '<button class="ap-btn" onclick="apToggleActive('+u.id+','+(active?'false':'true')+')">'+(active?'Deactivate':'Activate')+'</button>'+
       '<button class="ap-btn" style="color:#b91c1c;border-color:rgba(185,28,28,.4)" onclick="apDelete('+u.id+',\''+_ape(u.name).replace(/'/g,"")+'\',\''+u.role+'\')">Delete</button>'+
@@ -40764,10 +41221,123 @@ window.apToggleActive=function(id,val){
   api('/api/admin/production-users/'+id,'PATCH',{is_active:val}).then(function(){ toast('Updated'); loadAProductionTeam(); })
     .catch(function(e){ toast((e&&e.message)||'Failed',true); });
 };
+window.apSetComp=function(id,want){
+  var pb=(want==='PROJECT_BASED');
+  var msg=pb?'Is editor ko PROJECT-BASED banayein? Ye salary performance ranking/comparison se hat jaayega. (Rates/payout alag finance phase me set honge.)'
+            :'Is editor ko wapas SALARIED banayein? Wo normal salary performance model me aa jaayega.';
+  if(!confirm(msg)) return;
+  api('/api/admin/production-users/'+id+'/compensation','POST',{compensation_type:want})
+    .then(function(){ toast(pb?'Ab Project-Based':'Ab Salaried'); loadAProductionTeam(); })
+    .catch(function(e){ toast((e&&e.message)||'Failed',true); });
+};
+
+// ===== Compensation & Rates (project-based editor) — confidential, payout-unlock ke peeche =====
+function _ecCss(){ if(document.getElementById('ec-css'))return; var s=document.createElement('style'); s.id='ec-css'; s.textContent=[
+  '.ec-ov{position:fixed;inset:0;z-index:99990;background:rgba(15,20,30,.55);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:28px 14px;overflow:auto}',
+  '.ec-card{background:var(--card,#fffdf7);color:var(--text,#2a2313);border:1px solid var(--border,#e7dfc6);border-radius:18px;max-width:860px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.4)}',
+  '.ec-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border,#e7dfc6)}',
+  '.ec-hd h3{margin:0;font-size:1.08rem;font-weight:800}',
+  '.ec-sub{font-size:.76rem;color:var(--text-muted,#8a7c55);margin-top:2px}',
+  '.ec-bd{padding:16px 18px}',
+  '.ec-pill{display:inline-block;font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 10px;border-radius:999px}',
+  '.ec-draft{background:rgba(201,138,46,.16);color:#9a7d1a}.ec-active{background:rgba(5,150,105,.16);color:#1f7a44}',
+  '.ec-tbl{width:100%;border-collapse:collapse;font-size:.84rem;margin-top:12px}',
+  '.ec-tbl th{text-align:left;background:#14243f;color:#fff;padding:9px 10px;font-size:.66rem;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}',
+  '.ec-tbl td{padding:8px 10px;border-top:1px solid var(--border,#e7dfc6);white-space:nowrap}',
+  '.ec-amt{font-weight:800;font-variant-numeric:tabular-nums}',
+  '.ec-warn{background:rgba(209,68,58,.08);border:1px solid rgba(209,68,58,.32);color:#b91c1c;border-radius:10px;padding:10px 13px;font-size:.82rem;margin-top:12px;font-weight:600}',
+  '.ec-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}',
+  '.ec-fld{display:flex;flex-direction:column;gap:3px}.ec-fld label{font-size:.68rem;font-weight:700;color:var(--text-muted,#8a7c55)}',
+  '.ec-fld input,.ec-fld select{padding:8px 10px;border:1.5px solid var(--border,#e7dfc6);border-radius:9px;background:var(--surface,#fff);color:var(--text,#2a2313);font-size:.84rem;font-family:inherit}',
+  '.ec-prev{background:rgba(184,148,31,.07);border:1px solid rgba(184,148,31,.25);border-radius:12px;padding:12px 14px;margin-top:14px}',
+  '.ec-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}',
+  '@media(max-width:600px){.ec-tbl{font-size:.78rem}.ec-tbl th,.ec-tbl td{padding:6px 7px}}'
+].join(''); document.head.appendChild(s); }
+function _ecClose(){ var o=document.getElementById('ec-ov'); if(o) o.remove(); }
+function _ecDur(s){ if(s==null||s==='')return '—'; s=parseInt(s,10)||0; var m=Math.floor(s/60), ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
+window.apRates=function(staffId,name){
+  if(!window._payoutToken){ toast('Finance locked — pehle Payouts section me unlock karo, phir Rates kholo.',true); try{ aPage('payouts',null); }catch(e){} return; }
+  _ecCss(); window._ecStaff={id:staffId,name:name};
+  api('/api/admin/editor-comp/'+staffId).then(function(d){ _ecRender(d); })
+    .catch(function(e){ if((e&&e.message||'').indexOf('428')>=0||/locked|unlock/i.test(e&&e.message||'')){ toast('Finance locked — Payouts me unlock karo.',true); try{ aPage('payouts',null); }catch(_){ } } else toast((e&&e.message)||'Could not load',true); });
+};
+function _ecRender(d){
+  _ecCss(); window._ecLast=d; var st=window._ecStaff||{}; var ag=d.draft||d.active; var isDraft=!!(d.draft);
+  var cur=(ag&&ag.currency)||'INR';
+  var body;
+  if(!ag){
+    body='<div style="text-align:center;padding:26px 10px"><div style="font-size:.9rem;color:var(--text-muted,#8a7c55);margin-bottom:14px">Is editor ka koi rate plan nahi hai. Owner ki source rate table ko DRAFT ke roop me import karo, phir currency/boundaries confirm karke publish karo.</div><button class="btn btn-primary" onclick="_ecSeed('+st.id+')">Import source rate card (draft)</button></div>';
+  } else {
+    var rules=(ag.rules||[]).filter(function(r){return r.active;});
+    var head='<tr><th>Rule</th><th>Video Type</th><th>Editing</th><th>Duration</th><th>Amount</th><th>Urgent</th><th>Days</th>'+(isDraft?'<th></th>':'')+'</tr>';
+    var rows=rules.length?rules.map(function(r){
+      return '<tr><td><b>'+esc(r.label||'')+'</b></td><td>'+esc(r.video_type||'')+'</td><td>'+esc(r.editing_type||'')+'</td>'
+        +'<td>'+_ecDur(r.duration_min_seconds)+' – '+_ecDur(r.duration_max_seconds)+'</td>'
+        +'<td class="ec-amt">'+esc(r.amount_display||'')+'</td><td>'+(r.is_urgent?'Yes':'—')+'</td><td>'+esc(r.days_required||'')+'</td>'
+        +(isDraft?('<td><button class="ap-btn" style="padding:3px 8px" onclick="_ecEdit('+ag.id+','+r.id+')">Edit</button> <button class="ap-btn" style="padding:3px 8px;color:#b91c1c" onclick="_ecArchive('+r.id+')">✕</button></td>'):'')
+        +'</tr>';
+    }).join(''):'<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:16px">No rules yet.</td></tr>';
+    var warns=(ag.overlaps||[]).length?('<div class="ec-warn">⚠ Overlapping rules (boundary confirm karo): '+ag.overlaps.map(function(w){return w.a+' &amp; '+w.b+' @ '+_ecDur(w.overlap_from)+(w.overlap_from!==w.overlap_to?('–'+_ecDur(w.overlap_to)):'');}).join(', ')+'. Publish karne se pehle ya to boundaries theek karo, ya "Publish with overlaps" se acknowledge karo.</div>'):'';
+    var editForm=isDraft?('<div class="ec-row" id="ec-form" style="display:none"></div>'
+      +'<div class="ec-acts"><button class="btn btn-ghost btn-sm" onclick="_ecEdit('+ag.id+',0)">+ Add rule</button></div>'):'';
+    var preview='<div class="ec-prev"><div style="font-weight:800;font-size:.82rem;margin-bottom:8px">Preview match (publish se pehle verify)</div><div class="ec-row">'
+      +'<div class="ec-fld"><label>Duration (mm:ss)</label><input id="ec-pv-dur" placeholder="12:00" style="width:90px"></div>'
+      +'<div class="ec-fld"><label>Video Type</label><input id="ec-pv-vt" placeholder="Update" style="width:120px"></div>'
+      +'<div class="ec-fld"><label>Editing</label><input id="ec-pv-et" placeholder="Full Editing" style="width:150px"></div>'
+      +'<div class="ec-fld"><label>Urgent</label><select id="ec-pv-ur"><option value="">No</option><option value="1">Yes</option></select></div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="_ecPreview('+ag.id+')">Check</button></div><div id="ec-pv-res" style="margin-top:10px;font-size:.86rem"></div></div>';
+    var pubActs=isDraft?('<div class="ec-acts"><button class="btn btn-primary" onclick="_ecPublish('+ag.id+','+((ag.overlaps||[]).length?'true':'false')+')">'+((ag.overlaps||[]).length?'Publish with overlaps':'Publish plan')+'</button><button class="btn btn-ghost btn-sm" onclick="_ecDiscard('+st.id+')">Discard draft</button></div>'):'';
+    body='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="ec-pill '+(isDraft?'ec-draft':'ec-active')+'">'+(isDraft?'DRAFT':'ACTIVE')+'</span><span style="font-size:.8rem;color:var(--text-muted)">v'+(ag.version||1)+' · '+esc(cur)+'</span>'+(d.active&&isDraft?'<span style="font-size:.76rem;color:#1f7a44">(ek active plan v'+d.active.version+' bhi hai)</span>':'')+'</div>'
+      +(ag.notes?('<div class="ec-sub" style="margin-top:8px;line-height:1.5">'+esc(ag.notes)+'</div>'):'')
+      +'<div style="overflow-x:auto"><table class="ec-tbl">'+head+rows+'</table></div>'+warns+editForm+preview+pubActs;
+  }
+  _ecClose();
+  var ov=document.createElement('div'); ov.className='ec-ov'; ov.id='ec-ov';
+  ov.innerHTML='<div class="ec-card"><div class="ec-hd"><div><h3>Compensation &amp; Rates</h3><div class="ec-sub">'+esc(st.name||'Editor')+' · project-based · confidential</div></div><button class="btn btn-ghost btn-sm" onclick="_ecClose()">Close</button></div><div class="ec-bd">'+body+'</div></div>';
+  ov.addEventListener('click',function(e){ if(e.target===ov) _ecClose(); });
+  document.body.appendChild(ov);
+}
+function _ecReload(){ var st=window._ecStaff||{}; api('/api/admin/editor-comp/'+st.id).then(_ecRender).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }
+window._ecSeed=function(staffId){ api('/api/admin/editor-comp/'+staffId+'/seed-draft','POST',{currency:'INR'}).then(function(){ toast('Draft imported'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+window._ecArchive=function(ruleId){ if(!confirm('Is rule ko hata dein (draft se)?')) return; api('/api/admin/editor-comp/rule/'+ruleId+'/archive','POST',{}).then(function(){ _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+window._ecDiscard=function(staffId){ if(!confirm('Pura draft discard karein? Dobara import karna padega.')) return; api('/api/admin/editor-comp/'+staffId+'/discard-draft','POST',{}).then(function(){ toast('Draft discarded'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+window._ecPublish=function(agId,ack){ var m=ack?'Overlaps ke saath publish karein? Ambiguous durations tab tak price nahi karenge jab tak boundary theek na ho.':'Is plan ko publish (activate) karein? Iske baad ye version-locked ho jaayega.'; if(!confirm(m)) return; api('/api/admin/editor-comp/'+agId+'/publish','POST',{ack_overlaps:!!ack}).then(function(){ toast('Plan published'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Publish failed',true); }); };
+window._ecPreview=function(agId){
+  var dur=(document.getElementById('ec-pv-dur')||{}).value||''; var vt=(document.getElementById('ec-pv-vt')||{}).value||''; var et=(document.getElementById('ec-pv-et')||{}).value||''; var ur=(document.getElementById('ec-pv-ur')||{}).value||'';
+  api('/api/admin/editor-comp/preview-match','POST',{agreement_id:agId,duration:dur,video_type:vt,editing_type:et,urgent:!!ur}).then(function(r){
+    var el=document.getElementById('ec-pv-res'); if(!el)return;
+    var col=r.status==='matched'?'#1f7a44':(r.status==='ambiguous'?'#b45309':'#b91c1c');
+    el.innerHTML='<b style="color:'+col+';text-transform:uppercase">'+esc(r.status)+'</b> '+(r.amount_display?('— <span class="ec-amt">'+esc(r.amount_display)+'</span>'):'')+(r.candidates&&r.candidates.length&&r.status!=='matched'?(' — rules: '+esc(r.candidates.join(', '))):'')+'<div style="font-size:.78rem;color:var(--text-muted);margin-top:3px">'+esc(r.reason||'')+'</div>';
+  }).catch(function(e){ var el=document.getElementById('ec-pv-res'); if(el) el.innerHTML='<span style="color:#b91c1c">'+esc((e&&e.message)||'Error')+'</span>'; });
+};
+window._ecEdit=function(agId,ruleId){
+  var f=document.getElementById('ec-form'); if(!f)return;
+  var r={}; if(ruleId){ try{ var ag=(window._ecLast&&window._ecLast.draft)||{}; (ag.rules||[]).forEach(function(x){ if(x.id===ruleId) r=x; }); }catch(e){} }
+  f.style.display='flex';
+  f.innerHTML='<div class="ec-fld"><label>Label</label><input id="ecf-label" value="'+esc(r.label||'')+'" style="width:70px"></div>'
+    +'<div class="ec-fld"><label>Video Type</label><input id="ecf-vt" value="'+esc(r.video_type||'')+'" style="width:110px"></div>'
+    +'<div class="ec-fld"><label>Editing</label><input id="ecf-et" value="'+esc(r.editing_type||'')+'" style="width:150px"></div>'
+    +'<div class="ec-fld"><label>Min (mm:ss)</label><input id="ecf-min" value="'+(r.duration_min_seconds!=null?_ecDur(r.duration_min_seconds):'')+'" style="width:80px"></div>'
+    +'<div class="ec-fld"><label>Max (mm:ss)</label><input id="ecf-max" value="'+(r.duration_max_seconds!=null?_ecDur(r.duration_max_seconds):'')+'" style="width:80px"></div>'
+    +'<div class="ec-fld"><label>Amount (₹)</label><input id="ecf-amt" value="'+(r.amount_minor!=null?(r.amount_minor/100):'')+'" style="width:90px"></div>'
+    +'<div class="ec-fld"><label>Urgent</label><select id="ecf-ur"><option value="">No</option><option value="1"'+(r.is_urgent?' selected':'')+'>Yes</option></select></div>'
+    +'<div class="ec-fld"><label>Days</label><input id="ecf-days" value="'+esc(r.days_required||'')+'" style="width:70px"></div>'
+    +'<button class="btn btn-primary btn-sm" onclick="_ecRuleSave('+agId+','+(ruleId||0)+')">Save</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'ec-form\').style.display=\'none\'">Cancel</button>';
+};
+window._ecRuleSave=function(agId,ruleId){
+  var gv=function(id){ var e=document.getElementById(id); return e?e.value:''; };
+  var body={agreement_id:agId,id:ruleId||0,label:gv('ecf-label'),video_type:gv('ecf-vt'),editing_type:gv('ecf-et'),
+    duration_min:gv('ecf-min'),duration_max:gv('ecf-max'),amount_rupees:gv('ecf-amt'),is_urgent:!!gv('ecf-ur'),days_required:gv('ecf-days'),pricing_strategy:'FIXED_BY_DURATION_BAND'};
+  api('/api/admin/editor-comp/rule/save','POST',body).then(function(){ toast('Rule saved'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Save failed',true); });
+};
 window.apDelete=function(id,name,role){
-  if(!confirm('Delete '+name+'? Unke saare assigned tasks unassign ho jaayenge (production board se bhi hat jaayenge) aur ye member team se hat jaayega. Ye wapas nahi hoga.')) return;
-  api('/api/admin/production-users/'+id,'DELETE').then(function(r){ toast('Deleted'+((r&&r.unassigned)?(' — '+r.unassigned+' task(s) unassigned'):'')); loadAProductionTeam(); })
-    .catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
+  if(!confirm('Delete '+name+'? Unke saare assigned tasks unassign ho jaayenge (production board se bhi hat jaayenge) aur ye member team se hat jaayega. Ye wapas nahi hoga.\n\nNote: Agar is editor ka payout history hai to account delete nahi, balki archive (deactivate) hoga — finance records surakshit rahenge.')) return;
+  api('/api/admin/production-users/'+id,'DELETE').then(function(r){
+    if(r&&r.archived){ toast('Account archived (deactivated) — payout history hone ki wajah se delete nahi kiya; finance records surakshit hain.'); }
+    else { toast('Deleted'+((r&&r.unassigned)?(' — '+r.unassigned+' task(s) unassigned'):'')); }
+    loadAProductionTeam();
+  }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
 };
 window.apToggleApproval=function(id,val){
   api('/api/admin/production-users/'+id,'PATCH',{approval_required:val}).then(function(){ toast('Approval mode updated'); loadAProductionTeam(); })

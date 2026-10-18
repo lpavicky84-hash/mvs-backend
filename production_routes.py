@@ -1656,6 +1656,16 @@ def qc_approve(tid: int, payload: dict = Body(default={}), db: Session = Depends
     except Exception:
         pass
     db.commit()
+    # QC technical acceptance -> project-based editor ki earning ko technical_ok (best-effort)
+    try:
+        import editor_finance as _ef
+        _ef.mark_technical_ok(db, "NORMAL_TASK", t.id)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
     return {"ok": True, "lifecycle": t.lifecycle}
 
 
@@ -2238,35 +2248,86 @@ def mark_completed(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_or
 
 # ============================================================ TEAM / WORKLOAD
 # ---- Production Team management (PM-accessible; reuses the admin logic) ----
+# ===== PM team-user management — SECURITY (spec §4, A10/A11) =====
+# PM in endpoints ko Admin functions se re-use karta hai, par:
+#  - PM ko kabhi kisi editor ka PASSWORD/credential nahi dikhta (list/detail scrub).
+#  - PM ek PROJECT_BASED editor ka account manage / password-reset / delete NAHI kar sakta.
+#  - PM compensation_type (SALARIED/PROJECT_BASED) set/change NAHI kar sakta — wo Admin-only.
+# Admin ke apne /api/admin/* endpoints alag hain (full access), ye sirf PM-namespace lock karta hai.
+def _pm_is_pm(me):
+    return str(getattr(getattr(me, "role", None), "value", getattr(me, "role", ""))) == "production_manager"
+
+
+def _pm_user_comp(db, uid):
+    from models import ProductionStaffProfile
+    sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == int(uid or 0)).first()
+    return (getattr(sp, "compensation_type", "") or "SALARIED").strip().upper() if sp else "SALARIED"
+
+
+def _pm_scrub_credentials(rows):
+    out = []
+    for r in (rows or []):
+        if isinstance(r, dict):
+            r = dict(r)
+            r.pop("password", None)
+            r.pop("plain_password", None)
+        out.append(r)
+    return out
+
+
+def _pm_guard_project_editor(db, me, uid):
+    """PM ek PROJECT_BASED editor ka account touch nahi kar sakta (compensation/credentials Admin-only)."""
+    if _pm_is_pm(me) and _pm_user_comp(db, uid) == "PROJECT_BASED":
+        raise HTTPException(403, "This editor is managed by Admin (project-based). PM cannot change their account, password or compensation.")
+
+
 @router.get("/team-users")
 def pm_team_users(role: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     import admin_routes as _ar
-    return _ar.list_production_users(role=role, db=db, _=None)
+    rows = _ar.list_production_users(role=role, db=db, _=None)
+    if _pm_is_pm(me):
+        rows = _pm_scrub_credentials(rows)   # PM ko kisi ka password nahi
+    return rows
 
 
 @router.post("/team-users")
 def pm_team_users_create(payload: dict = Body(...), db: Session = Depends(get_db),
                          me=Depends(get_pm_or_admin)):
     import admin_routes as _ar
-    return _ar.create_production_user(payload=payload, db=db, _=None)
+    if _pm_is_pm(me):
+        payload = dict(payload or {})
+        payload.pop("compensation_type", None)   # PM project-based editor create nahi kar sakta
+    out = _ar.create_production_user(payload=payload, db=db, _=None)
+    if _pm_is_pm(me) and isinstance(out, dict):
+        out = _pm_scrub_credentials([out])[0]
+    return out
 
 
 @router.patch("/team-users/{uid}")
 def pm_team_users_update(uid: int, payload: dict = Body(...), db: Session = Depends(get_db),
                          me=Depends(get_pm_or_admin)):
     import admin_routes as _ar
-    return _ar.update_production_user(uid=uid, payload=payload, db=db, _=None)
+    _pm_guard_project_editor(db, me, uid)
+    if _pm_is_pm(me):
+        payload = dict(payload or {})
+        payload.pop("compensation_type", None)   # PM compensation change nahi kar sakta
+    out = _ar.update_production_user(uid=uid, payload=payload, db=db, _=None)
+    if _pm_is_pm(me) and isinstance(out, dict):
+        out = _pm_scrub_credentials([out])[0]
+    return out
 
 
 @router.delete("/team-users/{uid}")
 def pm_team_users_delete(uid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     import admin_routes as _ar
+    _pm_guard_project_editor(db, me, uid)
     return _ar.delete_production_user(uid=uid, db=db, _=None)
 
 
 @router.post("/team-users/{uid}/reset-password")
 def pm_team_users_reset(uid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     import admin_routes as _ar
+    _pm_guard_project_editor(db, me, uid)   # PM project-editor ka password reset nahi kar sakta
     return _ar.reset_production_password(uid=uid, payload=None, db=db, _=None)
 
 
@@ -3267,6 +3328,17 @@ def pm_performance_staff(role: str, id: int, period: str = "month",
         raise HTTPException(404, "Staff not found")
     now = datetime.utcnow()
     name = sp.user.name if sp.user else ""
+    # A48 / §18: a PROJECT_BASED editor has NO comparative performance — and this holds even if the
+    # caller spoofs the `role` param. Resolve by the stored profile, not the client-supplied role.
+    if pc.is_project_based_editor(sp):
+        items = PC.get_editor_work_items(db, sp.id, now=now)
+        edited = sum(1 for it in items if it.get("edited"))
+        approved = sum(1 for it in items if it.get("approved"))
+        pending = sum(1 for it in items if it.get("pending"))
+        return {"role": "editor", "name": name, "project_based": True, "comparative": False,
+                "rank": None, "total_ranked": 0, "score": None, "score_breakdown": None,
+                "operational": {"items": len(items), "edited": edited, "approved": approved, "pending": pending},
+                "detail": "Project-based editor — comparative performance and ranking are not applicable. Operational progress and QC are tracked separately."}
     if role == "graphics":
         items = PC.get_graphics_work_items(db, sp.id, now=now)
         perf = PC.compute_graphics_performance(sp, items, period, ref=now)
@@ -4533,6 +4605,16 @@ def prod_chapter_qc(payload: dict = Body(...), db: Session = Depends(get_db),
             pc.notify(db, _ed_uid, "QC Approved",
                       f'Your edit of "{row.title}" passed QC.', "video_task", link=str(row.task_id))
         db.commit()
+        # QC technical acceptance -> project-based editor ki chapter earning ko technical_ok
+        try:
+            import editor_finance as _ef
+            _ef.mark_technical_ok(db, "PROJECT_CHAPTER", row.id)
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
         return {"ok": True, "qc_status": row.qc_status, "lifecycle": new_lc,
                 "publish_blocked": _chapter_publish_blocked(row)}
     if action == "changes":

@@ -9524,6 +9524,9 @@ def _prod_user_out(db, u):
         row["target_long"] = getattr(sp, "target_long", None) if sp else None
         row["target_short"] = getattr(sp, "target_short", None) if sp else None
         row["target_thumbnails"] = getattr(sp, "target_thumbnails", None) if sp else None
+        # Compensation arrangement — Admin-only serializer (PM-facing outputs me NAHI jaata)
+        row["compensation_type"] = ((getattr(sp, "compensation_type", "") or "SALARIED").strip().upper()
+                                     if sp else "SALARIED")
     return row
 
 
@@ -9535,6 +9538,28 @@ def list_production_users(role: str = "", db: Session = Depends(get_db), _=Depen
     if role in _PROD_ROLES:
         q = q.filter(User.role == role)
     return [_prod_user_out(db, u) for u in q.order_by(User.name.asc()).all()]
+
+
+@router.post("/production-users/{uid}/compensation")
+def set_editor_compensation(uid: int, payload: dict = Body(...),
+                            db: Session = Depends(get_db), me=Depends(get_admin)):
+    """ADMIN-only: ek editor ko SALARIED <-> PROJECT_BASED set karo. Sirf field set hoti hai —
+    koi paisa/rate/history change nahi (wo baad ke finance phases me). PM ye nahi kar sakta."""
+    from models import ProductionStaffProfile, UserRole as _UR
+    want = (str((payload or {}).get("compensation_type") or "")).strip().upper()
+    if want not in ("SALARIED", "PROJECT_BASED"):
+        raise HTTPException(400, "compensation_type must be SALARIED or PROJECT_BASED")
+    u = db.query(User).filter(User.id == uid).first()
+    if not u or u.role != _UR.editor:
+        raise HTTPException(404, "Editor not found")
+    sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == uid).first()
+    if not sp:
+        raise HTTPException(404, "Editor profile not found")
+    # Note: PROJECT_BASED -> SALARIED conversion jab financial history ho, wo spec §0.4 ke
+    # tahat alag approval se hoga. Abhi koi finance data nahi, isliye simple set safe hai.
+    sp.compensation_type = want
+    db.commit()
+    return {"ok": True, "compensation_type": want}
 
 
 @router.post("/production-users")
@@ -9656,6 +9681,17 @@ def _purge_user_references(db, user_id):
     except Exception:
         cols = []
 
+    # A12 / §22: never let generic FK cleanup touch project-editor financial ledger tables,
+    # even if a future column happens to reference users.id.
+    try:
+        import editor_finance as _ef
+        _fin_skip = set(_ef.FINANCE_TABLES)
+    except Exception:
+        _fin_skip = {"editor_comp_agreements", "editor_rate_rules", "editor_engagements",
+                     "editor_work_submissions", "editor_earnings", "editor_payout_statements",
+                     "editor_statement_lines", "editor_statement_payments"}
+    cols = [(tb, col, nullable) for (tb, col, nullable) in cols if tb not in _fin_skip]
+
     def _run(sql):
         try:
             with db.begin_nested():
@@ -9686,6 +9722,44 @@ def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(ge
         raise HTTPException(status_code=400, detail="Not a production user")
     unassigned = 0
     _EDIT_LC = ("editor_assigned", "editing", "editing_paused", "editing_soon", "editing_done")
+    # ===== A12 / §22: data-retention safety — an editor with ANY compensation history is
+    # ARCHIVED (deactivated), never destructively deleted. Finance ledger + statements survive.
+    if role == "editor":
+        try:
+            import editor_finance as _ef
+            from models import VideoTaskChapter as _VC0
+            _sp0 = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+            if _sp0 and _ef.has_financial_history(db, _sp0.id):
+                # free active operational work so it can be reassigned (no new work for this account),
+                # but KEEP the profile and every financial record.
+                for t in db.query(VideoTask).filter(VideoTask.editor_id == _sp0.id).all():
+                    t.editor_id = None
+                    if getattr(t, "lifecycle", None) in _EDIT_LC:
+                        t.lifecycle = "approved"
+                    unassigned += 1
+                try:
+                    for c in db.query(_VC0).filter(_VC0.editor_id == _sp0.id).all():
+                        c.editor_id = None
+                        c.editor_inherited = False
+                        if (getattr(c, "lifecycle", "") or "") in _EDIT_LC:
+                            c.lifecycle = "approved"
+                        if (getattr(c, "edit_state", "") or "") in ("assigned", "editing", "paused"):
+                            c.edit_state = ""
+                        unassigned += 1
+                    for t in db.query(VideoTask).filter(VideoTask.project_editor_id == _sp0.id).all():
+                        t.project_editor_id = None
+                except Exception:
+                    pass
+                u.is_active = False   # deactivate: no new login/assignment; records retained
+                db.commit()
+                summ = _ef.financial_history_summary(db, _sp0.id)
+                return {"ok": True, "deleted": False, "archived": True, "deactivated": True,
+                        "unassigned": unassigned, "history": summ,
+                        "detail": "This editor has payout history, so the account was archived (deactivated) instead of deleted. All rate agreements, earnings, statements and payments are preserved."}
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     if role == "youtuber":
         yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
         if yp:
@@ -9936,3 +10010,366 @@ def admin_notify_log_detail(batch_key: str, db: Session = Depends(get_db), me=De
     out.sort(key=lambda r: (r["read"], r["name"].lower()), reverse=True)
     return {"batch_key": batch_key, "title": rows[0].title,
             "label": rows[0].batch_label or "Everyone", "recipients": out}
+
+
+# ================= PROJECT-BASED EDITOR COMPENSATION — RATE PLAN (Phase 3) =================
+# Confidential: gated by get_payout_admin (payout must be UNLOCKED). Amounts in paise.
+# PM never reaches these. SALARIED editors are rejected. Existing finance systems untouched.
+def _ecomp_staff_or_400(db, staff_id):
+    from models import ProductionStaffProfile
+    sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == int(staff_id or 0)).first()
+    if not sp or sp.staff_role != "editor":
+        raise HTTPException(404, "Editor not found")
+    if (getattr(sp, "compensation_type", "") or "SALARIED").strip().upper() != "PROJECT_BASED":
+        raise HTTPException(400, "This editor is SALARIED — rates apply only to project-based editors.")
+    return sp
+
+
+def _ecomp_agreement_out(db, ag):
+    import editor_finance as ef
+    from models import EditorRateRule
+    rules = (db.query(EditorRateRule).filter(EditorRateRule.agreement_id == ag.id)
+             .order_by(EditorRateRule.order_index.asc(), EditorRateRule.id.asc()).all())
+    rrows = [{"id": r.id, "order_index": r.order_index, "label": r.label or "",
+              "video_type": r.video_type or "", "editing_type": r.editing_type or "",
+              "duration_min_seconds": r.duration_min_seconds, "duration_max_seconds": r.duration_max_seconds,
+              "pricing_strategy": r.pricing_strategy or ef.STRAT_BAND,
+              "amount_minor": int(r.amount_minor or 0),
+              "amount_display": ef.minor_to_display(r.amount_minor, ag.currency),
+              "is_urgent": bool(r.is_urgent), "days_required": r.days_required or "",
+              "active": bool(r.active)} for r in rules]
+    return {"id": ag.id, "staff_id": ag.staff_id, "currency": ag.currency or "INR",
+            "version": ag.version or 1, "state": ag.state or "draft", "notes": ag.notes or "",
+            "created_at": ag.created_at.isoformat() if ag.created_at else None,
+            "published_at": ag.published_at.isoformat() if ag.published_at else None,
+            "rules": rrows,
+            "overlaps": ef.detect_overlaps([r for r in rules if r.active])}
+
+
+@router.get("/editor-comp/{staff_id}")
+def ecomp_get(staff_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    from models import EditorCompensationAgreement as _AG
+    sp = _ecomp_staff_or_400(db, staff_id)
+    active = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "active")
+              .order_by(_AG.version.desc()).first())
+    draft = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft")
+             .order_by(_AG.id.desc()).first())
+    return {"staff_id": sp.id, "currency": "INR",
+            "active": _ecomp_agreement_out(db, active) if active else None,
+            "draft": _ecomp_agreement_out(db, draft) if draft else None}
+
+
+@router.post("/editor-comp/{staff_id}/seed-draft")
+def ecomp_seed_draft(staff_id: int, payload: dict = Body(default={}),
+                     db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Owner's 8-row source rate card ko DRAFT ke roop me seed karo (editable). Auto-publish nahi."""
+    import editor_finance as ef
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    sp = _ecomp_staff_or_400(db, staff_id)
+    if db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft").first():
+        raise HTTPException(400, "A draft already exists for this editor — edit it or discard it first.")
+    currency = (str((payload or {}).get("currency") or "INR")).strip().upper() or "INR"
+    last = db.query(_AG).filter(_AG.staff_id == sp.id).order_by(_AG.version.desc()).first()
+    ver = (last.version + 1) if last else 1
+    ag = _AG(staff_id=sp.id, currency=currency, version=ver, state="draft",
+             created_by=getattr(me, "id", None),
+             notes="Imported from source rate card — confirm currency, duration boundaries (15:00 & 20:00 overlap) and terms before publishing. Footer: " + ef.SOURCE_FOOTER)
+    db.add(ag); db.flush()
+    for rd in ef.draft_rule_dicts():
+        db.add(_RR(agreement_id=ag.id, **rd))
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/rule/save")
+def ecomp_rule_save(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Add/update a rule on a DRAFT agreement. amount_rupees (UI) -> paise. Published plans are locked."""
+    import editor_finance as ef
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    p = payload or {}
+    ag = db.query(_AG).filter(_AG.id == int(p.get("agreement_id") or 0)).first()
+    if not ag:
+        raise HTTPException(404, "Agreement not found")
+    if ag.state != "draft":
+        raise HTTPException(400, "Only a DRAFT plan can be edited. Published plans are version-locked.")
+    strat = (str(p.get("pricing_strategy") or ef.STRAT_BAND)).strip().upper()
+    if strat not in ef.PRICING_STRATEGIES:
+        raise HTTPException(400, "Invalid pricing strategy")
+    try:
+        amount_minor = (ef.rupees_to_minor(p.get("amount_rupees")) if p.get("amount_rupees") is not None
+                        else int(p.get("amount_minor") or 0))
+    except Exception:
+        raise HTTPException(400, "Invalid amount")
+    if amount_minor < 0:
+        raise HTTPException(400, "Amount cannot be negative")
+    def _sec(v):
+        if v in (None, "", "null"):
+            return None
+        try:
+            return ef.parse_duration_to_seconds(v)
+        except Exception:
+            raise HTTPException(400, "Invalid duration")
+    lo, hi = _sec(p.get("duration_min")), _sec(p.get("duration_max"))
+    if lo is not None and hi is not None and hi < lo:
+        raise HTTPException(400, "Max duration cannot be less than min duration")
+    rid = int(p.get("id") or 0)
+    if rid:
+        r = db.query(_RR).filter(_RR.id == rid, _RR.agreement_id == ag.id).first()
+        if not r:
+            raise HTTPException(404, "Rule not found")
+    else:
+        r = _RR(agreement_id=ag.id,
+                order_index=(db.query(_RR).filter(_RR.agreement_id == ag.id).count()))
+        db.add(r)
+    r.label = (str(p.get("label") or "")).strip()[:40]
+    r.video_type = (str(p.get("video_type") or "")).strip()[:60]
+    r.editing_type = (str(p.get("editing_type") or "")).strip()[:80]
+    r.duration_min_seconds = lo
+    r.duration_max_seconds = hi
+    r.pricing_strategy = strat
+    r.amount_minor = amount_minor
+    r.is_urgent = bool(p.get("is_urgent"))
+    r.days_required = (str(p.get("days_required") or "")).strip()[:40]
+    if p.get("active") is not None:
+        r.active = bool(p.get("active"))
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/rule/{rule_id}/archive")
+def ecomp_rule_archive(rule_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    r = db.query(_RR).filter(_RR.id == int(rule_id)).first()
+    if not r:
+        raise HTTPException(404, "Rule not found")
+    ag = db.query(_AG).filter(_AG.id == r.agreement_id).first()
+    if not ag or ag.state != "draft":
+        raise HTTPException(400, "Only rules in a DRAFT plan can be archived here.")
+    r.active = False
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/{agreement_id}/publish")
+def ecomp_publish(agreement_id: int, payload: dict = Body(default={}),
+                  db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Publish a DRAFT -> active. Overlaps ko Admin ko acknowledge karna padta hai (ack_overlaps=true)."""
+    import editor_finance as ef
+    from datetime import datetime as _dt
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    ag = db.query(_AG).filter(_AG.id == int(agreement_id)).first()
+    if not ag:
+        raise HTTPException(404, "Agreement not found")
+    if ag.state != "draft":
+        raise HTTPException(400, "This plan is not a draft.")
+    rules = db.query(_RR).filter(_RR.agreement_id == ag.id, _RR.active == True).all()  # noqa: E712
+    if not rules:
+        raise HTTPException(400, "Add at least one active rule before publishing.")
+    overlaps = ef.detect_overlaps(rules)
+    if overlaps and not bool((payload or {}).get("ack_overlaps")):
+        raise HTTPException(409, "Overlapping rules found (e.g. 15:00 / 20:00). Resolve the boundaries, or confirm to publish with overlaps acknowledged.")
+    # archive any existing active version, then activate this one
+    for old in db.query(_AG).filter(_AG.staff_id == ag.staff_id, _AG.state == "active").all():
+        old.state = "archived"
+        old.effective_to = _dt.utcnow()
+    ag.state = "active"
+    ag.published_at = _dt.utcnow()
+    ag.effective_from = _dt.utcnow()
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/{staff_id}/discard-draft")
+def ecomp_discard_draft(staff_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    sp = _ecomp_staff_or_400(db, staff_id)
+    draft = db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft").first()
+    if not draft:
+        raise HTTPException(404, "No draft to discard")
+    db.query(_RR).filter(_RR.agreement_id == draft.id).delete()
+    db.delete(draft)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/editor-comp/preview-match")
+def ecomp_preview_match(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Admin: sample duration/type pe rule matching preview (publish se pehle verify)."""
+    import editor_finance as ef
+    from models import EditorRateRule as _RR, EditorCompensationAgreement as _AG
+    p = payload or {}
+    ag = db.query(_AG).filter(_AG.id == int(p.get("agreement_id") or 0)).first()
+    if not ag:
+        raise HTTPException(404, "Agreement not found")
+    try:
+        sec = ef.parse_duration_to_seconds(p.get("duration"))
+    except Exception as e:
+        raise HTTPException(400, str(e) or "Invalid duration")
+    rules = db.query(_RR).filter(_RR.agreement_id == ag.id).all()
+    res = ef.match_rate(rules, sec, p.get("video_type"), p.get("editing_type"), bool(p.get("urgent")))
+    res["amount_display"] = (ef.minor_to_display(res["amount_minor"], ag.currency)
+                             if res.get("amount_minor") is not None else None)
+    res["duration_seconds"] = sec
+    return res
+
+
+# ================= PROJECT EDITOR — FINANCIAL REVIEW (Phase 5) =================
+@router.get("/editor-earnings")
+def admin_editor_earnings(status: str = "", staff_id: int = 0,
+                          db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Finance review queue across project-based editors. Filter by financial_state / editor."""
+    import editor_finance as _ef
+    rows = _ef.admin_earnings_queue(db, status=(status or None), staff_id=(staff_id or None))
+    return {"items": rows,
+            "counts": {
+                "pending_verification": sum(1 for r in rows if r["financial_state"] == "pending_verification"),
+                "estimate": sum(1 for r in rows if r["financial_state"] == "estimate"),
+                "approved": sum(1 for r in rows if r["financial_state"] == "approved"),
+                "on_hold": sum(1 for r in rows if r["financial_state"] == "on_hold"),
+                "rejected": sum(1 for r in rows if r["financial_state"] == "rejected"),
+            }}
+
+
+@router.post("/editor-earnings/{earning_id}/decide")
+def admin_editor_earning_decide(earning_id: int, payload: dict = Body(...),
+                                db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Admin financial decision on one earning: approve | hold | reject. amount_rupees optional
+    (ambiguous/custom resolve). Payable tabhi jab QC technical_ok + approved + amount."""
+    import editor_finance as _ef
+    p = payload or {}
+    decision = (str(p.get("decision") or "")).strip().lower()
+    if decision not in ("approve", "hold", "reject"):
+        raise HTTPException(400, "decision must be approve, hold or reject")
+    amt = None
+    if p.get("amount_rupees") not in (None, ""):
+        try:
+            amt = _ef.rupees_to_minor(p.get("amount_rupees"))
+        except Exception:
+            raise HTTPException(400, "Invalid amount")
+    try:
+        er = _ef.admin_decide_earning(db, earning_id, decision, amount_minor=amt,
+                                      note=(p.get("note") or ""), actor_id=getattr(me, "id", None))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not er:
+        raise HTTPException(404, "Earning not found")
+    db.commit()
+    # notify the editor on a decision (no amount in a reject/hold title; editor sees own detail)
+    try:
+        from models import ProductionStaffProfile as _SP
+        sp = db.query(_SP).filter(_SP.id == er.staff_id).first()
+        if sp and sp.user_id:
+            import production_core as _pc
+            _msg = {"approve": "Your edit's payment was approved.",
+                    "hold": "Your edit's payment is on hold — Admin will review.",
+                    "reject": "Your edit's payment was not approved."}.get(decision, "Payment updated.")
+            _pc.notify(db, sp.user_id, "Payout update", _msg, "payout")
+    except Exception:
+        pass
+    return {"ok": True, "financial_state": er.financial_state,
+            "eligible_at": er.eligible_at.isoformat() if er.eligible_at else None}
+
+
+# ===== Project-based editor: monthly payout statements (Phase 5b) — finance Admin only =====
+@router.get("/editor-statements")
+def admin_editor_statements(period: str = "", db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Monthly settlement overview across project editors for `period` (IST YYYY-MM)."""
+    import editor_finance as _ef
+    per = (period or _ef.current_ist_period())
+    try:
+        rows = _ef.admin_statements_overview(db, per)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"period": per, "items": rows}
+
+
+@router.post("/editor-statements/build")
+def admin_editor_statement_build(payload: dict = Body(...), db: Session = Depends(get_db),
+                                 me=Depends(get_payout_admin)):
+    """Create (or fetch) the draft statement for an editor+period and return its full detail."""
+    import editor_finance as _ef
+    p = payload or {}
+    staff_id = p.get("staff_id"); period = p.get("period")
+    if not staff_id or not period:
+        raise HTTPException(400, "staff_id and period required")
+    try:
+        st = _ef.get_or_create_draft(db, int(staff_id), period)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    db.commit()
+    return _ef.statement_detail(db, st.id)
+
+
+@router.get("/editor-statements/{statement_id}")
+def admin_editor_statement_detail(statement_id: int, db: Session = Depends(get_db),
+                                  me=Depends(get_payout_admin)):
+    import editor_finance as _ef
+    d = _ef.statement_detail(db, statement_id)
+    if not d:
+        raise HTTPException(404, "Statement not found")
+    return d
+
+
+@router.post("/editor-statements/{statement_id}/adjustment")
+def admin_editor_statement_adjustment(statement_id: int, payload: dict = Body(...),
+                                      db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Set an authorized +/- adjustment on a DRAFT statement (e.g. correction, add-on)."""
+    import editor_finance as _ef
+    p = payload or {}
+    rupees = p.get("amount_rupees", 0)
+    try:
+        # allow negative adjustments
+        neg = str(rupees).strip().startswith("-")
+        minor = _ef.rupees_to_minor(str(rupees).lstrip("-"))
+        if neg:
+            minor = -minor
+        st = _ef.set_statement_adjustment(db, statement_id, minor, note=(p.get("note") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not st:
+        raise HTTPException(404, "Statement not found")
+    db.commit()
+    return _ef.statement_detail(db, st.id)
+
+
+@router.post("/editor-statements/{statement_id}/finalize")
+def admin_editor_statement_finalize(statement_id: int, db: Session = Depends(get_db),
+                                    me=Depends(get_payout_admin)):
+    """Freeze the statement (snapshot approved lines, lock totals, assign ID). Idempotent."""
+    import editor_finance as _ef
+    st = _ef.finalize_statement(db, statement_id, actor_id=getattr(me, "id", None))
+    if not st:
+        raise HTTPException(404, "Statement not found")
+    db.commit()
+    # notify the editor that a statement is ready
+    try:
+        from models import ProductionStaffProfile as _SP
+        import production_core as _pc
+        sp = db.query(_SP).filter(_SP.id == st.staff_id).first()
+        if sp and sp.user_id:
+            _pc.notify(db, sp.user_id, "Payout statement ready",
+                       "Your %s payout statement is finalized." % st.period, "payout")
+    except Exception:
+        pass
+    return _ef.statement_detail(db, st.id)
+
+
+@router.post("/editor-statements/{statement_id}/payment")
+def admin_editor_statement_payment(statement_id: int, payload: dict = Body(...),
+                                   db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Record a payment allocation (bookkeeping; does not transfer money)."""
+    import editor_finance as _ef
+    p = payload or {}
+    if p.get("amount_rupees") in (None, ""):
+        raise HTTPException(400, "amount_rupees required")
+    try:
+        amt = _ef.rupees_to_minor(p.get("amount_rupees"))
+        pm = _ef.record_statement_payment(db, statement_id, amt, method=(p.get("method") or ""),
+                                          reference=(p.get("reference") or ""),
+                                          actor_id=getattr(me, "id", None), note=(p.get("note") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not pm:
+        raise HTTPException(404, "Statement not found")
+    db.commit()
+    return _ef.statement_detail(db, statement_id)

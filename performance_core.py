@@ -544,6 +544,8 @@ def compute_editor_leaderboard(db, category, period="month", ref=None):
     eds = db.query(ProductionStaffProfile).filter(
         ProductionStaffProfile.staff_role == "editor",
         ProductionStaffProfile.is_active == True).all()  # noqa: E712
+    # PROJECT_BASED editors salary comparison/leaderboard me nahi aate (project-payout spec §5/§18)
+    eds = [e for e in eds if (getattr(e, "compensation_type", None) or "SALARIED").strip().upper() != "PROJECT_BASED"]
     rows = []
     for e in eds:
         spec = resolve_specialization(e)

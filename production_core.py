@@ -277,6 +277,27 @@ def staff_profile(db, user):
         ProductionStaffProfile.user_id == user.id).first()
 
 
+# ===== Project-based editor compensation (additive) =====
+COMP_SALARIED = "SALARIED"
+COMP_PROJECT = "PROJECT_BASED"
+
+
+def editor_compensation_type(sp):
+    """Staff profile ka compensation arrangement — NULL/empty/unknown => SALARIED (safe default)."""
+    v = (getattr(sp, "compensation_type", None) or "").strip().upper()
+    return COMP_PROJECT if v == COMP_PROJECT else COMP_SALARIED
+
+
+def is_project_based_editor(sp):
+    return editor_compensation_type(sp) == COMP_PROJECT
+
+
+def is_salary_comparison_eligible(sp):
+    """Sirf SALARIED editors hi salary performance comparison/rank/leaderboard me aate hain.
+    PROJECT_BASED editors ko har ranking/denominator/award se bahar rakha jaata hai."""
+    return editor_compensation_type(sp) != COMP_PROJECT
+
+
 def youtuber_profile(db, user):
     if user is None:
         return None
@@ -1245,6 +1266,8 @@ def _ensure_production_columns():
         "ALTER TABLE production_staff_profiles ADD COLUMN target_long INTEGER",
         "ALTER TABLE production_staff_profiles ADD COLUMN target_short INTEGER",
         "ALTER TABLE production_staff_profiles ADD COLUMN target_thumbnails INTEGER",
+        # ---- project-based editor compensation (additive; existing rows backfill to SALARIED) ----
+        "ALTER TABLE production_staff_profiles ADD COLUMN compensation_type VARCHAR(16) DEFAULT 'SALARIED'",
         # project-chapter graphics tracking (perf §9) — backward compatible, nullable
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_approved_at DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_revision INTEGER DEFAULT 0",
@@ -2477,6 +2500,8 @@ def editor_rank_and_streak(db, sp):
         eds = db.query(ProductionStaffProfile).filter(
             ProductionStaffProfile.staff_role == "editor",
             ProductionStaffProfile.is_active == True).all()
+        # PROJECT_BASED editors salary rank/streak/denominator me nahi (project-payout spec §18)
+        eds = [e for e in eds if is_salary_comparison_eligible(e)]
         # N+1 fix: pehle har editor ke liye ek COUNT query (N editors = N query). Ab ek hi GROUP BY
         # query se saare counts -> dict lookup. Output same (wahi per-editor count).
         _eids = [e.id for e in eds]
