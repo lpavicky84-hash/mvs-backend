@@ -353,26 +353,26 @@ def _assert_editor_chapter(db, me, cid):
 
 # ===== Phase 2c: editor PER-CHAPTER chat + timeline =====
 @router.get("/chapters/{cid}/chat")
-def editor_chapter_chat(cid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_chapter_chat(cid: int, pair: str = "", db: Session = Depends(get_db), me=Depends(get_editor)):
     _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_get
-    return chapter_chat_get(db, me, cid)
+    return chapter_chat_get(db, me, cid, pair=pair)
 
 
 @router.post("/chapters/{cid}/chat")
-def editor_chapter_chat_add(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+def editor_chapter_chat_add(cid: int, pair: str = "", payload: dict = Body(...), db: Session = Depends(get_db),
                             me=Depends(get_editor)):
     _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_add
-    return chapter_chat_add(db, me, cid, payload, "editor")
+    return chapter_chat_add(db, me, cid, payload, "editor", pair=pair)
 
 
 @router.post("/chapters/{cid}/chat-ping")
-def editor_chapter_chat_ping(cid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+def editor_chapter_chat_ping(cid: int, pair: str = "", payload: dict = Body(default={}), db: Session = Depends(get_db),
                              me=Depends(get_editor)):
     _assert_editor_chapter(db, me, cid)
     from video_tasks import chapter_chat_ping
-    return chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")))
+    return chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")), pair=pair)
 
 
 @router.post("/project-videos/{cid}/request-deadline")

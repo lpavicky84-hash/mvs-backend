@@ -1681,15 +1681,20 @@ def _vtc_unread_bulk(db, uid, task_ids):
                   .filter(VideoTaskChatRead.user_id == uid,
                           VideoTaskChatRead.task_id.in_(task_ids)).all()):
             reads[(r.task_id, r.audience or "creator")] = r.last_read_id or 0
+        # Har audience apni ALAG category me — warna review / direct-pair / per-chapter messages
+        # galti se "teacher" me gin ke "Chat with Teacher" pe unread dikha dete the.
         _catmap = {"creator": "teacher", "": "teacher", None: "teacher",
-                   "internal": "graphics", "editor": "editor"}
+                   "internal": "graphics", "editor": "editor",
+                   "review": "review", "te_ed": "te_ed", "te_gf": "te_gf", "ed_gf": "ed_gf"}
         for c in (db.query(VideoTaskComment.id, VideoTaskComment.task_id,
                            VideoTaskComment.audience, VideoTaskComment.user_id)
                   .filter(VideoTaskComment.task_id.in_(task_ids)).all()):
             aud = c.audience or "creator"
             lr = reads.get((c.task_id, aud), 0)
             if c.id > lr and c.user_id != uid:
-                cat = _catmap.get(aud, "teacher")
+                cat = _catmap.get(aud)
+                if not cat:
+                    continue   # unknown/other (e.g. per-chapter "chap<cid>...") — task unread me nahi
                 d = out.setdefault(c.task_id, {})
                 d[cat] = d.get(cat, 0) + 1
     except Exception:
@@ -2433,11 +2438,57 @@ def _chapter_chat_user_ids(db, project, chapter):
     return ids
 
 
-def _notify_chapter_chat(db, project, chapter, author_id, author_name, message):
+def _chapter_pair_user_ids(db, project, chapter, pair):
+    """Sirf iss PAIR ke participants (+ PM/Admin oversight) ki user-ids — taaki private pair ka
+    message snippet doosre logon ki notification me leak na ho."""
+    ids = set()
+    try:
+        for u in db.query(User).filter(User.role.in_(["admin", "production_manager"]),
+                                       User.is_active == True).all():
+            ids.add(u.id)   # PM/Admin har pair ke oversight me
+    except Exception:
+        pass
+    def _teacher_ids():
+        s = set()
+        try:
+            tp = _teacher_profile(db, project.teacher_id)
+            if tp and tp.user_id:
+                s.add(tp.user_id)
+            for cid2 in (_collab_extra_ids(project) or []):
+                ctp = db.query(TeacherProfile).filter(TeacherProfile.id == cid2).first()
+                if ctp and ctp.user_id:
+                    s.add(ctp.user_id)
+        except Exception:
+            pass
+        return s
+    def _staff_uid(sid):
+        if not sid:
+            return None
+        try:
+            from models import ProductionStaffProfile as _SP
+            s = db.query(_SP).filter(_SP.id == sid).first()
+            return s.user_id if s else None
+        except Exception:
+            return None
+    ed_uid = _staff_uid(getattr(chapter, "editor_id", None)) or _staff_uid(getattr(project, "project_editor_id", None))
+    gf_uid = _staff_uid(getattr(chapter, "graphics_id", None))
+    if pair in ("creator", "te_ed", "te_gf"):
+        ids |= _teacher_ids()
+    if pair in ("editor", "te_ed", "ed_gf") and ed_uid:
+        ids.add(ed_uid)
+    if pair in ("internal", "te_gf", "ed_gf") and gf_uid:
+        ids.add(gf_uid)
+    return ids
+
+
+def _notify_chapter_chat(db, project, chapter, author_id, author_name, message, pair=""):
     label = (getattr(chapter, "title", "") or "").strip() or (project.title or project.subject or "chapter")
     body = "%s: %s" % (author_name or "Someone", (message or "")[:120])
     link = "chap:%d" % int(getattr(chapter, "id", 0) or 0)   # frontend notifLinkOpen() isse exact chapter kholta hai
-    for uid in _chapter_chat_user_ids(db, project, chapter):
+    pair = (pair or "").strip()
+    recipients = (_chapter_pair_user_ids(db, project, chapter, pair)
+                  if pair in _CHAP_PAIRS else _chapter_chat_user_ids(db, project, chapter))
+    for uid in recipients:
         if uid and uid != author_id:
             try:
                 _vt_notify(db, uid, "Chapter chat — %s" % label, body, link=link)
@@ -2596,15 +2647,48 @@ def _chapter_row(db, cid):
     return c
 
 
-def _chap_aud(cid):
-    return "chap%d" % int(cid)
+# Per-chapter PAIR channels (task chat jaise alag-alag conversations, chapter ke andar).
+# audience = "chap<cid>_<pair>". Bina pair ke "chap<cid>" = purana shared thread (back-compat).
+#   creator  = PM <-> Teacher      editor   = PM <-> Editor      internal = PM <-> Graphics
+#   te_ed    = Teacher <-> Editor  te_gf    = Teacher <-> Graphics  ed_gf  = Editor <-> Graphics
+_CHAP_PAIRS = ("creator", "editor", "internal", "te_ed", "te_gf", "ed_gf")
+_PAIR_ROLES = {
+    "creator":  {"teacher", "production_manager", "admin"},
+    "editor":   {"editor", "production_manager", "admin"},
+    "internal": {"graphics", "production_manager", "admin"},
+    "te_ed":    {"teacher", "editor", "production_manager", "admin"},
+    "te_gf":    {"teacher", "graphics", "production_manager", "admin"},
+    "ed_gf":    {"editor", "graphics", "production_manager", "admin"},
+}
 
 
-def chapter_chat_get(db, user, cid):
+def _chap_aud(cid, pair=None):
+    base = "chap%d" % int(cid)
+    pair = (pair or "").strip()
+    return (base + "_" + pair) if (pair in _CHAP_PAIRS) else base
+
+
+def _assert_chapter_pair(user, pair):
+    """Pair thread tabhi khulega jab viewer uss pair ka member ho (ya PM/Admin oversight).
+    Chapter-level access already _assert_chat_access se check ho chuka hota hai."""
+    pair = (pair or "").strip()
+    if not pair:
+        return
+    if pair not in _CHAP_PAIRS:
+        raise HTTPException(400, "Unknown conversation")
+    role = (getattr(user, "role", "") or "")
+    if role in ("admin", "production_manager"):
+        return
+    if role not in _PAIR_ROLES.get(pair, set()):
+        raise HTTPException(403, "You don't have access to this conversation")
+
+
+def chapter_chat_get(db, user, cid, pair=""):
     c = _chapter_row(db, cid)
     _assert_chat_access(db, user, c=c)
+    _assert_chapter_pair(user, pair)
     pid = c.task_id
-    aud = _chap_aud(cid)
+    aud = _chap_aud(cid, pair)
     _vtc_mark_read(db, user, pid, aud)
     _chat_touch(db, user, pid, aud)
     return {"comments": _vtc_list_v(db, pid, aud, getattr(user, "id", None)),
@@ -2612,11 +2696,12 @@ def chapter_chat_get(db, user, cid):
             "chapter_title": (c.title or "")}
 
 
-def chapter_chat_add(db, user, cid, payload, role):
+def chapter_chat_add(db, user, cid, payload, role, pair=""):
     c = _chapter_row(db, cid)
     _assert_chat_access(db, user, c=c)
+    _assert_chapter_pair(user, pair)
     pid = c.task_id
-    aud = _chap_aud(cid)
+    aud = _chap_aud(cid, pair)
     t = _project_or_404(db, pid)
     urls = _chat_resolve_urls(db, t, payload, user)
     msg = (payload.get("message") or "")
@@ -2638,17 +2723,18 @@ def chapter_chat_add(db, user, cid, payload, role):
         raise HTTPException(400, "Message cannot be empty")
     try:
         _notify_chapter_chat(db, t, c, getattr(user, "id", None),
-                             getattr(user, "name", ""), made[0].message)
+                             getattr(user, "name", ""), made[0].message, pair=pair)
     except Exception:
         pass
     db.commit()
     return {"ok": True, "comment": _vtc_out(db, made[0])}
 
 
-def chapter_chat_ping(db, user, cid, typing=False):
+def chapter_chat_ping(db, user, cid, typing=False, pair=""):
     c = _chapter_row(db, cid)
     _assert_chat_access(db, user, c=c)
-    aud = _chap_aud(cid)
+    _assert_chapter_pair(user, pair)
+    aud = _chap_aud(cid, pair)
     _chat_touch(db, user, c.task_id, aud, typing=bool(typing))
     return {"presence": _chat_other_presence(db, getattr(user, "id", None), c.task_id, aud)}
 
@@ -2722,23 +2808,23 @@ def _assert_teacher_chapter(db, current_user, cid):
 
 
 @router.get("/teacher/chapters/{cid}/chat")
-def vt_teacher_chapter_chat(cid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def vt_teacher_chapter_chat(cid: int, pair: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _assert_teacher_chapter(db, current_user, cid)
-    return chapter_chat_get(db, current_user, cid)
+    return chapter_chat_get(db, current_user, cid, pair=pair)
 
 
 @router.post("/teacher/chapters/{cid}/chat")
-def vt_teacher_chapter_chat_add(cid: int, payload: dict = Body(...),
+def vt_teacher_chapter_chat_add(cid: int, pair: str = "", payload: dict = Body(...),
                                 db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _assert_teacher_chapter(db, current_user, cid)
-    return chapter_chat_add(db, current_user, cid, payload, "teacher")
+    return chapter_chat_add(db, current_user, cid, payload, "teacher", pair=pair)
 
 
 @router.post("/teacher/chapters/{cid}/chat-ping")
-def vt_teacher_chapter_chat_ping(cid: int, payload: dict = Body(default={}),
+def vt_teacher_chapter_chat_ping(cid: int, pair: str = "", payload: dict = Body(default={}),
                                  db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _assert_teacher_chapter(db, current_user, cid)
-    return chapter_chat_ping(db, current_user, cid, typing=bool((payload or {}).get("typing")))
+    return chapter_chat_ping(db, current_user, cid, typing=bool((payload or {}).get("typing")), pair=pair)
 
 
 @router.get("/teacher/chapters/{cid}/timeline")

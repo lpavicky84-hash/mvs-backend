@@ -4436,23 +4436,24 @@ def pm_board_chapters(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)
 
 
 @router.get("/chapters/{cid}/chat")
-def pm_chapter_chat(cid: int, db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
+def pm_chapter_chat(cid: int, pair: str = "", db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
     import video_tasks as _vt
-    return _vt.chapter_chat_get(db, me, cid)
+    return _vt.chapter_chat_get(db, me, cid, pair=pair)
 
 
 @router.post("/chapters/{cid}/chat")
-def pm_chapter_chat_add(cid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+def pm_chapter_chat_add(cid: int, pair: str = "", payload: dict = Body(...), db: Session = Depends(get_db),
                         me=Depends(get_pm_or_admin)):
     import video_tasks as _vt
-    return _vt.chapter_chat_add(db, me, cid, payload, "production_manager")
+    _role = "admin" if (getattr(me, "role", "") == "admin") else "production_manager"
+    return _vt.chapter_chat_add(db, me, cid, payload, _role, pair=pair)
 
 
 @router.post("/chapters/{cid}/chat-ping")
-def pm_chapter_chat_ping(cid: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+def pm_chapter_chat_ping(cid: int, pair: str = "", payload: dict = Body(default={}), db: Session = Depends(get_db),
                          me=Depends(get_pm_or_admin)):
     import video_tasks as _vt
-    return _vt.chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")))
+    return _vt.chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")), pair=pair)
 
 
 @router.get("/chapters/{cid}/timeline")

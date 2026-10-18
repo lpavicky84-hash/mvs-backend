@@ -250,6 +250,36 @@ def gfx_project_chat_ping(pid: int, payload: dict = Body(default={}), db: Sessio
     return project_chat_ping(db, me, pid, typing=bool((payload or {}).get("typing")))
 
 
+# ===== PER-CHAPTER chat (parity with editor / PM / teacher) =====
+# Graphics designer sirf APNI assigned chapter ka chat khol sakta hai (_my_gfx_chapter
+# ownership check); andar shared _assert_chat_access bhi dubara enforce karta hai, isliye
+# kisi doosri chapter ka private thread leak nahi ho sakta.
+@router.get("/chapters/{cid}/chat")
+def gfx_chapter_chat(cid: int, pair: str = "", db: Session = Depends(get_db), me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    _my_gfx_chapter(db, sp, cid)
+    from video_tasks import chapter_chat_get
+    return chapter_chat_get(db, me, cid, pair=pair)
+
+
+@router.post("/chapters/{cid}/chat")
+def gfx_chapter_chat_add(cid: int, pair: str = "", payload: dict = Body(...), db: Session = Depends(get_db),
+                         me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    _my_gfx_chapter(db, sp, cid)
+    from video_tasks import chapter_chat_add
+    return chapter_chat_add(db, me, cid, payload, "graphics", pair=pair)
+
+
+@router.post("/chapters/{cid}/chat-ping")
+def gfx_chapter_chat_ping(cid: int, pair: str = "", payload: dict = Body(default={}), db: Session = Depends(get_db),
+                          me=Depends(get_graphics)):
+    sp = _me_staff(db, me)
+    _my_gfx_chapter(db, sp, cid)
+    from video_tasks import chapter_chat_ping
+    return chapter_chat_ping(db, me, cid, typing=bool((payload or {}).get("typing")), pair=pair)
+
+
 def _my_gtask(db, sp, tid):
     g = db.query(GraphicsTask).filter(GraphicsTask.task_id == int(tid)).first()
     if not g:

@@ -42,7 +42,9 @@ const ICONS={
   alert:_S+'<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   link2:_S+'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
   search:_S+'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-  chat:_S+'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>'
+  chat:_S+'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
+  team:_S+'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  image:_S+'<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
 function statCard(label,num,iconKey,accent,nav,blink){
@@ -13424,15 +13426,58 @@ function _pjOv(html){
   document.body.appendChild(ov);
 }
 function _pjOvClose(){ var o=document.getElementById('pj-ov'); if(o) o.remove(); }
+// Chapter chat ab TASK chat jaisa: role-wise alag-alag conversations ka menu (ek shared "All"
+// thread nahi). Har banda sirf apni conversations hi khol/padh sakta hai (backend pair access).
+function _pjMenuCss(){
+  if(document.getElementById('pjmenu-css')) return;
+  var s=document.createElement('style'); s.id='pjmenu-css';
+  s.textContent='.pjm-sub2{display:block;font-size:.68rem;font-weight:600;color:var(--text-muted,#8a7d5c);margin-top:1px;letter-spacing:0;text-transform:none}'
+    +'.pcm-opt-rv{border-color:rgba(201,138,46,.45);background:linear-gradient(180deg,rgba(201,138,46,.07),transparent)}'
+    +'.pcm-opt-rv:hover{border-color:#c98a2e}'
+    +'.pjm-div{display:flex;align-items:center;gap:9px;margin:9px 2px 3px;font-size:.6rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted,#a89a74)}'
+    +'.pjm-div::before,.pjm-div::after{content:"";flex:1 1 auto;height:1px;background:var(--border,#e7dfc6)}'
+    +'body.dark .pjm-div::before,body.dark .pjm-div::after{background:#2c405e}';
+  document.head.appendChild(s);
+}
 function _pjChatOpen(prefix, cid, title, mineRole){
   if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable'); return; }
   try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  _pjChatMenu(prefix, cid, title||'', mineRole||'production_manager');
+}
+function _pjMenuClose(){ var o=document.getElementById('pj-chat-menu'); if(o) o.remove(); }
+function _pjChatMenu(prefix, cid, title, mineRole){
+  try{ if(window._prodEnsureCSS) window._prodEnsureCSS(); }catch(e){}
+  _pjMenuCss();
+  var main=[], over=[];
+  if(mineRole==='editor'){ main=[['users','Chat with PM','editor'],['team','Chat with Teacher','te_ed'],['image','Chat with Graphics','ed_gf']]; }
+  else if(mineRole==='graphics'){ main=[['users','Chat with PM','internal'],['play','Chat with Editor','ed_gf']]; }
+  else if(mineRole==='teacher'){ main=[['users','Chat with PM','creator'],['play','Chat with Editor','te_ed'],['image','Chat with Graphics','te_gf']]; }
+  else { main=[['users','Chat with Teacher','creator'],['image','Chat with Graphics','internal'],['play','Chat with Editor','editor']];
+         over=[['team','Teacher ↔ Editor','te_ed','See what they discussed'],['team','Teacher ↔ Graphics','te_gf','Oversight view'],['team','Editor ↔ Graphics','ed_gf','Oversight view']]; }
+  var _row=function(o, rv){
+    var sub=o[3]?('<span class="pjm-sub2">'+esc(o[3])+'</span>'):'';
+    return '<button class="pcm-opt'+(rv?' pcm-opt-rv':'')+'" onclick="_pjMenuClose();_pjPairOpen(\''+prefix+'\','+cid+',\''+o[2]+'\',\''+_esc1(o[1])+'\',\''+mineRole+'\',\''+_esc1(title||'')+'\')">'+ic(o[0])+'<span class="pcm-label">'+esc(o[1])+sub+'</span><span class="pcm-arw">›</span></button>';
+  };
+  var html='<div class="pcm-list">'+main.map(function(o){return _row(o,false);}).join('')
+    +(over.length?('<div class="pjm-div"><span>Oversight</span></div>'+over.map(function(o){return _row(o,true);}).join('')):'')
+    +'</div>';
+  var old=document.getElementById('pj-chat-menu'); if(old) old.remove();
+  var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='pj-chat-menu';
+  dr.innerHTML='<div class="p-modal" style="max-width:400px"><div class="pd-head"><div class="h-title">Chapter Chat'+(title?(' — '+esc(title)):'')+'</div><button class="pd-x" onclick="_pjMenuClose()">&times;</button></div><div class="p-modal-body">'+html+'</div></div>';
+  dr.addEventListener('click',function(e){ if(e.target===dr) _pjMenuClose(); });
+  document.body.appendChild(dr);
+}
+function _pjPairOpen(prefix, cid, pair, label, mineRole, menuTitle){
+  if(typeof window._ytcOpen!=='function'){ toast('Chat is unavailable'); return; }
+  var base=prefix+'/chapters/'+cid+'/chat', q='?pair='+encodeURIComponent(pair);
+  var _back=function(){ _pjChatMenu(prefix, cid, menuTitle||'', mineRole); };
   window._ytcOpen({
-    getUrl:prefix+'/chapters/'+cid+'/chat', postUrl:prefix+'/chapters/'+cid+'/chat',
-    pingUrl:prefix+'/chapters/'+cid+'/chat-ping',
-    audience:'chap'+cid, mineRole:mineRole||'production_manager',
-    title:'Chapter Chat — '+(title||''), taskId:cid, barPortal:'', multiTray:true, roleFilter:true
+    getUrl:base+q, postUrl:base+q, pingUrl:prefix+'/chapters/'+cid+'/chat-ping'+q,
+    audience:'chap'+cid+'_'+pair, mineRole:mineRole,
+    title:label, taskId:cid, barPortal:'', multiTray:true, onBack:_back
   });
+  // send ke re-render me _chatBackFn clear ho jaye to bhi Back menu pe wapas laaye
+  window._pmChatReturn=_back;
 }
 function _pjTimelineOpen(prefix, cid){
   api(prefix+'/chapters/'+cid+'/timeline').then(function(r){
@@ -34227,8 +34272,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodVideoNeeds('+t.id+')">Video Needs</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodStatusHistory('+t.id+')">Timeline</button>';
-    var _cu=t.unread||{}; var _ctot=t.unread_total||((_cu.teacher||0)+(_cu.graphics||0)+(_cu.editor||0));
-    acts+='<button class="ptc-btn ptc-chat'+(_ctot>0?' chat-blink':'')+'" onclick="event.stopPropagation();prodChatMenu('+t.id+','+(_cu.teacher||0)+','+(_cu.graphics||0)+','+(_cu.editor||0)+')">\uD83D\uDCAC Chat'+(_ctot>0?' <span class="chat-badge">'+_ctot+'</span>':'')+'</button>';
+    var _cu=t.unread||{}; var _ctot=t.unread_total||((_cu.teacher||0)+(_cu.graphics||0)+(_cu.editor||0)+(_cu.review||0));
+    acts+='<button class="ptc-btn ptc-chat'+(_ctot>0?' chat-blink':'')+'" onclick="event.stopPropagation();prodChatMenu('+t.id+','+(_cu.teacher||0)+','+(_cu.graphics||0)+','+(_cu.editor||0)+','+(_cu.review||0)+')">\uD83D\uDCAC Chat'+(_ctot>0?' <span class="chat-badge">'+_ctot+'</span>':'')+'</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodEditTask('+t.id+')">Edit</button>';
     if(t.youtube_url) acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodNotifyStudents('+t.id+')">Send to Students</button>';
     acts+='<button class="ptc-btn" onclick="event.stopPropagation();prodMarkOld('+t.id+','+(t.is_old?'false':'true')+')">'+(t.is_old?'Mark New':'Mark Old')+'</button>';
