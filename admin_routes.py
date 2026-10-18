@@ -10283,6 +10283,19 @@ def admin_editor_statements(period: str = "", db: Session = Depends(get_db), me=
     return {"period": per, "items": rows}
 
 
+@router.post("/editor-earnings/{staff_id}/clear-lock")
+def admin_clear_editor_earnings_lock(staff_id: int, db: Session = Depends(get_db),
+                                     me=Depends(get_payout_admin)):
+    """Finance Admin clears a project editor's forgotten My-Earnings passcode so they can set a new one."""
+    from models import ProductionStaffProfile as _SP
+    sp = db.query(_SP).filter(_SP.id == int(staff_id)).first()
+    if not sp:
+        raise HTTPException(404, "Editor not found")
+    sp.earnings_passcode_hash = ""
+    db.commit()
+    return {"ok": True, "detail": "Earnings passcode cleared. The editor can set a new one."}
+
+
 @router.post("/editor-statements/build")
 def admin_editor_statement_build(payload: dict = Body(...), db: Session = Depends(get_db),
                                  me=Depends(get_payout_admin)):

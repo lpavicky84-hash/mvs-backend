@@ -1,6 +1,6 @@
 """Editor API (/api/editor). Editors only see and act on their own assigned tasks.
 Active editing time is measured from real EditingSession rows (excludes idle/paused)."""
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session, defer
 from sqlalchemy import func, or_, and_
 from datetime import datetime, date, timedelta
@@ -1425,12 +1425,13 @@ def editor_capability(db: Session = Depends(get_db), me=Depends(get_editor)):
 
 
 @router.get("/earnings")
-def editor_earnings(db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_earnings(request: Request = None, db: Session = Depends(get_db), me=Depends(get_editor)):
     """This editor's OWN private estimates/earnings. SALARIED editors get an empty, inert response."""
     import production_core as _pc, editor_finance as _ef
     sp = _me_staff(db, me)
     if not _pc.is_project_based_editor(sp):
         return {"is_project_based": False, "items": [], "summary": {}}
+    _check_earnings_lock(sp, me, request)
     items = _ef.editor_earnings_list(db, sp.id)
     # own active rate plan summary (own rates view)
     ag, rules = _ef.active_agreement_with_rules(db, sp.id)
@@ -1449,24 +1450,124 @@ def editor_earnings(db: Session = Depends(get_db), me=Depends(get_editor)):
                        for r in rules if r.active] if ag else [])}
 
 
+# ===== Earnings passcode lock (project-based editor privacy) =====
+# Editor apna khud ka passcode set karta hai; My Earnings us passcode ke peeche lock ho jaati hai
+# taaki koi doosra (uske khule portal pe bhi) uski earning na dekh paaye. Salaried editors ke liye
+# ye kuch nahi karta (unke paas earnings page hi nahi).
+_EARN_SESSION_MIN = 30
+
+
+def _earnings_token_ok(request, user_id):
+    if request is None:
+        return False
+    tok = request.headers.get("X-Earnings-Token") or ""
+    if not tok:
+        return False
+    try:
+        from security import decode_token
+        d = decode_token(tok) or {}
+        return d.get("scope") == "earnings" and str(d.get("sub")) == str(user_id)
+    except Exception:
+        return False
+
+
+def _check_earnings_lock(sp, me, request):
+    """Agar editor ne passcode set kiya hai to valid unlock token zaroori — warna 423 (locked)."""
+    if (getattr(sp, "earnings_passcode_hash", "") or ""):
+        if not _earnings_token_ok(request, getattr(me, "id", None)):
+            raise HTTPException(423, "Earnings locked")
+
+
+@router.get("/earnings/lock")
+def editor_earnings_lock_status(db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Lock status: whether a passcode is set for this editor's earnings."""
+    import production_core as _pc
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        return {"is_project_based": False, "has_passcode": False}
+    return {"is_project_based": True, "has_passcode": bool(getattr(sp, "earnings_passcode_hash", "") or "")}
+
+
+@router.post("/earnings/lock/set")
+def editor_earnings_lock_set(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Set or change the earnings passcode. Changing requires the current passcode."""
+    import production_core as _pc
+    from security import hash_password, verify_password, create_access_token
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        raise HTTPException(403, "Not available")
+    p = payload or {}
+    new_pc = str(p.get("passcode") or "").strip()
+    if len(new_pc) < 4:
+        raise HTTPException(400, "Passcode must be at least 4 characters.")
+    existing = getattr(sp, "earnings_passcode_hash", "") or ""
+    if existing:
+        old = str(p.get("old_passcode") or "")
+        if not verify_password(old, existing):
+            raise HTTPException(401, "Current passcode is incorrect.")
+    sp.earnings_passcode_hash = hash_password(new_pc)
+    db.commit()
+    tok = create_access_token({"sub": str(getattr(me, "id", "")), "scope": "earnings"},
+                              timedelta(minutes=_EARN_SESSION_MIN))
+    return {"ok": True, "token": tok, "minutes": _EARN_SESSION_MIN}
+
+
+@router.post("/earnings/lock/remove")
+def editor_earnings_lock_remove(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Remove the earnings lock (requires current passcode)."""
+    import production_core as _pc
+    from security import verify_password
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        raise HTTPException(403, "Not available")
+    existing = getattr(sp, "earnings_passcode_hash", "") or ""
+    if not existing:
+        return {"ok": True}
+    if not verify_password(str((payload or {}).get("passcode") or ""), existing):
+        raise HTTPException(401, "Passcode is incorrect.")
+    sp.earnings_passcode_hash = ""
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/earnings/unlock")
+def editor_earnings_unlock(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Verify the passcode and return a short-lived unlock token."""
+    import production_core as _pc
+    from security import verify_password, create_access_token
+    sp = _me_staff(db, me)
+    if not _pc.is_project_based_editor(sp):
+        raise HTTPException(403, "Not available")
+    existing = getattr(sp, "earnings_passcode_hash", "") or ""
+    if not existing:
+        raise HTTPException(400, "No passcode set.")
+    if not verify_password(str((payload or {}).get("passcode") or ""), existing):
+        raise HTTPException(401, "Wrong passcode.")
+    tok = create_access_token({"sub": str(getattr(me, "id", "")), "scope": "earnings"},
+                              timedelta(minutes=_EARN_SESSION_MIN))
+    return {"ok": True, "token": tok, "minutes": _EARN_SESSION_MIN}
+
+
 # ===== Project-based editor: own monthly payout statements (Phase 5b) =====
 @router.get("/statements")
-def editor_statements(db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_statements(request: Request = None, db: Session = Depends(get_db), me=Depends(get_editor)):
     """Own monthly payout statements (summary). SALARIED editors get an empty list."""
     import production_core as _pc, editor_finance as _ef
     sp = _me_staff(db, me)
     if not _pc.is_project_based_editor(sp):
         return {"is_project_based": False, "items": []}
+    _check_earnings_lock(sp, me, request)
     return {"is_project_based": True, "items": _ef.editor_statements_list(db, sp.id)}
 
 
 @router.get("/statements/{statement_id}")
-def editor_statement_detail(statement_id: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+def editor_statement_detail(statement_id: int, request: Request = None, db: Session = Depends(get_db), me=Depends(get_editor)):
     """Own statement detail (ownership enforced). PM never reaches this router."""
     import production_core as _pc, editor_finance as _ef
     sp = _me_staff(db, me)
     if not _pc.is_project_based_editor(sp):
         raise HTTPException(403, "Not available")
+    _check_earnings_lock(sp, me, request)
     d = _ef.statement_detail(db, statement_id)
     if not d or int(d["staff_id"]) != int(sp.id):
         raise HTTPException(404, "Statement not found")

@@ -714,6 +714,7 @@ async function _apiCore(path, method='GET', body=null) {
   const opts = { method, headers: { 'Content-Type':'application/json' } };
   if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   if (window._payoutToken) opts.headers['X-Payout-Token'] = window._payoutToken;
+  if (window._earnToken) opts.headers['X-Earnings-Token'] = window._earnToken;
   if (body) opts.body = JSON.stringify(body);
   const _ck=method+' '+path;
   if(method==='GET'&&!_API_NOCACHE.test(path)){
@@ -27271,11 +27272,17 @@ function _pesRow(x){
   }
   const money=hasStmt?('Total <b>'+esc(x.total_display||'')+'</b> · Paid <b>'+esc(x.paid_display||'')+'</b> · Bal <b>'+esc(x.outstanding_display||'')+'</b>')
                      :('Approved this month: <b>'+esc(x.approved_total_display||'')+'</b> ('+(x.approved_count||0)+' item'+((x.approved_count||0)===1?'':'s')+')');
+  right+='<button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;color:#6b7280" onclick="pesResetLock('+x.staff_id+',\''+_ape(x.editor_name||('Editor #'+x.staff_id)).replace(/\x27/g,"")+'\')" title="Clear a forgotten My-Earnings passcode">Reset earnings lock</button>';
   return '<div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">'
     +'<div style="min-width:0"><div style="font-weight:700">'+esc(x.editor_name||('Editor #'+x.staff_id))+' '+_pesStateChip(x.state)+(x.statement_no?(' <span style="font-size:12px;color:#6b7280">'+esc(x.statement_no)+'</span>'):'')+'</div>'
     +'<div style="font-size:12px;color:#6b7280;margin-top:3px">'+money+'</div></div>'
     +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+right+'</div></div>';
 }
+window.pesResetLock=async function(staffId,name){
+  if(!confirm('Reset the My-Earnings passcode for '+name+'? They will be able to set a new one. (Use this only if they forgot it.)')) return;
+  try{ await api('/api/admin/editor-earnings/'+staffId+'/clear-lock','POST',{}); toast('Earnings passcode cleared'); }
+  catch(e){ toast((e&&e.message)||'Could not reset',true); }
+};
 window.pesBuild=async function(staffId){
   const per=_aEarnMonth||curMonth();
   try{ await api('/api/admin/editor-statements/build','POST',{staff_id:staffId,period:per}); toast('Draft ready'); loadAEditorStatements(); }
@@ -28622,6 +28629,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodbody{flex:1;overflow-y:auto;padding:6px 26px 40px}',
 /* kpi cards */
 '.pk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:14px;margin:12px 0 24px}',
+/* dashboard KPI grid — balanced, capped columns (no cramped 8-across + lonely orphan row) */
+'.pk-grid.dashkpi{grid-template-columns:repeat(6,minmax(0,1fr))}',
+'@media(max-width:1600px){.pk-grid.dashkpi{grid-template-columns:repeat(5,minmax(0,1fr))}}',
+'@media(max-width:1280px){.pk-grid.dashkpi{grid-template-columns:repeat(4,minmax(0,1fr))}}',
+'@media(max-width:980px){.pk-grid.dashkpi{grid-template-columns:repeat(3,minmax(0,1fr))}}',
+'@media(max-width:640px){.pk-grid.dashkpi{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}}',
 '.pk-card{position:relative;background:linear-gradient(160deg,#fffefb,#fdf9f0);border:1px solid #ece2cd;border-radius:16px;padding:16px 16px 15px;box-shadow:0 1px 2px rgba(40,30,10,.04),0 8px 20px -16px rgba(40,30,10,.14);transition:transform .14s cubic-bezier(.2,.8,.2,1),box-shadow .18s,border-color .18s;overflow:hidden}',
 '.pk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#e6ad4e,#d69a35);opacity:0;transition:opacity .18s}',
 '.pk-card.good::before{background:linear-gradient(180deg,#37b47e,#2e9e6b);opacity:.9}',
@@ -31026,7 +31039,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var elist=(cap.editing_types||[]).map(function(x){return '<option value="'+esc(x)+'">';}).join('');
     slot.innerHTML='<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">'
       +'<div style="font-weight:800;font-size:.9rem;margin-bottom:2px">Billing details <span style="font-weight:600;color:var(--text-muted);font-size:.76rem">\u2014 project-based, private</span></div>'
-      +'<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:8px">Sirf aapko aur finance Admin ko dikhta hai. PM ko amount nahi dikhta.</div>'
+      +'<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:8px">Visible only to you and the finance Admin. The Production Manager never sees any amount.</div>'
       +'<div class="p-field"><label>Final output duration (mm:ss)</label><input class="p-input" id="edt-bill-dur" placeholder="12:00"></div>'
       +'<div class="p-field"><label>Video type</label><input class="p-input" id="edt-bill-vt" list="edt-vt-list" placeholder="Update / Teaser / Interview"><datalist id="edt-vt-list">'+vlist+'</datalist></div>'
       +'<div class="p-field"><label>Editing type</label><input class="p-input" id="edt-bill-et" list="edt-et-list" placeholder="Full Editing"><datalist id="edt-et-list">'+elist+'</datalist></div>'
@@ -31061,8 +31074,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._edtShowEstimate=function(b){
     if(!b) return;
     if(b.status==='matched') toast('Private estimate: '+(b.amount_display||'')+(b.is_urgent?' (urgent)':''));
-    else if(b.status==='ambiguous') toast('Estimate pending \u2014 Admin ko rate boundary confirm karni hai.');
-    else toast('Estimate pending \u2014 '+((b.reason||'Admin confirmation pending.')));
+    else if(b.status==='ambiguous') toast('Estimate pending \u2014 the Admin needs to confirm the rate boundary.');
+    else toast('Estimate pending \u2014 '+((b.reason||'awaiting Admin confirmation.')));
   };
   window.edtDoSubmit=function(){
     var link=((document.getElementById('edt-link')||{}).value||'').trim();
@@ -32054,7 +32067,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
                 ['pending','Pending','gfx:pending','','clock'],['overdue','Delayed','gfx:overdue','urgent','alert'],
                 ['awaiting_pm','Awaiting PM Approval','gfx:review','','eye'],['changes','Changes Required','gfx:changes','warn','edit'],
                 ['weekly_completed','Weekly Completed','gfx:completed','good','image'],['monthly_completed','Monthly Completed','gfx:completed','good','chart']];
-        html+='<div class="pk-grid">'+GC.map(function(x){
+        html+='<div class="pk-grid dashkpi">'+GC.map(function(x){
           return _pkc({icon:x[4],val:(r.cards[x[0]]||0),label:x[1],cls:x[3],onclick:'prodNav(\'graphics\',\''+x[2]+'\')'});
         }).join('')+'</div>';
         body.innerHTML=html+'<div id="graphics-work"></div>';
@@ -32068,7 +32081,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
                 ['editing','Editing','ytb:editing','','edit'],['pending','Pending','videos','warn','clock'],
                 ['total_views','Total Views','ytviews','','eye'],['highest_views','Highest Views','ytviews','good','star'],
                 ['weekly_uploads','Weekly Uploads','ytviews','','calendar'],['monthly_uploads','Monthly Uploads','ytviews','','chart']];
-        html+='<div class="pk-grid">'+YC.map(function(x){
+        html+='<div class="pk-grid dashkpi">'+YC.map(function(x){
           var v=(x[0]==='total_views'||x[0]==='highest_views')?_num(r.cards[x[0]]||0):(r.cards[x[0]]||0);
           return _pkc({icon:x[4],val:v,label:x[1],cls:x[3],onclick:'prodNav(\'youtuber\',\''+x[2]+'\')'});
         }).join('')+'</div>';
@@ -32083,7 +32096,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
                 ['submitted','Submitted','edt:submitted','good','upload'],['changes','Changes Required','edt:changes','warn','edit'],
                 ['completed','Completed','edt:completed','good','check'],['ready_for_youtube','Ready for YouTube','edt:completed','good','video'],
                 ['total_views','Total Views','uploads','','eye']]
-        html+='<div class="pk-grid">'+EC.map(function(x){
+        html+='<div class="pk-grid dashkpi">'+EC.map(function(x){
           var v=(x[0]==='total_views')?_num(r.cards[x[0]]||0):(r.cards[x[0]]||0);
           return _pkc({icon:x[4],val:v,label:x[1],cls:x[3],onclick:x[2]?('prodNav(\'editor\',\''+x[2]+'\')'):''});
         }).join('')+'</div>';
@@ -32095,7 +32108,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(portal==='production')
         html+='<div class="pdash-greet"><h1>'+esc(_greet()+', '+(r.greeting_name||NAME||''))+'</h1><div class="pdash-date">'+esc(_today())+'</div></div>';
       if(portal==='production'){ window._ytpList=(r.pending_yt||[]); window._ytpIdx=0; html+='<div id="ytpend-wrap">'+_ytpBannerHtml()+'</div>'; }
-      html+='<div class="pk-grid">';
+      html+='<div class="pk-grid dashkpi">';
       var _KICON={requests:'bell',pending_review:'eye',pm_review:'eye',in_production:'edit',editing:'edit',
         graphics:'image',thumb_review:'image',thumb_changes:'edit',qc:'check',ready:'video',ready_for_youtube:'video',published:'upload',uploaded:'upload',
         overdue:'alert',completed:'check',approved:'check',urgent:'alert',proposals:'list',total:'grid'};
@@ -33644,8 +33657,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   }
   window.pmtTab=function(role){ window._pmtTab=role; var body=document.getElementById('production-body'); if(body) _pmtRender(body); };
   function _pmtReload(){ var body=document.getElementById('production-body'); if(body) renderPmTeam('production',body); }
-  window.pmtReset=function(id){ api(P.production.api+'/team-users/'+id+'/reset-password','POST',{}).then(function(r){ _pmtCred('Password Reset',r); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
-  window.pmtShow=function(id){ var u=(window._pmtUsers||[]).filter(function(x){return x.id===id;})[0]; if(!u){ toast('Not found',true); return; } _pmtCred('Password',{user_id:u.user_id,password:u.password}); };
+  window.pmtReset=function(id){ var uu=(window._pmtUsers||[]).filter(function(x){return x.id===id;})[0]||{}; api(P.production.api+'/team-users/'+id+'/reset-password','POST',{}).then(function(r){ _pmtCred('Password Reset',r,(uu.name||r.name||''),(uu.role||'')); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+  window.pmtShow=function(id){ var u=(window._pmtUsers||[]).filter(function(x){return x.id===id;})[0]; if(!u){ toast('Not found',true); return; } if(!u.password){ toast('Is member ka password available nahi (Admin-managed).',true); return; } _pmtCred('Login Credentials',{user_id:u.user_id,password:u.password},(u.name||''),(u.role||'')); };
   window.pmtApproval=function(id,val){ api(P.production.api+'/team-users/'+id,'PATCH',{approval_required:(val===true||val==='true')}).then(function(){ toast('Approval mode updated'); _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.pmtToggle=function(id,val){ api(P.production.api+'/team-users/'+id,'PATCH',{is_active:(val===true||val==='true')}).then(function(){ toast('Updated'); _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
   window.pmtDelete=function(id,name){ if(!confirm('Delete '+name+'? This removes their account and unassigns their tasks. This cannot be undone.')) return; api(P.production.api+'/team-users/'+id,'DELETE').then(function(r){ if(r&&r.archived){ toast('Account archived (deactivated) \u2014 payout history preserved.'); } else { toast('Deleted'+((r&&r.unassigned)?(' \u2014 '+r.unassigned+' task(s) unassigned'):'')); } _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
@@ -33671,17 +33684,85 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(role==='editor'||role==='graphics') body.recommended_load=parseInt((document.getElementById('pmt-load')||{}).value||'5',10);
     api(P.production.api+'/team-users','POST',body).then(function(r){ prodDismiss(); _pmtCred('Account Created',r,name); _pmtReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
-  function _pmtCred(title,r,name){
-    var old=document.getElementById('prod-modal2'); if(old) old.remove();
-    var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='140';
-    dr.innerHTML='<div class="p-modal" style="max-width:440px"><div class="pd-head"><div class="h-title">'+esc(title)+'</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
-      '<div class="p-modal-body">'+(name?'<div style="margin-bottom:6px"><b>Name:</b> '+esc(name)+'</div>':'')+
-      '<div style="margin-bottom:6px"><b>User ID:</b> '+esc((r&&r.user_id)||'')+'</div>'+
-      '<div style="background:var(--card-soft,#f4efe2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:8px"><b>Password:</b> <span style="font-family:monospace;font-size:1.05rem;letter-spacing:1px">'+esc((r&&r.password)||'')+'</span></div>'+
-      '<p style="color:var(--muted);font-size:.82rem;margin-top:12px">Share these credentials with the team member. They log in at the matching portal URL.</p></div>'+
-      '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="document.getElementById(\'prod-modal2\').remove()">Done</button></div></div></div>';
-    document.body.appendChild(dr);
+  function _pmtCredCss(){
+    if(document.getElementById('pmt-cred-css')) return;
+    var css=[
+      '#pmt-cred-ov{position:fixed;inset:0;z-index:160;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(20,18,12,.52);backdrop-filter:blur(4px);animation:pmtCredFade .15s ease}',
+      '@keyframes pmtCredFade{from{opacity:0}to{opacity:1}}',
+      '@keyframes pmtCredPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}',
+      '.pmt-cred{width:min(430px,100%);background:var(--card,#fffdf7);color:var(--text,#2a2313);border:1px solid var(--border,#ece2cd);border-radius:20px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);animation:pmtCredPop .2s cubic-bezier(.2,.8,.2,1)}',
+      '.pmt-cred .pmt-cred-nm,.pmt-cred .pmt-fld .val{color:var(--text,#2a2313)}',
+      '.pmt-cred-hd{position:relative;padding:20px 22px 18px;background:linear-gradient(135deg,rgba(230,173,78,.22),rgba(230,173,78,.05));border-bottom:1px solid var(--border)}',
+      '.pmt-cred-hd .ic{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#e6ad4e,#c98f2c);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(230,173,78,.4)}',
+      '.pmt-cred-hd .ic svg{width:20px;height:20px;stroke:#fff}',
+      '.pmt-cred-x{position:absolute;top:16px;right:16px;width:30px;height:30px;border:0;border-radius:9px;background:rgba(0,0,0,.06);color:var(--text);font-size:1.1rem;cursor:pointer;line-height:1}',
+      '.pmt-cred-x:hover{background:rgba(0,0,0,.12)}',
+      '.pmt-cred-person{display:flex;align-items:center;gap:12px;padding:16px 22px 4px}',
+      '.pmt-cred-av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#e6ad4e,#c98f2c);color:#fff;font-weight:900;font-size:1rem;display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;flex:none}',
+      '.pmt-cred-nm{font-weight:800;font-size:1rem;line-height:1.2}',
+      '.pmt-cred-role{font-size:.72rem;color:var(--muted);font-weight:700;text-transform:capitalize;margin-top:2px}',
+      '.pmt-cred-body{padding:12px 22px 18px}',
+      '.pmt-fld{background:var(--surface-2,#fdf9f0);border:1px solid var(--border);border-radius:13px;padding:11px 14px;margin-top:10px;display:flex;align-items:center;gap:10px}',
+      '.pmt-fld .lbl{font-size:.66rem;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}',
+      '.pmt-fld .val{font-size:1rem;font-weight:700;word-break:break-all}',
+      '.pmt-fld.pw .val{font-family:ui-monospace,Menlo,monospace;letter-spacing:2px;font-size:1.08rem}',
+      '.pmt-fld .grow{flex:1;min-width:0}',
+      '.pmt-ib{width:32px;height:32px;flex:none;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}',
+      '.pmt-ib:hover{color:var(--primary);border-color:var(--primary);background:rgba(230,173,78,.08)}',
+      '.pmt-ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}',
+      '.pmt-ib.ok{color:#2e9e6b;border-color:#2e9e6b}',
+      '.pmt-cred-note{display:flex;gap:8px;align-items:flex-start;font-size:.76rem;color:var(--muted);margin-top:14px;line-height:1.5}',
+      '.pmt-cred-note svg{width:15px;height:15px;flex:none;margin-top:1px;stroke:var(--primary);fill:none;stroke-width:2}',
+      '.pmt-cred-ft{padding:0 22px 20px}',
+      '.pmt-cred-ft .btn{width:100%;padding:11px;border:0;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98f2c);color:#fff;font-weight:800;font-size:.92rem;cursor:pointer}',
+      '.pmt-cred-ft .btn:hover{filter:brightness(1.04)}'
+    ].join('');
+    var st=document.createElement('style'); st.id='pmt-cred-css'; st.textContent=css; document.head.appendChild(st);
   }
+  // premium credentials modal — reveal toggle + one-tap copy. PROJECT-BASED editors ka password
+  // backend scrub kar deta hai (PM ko nahi milta), to ye modal unke liye khulta hi nahi.
+  function _pmtCred(title,r,name,role){
+    _pmtCredCss();
+    var old=document.getElementById('pmt-cred-ov'); if(old) old.remove();
+    var uid=esc((r&&r.user_id)||''); var pw=((r&&r.password)||'')+'';
+    var ini=(String(name||'').trim().split(/\s+/).slice(0,2).map(function(p){return p[0]||'';}).join('')||'?').toUpperCase();
+    window._pmtCredPw=pw; window._pmtCredUid=(r&&r.user_id)||'';
+    var keyIc='<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>';
+    var copyIc='<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var eyeIc='<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var noteIc='<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+    var ov=document.createElement('div'); ov.id='pmt-cred-ov';
+    ov.innerHTML='<div class="pmt-cred" role="dialog">'
+      +'<div class="pmt-cred-hd"><div class="ic">'+keyIc+'</div><button class="pmt-cred-x" onclick="document.getElementById(\'pmt-cred-ov\').remove()">&times;</button></div>'
+      +(name?('<div class="pmt-cred-person"><div class="pmt-cred-av">'+esc(ini)+'</div><div><div class="pmt-cred-nm">'+esc(name)+'</div>'+(role?('<div class="pmt-cred-role">'+esc(role)+'</div>'):'')+'</div></div>'):'')
+      +'<div class="pmt-cred-body">'
+      +'<div class="pmt-fld"><div class="grow"><div class="lbl">User ID</div><div class="val">'+(uid||'—')+'</div></div>'
+        +'<button class="pmt-ib" title="Copy User ID" onclick="_pmtCredCopy(this,\'uid\')">'+copyIc+'</button></div>'
+      +'<div class="pmt-fld pw"><div class="grow"><div class="lbl">Password</div><div class="val" id="pmt-cred-pwv">'+(pw?'••••••••':'—')+'</div></div>'
+        +'<button class="pmt-ib" id="pmt-cred-eye" title="Reveal / hide" onclick="_pmtCredToggle(this)">'+eyeIc+'</button>'
+        +'<button class="pmt-ib" title="Copy password" onclick="_pmtCredCopy(this,\'pw\')">'+copyIc+'</button></div>'
+      +'<div class="pmt-cred-note">'+noteIc+'<span>Ye credentials sirf is team member ke saath private me share karein. Wo apne portal URL pe login karte hain.</span></div>'
+      +'</div>'
+      +'<div class="pmt-cred-ft"><button class="btn" onclick="document.getElementById(\'pmt-cred-ov\').remove()">Done</button></div>'
+      +'</div>';
+    ov.addEventListener('mousedown',function(e){ if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+  window._pmtCredToggle=function(btn){
+    var el=document.getElementById('pmt-cred-pwv'); if(!el) return;
+    var pw=window._pmtCredPw||'';
+    var shown=el.getAttribute('data-shown')==='1';
+    if(shown){ el.textContent=pw?'••••••••':'—'; el.setAttribute('data-shown','0'); btn.classList.remove('ok'); }
+    else { el.textContent=pw||'—'; el.setAttribute('data-shown','1'); btn.classList.add('ok'); }
+  };
+  window._pmtCredCopy=function(btn,which){
+    var val=(which==='pw')?(window._pmtCredPw||''):(window._pmtCredUid||'');
+    if(!val){ return; }
+    var done=function(){ var orig=btn.innerHTML; btn.classList.add('ok'); btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>'; setTimeout(function(){ btn.innerHTML=orig; btn.classList.remove('ok'); },1100); };
+    try{ navigator.clipboard.writeText(val).then(done,function(){ _pmtCredCopyFallback(val); done(); }); }
+    catch(e){ _pmtCredCopyFallback(val); done(); }
+  };
+  function _pmtCredCopyFallback(val){ try{ var ta=document.createElement('textarea'); ta.value=val; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }catch(e){} }
   function renderEditorUploads(portal,body){
     body.innerHTML='<div class="p-load">Loading published videos...</div>';
     return api(P.editor.api+'/uploads').then(function(r){
@@ -33974,7 +34055,34 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ee-rate .rm{font-size:.72rem;color:var(--muted);margin-top:2px}',
       '.ee-rate .ra{font-weight:900;white-space:nowrap}',
       'body.dark .ee-pill.ver{color:#f0c76a}','body.dark .ee-pill.ok{color:#5fd39e}','body.dark .ee-pill.hold{color:#e8a76a}','body.dark .ee-pill.rej{color:#ed8278}',
-      '@media(max-width:640px){.ee-sum{grid-template-columns:1fr 1fr}.ee-sc .v{font-size:1.25rem}}'
+      /* lock toolbar in hero */
+      '.ee-lockbar{display:inline-flex;gap:7px;flex-wrap:wrap;margin-left:auto}',
+      '.ee-hero-t{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.ee-lk{font-size:.72rem;font-weight:800;border:1px solid var(--primary);background:rgba(230,173,78,.12);color:var(--primary);border-radius:999px;padding:5px 12px;cursor:pointer}',
+      '.ee-lk:hover{background:rgba(230,173,78,.2)}',
+      '.ee-lk.ghost{border-color:var(--border);background:transparent;color:var(--muted);font-weight:700}',
+      '.ee-lk.ghost:hover{color:var(--text);border-color:var(--muted)}',
+      /* lock screen */
+      '.ee-lock-wrap{display:flex;justify-content:center;padding:40px 16px}',
+      '.ee-lock-card{width:min(400px,100%);background:var(--card);border:1px solid var(--border);border-radius:20px;padding:30px 26px;text-align:center;box-shadow:0 18px 50px -24px rgba(40,30,10,.4)}',
+      '.ee-lock-ic{font-size:2.6rem;line-height:1;margin-bottom:12px}',
+      '.ee-lock-t{font-size:1.3rem;font-weight:900;letter-spacing:-.4px}',
+      '.ee-lock-s{font-size:.86rem;color:var(--muted);margin:6px 0 18px;line-height:1.5}',
+      '.ee-lock-in{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:13px;padding:13px 15px;font-size:1.1rem;letter-spacing:3px;text-align:center;background:var(--surface-2);color:var(--text);outline:none;font-family:ui-monospace,Menlo,monospace}',
+      '.ee-lock-in:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(230,173,78,.18)}',
+      '.ee-lock-in+.ee-lock-in{margin-top:10px}',
+      '.ee-lock-err{color:#d1443a;font-size:.8rem;font-weight:700;min-height:18px;margin:8px 0 2px}',
+      '.ee-lock-btn{width:100%;border:0;border-radius:13px;padding:13px;font-size:.98rem;font-weight:800;color:#fff;background:linear-gradient(135deg,#e6ad4e,#c98f2c);cursor:pointer;margin-top:6px}',
+      '.ee-lock-btn:hover{filter:brightness(1.05)}',
+      '.ee-lock-help{font-size:.76rem;color:var(--muted);margin-top:14px;line-height:1.5}',
+      /* passcode modal */
+      '.ee-pc-ov{position:fixed;inset:0;z-index:170;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(20,18,12,.52);backdrop-filter:blur(4px)}',
+      '.ee-pc-card{width:min(400px,100%);background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:20px;padding:22px 24px;box-shadow:0 30px 80px rgba(0,0,0,.4)}',
+      '.ee-pc-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}',
+      '.ee-pc-t{font-size:1.12rem;font-weight:900}',
+      '.ee-pc-x{border:0;background:rgba(0,0,0,.06);width:30px;height:30px;border-radius:9px;font-size:1.1rem;cursor:pointer;color:var(--text)}',
+      '.ee-pc-s{font-size:.82rem;color:var(--muted);margin-bottom:14px;line-height:1.5}',
+      '@media(max-width:640px){.ee-sum{grid-template-columns:1fr 1fr}.ee-sc .v{font-size:1.25rem}.ee-lockbar{margin-left:0;width:100%}}'
     ].join('');
     var st=document.createElement('style'); st.id='edt-earn-css'; st.textContent=css; document.head.appendChild(st);
   }
@@ -33995,24 +34103,26 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       if(_stale(portal,'earnings')) return;
       if(!r||!r.is_project_based){
         body.innerHTML='<div class="ee-hero"><div class="ee-hero-t">My Earnings</div>'
-          +'<div class="ee-hero-s">Ye section sirf project-based editors ke liye hai. Aapka account salaried hai — aapki salary, performance aur portal pehle jaisa hi chalega.</div></div>'
-          +'<div class="p-empty">Koi project-based earning record nahi.</div>';
+          +'<div class="ee-hero-s">This section is only for project-based editors. Your account is salaried — your salary, performance and portal continue exactly as before.</div></div>'
+          +'<div class="p-empty">No project-based earning records.</div>';
         return;
       }
       var sm=r.summary||{}, items=r.items||[];
-      var html='<div class="ee-hero"><div class="ee-hero-t">My Earnings <span class="ee-priv">Private</span></div>'
-        +'<div class="ee-hero-s">Project-based editing payout. Amounts sirf aapko aur finance Admin ko dikhte hain — PM ko nahi. Estimate QC technical approval + Admin verify hone par payable banta hai.</div></div>';
+      // lock toolbar (reflects current passcode state; filled after status check)
+      var html='<div class="ee-hero"><div class="ee-hero-t">My Earnings <span class="ee-priv">Private</span>'
+        +'<span class="ee-lockbar" id="ee-lockbar"></span></div>'
+        +'<div class="ee-hero-s">Project-based editing payout. These amounts are visible only to you and the finance Admin — never to the Production Manager. An estimate becomes payable once it passes QC technical approval and Admin verification.</div></div>';
       html+='<div class="ee-sum">'
-        +'<div class="ee-sc"><div class="v">'+esc(sm.estimate_total_display||('₹'+'0'))+'</div><div class="l">Matched estimate total</div></div>'
+        +'<div class="ee-sc"><div class="v">'+esc(sm.estimate_total_display||'₹0')+'</div><div class="l">Matched estimate total</div></div>'
         +'<div class="ee-sc"><div class="v">'+(sm.count||0)+'</div><div class="l">Editing items</div></div>'
         +'<div class="ee-sc"><div class="v">'+(sm.pending||0)+'</div><div class="l">Rate pending</div></div>'
         +'</div>';
       if(!r.has_rate_plan){
-        html+='<div class="p-empty" style="margin-bottom:14px">Aapka rate plan abhi Admin ne publish nahi kiya. Aap videos submit kar sakte hain — payout rate confirm hone par estimate aa jayega (koi video lost nahi hoga).</div>';
+        html+='<div class="p-empty" style="margin-bottom:14px">Your rate plan has not been published by the Admin yet. You can still submit videos — once the payout rate is confirmed, the estimate will appear here (no video is ever lost).</div>';
       }
       html+='<div class="ee-sec">Earnings</div>';
       if(!items.length){
-        html+='<div class="p-empty">Abhi koi submission nahi. Jab aap project/task video submit karenge, uska private estimate yahan aayega.</div>';
+        html+='<div class="p-empty">No submissions yet. When you submit a project or task video, its private estimate will appear here.</div>';
       } else {
         html+=items.map(function(it){
           var stt=_edtEarnStatus(it);
@@ -34046,8 +34156,97 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       }
       body.innerHTML=html;
       _edtLoadStatements();
-    }).catch(function(e){ body.innerHTML='<div class="p-empty">Could not load earnings. '+esc(e&&e.message||'')+'</div>'; });
+      _edtLockBar();
+    }).catch(function(e){
+      if(e&&e.status===423){ _edtEarnLockScreen(body); return; }
+      body.innerHTML='<div class="p-empty">Could not load earnings. '+esc(e&&e.message||'')+'</div>';
+    });
   }
+  // --- earnings passcode lock (project-based editor privacy) ---
+  function _edtLockBar(){
+    var bar=document.getElementById('ee-lockbar'); if(!bar) return;
+    api(P.editor.api+'/earnings/lock').then(function(s){
+      var b=document.getElementById('ee-lockbar'); if(!b) return;
+      if(s&&s.has_passcode){
+        b.innerHTML='<button class="ee-lk" onclick="edtEarnLockNow()" title="Lock now">🔒 Lock</button>'
+          +'<button class="ee-lk ghost" onclick="edtEarnSetPass(true)">Change passcode</button>'
+          +'<button class="ee-lk ghost" onclick="edtEarnRemoveLock()">Remove lock</button>';
+      } else {
+        b.innerHTML='<button class="ee-lk" onclick="edtEarnSetPass(false)">🔒 Set a passcode to lock this page</button>';
+      }
+    }).catch(function(){});
+  }
+  function _edtEarnLockScreen(body){
+    _edtEarnCss();
+    body.innerHTML='<div class="ee-lock-wrap"><div class="ee-lock-card">'
+      +'<div class="ee-lock-ic">🔒</div>'
+      +'<div class="ee-lock-t">Earnings locked</div>'
+      +'<div class="ee-lock-s">Enter your passcode to view your private earnings and statements.</div>'
+      +'<input id="ee-lock-pc" class="ee-lock-in" type="password" inputmode="numeric" autocomplete="off" placeholder="Passcode" onkeydown="if(event.key===\'Enter\')edtEarnUnlock()">'
+      +'<div id="ee-lock-err" class="ee-lock-err"></div>'
+      +'<button class="ee-lock-btn" onclick="edtEarnUnlock()">Unlock</button>'
+      +'<div class="ee-lock-help">Forgot your passcode? Ask the finance Admin to reset it for you.</div>'
+      +'</div></div>';
+    setTimeout(function(){ var i=document.getElementById('ee-lock-pc'); if(i) i.focus(); },60);
+  }
+  window.edtEarnUnlock=function(){
+    var i=document.getElementById('ee-lock-pc'); var err=document.getElementById('ee-lock-err');
+    var pc=(i&&i.value||'').trim(); if(!pc){ if(i) i.focus(); return; }
+    if(err) err.textContent='';
+    api(P.editor.api+'/earnings/unlock','POST',{passcode:pc}).then(function(r){
+      window._earnToken=r.token;
+      var body=document.getElementById('editor-body'); if(body) renderEditorEarnings('editor',body);
+    }).catch(function(e){
+      var er=document.getElementById('ee-lock-err');
+      if(er) er.textContent=(e&&e.status===401)?'Wrong passcode. Please try again.':((e&&e.message)||'Could not unlock.');
+      var inp=document.getElementById('ee-lock-pc'); if(inp){ inp.value=''; inp.focus(); }
+    });
+  };
+  window.edtEarnLockNow=function(){
+    window._earnToken=null;
+    var body=document.getElementById('editor-body'); if(body) renderEditorEarnings('editor',body);
+  };
+  window.edtEarnSetPass=function(isChange){
+    _edtEarnCss();
+    var ov=document.getElementById('ee-pc-ov'); if(ov) ov.remove();
+    ov=document.createElement('div'); ov.id='ee-pc-ov'; ov.className='ee-pc-ov';
+    ov.innerHTML='<div class="ee-pc-card"><div class="ee-pc-hd"><div class="ee-pc-t">'+(isChange?'Change passcode':'Set a passcode')+'</div>'
+      +'<button class="ee-pc-x" onclick="document.getElementById(\'ee-pc-ov\').remove()">&times;</button></div>'
+      +'<div class="ee-pc-s">This passcode locks your My Earnings page so no one else can open it — even on your signed-in device.</div>'
+      +(isChange?'<input id="ee-pc-old" class="ee-lock-in" type="password" autocomplete="off" placeholder="Current passcode">':'')
+      +'<input id="ee-pc-new" class="ee-lock-in" type="password" autocomplete="off" placeholder="New passcode (min 4 characters)">'
+      +'<input id="ee-pc-new2" class="ee-lock-in" type="password" autocomplete="off" placeholder="Confirm new passcode">'
+      +'<div id="ee-pc-err" class="ee-lock-err"></div>'
+      +'<button class="ee-lock-btn" onclick="edtEarnSavePass('+(isChange?'true':'false')+')">Save passcode</button>'
+      +'</div>';
+    ov.addEventListener('mousedown',function(e){ if(e.target===ov) ov.remove(); });
+    document.body.appendChild(ov);
+    setTimeout(function(){ var i=document.getElementById(isChange?'ee-pc-old':'ee-pc-new'); if(i) i.focus(); },60);
+  };
+  window.edtEarnSavePass=function(isChange){
+    var err=document.getElementById('ee-pc-err'); if(err) err.textContent='';
+    var np=(document.getElementById('ee-pc-new')||{}).value||'';
+    var np2=(document.getElementById('ee-pc-new2')||{}).value||'';
+    if(np.length<4){ if(err) err.textContent='Passcode must be at least 4 characters.'; return; }
+    if(np!==np2){ if(err) err.textContent='The two passcodes do not match.'; return; }
+    var body={passcode:np};
+    if(isChange){ body.old_passcode=(document.getElementById('ee-pc-old')||{}).value||''; }
+    api(P.editor.api+'/earnings/lock/set','POST',body).then(function(r){
+      window._earnToken=r.token;
+      var ov=document.getElementById('ee-pc-ov'); if(ov) ov.remove();
+      toast(isChange?'Passcode changed':'Passcode set — your earnings are now locked');
+      var b=document.getElementById('editor-body'); if(b) renderEditorEarnings('editor',b);
+    }).catch(function(e){
+      var er=document.getElementById('ee-pc-err');
+      if(er) er.textContent=(e&&e.status===401)?'Current passcode is incorrect.':((e&&e.message)||'Could not save.');
+    });
+  };
+  window.edtEarnRemoveLock=function(){
+    var pc=prompt('Enter your current passcode to remove the lock:'); if(pc===null) return;
+    api(P.editor.api+'/earnings/lock/remove','POST',{passcode:pc}).then(function(){
+      toast('Lock removed'); var b=document.getElementById('editor-body'); if(b) renderEditorEarnings('editor',b);
+    }).catch(function(e){ toast((e&&e.status===401)?'Passcode is incorrect.':((e&&e.message)||'Could not remove lock.'),true); });
+  };
   function _stmtStatePill(st){
     var M={draft:['Draft','ver'],finalized:['Finalized','est'],partially_paid:['Partially paid','hold'],paid:['Paid ✓','ok']};
     var x=M[st]||[st,'est']; return '<span class="ee-pill '+x[1]+'">'+esc(x[0])+'</span>';
@@ -34057,13 +34256,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.editor.api+'/statements').then(function(r){
       var s=document.getElementById('ee-stmts'); if(!s) return;
       var items=(r&&r.items)||[];
-      if(!items.length){ s.innerHTML='<div class="p-empty">Abhi koi monthly statement nahi. Admin month-end par aapka statement finalize karega.</div>'; return; }
+      if(!items.length){ s.innerHTML='<div class="p-empty">No monthly statements yet. The Admin will finalize your statement at month-end.</div>'; return; }
       s.innerHTML=items.map(function(it){
         return '<div class="ee-card" style="cursor:pointer" onclick="edtStmtOpen('+it.id+')"><div class="main"><div class="ee-ct">'+esc(_periodLabel(it.period))+(it.statement_no?(' <span style="font-size:.7rem;font-weight:600;color:var(--muted)">'+esc(it.statement_no)+'</span>'):'')+'</div>'
           +'<div class="ee-meta">Total <b>'+esc(it.total_display)+'</b><span style="opacity:.4">·</span>Paid <b>'+esc(it.paid_display)+'</b><span style="opacity:.4">·</span>Balance <b>'+esc(it.outstanding_display)+'</b></div></div>'
           +'<div class="ee-right">'+_stmtStatePill(it.state)+'<button class="btn btn-ghost btn-sm" style="font-size:.7rem;padding:3px 8px" onclick="event.stopPropagation();_downloadEditorStmtById(\'editor\','+it.id+')">Download</button></div></div>';
       }).join('');
-    }).catch(function(){ var s=document.getElementById('ee-stmts'); if(s) s.innerHTML='<div class="p-empty">Statements load nahi ho paye.</div>'; });
+    }).catch(function(){ var s=document.getElementById('ee-stmts'); if(s) s.innerHTML='<div class="p-empty">Could not load statements.</div>'; });
   }
   window.edtStmtOpen=function(id){
     api(P.editor.api+'/statements/'+id).then(function(d){ _edtStmtModal(d); }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
@@ -34082,7 +34281,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var dt=p.paid_on?new Date(p.paid_on).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
       var btn=p.receipt_confirmed?'<span class="ee-pill ok">Receipt confirmed</span>':'<button class="btn btn-primary btn-sm" style="font-size:.7rem;padding:4px 10px" onclick="edtConfirmReceipt('+d.id+','+p.id+')">Confirm receipt</button>';
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div><div style="font-weight:700;font-size:.82rem">'+esc(p.amount_display||'')+' <span style="font-weight:500;color:var(--muted)">'+esc(p.method||'')+'</span></div><div style="font-size:.7rem;color:var(--muted)">'+esc(dt)+(p.reference?(' · '+esc(p.reference)):'')+'</div></div>'+btn+'</div>';
-    }).join('')||'<div style="color:var(--muted);font-size:.8rem;padding:8px 0">Abhi koi payment record nahi hui.</div>';
+    }).join('')||'<div style="color:var(--muted);font-size:.8rem;padding:8px 0">No payments recorded yet.</div>';
     ov.innerHTML='<div style="background:var(--card);width:min(560px,100%);max-height:90vh;overflow:auto;border-radius:18px 18px 0 0;padding:20px">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px"><div><div style="font-weight:900;font-size:1.1rem">'+esc(_periodLabel(d.period))+'</div><div style="font-size:.74rem;color:var(--muted)">'+esc(d.statement_no||'Draft')+' · '+esc(_stmtStateLabel(d.state))+'</div></div><button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'edt-stmt-ov\').remove()">Close</button></div>'
       +'<div class="ee-sum" style="grid-template-columns:1fr 1fr 1fr"><div class="ee-sc"><div class="v" style="font-size:1.1rem">'+esc(d.total_display)+'</div><div class="l">Total</div></div><div class="ee-sc"><div class="v" style="font-size:1.1rem">'+esc(d.paid_display)+'</div><div class="l">Paid</div></div><div class="ee-sc"><div class="v" style="font-size:1.1rem">'+esc(d.outstanding_display)+'</div><div class="l">Balance</div></div></div>'

@@ -1658,6 +1658,7 @@ class ProductionStaffProfile(Base):
     # Compensation arrangement (project-based editor payout). Existing/backfilled rows => SALARIED.
     # SALARIED editors keep their current portal/performance; only PROJECT_BASED get the new finance.
     compensation_type   = Column(String(16), default="SALARIED", index=True)  # SALARIED | PROJECT_BASED
+    earnings_passcode_hash = Column(String(255), default="")  # editor's self-set lock for My Earnings (project-based)
     plain_password      = Column(String(255), nullable=True)
     is_active           = Column(Boolean, default=True)
     created_at          = Column(DateTime, default=func.now())

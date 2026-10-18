@@ -2265,12 +2265,17 @@ def _pm_user_comp(db, uid):
 
 
 def _pm_scrub_credentials(rows):
+    """PM credentials sirf PROJECT_BASED editors ke liye hide hote hain (wo Admin-managed hain —
+    finance privacy ke liye PM unka password/reset/impersonate nahi kar sakta). Baaki sab —
+    salaried editors, PM, graphics, YouTubers — ke credentials PM dekh sakta hai (existing behavior)."""
     out = []
     for r in (rows or []):
         if isinstance(r, dict):
-            r = dict(r)
-            r.pop("password", None)
-            r.pop("plain_password", None)
+            comp = (str(r.get("compensation_type") or "")).strip().upper()
+            if comp == "PROJECT_BASED":
+                r = dict(r)
+                r.pop("password", None)
+                r.pop("plain_password", None)
         out.append(r)
     return out
 
