@@ -1713,6 +1713,7 @@ class EditorCompensationAgreement(Base):
     created_by     = Column(Integer, nullable=True)         # admin user id
     created_at     = Column(DateTime, default=func.now())
     published_at   = Column(DateTime, nullable=True)
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())  # last edit (plan or its rules)
 
 
 class EditorRateRule(Base):

@@ -10042,6 +10042,9 @@ def _ecomp_agreement_out(db, ag):
             "version": ag.version or 1, "state": ag.state or "draft", "notes": ag.notes or "",
             "created_at": ag.created_at.isoformat() if ag.created_at else None,
             "published_at": ag.published_at.isoformat() if ag.published_at else None,
+            "updated_at": (ag.updated_at.isoformat() if getattr(ag, "updated_at", None)
+                           else (ag.published_at.isoformat() if ag.published_at
+                                 else (ag.created_at.isoformat() if ag.created_at else None))),
             "rules": rrows,
             "overlaps": ef.detect_overlaps([r for r in rules if r.active])}
 
@@ -10132,6 +10135,8 @@ def ecomp_rule_save(payload: dict = Body(...), db: Session = Depends(get_db), me
     r.days_required = (str(p.get("days_required") or "")).strip()[:40]
     if p.get("active") is not None:
         r.active = bool(p.get("active"))
+    from datetime import datetime as _dt2
+    ag.updated_at = _dt2.utcnow()   # editing a rule counts as editing the plan
     db.commit()
     return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
 
@@ -10146,6 +10151,8 @@ def ecomp_rule_archive(rule_id: int, db: Session = Depends(get_db), me=Depends(g
     if not ag or ag.state != "draft":
         raise HTTPException(400, "Only rules in a DRAFT plan can be archived here.")
     r.active = False
+    from datetime import datetime as _dt2
+    ag.updated_at = _dt2.utcnow()
     db.commit()
     return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
 
@@ -10190,6 +10197,40 @@ def ecomp_discard_draft(staff_id: int, db: Session = Depends(get_db), me=Depends
     db.delete(draft)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/editor-comp/{staff_id}/new-version")
+def ecomp_new_version(staff_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Edit a PUBLISHED plan safely: clone the ACTIVE agreement into a new editable DRAFT (copies its
+    rules). Admin edits the draft and publishes it as the next version. Existing engagements stay
+    pinned to their frozen version, so published/finalized work is never silently repriced (spec §13)."""
+    from datetime import datetime as _dt
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    sp = _ecomp_staff_or_400(db, staff_id)
+    # If a draft already exists, just OPEN it (idempotent) — clicking Edit should never error,
+    # it should land the Admin in the editable draft every time.
+    existing = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft")
+                .order_by(_AG.id.desc()).first())
+    if existing:
+        return {"ok": True, "resumed": True, "agreement": _ecomp_agreement_out(db, existing)}
+    active = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "active")
+              .order_by(_AG.version.desc()).first())
+    if not active:
+        raise HTTPException(400, "No published plan to edit. Use Import / seed a draft first.")
+    last = db.query(_AG).filter(_AG.staff_id == sp.id).order_by(_AG.version.desc()).first()
+    ver = (last.version + 1) if last else 1
+    draft = _AG(staff_id=sp.id, currency=active.currency, version=ver, state="draft",
+                created_by=getattr(me, "id", None),
+                notes="Editing published plan v%d. Changes take effect only after you publish, and apply to NEW assignments — existing jobs keep their agreed rate." % active.version)
+    db.add(draft); db.flush()
+    for r in db.query(_RR).filter(_RR.agreement_id == active.id).order_by(_RR.order_index.asc(), _RR.id.asc()).all():
+        db.add(_RR(agreement_id=draft.id, order_index=r.order_index, label=r.label,
+                   video_type=r.video_type, editing_type=r.editing_type,
+                   duration_min_seconds=r.duration_min_seconds, duration_max_seconds=r.duration_max_seconds,
+                   pricing_strategy=r.pricing_strategy, amount_minor=r.amount_minor,
+                   is_urgent=r.is_urgent, days_required=r.days_required, active=r.active))
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, draft)}
 
 
 @router.post("/editor-comp/preview-match")

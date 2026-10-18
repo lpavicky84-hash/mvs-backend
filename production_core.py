@@ -1270,6 +1270,8 @@ def _ensure_production_columns():
         "ALTER TABLE production_staff_profiles ADD COLUMN compensation_type VARCHAR(16) DEFAULT 'SALARIED'",
         # editor self-set passcode lock for My Earnings (project-based privacy)
         "ALTER TABLE production_staff_profiles ADD COLUMN earnings_passcode_hash VARCHAR(255) DEFAULT ''",
+        # rate agreement last-edited timestamp
+        "ALTER TABLE editor_comp_agreements ADD COLUMN updated_at DATETIME",
         # project-chapter graphics tracking (perf §9) — backward compatible, nullable
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_approved_at DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN thumb_revision INTEGER DEFAULT 0",

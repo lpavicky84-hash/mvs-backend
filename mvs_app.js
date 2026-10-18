@@ -488,7 +488,7 @@ const _API_TTL=45000;
 // se chalte hain. Kisi bhi mutation (POST/PUT/DELETE) ke baad cache khud bust ho jaata hai (_apiBust),
 // isliye action ke turant baad data fresh aata hai; sirf doosron ke changes 45s TTL / focus-refresh
 // pe aate hain. Isse har portal pe "click = turant" ho jaata hai.
-const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image\b|\/voice|\/file\b|\/download|\/pdf|\/content|\/badge|\/refresh-views|\/chat-ping|\/comments|\/collab\b|auth\/ping|\/thumbnail\b/i;
+const _API_NOCACHE=/notifications|heartbeat|\/photo|\/image\b|\/voice|\/file\b|\/download|\/pdf|\/content|\/badge|\/refresh-views|\/chat-ping|\/comments|\/collab\b|auth\/ping|\/thumbnail\b|\/editor-comp|\/editor-earnings|\/earnings|\/statements/i;
 let _curLoader=null;        // current page ka loader — background refresh aane par isse re-render
 let _swrT=null;
 // Should the background/auto refresh SKIP re-rendering right now? Re-rendering the
@@ -41514,7 +41514,9 @@ function _ecRender(d){
     var pubActs=isDraft?('<div class="ec-acts"><button class="btn btn-primary" onclick="_ecPublish('+ag.id+','+((ag.overlaps||[]).length?'true':'false')+')">'+((ag.overlaps||[]).length?'Publish with overlaps':'Publish plan')+'</button><button class="btn btn-ghost btn-sm" onclick="_ecDiscard('+st.id+')">Discard draft</button></div>'):'';
     // ACTIVE plan: edit karne ke liye nayi draft version (rates copy ho jaate hain) — spec-safe.
     var activeActs=(!isDraft&&d.active)?('<div class="ec-acts" style="align-items:center"><button class="btn btn-primary" onclick="_ecNewVersion('+st.id+')">✎ Edit rates (new version)</button><span style="font-size:.74rem;color:var(--text-muted)">Changes sirf NEW assignments pe lagenge — purane jobs apne agreed rate pe rahenge.</span></div>'):'';
-    body='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="ec-pill '+(isDraft?'ec-draft':'ec-active')+'">'+(isDraft?'DRAFT':'ACTIVE')+'</span><span style="font-size:.8rem;color:var(--text-muted)">v'+(ag.version||1)+' · '+esc(cur)+'</span>'+(d.active&&isDraft?'<span style="font-size:.76rem;color:#1f7a44">(ek active plan v'+d.active.version+' bhi hai)</span>':'')+'</div>'
+    var _when=_ecWhen(ag.updated_at||ag.published_at||ag.created_at);
+    var _whenLbl=isDraft?'Last edited':(ag.published_at?'Published':'Last edited');
+    body='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="ec-pill '+(isDraft?'ec-draft':'ec-active')+'">'+(isDraft?'DRAFT':'ACTIVE')+'</span><span style="font-size:.8rem;color:var(--text-muted)">v'+(ag.version||1)+' · '+esc(cur)+'</span>'+(_when?('<span style="font-size:.74rem;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px">'+(typeof ic==="function"?ic("clock"):"")+' '+_whenLbl+': <b style="color:var(--text)">'+esc(_when)+'</b></span>'):'')+(d.active&&isDraft?'<span style="font-size:.76rem;color:#1f7a44">(active plan v'+d.active.version+' bhi hai)</span>':'')+'</div>'
       +(ag.notes?('<div class="ec-sub" style="margin-top:8px;line-height:1.5">'+esc(ag.notes)+'</div>'):'')
       +'<div style="overflow-x:auto"><table class="ec-tbl">'+head+rows+'</table></div>'+warns+editForm+preview+pubActs+activeActs;
   }
@@ -41524,9 +41526,11 @@ function _ecRender(d){
   ov.addEventListener('click',function(e){ if(e.target===ov) _ecClose(); });
   document.body.appendChild(ov);
 }
-function _ecReload(){ var st=window._ecStaff||{}; api('/api/admin/editor-comp/'+st.id).then(_ecRender).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }
+function _ecWhen(iso){ if(!iso) return ''; try{ var dt=new Date(iso); if(isNaN(dt.getTime())) return ''; return dt.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}); }catch(e){ return ''; } }
+function _ecErr(e,fallback){ var m=(e&&e.message)||''; if(e&&(e.status===404||/not\s*found|404/i.test(m))) return 'Server pe ye feature abhi update nahi hua (backend deploy karein). '+(m||''); if(e&&(e.status===401||e.status===403)) return 'Payout session expire ho gaya — Payout page se dobara unlock karein, phir try karein.'; return m||fallback||'Failed'; }
+function _ecReload(){ var st=window._ecStaff||{}; api('/api/admin/editor-comp/'+st.id).then(_ecRender).catch(function(e){ toast(_ecErr(e,'Could not load'),true); }); }
 window._ecSeed=function(staffId){ api('/api/admin/editor-comp/'+staffId+'/seed-draft','POST',{currency:'INR'}).then(function(){ toast('Draft imported'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
-window._ecNewVersion=function(staffId){ if(!confirm('Published plan ko edit karne ke liye ek nayi DRAFT version banegi (abhi ke saare rates copy ho jaayenge). Aap edit karke publish karenge tabhi changes lagenge — aur sirf NEW assignments pe. Purane/finalized jobs apne agreed rate pe hi rahenge.\n\nContinue?')) return; api('/api/admin/editor-comp/'+staffId+'/new-version','POST',{}).then(function(){ toast('Nayi draft version ready — ab rates edit karein'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+window._ecNewVersion=function(staffId){ if(!confirm('Published plan ko edit karne ke liye ek nayi DRAFT version banegi (abhi ke saare rates copy ho jaayenge). Aap edit karke publish karenge tabhi changes lagenge — aur sirf NEW assignments pe. Purane/finalized jobs apne agreed rate pe hi rahenge.\n\nContinue?')) return; api('/api/admin/editor-comp/'+staffId+'/new-version','POST',{}).then(function(r){ toast((r&&r.resumed)?'Pehle se bani draft khol di — ab rates edit karein':'Nayi draft version ready — ab rates edit karein'); _ecReload(); }).catch(function(e){ toast(_ecErr(e,'Could not create draft'),true); }); };
 window._ecArchive=function(ruleId){ if(!confirm('Is rule ko hata dein (draft se)?')) return; api('/api/admin/editor-comp/rule/'+ruleId+'/archive','POST',{}).then(function(){ _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
 window._ecDiscard=function(staffId){ if(!confirm('Pura draft discard karein? Dobara import karna padega.')) return; api('/api/admin/editor-comp/'+staffId+'/discard-draft','POST',{}).then(function(){ toast('Draft discarded'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
 window._ecPublish=function(agId,ack){ var m=ack?'Overlaps ke saath publish karein? Ambiguous durations tab tak price nahi karenge jab tak boundary theek na ho.':'Is plan ko publish (activate) karein? Iske baad ye version-locked ho jaayega.'; if(!confirm(m)) return; api('/api/admin/editor-comp/'+agId+'/publish','POST',{ack_overlaps:!!ack}).then(function(){ toast('Plan published'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Publish failed',true); }); };
