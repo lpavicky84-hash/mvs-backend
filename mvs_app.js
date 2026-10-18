@@ -34032,11 +34032,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ee-priv{font-size:.68rem;font-weight:800;color:var(--primary);background:rgba(230,173,78,.16);border:1px solid rgba(230,173,78,.35);padding:3px 9px;border-radius:999px}',
       '.ee-hero-s{font-size:.82rem;color:var(--muted);margin-top:4px}',
       '.ee-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}',
-      '.ee-sc{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px}',
-      '.ee-sc .v{font-size:1.5rem;font-weight:900;letter-spacing:-.5px}',
-      '.ee-sc .l{font-size:.74rem;color:var(--muted);font-weight:700;margin-top:3px}',
-      '.ee-sec{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:20px 2px 10px}',
-      '.ee-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px}',
+      '.ee-sc{position:relative;overflow:hidden;background:linear-gradient(145deg,var(--card),var(--surface-2));border:1px solid var(--border);border-radius:16px;padding:17px 18px 16px;box-shadow:0 1px 2px rgba(40,30,10,.04),0 10px 26px -22px rgba(40,30,10,.3);transition:transform .14s cubic-bezier(.2,.8,.2,1),box-shadow .18s}',
+      '.ee-sc::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,#e6ad4e,#d69a35);opacity:.45}',
+      '.ee-sc:hover{transform:translateY(-2px);box-shadow:0 1px 2px rgba(40,30,10,.05),0 16px 34px -20px rgba(40,30,10,.4)}',
+      '.ee-sc .v{font-size:1.55rem;font-weight:900;letter-spacing:-.5px;line-height:1.05}',
+      '.ee-sc .l{font-size:.74rem;color:var(--muted);font-weight:700;margin-top:4px}',
+      '.ee-sc.money{background:linear-gradient(145deg,rgba(230,173,78,.17),rgba(230,173,78,.03));border-color:rgba(230,173,78,.4)}',
+      '.ee-sc.money::before{opacity:.95}',
+      '.ee-sc.money .v{font-size:1.75rem;color:#a9791f}',
+      'body.dark .ee-sc.money .v{color:#e6ad4e}',
+      '.ee-sc .ic{position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(230,173,78,.12);color:var(--primary);opacity:.6}',
+      '.ee-sc .ic svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}',
+      '.ee-sec{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:22px 2px 11px}',
+      '.ee-card{position:relative;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;transition:transform .14s cubic-bezier(.2,.8,.2,1),box-shadow .18s,border-color .18s}',
+      '.ee-card:hover{transform:translateY(-1px);box-shadow:0 12px 28px -20px rgba(40,30,10,.4);border-color:rgba(230,173,78,.4)}',
       '.ee-card .main{flex:1;min-width:0}',
       '.ee-ct{font-weight:800;font-size:.95rem;line-height:1.3;word-break:break-word}',
       '.ee-meta{font-size:.76rem;color:var(--muted);margin-top:4px;display:flex;flex-wrap:wrap;gap:8px}',
@@ -34051,10 +34060,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       '.ee-pill.hold{background:rgba(224,120,46,.16);color:#a85a14}',
       '.ee-pill.rej{background:rgba(209,68,58,.14);color:#b23229}',
       '.ee-pill.urg{background:rgba(209,68,58,.14);color:#b23229}',
-      '.ee-rate{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px}',
-      '.ee-rate .rl{font-weight:800;font-size:.88rem}',
-      '.ee-rate .rm{font-size:.72rem;color:var(--muted);margin-top:2px}',
-      '.ee-rate .ra{font-weight:900;white-space:nowrap}',
+      '.ee-rate{position:relative;background:linear-gradient(135deg,var(--card),var(--surface-2));border:1px solid var(--border);border-radius:16px;padding:13px 16px;margin-bottom:10px;display:flex;align-items:center;gap:13px;transition:transform .14s cubic-bezier(.2,.8,.2,1),box-shadow .18s,border-color .18s;overflow:hidden}',
+      '.ee-rate::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#e6ad4e,#c98f2c);opacity:.85}',
+      '.ee-rate:hover{transform:translateY(-2px);box-shadow:0 14px 30px -18px rgba(40,30,10,.45);border-color:rgba(230,173,78,.5)}',
+      '.ee-rate-badge{flex:none;min-width:42px;height:42px;padding:0 11px;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98f2c);border:1px solid rgba(201,143,44,.6);color:#fff;font-weight:900;font-size:.92rem;letter-spacing:.02em;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px -4px rgba(230,173,78,.6)}',
+      '.ee-rate-main{flex:1;min-width:0}',
+      '.ee-rate-title{font-weight:800;font-size:.92rem;line-height:1.25;display:flex;align-items:center;gap:7px;flex-wrap:wrap}',
+      '.ee-rate-urg{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#b23229;background:rgba(209,68,58,.12);border:1px solid rgba(209,68,58,.3);padding:2px 7px;border-radius:999px}',
+      '.ee-rate-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}',
+      '.ee-rc{font-size:.68rem;font-weight:700;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:2px 9px}',
+      '.ee-rate-amt{flex:none;text-align:right;font-weight:900;font-size:1.22rem;letter-spacing:-.4px;color:var(--text);white-space:nowrap;padding-left:8px}',
+      '.ee-rate-amt .per{display:block;font-size:.6rem;font-weight:700;color:var(--muted);letter-spacing:.03em;text-transform:uppercase;margin-top:1px}',
       'body.dark .ee-pill.ver{color:#f0c76a}','body.dark .ee-pill.ok{color:#5fd39e}','body.dark .ee-pill.hold{color:#e8a76a}','body.dark .ee-pill.rej{color:#ed8278}',
       /* lock toolbar in hero */
       '.ee-lockbar{display:inline-flex;gap:7px;flex-wrap:wrap;margin-left:auto}',
@@ -34113,10 +34129,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var html='<div class="ee-hero"><div class="ee-hero-t">My Earnings <span class="ee-priv">Private</span>'
         +'<span class="ee-lockbar" id="ee-lockbar"></span></div>'
         +'<div class="ee-hero-s">Project-based editing payout. These amounts are visible only to you and the finance Admin — never to the Production Manager. An estimate becomes payable once it passes QC technical approval and Admin verification.</div></div>';
+      var _icWallet='<svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>';
+      var _icVid='<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7zM1 5h15v14H1z"/></svg>';
+      var _icClock='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
       html+='<div class="ee-sum">'
-        +'<div class="ee-sc"><div class="v">'+esc(sm.estimate_total_display||'₹0')+'</div><div class="l">Matched estimate total</div></div>'
-        +'<div class="ee-sc"><div class="v">'+(sm.count||0)+'</div><div class="l">Editing items</div></div>'
-        +'<div class="ee-sc"><div class="v">'+(sm.pending||0)+'</div><div class="l">Rate pending</div></div>'
+        +'<div class="ee-sc money"><div class="ic">'+_icWallet+'</div><div class="v">'+esc(sm.estimate_total_display||'₹0')+'</div><div class="l">Matched estimate total</div></div>'
+        +'<div class="ee-sc"><div class="ic">'+_icVid+'</div><div class="v">'+(sm.count||0)+'</div><div class="l">Editing items</div></div>'
+        +'<div class="ee-sc"><div class="ic">'+_icClock+'</div><div class="v">'+(sm.pending||0)+'</div><div class="l">Rate pending</div></div>'
         +'</div>';
       if(!r.has_rate_plan){
         html+='<div class="p-empty" style="margin-bottom:14px">Your rate plan has not been published by the Admin yet. You can still submit videos — once the payout rate is confirmed, the estimate will appear here (no video is ever lost).</div>';
@@ -34148,11 +34167,17 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       html+='<div class="ee-sec">Monthly Statements</div><div id="ee-stmts"><div class="p-load" style="padding:8px">Loading statements…</div></div>';
       if((r.rates||[]).length){
         html+='<div class="ee-sec">Your Rate Plan</div>';
-        html+=r.rates.map(function(rt){
+        html+=r.rates.map(function(rt,i){
           var lo=rt.duration_min_seconds, hi=rt.duration_max_seconds;
           var band=(lo!=null||hi!=null)?((lo!=null?Math.floor(lo/60):'0')+'–'+(hi!=null?Math.floor(hi/60):'∞')+' min'):'any length';
-          var m=[]; if(rt.video_type) m.push(esc(rt.video_type)); if(rt.editing_type) m.push(esc(rt.editing_type)); m.push(band); if(rt.is_urgent) m.push('urgent');
-          return '<div class="ee-rate"><div><div class="rl">'+esc(rt.label||'Rate')+'</div><div class="rm">'+m.join(' · ')+(rt.days_required?(' · '+rt.days_required+'d'):'')+'</div></div><div class="ra">'+esc(rt.amount_display||'')+'</div></div>';
+          var badge=((rt.label||'').replace(/\s+/g,'')||('R'+(i+1))).slice(0,4);
+          var title=esc(rt.video_type||rt.label||'Rate')+(rt.editing_type?(' <span style="font-weight:600;color:var(--muted)">· '+esc(rt.editing_type)+'</span>'):'');
+          var chips=[]; chips.push('<span class="ee-rc">'+band+'</span>');
+          if(rt.days_required) chips.push('<span class="ee-rc">'+esc(rt.days_required)+'</span>');
+          return '<div class="ee-rate"><div class="ee-rate-badge">'+esc(badge)+'</div>'
+            +'<div class="ee-rate-main"><div class="ee-rate-title">'+title+(rt.is_urgent?' <span class="ee-rate-urg">Urgent</span>':'')+'</div>'
+            +'<div class="ee-rate-chips">'+chips.join('')+'</div></div>'
+            +'<div class="ee-rate-amt">'+esc(rt.amount_display||'')+'<span class="per">per video</span></div></div>';
         }).join('');
       }
       body.innerHTML=html;
@@ -41487,9 +41512,11 @@ function _ecRender(d){
       +'<div class="ec-fld"><label>Urgent</label><select id="ec-pv-ur"><option value="">No</option><option value="1">Yes</option></select></div>'
       +'<button class="btn btn-ghost btn-sm" onclick="_ecPreview('+ag.id+')">Check</button></div><div id="ec-pv-res" style="margin-top:10px;font-size:.86rem"></div></div>';
     var pubActs=isDraft?('<div class="ec-acts"><button class="btn btn-primary" onclick="_ecPublish('+ag.id+','+((ag.overlaps||[]).length?'true':'false')+')">'+((ag.overlaps||[]).length?'Publish with overlaps':'Publish plan')+'</button><button class="btn btn-ghost btn-sm" onclick="_ecDiscard('+st.id+')">Discard draft</button></div>'):'';
+    // ACTIVE plan: edit karne ke liye nayi draft version (rates copy ho jaate hain) — spec-safe.
+    var activeActs=(!isDraft&&d.active)?('<div class="ec-acts" style="align-items:center"><button class="btn btn-primary" onclick="_ecNewVersion('+st.id+')">✎ Edit rates (new version)</button><span style="font-size:.74rem;color:var(--text-muted)">Changes sirf NEW assignments pe lagenge — purane jobs apne agreed rate pe rahenge.</span></div>'):'';
     body='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="ec-pill '+(isDraft?'ec-draft':'ec-active')+'">'+(isDraft?'DRAFT':'ACTIVE')+'</span><span style="font-size:.8rem;color:var(--text-muted)">v'+(ag.version||1)+' · '+esc(cur)+'</span>'+(d.active&&isDraft?'<span style="font-size:.76rem;color:#1f7a44">(ek active plan v'+d.active.version+' bhi hai)</span>':'')+'</div>'
       +(ag.notes?('<div class="ec-sub" style="margin-top:8px;line-height:1.5">'+esc(ag.notes)+'</div>'):'')
-      +'<div style="overflow-x:auto"><table class="ec-tbl">'+head+rows+'</table></div>'+warns+editForm+preview+pubActs;
+      +'<div style="overflow-x:auto"><table class="ec-tbl">'+head+rows+'</table></div>'+warns+editForm+preview+pubActs+activeActs;
   }
   _ecClose();
   var ov=document.createElement('div'); ov.className='ec-ov'; ov.id='ec-ov';
@@ -41499,6 +41526,7 @@ function _ecRender(d){
 }
 function _ecReload(){ var st=window._ecStaff||{}; api('/api/admin/editor-comp/'+st.id).then(_ecRender).catch(function(e){ toast((e&&e.message)||'Failed',true); }); }
 window._ecSeed=function(staffId){ api('/api/admin/editor-comp/'+staffId+'/seed-draft','POST',{currency:'INR'}).then(function(){ toast('Draft imported'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
+window._ecNewVersion=function(staffId){ if(!confirm('Published plan ko edit karne ke liye ek nayi DRAFT version banegi (abhi ke saare rates copy ho jaayenge). Aap edit karke publish karenge tabhi changes lagenge — aur sirf NEW assignments pe. Purane/finalized jobs apne agreed rate pe hi rahenge.\n\nContinue?')) return; api('/api/admin/editor-comp/'+staffId+'/new-version','POST',{}).then(function(){ toast('Nayi draft version ready — ab rates edit karein'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
 window._ecArchive=function(ruleId){ if(!confirm('Is rule ko hata dein (draft se)?')) return; api('/api/admin/editor-comp/rule/'+ruleId+'/archive','POST',{}).then(function(){ _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
 window._ecDiscard=function(staffId){ if(!confirm('Pura draft discard karein? Dobara import karna padega.')) return; api('/api/admin/editor-comp/'+staffId+'/discard-draft','POST',{}).then(function(){ toast('Draft discarded'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); }); };
 window._ecPublish=function(agId,ack){ var m=ack?'Overlaps ke saath publish karein? Ambiguous durations tab tak price nahi karenge jab tak boundary theek na ho.':'Is plan ko publish (activate) karein? Iske baad ye version-locked ho jaayega.'; if(!confirm(m)) return; api('/api/admin/editor-comp/'+agId+'/publish','POST',{ack_overlaps:!!ack}).then(function(){ toast('Plan published'); _ecReload(); }).catch(function(e){ toast((e&&e.message)||'Publish failed',true); }); };
