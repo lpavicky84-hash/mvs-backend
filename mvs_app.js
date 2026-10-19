@@ -321,7 +321,7 @@ var _AUTH_META={
   admin:{label:'Admin Panel', tag:'Admin', sub:'Approvals, manage teachers & students',
          bg:'radial-gradient(circle at top right,#6b5a12,#3a300c 45%,#1c1705)'}
 };
-function _portalPath(p){ return p==='teacher'?'/teacher':(p==='admin'?'/admin':(_PROD_PORTALS&&_PROD_PORTALS[p]?'/'+p:'/')); }
+function _portalPath(p){ return ({teacher:'/teacher',admin:'/admin',production:'/production',editor:'/editor',youtuber:'/youtuber',graphics:'/graphics'})[p]||'/'; }
 function _portalFromPath(){
   var p=(location.pathname||'/').replace(/\/+$/,'')||'/';
   if(p==='/teacher') return 'teacher';

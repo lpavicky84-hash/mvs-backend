@@ -63,6 +63,9 @@ def ensure_columns():
         "ALTER TABLE materials MODIFY COLUMN part TEXT",
         "ALTER TABLE materials MODIFY COLUMN title VARCHAR(400)",
         "ALTER TABLE materials MODIFY COLUMN filename VARCHAR(400)",
+        # exam draft auto-save: bilingual 200-MCQ draft JSON (Hindi = 3 bytes/char) 64KB TEXT
+        # me fit nahi hota -> error 1406 "Data too long for column 'data'". LONGTEXT karo.
+        "ALTER TABLE exam_drafts MODIFY COLUMN data LONGTEXT",
         "ALTER TABLE student_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE teacher_profiles ADD COLUMN plain_password VARCHAR(255)",
         "ALTER TABLE teacher_profiles ADD COLUMN payout_passcode VARCHAR(255)",
