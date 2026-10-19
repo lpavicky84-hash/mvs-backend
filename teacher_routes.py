@@ -3783,15 +3783,26 @@ def teacher_perf_board(month: str = "", db: Session = Depends(get_db), current_u
     bhi dekh sakte hain (spec Part 29)."""
     import perf_engine as _pe
     try:
-        return _pe.compute(db, month)
+        res = _pe.compute(db, month)
+        # TP22: viewer ka apna teacher_id board response me hi de do — frontend ko alag
+        # /my-rank call (jo ek aur poora team-ranking compute karta tha) ki zaroorat na pade.
+        try:
+            tp = get_teacher_profile(current_user, db)
+            if isinstance(res, dict):
+                res["me_teacher_id"] = (tp.id if tp else None)
+        except Exception:
+            pass
+        return res
     except Exception as _e:
         try:
             db.rollback()
         except Exception:
             pass
         import traceback as _tb; _tb.print_exc()
+        # TP20: fail ko empty-month se alag karo, par raw DB text client ko mat bhejo
+        # (trace server log me hai). Frontend is 'error' flag par retryable UI dikhata hai.
         return {"month": month or "", "frozen": False, "weights": {},
-                "team_avg_workload_units": 0, "results": [], "error": str(_e)}
+                "team_avg_workload_units": 0, "results": [], "error": "compute_failed"}
 
 
 @router.get("/my-activity")
@@ -8809,6 +8820,11 @@ def _payout_drivers(db, tp, month):
     cls_due = int(m.get("lect_scheduled_due", 0))
     d_dec = int(m.get("doubts_decided", 0))
     d_on = int(m.get("doubts_ontime", 0))
+    # TP11: SLA ghante config se (hardcoded 15 nahi) — label actual value dikhaye.
+    try:
+        _sla_h = int(_pe._pc.get_perf_config(db).get("doubt_sla_hours", 15))
+    except Exception:
+        _sla_h = 15
     drivers = [
         {"key": "classes", "label": "Classes conducted", "done": cls_done, "total": cls_due,
          "pending": max(0, cls_due - cls_done), "pct": _pct(cls_done, cls_due),
@@ -8817,7 +8833,7 @@ def _payout_drivers(db, tp, month):
         drv("dpp", "DPP chapters", (ti.get("DPP", {}) or {}).get("done", 0),
             (ti.get("DPP", {}) or {}).get("target", 0), "dpp"),
         drv("tests", "Weekly tests", m.get("tests_done", 0), m.get("tests_target", 0), "tests"),
-        {"key": "doubts", "label": "Doubts within 15h", "done": d_on, "total": d_dec,
+        {"key": "doubts", "label": ("Doubts within %dh" % _sla_h), "done": d_on, "total": d_dec,
          "pending": max(0, d_dec - d_on), "pct": (_pct(d_on, d_dec) if d_dec > 0 else 100.0),
          "nav": "doubts", "unit": "doubts"},
         drv("videos", "Videos (one shot / revision)", (ti.get("Videos", {}) or {}).get("done", 0),

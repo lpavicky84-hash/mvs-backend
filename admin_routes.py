@@ -6794,8 +6794,9 @@ def perf_scores(month: str = "", db: Session = Depends(get_db), _=Depends(get_ad
         except Exception:
             pass
         import traceback as _tb; _tb.print_exc()
+        # TP20: fail ko empty-month se alag; raw DB text client ko nahi (trace server log me).
         return {"month": month or "", "frozen": False, "weights": {},
-                "team_avg_workload_units": 0, "results": [], "error": str(_e)}
+                "team_avg_workload_units": 0, "results": [], "error": "compute_failed"}
 
 
 @router.get("/perf-history")
@@ -6809,7 +6810,67 @@ def perf_history(db: Session = Depends(get_db), _=Depends(get_admin)):
 def perf_snapshot(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
     """Phase 8: is month ke scores ko freeze/re-freeze (weights badalne par purani ranking na badle)."""
     import perf_engine as _pe
-    return _pe.freeze_month(db, (payload or {}).get("month", ""))
+    try:
+        return _pe.freeze_month(db, (payload or {}).get("month", ""))
+    except HTTPException:
+        raise
+    except Exception:
+        # TP16: snapshot save fail hua to clear failure do (fake freeze nahi).
+        raise HTTPException(503, "Freeze nahi ho paaya — dubara try karein (koi snapshot save nahi hua).")
+
+
+@router.get("/perf-correction-preview")
+def perf_correction_preview(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """PAST month ke liye purana-vs-corrected scores ka diff (sirf preview, koi write nahi).
+    Admin isse dekh ke decide karta hai ki correction apply karni hai ya nahi."""
+    import perf_engine as _pe
+    if not month:
+        raise HTTPException(400, "month required (YYYY-MM)")
+    try:
+        prev = _pe.correction_preview(db, month)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        raise HTTPException(503, "Preview nahi ban paaya — dubara try karein.")
+    # paid/finalized teacher payouts ka warning (ye leaderboard snapshot se alag hain —
+    # re-freeze unko nahi chhuta, par admin ko pata rehna chahiye).
+    try:
+        from models import PayoutMonth
+        mk = prev.get("month", month)
+        paid_n = db.query(PayoutMonth).filter(
+            PayoutMonth.month == mk,
+            PayoutMonth.status.in_(["finalized", "paid", "credited", "receipt_confirmed", "in_progress"])).count()
+        prev["payouts_locked"] = int(paid_n)
+    except Exception:
+        prev["payouts_locked"] = 0
+    return prev
+
+
+@router.post("/perf-correction-apply")
+def perf_correction_apply(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ne approve kiya -> PAST month ka corrected snapshot save (re-freeze). Paid teacher
+    payouts (PayoutMonth.snapshot) alag frozen hain — unpe asar nahi (paisa safe)."""
+    import perf_engine as _pe
+    month = (payload or {}).get("month", "")
+    if not month:
+        raise HTTPException(400, "month required (YYYY-MM)")
+    try:
+        return _pe.apply_correction(db, month)
+    except HTTPException:
+        raise
+    except Exception as _e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        _msg = str(_e)
+        if "current month" in _msg:
+            raise HTTPException(400, "Current month already live/corrected hai — correction sirf past months ke liye.")
+        raise HTTPException(503, "Correction apply nahi ho paayi — dubara try karein (koi snapshot save nahi hua).")
 
 
 @router.get("/teacher-activity/{tid}")
@@ -6846,9 +6907,15 @@ def teacher_perf_targets_set(tid: int, payload: dict = Body(...), db: Session = 
     if not db.query(TeacherProfile).filter(TeacherProfile.id == tid).first():
         raise HTTPException(404, "Teacher not found")
     pl = payload or {}
-    r = _pe.save_teacher_targets(db, tid, pl.get("targets", {}), pl.get("mode", "manual"),
-                                 pl.get("period", "monthly"),
-                                 pl.get("session_start", ""), pl.get("session_end", ""))
+    try:
+        r = _pe.save_teacher_targets(db, tid, pl.get("targets", {}), pl.get("mode", "manual"),
+                                     pl.get("period", "monthly"),
+                                     pl.get("session_start", ""), pl.get("session_end", ""))
+    except HTTPException:
+        raise
+    except Exception:
+        # TP16: save fail hua to clear failure do (fake "saved" nahi).
+        raise HTTPException(503, "Targets save nahi ho paaye — dubara try karein (koi data change nahi hua).")
     return {"ok": True, **r}
 
 

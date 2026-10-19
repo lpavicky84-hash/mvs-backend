@@ -3446,7 +3446,7 @@ const PS_SECTIONS=[
    note:'8 components ka weight — sum 100 hona chahiye (spec Part 2).', sumWatch:true,
    keys:[['teaching','Teaching & Class Delivery'],['content','Content Production'],
      ['targets','Monthly Target Achievement'],['student_support','Student Support'],
-     ['tests','Tests & Assessments'],
+     ['tests','Tests & Assessments'],['project','Projects (completion %)'],
      ['consistency','Consistency'],['video_initiative','Video Initiative']]},
   {g:'activity_workload', title:'Activity Workload Units (effort)',
    note:'Har activity ka effort — 1 short = 1, 1 one-shot = 5, etc. (spec Part 3).', step:'0.5',
@@ -3460,18 +3460,18 @@ const PS_SECTIONS=[
   {g:'overachievement', title:'Overachievement Caps (%)',
    note:'100%=100, uske upar cap (spec Part 19).',
    keys:[['base','Base (100)'],['cap_101_120','101-120% cap'],['cap_over_120','>120% cap']]},
-  {g:'quality_split', title:'Quality / Timeliness Split',
-   note:'Jahaan quality data ho: target/quality/timeliness (spec Part 18). Sum 1.', step:'0.05',
+  {g:'quality_split', title:'Quality / Timeliness Split (inactive)',
+   note:'INACTIVE — abhi scoring me use nahi ho raha (future use ke liye saved). target/quality/timeliness, sum 1.', step:'0.05',
    keys:[['target','Target'],['quality','Quality'],['timeliness','Timeliness']]},
-  {g:'consistency', title:'Consistency',
-   note:'Consistency ke max points + streak-badge days (spec Part 17).',
+  {g:'consistency', title:'Consistency (inactive)',
+   note:'INACTIVE — ye knobs abhi scoring me use nahi hote (consistency score activity se nikalta hai).',
    keys:[['max_points','Max points'],['streak_days_for_badge','Streak days for badge']]},
   {g:'workload_levels', title:'Workload Level Thresholds (% of team avg)',
    note:'Low/High/Very High workload cutoffs (spec Part 22).',
    keys:[['low_below','Low below %'],['high_above','High above %'],['very_high_above','Very High above %']]},
   {g:'_root', title:'Other',
    note:'Min workload eligibility (fraction) + video initiative max points (Part 9, 20).', step:'0.05',
-   keys:[['min_workload_fraction','Min workload fraction (0-1)'],['video_initiative_cap','Video initiative cap (points)']]},
+   keys:[['min_workload_fraction','Min workload fraction (0-1)'],['video_initiative_cap','Video initiative cap (inactive — not used)']]},
 ];
 async function openPerfSettings(){
   let d;
@@ -3596,7 +3596,7 @@ async function renderVideoContribution(wrapId){
     if(!(c.proposed>0)){ wrap.innerHTML=`<div class="vc-card vc-empty">${ic('video')||''}<div><b>Video Initiative</b><div class="vc-sub">No video ideas proposed yet. Propose good topics to earn reward points and boost your rank.</div></div></div>`; return; }
     const ti=d.top_idea;
     wrap.innerHTML=`<div class="vc-card" onclick="vcHistory()">
-      <div class="vc-head"><div class="vc-title">Video Initiative — My Contributions</div><span class="vc-open">View history \u203a</span></div>
+      <div class="vc-head"><div class="vc-title">Video Initiative — My Contributions <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">(all-time)</span></div><span class="vc-open">View history \u203a</span></div>
       <div class="vc-stats">
         <div class="vc-stat"><b>${c.proposed||0}</b><span>Proposed</span></div>
         <div class="vc-stat"><b>${c.approved||0}</b><span>Approved</span></div>
@@ -3699,27 +3699,91 @@ let _pfState={who:'t', sort:'overall', board:null, meId:null};
 async function renderPerfBoard(wrapId, who, month){
   const wrap=document.getElementById(wrapId); if(!wrap) return;
   _ensurePfCss();
-  _pfState.who=who; _pfState.wrapId=wrapId;
+  _pfState.who=who; _pfState.wrapId=wrapId; _pfState.month=(month||'');
+  // TP19: har load ko ek request-id do. Agar user month/tab jaldi switch kare to purana
+  // (slow) response naye ke upar paint na kare — sirf latest request hi state set/paint karta hai.
+  const myReq=(_pfState.seq=(_pfState.seq||0)+1);
+  const _stale=()=>myReq!==_pfState.seq;
   wrap.innerHTML='<div class="spinner"></div>';
   const url=(who==='a'?'/api/admin/perf-scores':'/api/teacher/perf-board')+(month?('?month='+month):'');
   let d;
   try{ d=await api(url); }
   catch(e){
-    wrap.innerHTML='<div class="card"><div class="card-body" style="text-align:center;padding:24px">The ranking board could not be loaded. <button class="btn btn-primary" style="margin-top:10px" onclick="renderPerfBoard(\''+wrapId+'\',\''+who+'\')">Retry</button><div style="margin-top:8px;font-size:.72rem;color:var(--text-muted)">'+esc((e&&e.message)||'error')+'</div></div></div>';
+    if(_stale()) return;   // superseded — chup-chaap chhodo
+    wrap.innerHTML=_pfErrHtml(wrapId,who,(e&&e.message)||'error');
     return;
   }
+  if(_stale()) return;      // naya request aa gaya — ye response discard
   _pfState.board=d;
+  // TP22: apna teacher_id ab board response se hi (alag /my-rank compute nahi).
+  if(who!=='a' && d && d.me_teacher_id!=null){ _pfState.meId=d.me_teacher_id; }
   if(!_pfState.history){ try{ _pfState.history=await api(who==='a'?'/api/admin/perf-history':'/api/teacher/perf-history'); }catch(e){ _pfState.history=null; } }
-  if(who!=='a'){ try{ const mr=await api('/api/teacher/my-rank'); _pfState.meId=(mr.me&&mr.me.teacher_id)||null; }catch(e){} }
+  if(_stale()) return;
   try{ _pfPaint(); }
   catch(e){ wrap.innerHTML='<div class="card"><div class="card-body">Board render error: '+esc((e&&e.message)||'')+'</div></div>'; }
 }
-function _pfMonth(m){ renderPerfBoard(_pfState.wrapId, _pfState.who, m); }
+function _pfErrHtml(wrapId,who,msg){
+  // TP20: load fail — retryable error (khaali-month se alag). Raw DB text teacher ko nahi.
+  return '<div class="card"><div class="card-body" style="text-align:center;padding:24px">'
+    +'<div style="font-weight:800;color:var(--text)">Ranking board load nahi ho paaya</div>'
+    +'<div style="margin-top:6px;font-size:.8rem;color:var(--text-muted)">Thodi der baad dubara try karein.</div>'
+    +'<button class="btn btn-primary" style="margin-top:12px" onclick="renderPerfBoard(\''+wrapId+'\',\''+who+'\',(_pfState.month||\'\'))">Retry</button>'
+    +'</div></div>';
+}
+function _pfMonth(m){
+  renderPerfBoard(_pfState.wrapId, _pfState.who, m);
+  // TP21: month-change propagation hook — koi page apne month-scoped sibling panels ko
+  // yahan subscribe karke us month pe refresh kar sakta hai. (Abhi perf page ke siblings
+  // all-time hain -> koi callback set nahi -> koi behavior change nahi.)
+  try{ if(typeof _pfState.onMonthChange==='function') _pfState.onMonthChange(m); }catch(e){}
+}
 async function _pfFreeze(){
   try{ const r=await api('/api/admin/perf-snapshot','POST',{month:(_pfState.board||{}).month||''});
     toast('Month frozen — '+r.count+' teachers ki ranking ab locked hai.');
     _pfState.history=null; renderPerfBoard(_pfState.wrapId,_pfState.who,r.month);
   }catch(e){ toast(e.message||'Freeze failed',true); }
+}
+// ---- Past-month correction (admin approval): purana-vs-corrected diff dikhao, phir apply ----
+async function _pfCorrectPreview(){
+  const month=(_pfState.board||{}).month||'';
+  if(!month) return;
+  let d;
+  try{ d=await api('/api/admin/perf-correction-preview?month='+encodeURIComponent(month)); }
+  catch(e){ toast(e.message||'Preview failed',true); return; }
+  _ensurePfCss();
+  const diffs=(d.diffs||[]);
+  const changed=diffs.filter(x=>x.changed||x.is_new);
+  const fmt=v=>(v==null?'—':v);
+  const rowHtml=(x)=>{
+    const sd=x.score_delta;
+    const sdCls=sd==null?'':(sd>0?'up':(sd<0?'dn':'flat'));
+    const sdTxt=sd==null?'NEW':((sd>0?'+':'')+sd);
+    const rkTxt=(x.old_rank!=null&&x.new_rank!=null&&x.old_rank!==x.new_rank)
+      ? `#${x.old_rank} → #${x.new_rank}` : `#${fmt(x.new_rank)}`;
+    return `<tr>
+      <td>${esc(x.name||('#'+x.teacher_id))}</td>
+      <td class="pcx-sc">${fmt(x.old_score)} → <b>${fmt(x.new_score)}</b> <span class="pcx-delta ${sdCls}">${sdTxt}</span></td>
+      <td class="pcx-rk">${rkTxt}</td></tr>`;
+  };
+  const list=(changed.length?changed:diffs).slice(0,200).map(rowHtml).join('');
+  const warn=(d.payouts_locked>0)
+    ? `<div class="pcx-warn">${ic('alert')||'⚠'} Is month ke <b>${d.payouts_locked}</b> teacher payout already finalized/paid hain. Ye correction sirf <b>ranking snapshot</b> update karega — <b>paid amount nahi badlega</b> (woh alag frozen hai).</div>` : '';
+  const head=`<div class="pcx-top">Month: <b>${esc(_mpMonthLabel(month))}</b> · ${changed.length} teacher(s) ka score/rank badlega (total ${d.total}).</div>`;
+  showModal('Correct month — review changes',
+    `<div class="pcx">${head}${warn}
+      ${changed.length?`<table class="pcx-tbl"><thead><tr><th>Teacher</th><th>Score (old → new)</th><th>Rank</th></tr></thead><tbody>${list}</tbody></table>`
+        : '<div class="pcx-none">Koi change nahi — corrected scores purane snapshot ke barabar hain. Apply ki zaroorat nahi.</div>'}
+    </div>`,
+    `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>`+
+    (changed.length?`<button class="btn btn-primary" onclick="_pfApplyCorrection('${esc(month)}')">Apply correction</button>`:''));
+}
+async function _pfApplyCorrection(month){
+  try{
+    const r=await api('/api/admin/perf-correction-apply','POST',{month:month});
+    closeModal();
+    toast('Correction applied — '+r.count+' teachers ki ranking update ho gayi ('+month+').');
+    _pfState.history=null; renderPerfBoard(_pfState.wrapId,_pfState.who,r.month||month);
+  }catch(e){ toast(e.message||'Apply failed',true); }
 }
 function _pfSorted(){
   const rows=(_pfState.board.results||[]).slice();
@@ -3751,7 +3815,16 @@ function _pfVal(r){
 function _pfPaint(){
   const wrap=document.getElementById(_pfState.wrapId); if(!wrap) return;
   const d=_pfState.board; const rows=_pfSorted();
-  if(!rows.length){ wrap.innerHTML='<div class="vv-empty">No performance data yet this month.</div>'; return; }
+  if(!rows.length){
+    // TP20: backend fail (HTTP200 + error field) ko khaali-month se alag dikhao.
+    if(d && d.error){ wrap.innerHTML=_pfErrHtml(_pfState.wrapId,_pfState.who,d.error); }
+    else { wrap.innerHTML='<div class="vv-empty">No performance data yet this month.</div>'; }
+    return;
+  }
+  // TP24: Overall ke alawa kisi component par sort karne par '#' overall rank NAHI, us
+  // category me position hai. catMode me overall rank-change chip (overall-only) hide.
+  const catMode=_pfState.sort!=='overall';
+  const catLbl=((PF_TABS.find(t=>t[0]===_pfState.sort)||[])[1])||'';
   const medal=['#e0b23c','#a7a29a','#c67b3e'];
   const tabs=`<select class="pf-catsel" onchange="_pfTab(this.value)" aria-label="Category">${PF_TABS.map(t=>`<option value="${t[0]}" ${_pfState.sort===t[0]?'selected':''}>${esc(t[1])}</option>`).join('')}</select>`;
   // podium (2,1,3)
@@ -3759,11 +3832,11 @@ function _pfPaint(){
   const podHtml=`<div class="pf-podium">${pod.map(r=>{
     const rk=rows.indexOf(r)+1; const h=rk===1?128:rk===2?96:78; const sz=rk===1?70:56;
     const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
-    return `<div class="pf-pod ${rk===1?'first':''}" onclick="pfBreakdown(${r.teacher_id})">
+    return `<div class="pf-pod ${rk===1?'first':''}" role="button" tabindex="0" aria-label="${esc(r.name)} — breakdown" onclick="pfBreakdown(${r.teacher_id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pfBreakdown(${r.teacher_id})}">
       <div class="pf-pod-av">${_pfAv(r,sz)}<span class="pf-medal" style="background:${medal[rk-1]}">${rk}</span></div>
       <div class="pf-pod-nm"><span class="pf-nmwrap">${esc(r.name)}${_pfTipHtml(r)}</span>${isMe?' <span class="pf-you">you</span>':''}</div>
       <div class="pf-pod-sc">${_pfVal(r)}</div>
-      <div class="pf-pod-meta">${_pfChange(r)}${r.limited_workload?'<span class="pf-lim">Limited</span>':''}</div>
+      <div class="pf-pod-meta">${catMode?'':_pfChange(r)}${r.limited_workload?'<span class="pf-lim">Limited</span>':''}</div>
       <div class="pf-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[rk-1]}2e,${medal[rk-1]}08);border-top:4px solid ${medal[rk-1]}"><b>#${rk}</b></div>
     </div>`;}).join('')}</div>`;
   // rest list
@@ -3771,20 +3844,25 @@ function _pfPaint(){
     const rk=i+1; const isMe=_pfState.meId&&r.teacher_id===_pfState.meId;
     const subs=(r.subjects||[]).slice(0,3).map(x=>`<span class="pf-sub">${esc(x)}</span>`).join('');
     const vi=(r.video_initiative||{});
-    return `<div class="pf-row ${isMe?'me':''} ${rk<=3?'top':''}" style="animation-delay:${Math.min(i*28,420)}ms" onclick="pfBreakdown(${r.teacher_id})">
-      <div class="pf-rk">#${rk}${_pfChange(r)}</div>
+    const rkCell=catMode
+      ? `#${rk}<span class="pf-rk-ov" title="Overall rank">ov #${r.rank||rk}</span>`
+      : `#${rk}${_pfChange(r)}`;
+    return `<div class="pf-row ${isMe?'me':''} ${rk<=3?'top':''}" style="animation-delay:${Math.min(i*28,420)}ms" role="button" tabindex="0" aria-label="${esc(r.name)} — breakdown" onclick="pfBreakdown(${r.teacher_id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pfBreakdown(${r.teacher_id})}">
+      <div class="pf-rk">${rkCell}</div>
       <div class="pf-who">${_pfAv(r,42)}<div><div class="pf-nm"><span class="pf-nmwrap">${esc(r.name)}${_pfTipHtml(r)}</span>${isMe?' <span class="pf-you">you</span>':''}</div><div class="pf-subs">${subs}</div></div></div>
-      <div class="pf-kpi">${r.consistency_streak?`<span class="pf-mini">${r.consistency_streak}d streak</span>`:''}
+      <div class="pf-kpi">${r.consistency_streak?`<span class="pf-mini" title="Active days this period (not a consecutive streak)">${r.consistency_streak}d active</span>`:''}
         ${vi.approved?`<span class="pf-mini">${vi.approved} ideas approved</span>`:''}</div>
       <div class="pf-sc">${_pfVal(r)}</div>
     </div>`;}).join('');
   const months=((_pfState.history||{}).months)||[];
   const monthSel=months.length?`<select class="pf-msel" onchange="_pfMonth(this.value)">${months.map(m=>`<option value="${m.month}" ${m.month===d.month?'selected':''}>${esc(_mpMonthLabel(m.month))}${m.current?' \u00b7 live':(m.frozen?' \u00b7 frozen':'')}</option>`).join('')}</select>`:`<div class="pf-month">${esc(_mpMonthLabel(d.month))}</div>`;
   const frozenBadge=d.frozen?'<span class="pf-frozen">Frozen</span>':'<span class="pf-live">Live</span>';
-  const adminBtn=(_pfState.who==='a')?`<button class="pf-settings-btn" onclick="_pfFreeze()">${ic('lock')||'\u2744'} Freeze</button><button class="pf-settings-btn" onclick="openPerfSettings()">${ic('settings')||'\u2699'} Settings</button>`:'';
+  const correctBtn=(_pfState.who==='a' && d && d.frozen)?`<button class="pf-settings-btn" onclick="_pfCorrectPreview()">${ic('refresh')||'\u21ba'} Correct month</button>`:'';
+  const adminBtn=(_pfState.who==='a')?`<button class="pf-settings-btn" onclick="_pfFreeze()">${ic('lock')||'\u2744'} Freeze</button>${correctBtn}<button class="pf-settings-btn" onclick="openPerfSettings()">${ic('settings')||'\u2699'} Settings</button>`:'';
   wrap.innerHTML=`<div class="pf-wrap">
     <div class="pf-head"><div class="pf-title">Teacher Performance Leaderboard</div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${monthSel}${frozenBadge}${adminBtn}</div></div>
     <div class="pf-tabs">${tabs}</div>
+    ${catMode?`<div class="pf-catnote">Sorted by <b>${esc(catLbl)}</b> — # is the position in this category, not the overall rank.</div>`:''}
     ${podHtml}
     <div class="pf-list">${list}</div>
     <div class="pf-note">Tap any teacher to see the full breakdown &amp; how the score is calculated.</div>
@@ -4012,7 +4090,42 @@ function _ensurePfCss(){
     '.pf-pod:nth-child(2){animation-delay:.06s}.pf-pod:nth-child(3){animation-delay:.12s}',
     '.pf-pod-base{transition:height .5s cubic-bezier(.2,.8,.2,1)}',
     '.pfb-fill,.mp-sub-fill,.mp-act-fill,.pfb-bar>.pfb-fill{transition:width .6s cubic-bezier(.2,.8,.2,1)}',
-    '@media (prefers-reduced-motion:reduce){.pf-row,.pf-pod{animation:none}}'
+    '@media (prefers-reduced-motion:reduce){.pf-row,.pf-pod{animation:none}}',
+    // ---- TP24: component-position label + keyboard focus ----
+    '.pf-rk-ov{font-size:.56rem;font-weight:700;color:var(--text-muted);margin-top:2px;white-space:nowrap}',
+    '.pf-catnote{font-size:.72rem;color:var(--text-muted);margin:-4px 0 12px;line-height:1.4}',
+    '.pf-row:focus-visible,.pf-pod:focus-visible{outline:2px solid #c9a227;outline-offset:2px;border-radius:14px}',
+    // ---- TP23: lamba project/target detail clip na ho -> scroll region ----
+    '.mtg-row.open .mtg-detail{max-height:420px;overflow-y:auto}',
+    // ---- TP23: dark-mode contrast (cream cards par light text ka issue) ----
+    'body.dark .pf-catsel{color:#e6c169;background:var(--card,#141f30);border-color:#26364d}',
+    'body.dark .pf-sub{background:rgba(230,193,105,.12);color:#e6c169}',
+    'body.dark .pf-pod-sc,body.dark .pf-sc{color:#e6c169}',
+    'body.dark .pf-row.top{background:linear-gradient(90deg,#16233c,var(--card,#141f30))}',
+    'body.dark .pfb-overall{background:linear-gradient(135deg,#1b2740,#141f30);border-color:#26364d}',
+    'body.dark .pfb-o-lbl{color:#e6c169}',
+    'body.dark .pfb-o-sc{color:#e6c169}',
+    'body.dark .pfb-wt{background:rgba(230,193,105,.12);color:#d9c38a}',
+    'body.dark .pfb-bar,body.dark .mtg-bar,body.dark .pfb-vi{background:#1a2740}',
+    'body.dark .pfb-vi{border:1px solid #26364d}',
+    'body.dark .pfb-vi-row{color:#e6c169}',
+    'body.dark .pf-settings-btn{background:#1a2740;border-color:#26364d;color:#e6c169}',
+    'body.dark .pf-settings-btn:hover{background:#22304a}',
+    'body.dark .mtg-top{color:var(--text)}',
+    'body.dark .pf-chg.flat{background:#1f2b45;color:#8aa0c8}',
+    // ---- past-month correction diff modal ----
+    '.pcx-top{font-size:.82rem;color:var(--text);margin-bottom:12px;line-height:1.5}',
+    '.pcx-warn{font-size:.76rem;line-height:1.5;background:rgba(245,158,11,.14);color:#92600b;border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:10px 12px;margin-bottom:12px}',
+    'body.dark .pcx-warn{background:rgba(245,158,11,.1);color:#e6c169;border-color:rgba(230,193,105,.3)}',
+    '.pcx-tbl{width:100%;border-collapse:collapse;font-size:.8rem}',
+    '.pcx-tbl th{text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);font-weight:800;padding:6px 8px;border-bottom:1px solid var(--border,#eee)}',
+    '.pcx-tbl td{padding:7px 8px;border-bottom:1px solid var(--border,#f0f0f0);color:var(--text)}',
+    '.pcx-sc b{color:#8a6d10}',
+    'body.dark .pcx-sc b{color:#e6c169}',
+    '.pcx-delta{font-size:.68rem;font-weight:800;padding:1px 6px;border-radius:99px;margin-left:4px}',
+    '.pcx-delta.up{background:rgba(16,163,74,.15);color:#15803d}.pcx-delta.dn{background:rgba(220,38,38,.14);color:#dc2626}',
+    '.pcx-delta.flat{background:#eef1f8;color:#94a3b8}',
+    '.pcx-none{font-size:.84rem;color:var(--text-muted);padding:14px;text-align:center}'
   ].join('');
   document.head.appendChild(st);
 }
@@ -11178,7 +11291,8 @@ async function loadTPerformance(){
     const chart=`<div class="card"><div class="card-header"><h3>Monthly Classes Completed</h3></div><div class="card-body"><div class="bar-chart">${bars}</div></div></div>`;
     const tl=pf.recent.length?pf.recent.map(a=>`<div class="act-item"><div class="act-dot ${esc(a.type)}"></div><div><div class="act-text">${esc(a.text)}</div><div class="act-time">${esc(a.at)}</div></div></div>`).join(''):'<div class="empty-state"><p>No recent activity.</p></div>';
     const timeline=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body"><div class="act-list">${tl}</div></div></div>`;
-    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+cards+`<div id="t-reports-wrap"></div>`;
+    const _allTimeHdr='<div style="display:flex;align-items:baseline;gap:8px;margin:18px 2px 8px"><div style="font-size:.82rem;font-weight:800;color:var(--text)">Overall activity</div><span style="font-size:.68rem;font-weight:700;color:var(--text-muted);background:var(--primary-50);padding:2px 8px;border-radius:99px">all-time · leaderboard month se independent</span></div>';
+    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+_allTimeHdr+cards+`<div id="t-reports-wrap"></div>`;
     loadTRankBoard();
     renderVideoContribution('t-vc-wrap');
     _renderClassReports('t-reports-wrap','/api/teacher/class-reports');
@@ -12925,9 +13039,14 @@ async function renderMyTargets(wrapId){
     const d=await api('/api/teacher/monthly-targets');
     wrap.innerHTML=_mperfHtml(d);
   }catch(e){
-    // fallback: purana simple view (kabhi na toote)
+    // fallback: purana simple view (kabhi na toote). TP21: ye ALAG metric hai (assigned/done
+    // counts, weighted monthly performance nahi) — isliye chup-chaap swap na karo, saaf notice
+    // ke saath dikhao taaki user samajhe ki ye simplified/limited view hai.
     try{ const d2=await api('/api/teacher/my-targets'); const t=d2.me;
-      if(t&&t.rows){ wrap.innerHTML=_ttTeacherCard(t,false); return; } }catch(_){}
+      if(t&&t.rows){
+        wrap.innerHTML='<div class="alert alert-info" style="margin-bottom:10px;font-size:.8rem">Full monthly performance abhi load nahi ho paaya — ye ek simplified target view hai (assigned/done counts). <a href="#" onclick="renderMyTargets(\''+wrapId+'\');return false" style="font-weight:700">Retry</a></div>'+_ttTeacherCard(t,false);
+        return;
+      } }catch(_){}
     wrap.innerHTML=errHtml(e);
   }
 }
@@ -43970,7 +44089,11 @@ function loadTCatPerformance(){
   var el=document.getElementById('t-performance-content'); if(!el) return;
   var a=window._tActiveCat; if(!a){ if(typeof loadTPerformance==='function') loadTPerformance(); return; }
   try{ softSpin(el); }catch(e){ el.innerHTML='<div class="spinner"></div>'; }
+  // TP19: active category capture karo — slow purana response naye category ke upar paint na kare.
+  var reqCat=a.id;
+  var _catStale=function(){ return !window._tActiveCat || window._tActiveCat.id!==reqCat; };
   api('/api/teacher/category-performance?category_id='+a.id).then(function(d){
+    if(_catStale()) return;
     var t=d.totals||{}; var rate=d.approval_rate||0;
     var ring='conic-gradient(#059669 '+(rate*3.6)+'deg,rgba(120,113,108,.18) 0)';
     var hero='<div class="tcd-hero" style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">'
@@ -43996,7 +44119,7 @@ function loadTCatPerformance(){
         }).join('')+'</div>';
     }
     el.innerHTML=hero+kpis+subHtml;
-  }).catch(function(e){ el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load performance')+'</div>'; });
+  }).catch(function(e){ if(_catStale()) return; el.innerHTML='<div style="padding:22px;color:#c1443a">'+esc((e&&e.message)||'Could not load performance')+'</div>'; });
 }
 
 /* ============================================================

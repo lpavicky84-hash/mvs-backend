@@ -9,6 +9,7 @@
 # =============================================================================
 import json
 import copy
+import math
 
 # spec ki recommended default values — admin inhe portal se badal sakta hai.
 PERF_DEFAULTS = {
@@ -117,9 +118,12 @@ def get_perf_config(db):
 def _num(v, fallback):
     try:
         f = float(v)
-        return f if f == f else fallback   # NaN guard
     except Exception:
         return fallback
+    # TP14: NaN / inf / -inf sab reject (warna scoring me nan/inf propagate ho jaata hai).
+    if not math.isfinite(f):
+        return fallback
+    return f
 
 
 def _validate(cfg):
@@ -132,6 +136,12 @@ def _validate(cfg):
                 cfg[grp][k] = max(0, _num(cfg[grp][k], dfl.get(grp, {}).get(k, 0)))
     cfg["min_workload_fraction"] = min(1.0, max(0.0, _num(cfg.get("min_workload_fraction"), 0.6)))
     cfg["video_initiative_cap"] = max(0, _num(cfg.get("video_initiative_cap"), 5))
+    # TP14: baaki standalone numeric scalars bhi sanitize karo — koi bad/non-finite value
+    # scoring tak na pahunche (valid values jaise ke taise rehti hain).
+    for sk in ("weekly_tests_expected", "doubt_sla_hours",
+               "video_initiative_target_points", "video_initiative_month_full"):
+        if sk in cfg:
+            cfg[sk] = max(0, _num(cfg.get(sk), dfl.get(sk, 0)))
     return cfg
 
 

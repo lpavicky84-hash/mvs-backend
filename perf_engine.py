@@ -152,7 +152,7 @@ def score_from_metrics(m, cfg, team=None):
                    else (("%d done, no target" % (co + cl)) if (co + cl) else "no content assigned"),
         "targets": _tgt_det(m.get("target_items", [])),
         "project": (("%d project%s, avg %s%%" % (len(m.get("projects", [])), "" if len(m.get("projects", [])) == 1 else "s", m.get("project_pct_avg", 0))) if m.get("projects") else "no projects assigned"),
-        "student_support": ("%d of %d doubts within 15h" % (don, dec)) if dec > 0 else "no doubts to resolve (full)",
+        "student_support": ("%d of %d doubts within %dh" % (don, dec, int(cfg.get("doubt_sla_hours", 15)))) if dec > 0 else "no doubts to resolve (full)",
         "tests": ("%d of %d tests" % (m.get("tests_done", 0), tt)) if tt else (("%d tests" % m.get("tests_done", 0)) if m.get("tests_done", 0) else "no tests"),
         "task_discipline": ("%d on-time of %d tasks" % (to, tot) + ((", %d late" % td) if td else "") + ((", %d missed" % tn) if tn else "")) if tot > 0 else "no tasks assigned",
         "consistency": "%d active days" % m.get("present_days", 0),
@@ -267,13 +267,30 @@ def _workload_level(units, team, cfg):
 
 
 # ---------------------------------------------------------------- REAL DATA GATHER
-def gather_metrics(db, tp, dt0, dt1, cfg):
-    """Ek teacher ke month-scoped REAL metrics. Sab defensive (missing data = 0/None)."""
+def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
+    """Ek teacher ke month-scoped REAL metrics. Sab defensive (missing data = 0/None).
+    force_corrected: None=auto (aaj is window me ho -> corrected). True/False=force
+    (admin past-month correction preview/apply isse corrected logic force karta hai)."""
     from models import (User, Lecture, TimetableEntry, Doubt, DoubtStatus,
                         DppPack, Exam, VideoTask, TeacherAttendance)
     from sqlalchemy.orm import defer
     aw = cfg.get("activity_workload", {})
     m = {}
+
+    # TP25-safe gating: 'corrected' scoring (TP01/TP02/TP10) SIRF current live window par
+    # lagta hai (aaj is [dt0,dt1) window me ho). Past/frozen/paid months byte-identical
+    # purana behavior — unka live recompute ya snapshot kabhi drift na kare. (Jab ye month
+    # aage chalke freeze hoga to corrected value hi snapshot ho jaayegi; purane already-frozen
+    # months ko chhua nahi jaata — unki correction admin approval-flow se, future phase.)
+    if force_corrected is not None:
+        corrected = bool(force_corrected)
+    else:
+        try:
+            from models import ist_today as _ist_today0
+            _today0 = _ist_today0()
+        except Exception:
+            _today0 = datetime.utcnow().date()
+        corrected = (dt0.date() <= _today0 < dt1.date())
 
     # ---- Lectures (teaching / on-time) ----
     ot = dl = 0
@@ -307,19 +324,38 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         _cut = min(_today, (dt1.date() - timedelta(days=1)))
         _subsL = [s for s in (tp.subjects or []) if s]
         _condL = [TimetableEntry.teacher_id == tp.id]
-        if _subsL:
+        # TP02: corrected mode me SIRF explicitly-assigned teacher ki classes. Subject-match
+        # fallback (doosre teacher ki same-subject class is teacher ke due/score me aa jaana)
+        # hata diya. Purane mode (past months) me wahi OR-subject behavior — frozen/paid safe.
+        if _subsL and not corrected:
             _condL.append(TimetableEntry.subject.in_(_subsL))
         _rowsL = db.query(TimetableEntry).filter(
             TimetableEntry.entry_date >= dt0.date(),
             TimetableEntry.entry_date <= _cut,
             _orS(*_condL)).all()
         _due = 0
+        _c_ot = _c_dl = 0
         for e in _rowsL:
             _tx = ((e.chapter or "") + " " + (e.part or "")).lower()
-            if ("mock" in _tx) or ("test" in _tx) or ("series" in _tx):
+            # TP03: corrected mode me bare "series" ko test mat samjho (e.g. "Series LCR
+            # Circuit" ek physics class hai, test nahi). "test series"/"mock test" ab bhi
+            # "test"/"mock" se pakde jaate hain. Past months me purana behavior (gating).
+            if ("mock" in _tx) or ("test" in _tx) or ((not corrected) and ("series" in _tx)):
                 continue   # test entries teaching me nahi
             _due += 1
+            # TP01: ek COMPLETED timetable class = 1 delivered class (alag Lecture row zaroori
+            # nahi). Numerator aur denominator dono EK source (timetable) se -> wo bug khatam
+            # jisme complete class ko 0 teaching credit milta tha. On-time/late completed_at
+            # vs entry_date se. (corrected mode only)
+            if corrected and getattr(e, "completed", False):
+                _cat = e.completed_at.date() if e.completed_at else None
+                if _cat and e.entry_date and _cat > e.entry_date:
+                    _c_dl += 1
+                else:
+                    _c_ot += 1
         m["lect_scheduled_due"] = _due
+        if corrected:
+            m["lect_ontime"], m["lect_delayed"] = _c_ot, _c_dl
     except Exception:
         m["lect_scheduled_due"] = 0
 
@@ -330,7 +366,8 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         from sqlalchemy import or_ as _orD
         _subs = [s for s in (tp.subjects or []) if s]
         _cond = [TimetableEntry.teacher_id == tp.id]
-        if _subs:
+        # TP02: corrected mode me DPP chapter-scope bhi sirf is teacher ki apni timetable se.
+        if _subs and not corrected:
             _cond.append(TimetableEntry.subject.in_(_subs))
         _ttes = db.query(TimetableEntry).filter(_orD(*_cond)).all()
         _chmap = {}
@@ -409,11 +446,20 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
             if bool(getattr(p, "is_old", False)):
                 continue
             chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == p.id).all()
+            # TP10: corrected mode me AS-OF cutoff (period end dt1) — baad me (next month)
+            # hui submission is window ke completion me na gine. submitted_at ke bina link
+            # ko (jiska time pata nahi) jaise tha waise rakha (galat date invent nahi karte).
+            def _ch_done(c):
+                sa = getattr(c, "submitted_at", None)
+                if corrected and sa:
+                    return sa < dt1
+                return bool((c.link or "").strip()) or bool(sa)
             if chs:
                 total = len(chs)
-                done = sum(1 for c in chs if (c.link or "").strip() or c.submitted_at)
+                done = sum(1 for c in chs if _ch_done(c))
             else:
-                total, done = 1, (1 if p.submitted_at else 0)
+                _ps = getattr(p, "submitted_at", None)
+                total, done = 1, (1 if (_ps and (_ps < dt1 if corrected else True)) else 0)
             pct = round(100.0 * done / total) if total else 0
             projects.append({"name": p.title or "Project", "done": done, "total": total, "pct": pct})
     except Exception:
@@ -459,9 +505,18 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     rec = decided = ontime = 0
     try:
         _now = datetime.utcnow()
+        # TP11: Doubt.created_at UTC me store hota hai; month attribution IST se honi chahiye.
+        # corrected mode me IST month window ko UTC me shift karke compare karo (warna boundary
+        # ke doubts, jaise 30 Sep raat IST = 1 Oct UTC, galat month me chale jaate the). Past
+        # months purana naive behavior (gating — frozen/paid safe).
+        if corrected:
+            _ISTd = _td(hours=5, minutes=30)
+            _d0, _d1 = dt0 - _ISTd, dt1 - _ISTd
+        else:
+            _d0, _d1 = dt0, dt1
         dqs = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
                                      Doubt.assigned_to_admin == False,
-                                     Doubt.created_at >= dt0, Doubt.created_at < dt1).all()
+                                     Doubt.created_at >= _d0, Doubt.created_at < _d1).all()
         rec = len(dqs)
         for dq in dqs:
             if dq.status == DoubtStatus.resolved and dq.resolved_at:
@@ -499,6 +554,10 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
         for t in tasks:
             if bool(getattr(t, "is_old", False)):
                 continue   # OLD/pre-portal content -> is month count nahi
+            # TP09: corrected mode me CANCELLED (soft-deleted) task content target me na gine
+            # (warna cancelled assignment bhi denominator badha ke galat penalty deta tha).
+            if corrected and bool(getattr(t, "cancelled", False)):
+                continue
             if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
                 continue   # projects Content me nahi -> alag "Project" component me
             # assigned content task (proposal pending/rejected chhod ke) -> content target
@@ -571,7 +630,17 @@ def gather_metrics(db, tp, dt0, dt1, cfg):
     _days = (dt1 - dt0).days or 30
     _weeks = max(1, round(_days / 7.0))
     _weekly_exp = float(cfg.get("weekly_tests_expected", 2))
-    _auto_tests = _auto.get("tests", 0) or vt["tests"]["target"] or int(round(_weekly_exp * _weeks))
+    # TP07: corrected mode me blanket weekly-test default (2/week) sabpe NAHI — sirf un
+    # teachers pe jinhe tests actually assign hue (timetable/video/explicit). Jinhe nahi,
+    # unka tests target 0 -> Tests component N/A (unfair penalty nahi). Past months purana.
+    if corrected:
+        # sirf REAL assignment signal: timetable test entries. (Pay-config ka blanket
+        # tests_target default aur computed weekly-default dono hata diye.) Explicit
+        # per-teacher target _T("tests",...) niche phir bhi override karega. Koi signal
+        # nahi -> tests_target 0 -> Tests component N/A (neutral, penalty nahi).
+        _auto_tests = _auto.get("tests_tt", 0)   # timetable-only (pay-config blanket nahi)
+    else:
+        _auto_tests = _auto.get("tests", 0) or vt["tests"]["target"] or int(round(_weekly_exp * _weeks))
 
     # explicit per-teacher targets (agar admin ne set kiye) -> videos/shorts/live/tests override.
     # Classes & DPP HAMESHA auto (timetable) — inhe set karne ki zaroorat nahi.
@@ -609,8 +678,9 @@ def len_or0(m, *keys):
 
 
 # ---------------------------------------------------------------- TOP-LEVEL COMPUTE
-def _score_all(db, month, cfg):
-    """Ek month ke saare teachers ki ranked rows (bina rank_change) + team avg."""
+def _score_all(db, month, cfg, force_corrected=None):
+    """Ek month ke saare teachers ki ranked rows (bina rank_change) + team avg.
+    force_corrected gather_metrics ko pass hota hai (admin correction preview/apply)."""
     from models import TeacherProfile, User
     from sqlalchemy.orm import defer as _defer
     from sqlalchemy import func as _func
@@ -629,8 +699,12 @@ def _score_all(db, month, cfg):
             u = db.query(User).filter(User.id == tp.user_id).first()
             if not u:
                 continue
+            # TP17: deactivate kiye gaye (is_active=False) teachers ko rank/avg dono se
+            # bahar rakho. None/legacy rows ko active hi maano (purana behavior preserve).
+            if u.is_active is False:
+                continue
             _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
-            metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg))
+            metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg, force_corrected=force_corrected))
         except Exception:
             # ek teacher ka data kharab ho to use skip — poora board na toote.
             # LOG bhi karo taaki Railway me exact wajah dikhe (blind na rahein).
@@ -752,7 +826,13 @@ def _save_snapshot(db, mkey, results):
             row.value = _json.dumps(payload)
         db.commit()
     except Exception:
-        pass
+        # TP16: commit fail hua to rollback karo aur failure signal karo
+        # (fake success payload NAHI — warna caller samajhta hai freeze ho gaya).
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
     return payload
 
 
@@ -777,6 +857,18 @@ def compute(db, month=""):
         _cached = _board_cache_get(mkey)
         if _cached is not None:
             return _cached
+
+    if mkey > cur:
+        # --- FUTURE month: TP15 — kabhi auto-freeze mat karo. Pehle 'mkey != cur' hone se
+        # future month bhi "past" samajh ke freeze ho jaata tha (bogus permanent snapshot,
+        # jo us month ke aane par asli data ko dhak deta). Future hamesha live compute,
+        # koi snapshot save NAHI. (Agar pichhle bug se koi stale future snapshot bana hai
+        # to use bhi ignore karke live dete hain; purane snapshot ki cleanup future phase.)
+        rows, avg, _ = _score_all(db, month, cfg)
+        _apply_rank_change(db, rows, prev_key)
+        return {"month": mkey, "prev_month": prev_key, "frozen": False,
+                "weights": cfg.get("component_weights", {}),
+                "team_avg_workload_units": avg, "results": rows}
 
     if mkey != cur:
         # --- past month: agar snapshot hai to frozen return; warna live compute + auto-freeze ---
@@ -827,7 +919,71 @@ def freeze_month(db, month=""):
     cfg = _pc.get_perf_config(db)
     rows, avg, mkey = _score_all(db, month, cfg)
     snap = _save_snapshot(db, mkey, rows)
+    if not snap:
+        # TP16: snapshot save fail — fake success mat do.
+        raise RuntimeError("perf snapshot save failed")
     return {"ok": True, "month": mkey, "frozen_at": snap.get("frozen_at", ""), "count": len(rows)}
+
+
+# =============================================================================
+# PAST-MONTH CORRECTION (admin-approved) — TP25 safety ke saath.
+# Corrected scoring (TP01/02/03/07/09/10/11) by-default sirf LIVE month par lagta hai.
+# Ek PAST month ko theek karne ke liye admin pehle PREVIEW (purana-vs-corrected diff)
+# dekhta hai, phir explicit APPROVE karta hai -> tabhi naya corrected snapshot banta hai.
+# Paid teacher payouts ALAG record (PayoutMonth.snapshot) me frozen hain — ye leaderboard
+# snapshot re-freeze unko nahi chhuta, isliye paisa kabhi nahi badalta.
+# =============================================================================
+def correction_preview(db, month=""):
+    """Past month ke liye: existing (old) snapshot vs CORRECTED (force_corrected=True)
+    scores ka per-teacher diff. Koi write NAHI — sirf read/preview."""
+    cfg = _pc.get_perf_config(db)
+    _, _, mkey = month_bounds(month)
+    cur = _cur_month_key()
+    # corrected (naya) — force
+    new_rows, _navg, _ = _score_all(db, month, cfg, force_corrected=True)
+    # old — existing frozen snapshot agar hai; warna uncorrected live compute
+    snap = _load_snapshot(db, mkey)
+    had_snapshot = bool(snap and snap.get("results"))
+    if had_snapshot:
+        old_rows = [dict(r) for r in snap["results"]]
+    else:
+        old_rows, _oavg, _ = _score_all(db, month, cfg, force_corrected=False)
+    _oldm = {r.get("teacher_id"): r for r in old_rows}
+    diffs = []
+    for nr in new_rows:
+        tid = nr.get("teacher_id")
+        orr = _oldm.get(tid, {})
+        o_sc = orr.get("score"); n_sc = nr.get("score")
+        o_rk = orr.get("rank");  n_rk = nr.get("rank")
+        changed = (o_sc != n_sc) or (o_rk != n_rk)
+        diffs.append({
+            "teacher_id": tid, "name": nr.get("name", ""),
+            "old_score": o_sc, "new_score": n_sc,
+            "old_rank": o_rk, "new_rank": n_rk,
+            "score_delta": (round((n_sc or 0) - (o_sc or 0), 1) if (o_sc is not None) else None),
+            "is_new": (tid not in _oldm), "changed": changed,
+        })
+    diffs.sort(key=lambda d: (d["new_rank"] or 999))
+    changed_n = sum(1 for d in diffs if d["changed"] or d["is_new"])
+    return {"month": mkey, "is_current": (mkey == cur), "had_snapshot": had_snapshot,
+            "frozen": had_snapshot, "total": len(diffs), "changed": changed_n, "diffs": diffs}
+
+
+def apply_correction(db, month=""):
+    """Admin ne approve kiya -> is PAST month ka corrected snapshot save (re-freeze).
+    Current month ke liye normal freeze use hota hai, correction nahi."""
+    _, _, mkey = month_bounds(month)
+    cur = _cur_month_key()
+    if mkey == cur:
+        # live month correction auto-apply hota hai; alag "correction" ki zaroorat nahi.
+        raise RuntimeError("current month correction not applicable — it is already live/corrected")
+    bust_board_cache()
+    cfg = _pc.get_perf_config(db)
+    rows, _avg, _mk = _score_all(db, month, cfg, force_corrected=True)
+    snap = _save_snapshot(db, mkey, rows)
+    if not snap:
+        raise RuntimeError("correction snapshot save failed")
+    return {"ok": True, "month": mkey, "count": len(rows), "frozen_at": snap.get("frozen_at", "")}
 
 
 def history_months(db, back=8):
@@ -1066,8 +1222,12 @@ def _proposal_stage(t):
         return "published"
     if st in ("editing_soon", "editing_done"):
         return "in_production"
-    # approved (task assigned/submitted etc.)
-    return "approved"
+    # TP18: blank/unverified proposal_ok ko "approved" MAT maano (core scoring bhi sirf
+    # explicit "approved" ginta hai). Jab tak admin explicitly approve na kare -> "proposed".
+    # (Production/published status waale upar handle ho gaye — woh clearly aage badh chuke.)
+    if pok == "approved":
+        return "approved"
+    return "proposed"
 
 
 def video_contribution(db, tp, month=""):
@@ -1198,8 +1358,14 @@ def save_teacher_targets(db, tid, targets, mode="manual", period="monthly", sess
         else:
             row.value = _json.dumps(payload)
         db.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        # TP16: commit fail -> rollback + failure raise. Cache bust / success
+        # sirf successful commit ke BAAD (warna UI "saved" dikhata hai, data save nahi hua).
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise RuntimeError("teacher targets save failed") from e
     bust_board_cache()
     return payload
 
@@ -1259,6 +1425,7 @@ def auto_targets_from_timetable(db, tp, month=""):
     chapters = len(chset)
     vids = shorts = live = tests_v = 0
     try:
+        from video_tasks import _vt_targets_for
         tg = _vt_targets_for(db, tp, dt0, dt1)
         for r in tg.get("rows", []):
             k = r.get("key")
@@ -1278,7 +1445,8 @@ def auto_targets_from_timetable(db, tp, month=""):
     dpp_max = max(classes, chapters)
     return {"classes": classes, "chapters": chapters,
             "dpp": (dpp_min or classes), "dpp_min": dpp_min, "dpp_max": dpp_max,
-            "videos": vids, "shorts": shorts, "live": live, "tests": tests}
+            "videos": vids, "shorts": shorts, "live": live, "tests": tests,
+            "tests_tt": tests_tt}   # TP07: timetable-only tests (pay-config default alag)
 
 
 # =============================================================================
