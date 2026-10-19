@@ -1021,6 +1021,19 @@ function openPortalTab(portal){
   goLogin(portal);
 }
 window.openPortalTab=openPortalTab;
+// Hub se koi bhi URL (jaise /guide) reliably NAYI tab me kholo — current tab kabhi navigate nahi.
+window.openExternalTab=function(url){
+  try{
+    var a=document.createElement('a');
+    a.href=url; a.target='_blank'; a.rel='noopener noreferrer';
+    a.style.display='none'; document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); }catch(e){} },0);
+    return;
+  }catch(e){}
+  try{ var w=window.open(url,'_blank'); if(w){ try{ w.opener=null; }catch(_){ } return; } }catch(e){}
+  try{ location.href=url; }catch(e){}
+};
 function logout(){
   // Backend ko batao ki session close ho gayi -> agli login pe live duration 0 se start ho
   // (warna purana started_at reuse hota tha aur "88m" jaisa dikhta rehta tha). keepalive:true
