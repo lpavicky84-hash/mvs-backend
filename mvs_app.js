@@ -1003,7 +1003,21 @@ function goLogin(portal){
 // Launcher (/portal) ka card -> portal NEW TAB me kholo, taaki launcher wala tab khula rahe
 // aur user ko wapas URL type na karna pade. Fallback: same-tab login.
 function openPortalTab(portal){
-  try{ var w=window.open(_portalPath(portal),'_blank','noopener'); if(w){ return; } }catch(e){}
+  var url=_portalPath(portal);
+  // Reliable NEW-TAB open: ek temporary <a target="_blank"> click karo. Ye hamesha nayi tab
+  // kholta hai aur current (hub) tab ko KABHI navigate nahi karta. (window.open(...,'noopener')
+  // null return karta tha -> code samajhta "blocked" -> goLogin current tab hi badal deta tha.)
+  try{
+    var a=document.createElement('a');
+    a.href=url; a.target='_blank'; a.rel='noopener noreferrer';
+    a.style.display='none'; document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ try{ document.body.removeChild(a); }catch(e){} },0);
+    return;
+  }catch(e){}
+  // fallback: window.open BINA noopener (taaki handle mile, same-tab navigate na ho)
+  try{ var w=window.open(url,'_blank'); if(w){ try{ w.opener=null; }catch(_){ } return; } }catch(e){}
+  // last resort (popup fully blocked): isi tab me login kholo
   goLogin(portal);
 }
 window.openPortalTab=openPortalTab;
