@@ -136,6 +136,13 @@ def score_from_metrics(m, cfg, team=None):
     # 8) VIDEO INITIATIVE — reward-based, capped. Koi approved proposal nahi -> N/A (bonus, penalty nahi)
     raw["video_initiative"] = _initiative_pct(m, cfg)
 
+    # Owner policy: koi bhi component 100% se upar na dikhe (overachievement 101-110 cap hata).
+    # Live month par hi lagta hai (past/frozen snapshots unchanged — TP25-safe).
+    if m.get("_corrected"):
+        for _ck in list(raw.keys()):
+            if raw[_ck] is not None and raw[_ck] > 100:
+                raw[_ck] = 100.0
+
     # ---- per-component detail (actual numbers) — breakdown me transparency ----
     def _tgt_det(items):
         parts = []
@@ -291,6 +298,7 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
         except Exception:
             _today0 = datetime.utcnow().date()
         corrected = (dt0.date() <= _today0 < dt1.date())
+    m["_corrected"] = corrected   # score_from_metrics isse jaanta hai ki live month hai
 
     # ---- Lectures (teaching / on-time) ----
     ot = dl = 0
@@ -575,6 +583,17 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
                 _my_nc = False
             if _my_nc:
                 tnc += 1
+            elif t.submitted_at and corrected:
+                # Content on-time ab submitted_at vs deadline se DERIVE hota hai. Pehle stored
+                # on_time flag use hota tha jo bina-deadline submit par galti se False/None
+                # ho jaata (bool(None and ...)=False) -> teacher ka actual kaam count hi nahi
+                # hota tha. Ab: deadline hai aur uske baad submit -> late; warna (koi deadline
+                # nahi YA on/before) -> on-time. (corrected/live month only — past preserve.)
+                _dl = getattr(t, "deadline", None)
+                if _dl and t.submitted_at > _dl:
+                    tdl += 1
+                else:
+                    to += 1
             elif t.submitted_at and t.on_time is True:
                 to += 1
             elif t.submitted_at and t.on_time is False:
