@@ -1,0 +1,1507 @@
+# =============================================================================
+# TEACHER PERFORMANCE MANAGEMENT SYSTEM — PHASE 2: SCORING ENGINE
+# -----------------------------------------------------------------------------
+# 8-component Performance Score (out of 100), REAL data se, month-scoped,
+# workload-normalized, multi-subject weighted, overachievement-capped,
+# config-driven (perf_config). Koi fake data nahi. Jis category ka data hi nahi
+# (N/A) uska weight baaki components me redistribute hota hai — taaki teacher ko
+# na-applicable category ke liye penalty na mile (spec Part 14 & 15).
+#
+# Design: pure `score_from_metrics(metrics, cfg, team)` (bina DB — testable) +
+# `gather_metrics(db, tp, month)` (real DB data) + `compute(db, month)` (sab
+# teachers, ranked). PM = Admin (koi alag role nahi).
+# =============================================================================
+from datetime import datetime, date, timedelta
+import perf_config as _pc
+import time as _time
+from sqlalchemy.orm import defer
+
+# ---- Leaderboard compute cache — current month 90s (RAM/CPU/egress bachaata hai) ----
+_BOARD_CACHE = {}
+_BOARD_TTL = 90
+
+
+def _board_cache_get(mkey):
+    ce = _BOARD_CACHE.get(mkey)
+    if ce and (_time.time() - ce[0]) < _BOARD_TTL:
+        return ce[1]
+    return None
+
+
+def _board_cache_set(mkey, result):
+    _BOARD_CACHE[mkey] = (_time.time(), result)
+
+
+def bust_board_cache():
+    _BOARD_CACHE.clear()
+
+COMPONENTS = ["teaching", "content", "targets", "student_support",
+              "tests", "project", "consistency", "video_initiative"]
+
+
+# ---------------------------------------------------------------- month helpers
+def month_bounds(month=""):
+    """'YYYY-MM' -> (dt0, dt1) [start inclusive, next-month start exclusive].
+    Khaali -> current IST month."""
+    try:
+        from models import ist_today
+        today = ist_today()
+    except Exception:
+        today = date.today()
+    if month and len(month) >= 7:
+        y, m = int(month[:4]), int(month[5:7])
+    else:
+        y, m = today.year, today.month
+    dt0 = datetime(y, m, 1)
+    dt1 = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+    return dt0, dt1, "%04d-%02d" % (y, m)
+
+
+# ---------------------------------------------------------------- overachievement cap
+def cap_pct(pct, cfg):
+    oc = cfg.get("overachievement", {})
+    base = float(oc.get("base", 100))
+    c1 = float(oc.get("cap_101_120", 105))
+    c2 = float(oc.get("cap_over_120", 110))
+    if pct <= base:
+        return round(pct, 1)
+    if pct <= 120:
+        return round(min(pct, c1), 1)
+    return round(min(pct, c2), 1)
+
+
+def _ratio_pct(done, target, cfg, allow_over=True):
+    """done/target %. target 0 -> None (N/A). Cap applied when allow_over."""
+    if not target or target <= 0:
+        return None
+    pct = 100.0 * done / target
+    return cap_pct(pct, cfg) if allow_over else round(min(100.0, pct), 1)
+
+
+# ---------------------------------------------------------------- PURE SCORING CORE
+def score_from_metrics(m, cfg, team=None):
+    """m = ek teacher ke real metrics (gather_metrics se). cfg = perf_config.
+    team = {'avg_workload_units': x} eligibility ke liye. Returns full breakdown.
+    Har component ka raw% (0..110) ya None (N/A). Overall = applicable components
+    ka weighted average (N/A ka weight redistribute)."""
+    w = cfg.get("component_weights", {})
+    raw = {}   # component -> % or None
+
+    # 1) TEACHING — timetable ke SCHEDULED-DUE (jitni aaj tak honi chahiye) me se kitni
+    #    on-time hui (delayed = aadha). Ratio nahi — actual volume. 0 due -> N/A.
+    ot, dl = m.get("lect_ontime", 0), m.get("lect_delayed", 0)
+    sched_due = m.get("lect_scheduled_due", 0)
+    if sched_due > 0:
+        raw["teaching"] = cap_pct(100.0 * (ot + 0.5 * dl) / sched_due, cfg)
+    elif (ot + dl) > 0:
+        raw["teaching"] = round(100.0 * (ot + 0.5 * dl) / (ot + dl), 1)  # no schedule data -> ratio
+    else:
+        raw["teaching"] = None
+
+    # 2) CONTENT — TARGET-based + ON-TIME (Vicky): assigned content on time hona chahiye,
+    #    delayed -> decrease. content% = (ontime + 0.5*delayed) / content_target. Koi content
+    #    assigned nahi -> N/A.
+    ct = m.get("content_target", 0)
+    co, cl = m.get("task_ontime", 0), m.get("task_delayed", 0)
+    if ct > 0:
+        raw["content"] = cap_pct(100.0 * (co + 0.5 * cl) / ct, cfg)
+    else:
+        raw["content"] = 100.0 if (co + cl) > 0 else None
+
+    # 3) TARGETS — SAARE monthly targets ka achievement (videos/shorts/live/tests/dpp/custom)
+    traw = _blend_target(m.get("target_items", []), cfg)
+    raw["targets"] = traw
+
+    # 3b) PROJECT — assigned projects ka AVERAGE completion % (chapters done/total).
+    #     Koi project nahi -> N/A. (Project videos content/videos me count nahi hote.)
+    raw["project"] = m.get("project_pct_avg")
+
+    # 4) STUDENT SUPPORT — 15h SLA: on-time / decided. Koi decided doubt nahi -> N/A
+    dec, don = m.get("doubts_decided", 0), m.get("doubts_ontime", 0)
+    raw["student_support"] = round(100.0 * don / dec, 1) if dec > 0 else None
+
+    # 5) TESTS — tests done vs target (agar target/assigned ho)
+    raw["tests"] = _ratio_pct(m.get("tests_done", 0), m.get("tests_target", 0), cfg) \
+        if m.get("tests_target", 0) else (100.0 if m.get("tests_done", 0) > 0 else None)
+
+    # 6) TASK DISCIPLINE — task timeliness (not_completed = 0 credit)
+    to, td, tn = m.get("task_ontime", 0), m.get("task_delayed", 0), m.get("task_not_completed", 0)
+    tot = to + td + tn
+    raw["task_discipline"] = round(100.0 * (to + 0.5 * td) / tot, 1) if tot > 0 else None
+
+    # 7) CONSISTENCY — on-time ratio + present-day regularity (proxy). Koi activity nahi -> N/A
+    craw2 = _consistency_pct(m)
+    raw["consistency"] = craw2
+
+    # 8) VIDEO INITIATIVE — reward-based, capped. Koi approved proposal nahi -> N/A (bonus, penalty nahi)
+    raw["video_initiative"] = _initiative_pct(m, cfg)
+
+    # Owner policy: koi bhi component 100% se upar na dikhe (overachievement 101-110 cap hata).
+    # Live month par hi lagta hai (past/frozen snapshots unchanged — TP25-safe).
+    if m.get("_corrected"):
+        for _ck in list(raw.keys()):
+            if raw[_ck] is not None and raw[_ck] > 100:
+                raw[_ck] = 100.0
+
+    # ---- per-component detail (actual numbers) — breakdown me transparency ----
+    def _tgt_det(items):
+        parts = []
+        for it in (items or []):
+            t = it.get("target", 0)
+            if t:
+                parts.append("%d/%d" % (it.get("done", 0), t))
+        return (", ".join(parts)) if parts else "no targets set"
+    tt = m.get("tests_target", 0)
+    _det = {
+        "teaching": ("%d of %d due classes on-time" % (ot, sched_due) + (", %d late" % dl if dl else "")) if sched_due > 0
+                    else (("%d done (no timetable schedule)" % (ot + dl)) if (ot + dl) else "no scheduled classes yet"),
+        "content": ("%d on-time of %d assigned" % (co, ct) + (", %d late" % cl if cl else "")) if ct > 0
+                   else (("%d done, no target" % (co + cl)) if (co + cl) else "no content assigned"),
+        "targets": _tgt_det(m.get("target_items", [])),
+        "project": (("%d project%s, avg %s%%" % (len(m.get("projects", [])), "" if len(m.get("projects", [])) == 1 else "s", m.get("project_pct_avg", 0))) if m.get("projects") else "no projects assigned"),
+        "student_support": ("%d of %d doubts within %dh" % (don, dec, int(cfg.get("doubt_sla_hours", 15)))) if dec > 0 else "no doubts to resolve (full)",
+        "tests": ("%d of %d tests" % (m.get("tests_done", 0), tt)) if tt else (("%d tests" % m.get("tests_done", 0)) if m.get("tests_done", 0) else "no tests"),
+        "task_discipline": ("%d on-time of %d tasks" % (to, tot) + ((", %d late" % td) if td else "") + ((", %d missed" % tn) if tn else "")) if tot > 0 else "no tasks assigned",
+        "consistency": "%d active days" % m.get("present_days", 0),
+        "video_initiative": ("%s reward pts (%d proposals)" % (m.get("reward_points", 0), m.get("prop_approved", 0))) if (m.get("prop_approved", 0) or m.get("reward_points", 0)) else "no proposals yet",
+    }
+
+    # ---- component scores (raw%/100 * weight), N/A -> excluded ----
+    comp = {}
+    applic_w = 0.0
+    weighted_sum = 0.0
+    for c in COMPONENTS:
+        wt = float(w.get(c, 0))
+        pv = raw.get(c)
+        if pv is None:
+            comp[c] = {"raw": None, "weight": wt, "score": None, "na": True, "detail": _det.get(c, "")}
+        else:
+            sc = round(min(pv, 110) / 100.0 * wt, 2)
+            comp[c] = {"raw": pv, "weight": wt, "score": sc, "na": False, "detail": _det.get(c, "")}
+            applic_w += wt
+            weighted_sum += (min(pv, 110) / 100.0) * wt
+    overall = round(100.0 * weighted_sum / applic_w, 1) if applic_w > 0 else 0.0
+
+    # ---- eligibility (min workload) ----
+    my_units = m.get("workload_units_assigned", 0)
+    limited = False
+    if team and team.get("avg_workload_units"):
+        thr = float(cfg.get("min_workload_fraction", 0.6)) * team["avg_workload_units"]
+        limited = my_units < thr
+
+    # ---- workload level (team-avg ke % me) ----
+    wl_level, wl_pct = _workload_level(my_units, team, cfg)
+
+    return {
+        "overall": overall,
+        "components": comp,
+        "raw": raw,
+        "target_items": m.get("target_items", []),
+        "projects": m.get("projects", []),
+        "workload_units_assigned": round(my_units, 1),
+        "workload_units_completed": round(m.get("workload_units_completed", 0), 1),
+        "workload_level": wl_level,
+        "workload_pct": wl_pct,
+        "limited_workload": limited,
+        "video_initiative": {
+            "proposed": m.get("prop_proposed", 0),
+            "approved": m.get("prop_approved", 0),
+            "in_production": m.get("prop_in_production", 0),
+            "published": m.get("prop_published", 0),
+            "reward_points": m.get("reward_points", 0),
+        },
+        "consistency_streak": m.get("streak_days", 0),
+    }
+
+
+def _blend_target(items, cfg):
+    """items = [{'done':n,'target':t,'units':u}] -> workload-weighted capped % ya None.
+    Sirf target>0 waale items count hote hain (jinka target set hai)."""
+    tw = dn = 0.0
+    for it in items or []:
+        t = float(it.get("target", 0) or 0)
+        if t <= 0:
+            continue
+        u = float(it.get("units", 1) or 1)
+        pct = cap_pct(100.0 * float(it.get("done", 0)) / t, cfg)
+        tw += u
+        dn += (pct / 100.0) * u
+    if tw <= 0:
+        # koi target set nahi -> agar kuch banaya hai to 100 (non-penalizing), warna N/A
+        any_done = any(float(it.get("done", 0) or 0) > 0 for it in (items or []))
+        return 100.0 if any_done else None
+    return round(100.0 * dn / tw, 1)
+
+
+def _consistency_pct(m):
+    # Consistency = attendance/regularity based. Jinki attendance hi active nahi
+    # (present_days = 0) -> N/A (consistency me count nahi, redistribute).
+    pres = m.get("present_days", 0)
+    if pres <= 0:
+        return None
+    parts = [min(100.0, 100.0 * pres / 24.0)]   # present-day regularity (~24 working days)
+    tot = m.get("task_ontime", 0) + m.get("task_delayed", 0) + m.get("task_not_completed", 0)
+    if tot > 0:
+        parts.append(100.0 * m.get("task_ontime", 0) / tot)
+    lect = m.get("lect_ontime", 0) + m.get("lect_delayed", 0)
+    if lect > 0:
+        parts.append(100.0 * m.get("lect_ontime", 0) / lect)
+    return round(sum(parts) / len(parts), 1)
+
+
+def _initiative_pct(m, cfg):
+    """Reward points ko % me — quality/approval-based (raw count nahi). Monthly full-scale
+    points config se (default 10 monthly reward pts = 100%). Koi approved proposal nahi -> None."""
+    if m.get("prop_approved", 0) <= 0 and m.get("reward_points", 0) <= 0:
+        return None
+    full = float(cfg.get("video_initiative_month_full", 10)) or 10.0
+    pts = float(m.get("reward_points", 0))
+    return round(min(100.0, pts / full * 100.0), 1)
+
+
+def _workload_level(units, team, cfg):
+    lv = cfg.get("workload_levels", {})
+    if not team or not team.get("avg_workload_units"):
+        return "Standard", 100
+    pct = round(100.0 * units / team["avg_workload_units"]) if team["avg_workload_units"] else 100
+    if pct >= lv.get("very_high_above", 150):
+        return "Very High", pct
+    if pct >= lv.get("high_above", 120):
+        return "High", pct
+    if pct < lv.get("low_below", 60):
+        return "Low", pct
+    return "Standard", pct
+
+
+# ---------------------------------------------------------------- REAL DATA GATHER
+def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
+    """Ek teacher ke month-scoped REAL metrics. Sab defensive (missing data = 0/None).
+    force_corrected: None=auto (aaj is window me ho -> corrected). True/False=force
+    (admin past-month correction preview/apply isse corrected logic force karta hai)."""
+    from models import (User, Lecture, TimetableEntry, Doubt, DoubtStatus,
+                        DppPack, Exam, VideoTask, TeacherAttendance)
+    from sqlalchemy.orm import defer
+    aw = cfg.get("activity_workload", {})
+    m = {}
+
+    # TP25-safe gating: 'corrected' scoring (TP01/TP02/TP10) SIRF current live window par
+    # lagta hai (aaj is [dt0,dt1) window me ho). Past/frozen/paid months byte-identical
+    # purana behavior — unka live recompute ya snapshot kabhi drift na kare. (Jab ye month
+    # aage chalke freeze hoga to corrected value hi snapshot ho jaayegi; purane already-frozen
+    # months ko chhua nahi jaata — unki correction admin approval-flow se, future phase.)
+    if force_corrected is not None:
+        corrected = bool(force_corrected)
+    else:
+        try:
+            from models import ist_today as _ist_today0
+            _today0 = _ist_today0()
+        except Exception:
+            _today0 = datetime.utcnow().date()
+        corrected = (dt0.date() <= _today0 < dt1.date())
+    m["_corrected"] = corrected   # score_from_metrics isse jaanta hai ki live month hai
+
+    # ---- Lectures (teaching / on-time) ----
+    ot = dl = 0
+    try:
+        lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(
+            Lecture.teacher_id == tp.id,
+            Lecture.lecture_date >= dt0.date(), Lecture.lecture_date < dt1.date()).all()
+        for l in lecs:
+            te = db.query(TimetableEntry).filter(TimetableEntry.id == l.timetable_entry_id).first() \
+                if getattr(l, "timetable_entry_id", None) else None
+            if not te or not te.entry_date:
+                continue
+            cd = l.lecture_date or (te.completed_at.date() if te.completed_at else None)
+            if cd and cd > te.entry_date:
+                dl += 1
+            else:
+                ot += 1
+    except Exception:
+        pass
+    m["lect_ontime"], m["lect_delayed"] = ot, dl
+
+    # ---- Scheduled classes DUE by today (timetable) — teaching ka denominator.
+    #      Future classes (jo abhi honi hain) count nahi; sirf jo ho chuki honi chahiye. ----
+    try:
+        from sqlalchemy import or_ as _orS
+        try:
+            from models import ist_today as _ist_today
+            _today = _ist_today()
+        except Exception:
+            _today = datetime.utcnow().date()
+        _cut = min(_today, (dt1.date() - timedelta(days=1)))
+        _subsL = [s for s in (tp.subjects or []) if s]
+        _condL = [TimetableEntry.teacher_id == tp.id]
+        # TP02: corrected mode me SIRF explicitly-assigned teacher ki classes. Subject-match
+        # fallback (doosre teacher ki same-subject class is teacher ke due/score me aa jaana)
+        # hata diya. Purane mode (past months) me wahi OR-subject behavior — frozen/paid safe.
+        if _subsL and not corrected:
+            _condL.append(TimetableEntry.subject.in_(_subsL))
+        _rowsL = db.query(TimetableEntry).filter(
+            TimetableEntry.entry_date >= dt0.date(),
+            TimetableEntry.entry_date <= _cut,
+            _orS(*_condL)).all()
+        _due = 0
+        _c_ot = _c_dl = 0
+        for e in _rowsL:
+            _tx = ((e.chapter or "") + " " + (e.part or "")).lower()
+            # TP03: corrected mode me bare "series" ko test mat samjho (e.g. "Series LCR
+            # Circuit" ek physics class hai, test nahi). "test series"/"mock test" ab bhi
+            # "test"/"mock" se pakde jaate hain. Past months me purana behavior (gating).
+            if ("mock" in _tx) or ("test" in _tx) or ((not corrected) and ("series" in _tx)):
+                continue   # test entries teaching me nahi
+            _due += 1
+            # TP01: ek COMPLETED timetable class = 1 delivered class (alag Lecture row zaroori
+            # nahi). Numerator aur denominator dono EK source (timetable) se -> wo bug khatam
+            # jisme complete class ko 0 teaching credit milta tha. On-time/late completed_at
+            # vs entry_date se. (corrected mode only)
+            if corrected and getattr(e, "completed", False):
+                _cat = e.completed_at.date() if e.completed_at else None
+                if _cat and e.entry_date and _cat > e.entry_date:
+                    _c_dl += 1
+                else:
+                    _c_ot += 1
+        m["lect_scheduled_due"] = _due
+        if corrected:
+            m["lect_ontime"], m["lect_delayed"] = _c_ot, _c_dl
+    except Exception:
+        m["lect_scheduled_due"] = 0
+
+    # ---- DPP (content/target) ----
+    # DPPs DONE — asli chapter DATE (timetable) se scope, upload date se nahi.
+    # Purane chapter (June/July) ke DPP jo abhi upload hue -> is month count nahi.
+    try:
+        from sqlalchemy import or_ as _orD
+        _subs = [s for s in (tp.subjects or []) if s]
+        _cond = [TimetableEntry.teacher_id == tp.id]
+        # TP02: corrected mode me DPP chapter-scope bhi sirf is teacher ki apni timetable se.
+        if _subs and not corrected:
+            _cond.append(TimetableEntry.subject.in_(_subs))
+        _ttes = db.query(TimetableEntry).filter(_orD(*_cond)).all()
+        _chmap = {}
+        for e in _ttes:
+            if e.entry_date:
+                k = ((e.subject or "").strip().lower(), (e.chapter or "").strip().lower())
+                _chmap.setdefault(k, []).append(e.entry_date)
+        dpp_done = 0
+        for d in db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.teacher_id == tp.id).all():
+            k = ((d.subject or "").strip().lower(), (d.chapter or "").strip().lower())
+            dates = _chmap.get(k)
+            if dates:
+                if any(dt0.date() <= dd < dt1.date() for dd in dates):
+                    dpp_done += 1
+            elif d.created_at and dt0 <= d.created_at < dt1:
+                dpp_done += 1   # timetable match nahi -> upload date fallback
+    except Exception:
+        dpp_done = 0
+    m["dpp_done"] = dpp_done
+
+    # ---- Tests ----
+    # Tests DONE — asli test DATE (scheduled_at) se scope, upload date se nahi.
+    # Purane (June/July) test jo abhi upload hue -> is month count nahi.
+    try:
+        from sqlalchemy import or_ as _or2, and_ as _and2
+        tests_done = db.query(Exam).filter(
+            Exam.teacher_id == tp.id, Exam.is_active == True,
+            _or2(
+                _and2(Exam.scheduled_at != None, Exam.scheduled_at >= dt0, Exam.scheduled_at < dt1),
+                _and2(Exam.scheduled_at == None, Exam.created_at >= dt0, Exam.created_at < dt1),
+            )).count()
+    except Exception:
+        tests_done = 0
+    m["tests_done"] = tests_done
+
+    # ---- Video targets (videos/shorts/live/tests) via existing REAL engine ----
+    vt = {"videos": {"assigned": 0, "done": 0, "target": 0},
+          "shorts": {"assigned": 0, "done": 0, "target": 0},
+          "live":   {"assigned": 0, "done": 0, "target": 0},
+          "tests":  {"assigned": 0, "done": 0, "target": 0}}
+    proj_completed = 0
+    try:
+        from video_tasks import _vt_targets_for
+        tg = _vt_targets_for(db, tp, dt0, dt1)
+        for r in tg.get("rows", []):
+            k = r.get("key")
+            if k in vt:
+                vt[k] = {"assigned": r.get("assigned", 0), "done": r.get("done", 0),
+                         "target": r.get("target", 0)}
+        m["_by_subject"] = tg.get("by_subject", [])
+    except Exception:
+        m["_by_subject"] = []
+    # tests target/done: existing config target + real Exam count as done
+    m["tests_target"] = vt["tests"]["target"]
+    # ---- PROJECTS (one-shot / rapid-revision / project) — completion % per project ----
+    #      Har project = apne chapters ka done/total. Component = sab projects ka AVERAGE %.
+    #      Project ki videos yahin ginti hain — Content/videos me nahi. Old projects skip.
+    projects = []
+    try:
+        from models import VideoTaskChapter
+        from sqlalchemy import or_ as _orP
+        _pc = db.query(VideoTask).filter(
+            _orP(VideoTask.teacher_id == tp.id,
+                 VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
+            VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]),
+            VideoTask.created_at < dt1).all()   # month-end se pehle bana ho
+        # is month me ACTIVE ho: deadline is month-start ke baad (ya deadline nahi).
+        # Long projects (Sep deadline) August me bhi active -> August me count.
+        _pc = [p for p in _pc if (p.deadline is None or p.deadline >= dt0)]
+        try:
+            from video_tasks import _collab_all_ids as _cai2
+            _pc = [p for p in _pc if (p.teacher_id == tp.id or tp.id in _cai2(p))]
+        except Exception:
+            _pc = [p for p in _pc if p.teacher_id == tp.id]
+        for p in _pc:
+            if bool(getattr(p, "is_old", False)):
+                continue
+            chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == p.id).all()
+            # TP10: corrected mode me AS-OF cutoff (period end dt1) — baad me (next month)
+            # hui submission is window ke completion me na gine. submitted_at ke bina link
+            # ko (jiska time pata nahi) jaise tha waise rakha (galat date invent nahi karte).
+            def _ch_done(c):
+                sa = getattr(c, "submitted_at", None)
+                if corrected and sa:
+                    return sa < dt1
+                return bool((c.link or "").strip()) or bool(sa)
+            if chs:
+                total = len(chs)
+                done = sum(1 for c in chs if _ch_done(c))
+            else:
+                _ps = getattr(p, "submitted_at", None)
+                total, done = 1, (1 if (_ps and (_ps < dt1 if corrected else True)) else 0)
+            pct = round(100.0 * done / total) if total else 0
+            projects.append({"name": p.title or "Project", "done": done, "total": total, "pct": pct})
+    except Exception:
+        pass
+    m["projects"] = projects
+    m["project_pct_avg"] = round(sum(x["pct"] for x in projects) / len(projects), 1) if projects else None
+    m["projects_completed"] = sum(1 for x in projects if x["total"] and x["done"] >= x["total"])
+
+    # ---- Doubts (student support) — 15h SLA rule: sirf "decided" doubts count
+    #      (resolved YA pending-but-overdue). Recent pending (SLA ke andar) penalty nahi.
+    #      Koi decided doubt nahi -> N/A (sabko full, redistribute). ----
+    from datetime import timedelta as _td, time as _time
+    sla = float(cfg.get("doubt_sla_hours", 15))
+
+    def _sla_hours(a, b):
+        """Elapsed hours counting only the IST working window (08:00–23:00) each day, so a
+        doubt asked late at night and answered promptly next morning isn't penalised for
+        the overnight gap. Timestamps are stored in UTC (Railway), so shift to IST first."""
+        try:
+            if not a or not b or b <= a:
+                return 0.0
+            _IST = _td(hours=5, minutes=30)
+            a = a + _IST
+            b = b + _IST
+            ds, de = 8, 23
+            total = 0.0
+            cur = a
+            guard = 0
+            while cur < b and guard < 400:
+                guard += 1
+                day = cur.date()
+                w_s = datetime.combine(day, _time(ds, 0))
+                w_e = datetime.combine(day, _time(de, 0))
+                s = cur if cur > w_s else w_s
+                e = b if b < w_e else w_e
+                if e > s:
+                    total += (e - s).total_seconds() / 3600.0
+                cur = datetime.combine(day + _td(days=1), _time(ds, 0))
+            return total
+        except Exception:
+            return (b - a).total_seconds() / 3600.0
+
+    rec = decided = ontime = 0
+    try:
+        _now = datetime.utcnow()
+        # TP11: Doubt.created_at UTC me store hota hai; month attribution IST se honi chahiye.
+        # corrected mode me IST month window ko UTC me shift karke compare karo (warna boundary
+        # ke doubts, jaise 30 Sep raat IST = 1 Oct UTC, galat month me chale jaate the). Past
+        # months purana naive behavior (gating — frozen/paid safe).
+        if corrected:
+            _ISTd = _td(hours=5, minutes=30)
+            _d0, _d1 = dt0 - _ISTd, dt1 - _ISTd
+        else:
+            _d0, _d1 = dt0, dt1
+        dqs = db.query(Doubt).filter(Doubt.teacher_id == tp.id,
+                                     Doubt.assigned_to_admin == False,
+                                     Doubt.created_at >= _d0, Doubt.created_at < _d1).all()
+        rec = len(dqs)
+        for dq in dqs:
+            if dq.status == DoubtStatus.resolved and dq.resolved_at:
+                decided += 1
+                if _sla_hours(dq.created_at, dq.resolved_at) <= sla:
+                    ontime += 1
+            elif dq.status != DoubtStatus.resolved:
+                # pending: sirf tab count jab SLA nikal chuka (overdue) -> late
+                if _sla_hours(dq.created_at, _now) > sla:
+                    decided += 1   # late (ontime nahi)
+    except Exception:
+        pass
+    m["doubts_received"] = rec
+    m["doubts_decided"] = decided
+    m["doubts_ontime"] = ontime
+
+    # ---- Tasks timeliness (on-time / delayed / not_completed) + proposals + rewards ----
+    to = tdl = tnc = 0
+    p_proposed = p_approved = p_inprod = p_published = 0
+    reward = 0
+    content_assigned = 0
+    rw = cfg.get("video_rewards", {})
+    try:
+        from sqlalchemy import or_ as _orT
+        _cand = db.query(VideoTask).filter(
+            _orT(VideoTask.teacher_id == tp.id,
+                 VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
+            VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+        # collab: agar teacher primary YA collab-member hai to task uske liye ginte hain
+        try:
+            from video_tasks import _collab_all_ids as _cai
+            tasks = [t for t in _cand if (t.teacher_id == tp.id or tp.id in _cai(t))]
+        except Exception:
+            tasks = [t for t in _cand if t.teacher_id == tp.id]
+        # content DUE cutoff (corrected): aaj tak — ya past-month correction me month-end tak.
+        # Teaching ki tarah sirf itni content gine jo ab tak DUE ho chuki hai.
+        try:
+            from models import ist_today as _c_itoday
+            _c_today = _c_itoday()
+        except Exception:
+            _c_today = datetime.utcnow().date()
+        _c_cut = min(_c_today, (dt1.date() - timedelta(days=1)))
+        for t in tasks:
+            if bool(getattr(t, "is_old", False)):
+                continue   # OLD/pre-portal content -> is month count nahi
+            # TP09: corrected mode me CANCELLED (soft-deleted) task content target me na gine.
+            if corrected and bool(getattr(t, "cancelled", False)):
+                continue
+            if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
+                continue   # projects Content me nahi -> alag "Project" component me
+            # CONTENT DUE? corrected mode me sirf woh task gine jo ab tak DUE ho chuki hai:
+            # submitted ho gayi, YA not_completed mark hui, YA deadline nikal chuki. Future-due
+            # (deadline abhi aayi hi nahi, submit nahi hui) task ko content me abhi mat gino —
+            # warna jo videos abhi banni hi hain unhe bhi "fail" maan ke score gir jaata tha
+            # (jaise 1 of 6 = 17%, jabki teacher on-track ho). Past months: sab gine (preserve).
+            _sub = bool(t.submitted_at)
+            _nc_status = (getattr(t, "status", "") == "not_completed")
+            _dl = getattr(t, "deadline", None)
+            _is_due = _sub or _nc_status or (_dl is not None and _dl.date() <= _c_cut)
+            _count_content = (not corrected) or _is_due
+            # assigned content task (proposal pending/rejected chhod ke) -> content target
+            if _count_content and (getattr(t, "proposal_ok", "") or "") != "pending" and getattr(t, "status", "") != "rejected":
+                content_assigned += 1
+            # collab task me IS teacher ka part 'not completed' mark hua? -> uske liye not-completed
+            _my_nc = False
+            try:
+                import json as _jnc
+                _ncraw = getattr(t, "collab_not_completed", "") or ""
+                if _ncraw:
+                    _my_nc = bool(_jnc.loads(_ncraw).get(str(tp.id)))
+            except Exception:
+                _my_nc = False
+            if _count_content:
+                if _my_nc:
+                    tnc += 1
+                elif _sub and corrected:
+                    # on-time ab submitted_at vs deadline se DERIVE (bina-deadline = on-time;
+                    # pehle bool(None and ...)=False se teacher ka actual kaam count hi nahi hota tha).
+                    if _dl and t.submitted_at > _dl:
+                        tdl += 1
+                    else:
+                        to += 1
+                elif _sub and t.on_time is True:
+                    to += 1
+                elif _sub and t.on_time is False:
+                    tdl += 1
+                if not _my_nc and _nc_status:
+                    tnc += 1
+            # proposals (teacher-proposed)
+            if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", ""):
+                p_proposed += 1
+                if (t.proposal_ok or "") == "approved":
+                    p_approved += 1
+                    reward += float(rw.get("approved", 1))
+                    st = getattr(t, "status", "")
+                    if st in ("editing_soon", "editing_done"):
+                        p_inprod += 1
+                        reward += float(rw.get("in_production", 2))
+                    if st == "uploaded":
+                        p_published += 1
+                        reward += float(rw.get("in_production", 2)) + float(rw.get("published", 2))
+    except Exception:
+        pass
+    m["task_ontime"], m["task_delayed"], m["task_not_completed"] = to, tdl, tnc
+    m["content_target"] = content_assigned
+    m["prop_proposed"], m["prop_approved"] = p_proposed, p_approved
+    m["prop_in_production"], m["prop_published"] = p_inprod, p_published
+    m["reward_points"] = round(reward, 1)
+
+    # ---- Attendance (consistency) ----
+    try:
+        att = db.query(TeacherAttendance).filter(TeacherAttendance.teacher_id == tp.id,
+                                                 TeacherAttendance.att_date >= dt0.date(),
+                                                 TeacherAttendance.att_date < dt1.date()).all()
+        m["present_days"] = len({a.att_date for a in att if a.punch_in})
+    except Exception:
+        m["present_days"] = 0
+    m["streak_days"] = m["present_days"]   # proxy; real streak Phase-later
+
+    # ---- content & target items (for _blend_target) with workload units ----
+    m["content_items"] = [
+        {"done": vt["videos"]["done"], "target": vt["videos"]["target"] or vt["videos"]["assigned"],
+         "units": aw.get("one_shot", 5) if proj_completed else aw.get("long_video", 2)},
+        {"done": vt["shorts"]["done"], "target": vt["shorts"]["target"] or vt["shorts"]["assigned"],
+         "units": aw.get("short", 1)},
+    ]
+    # ---- AUTO targets from timetable (classes/chapters/dpp/tests) — Vicky: teaching/dpp/tests auto ----
+    try:
+        _auto = auto_targets_from_timetable(db, tp, dt0.strftime("%Y-%m"))
+    except Exception:
+        _auto = {}
+    _auto_classes = _auto.get("classes", 0)
+    _auto_dpp = _auto.get("dpp_min", 0) or _auto.get("chapters", 0)
+    # tests target: timetable tests -> warna weekly-2 expected (weeks * weekly)
+    _days = (dt1 - dt0).days or 30
+    _weeks = max(1, round(_days / 7.0))
+    _weekly_exp = float(cfg.get("weekly_tests_expected", 2))
+    # TP07: corrected mode me blanket weekly-test default (2/week) sabpe NAHI — sirf un
+    # teachers pe jinhe tests actually assign hue (timetable/video/explicit). Jinhe nahi,
+    # unka tests target 0 -> Tests component N/A (unfair penalty nahi). Past months purana.
+    if corrected:
+        # sirf REAL assignment signal: timetable test entries. (Pay-config ka blanket
+        # tests_target default aur computed weekly-default dono hata diye.) Explicit
+        # per-teacher target _T("tests",...) niche phir bhi override karega. Koi signal
+        # nahi -> tests_target 0 -> Tests component N/A (neutral, penalty nahi).
+        _auto_tests = _auto.get("tests_tt", 0)   # timetable-only (pay-config blanket nahi)
+    else:
+        _auto_tests = _auto.get("tests", 0) or vt["tests"]["target"] or int(round(_weekly_exp * _weeks))
+
+    # explicit per-teacher targets (agar admin ne set kiye) -> videos/shorts/live/tests override.
+    # Classes & DPP HAMESHA auto (timetable) — inhe set karne ki zaroorat nahi.
+    _ttg = (get_teacher_targets(db, tp.id).get("targets", {}) or {})
+    def _T(k, fallback):
+        v = _ttg.get(k)
+        return v if (v is not None and v != "") else fallback
+    m["target_items"] = [
+        {"label": "Videos",       "done": vt["videos"]["done"], "target": _T("videos", vt["videos"]["target"]), "units": aw.get("long_video", 2)},
+        {"label": "Shorts",       "done": vt["shorts"]["done"], "target": _T("shorts", vt["shorts"]["target"]), "units": aw.get("short", 1)},
+        {"label": "YouTube Live", "done": vt["live"]["done"],   "target": _T("live", vt["live"]["target"]),   "units": aw.get("youtube_live", 4)},
+        {"label": "Weekly Tests", "done": tests_done,           "target": _T("tests", _auto_tests),            "units": aw.get("weekly_test", 3)},
+        {"label": "DPP",          "done": dpp_done,             "target": _auto_dpp,                            "units": aw.get("dpp", 1)},
+    ]
+    m["tests_target"] = _T("tests", _auto_tests)
+
+    # ---- workload units (assigned vs completed) for normalization + eligibility ----
+    def _u(key, n):
+        return aw.get(key, 1) * n
+    assigned_units = (_u("long_video", vt["videos"]["assigned"]) + _u("short", vt["shorts"]["assigned"])
+                      + _u("youtube_live", vt["live"]["assigned"]) + _u("weekly_test", vt["tests"]["target"])
+                      + _u("dpp", dpp_done) + _u("class", ot + dl) + _u("doubt", rec)
+                      + _u("task", len_or0(m, "task_ontime", "task_delayed", "task_not_completed")))
+    completed_units = (_u("long_video", vt["videos"]["done"]) + _u("short", vt["shorts"]["done"])
+                       + _u("youtube_live", vt["live"]["done"]) + _u("weekly_test", tests_done)
+                       + _u("dpp", dpp_done) + _u("class", ot) + _u("doubt", m["doubts_ontime"])
+                       + _u("task", to))
+    m["workload_units_assigned"] = assigned_units
+    m["workload_units_completed"] = completed_units
+    return m
+
+
+def len_or0(m, *keys):
+    return sum(m.get(k, 0) for k in keys)
+
+
+# ---------------------------------------------------------------- TOP-LEVEL COMPUTE
+def _score_all(db, month, cfg, force_corrected=None):
+    """Ek month ke saare teachers ki ranked rows (bina rank_change) + team avg.
+    force_corrected gather_metrics ko pass hota hai (admin correction preview/apply)."""
+    from models import TeacherProfile, User
+    from sqlalchemy.orm import defer as _defer
+    from sqlalchemy import func as _func
+    dt0, dt1, mkey = month_bounds(month)
+    # kaun teacher ke paas photo hai — blob load kiye bina (photo TeacherProfile pe hai, User pe NAHI)
+    _photo_ids = set()
+    try:
+        for (ptid,) in db.query(TeacherProfile.id).filter(
+                TeacherProfile.photo_b64 != None, _func.length(TeacherProfile.photo_b64) > 10).all():
+            _photo_ids.add(ptid)
+    except Exception:
+        pass
+    metricmap = {}
+    for tp in db.query(TeacherProfile).options(_defer(TeacherProfile.photo_b64)).all():
+        try:
+            u = db.query(User).filter(User.id == tp.user_id).first()
+            if not u:
+                continue
+            # TP17: deactivate kiye gaye (is_active=False) teachers ko rank/avg dono se
+            # bahar rakho. None/legacy rows ko active hi maano (purana behavior preserve).
+            if u.is_active is False:
+                continue
+            _w0, _w1 = _teacher_window(db, tp, dt0, dt1)   # session-mode teacher ka apna window
+            metricmap[tp.id] = (tp, u, gather_metrics(db, tp, _w0, _w1, cfg, force_corrected=force_corrected))
+        except Exception:
+            # ek teacher ka data kharab ho to use skip — poora board na toote.
+            # LOG bhi karo taaki Railway me exact wajah dikhe (blind na rahein).
+            try:
+                import traceback as _tb
+                print("[perf] teacher skip tid=%s:" % getattr(tp, "id", "?"))
+                _tb.print_exc()
+            except Exception:
+                pass
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            continue
+
+    units = [mm[2].get("workload_units_assigned", 0) for mm in metricmap.values()]
+    avg_units = (sum(units) / len(units)) if units else 0
+    team = {"avg_workload_units": avg_units}
+    rows = []
+    for tid, (tp, u, m) in metricmap.items():
+        try:
+            sc = score_from_metrics(m, cfg, team)
+        except Exception:
+            try:
+                import traceback as _tb2
+                print("[perf] score skip tid=%s:" % getattr(tp, "id", "?"))
+                _tb2.print_exc()
+            except Exception:
+                pass
+            continue
+        rows.append({
+            "teacher_id": tp.id, "name": u.name or "", "user_id": u.user_id or "",
+            "has_photo": (tp.id in _photo_ids),
+            "subjects": tp.subjects or [], "batch": tp.batch or "",
+            "score": sc["overall"], "components": sc["components"],
+            "target_items": sc.get("target_items", []),
+            "projects": sc.get("projects", []),
+            "workload_level": sc["workload_level"], "workload_pct": sc["workload_pct"],
+            "limited_workload": sc["limited_workload"],
+            "video_initiative": sc["video_initiative"],
+            "consistency_streak": sc["consistency_streak"],
+        })
+    rows.sort(key=lambda r: (-r["score"], (r["name"] or "").lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return rows, round(avg_units, 1), mkey
+
+
+def _prev_month_key(month):
+    dt0, _, _ = month_bounds(month)
+    py, pm = (dt0.year - 1, 12) if dt0.month == 1 else (dt0.year, dt0.month - 1)
+    return "%04d-%02d" % (py, pm)
+
+
+# ------------- PHASE 8: monthly history snapshots (freeze) -------------
+def _rank_movements(db, back=10):
+    """Saare frozen snapshots se har teacher ka up/down count (rank change history)."""
+    cur = _cur_month_key()
+    y, m = int(cur[:4]), int(cur[5:7])
+    keys = []
+    for i in range(back, -1, -1):
+        yy, mm = y, m - i
+        while mm <= 0:
+            mm += 12; yy -= 1
+        keys.append("%04d-%02d" % (yy, mm))
+    timelines = {}   # tid -> [(mkey, rank)]
+    for mk in keys:
+        snap = _load_snapshot(db, mk)
+        if not snap:
+            continue
+        for r in snap.get("results", []):
+            timelines.setdefault(r["teacher_id"], []).append((mk, r.get("rank")))
+    out = {}
+    for tid, tl in timelines.items():
+        tl.sort(key=lambda x: x[0])
+        up = down = same = 0
+        for i in range(1, len(tl)):
+            prev, curr = tl[i - 1][1], tl[i][1]
+            if prev is None or curr is None:
+                continue
+            if curr < prev:
+                up += 1
+            elif curr > prev:
+                down += 1
+            else:
+                same += 1
+        out[tid] = {"up": up, "down": down, "same": same, "months": len(tl)}
+    return out
+
+
+def _snap_key(mkey):
+    return "perf_snap_" + mkey
+
+
+def _cur_month_key():
+    _, _, mk = month_bounds("")
+    return mk
+
+
+def _load_snapshot(db, mkey):
+    from models import AppSetting
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _snap_key(mkey)).first()
+        if row and row.value:
+            return _json.loads(row.value)
+    except Exception:
+        pass
+    return None
+
+
+def _save_snapshot(db, mkey, results):
+    from models import AppSetting
+    payload = {"month": mkey, "frozen_at": _ist(datetime.utcnow()) or "", "results": results}
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _snap_key(mkey)).first()
+        if not row:
+            db.add(AppSetting(key=_snap_key(mkey), value=_json.dumps(payload)))
+        else:
+            row.value = _json.dumps(payload)
+        db.commit()
+    except Exception:
+        # TP16: commit fail hua to rollback karo aur failure signal karo
+        # (fake success payload NAHI — warna caller samajhta hai freeze ho gaya).
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
+    return payload
+
+
+def _apply_rank_change(db, rows, prev_key):
+    psnap = _load_snapshot(db, prev_key)
+    prm = {r["teacher_id"]: r["rank"] for r in (psnap.get("results", []) if psnap else [])}
+    for r in rows:
+        pr = prm.get(r["teacher_id"])
+        r["prev_rank"] = pr
+        r["rank_change"] = (pr - r["rank"]) if pr else None   # + = upar chadha, None = NEW
+
+
+def compute(db, month=""):
+    """Month performance, ranked + rank_change. PAST months FROZEN (snapshot) rehte hain —
+    weights badalne par purani ranking nahi badalti (spec Part 28). Current month live."""
+    cfg = _pc.get_perf_config(db)
+    _, _, mkey = month_bounds(month)
+    prev_key = _prev_month_key(month)
+    cur = _cur_month_key()
+    # current month: 90s cache — repeated views/polls recompute na karein
+    if mkey == cur:
+        _cached = _board_cache_get(mkey)
+        if _cached is not None:
+            return _cached
+
+    if mkey > cur:
+        # --- FUTURE month: TP15 — kabhi auto-freeze mat karo. Pehle 'mkey != cur' hone se
+        # future month bhi "past" samajh ke freeze ho jaata tha (bogus permanent snapshot,
+        # jo us month ke aane par asli data ko dhak deta). Future hamesha live compute,
+        # koi snapshot save NAHI. (Agar pichhle bug se koi stale future snapshot bana hai
+        # to use bhi ignore karke live dete hain; purane snapshot ki cleanup future phase.)
+        rows, avg, _ = _score_all(db, month, cfg)
+        _apply_rank_change(db, rows, prev_key)
+        return {"month": mkey, "prev_month": prev_key, "frozen": False,
+                "weights": cfg.get("component_weights", {}),
+                "team_avg_workload_units": avg, "results": rows}
+
+    if mkey != cur:
+        # --- past month: agar snapshot hai to frozen return; warna live compute + auto-freeze ---
+        snap = _load_snapshot(db, mkey)
+        if snap and snap.get("results"):
+            rows = [dict(r) for r in snap["results"]]
+            _apply_rank_change(db, rows, prev_key)
+            return {"month": mkey, "prev_month": prev_key, "frozen": True,
+                    "frozen_at": snap.get("frozen_at", ""),
+                    "weights": cfg.get("component_weights", {}),
+                    "team_avg_workload_units": 0, "results": rows}
+        rows, avg, _ = _score_all(db, month, cfg)
+        _save_snapshot(db, mkey, rows)          # pehli baar access -> freeze
+        _apply_rank_change(db, rows, prev_key)
+        return {"month": mkey, "prev_month": prev_key, "frozen": True, "auto_frozen": True,
+                "weights": cfg.get("component_weights", {}),
+                "team_avg_workload_units": avg, "results": rows}
+
+    # --- current month: live ---
+    rows, avg, _ = _score_all(db, month, cfg)
+    # previous (just-ended) month ko lazily freeze karo taaki rank-change accurate rahe
+    if not _load_snapshot(db, prev_key):
+        try:
+            prows, _, _ = _score_all(db, prev_key, cfg)
+            _save_snapshot(db, prev_key, prows)
+        except Exception:
+            pass
+    _apply_rank_change(db, rows, prev_key)
+    try:
+        mv = _rank_movements(db)
+        for r in rows:
+            m2 = mv.get(r["teacher_id"], {})
+            r["rank_up"] = m2.get("up", 0)
+            r["rank_down"] = m2.get("down", 0)
+    except Exception:
+        pass
+    _result = {"month": mkey, "prev_month": prev_key, "frozen": False,
+               "weights": cfg.get("component_weights", {}),
+               "team_avg_workload_units": avg, "results": rows}
+    if mkey == cur:
+        _board_cache_set(mkey, _result)
+    return _result
+
+
+def freeze_month(db, month=""):
+    """Admin: is month ke current scores ko snapshot me freeze/re-freeze kar do."""
+    bust_board_cache()
+    cfg = _pc.get_perf_config(db)
+    rows, avg, mkey = _score_all(db, month, cfg)
+    snap = _save_snapshot(db, mkey, rows)
+    if not snap:
+        # TP16: snapshot save fail — fake success mat do.
+        raise RuntimeError("perf snapshot save failed")
+    return {"ok": True, "month": mkey, "frozen_at": snap.get("frozen_at", ""), "count": len(rows)}
+
+
+# =============================================================================
+# PAST-MONTH CORRECTION (admin-approved) — TP25 safety ke saath.
+# Corrected scoring (TP01/02/03/07/09/10/11) by-default sirf LIVE month par lagta hai.
+# Ek PAST month ko theek karne ke liye admin pehle PREVIEW (purana-vs-corrected diff)
+# dekhta hai, phir explicit APPROVE karta hai -> tabhi naya corrected snapshot banta hai.
+# Paid teacher payouts ALAG record (PayoutMonth.snapshot) me frozen hain — ye leaderboard
+# snapshot re-freeze unko nahi chhuta, isliye paisa kabhi nahi badalta.
+# =============================================================================
+def correction_preview(db, month=""):
+    """Past month ke liye: existing (old) snapshot vs CORRECTED (force_corrected=True)
+    scores ka per-teacher diff. Koi write NAHI — sirf read/preview."""
+    cfg = _pc.get_perf_config(db)
+    _, _, mkey = month_bounds(month)
+    cur = _cur_month_key()
+    # corrected (naya) — force
+    new_rows, _navg, _ = _score_all(db, month, cfg, force_corrected=True)
+    # old — existing frozen snapshot agar hai; warna uncorrected live compute
+    snap = _load_snapshot(db, mkey)
+    had_snapshot = bool(snap and snap.get("results"))
+    if had_snapshot:
+        old_rows = [dict(r) for r in snap["results"]]
+    else:
+        old_rows, _oavg, _ = _score_all(db, month, cfg, force_corrected=False)
+    _oldm = {r.get("teacher_id"): r for r in old_rows}
+    diffs = []
+    for nr in new_rows:
+        tid = nr.get("teacher_id")
+        orr = _oldm.get(tid, {})
+        o_sc = orr.get("score"); n_sc = nr.get("score")
+        o_rk = orr.get("rank");  n_rk = nr.get("rank")
+        changed = (o_sc != n_sc) or (o_rk != n_rk)
+        diffs.append({
+            "teacher_id": tid, "name": nr.get("name", ""),
+            "old_score": o_sc, "new_score": n_sc,
+            "old_rank": o_rk, "new_rank": n_rk,
+            "score_delta": (round((n_sc or 0) - (o_sc or 0), 1) if (o_sc is not None) else None),
+            "is_new": (tid not in _oldm), "changed": changed,
+        })
+    diffs.sort(key=lambda d: (d["new_rank"] or 999))
+    changed_n = sum(1 for d in diffs if d["changed"] or d["is_new"])
+    return {"month": mkey, "is_current": (mkey == cur), "had_snapshot": had_snapshot,
+            "frozen": had_snapshot, "total": len(diffs), "changed": changed_n, "diffs": diffs}
+
+
+def apply_correction(db, month=""):
+    """Admin ne approve kiya -> is PAST month ka corrected snapshot save (re-freeze).
+    Current month ke liye normal freeze use hota hai, correction nahi."""
+    _, _, mkey = month_bounds(month)
+    cur = _cur_month_key()
+    if mkey == cur:
+        # live month correction auto-apply hota hai; alag "correction" ki zaroorat nahi.
+        raise RuntimeError("current month correction not applicable — it is already live/corrected")
+    bust_board_cache()
+    cfg = _pc.get_perf_config(db)
+    rows, _avg, _mk = _score_all(db, month, cfg, force_corrected=True)
+    snap = _save_snapshot(db, mkey, rows)
+    if not snap:
+        raise RuntimeError("correction snapshot save failed")
+    return {"ok": True, "month": mkey, "count": len(rows), "frozen_at": snap.get("frozen_at", "")}
+
+
+def history_months(db, back=8):
+    """Current + pichhle N months ki list, konse frozen hain (UI dropdown ke liye)."""
+    cur = _cur_month_key()
+    y, m = int(cur[:4]), int(cur[5:7])
+    out = []
+    for i in range(back + 1):
+        yy, mm = y, m - i
+        while mm <= 0:
+            mm += 12; yy -= 1
+        mk = "%04d-%02d" % (yy, mm)
+        snap = _load_snapshot(db, mk)
+        out.append({"month": mk, "frozen": bool(snap), "current": (mk == cur),
+                    "frozen_at": (snap.get("frozen_at", "") if snap else "")})
+    return {"current": cur, "months": out}
+
+
+def _areas(components):
+    """Strong (top raw%) + improve (lowest applicable raw%) component keys."""
+    applic = [(c, v["raw"]) for c, v in components.items()
+              if not v.get("na") and v.get("raw") is not None]
+    if not applic:
+        return [], []
+    hi = sorted(applic, key=lambda x: -x[1])
+    lo = sorted(applic, key=lambda x: x[1])
+    strong = [c for c, v in hi[:2] if v >= 70]
+    improve = [c for c, v in lo[:3] if v < 85][:3]
+    return strong, improve
+
+
+def compute_one(db, tp, month=""):
+    """Ek teacher ka full breakdown + next-rank gap + strong/improve (Why am I this rank)."""
+    cfg = _pc.get_perf_config(db)
+    dt0, dt1, mkey = month_bounds(month)
+    board = compute(db, month)
+    rows = board["results"]
+    me = next((r for r in rows if r["teacher_id"] == tp.id), None)
+    m = gather_metrics(db, tp, dt0, dt1, cfg)
+    detail = score_from_metrics(m, cfg, {"avg_workload_units": board["team_avg_workload_units"]})
+    nxt = None
+    if me and me.get("rank", 1) > 1:
+        ab = next((r for r in rows if r["rank"] == me["rank"] - 1), None)
+        if ab:
+            nxt = {"rank": ab["rank"], "name": ab["name"], "score": ab["score"],
+                   "gap": round(ab["score"] - me["score"], 1)}
+    strong, improve = _areas(detail["components"])
+    return {"month": mkey, "me": me, "breakdown": detail, "metrics": m,
+            "next": nxt, "strong": strong, "improve": improve,
+            "total": len(rows), "weights": cfg.get("component_weights", {})}
+
+
+# =============================================================================
+# PHASE 3: MULTI-SUBJECT MONTHLY TARGETS (spec Part 5)
+# Per-subject, per-activity real done/assigned + overall + vs-previous-month.
+# =============================================================================
+def _subject_targets(db, tp, dt0, dt1):
+    """Ek teacher ke month ki per-subject activity breakdown (REAL data)."""
+    from models import VideoTask, VideoTaskChapter, Exam, DppPack
+    subs = list(tp.subjects or [])
+    out = {}
+    for s in subs:
+        out[s] = {"videos": {"done": 0, "assigned": 0}, "shorts": {"done": 0, "assigned": 0},
+                  "live": {"done": 0, "assigned": 0}, "tests": {"done": 0, "assigned": 0},
+                  "dpp": {"done": 0, "assigned": 0},
+                  "proposals": {"done": 0, "assigned": 0}}
+    def _bucket(s):
+        return out.setdefault(s, {"videos": {"done": 0, "assigned": 0}, "shorts": {"done": 0, "assigned": 0},
+                                  "live": {"done": 0, "assigned": 0}, "tests": {"done": 0, "assigned": 0},
+                                  "dpp": {"done": 0, "assigned": 0}, "proposals": {"done": 0, "assigned": 0}})
+
+    # ---- Video tasks (videos/shorts/live + projects per-video) ----
+    try:
+        tasks = db.query(VideoTask).filter(
+            VideoTask.teacher_id == tp.id,
+            VideoTask.created_at >= dt0, VideoTask.created_at < dt1,
+            VideoTask.proposal_ok != "pending", VideoTask.status != "rejected").all()
+        for t in tasks:
+            s = t.subject or "General"
+            b = _bucket(s)
+            kind = (t.kind or "normal")
+            # proposals (teacher-proposed) count bhi (subject-wise)
+            if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", ""):
+                b["proposals"]["assigned"] += 1
+                if (t.proposal_ok or "") == "approved":
+                    b["proposals"]["done"] += 1
+            if kind in ("one_shot", "rapid_revision", "project"):
+                chs = db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id == t.id).all()
+                if not chs:
+                    b["videos"]["assigned"] += 1
+                    continue
+                for ch in chs:
+                    b["videos"]["assigned"] += 1
+                    has = bool((ch.link or "").strip()) or bool(ch.submitted_at)
+                    if has and (getattr(ch, "vintage", "") or "") == "new":
+                        b["videos"]["done"] += 1
+                continue
+            vt = (t.video_type or "").lower()
+            if "short" in vt:
+                cat = "shorts"
+            elif "live" in vt or (getattr(t, "streaming", "") or "") == "live":
+                cat = "live"
+            else:
+                cat = "videos"
+            b[cat]["assigned"] += 1
+            if bool(t.submitted_at) or t.status == "uploaded":
+                b[cat]["done"] += 1
+    except Exception:
+        pass
+
+    # ---- Tests (Exam per subject) ----
+    try:
+        for e in db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True,
+                                       Exam.created_at >= dt0, Exam.created_at < dt1).all():
+            b = _bucket(e.subject or "General")
+            b["tests"]["done"] += 1
+            b["tests"]["assigned"] += 1
+    except Exception:
+        pass
+
+    # ---- DPP (DppPack per subject) ----
+    try:
+        for d in db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.teacher_id == tp.id,
+                                          DppPack.created_at >= dt0, DppPack.created_at < dt1).all():
+            b = _bucket(d.subject or "General")
+            b["dpp"]["done"] += 1
+            b["dpp"]["assigned"] += 1
+    except Exception:
+        pass
+    return out
+
+
+_ACT_LABELS = [("videos", "Videos"), ("shorts", "Shorts"), ("live", "YouTube Live"),
+               ("tests", "Weekly Tests"), ("dpp", "DPP"), ("proposals", "Video Proposals")]
+# in activities, in ka % subject-completion me count hota hai (real assigned/target waale):
+_PCT_KEYS = ("videos", "shorts", "live")
+
+
+def _subject_pct_rows(bucket, cfg):
+    """Ek subject ke activity rows + subject-level done/total/pct."""
+    rows = []
+    tot_done = tot_total = 0
+    for key, label in _ACT_LABELS:
+        b = bucket.get(key, {"done": 0, "assigned": 0})
+        done, assigned = b["done"], b["assigned"]
+        rows.append({"key": key, "label": label, "done": done, "total": assigned,
+                     "count_only": key in ("tests", "dpp", "proposals")})
+        if key in _PCT_KEYS:
+            tot_done += done
+            tot_total += assigned
+    pct = cap_pct(100.0 * tot_done / tot_total, cfg) if tot_total > 0 else (100.0 if tot_done > 0 else 0.0)
+    return rows, tot_done, tot_total, round(pct, 1)
+
+
+def monthly_targets(db, tp, month=""):
+    """Multi-subject monthly performance (spec Part 5): overall + per-subject expandable
+    breakdown + vs previous month. REAL data only."""
+    cfg = _pc.get_perf_config(db)
+    dt0, dt1, mkey = month_bounds(month)
+
+    def _overall_for(d0, d1):
+        by = _subject_targets(db, tp, d0, d1)
+        subs = []
+        odone = ototal = 0
+        for s in sorted(by.keys()):
+            rows, sd, st, pct = _subject_pct_rows(by[s], cfg)
+            subs.append({"subject": s, "pct": pct, "done": sd, "total": st, "activities": rows})
+            odone += sd
+            ototal += st
+        opct = cap_pct(100.0 * odone / ototal, cfg) if ototal > 0 else (100.0 if odone > 0 else 0.0)
+        return subs, odone, ototal, round(opct, 1)
+
+    subs, odone, ototal, opct = _overall_for(dt0, dt1)
+
+    # previous month delta
+    py, pm = (dt0.year - 1, 12) if dt0.month == 1 else (dt0.year, dt0.month - 1)
+    from datetime import datetime as _dt
+    pd0 = _dt(py, pm, 1)
+    pd1 = dt0
+    _, _, _, prev_pct = _overall_for(pd0, pd1)
+    delta = round(opct - prev_pct, 1)
+
+    return {"month": mkey, "prev_month": "%04d-%02d" % (py, pm),
+            "overall_pct": opct, "overall_done": odone, "overall_total": ototal,
+            "prev_pct": prev_pct, "delta_vs_prev": delta,
+            "multi": len(subs) > 1, "subjects": subs}
+
+
+# =============================================================================
+# PHASE 4: VIDEO PROPOSAL — lifecycle + reward history + duplicate detect
+# Sab DERIVED (idempotent) — koi reward double count nahi, koi nayi table nahi.
+# PM = Admin. Reward points perf_config.video_rewards se.
+# =============================================================================
+import json as _json
+import re as _re
+
+
+def _norm_title(t):
+    return _re.sub(r"[^a-z0-9 ]+", "", (t or "").lower()).strip()
+
+
+def _tokens(t):
+    return set(w for w in _norm_title(t).split() if len(w) > 2)
+
+
+def _similar(a, b):
+    """0..1 title similarity (token Jaccard)."""
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return 1.0 if _norm_title(a) == _norm_title(b) else 0.0
+    inter = len(ta & tb)
+    return inter / float(len(ta | tb))
+
+
+def _hist_when(task, *stages):
+    """status_history JSON se pehla matching stage ka time (string) — warna fallbacks."""
+    try:
+        hist = _json.loads(task.status_history or "[]")
+        for h in hist:
+            if str(h.get("s", "")) in stages:
+                return h.get("at") or ""
+    except Exception:
+        pass
+    return None
+
+
+def _proposal_stage(t):
+    """Lifecycle stage (derived): proposed/rejected/approved/in_production/published."""
+    pok = (t.proposal_ok or "")
+    if pok == "pending":
+        return "proposed"
+    if pok == "rejected":
+        return "rejected"
+    st = (t.status or "")
+    if st == "uploaded" or (getattr(t, "youtube_url", "") or ""):
+        return "published"
+    if st in ("editing_soon", "editing_done"):
+        return "in_production"
+    # TP18: blank/unverified proposal_ok ko "approved" MAT maano (core scoring bhi sirf
+    # explicit "approved" ginta hai). Jab tak admin explicitly approve na kare -> "proposed".
+    # (Production/published status waale upar handle ho gaye — woh clearly aage badh chuke.)
+    if pok == "approved":
+        return "approved"
+    return "proposed"
+
+
+def video_contribution(db, tp, month=""):
+    """Teacher ki video-initiative dashboard (Part 12) + reward history (Part 30) +
+    proposals list with lifecycle + duplicate flags. All-time (proposals span months)."""
+    from models import VideoTask
+    cfg = _pc.get_perf_config(db)
+    rw = cfg.get("video_rewards", {})
+    r_appr = float(rw.get("approved", 1))
+    r_prod = float(rw.get("in_production", 2))
+    r_pub = float(rw.get("published", 2))
+
+    # teacher ke apne proposals (proposed_by teacher)
+    q = db.query(VideoTask).filter(VideoTask.teacher_id == tp.id)
+    tasks = [t for t in q.all()
+             if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", "")
+             and not bool(getattr(t, "is_old", False))]
+    tasks.sort(key=lambda t: (getattr(t, "created_at", None) or datetime.min))
+
+    # duplicate detection (apne proposals me similar titles)
+    dup_ids = set()
+    for i in range(len(tasks)):
+        for j in range(i):
+            if _similar(tasks[i].title, tasks[j].title) >= 0.75:
+                dup_ids.add(tasks[i].id)
+                break
+
+    counts = {"proposed": 0, "rejected": 0, "approved": 0, "in_production": 0, "published": 0}
+    reward_total = 0.0
+    reward_history = []
+    plist = []
+    top_idea = None
+    for t in tasks:
+        stage = _proposal_stage(t)
+        counts[stage] = counts.get(stage, 0) + 1
+        # cumulative reward + history (idempotent — stage-based)
+        pts = 0.0
+        if stage in ("approved", "in_production", "published"):
+            pts += r_appr
+            reward_history.append({"date": _hist_when(t, "assigned") or _ist(t.created_at),
+                                   "reason": "Video Idea Approved", "proposal": t.title,
+                                   "points": r_appr, "approved_by": "Production Manager"})
+        if stage in ("in_production", "published"):
+            pts += r_prod
+            reward_history.append({"date": _hist_when(t, "editing_soon", "editing_done") or _ist(t.updated_at),
+                                   "reason": "Moved to Production", "proposal": t.title,
+                                   "points": r_prod, "approved_by": "Production Manager"})
+        if stage == "published":
+            pts += r_pub
+            reward_history.append({"date": _hist_when(t, "uploaded") or _ist(t.submitted_at) or _ist(t.updated_at),
+                                   "reason": "Published", "proposal": t.title,
+                                   "points": r_pub, "approved_by": "Production Manager"})
+        reward_total += pts
+        if pts > 0 and (top_idea is None or pts > top_idea["points"]):
+            top_idea = {"title": t.title, "points": pts, "stage": stage}
+        plist.append({
+            "id": t.id, "title": t.title, "subject": t.subject or "",
+            "video_type": t.video_type or "", "stage": stage,
+            "reward": round(pts, 1), "duplicate": t.id in dup_ids,
+            "date": _ist(t.created_at), "reference": (t.reference or "")[:200],
+            "rejected_reason": (t.review_remarks or "") if stage == "rejected" else "",
+        })
+
+    proposed_total = len(tasks)
+    approved_ct = counts["approved"] + counts["in_production"] + counts["published"]
+    appr_rate = round(100.0 * approved_ct / proposed_total, 1) if proposed_total else 0.0
+    pub_rate = round(100.0 * counts["published"] / proposed_total, 1) if proposed_total else 0.0
+    reward_history.sort(key=lambda r: (r.get("date") or ""), reverse=True)
+    plist.sort(key=lambda p: (p.get("date") or ""), reverse=True)
+    _target_pts = float(cfg.get("video_initiative_target_points", 100)) or 100.0
+    return {
+        "teacher_id": tp.id,
+        "counts": {"proposed": proposed_total, "approved": approved_ct,
+                   "in_production": counts["in_production"], "published": counts["published"],
+                   "rejected": counts["rejected"]},
+        "approval_rate": appr_rate, "publication_rate": pub_rate,
+        "reward_points": round(reward_total, 1),
+        "reward_target": _target_pts,
+        "reward_pct": round(min(100.0, reward_total / _target_pts * 100.0), 1),
+        "top_idea": top_idea, "duplicates": len(dup_ids),
+        "reward_history": reward_history, "proposals": plist,
+    }
+
+
+def _ist(dt):
+    try:
+        from models import ist_iso
+        return ist_iso(dt)
+    except Exception:
+        return dt.isoformat() if dt else None
+
+
+# =============================================================================
+# PER-TEACHER TARGETS (individual) — 2 modes: AUTO (timetable se) ya MANUAL.
+# Store: AppSetting perf_ttgt_<tid> = {mode, targets:{classes,dpp,videos,shorts,live,tests}}.
+# Engine ka "targets" component in explicit targets ko use karta hai (set hon to).
+# =============================================================================
+def _ttgt_key(tid):
+    return "perf_ttgt_%s" % tid
+
+
+def get_teacher_targets(db, tid):
+    from models import AppSetting
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _ttgt_key(tid)).first()
+        if row and row.value:
+            return _json.loads(row.value)
+    except Exception:
+        pass
+    return {}
+
+
+def save_teacher_targets(db, tid, targets, mode="manual", period="monthly", session_start="", session_end=""):
+    from models import AppSetting
+    clean = {}
+    for k, v in (targets or {}).items():
+        try:
+            clean[k] = max(0, int(float(v or 0)))
+        except Exception:
+            clean[k] = 0
+    payload = {"mode": (mode or "manual"), "period": (period or "monthly"),
+               "session_start": (session_start or ""), "session_end": (session_end or ""),
+               "targets": clean, "at": _ist(datetime.utcnow()) or ""}
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == _ttgt_key(tid)).first()
+        if not row:
+            db.add(AppSetting(key=_ttgt_key(tid), value=_json.dumps(payload)))
+        else:
+            row.value = _json.dumps(payload)
+        db.commit()
+    except Exception as e:
+        # TP16: commit fail -> rollback + failure raise. Cache bust / success
+        # sirf successful commit ke BAAD (warna UI "saved" dikhata hai, data save nahi hua).
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise RuntimeError("teacher targets save failed") from e
+    bust_board_cache()
+    return payload
+
+
+def _teacher_window(db, tp, dt0, dt1):
+    """Session-mode teacher ka window (start/end date). Warna month window."""
+    try:
+        tg = get_teacher_targets(db, tp.id)
+        if tg.get("period") == "session" and tg.get("session_start") and tg.get("session_end"):
+            s = datetime.strptime(tg["session_start"][:10], "%Y-%m-%d")
+            e = datetime.strptime(tg["session_end"][:10], "%Y-%m-%d")
+            e = datetime(e.year, e.month, e.day) + timedelta(days=1)  # end inclusive
+            if e > s:
+                return s, e
+    except Exception:
+        pass
+    return dt0, dt1
+
+
+def auto_targets_from_timetable(db, tp, month=""):
+    """BULLETPROOF: teacher ki is month ki timetable se targets nikaalo.
+    - Entry teacher ki hai agar teacher_id == tp.id YA subject teacher ke subjects me (dono).
+    - Mock/Test Series -> TESTS. PYQ solution / Revision / Doubt / chapter parts -> CLASSES.
+    - Chapters (DPP min) = distinct real syllabus chapters (pyq/revision/test chhod ke).
+    - Sabhi assigned subjects consider hote hain."""
+    from models import TimetableEntry
+    from sqlalchemy import or_
+    dt0, dt1, _ = month_bounds(month)
+    subs = [s for s in (tp.subjects or []) if s]
+    classes = 0
+    tests_tt = 0
+    chset = set()
+    try:
+        conds = [TimetableEntry.teacher_id == tp.id]
+        if subs:
+            conds.append(TimetableEntry.subject.in_(subs))
+        rows = db.query(TimetableEntry).filter(
+            TimetableEntry.entry_date >= dt0.date(),
+            TimetableEntry.entry_date < dt1.date(),
+            or_(*conds)).all()
+        for e in rows:
+            txt = ((e.chapter or "") + " " + (e.part or "") + " " +
+                   (getattr(e, "topic_covered", "") or "")).lower()
+            # Mock / Test Series / Test -> tests (class nahi)
+            if ("mock" in txt) or ("test" in txt) or ("series" in txt):
+                tests_tt += 1
+                continue
+            # baaki sab (chapter part / PYQ solution / revision / doubt) -> class
+            classes += 1
+            ch = (e.chapter or "").strip()
+            low = ch.lower()
+            # real chapter hi DPP-chapter count me (pyq/revision/doubt nahi)
+            if ch and not any(w in low for w in ("pyq", "revision", "doubt", "mock", "test", "series")):
+                chset.add(((e.subject or "").strip().lower(), low))
+    except Exception:
+        pass
+    chapters = len(chset)
+    vids = shorts = live = tests_v = 0
+    try:
+        from video_tasks import _vt_targets_for
+        tg = _vt_targets_for(db, tp, dt0, dt1)
+        for r in tg.get("rows", []):
+            k = r.get("key")
+            n = r.get("assigned", 0) or r.get("target", 0)
+            if k == "videos":
+                vids = n
+            elif k == "shorts":
+                shorts = n
+            elif k == "live":
+                live = n
+            elif k == "tests":
+                tests_v = r.get("target", 0) or r.get("assigned", 0)
+    except Exception:
+        pass
+    tests = tests_tt or tests_v   # timetable ke mock/test priority
+    dpp_min = chapters
+    dpp_max = max(classes, chapters)
+    return {"classes": classes, "chapters": chapters,
+            "dpp": (dpp_min or classes), "dpp_min": dpp_min, "dpp_max": dpp_max,
+            "videos": vids, "shorts": shorts, "live": live, "tests": tests,
+            "tests_tt": tests_tt}   # TP07: timetable-only tests (pay-config default alag)
+
+
+# =============================================================================
+# TEACHER ACTIVITY LOG (timetable timing change / delete / reschedule request)
+# =============================================================================
+_ACT_LABEL = {"timing_change": "Class timing changed", "class_edit": "Class edited",
+              "class_delete": "Class/part deleted", "reschedule_request": "Reschedule requested"}
+
+
+def teacher_activity_rows(db, tid, limit=30):
+    from models import TeacherActivity
+    lim = max(1, min(int(limit or 30), 100))
+    rows = db.query(TeacherActivity).filter(TeacherActivity.teacher_id == tid) \
+        .order_by(TeacherActivity.created_at.desc()).limit(lim).all()
+    counts = {}
+    out = []
+    for a in rows:
+        counts[a.action] = counts.get(a.action, 0) + 1
+        out.append({"action": a.action, "label": _ACT_LABEL.get(a.action, a.action),
+                    "subject": a.subject or "", "chapter": a.chapter or "",
+                    "detail": a.detail or "", "at": _ist(a.created_at)})
+    try:
+        total = db.query(TeacherActivity).filter(TeacherActivity.teacher_id == tid).count()
+    except Exception:
+        total = len(out)
+    return {"teacher_id": tid, "total": total, "counts": counts, "activity": out}
