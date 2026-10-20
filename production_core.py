@@ -1315,6 +1315,10 @@ def _ensure_production_columns():
         "ALTER TABLE video_task_chapters ADD COLUMN deadline_req DATETIME",
         "ALTER TABLE video_task_chapters ADD COLUMN deadline_req_reason VARCHAR(400)",
         "ALTER TABLE video_task_chapters ADD COLUMN deadline_req_status VARCHAR(20)",
+        # P20: category material approval IMMUTABLE timestamp (earnings month/rate basis)
+        "ALTER TABLE material_submissions ADD COLUMN approved_at DATETIME",
+        # backfill: already-approved rows ka approved_at = updated_at (ek baar, reasonable proxy)
+        "UPDATE material_submissions SET approved_at = updated_at WHERE status = 'approved' AND approved_at IS NULL",
     ]
     for _s in _stmts:
         try:
@@ -1333,6 +1337,40 @@ def _ensure_production_columns():
     try:
         from models import ProductionRankSnapshot
         ProductionRankSnapshot.__table__.create(bind=engine, checkfirst=True)
+    except Exception:
+        pass
+    # ---- P10: PayoutMonth per (teacher, month) UNIQUE — duplicate payout rows se bachao
+    #      (jo contradictory lifecycle reads deti thi: teacher=finalized, admin=credited).
+    #      Pehle existing duplicates resolve karo (authoritative row rakho = sabse advanced
+    #      status + snapshot + highest id), phir UNIQUE INDEX banao. Best-effort, idempotent.
+    try:
+        from models import PayoutMonth as _PM
+        from sqlalchemy.orm import Session as _Sess
+        _prio = {"paid": 5, "receipt_confirmed": 4, "credited": 3, "in_progress": 2, "finalized": 1}
+        with _Sess(bind=engine) as _sess:
+            _groups = {}
+            for _r in _sess.query(_PM).all():
+                _groups.setdefault((_r.teacher_id, _r.month), []).append(_r)
+            _removed = 0
+            for _key, _grp in _groups.items():
+                if len(_grp) <= 1:
+                    continue
+                _grp.sort(key=lambda r: (_prio.get(r.status or "", 0),
+                                         1 if getattr(r, "snapshot", None) else 0,
+                                         r.id or 0), reverse=True)
+                for _dup in _grp[1:]:
+                    _sess.delete(_dup); _removed += 1
+            if _removed:
+                _sess.commit()
+                print("[P10] payout_months deduped: removed %d duplicate row(s)" % _removed)
+    except Exception:
+        pass
+    # unique index (MySQL + SQLite dono): dupes hatne ke baad hi banega; pehle se ho to error
+    # -> caught (idempotent). "IF NOT EXISTS" MySQL support nahi karta isliye plain CREATE.
+    try:
+        with engine.connect() as _conn:
+            _conn.execute(_sql_text("CREATE UNIQUE INDEX ux_payout_teacher_month ON payout_months (teacher_id, month)"))
+            _conn.commit()
     except Exception:
         pass
 

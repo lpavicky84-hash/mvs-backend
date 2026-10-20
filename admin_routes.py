@@ -7647,9 +7647,20 @@ def admin_earnings(month: str = "", db: Session = Depends(get_db), _=Depends(get
     return res
 
 
+def _earn_cache_bust():
+    """P09: pay-config / finalize / credit / review ke baad overview cache invalidate —
+    warna overview purana amount dikhata tha jabki detail naya. (Cache sirf display ke liye;
+    payment authority snapshot/fresh compute se.)"""
+    try:
+        globals().get("_EARN_CACHE", {}).clear()
+    except Exception:
+        pass
+
+
 @router.get("/earnings/teacher/{tid}")
-def admin_earnings_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+def admin_earnings_teacher(tid: int, request: Request, month: str = "", db: Session = Depends(get_db), current_user=Depends(get_admin)):
     """Ek teacher ka full earnings payload (slip / letter / detail modal ke liye)."""
+    get_payout_admin(request, current_user)   # P15: finance unlock enforce (sensitive earnings)
     from teacher_routes import earnings_payload, _ist_now
     month = (month or "").strip() or _ist_now().strftime("%Y-%m")
     if not re.match(r"^\d{4}-\d{2}$", month):
@@ -7722,12 +7733,27 @@ def admin_earnings_config_save(payload: dict = Body(...), db: Session = Depends(
     if "payout_mode" in payload:
         _pm = str(payload.get("payout_mode") or "standard").strip().lower()
         setattr(cfg, "payout_mode", "contract" if _pm == "contract" else "standard")
+    # P26: contract numeric fields ab SILENTLY coerce nahi hote — galat/negative/non-finite
+    # value reject (saaf error), warna galti chhup jaati thi.
+    import math as _m26
     for k in CONTRACT_NUM_FIELDS:
-        if k in payload and payload[k] is not None:
+        if k in payload and payload[k] not in (None, ""):
             try:
-                setattr(cfg, k, max(0, int(float(payload[k]))))
+                _v = float(payload[k])
             except Exception:
-                pass
+                raise HTTPException(status_code=400, detail="%s must be a number" % k)
+            if (not _m26.isfinite(_v)) or _v < 0:
+                raise HTTPException(status_code=400, detail="%s must be a non-negative number" % k)
+            setattr(cfg, k, int(_v))
+    # P26: working_days (contract per-day deduction base) 1..31 hi — 0 pe silent 26 fallback nahi.
+    if "working_days" in payload and payload["working_days"] not in (None, ""):
+        try:
+            _wd = int(float(payload["working_days"]))
+        except Exception:
+            raise HTTPException(status_code=400, detail="working_days must be a number")
+        if _wd < 1 or _wd > 31:
+            raise HTTPException(status_code=400, detail="working_days 1 se 31 ke beech hona chahiye")
+        setattr(cfg, "working_days", _wd)
     if "contract_notes" in payload and payload["contract_notes"] is not None:
         setattr(cfg, "contract_notes", str(payload["contract_notes"]).strip()[:600])
     for k in ("designation", "department", "employee_code", "bank_name", "account_no", "ifsc"):
@@ -7756,6 +7782,7 @@ def admin_earnings_config_save(payload: dict = Body(...), db: Session = Depends(
             out.append({"name": nm, "count": cnt})
         cfg.custom_targets = out
     db.commit()
+    _earn_cache_bust()   # P09: config change -> overview cache invalidate
     return {"message": "Pay structure saved for %s." % (tp.user.name if tp.user else "teacher")}
 
 # ===== PERFORMANCE PAYOUT (template, approvals, finalize) =====
@@ -7886,10 +7913,11 @@ def admin_payout_classes(tid: int, month: str = "", db: Session = Depends(get_db
          "chapter": e.chapter or "", "missed": e.id in missed} for e in entries]}
 
 @router.post("/teacher/{tid}/contract-review")
-def admin_contract_review(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+def admin_contract_review(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
     """Contract teachers: admin enters leave days for the month and releases the payout.
     Until released, the teacher sees 'under review'. Setting leave here recomputes the
     per-day leave deduction automatically. reviewed=False re-hides it (edit mode)."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
     from models import PayoutMonth, TeacherProfile
     from teacher_routes import _month_range
     mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
@@ -7900,19 +7928,26 @@ def admin_contract_review(tid: int, payload: dict = Body(...), db: Session = Dep
     if not rec:
         rec = PayoutMonth(teacher_id=tid, month=mk, status="in_progress")
         db.add(rec)
+    # P04: finalize/credit/paid ho chuke month ko review (leave/reviewed edit) se MAT badlo —
+    # warna already-paid month ka live net badal jaata tha (26k -> 16k). Correction sirf
+    # explicit re-open/audited flow se. Review sirf finalize se PEHLE (draft/in_progress).
+    if (rec.status or "") in ("finalized", "credited", "receipt_confirmed", "paid"):
+        raise HTTPException(409, "Ye month finalize/credit ho chuka hai — leave/review ab edit nahi ho sakta. Correction ke liye month ko dubara open karna padega.")
     try:
         rec.leave_days = max(0, int(float(payload.get("leave_days", 0) or 0)))
     except Exception:
         rec.leave_days = 0
     rec.reviewed = bool(payload.get("reviewed", True))
     db.commit()
+    _earn_cache_bust()   # P09
     return {"message": "Review saved.", "leave_days": rec.leave_days, "reviewed": rec.reviewed}
 
 
 @router.post("/teacher/{tid}/payout-finalize")
-def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+def admin_finalize_payout(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
     """Month lock: poora breakdown snapshot me freeze (baad me data badle to bhi record same).
     Snapshot live earnings model (v80) se — jo admin screen par dikhta hai."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
     import json as _json
     from models import PayoutMonth, TeacherProfile
     from teacher_routes import _month_range, earnings_payload
@@ -7920,22 +7955,29 @@ def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Dep
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
     if not tp:
         raise HTTPException(404, "Teacher not found.")
-    snap = earnings_payload(db, tp, mk)   # live model — sab teachers ke liye kaam karta hai
+    snap = earnings_payload(db, tp, mk, _live=True)   # P05: FRESH compute (purana snapshot nahi)
+    _earn = snap.get("earnings") if isinstance(snap, dict) else None
+    if not isinstance(_earn, dict):
+        raise HTTPException(503, "Earnings load nahi hua — dubara try karein.")
+    # P02: calculation DEPENDENCY fail hua to finalize MAT karo (galat 0 freeze/pay se bachao).
+    if _earn.get("calc_error"):
+        raise HTTPException(409, "Is teacher ka performance/earnings calculation abhi complete nahi hua — finalize block hai. Thodi der baad dubara try karein (koi 0 freeze nahi hua).")
     if payload.get("waive_deductions"):
         # Relaxation: is month ke deductions waive karo — net = base + incentive (no deductions).
+        # P01: earnings keys 'earnings' ke ANDAR hain (root pe nahi) — sahi level se read/write.
         try:
-            _lv = float(snap.get("leave_deduction", 0) or 0)
-            _rv = float(snap.get("reviewed_deduction", 0) or 0)
+            _lv = float(_earn.get("leave_deduction", 0) or 0)
+            _rv = float(_earn.get("reviewed_deduction", 0) or 0)
             if (_lv + _rv) > 0:
-                _net0 = float(snap.get("net_payable", 0) or 0)
-                _pct0 = float(snap.get("salary_pct", 0) or 0)
-                snap["leave_deduction"] = 0
-                snap["reviewed_deduction"] = 0
-                snap["net_payable"] = round(float(snap.get("base_earned", 0) or 0) + float(snap.get("incentive", 0) or 0))
-                snap["deductions_waived"] = True
-                snap["deductions_waived_amount"] = round(_lv + _rv)
+                _net0 = float(_earn.get("net_payable", 0) or 0)
+                _pct0 = float(_earn.get("salary_pct", 0) or 0)
+                _earn["leave_deduction"] = 0
+                _earn["reviewed_deduction"] = 0
+                _earn["net_payable"] = round(float(_earn.get("base_earned", 0) or 0) + float(_earn.get("incentive", 0) or 0))
+                _earn["deductions_waived"] = True
+                _earn["deductions_waived_amount"] = round(_lv + _rv)
                 if _net0 > 0 and _pct0 > 0:
-                    snap["salary_pct"] = round(snap["net_payable"] * _pct0 / _net0, 1)
+                    _earn["salary_pct"] = round(_earn["net_payable"] * _pct0 / _net0, 1)
         except Exception:
             pass
     rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
@@ -7946,18 +7988,26 @@ def admin_finalize_payout(tid: int, payload: dict = Body(...), db: Session = Dep
         raise HTTPException(400, "This month is already credited — cannot re-finalize.")
     rec.snapshot = _json.dumps(snap, default=str)
     rec.status = "finalized"
+    rec.reviewed = True   # P03: finalize = released -> teacher ko amount dikhe ("under review" nahi)
     rec.finalized_at = datetime.utcnow()
     _fin_note = "Month finalized (snapshot frozen)"
-    if snap.get("deductions_waived"):
-        _fin_note += " \u2014 deductions waived (\u20b9" + str(snap.get("deductions_waived_amount", 0)) + ")"
+    if _earn.get("deductions_waived"):
+        _fin_note += " \u2014 deductions waived (\u20b9" + str(_earn.get("deductions_waived_amount", 0)) + ")"
+    # P11: audit se pehle flush — naya rec ho to rec.id populate ho (warna audit entity_id=None).
+    try:
+        db.flush()
+    except Exception:
+        pass
     _pay_audit(db, "payout_month", rec.id, "finalized", current_user.id, "admin",
                _fin_note, teacher_id=tid, month=mk)
     db.commit()
+    _earn_cache_bust()   # P09
     return {"message": "Month finalized - snapshot saved", "status": rec.status}
 
 @router.post("/teacher/{tid}/payout-progress")
-def admin_payout_progress(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+def admin_payout_progress(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
     """Payment process shuru: status -> in_progress."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
     from models import PayoutMonth
     from teacher_routes import _month_range
     mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
@@ -7969,12 +8019,14 @@ def admin_payout_progress(tid: int, payload: dict = Body(...), db: Session = Dep
     _pay_audit(db, "payout_month", rec.id, "in_progress", current_user.id, "admin",
                "Payment marked in progress", teacher_id=tid, month=mk)
     db.commit()
+    _earn_cache_bust()   # P09
     return {"message": "Marked in progress", "status": rec.status}
 
 @router.post("/teacher/{tid}/payout-paid")
-def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+def admin_payout_paid(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
     """Salary credited: status -> credited (+ optional payment reference). Teacher ko
     CONFIDENTIAL notification (koi amount nahi) + receipt confirm karne ko kaha jaata hai."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
     from models import PayoutMonth, TeacherProfile
     from teacher_routes import _month_range
     mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
@@ -7982,6 +8034,7 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
     if not rec or rec.status not in ("finalized", "in_progress"):
         raise HTTPException(400, "Finalize the month first.")
     rec.status = "credited"
+    rec.reviewed = True   # P03: credited = released (teacher ko amount dikhe)
     rec.paid_at = datetime.utcnow()
     ref = (payload.get("pay_ref") or "").strip()[:120]
     if ref:
@@ -7997,6 +8050,7 @@ def admin_payout_paid(tid: int, payload: dict = Body(...), db: Session = Depends
     except Exception:
         pass
     db.commit()
+    _earn_cache_bust()   # P09
     return {"message": "Marked as credited", "status": rec.status}
 
 def _fmt_month_label(mk):
@@ -8798,7 +8852,8 @@ def _ded_out(db, d):
     nm = ""
     try:
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
-        nm = (tp.name if tp else "") or ""
+        # P11: name User par hota hai (TeacherProfile.name nahi) — warna AttributeError se naam gayab.
+        nm = ((tp.user.name if (tp and tp.user) else "") or "")
     except Exception:
         pass
     return {

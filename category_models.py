@@ -162,6 +162,9 @@ class MaterialSubmission(Base):
     current_version     = Column(Integer, default=0)
     created_at          = Column(DateTime, default=func.now())
     updated_at          = Column(DateTime, default=func.now(), onupdate=func.now())
+    # P20: IMMUTABLE approval timestamp — pehli baar approve hone par set. Earnings eligibility
+    # aur rate-date isi se (mutable updated_at se nahi) -> month-shift/future-rate bug fix.
+    approved_at         = Column(DateTime, nullable=True)
 
 
 class MaterialVersion(Base):

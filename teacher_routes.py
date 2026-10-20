@@ -7002,22 +7002,38 @@ def _contract_pay(db, tp, month, cfg):
     An optional per-project bonus can be added. Final payout is shown to the teacher only
     after the admin reviews the month (enters leave days & releases)."""
     from models import VideoTask, PayoutMonth
-    from sqlalchemy import or_ as _orC
-    from datetime import date as _date, datetime as _dtm
+    from sqlalchemy import or_ as _orC, and_ as _andC
+    from datetime import date as _date, datetime as _dtm, timedelta as _tdC
     y, m = int(month[:4]), int(month[5:7])
     start = _date(y, m, 1)
     end = _date(y + 1, 1, 1) if m == 12 else _date(y, m + 1, 1)
     dt0 = _dtm.combine(start, _dtm.min.time()); dt1 = _dtm.combine(end, _dtm.min.time())
+    # P17: AS-OF boundary — current month ke liye aaj tak; past month ke liye month-end tak.
+    # Isse NEXT-month ki submission purane month ka pay na badle.
+    try:
+        from models import ist_today as _itC
+        _asof = min(_dtm.combine(_itC(), _dtm.min.time()) + _tdC(days=1), dt1)
+    except Exception:
+        _asof = min(_dtm.utcnow(), dt1)
     try:
         from video_tasks import _collab_all_ids as _caiC
     except Exception:
         _caiC = None
+    # P17: kaam DELIVERY/submit month me count ho (created month me nahi). Tasks jo IS month me
+    # submit/deliver hue (submitted_at window me) + rejected jo is month me bane. as-of cutoff.
     cand = db.query(VideoTask).filter(
         _orC(VideoTask.teacher_id == tp.id,
              VideoTask.collab_teacher_ids.like("%" + str(tp.id) + "%")),
-        VideoTask.created_at >= dt0, VideoTask.created_at < dt1).all()
+        _orC(
+            _andC(VideoTask.submitted_at != None, VideoTask.submitted_at >= dt0, VideoTask.submitted_at < _asof),
+            _andC(VideoTask.created_at >= dt0, VideoTask.created_at < dt1),
+        )).all()
     on_time = delayed = rejected = projects = 0
+    _seen = set()
     for t in cand:
+        if t.id in _seen:
+            continue
+        _seen.add(t.id)
         try:
             if t.teacher_id != tp.id and (not _caiC or tp.id not in _caiC(t)):
                 continue
@@ -7026,17 +7042,24 @@ def _contract_pay(db, tp, month, cfg):
                 continue
         if bool(getattr(t, "is_old", False)):
             continue
+        _sub_in = bool(t.submitted_at and dt0 <= t.submitted_at < _asof)
         if (getattr(t, "status", "") or "") == "rejected" or (getattr(t, "proposal_ok", "") or "") == "rejected":
-            rejected += 1
+            # rejected: is month me bana ho to count (created-month).
+            if t.created_at and dt0 <= t.created_at < dt1:
+                rejected += 1
             continue
         if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
-            if t.submitted_at:
+            # P18: POORA project complete hone par hi bonus (parent submitted_at = saare
+            # chapters approved), aur woh completion IS month me (delivery month) hui ho.
+            if _sub_in:
                 projects += 1
             continue
-        if t.submitted_at and t.on_time is True:
-            on_time += 1
-        elif t.submitted_at and t.on_time is False:
-            delayed += 1
+        # normal content: IS month me deliver hui task hi gine; on-time = deadline tak submit.
+        if _sub_in:
+            if t.deadline and t.submitted_at > t.deadline:
+                delayed += 1
+            else:
+                on_time += 1
 
     salary = int(getattr(cfg, "contract_base", 0) or 0)     # FIXED monthly salary
     p_rate = int(getattr(cfg, "project_rate", 0) or 0)      # optional per-project bonus
@@ -7112,6 +7135,7 @@ def _ranking_pay(db, tp, month):
     overall = 0.0
     comps = {}
     wl_level, wl_pct, limited = "", None, False
+    _calc_error = False
     try:
         detail, _m = _teacher_score(db, tp, month)
         overall = float(detail.get("overall") or 0)
@@ -7122,6 +7146,9 @@ def _ranking_pay(db, tp, month):
     except Exception:
         import traceback
         traceback.print_exc()
+        # P02: scoring DEPENDENCY fail hua -> ye "legitimate zero" NAHI hai. Flag karo taaki
+        # finalize block ho (galat 0 freeze/pay na ho). Retry-able error.
+        _calc_error = True
     pay_ratio = min(max(overall, 0.0), 100.0) / 100.0
     # Component pools come from the ADMIN-set structure amounts (image: Pay Structure),
     # NOT performance weights. So a component can never pay more than the rupees the admin
@@ -7164,15 +7191,33 @@ def _ranking_pay(db, tp, month):
     base_earned = total_earned
     return {"overall": round(overall, 1), "max_pay": max_pay, "base_earned": base_earned,
             "components": lines, "workload_level": wl_level, "workload_pct": wl_pct,
-            "limited_workload": limited}
+            "limited_workload": limited, "calc_error": _calc_error}
 
 
-def earnings_payload(db, tp, month):
-    """Teacher + pay config + month activity + earnings — slip/letter dono ka data."""
+def earnings_payload(db, tp, month, _live=False):
+    """Teacher + pay config + month activity + earnings — slip/letter dono ka data.
+    _live=False (default): agar month FINALIZED/credited/paid hai to frozen snapshot
+    se serve karo (teacher/admin dono ko same immutable value — salary config badalne
+    se purana month na badle, P05). _live=True: hamesha fresh compute (finalize ke waqt)."""
     # defensive: month hamesha valid "YYYY-MM" ho (galat/empty -> current month)
     month = (month or "").strip()
     if not (len(month) == 7 and month[4:5] == "-" and month[:4].isdigit() and month[5:7].isdigit()):
         month = _ist_now().strftime("%Y-%m")
+    # ---- P05: FROZEN snapshot serve (finalized/credited/paid month immutable) ----
+    if not _live:
+        try:
+            from models import PayoutMonth as _PM
+            import json as _pj
+            _rec = db.query(_PM).filter(_PM.teacher_id == tp.id, _PM.month == month).first()
+            if _rec and getattr(_rec, "snapshot", None) and (_rec.status or "") in (
+                    "finalized", "in_progress", "credited", "receipt_confirmed", "paid"):
+                _snap = _pj.loads(_rec.snapshot)
+                if isinstance(_snap, dict) and _snap.get("earnings"):
+                    _snap["_frozen"] = True
+                    _snap["_lifecycle"] = _rec.status
+                    return _snap
+        except Exception:
+            pass
     _ensure_v86(db)
     cfg = get_pay_config(db, tp.id)
     act = _month_activity(db, tp, month)
@@ -7205,7 +7250,9 @@ def earnings_payload(db, tp, month):
         "payout_mode": (getattr(cfg, "payout_mode", "standard") or "standard"),
         "contract_stats": rp.get("contract_stats"),
         "tds": 0, "other_deduct": 0,
+        "calc_error": bool(rp.get("calc_error")),   # P02: scoring fail -> finalize block
     }
+    _is_contract = (e["payout_mode"] == "contract")
     # ---- v86: UNPAID approved leave ka per-day deduction (complete salary se) ----
     # PAID leave (admin ne approve karte waqt 'Paid' chuna) pe koi ktaunti nahi.
     start, end = _month_range(month)
@@ -7214,6 +7261,11 @@ def earnings_payload(db, tp, month):
     dim = max(1, (end - start).days)
     per_day_sal = max_pay / dim
     lv_ded = round(per_day_sal * unpaid_lv)
+    # P07: CONTRACT teacher ki leave deduction _contract_pay me HI (salary/working_days) ho
+    # chuki hai (base_earned me included). Yahan global calendar-days wala lv_ded dobara mat
+    # kaato — warna ek hi leave 2 baar katti thi (double charge). Single source = contract.
+    if _is_contract:
+        lv_ded = 0
     e["leave_unpaid_days"] = round(unpaid_lv, 1)
     e["leave_paid_days"] = round(total_lv - unpaid_lv, 1)
     e["leave_per_day"] = round(per_day_sal)
@@ -8679,7 +8731,7 @@ def teacher_deduction_raise_issue(did: int, payload: dict = Body(...), db: Sessi
         admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
         for a in admins:
             notify(db, a.id, "Deduction issue raised",
-                   "%s raised an issue on a Rs %d deduction (%s)." % (tp.name or "A teacher", d.amount or 0, d.month),
+                   "%s raised an issue on a Rs %d deduction (%s)." % (((tp.user.name if tp.user else None) or "A teacher"), d.amount or 0, d.month),
                    "payout")
     except Exception:
         pass
@@ -8733,7 +8785,7 @@ def teacher_confirm_receipt(payload: dict = Body(...), db: Session = Depends(get
         admins = db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all()
         for a in admins:
             notify(db, a.id, "Salary receipt confirmed",
-                   "%s confirmed receiving the payout for %s." % (tp.name or "A teacher", mk), "payout")
+                   "%s confirmed receiving the payout for %s." % ((current_user.name or "A teacher"), mk), "payout")
     except Exception:
         pass
     db.commit()

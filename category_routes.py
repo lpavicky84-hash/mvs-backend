@@ -472,23 +472,34 @@ def teacher_category_earnings(category_id: int, month: str = "",
         CategoryWorkType.category_id == category_id,
         CategoryWorkType.is_active == True).order_by(  # noqa: E712
         CategoryWorkType.display_order).all()
+    # P20: saare approved materials ek baar — phir har work-type sirf APNE material_type ke
+    # ginte hain (B26 double-count fix). Eligibility aur rate IMMUTABLE approved_at se
+    # (B28 month-shift + B27 future-rate fix); legacy rows jinme approved_at nahi -> updated_at fallback.
+    _approved = db.query(MaterialSubmission).filter(
+        MaterialSubmission.teacher_id == tid,
+        MaterialSubmission.category_id == category_id,
+        MaterialSubmission.status == "approved").all()
     lines = []
     total = 0.0
     for w in wts:
-        rate = CS.effective_rate(db, w.id, last)
+        rate_disp = CS.effective_rate(db, w.id, last)   # display current rate
         units = 0
+        amount = 0.0
         if w.source == "auto_material":
-            # approved materials whose approval landed in this month (by updated_at)
-            q = db.query(MaterialSubmission).filter(
-                MaterialSubmission.teacher_id == tid,
-                MaterialSubmission.category_id == category_id,
-                MaterialSubmission.status == "approved")
-            units = sum(1 for m in q.all()
-                        if first <= (m.updated_at.date() if m.updated_at else first) <= last)
-        amount = round(units * rate, 2)
+            _wlabel = (w.label or "").strip().lower()
+            for m in _approved:
+                if (m.material_type or "").strip().lower() != _wlabel:
+                    continue   # sirf is work-type ka material
+                ad = getattr(m, "approved_at", None) or m.updated_at
+                if ad and first <= ad.date() <= last:
+                    units += 1
+                    amount += CS.effective_rate(db, w.id, ad.date())   # work-date ka rate
+            amount = round(amount, 2)
+        else:
+            amount = round(units * rate_disp, 2)
         total += amount
         lines.append({"work_type": w.label, "unit": w.unit or "per_item",
-                      "source": w.source or "manual", "rate": rate,
+                      "source": w.source or "manual", "rate": rate_disp,
                       "units": units, "amount": amount,
                       "auto": (w.source == "auto_material")})
     return {"category": {"id": cat.id, "display_name": cat.display_name,
@@ -1125,6 +1136,10 @@ def admin_review_submission(sid: int, payload: dict = Body(...),
         raise HTTPException(status_code=400, detail="Invalid decision.")
     if decision:
         m.status = decision
+        # P20: pehli baar approve hone par IMMUTABLE approved_at set (earnings month/rate isi se).
+        if decision == "approved" and getattr(m, "approved_at", None) is None:
+            from datetime import datetime as _dtAp
+            m.approved_at = _dtAp.utcnow()
     if "priority" in payload and str(payload["priority"]) in ("low", "normal", "high"):
         m.priority = str(payload["priority"])
     if "deadline" in payload:

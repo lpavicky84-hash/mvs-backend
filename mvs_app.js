@@ -26255,6 +26255,11 @@ function _contractLetterHTML(d){
 // ---------- Monthly Earnings Slip (ported from the Figma doc) ----------
 function _slipHTML(d){
   const t=d.teacher, a=d.activity, e=d.earnings, tg=d.targets, pay=d.pay;
+  // P22: actual lifecycle status (frozen snapshot ka _lifecycle, ya teacher live status).
+  const _lc=d._lifecycle||((window._tSalLast&&window._tSalLast.month===d.month&&window._tSalLast.status)||'pending');
+  const _isFinal=['finalized','in_progress','credited','receipt_confirmed','paid'].indexOf(_lc)>=0;
+  const _isConfirmed=(_lc==='receipt_confirmed');
+  const _maskAcc=v=>{ v=String(v||''); return v?('••••'+v.slice(-4)):'—'; };
   const perf=e.perf_score, pc=_pfCol(perf), pbg=perf>=85?'#e8f5e9':perf>=65?'#fffbeb':'#fff8f7';
   const refNo='MVS/SAL/'+d.month_label.replace(' ','-').toUpperCase()+'/'+t.employee_code;
   const today=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
@@ -26271,6 +26276,11 @@ function _slipHTML(d){
   return `<div style="${_DOC_FONT}">
   ${_LH(refNo,today,false)}
   <div style="text-align:center;margin-bottom:14px"><div style="display:inline-block;border-top:2px solid #0F2A54;border-bottom:2px solid #0F2A54;padding:5px 28px"><span style="font-weight:800;font-size:13px;letter-spacing:2.5px;color:#0F2A54;text-transform:uppercase">Monthly Earnings Statement — ${esc(d.month_label)}</span></div></div>
+  <div style="text-align:center;margin:-8px 0 14px">${
+     _isFinal
+       ? `<span style="background:#e8f5e9;color:#1b7a3e;border:1px solid #c3e6cb;border-radius:5px;padding:3px 12px;font-size:9px;font-weight:800;letter-spacing:1px">${esc(({finalized:'FINALIZED',in_progress:'PAYMENT IN PROGRESS',credited:'CREDITED',receipt_confirmed:'RECEIPT CONFIRMED',paid:'PAID'})[_lc]||_lc.toUpperCase())}</span>`
+       : `<span style="background:#fff3cd;color:#8a6d1a;border:1px solid #e0c27a;border-radius:5px;padding:3px 12px;font-size:9px;font-weight:800;letter-spacing:1px">DRAFT — NOT YET FINALIZED</span>`
+   }</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
    <div style="border:1px solid #e4ebf5;border-radius:7px;padding:10px 12px;background:#f7f9fc">
     <div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:7px;text-transform:uppercase;letter-spacing:.5px">Employee Details</div>
@@ -26278,7 +26288,7 @@ function _slipHTML(d){
    </div>
    <div style="border:1px solid #e4ebf5;border-radius:7px;padding:10px 12px;background:#f7f9fc">
     <div style="font-weight:800;font-size:10px;color:#0F2A54;margin-bottom:7px;text-transform:uppercase;letter-spacing:.5px">Payment Details</div>
-    ${kv('Bank',t.bank)}${kv('Account No.',t.account_no)}${kv('IFSC',t.ifsc)}${kv('Pay Month',d.month_label)}
+    ${kv('Bank',t.bank)}${kv('Account No.',_maskAcc(t.account_no))}${kv('IFSC',t.ifsc)}${kv('Pay Month',d.month_label)}
    </div>
   </div>
   <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px">
@@ -26320,16 +26330,20 @@ function _slipHTML(d){
     </div>
     <div style="border:1px solid #e4ebf5;border-radius:7px;padding:8px 10px;background:#f7f9fc">
      <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px"><span style="color:#5A6B85">Maximum this month was</span><span style="font-weight:800;color:#0F2A54">${_inr(e.max_potential)}</span></div>
-     <div style="display:flex;justify-content:space-between;font-size:9px"><span style="color:#5A6B85">Unclaimed earnings</span><span style="font-weight:800;color:#c0392b">${_inr(e.max_potential-e.net_payable)}</span></div>
+     <div style="display:flex;justify-content:space-between;font-size:9px"><span style="color:#5A6B85">Unclaimed earnings</span><span style="font-weight:800;color:#c0392b">${_inr(Math.max(0,(e.max_potential||0)-(e.net_payable||0)))}</span></div>
     </div>
    </div>
   </div>
   <div style="border:1px solid #e4ebf5;border-radius:6px;padding:8px 12px;background:#f7f9fc;margin-bottom:14px;font-size:8.5px;color:#5A6B85;line-height:1.6"><strong style="color:#0F2A54">Note:</strong> This earnings statement is generated from portal activity data for ${esc(d.month_label)}. All figures are auto-calculated based on your completed deliverables recorded on the MVS Foundation portal. If you believe any figure is incorrect, please raise a dispute through the portal within 5 working days of receipt. Disputes raised after this period will not be entertained.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;border-top:2px solid #e4ebf5;padding-top:14px">
    ${(()=>{ const lt2=d.letter||{}; const sg="font-family:'Great Vibes',cursive;font-size:21px;color:#1a2a4a;line-height:1.05;height:25px";
+     // P22: "Received by" me appointment-acceptance signature DOBARA use NAHI — woh payout
+     // receipt nahi hai. Receipt sirf tab jab teacher ne explicitly confirm kiya (text se).
+     const _rcpAt=(window._tSalLast&&window._tSalLast.receipt_confirmed_at)||'';
+     const _rcpSub=_isConfirmed?('Confirmed'+(_rcpAt?(' on '+_rcpAt):'')):'Awaiting receipt confirmation';
      const rows=[['Prepared by','Accounts Team','Manish Verma Study Foundation',''],
       ['Authorised by','Manish Verma','Director, Manish Verma Study Foundation','Manish Verma'],
-      ['Received by',t.name,t.designation,(lt2.accepted&&lt2.signature_name)?lt2.signature_name:'']];
+      ['Received by',t.name,_rcpSub,'']];
      return rows.map(r=>`<div style="text-align:center"><div style="${sg}">${esc(r[3])}</div><div style="border-top:1px solid #0F2A54;padding-top:5px;margin-top:2px"><div style="font-weight:700;font-size:9px;color:#1a2a3a">${esc(r[1])}</div><div style="font-size:7.5px;color:#5A6B85">${esc(r[2])}</div><div style="font-size:7.5px;color:#8899aa">${r[0]}</div></div></div>`).join(''); })()}
   </div>
   ${_DFOOT('Manish Verma Study Foundation | Plot No. 51-B, Maharani Enclave, West Delhi-110059','This is a system-generated document — signed and authorised electronically','Earnings Stmt | '+esc(d.month_label))}
@@ -26667,7 +26681,7 @@ async function payoutRequestReset(){
 async function loadTPayout(){
   const el=document.getElementById('t-payout-content');
   _tEarnMonth=_tEarnMonth||curMonth();
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payout</h2><p>Work-based earnings — every rupee linked to a deliverable, auto-calculated from your portal activity.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_tEarnMonth}" onchange="_tEarnMonth=this.value;tEarnFetch();loadTDeductions()"></div>
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><div><h2>Payout</h2><p>Work-based earnings — every rupee linked to a deliverable, auto-calculated from your portal activity.</p></div><input type="month" class="form-control" style="width:auto;padding:7px 12px" value="${_tEarnMonth}" onchange="_tEarnMonth=this.value;tEarnFetch();loadTDeductions();loadTSalaryStatus();loadTIncentives()"></div>
   <div id="te-body"><div class="spinner"></div></div>
   <div id="t-inc-panel" style="margin-top:16px"></div>
   <div id="t-sal-status" style="margin-top:16px"></div>
@@ -26704,14 +26718,17 @@ async function loadTSalaryStatus(){
   const col={pending:'#6b7280',finalized:'#3730a3',in_progress:'#92400e',credited:'#1e40af',receipt_confirmed:'#166534'}[s]||'#333';
   let h=`<div class="card"><div class="card-body" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
      <div><b>Salary status \u00B7 ${esc(fmtMonthLabel(_tEarnMonth))}</b><br><span style="color:${col};font-weight:600">${esc(lbl)}</span>${d.pay_ref?(' <span style="color:#6b7280;font-size:13px">\u00B7 ref: '+esc(d.pay_ref)+'</span>'):''}</div>`;
-  if(s==='credited') h+=`<button class="btn btn-primary" onclick="tConfirmReceipt()">Confirm Receipt</button>`;
+  if(s==='credited') h+=`<button class="btn btn-primary" onclick="tConfirmReceipt('${esc(d.month||_tEarnMonth)}')">Confirm Receipt</button>`;
   else if(s==='receipt_confirmed') h+=`<span style="color:#166534;font-size:13px">You confirmed receipt${d.receipt_confirmed_at?(' on '+esc(d.receipt_confirmed_at)):''}.</span>`;
   h+='</div></div>';
   box.innerHTML=h;
 }
-async function tConfirmReceipt(){
-  if(!confirm('Confirm that you have received your salary for '+fmtMonthLabel(_tEarnMonth)+'?')) return;
-  try{ await api('/api/teacher/payout/confirm-receipt','POST',{month:_tEarnMonth}); toast('Receipt confirmed. Thank you.'); loadTSalaryStatus(); }
+async function tConfirmReceipt(month){
+  // P08: receipt us month ke liye jo status card me DIKH raha tha (mutable global nahi) —
+  // warna month switch ke baad galat month confirm ho sakta tha.
+  const _m=month||(window._tSalLast&&window._tSalLast.month)||_tEarnMonth;
+  if(!confirm('Confirm that you have received your salary for '+fmtMonthLabel(_m)+'?')) return;
+  try{ await api('/api/teacher/payout/confirm-receipt','POST',{month:_m}); toast('Receipt confirmed. Thank you.'); loadTSalaryStatus(); }
   catch(e){ toast(e.message||'Could not confirm.'); }
 }
 async function loadTDeductions(){
@@ -26795,26 +26812,31 @@ function _contractUnderReviewHTML(d){
 }
 function _contractTeacherHTML(d){
   const cs=d.earnings.contract_stats||{}, t=d.teacher||{};
+  const fe=d.earnings||{};                        // P06: FINAL net (incentive/deduction ke saath)
+  const finalNet=Math.round(fe.net_payable||0);
   const perfect=!!cs.perfect;
   const stat=(v,l,c)=>`<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center"><div style="font-weight:800;font-size:1.3rem;color:${c}">${v}</div><div style="font-size:.64rem;color:var(--text-muted);letter-spacing:.04em;margin-top:2px">${l}</div></div>`;
-  const row=(l,v,neg)=>`<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)"><span style="font-size:.86rem;color:var(--text)">${l}</span><span style="font-weight:700;color:${neg?'#c0392b':'#0F2A54'}">${neg?'– ':''}${_ctInr(Math.abs(v))}</span></div>`;
+  const row=(l,v,neg)=>`<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)"><span style="font-size:.86rem;color:var(--text)">${l}</span><span style="font-weight:700;color:${neg?'#c0392b':'var(--text)'}">${neg?'– ':''}${_ctInr(Math.abs(v))}</span></div>`;
   let breakdown=row('Fixed Monthly Salary',cs.salary||0,false);
   if(cs.project_earn) breakdown+=row('Project Bonus ('+(cs.projects||0)+')',cs.project_earn,false);
   if(cs.delay_cut) breakdown+=row('Delay Deduction',cs.delay_cut,true);
   if(cs.reject_cut) breakdown+=row('Rejection Deduction',cs.reject_cut,true);
   if(cs.leave_cut) breakdown+=row('Leave Deduction ('+(cs.leave_days||0)+' day'+((cs.leave_days||0)===1?'':'s')+')',cs.leave_cut,true);
+  // P06: final total ko reconcile karne ke liye global incentive/deduction bhi dikhao
+  if(fe.incentive) breakdown+=row('Incentives (approved)',fe.incentive,false);
+  if(fe.reviewed_deduction) breakdown+=row('Reviewed Deductions',fe.reviewed_deduction,true);
   const a=d.activity||{};
   const act=(l,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:.84rem"><span style="color:var(--text-muted)">${l}</span><b>${v}</b></div>`;
   return `<div class="card" style="border:none;background:linear-gradient(135deg,${perfect?'#0f7a44,#0b5c34':'#0F2A54,#1a3a6a'});color:#fff;margin-bottom:14px"><div class="card-body" style="padding:22px">
       <div style="font-size:.74rem;opacity:.85;letter-spacing:.05em">NET PAYOUT · ${esc(fmtMonthLabel(_tEarnMonth))}</div>
-      <div style="font-weight:800;font-size:2.1rem;margin:4px 0">${_ctInr(cs.net||0)}</div>
+      <div style="font-weight:800;font-size:2.1rem;margin:4px 0">${_ctInr(finalNet)}</div>
       <div style="font-size:.8rem;opacity:.9">${perfect?'\uD83C\uDF89 Perfect month — full salary, no deductions!':'Released by admin'}</div>
     </div></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;margin-bottom:14px">
       ${stat(cs.on_time||0,'ON-TIME','#1f7a44')}${stat(cs.delayed||0,'DELAYED','#d97706')}${stat(cs.rejected||0,'REJECTED','#c0392b')}${stat(cs.projects||0,'PROJECTS','#5b3aa6')}
     </div>
     <div class="card"><div class="card-header"><h3>Payout Breakdown</h3></div><div class="card-body">${breakdown}
-      <div style="display:flex;justify-content:space-between;padding:12px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:#0F2A54">${_ctInr(cs.net||0)}</span></div></div></div>
+      <div style="display:flex;justify-content:space-between;padding:12px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:var(--text)">${_ctInr(finalNet)}</span></div></div></div>
     <div class="card" style="margin-top:14px"><div class="card-header"><h3>This Month's Work</h3></div><div class="card-body">
       ${act('Videos made',a.videos_made||0)}
       ${act('YouTube Live',a.live_sessions||0)}
@@ -27145,6 +27167,9 @@ function _payoutGateWrap(inner){
 function _clearPayoutSession(){
   window._payoutToken=null;
   if(window._payoutTimer){ clearTimeout(window._payoutTimer); window._payoutTimer=null; }
+  // P16: relock/lock par confidential financial data + open modal bhi hatao (sirf token nahi).
+  try{ _aEarnData=null; window._aEarnData=null; window._salFinE=null; window._tSalLast=null; }catch(e){}
+  try{ if(typeof closeModal==='function') closeModal(); }catch(e){}
 }
 function _startPayoutSession(token,mins){
   window._payoutToken=token;
@@ -27509,7 +27534,10 @@ function _renderDedList(list){
 }
 function adDedNewForm(){
   const teachers=(window._aEarnData&&window._aEarnData.teachers)||[];
-  const opts=teachers.map(t=>`<option value="${t.teacher_id||t.id}">${esc(t.name||('Teacher #'+(t.teacher_id||t.id)))}</option>`).join('');
+  // P27: teacher row ka shape nested hai (t.teacher.id/name) — flat t.teacher_id/t.name undefined the.
+  const _tid=t=>(t.teacher&&t.teacher.id)||t.teacher_id||t.id;
+  const _tnm=t=>(t.teacher&&t.teacher.name)||t.name;
+  const opts=teachers.map(t=>`<option value="${_tid(t)}">${esc(_tnm(t)||('Teacher #'+_tid(t)))}</option>`).join('');
   const cats=['manual','class_delay','doubt_sla','notes_delay','reschedule','task_delay'];
   const catOpts=cats.map(c=>`<option value="${c}">${c}</option>`).join('');
   const list=document.getElementById('ded-list');
@@ -27595,40 +27623,50 @@ async function loadASalaryStatus(){
   panel.innerHTML=h;
 }
 async function salFinalize(tid){
-  let e=null;
-  try{ e=await api('/api/admin/earnings/teacher/'+tid+'?month='+encodeURIComponent(_aEarnMonth)); }catch(err){}
-  const net=Math.round((e&&e.net_payable)||0);
-  const lv=Math.round((e&&e.leave_deduction)||0);
-  const rv=Math.round((e&&e.reviewed_deduction)||0);
+  const _m=_aEarnMonth;   // P08: is action ka month ABHI capture — baad me global badle to bhi galat month finalize na ho
+  let e=null, loadErr=false;
+  try{ e=await api('/api/admin/earnings/teacher/'+tid+'?month='+encodeURIComponent(_m)); }catch(err){ loadErr=true; }
+  // P01: earnings values 'earnings' ke ANDAR hain (root pe nahi). P02: calc fail/load fail
+  // par finalize BLOCK karo (galat 0 freeze na ho).
+  const en=(e&&e.earnings)||null;
+  const calcErr=!en || loadErr || !!en.calc_error;
+  const net=Math.round((en&&en.net_payable)||0);
+  const lv=Math.round((en&&en.leave_deduction)||0);
+  const rv=Math.round((en&&en.reviewed_deduction)||0);
   const ded=lv+rv;
-  const full=Math.round(((e&&e.base_earned)||0)+((e&&e.incentive)||0));
+  const full=Math.round(((en&&en.base_earned)||0)+((en&&en.incentive)||0));
   window._salFinE={net:net,ded:ded,full:full};
   const _row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.9rem"><span style="color:var(--text-muted)">${l}</span><span style="font-weight:700${c?';color:'+c:''}">${v}</span></div>`;
-  const amtBox=e?`<div style="border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin:0 0 12px">
+  const amtBox=calcErr
+    ? '<div style="border:1px solid #e3b9b4;background:rgba(192,57,43,.08);color:#9a3328;border-radius:10px;padding:11px 13px;margin:0 0 12px;font-size:.85rem">Earnings calculation abhi complete nahi hua (ya load nahi hua). Is month ko finalize nahi kar sakte \u2014 thodi der baad dubara try karein. <b>Koi \u20b90 freeze nahi hoga.</b></div>'
+    : `<div style="border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin:0 0 12px">
       ${_row('Earned (base + incentive)', _inr(full))}
       ${ded>0?_row('Deductions', '\u2212 '+_inr(ded), '#c0392b'):''}
       <div style="border-top:1px solid var(--border);margin:6px 0"></div>
       ${_row('<b>Net payable (with deductions)</b>', '<b>'+_inr(net)+'</b>')}
-    </div>`:'<div style="color:var(--text-muted);font-size:.85rem;margin-bottom:10px">Amount could not be loaded, but you can still finalize.</div>';
-  showModal('Finalize \u2014 '+fmtMonthLabel(_aEarnMonth),
+    </div>`;
+  showModal('Finalize \u2014 '+fmtMonthLabel(_m),
     `<p style="font-size:.9rem;color:var(--text-muted);margin:0 0 12px">Finalize se ye month freeze ho jayega (calculation lock). Iske baad In Progress / Credited mark kar sakte ho.</p>
      ${amtBox}
-     ${ded>0?`<label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg)">
+     ${(!calcErr&&ded>0)?`<label style="display:flex;align-items:flex-start;gap:9px;padding:11px;border:1px solid var(--border);border-radius:10px;cursor:pointer;background:var(--bg)">
        <input type="checkbox" id="sal-waive-ded" onchange="_salFinAmt()" style="margin-top:3px">
        <span><b>Deductions waive karein (relaxation)</b><br><small style="color:var(--text-muted)">Is month ke saare deductions (${_inr(ded)}) hata do \u2014 teacher ko poora ${_inr(full)} milega, koi katauti nahi.</small></span>
      </label>`:''}
-     <div id="sal-fin-amt" style="margin-top:12px;padding:10px 13px;border-radius:10px;background:rgba(184,148,31,.1);font-size:.95rem">Final payable: <b style="font-size:1.15rem">${_inr(net)}</b></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_salFinalizeGo(${tid})">Finalize</button>`);
+     ${calcErr?'':`<div id="sal-fin-amt" style="margin-top:12px;padding:10px 13px;border-radius:10px;background:rgba(184,148,31,.1);font-size:.95rem">Final payable: <b style="font-size:1.15rem">${_inr(net)}</b></div>`}`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>`+
+    (calcErr?'<button class="btn btn-primary" disabled style="opacity:.5;cursor:not-allowed">Finalize</button>'
+            :`<button class="btn btn-primary" onclick="_salFinalizeGo(${tid},'${_m}')">Finalize</button>`));
 }
 function _salFinAmt(){
   const w=document.getElementById('sal-waive-ded'); const box=document.getElementById('sal-fin-amt');
   const e=window._salFinE||{}; const on=!!(w&&w.checked);
   if(box) box.innerHTML='Final payable: <b style="font-size:1.15rem">'+_inr(on?e.full:e.net)+'</b>'+((on&&e.ded>0)?' <span style="color:#166534;font-size:.85rem">('+_inr(e.ded)+' waived)</span>':'');
 }
-async function _salFinalizeGo(tid){
+async function _salFinalizeGo(tid, month){
   const waive=!!(document.getElementById('sal-waive-ded')&&document.getElementById('sal-waive-ded').checked);
+  const _m=month||_aEarnMonth;   // P08: captured month use karo (mutable global nahi)
   closeModal();
-  try{ await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_aEarnMonth,waive_deductions:waive}); toast(waive?'Finalized \u2014 deductions waived.':'Finalized.'); loadASalaryStatus(); }
+  try{ await api('/api/admin/teacher/'+tid+'/payout-finalize','POST',{month:_m,waive_deductions:waive}); toast(waive?'Finalized \u2014 deductions waived.':'Finalized.'); loadASalaryStatus(); }
   catch(e){ toast(e.message||'Could not finalize.'); }
 }
 async function _salFinalizeOld(tid){
@@ -27637,13 +27675,15 @@ async function _salFinalizeOld(tid){
   catch(e){ toast(e.message||'Could not finalize.'); }
 }
 async function salProgress(tid){
-  try{ await api('/api/admin/teacher/'+tid+'/payout-progress','POST',{month:_aEarnMonth}); toast('Marked in progress.'); loadASalaryStatus(); }
+  const _m=_aEarnMonth;   // P08: action month capture
+  try{ await api('/api/admin/teacher/'+tid+'/payout-progress','POST',{month:_m}); toast('Marked in progress.'); loadASalaryStatus(); }
   catch(e){ toast(e.message||'Failed.'); }
 }
 async function salCredited(tid){
+  const _m=_aEarnMonth;   // P08: prompt se pehle month capture (prompt ke dauraan global na badle)
   const ref=prompt('Payment reference / note (optional) — e.g. UTR or bank ref. Leave blank if none:','');
   if(ref===null) return;
-  try{ await api('/api/admin/teacher/'+tid+'/payout-paid','POST',{month:_aEarnMonth,pay_ref:ref}); toast('Marked credited. Teacher notified to confirm receipt.'); loadASalaryStatus(); }
+  try{ await api('/api/admin/teacher/'+tid+'/payout-paid','POST',{month:_m,pay_ref:ref}); toast('Marked credited. Teacher notified to confirm receipt.'); loadASalaryStatus(); }
   catch(e){ toast(e.message||'Failed.'); }
 }
 // ===================== DYNAMIC INCENTIVE ENGINE (admin) =====================
@@ -27651,7 +27691,7 @@ const INC_METRICS=[['video_views','Video Views'],['video_watch_time','Video Watc
 const INC_CALC=[['per_unit','Per Unit (every N = reward)'],['tiered','Tiered (ranges)'],['fixed','Fixed (flat reward)'],['percentage','Percentage of value'],['threshold_bonus','Threshold Bonus'],['milestone','Milestone (one-time)']];
 const _incMetricLabel=m=>{const f=INC_METRICS.find(x=>x[0]===m);return f?f[1]:m;};
 async function _incTeachers(){
-  if(window._aEarnData&&window._aEarnData.teachers&&window._aEarnData.teachers.length) return window._aEarnData.teachers.map(t=>({id:t.teacher_id||t.id,name:t.name}));
+  if(window._aEarnData&&window._aEarnData.teachers&&window._aEarnData.teachers.length) return window._aEarnData.teachers.map(t=>({id:(t.teacher&&t.teacher.id)||t.teacher_id||t.id,name:(t.teacher&&t.teacher.name)||t.name}));
   try{ const d=await api('/api/admin/teachers'); return (d||[]).map(t=>({id:t.id,name:t.name})); }catch(e){ return []; }
 }
 async function loadAIncentives(){
@@ -27948,12 +27988,18 @@ async function aEarnFetch(){
   if(!body) return;
   try{
     const d=await api('/api/admin/earnings?month='+encodeURIComponent(_aEarnMonth));
-    _aEarnData=d;
+    _aEarnData=d; window._aEarnData=d;   // P27: dono sync — reads window._aEarnData bhi use karte hain
     const _st=(icn,val,lbl)=>`<div class="ae-stat"><div class="ae-stat-ic">${ic(icn)}</div><div><div class="ae-stat-v">${val}</div><div class="ae-stat-l">${lbl}</div></div></div>`;
     // v89: decided monthly salary ka total (max potential sum) — monthly kitna ja sakta hai
     const totSal=d.teachers.reduce((a,x)=>a+(x.target_only?0:((x.earnings&&x.earnings.max_potential)||0)),0);
     if(stats) stats.innerHTML=_st('users',d.teachers.length,'Teachers')+_st('trophy',_inr(totSal),'Monthly Salary (Total)')+_st('wallet',_inr(d.total_net),'Total Net Payable')+_st('chart',d.avg_perf+'%','Average Performance')+_st('calendar',esc(fmtMonthLabel(d.month)),'Pay Month');
-    body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">The month has just begun — earnings build here automatically as teacher activity is recorded on the portal. There is no activity yet, so all figures show ₹0 (never demo numbers).</div>`:'')
+    body.innerHTML=(d.total_net===0?`<div class="alert alert-info" style="margin-bottom:14px">${
+      ((d.target_only_count||0)>0 && (d.target_only_count||0)>=((d.teachers||[]).length))
+        ? 'Is month ke sabhi teachers estimate-only (payroll scope se bahar) hain — isliye payable total ₹0. Ye "koi kaam nahi" nahi, scope exclusion hai.'
+        : ((d.month===curMonth())
+            ? 'The month has just begun — earnings build here automatically as teacher activity is recorded on the portal. Figures show ₹0 for now (never demo numbers).'
+            : 'Is month ka abhi tak koi finalized/recorded payable total nahi hai (₹0). Agar ye galat lage to teacher ka data / finalize status check karein — ye apne-aap "no work" nahi maana jaana chahiye.')
+    }</div>`:'')
      +((d.target_only_count||0)>0?`<div class="alert alert-info" style="margin-bottom:14px">${d.target_only_count} target-only teacher${d.target_only_count>1?'s':''}: payout runs on the assigned target via the other app — shown here only as an <b>estimated % of salary</b>, never as amounts.</div>`:'')
      +`<div class="ae-grid">${d.teachers.map(x=>{
        const e=x.earnings, pc=_pfCol(e.perf_score);
@@ -28053,15 +28099,18 @@ function openEarnDetail(tid){
 function _contractActivityHTML(x){
   const a=x.activity||{}, cs=(x.earnings&&x.earnings.contract_stats)||{};
   const inr=v=>'\u20B9'+(Math.round(v||0)).toLocaleString('en-IN');
-  const row=(l,v,neg)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:.84rem">${l}</span><span style="font-weight:700;color:${neg?'#c0392b':'#0F2A54'}">${neg?'– ':''}${inr(Math.abs(v))}</span></div>`;
+  const row=(l,v,neg)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:.84rem;color:var(--text)">${l}</span><span style="font-weight:700;color:${neg?'#c0392b':'var(--text)'}">${neg?'– ':''}${inr(Math.abs(v))}</span></div>`;
+  const fe=(x.earnings)||{}; const finalNet=Math.round(fe.net_payable||0);   // P06: final net
   let bd=row('Fixed Monthly Salary',cs.salary||0,false);
   if(cs.project_earn) bd+=row('Project Bonus ('+(cs.projects||0)+')',cs.project_earn,false);
   if(cs.delay_cut) bd+=row('Delay Deduction',cs.delay_cut,true);
   if(cs.reject_cut) bd+=row('Rejection Deduction',cs.reject_cut,true);
   if(cs.leave_cut) bd+=row('Leave Deduction ('+(cs.leave_days||0)+'d)',cs.leave_cut,true);
+  if(fe.incentive) bd+=row('Incentives (approved)',fe.incentive,false);
+  if(fe.reviewed_deduction) bd+=row('Reviewed Deductions',fe.reviewed_deduction,true);
   const act=(l,v)=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:.84rem"><span style="color:var(--text-muted)">${l}</span><b>${v}</b></div>`;
   return `<div class="card" style="margin-bottom:12px"><div class="card-header"><h3>Payout Breakdown</h3></div><div class="card-body">${bd}
-      <div style="display:flex;justify-content:space-between;padding:11px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:#0F2A54">${inr(cs.net||0)}</span></div></div></div>
+      <div style="display:flex;justify-content:space-between;padding:11px 0 0;font-weight:800;font-size:1.02rem"><span>Net Payable</span><span style="color:var(--text)">${inr(finalNet)}</span></div></div></div>
     <div class="card"><div class="card-header"><h3>This Month's Work</h3></div><div class="card-body">
       ${act('Videos made',a.videos_made||0)}
       ${act('YouTube Live',a.live_sessions||0)}
@@ -44198,7 +44247,13 @@ function loadTCatEarnings(){
   api('/api/teacher/payout/status').then(function(st){
     if(st && st.payout_mode==='contract'){ if(typeof payoutGate==='function') payoutGate(); return; }
     _catEarningsEstimate(a, el);
-  }).catch(function(){ _catEarningsEstimate(a, el); });
+  }).catch(function(e){
+    // P21: status fail hone par CHUP-CHAAP estimate mat dikhao (failure chhup jaata tha) —
+    // saaf retryable error. error != estimate.
+    el.innerHTML='<div style="padding:22px;text-align:center"><div style="color:#c1443a;font-weight:700">Payout status load nahi hua</div>'
+      +'<div style="font-size:.78rem;color:#8a7d5c;margin:6px 0 10px">'+esc((e&&e.message)||'')+'</div>'
+      +'<button class="btn btn-primary btn-sm" onclick="loadTCatEarnings()">Retry</button></div>';
+  });
 }
 function _catEarningsEstimate(a, el){
   api('/api/teacher/category-earnings?category_id='+a.id).then(function(d){
