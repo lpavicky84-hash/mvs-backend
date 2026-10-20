@@ -559,20 +559,44 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
             tasks = [t for t in _cand if (t.teacher_id == tp.id or tp.id in _cai(t))]
         except Exception:
             tasks = [t for t in _cand if t.teacher_id == tp.id]
+        # content DUE cutoff (corrected): aaj tak — ya past-month correction me month-end tak.
+        # Teaching ki tarah sirf itni content gine jo ab tak DUE ho chuki hai.
+        try:
+            from models import ist_today as _c_itoday
+            _c_today = _c_itoday()
+        except Exception:
+            _c_today = datetime.utcnow().date()
+        _c_cut = min(_c_today, (dt1.date() - timedelta(days=1)))
         for t in tasks:
             if bool(getattr(t, "is_old", False)):
                 continue   # OLD/pre-portal content -> is month count nahi
-            # TP09: corrected mode me CANCELLED (soft-deleted) task content target me na gine
-            # (warna cancelled assignment bhi denominator badha ke galat penalty deta tha).
+            # TP09: corrected mode me CANCELLED (soft-deleted) task content target me na gine.
             if corrected and bool(getattr(t, "cancelled", False)):
                 continue
             if (t.kind or "normal") in ("one_shot", "rapid_revision", "project"):
                 continue   # projects Content me nahi -> alag "Project" component me
+            # CONTENT DUE? corrected mode me sirf woh task gine jo ab tak DUE ho chuki hai:
+            # submitted ho gayi, YA not_completed mark hui, YA deadline nikal chuki. Future-due
+            # (deadline abhi aayi hi nahi, submit nahi hui) task ko content me abhi mat gino —
+            # warna jo videos abhi banni hi hain unhe bhi "fail" maan ke score gir jaata tha
+            # (jaise 1 of 6 = 17%, jabki teacher on-track ho). Past months: sab gine (preserve).
+            # DELIVERED? sirf submitted_at dekhna galat tha — video jab "uploaded"/editing/
+            # approved/submitted state me pahunchti hai (ya YouTube link lag jaata hai) tab bhi
+            # teacher ka kaam ho CHUKA hai. LIVE/direct-upload videos ka submitted_at set hi
+            # nahi hota, isliye 5 uploaded videos "done" count hi nahi ho rahi thi (1 of 6 bug).
+            _st_c = (getattr(t, "status", "") or "")
+            _DONE_ST = ("submitted", "approved", "editing_soon", "editing_done", "uploaded")
+            _delivered = bool(t.submitted_at) or (_st_c in _DONE_ST) or bool(getattr(t, "youtube_url", "") or "")
+            _nc_status = (_st_c == "not_completed")
+            _dl = getattr(t, "deadline", None)
+            # DUE (denominator): delivered ho chuki, YA not_completed, YA deadline nikal chuki.
+            # Future-due (abhi deadline nahi aayi, delivered nahi) -> content me abhi nahi.
+            _is_due = _delivered or _nc_status or (_dl is not None and _dl.date() <= _c_cut)
+            _count_content = (not corrected) or _is_due
             # assigned content task (proposal pending/rejected chhod ke) -> content target
-            if (getattr(t, "proposal_ok", "") or "") != "pending" and getattr(t, "status", "") != "rejected":
+            if _count_content and (getattr(t, "proposal_ok", "") or "") != "pending" and _st_c != "rejected":
                 content_assigned += 1
             # collab task me IS teacher ka part 'not completed' mark hua? -> uske liye not-completed
-            # (baaki collab teachers ko credit milta hai; sirf isko payout penalty).
             _my_nc = False
             try:
                 import json as _jnc
@@ -581,25 +605,26 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
                     _my_nc = bool(_jnc.loads(_ncraw).get(str(tp.id)))
             except Exception:
                 _my_nc = False
-            if _my_nc:
-                tnc += 1
-            elif t.submitted_at and corrected:
-                # Content on-time ab submitted_at vs deadline se DERIVE hota hai. Pehle stored
-                # on_time flag use hota tha jo bina-deadline submit par galti se False/None
-                # ho jaata (bool(None and ...)=False) -> teacher ka actual kaam count hi nahi
-                # hota tha. Ab: deadline hai aur uske baad submit -> late; warna (koi deadline
-                # nahi YA on/before) -> on-time. (corrected/live month only — past preserve.)
-                _dl = getattr(t, "deadline", None)
-                if _dl and t.submitted_at > _dl:
-                    tdl += 1
+            if _count_content:
+                if _my_nc:
+                    tnc += 1
+                elif corrected:
+                    if _delivered:
+                        # on-time: submit timestamp vs deadline. Live/direct-upload (koi submit
+                        # timestamp nahi) ko on-time maano — delivered to ho hi chuki hai.
+                        if t.submitted_at and _dl and t.submitted_at > _dl:
+                            tdl += 1
+                        else:
+                            to += 1
+                    # delivered nahi par due (deadline nikal gayi) -> miss: denominator me rahegi,
+                    # numerator (to/tdl) me nahi -> content% apne aap kam (sahi).
                 else:
-                    to += 1
-            elif t.submitted_at and t.on_time is True:
-                to += 1
-            elif t.submitted_at and t.on_time is False:
-                tdl += 1
-            if not _my_nc and getattr(t, "status", "") == "not_completed":
-                tnc += 1
+                    if t.submitted_at and t.on_time is True:
+                        to += 1
+                    elif t.submitted_at and t.on_time is False:
+                        tdl += 1
+                if not _my_nc and _nc_status:
+                    tnc += 1
             # proposals (teacher-proposed)
             if str(getattr(t, "proposed_by", "") or "").lower() not in ("admin", "system", ""):
                 p_proposed += 1
