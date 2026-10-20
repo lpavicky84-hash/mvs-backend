@@ -34689,7 +34689,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.title)+'</div>'+
           '<div style="font-size:.72rem;color:var(--muted)">'+(v.subject?esc(v.subject)+' \u00b7 ':'')+(v.deadline?'Deadline: '+esc(v.deadline):'')+(v.is_collab?' \u00b7 collab':'')+'</div></div>'+
           (v.on_youtube?('<div style="font-size:.82rem;font-weight:700;white-space:nowrap">'+_num(v.views)+' <span style="font-weight:400;color:var(--muted);font-size:.72rem">views</span></div>'):('<div style="font-size:.72rem;color:var(--muted);white-space:nowrap;font-style:italic">Not on YouTube yet</div>'))+
-          (v.youtube_url?'<a class="pj-btn" href="'+esc(v.youtube_url)+'" target="_blank" rel="noopener">Open</a>':'')+
+          (v.youtube_url?'<a class="pj-btn pj-primary" style="flex:0 0 auto" href="'+esc(v.youtube_url)+'" target="_blank" rel="noopener">'+ic('play')+' Open</a>':'')+
         '</div>';
       }).join(''):'<div style="color:var(--muted);padding:26px;text-align:center">No videos in this category.</div>';
       var old=document.getElementById('prod-modal'); if(old) old.remove();
