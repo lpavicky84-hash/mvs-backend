@@ -4824,7 +4824,7 @@ async function loadTTimetable(){
         +_bList.map(function(b){return '<option value="'+b.id+'"'+(String(_ttBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('')
         +(_hasGlobal?'<option value="__none__"'+(_ttBatch==='__none__'?' selected':'')+'>No course (global)</option>':'')+'</select>';
     }
-    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${_batSelHtml}<button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-secondary btn-sm" onclick="openTeacherCrash()">${ic('play')} Crash Chapters</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
+    el.innerHTML=`${tabs}<div class="card"><div class="card-header"><h3>My Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${_batSelHtml}<button class="btn btn-primary btn-sm" onclick="openTTBuilderT()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openTTPdf()">${ic('clipboard')} Upload (PDF/Excel)</button><button class="btn btn-ghost btn-sm" onclick="ttDownloadTimetable()">${ic('download')} Download</button><button class="btn btn-ghost btn-sm" onclick="openSlotChange()">${ic('clock')} Change Slot</button><button class="btn btn-danger btn-sm" onclick="openTTTDelete()">${ic('trash')} Delete Subject</button><button class="btn btn-secondary btn-sm" onclick="openTeacherCrash()">${ic('play')} Crash Chapters</button><button class="btn btn-primary btn-sm" onclick="openRequestClass()">${ic('calendar')} Add Extra Class</button></div></div><div class="card-body"><div id="t-tline-wrap"></div></div></div>`;
     _ttActiveSub=_ttActiveSub||'';
     // apni photo har subject par timeline me dikhe
     try{
@@ -4879,31 +4879,61 @@ async function submitSlotChange(){
     loadTTimetable();
   }catch(e){ toast(e.message,true); btn.disabled=false; btn.textContent='Change Slot'; }
 }
+function _ttUploadBatchField(selId,cur){
+  var list=window._ttBatchList||[];
+  if(!list.length) return '';
+  var _c=(cur&&cur!=='__none__')?String(cur):'';
+  var opts='<option value="">No course (global) — sabhi ko</option>'+list.map(function(b){return '<option value="'+b.id+'"'+(_c===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' · '+esc(b.session)):'')+'</option>';}).join('');
+  return '<div class="form-group"><label>Course / Batch <span style="color:var(--text-muted);font-weight:400;text-transform:none">(kis batch ke liye? naye 2027 batch ka apna timetable yahin chuno)</span></label><select class="form-control" id="'+selId+'">'+opts+'</select></div>';
+}
 function openTTPdf(){
-  showModal('PDF Upload — Auto-Parse',
- `<div class="alert alert-info"><strong>Upload your timetable PDF directly</strong> — format and columns are auto-detected. Chapter, Parts, Date, Day and Time are all extracted.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — use this format to avoid counting issues</a></div></div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div><div class="form-group"><label>Subject (optional — blank = PDF se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'))"></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject</label></div><div id="pdf-status"></div>`,
+  showModal('Upload Timetable — PDF or Excel',
+ `<div class="alert alert-info"><strong>PDF ya Excel timetable upload karo</strong> — columns auto-detect ho jaate hain (Chapter, Part, Date, Day, Time). <b>Tip:</b> "Download" button se maujooda timetable Excel me le lo, usme sirf <b>dates badlo</b>, aur neeche batch chun ke yahin wapas upload kar do.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">PDF demo format (All Subjects, Word)</a></div></div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div>${_ttUploadBatchField('pdf-batch',_ttBatch)}<div class="form-group"><label>Subject (optional — blank = file se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'))"></div><div class="form-group"><label>File (PDF or Excel)</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF or Excel (.xlsx) file, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject (same course)</label></div><div id="pdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pdf-btn" onclick="uploadTTPdf()">Upload & Parse</button>`);
   const _clsC=document.getElementById('pdf-class');
   if(_clsC) _clsC.addEventListener('change',()=>pdfReplaceWarn(val('pdf-subject'),(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class')));
 }
 async function uploadTTPdf(){
   const fi=document.getElementById('pdf-file');
-  if(!fi.files.length){ toast('Please select a PDF file.',true); return; }
+  if(!fi.files.length){ toast('Please select a PDF or Excel file.',true); return; }
+  const file=fi.files[0];
+  const isXlsx=/\.(xlsx|xls)$/i.test(file.name||'');
   const btn=document.getElementById('pdf-btn'); btn.disabled=true; btn.textContent='Parsing...';
   const st=document.getElementById('pdf-status');
-  st.innerHTML=`<div class="alert alert-info">Parsing the PDF, please wait... </div>`;
+  st.innerHTML=`<div class="alert alert-info">Parsing the ${isXlsx?'Excel':'PDF'}, please wait... </div>`;
   const fd=new FormData();
-  fd.append('file',fi.files[0]); fd.append('class_name',val('pdf-class'));
-  fd.append('subject',val('pdf-subject')||''); fd.append('replace',document.getElementById('pdf-replace').checked?'true':'false');
-  fd.append('preview','true');
+  fd.append('file',file);
+  if(!isXlsx){
+    fd.append('class_name',val('pdf-class'));
+    fd.append('subject',val('pdf-subject')||''); fd.append('replace',document.getElementById('pdf-replace').checked?'true':'false');
+    fd.append('preview','true');
+  }
   try{
- const r=await fetch(API+'/api/teacher/timetable-pdf',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+ const _ep=isXlsx?'/api/teacher/timetable-xlsx':'/api/teacher/timetable-pdf';
+ const r=await fetch(API+_ep,{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
  const _cls=val('pdf-class'), _rep=document.getElementById('pdf-replace')&&document.getElementById('pdf-replace').checked;
+ const _bid=(document.getElementById('pdf-batch')||{}).value||'';
  closeModal();
- openPdfPreview(d.preview||[],{isAdmin:false,class_name:_cls,replace:_rep});
+ openPdfPreview(d.preview||[],{isAdmin:false,class_name:_cls,replace:_rep,batch_id:_bid});
  return;
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload & Parse'; }
+}
+// TT-2: maujooda timetable ko Excel me download karo (jo course filter chuna hai usi ka)
+async function ttDownloadTimetable(){
+  var scope=(_ttBatch==='__none__')?'global':(_ttBatch||'all');
+  try{
+    toast('Preparing Excel…');
+    const r=await fetch(API+'/api/teacher/timetable-export?batch='+encodeURIComponent(scope),{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ let d={}; try{ d=await r.json(); }catch(e){} throw new Error(d.detail||'Could not download'); }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url;
+    var _nm='MVS_Timetable'+(scope==='all'?'':('_'+scope))+'.xlsx';
+    a.download=_nm; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    toast('Downloaded. Dates badlo aur batch chun ke wapas upload kar do.');
+  }catch(e){ toast((e&&e.message)||'Download failed',true); }
 }
 function openManualTT(){
   showModal(' Chapter/Part Add',
@@ -5253,28 +5283,30 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase, keepSub){
   try{
     const d=await api(_ep);
     _mtData=d.subjects||[];
-    if(!_mtData.length){ _mtSub=null; wrap.innerHTML='<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">'+ic('book')+'</div><p>No material'+(window._mtBatch?' for this course':'')+' yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; _mtInjectBatchBar(wrapId); return; }
+    if(!_mtData.length){ _mtSub=null; wrap.innerHTML=_mtBatchBarHTML()+'<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">'+ic('book')+'</div><p>No material'+(window._mtBatch?' for this course':'')+' yet</p><small>Class notes appear here as soon as a class report is submitted.</small></div></div></div>'; return; }
     if(!keepSub||!_mtData.find(s=>s.subject===_mtSub)) _mtSub=null;
     const _mtRole=apiBase.indexOf('admin')>=0?'admin':'teacher';
     window._mtNew=_matNewIds(_mtRole, _mtData.flatMap(s=>s.chapters.flatMap(c=>c.items)));
     _matBadge(_mtRole);
     _mtPaint(wrapId);
-    _mtInjectBatchBar(wrapId);
   }catch(e){ wrap.innerHTML=errHtml(e); }
 }
-function _mtInjectBatchBar(wrapId){
-  var wrap=document.getElementById(wrapId); if(!wrap) return;
-  var list=window._mtBatchList||[]; if(list.length<1) return;
-  if(!document.getElementById('mt-batbar-css')){ var st=document.createElement('style'); st.id='mt-batbar-css';
-    st.textContent='.mt-batbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--border,rgba(184,148,31,.25));border-radius:14px;background:var(--card,#fffdf6);margin-bottom:14px}'
-      +'.mt-batlbl{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#a08a55)}.mt-batlbl svg{width:15px;height:15px}'
-      +'.mt-batsel{min-width:220px;font-weight:700;padding:9px 13px;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:11px;background:#fff;appearance:none;-webkit-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%278%27 viewBox=%270 0 12 8%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%239a7d1a%27 stroke-width=%272%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}';
-    document.head.appendChild(st); }
+function _mtBatchCSS(){
+  if(document.getElementById('mt-batbar-css')) return;
+  var st=document.createElement('style'); st.id='mt-batbar-css';
+  st.textContent='.mt-batbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--border,rgba(184,148,31,.25));border-radius:14px;background:var(--card,#fffdf6);margin-bottom:14px}'
+    +'.mt-batlbl{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted,#a08a55)}.mt-batlbl svg{width:15px;height:15px}'
+    +'.mt-batsel{min-width:220px;font-weight:700;padding:9px 13px;border:1.5px solid var(--border,rgba(184,148,31,.3));border-radius:11px;background:#fff;appearance:none;-webkit-appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%278%27 viewBox=%270 0 12 8%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%239a7d1a%27 stroke-width=%272%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}';
+  document.head.appendChild(st);
+}
+// BULLETPROOF: batch bar ab HTML ke roop me har paint me render hota hai (pehle alag se
+// inject hota tha jo _mtPaint ke innerHTML reset me g\u093e\u092f\u092c ho jaata tha). Isi se dropdown
+// kabhi g\u093e\u092f\u092c nahi hoga \u2014 subject khholo, back jao, kuch bhi karo.
+function _mtBatchBarHTML(){
+  var list=window._mtBatchList||[]; if(list.length<1) return '';
+  _mtBatchCSS();
   var opts='<option value="">All courses</option>'+list.map(function(b){return '<option value="'+b.id+'"'+(String(window._mtBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('')+'<option value="-1"'+(window._mtBatch==='-1'?' selected':'')+'>No course (global)</option>';
-  var bar=document.createElement('div');
-  bar.className='mt-batbar';
-  bar.innerHTML='<span class="mt-batlbl">'+ic('folder')+' Course</span><select class="mt-batsel" onchange="_mtSetBatch(this.value)">'+opts+'</select>';
-  wrap.insertBefore(bar, wrap.firstChild);
+  return '<div class="mt-batbar"><span class="mt-batlbl">'+ic('folder')+' Course</span><select class="mt-batsel" onchange="_mtSetBatch(this.value)">'+opts+'</select></div>';
 }
 function _mtSetBatch(v){ window._mtBatch=v; var l=_mtLast; if(l) _renderMaterialTree(l.wrapId,l.endpoint,l.apiBase,false); }
 function _mtReload(){ if(_mtLast) _renderMaterialTree(_mtLast.wrapId,_mtLast.endpoint,_mtLast.apiBase,true); }
@@ -5389,7 +5421,7 @@ function _mtPaint(wrapId){
     }).join('');
     const newN=((window._mtNew&&window._mtNew.size)||0);
     const _mtRole=_mtBase.indexOf('admin')>=0?'admin':'teacher';
-    wrap.innerHTML=`${newN?`<div class="sm-head" style="display:flex;align-items:center"><span class="mt-new-head">${newN} new upload${newN>1?'s':''} since your last visit <button class="mt-new-clear" onclick="_matAllRead('${_mtRole}')">Mark all read</button></span></div>`:''}<div class="sm-grid">${cards}</div>`;
+    wrap.innerHTML=`${_mtBatchBarHTML()}${newN?`<div class="sm-head" style="display:flex;align-items:center"><span class="mt-new-head">${newN} new upload${newN>1?'s':''} since your last visit <button class="mt-new-clear" onclick="_matAllRead('${_mtRole}')">Mark all read</button></span></div>`:''}<div class="sm-grid">${cards}</div>`;
     return;
   }
   // ---- one subject: a separate collapsible table per category
@@ -5400,7 +5432,7 @@ function _mtPaint(wrapId){
   const order=['Class Notes','DPP','Tests'];
   const keys=Object.keys(byCat).sort((a,b)=>{ const ia=order.indexOf(a),ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b); });
   const who=_mtBase.indexOf('admin')>=0?'admin':'teacher';
-  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div><div class="card"><div class="card-body">`;
+  let html=`${_mtBatchBarHTML()}<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div><div class="card"><div class="card-body">`;
   keys.forEach(cat=>{
     const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
     const _sorted=byCat[cat].slice().sort((a,b)=>{
@@ -5429,12 +5461,13 @@ function _mtPaint(wrapId){
         ? `<button class="btn btn-ghost btn-sm" title="View before download" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"view",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('eye')} View</button>`
         : `<button class="btn btn-ghost btn-sm" title="View before download" onclick="event.stopPropagation();viewMaterial('${who}',${i.id},'${esc(fname)}')">${ic('eye')} View</button>`;
       const delBtn=isDpp?'':`<button class="mat-del" title="Delete this file permanently" onclick="event.stopPropagation();deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
+      const copyBtn=isDpp?'':`<button class="btn btn-ghost btn-sm" title="Copy this material into another batch" onclick="event.stopPropagation();openCopyMatToBatch('${who}',${i.id},'${encodeURIComponent(i.title||i.filename||i.chapter||'')}')">${ic('copy')} Copy to batch</button>`;
       return `<div class="xm-row mat-xrow${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
         <div class="mat-xmain">
           <div class="xm-row-t">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
           <div class="xm-row-m">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
         </div>
-        <div class="mat-xacts">${viewBtn}${dlBtn}${delBtn}</div>
+        <div class="mat-xacts">${viewBtn}${dlBtn}${copyBtn}${delBtn}</div>
       </div>`;
     }).join('');
     const moreBtn=_sorted.length>5?`<button class="mat-more" onclick="_mtToggleMore('${encodeURIComponent(_catKey)}','${wrapId}')">${_expanded?'Show less \u25b4':('Show all '+_sorted.length+' files \u25be')}</button>`:'';
@@ -5507,6 +5540,35 @@ async function submitCopyToBatch(kind,id){
     closeModal();
     try{ _apiForget('exams'); _apiForget('dpp-packs'); }catch(e){}
     if(kind==='test') loadTTests(); else loadTDpp();
+  }catch(e){ toast((e&&e.message)||'Could not copy',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('copy')+' Copy'; } }
+}
+// ===== MAT-2: Classes Material -> copy a file into one or more other batches =====
+async function openCopyMatToBatch(who,mid,titleEnc){
+  var title=decodeURIComponent(titleEnc||'');
+  var bl=window._mtBatchList||[];
+  if(!bl.length){
+    try{ if((who||'').indexOf('admin')>=0){ var ra=await api('/api/admin/batches'); bl=((ra&&ra.batches)||[]).filter(function(b){return b.active!==false;}); } else { var rt=await api('/api/teacher/tt-batches'); bl=(rt&&rt.batches)||[]; } }catch(e){}
+    window._mtBatchList=bl;
+  }
+  if(!bl.length){ toast('No batches found to copy into.',true); return; }
+  var checks=bl.map(function(b){
+    return '<label style="display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px;cursor:pointer"><input type="checkbox" class="cpm-bchk" value="'+b.id+'" style="width:17px;height:17px"> <span style="font-weight:600">'+esc(b.name)+(b.session?(' · '+esc(b.session)):'')+'</span></label>';
+  }).join('');
+  showModal('Copy material to other batches',
+    '<div class="alert alert-info" style="font-size:.82rem">"<b>'+esc(title||'this file')+'</b>" ko chune gaye batch(es) me copy kiya jaayega — wahi PDF, same subject/chapter. Un batches ke students ko notification bhi jaayega. Original file waise ka waisa rahega.</div>'
+    +'<div class="form-group"><label>Target batches <span style="color:var(--text-muted);font-weight:400">(ek ya zyada)</span></label><div style="max-height:260px;overflow:auto;padding-right:2px">'+checks+'</div></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cpm-btn" onclick="submitCopyMatToBatch(\''+who+'\','+mid+')">'+ic('copy')+' Copy</button>');
+}
+async function submitCopyMatToBatch(who,mid){
+  var bids=[].slice.call(document.querySelectorAll('.cpm-bchk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
+  if(!bids.length){ toast('Please pick at least one target batch.',true); return; }
+  var btn=document.getElementById('cpm-btn'); if(btn){ btn.disabled=true; btn.textContent='Copying…'; }
+  try{
+    var res=await api('/api/'+who+'/material/'+mid+'/copy','POST',{batch_ids:bids});
+    var n=(res&&res.batches)||bids.length;
+    toast('Copied to '+n+' batch'+(n===1?'':'es')+'. Students notified.');
+    closeModal();
+    _mtReload();
   }catch(e){ toast((e&&e.message)||'Could not copy',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('copy')+' Copy'; } }
 }
 async function loadTDpp(){
@@ -25227,7 +25289,7 @@ window._pdfPreview=null;
 function openPdfPreview(rows,opts){
   window._pdfPreview={rows:(rows||[]).map(r=>({subject:r.subject||'',chapter:r.chapter||'',part:r.part||'',date:r.date||'',day:r.day||'',time:r.time||'',type:r.type||'chapter',_grammar:(r.type||'chapter')!=='event'&&_isNonBookChapter(r.chapter),match_action:r.match_action||'',match_no:r.match_no||'',match_title:r.match_title||'',match_kind:r.match_kind||'',match_note:r.match_note||'',match_score:r.match_score,match_candidates:r.match_candidates||[]})),
     isAdmin:!!(opts&&opts.isAdmin), class_name:(opts&&opts.class_name)||'Class 12',
-    replace:(opts&&opts.replace)?'true':'false',
+    replace:(opts&&opts.replace)?'true':'false', batch_id:(opts&&opts.batch_id)||'',
     from_date:(opts&&opts.from_date)||'', skipped_before:+(opts&&opts.skipped_before)||0};
   showModal('Check Chapters \u2014 Preview',
    '<div id="pvw-head"></div><div class="pvw-list" id="pvw-list"></div>',
@@ -25241,7 +25303,9 @@ function renderPdfPreview(){
   const subs=[...new Set(P.rows.map(r=>r.subject).filter(Boolean))];
   const chaps=new Set(P.rows.filter(r=>r.type!=='event'&&!_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
   const gcount=new Set(P.rows.filter(r=>r.type!=='event'&&_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
-  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''}<br><span style="font-size:.8rem">Nothing is saved yet. Use the <b>Chapter/Grammar</b> toggle to mark entries (grammar is not counted), <b>Split</b> to separate merged entries, and delete to remove extras \u2014 then tap <b>Final Upload</b>.</span></div>`
+  var _bName=(P.batch_id?((window._ttBatchList||[]).filter(function(b){return String(b.id)===String(P.batch_id);})[0]||{}).name:'')||'';
+  var _tgt=P.batch_id?('Course: <b>'+esc(_bName||('#'+P.batch_id))+'</b>'):'<b>No course (global)</b> \u2014 sabhi batches ko dikhega';
+  head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''} \u00b7 ${_tgt}<br><span style="font-size:.8rem">Nothing is saved yet. Use the <b>Chapter/Grammar</b> toggle to mark entries (grammar is not counted), <b>Split</b> to separate merged entries, and delete to remove extras \u2014 then tap <b>Final Upload</b>.</span></div>`
    + ((P.from_date&&P.replace==='true')?`<div class="alert alert-warning" style="margin-bottom:8px"><strong>Partial replace active:</strong> entries from <b>${esc(fmtNice(P.from_date))}</b> onwards will be replaced \u2014 everything before that date stays exactly as it is.${P.skipped_before?` ${P.skipped_before} PDF row${P.skipped_before===1?'':'s'} before that date ${P.skipped_before===1?'was':'were'} left out.`:''}</div>`:'')
    + _sylSummary(P.rows);
   const b=document.getElementById('pvw-btn');
@@ -36580,6 +36644,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }).join('');
     return '<div class="pcb-wrap"><div class="pcb-total">'+vt+' <span>video'+(vt===1?'':'s')+'</span></div><div class="pcb-chips">'+all+chips+'</div></div>';
   }
+  // cheap stable signature of a card's HTML -> jab tak card ka content same hai, uska DOM node
+  // chhua hi nahi jaata (na re-render, na image dubara load) -> "khatarnak refresh" khatam.
+  function _prodHash(s){ var h=5381,i=s.length; while(i){ h=(h*33)^s.charCodeAt(--i); } return s.length+'_'+(h>>>0).toString(36); }
+  // SURGICAL grid update: sirf naye/badle hue cards ko replace karo, baaki sab waise ke waise
+  // (same DOM node -> scroll, expanded state, loaded thumbnails sab preserve). Hataye gaye task
+  // ke card nikal do, naye card sahi position pe daal do.
+  function _reconcileProdGrid(gridEl, portal, arr){
+    var have={}; [].slice.call(gridEl.children).forEach(function(n){ var k=(n.getAttribute&&n.getAttribute('data-ptc')); if(k!=null) have[k]=n; });
+    var frag=document.createDocumentFragment();
+    for(var i=0;i<arr.length;i++){
+      var t=arr[i]; var id=String(t.id); var html=_prodTaskCard(portal,t); var sig=_prodHash(html);
+      var cur=have[id]; var node=null;
+      if(cur && cur.getAttribute('data-sig')===sig){ node=cur; delete have[id]; }   // unchanged -> reuse as-is
+      else { var tmp=document.createElement('div'); tmp.innerHTML=html; node=tmp.firstElementChild; if(node) node.setAttribute('data-sig',sig); }
+      if(node) frag.appendChild(node);
+    }
+    gridEl.appendChild(frag);
+    for(var k in have){ var old=have[k]; if(old && old.parentNode===gridEl){ try{ gridEl.removeChild(old); }catch(e){} } }
+  }
   function _prodLoadList(portal,silent){
     var d=P[portal]; var key=(portal==='youtuber')?'videos':'tasks';
     var f=_flt(portal);
@@ -36607,15 +36690,32 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var backendTotal=(r && typeof r.total==='number')?r.total:null;
       var _finish=function(extraCards){
         var _openM=(typeof _collectOpenCards==='function')?_collectOpenCards(res):null;   // keep expanded cards open across the swap
-        var taskCards=arr.map(function(t){ return _prodTaskCard(portal,t); }).join('');
         var extraHtml=(extraCards&&extraCards.html)||'', extraCount=(extraCards&&extraCards.count)||0;
         var pageCount=arr.length+extraCount;
         var total0=(backendTotal!=null)?backendTotal:pageCount;
         var foot=_prodListFooter(portal, pageCount, total0);
         // premium per-status count bar (production Tasks only)
         var countBar=(portal==='production' && r && r.counts)?_prodCountBar(r.counts, r.counts_total, total0, f.status||''):'';
-        var grid=pageCount?('<div class="ptc-grid">'+taskCards+extraHtml+'</div>'+foot):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
-        res.innerHTML=countBar+grid;
+        var existingGrid=res.querySelector('.ptc-grid');
+        // ---- SURGICAL silent refresh: grid pehle se mounted hai (aur koi extra chapter-cards nahi) to
+        // poora innerHTML dobara set NAHI karte -> sirf badle cards replace -> na flicker, na scroll
+        // jump, na "sab gayab". Yahi "khatarnak refresh" wala root cause tha.
+        if(silent && !extraCards && existingGrid && pageCount){
+          try{ var _cb=document.getElementById(portal+'-countbar'); if(_cb) _cb.innerHTML=countBar; }catch(e){}
+          try{ _reconcileProdGrid(existingGrid, portal, arr); }
+          catch(e){ existingGrid.innerHTML=arr.map(function(t){ return _prodTaskCard(portal,t); }).join(''); }
+          try{ var _fth=document.getElementById(portal+'-listfoot'); if(_fth) _fth.innerHTML=foot; }catch(e){}
+          try{ if(_openM) _applyOpenCards(res, _openM); }catch(e){}
+          try{ _prodMarkOpenedCard(); }catch(e){}
+          if(_scEl){ try{ _scEl.scrollTop=_scTop; }catch(e){} }
+          return;
+        }
+        // ---- fresh / first render (ya extra-card wali editor list): poora grid banao, hosts ke saath
+        var taskCards=arr.map(function(t){ return _prodTaskCard(portal,t); }).join('');
+        var grid=pageCount?('<div class="ptc-grid">'+taskCards+extraHtml+'</div><div id="'+portal+'-listfoot">'+foot+'</div>'):_pEmpty('list','Nothing matches these filters','Try clearing filters or check another status.');
+        res.innerHTML='<div id="'+portal+'-countbar">'+countBar+'</div>'+grid;
+        // future surgical diffs ke liye har card pe stable signature tag kar do
+        try{ var _gEl=res.querySelector('.ptc-grid'); if(_gEl){ var _byId={}; [].slice.call(_gEl.children).forEach(function(n){ var k=(n.getAttribute&&n.getAttribute('data-ptc')); if(k!=null) _byId[k]=n; }); arr.forEach(function(t){ var n=_byId[String(t.id)]; if(n) n.setAttribute('data-sig', _prodHash(_prodTaskCard(portal,t))); }); } }catch(e){}
         try{ if(_openM) _applyOpenCards(res, _openM); }catch(e){}
         try{ _prodMarkOpenedCard(); }catch(e){}
         if(portal==='editor'){ try{ window._edtPauseReqPopup(arr); }catch(e){} try{ if((_flt('editor').q||'')) _edtApplySearch(); }catch(e){} }

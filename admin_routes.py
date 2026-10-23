@@ -5489,6 +5489,21 @@ def admin_delete_material(mid: int, db: Session = Depends(get_db), _=Depends(get
     return {"message": "Material deleted."}
 
 
+@router.post("/material/{mid}/copy")
+def admin_material_copy(mid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Admin kisi bhi teacher ki class material ko ek ya zyada doosre batch me copy kare (MAT-2)."""
+    from models import Material
+    from teacher_routes import _copy_target_batches, _copy_material_rows
+    src = db.query(Material).filter(Material.id == mid).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Material not found")
+    targets = _copy_target_batches(payload)
+    if not targets:
+        raise HTTPException(status_code=400, detail="Select at least one target batch")
+    made = _copy_material_rows(db, src, targets, getattr(src, "teacher_name", None))
+    return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
+
+
 # ===================================================================== CLASS REPORTS
 @router.get("/class-reports")
 def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),

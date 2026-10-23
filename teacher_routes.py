@@ -1099,6 +1099,10 @@ def add_tt_entry(payload: dict, db: Session = Depends(get_db), current_user=Depe
             edate = datetime.strptime(d, "%Y-%m-%d").date()
         except Exception:
             edate = None
+    try:
+        _bid = int(payload.get("batch_id") or 0)
+    except Exception:
+        _bid = 0
     e = TimetableEntry(
         teacher_id=tp.id,
         subject=(payload.get("subject") or "").strip(),
@@ -1108,7 +1112,8 @@ def add_tt_entry(payload: dict, db: Session = Depends(get_db), current_user=Depe
         entry_date=edate,
         day=(payload.get("day") or "").strip() or None,
         time_text=(payload.get("time") or "").strip() or None,
-        entry_type=(payload.get("type") or "chapter").strip()
+        entry_type=(payload.get("type") or "chapter").strip(),
+        batch_id=(_bid or None)
     )
     db.add(e); db.commit(); db.refresh(e)
     return _serialize_tt(e)
@@ -1213,37 +1218,222 @@ def teacher_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), c
     rows = payload.get("rows") or []
     class_name = (payload.get("class_name") or "Class 12").strip()
     replace = str(payload.get("replace") or "false")
+    # batch-scoped commit: batch_id>0 -> us batch ka timetable; 0/blank -> global (batch_id NULL)
+    try:
+        _bid = int(payload.get("batch_id") or 0)
+    except Exception:
+        _bid = 0
+    _bid = _bid or None
     clean = []
     for r in rows:
         sub = (r.get("subject") or "").strip()
         ch = (r.get("chapter") or "").strip()
         if not sub or not ch:
             continue
+        # per-row class (Excel round-trip me preserve) -> warna upload ka chuna hua class
+        rc = (r.get("class_name") or "").strip() or class_name
         clean.append({"subject": sub, "chapter": ch, "part": (r.get("part") or "").strip() or None,
                       "date": r.get("date") or "", "day": (r.get("day") or "").strip(),
-                      "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
+                      "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter",
+                      "class_name": rc})
     if not clean:
         raise HTTPException(status_code=400, detail="No valid rows left — keep at least 1 chapter.")
     subjects_found = sorted(set(r["subject"] for r in clean))
+    classes_found = sorted(set(r["class_name"] for r in clean if r.get("class_name")))
     if replace.lower() == "true":
-        db.query(TimetableEntry).filter(
+        # replace sirf SAME SCOPE me — batch-scoped upload doosre batch/global ko kabhi na chhue,
+        # aur global upload kisi batch ka timetable na mitaaye. Class bhi upload me jo aaye wahi.
+        _q = db.query(TimetableEntry).filter(
             TimetableEntry.teacher_id == tp.id,
-            TimetableEntry.subject.in_(subjects_found),
-            TimetableEntry.class_name == class_name
-        ).delete(synchronize_session=False)
+            TimetableEntry.subject.in_(subjects_found))
+        if classes_found:
+            _q = _q.filter(TimetableEntry.class_name.in_(classes_found))
+        _q = _q.filter(TimetableEntry.batch_id == _bid) if _bid else _q.filter(TimetableEntry.batch_id.is_(None))
+        _q.delete(synchronize_session=False)
     added = 0
     for r in clean:
         edate = None
         try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
         except Exception: pass
         db.add(TimetableEntry(
-            teacher_id=tp.id, subject=r["subject"], class_name=class_name,
+            teacher_id=tp.id, subject=r["subject"], class_name=r["class_name"],
             chapter=r["chapter"], part=r["part"], entry_date=edate,
-            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"],
+            batch_id=_bid
         ))
         added += 1
     db.commit()
-    return {"added": added, "subjects": subjects_found}
+    return {"added": added, "subjects": subjects_found, "batch_id": _bid}
+
+
+# ===== TT-2: TIMETABLE EXPORT (download) + EXCEL RE-UPLOAD (batch-wise) =====
+def _tt_export_rows(db, tp, batch):
+    """Teacher ke timetable entries (subject-scope, pending chhod ke), optional batch filter.
+    batch: int=us batch ka; 'global'/'-1'=global (batch_id NULL); ''/None/'all'=sab."""
+    from models import TimetableEntry
+    from sqlalchemy import or_
+    subs = tp.subjects or []
+    if not subs:
+        return []
+    scope = _subj_scope_for(db, TimetableEntry, subs)
+    q = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(scope)),
+        or_(TimetableEntry.status == None, TimetableEntry.status != 'pending'))
+    _b = str(batch or "").strip().lower()
+    if _b in ("global", "-1"):
+        q = q.filter(TimetableEntry.batch_id.is_(None))
+    elif _b and _b != "all":
+        try:
+            q = q.filter(TimetableEntry.batch_id == int(_b))
+        except Exception:
+            pass
+    es = q.order_by(TimetableEntry.subject, TimetableEntry.class_name, TimetableEntry.entry_date).all()
+    return es
+
+
+@router.get("/timetable-export")
+def teacher_timetable_export(batch: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Maujooda timetable ko Excel (.xlsx) me download karo — teacher sirf DATE badal ke
+    kisi bhi batch ke liye wapas upload kar sakta hai (formatting same rehti hai)."""
+    from fastapi import Response
+    import io
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except Exception:
+        raise HTTPException(status_code=500, detail="Excel export is not available on the server.")
+    tp = get_teacher_profile(current_user, db)
+    es = _tt_export_rows(db, tp, batch)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Timetable"
+    headers = ["Subject", "Class", "Chapter", "Part", "Date", "Day", "Time", "Type"]
+    ws.append(headers)
+    _hf = Font(bold=True, color="FFFFFF")
+    _hfill = PatternFill("solid", fgColor="1F3B6B")
+    for ci, _h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=ci)
+        c.font = _hf; c.fill = _hfill; c.alignment = Alignment(horizontal="center")
+    for e in es:
+        ws.append([
+            e.subject or "", e.class_name or "", e.chapter or "", e.part or "",
+            (e.entry_date.strftime("%Y-%m-%d") if e.entry_date else ""),
+            e.day or "", getattr(e, "time_text", None) or "",
+            getattr(e, "entry_type", None) or "chapter",
+        ])
+    # friendly column widths
+    for ci, w in enumerate([22, 10, 40, 16, 12, 12, 12, 10], 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    fname = "MVS_Timetable.xlsx"
+    return Response(content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+
+
+def _parse_timetable_xlsx(raw):
+    """Excel/CSV timetable ko rows me parse karo (PDF-preview jaisa shape). Header naam se
+    column match (case-insensitive): Subject, Class, Chapter, Part, Date, Day, Time, Type.
+    Date kisi bhi format me ho -> YYYY-MM-DD. Day date se auto-calc (galat/missing theek)."""
+    import io
+    import openpyxl
+    from datetime import datetime as _dt, date as _date
+    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    header = None
+    out = []
+    import tt_parser
+    DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    def _norm(h):
+        return str(h or "").strip().lower()
+
+    for raw_row in rows_iter:
+        if raw_row is None:
+            continue
+        cells = list(raw_row)
+        if header is None:
+            # pehli non-empty row jisme 'subject'/'chapter' ho -> header
+            low = [_norm(c) for c in cells]
+            if any(x in ("subject", "chapter", "topic") for x in low):
+                header = {}
+                for i, c in enumerate(low):
+                    if c in ("subject",): header["subject"] = i
+                    elif c in ("class", "class_name", "class name"): header["class_name"] = i
+                    elif c in ("chapter", "topic"): header["chapter"] = i
+                    elif c in ("part", "topic/part", "part/topic"): header["part"] = i
+                    elif c in ("date",): header["date"] = i
+                    elif c in ("day",): header["day"] = i
+                    elif c in ("time", "slot"): header["time"] = i
+                    elif c in ("type", "entry_type"): header["type"] = i
+                continue
+            else:
+                continue
+        def _get(k):
+            i = header.get(k)
+            if i is None or i >= len(cells):
+                return ""
+            v = cells[i]
+            return v
+        subject = str(_get("subject") or "").strip()
+        chapter = str(_get("chapter") or "").strip()
+        if not subject and not chapter:
+            continue
+        # date: excel date-cell ya string
+        dval = _get("date")
+        dstr = ""
+        if isinstance(dval, (_dt, _date)):
+            dstr = dval.strftime("%Y-%m-%d")
+        elif dval:
+            dd = tt_parser.parse_date(str(dval))
+            if dd:
+                dstr = dd.strftime("%Y-%m-%d")
+        day = str(_get("day") or "").strip()
+        if dstr:
+            try:
+                day = DAYS[_dt.strptime(dstr, "%Y-%m-%d").weekday()]
+            except Exception:
+                pass
+        tval = _get("time")
+        if isinstance(tval, (_dt,)):
+            tstr = tval.strftime("%I:%M %p").lstrip("0")
+        else:
+            tstr = str(tval or "").strip()
+        out.append({
+            "subject": subject,
+            "class_name": str(_get("class_name") or "").strip(),
+            "chapter": chapter,
+            "part": str(_get("part") or "").strip(),
+            "date": dstr,
+            "day": day,
+            "time": tstr,
+            "type": (str(_get("type") or "").strip() or "chapter"),
+        })
+    try:
+        wb.close()
+    except Exception:
+        pass
+    return out
+
+
+@router.post("/timetable-xlsx")
+async def upload_timetable_xlsx(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_teacher)
+):
+    """Excel timetable upload -> parse -> preview rows (PDF jaisa flow). Save commit se hota hai."""
+    get_teacher_profile(current_user, db)
+    raw = await file.read()
+    try:
+        rows = _parse_timetable_xlsx(raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Excel parse error: {e}")
+    if not rows:
+        raise HTTPException(status_code=400, detail="No valid rows found. Use the downloaded Excel and keep the column headers.")
+    subjects_found = sorted(set(r["subject"] for r in rows if r.get("subject")))
+    return {"added": 0, "subjects": subjects_found, "preview": rows}
 
 # ===== TEACHER: EDIT TIMETABLE ENTRY TOPIC/PART =====
 def _crash_propagate(db, e, fields):
@@ -1680,6 +1870,60 @@ def delete_material(mid: int, db: Session = Depends(get_db), current_user=Depend
     if not m: raise HTTPException(status_code=404, detail="Not found")
     db.delete(m); db.commit()
     return {"message": "Deleted"}
+
+def _copy_material_rows(db, src, targets, teacher_name):
+    """Ek Material ko ek YA zyada target batch me COPY karo — same PDF (R2 reference share),
+    same subject/chapter/part/type. Original untouched. Har target batch ke subject-wale
+    students ko notification jaata hai. Returns naye material ids ki list."""
+    from models import Material, StudentProfile, StudentBatch
+    made = []
+    for tb in targets:
+        nm = Material(
+            teacher_id=src.teacher_id, teacher_name=(teacher_name or src.teacher_name),
+            subject=src.subject, class_name=src.class_name, chapter=src.chapter,
+            part=src.part, material_type=src.material_type, category=src.category,
+            title=src.title, filename=src.filename,
+            content_b64=src.content_b64,          # R2 reference — share-safe (delete DB-only)
+            duration_min=src.duration_min, medium=src.medium,
+            external_link=getattr(src, "external_link", None),
+            approval_status=getattr(src, "approval_status", "approved") or "approved",
+            batch_id=tb)
+        db.add(nm); db.flush()
+        made.append(nm.id)
+    db.commit()
+    # notify target-batch students who have this subject (best-effort, non-fatal)
+    try:
+        label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(src.material_type, (src.category or "Material"))
+        _nk = _subj_norm((src.subject or "").strip())
+        for tb in targets:
+            sids = [r[0] for r in db.query(StudentBatch.student_id).filter(StudentBatch.batch_id == tb).all()]
+            if not sids:
+                continue
+            sps = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).filter(StudentProfile.id.in_(sids)).all()
+            for sp in sps:
+                if not (sp.subjects and _nk in {_subj_norm(x) for x in sp.subjects} and sp.user):
+                    continue
+                notify(db, sp.user_id, f"\U0001F4DA New {label}: {(src.subject or '').strip()}",
+                       f"New {label} for {(src.subject or '').strip()} ({(src.chapter or 'General')}). Tap to open the Materials section.",
+                       "new_material")
+        db.commit()
+    except Exception:
+        db.rollback()
+    return made
+
+@router.post("/material/{mid}/copy")
+def teacher_material_copy(mid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher apni class material ko ek ya zyada doosre batch me copy kare (MAT-2)."""
+    from models import Material
+    tp = get_teacher_profile(current_user, db)
+    src = db.query(Material).filter(Material.id == mid, Material.teacher_id == tp.id).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Material not found")
+    targets = _copy_target_batches(payload)
+    if not targets:
+        raise HTTPException(status_code=400, detail="Select at least one target batch")
+    made = _copy_material_rows(db, src, targets, current_user.name)
+    return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
 
 # ===== TEACHER PROFILE & SUBJECT SELECTION (class-wise) =====
 @router.get("/task-stats")
