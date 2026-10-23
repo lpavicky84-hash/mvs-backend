@@ -8553,6 +8553,43 @@ def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
     return out
 
 
+@router.get("/exam/{exam_id}/students")
+def admin_exam_students(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Tests Tracker drill-down: ek test ke saare students status-wise (submitted / evaluated /
+    pending) — naam, phone, class, batch sahit — taaki admin teacher ko follow-up kar sake."""
+    _ensure_exam_columns(db)
+    from models import StudentProfile, User as _U
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    atts = (db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id)
+            .order_by(ExamAttempt.submitted_at.desc()).all())
+    sids = {a.student_id for a in atts}
+    smap = {}
+    if sids:
+        for _sid, _nm, _ph, _cl, _bn in (db.query(StudentProfile.id, _U.name, StudentProfile.phone,
+                                                   StudentProfile.class_level, StudentProfile.batch_name)
+                                          .join(_U, _U.id == StudentProfile.user_id)
+                                          .filter(StudentProfile.id.in_(list(sids))).all()):
+            smap[_sid] = {"name": _nm or ("Student #%d" % _sid), "phone": _ph or "",
+                          "class_level": _cl or "", "batch": _bn or ""}
+    students = []
+    for a in atts:
+        info = smap.get(a.student_id, {})
+        students.append({"attempt_id": a.id, "student_id": a.student_id,
+                         "name": info.get("name", "Student"), "phone": info.get("phone", ""),
+                         "class_level": info.get("class_level", ""), "batch": info.get("batch", ""),
+                         "status": ("evaluated" if a.status == "graded" else "pending"),
+                         "score": (a.total_awarded if a.status == "graded" else None),
+                         "submitted_at": (a.submitted_at.isoformat() if a.submitted_at else None)})
+    na = len(atts)
+    ng = sum(1 for a in atts if a.status == "graded")
+    return {"exam": {"id": ex.id, "title": ex.title, "subject": ex.subject,
+                     "teacher_name": ex.teacher_name, "total_marks": ex.total_marks,
+                     "test_type": ex.test_type, "attempts": na, "graded": ng, "pending": max(0, na - ng)},
+            "students": students}
+
+
 # ===== ORPHAN DATA CLEANUP (content left behind by deleted teachers) =====
 _ORPHAN_SQL = "teacher_id IS NOT NULL AND teacher_id NOT IN (SELECT id FROM teacher_profiles)"
 

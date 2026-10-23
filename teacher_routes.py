@@ -4906,24 +4906,44 @@ def teacher_exam_pdf(exam_id: int, medium: str = "english",
 @router.get("/exams")
 def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _ensure_exam_columns(db)
-    from models import ExamView
+    from models import ExamView, StudentProfile
     tp = get_teacher_profile(current_user, db)
     rows = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).order_by(Exam.created_at.desc()).all()
     ids = [e.id for e in rows]
     views, downloads = {}, {}
+    subs_map = {}   # exam_id -> [{id, name, g}]  (submissions summary for teacher NEW-blink tracking)
+    nq_map = {}
     if ids:
+        from models import User as _User
         for v in db.query(ExamView).filter(ExamView.exam_id.in_(ids)).all():
             (downloads if v.action == "download" else views).setdefault(v.exam_id, set()).add(v.student_id)
-        # a student who attempted the test has obviously seen it - count them as a
-        # viewer too, so tests taken before view-tracking existed still show up
-        for a in db.query(ExamAttempt).filter(ExamAttempt.exam_id.in_(ids)).all():
+        atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id.in_(ids)).all()
+        _sids = {a.student_id for a in atts}
+        name_map = {}
+        if _sids:
+            for _sid, _nm in (db.query(StudentProfile.id, _User.name)
+                              .join(_User, _User.id == StudentProfile.user_id)
+                              .filter(StudentProfile.id.in_(list(_sids))).all()):
+                name_map[_sid] = (_nm or ("Student #%d" % _sid))
+        for a in atts:
+            # a student who attempted the test has obviously seen it -> viewer too
             views.setdefault(a.exam_id, set()).add(a.student_id)
+            subs_map.setdefault(a.exam_id, []).append({
+                "id": a.id, "name": name_map.get(a.student_id, "Student"),
+                "g": (a.status == "graded")})
+        # question counts in one grouped query (no per-exam N+1)
+        from sqlalchemy import func as _f
+        for _eid, _c in (db.query(ExamQuestion.exam_id, _f.count(ExamQuestion.id))
+                         .filter(ExamQuestion.exam_id.in_(ids)).group_by(ExamQuestion.exam_id).all()):
+            nq_map[_eid] = _c
     out = []
     for e in rows:
-        nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
-        na = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id).count()
-        ng = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id, ExamAttempt.status == "graded").count()
-        out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+        _sl = subs_map.get(e.id, [])
+        nq = nq_map.get(e.id, 0)
+        na = len(_sl)
+        ng = sum(1 for s in _sl if s["g"])
+        out.append({"subs": _sl,
+                    "id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "class_name": getattr(e, "class_name", "") or "",
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "is_pdf": bool(getattr(e, "q_pdf", None)),

@@ -2771,7 +2771,7 @@ async function _dvLazyDownload(url, name){
 // view helpers — mirror each download function's endpoint, but open the viewer instead
 function viewMaterial(role,id,name){ openDocViewer(API+'/api/'+role+'/material/'+id+'/download', name||'material.pdf'); }
 function viewExtMaterial(id,link,name){ openDocViewer(API+'/api/ext/material/'+encodeURIComponent(id)+'/file', name||'material.pdf'); }
-function viewStudentAnswer(attId,name){ openDocViewer(API+'/api/teacher/attempt/'+attId+'/answer', 'answer-'+(name||'student')); }
+function viewStudentAnswer(attId,name){ try{ _texSeeAttempt(attId); }catch(e){} openDocViewer(API+'/api/teacher/attempt/'+attId+'/answer', 'answer-'+(name||'student')); }
 function viewDppAns(aid,name){ openDocViewer(API+'/api/teacher/dpp-answers/'+aid+'/file?inline=1', name||'dpp-answer.pdf', {stream:true}); }
 function viewMyAnswer(id){ openDocViewer(API+'/api/student/exam/'+id+'/answer', 'my-answer-sheet'); }
 // ============ DOUBT NAV BADGES ============
@@ -6629,81 +6629,161 @@ function _singleBatchField(curBid){
   return '<div class="form-group"><label class="ex-lbl">Batch / Course <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(is item ko is batch me move/keep karo)</span></label><select class="form-control" id="mbf-sel">'+opts+'</select></div>';
 }
 function _singleBatchId(){ var s=document.getElementById('mbf-sel'); if(!s) return undefined; var v=s.value; return v?parseInt(v,10):null; }
+// ===== Teacher Tests — per-device NEW-submission tracking (localStorage) =====
+function _texSeenLoad(){ try{ var v=JSON.parse(localStorage.getItem('mvs_texam_seen')||'null'); return new Set((v&&Array.isArray(v.ids))?v.ids:[]); }catch(e){ return new Set(); } }
+function _texSeenSave(set){ try{ localStorage.setItem('mvs_texam_seen', JSON.stringify({ids:[...set].slice(-6000)})); }catch(e){} }
+function _texMarkSeen(ids){ if(!ids||!ids.length) return; var s=_texSeenLoad(); ids.forEach(function(x){ if(x!=null) s.add(x); }); _texSeenSave(s); }
+// unseen submissions of an exam (objective + subjective both tracked by attempt_id)
+function _texNew(e){ var s=window._texSeenSet||(window._texSeenSet=_texSeenLoad()); return (e.subs||[]).filter(function(x){ return x && !s.has(x.id); }); }
+// objective test ko "dekh liya" -> uske saare submissions seen (Results kholne pe)
+function _texSeeExamObjective(e){ if(!e) return; var ids=(e.subs||[]).map(function(x){return x.id;}); if(!ids.length) return; _texMarkSeen(ids); window._texSeenSet=_texSeenLoad(); _tTestsRefreshIfOpen(); }
+// subjective: ek student ka paper view/download hote hi uska submission seen
+function _texSeeAttempt(attId){ if(attId==null) return; _texMarkSeen([attId]); window._texSeenSet=_texSeenLoad(); _tTestsRefreshIfOpen(); }
+
+function _tSubCss(){
+  if(document.getElementById('tsub-css')) return;
+  var s=document.createElement('style'); s.id='tsub-css';
+  s.textContent=[
+    '.tsub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:6px}',
+    '.tsub-card{position:relative;cursor:pointer;border:1px solid var(--border,#ece2cd);border-radius:16px;background:linear-gradient(180deg,var(--card,#fffdf7),var(--surface-2,#fdf9f0));padding:15px 16px 14px;overflow:hidden;box-shadow:0 10px 28px -20px rgba(120,90,10,.5);transition:transform .14s,box-shadow .14s,border-color .14s}',
+    '.tsub-card:hover{transform:translateY(-3px);box-shadow:0 16px 34px -18px rgba(120,90,10,.55);border-color:var(--primary,#c98a2e)}',
+    '.tsub-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#e6ad4e,#c98a2e)}',
+    'body.dark .tsub-card{background:linear-gradient(180deg,#152a45,#0f2238);border-color:#2c405e}',
+    '.tsub-top{display:flex;align-items:center;gap:11px}',
+    '.tsub-ic{width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.82rem}',
+    '.tsub-name{font-weight:800;font-size:1.02rem;color:var(--text,#2b2410);line-height:1.15}',
+    '.tsub-sub{font-size:.76rem;color:var(--text-muted,#8a7d5c);margin-top:2px}',
+    '.tsub-foot{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}',
+    '.tsub-chip{font-size:.68rem;font-weight:700;border-radius:999px;padding:3px 9px;border:1px solid var(--border,#ece2cd);color:var(--text-muted,#8a7d5c)}',
+    '.tsub-chip.pend{border-color:rgba(217,119,6,.45);color:#b45309;background:rgba(217,119,6,.08)}',
+    '.tsub-chip.done{border-color:rgba(5,150,105,.4);color:#047857;background:rgba(5,150,105,.08)}',
+    '.tsub-new{position:absolute;top:12px;right:12px;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#dc2626;color:#fff;font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px rgba(220,38,38,.18);animation:txBlink 1.1s ease-in-out infinite}',
+    '.tx-card.tx-newblink{animation:txCardGlow 1.2s ease-in-out infinite}',
+    '@keyframes txCardGlow{0%,100%{box-shadow:0 0 0 1px rgba(220,38,38,.25),0 10px 26px -18px rgba(120,90,10,.5)}50%{box-shadow:0 0 0 3px rgba(220,38,38,.5),0 10px 26px -14px rgba(220,38,38,.35)}}',
+    '.tx-newtag{display:inline-flex;align-items:center;gap:5px;background:#dc2626;color:#fff;font-weight:800;font-size:.68rem;border-radius:999px;padding:3px 9px;animation:txBlink 1.1s ease-in-out infinite}',
+    '.tx-newnames{font-size:.72rem;color:#b91c1c;font-weight:600;margin-top:6px;line-height:1.4}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _tExamCardHTML(e){
+  const isM=e.test_type==='mcq';
+  const isPend=(e.attempts||0)>(e.graded||0);
+  const isDone=(e.attempts||0)>0&&(e.attempts||0)===(e.graded||0);
+  const nnew=_texNew(e), nc=nnew.length;
+  const stPill=isPend?`<span class="tx-pill a">NEEDS EVALUATION</span>`:isDone?`<span class="tx-pill g">EVALUATED ✓</span>`:`<span class="tx-pill s">SCHEDULED</span>`;
+  const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
+  const newPill=nc>0?`<span class="tx-newtag">${ic('bell')} ${nc} NEW</span>`:'';
+  const topCol=nc>0?'linear-gradient(90deg,#dc2626,#f87171)':isPend?'linear-gradient(90deg,#d97706,#f59e0b)':isDone?'linear-gradient(90deg,#059669,#10b981)':(isM?'linear-gradient(90deg,#b8941f,#ffb347)':'linear-gradient(90deg,#a1741a,#d4a94e)');
+  const pct=(e.attempts||0)?Math.round((e.graded||0)/(e.attempts||1)*100):0;
+  const _schT=spSchedOf(e),_schTF=_schT?spSchedFmt(_schT):'';
+  const subBar=(e.attempts||0)>0?`<div style="flex:1;max-width:240px"><div style="display:flex;justify-content:space-between;font-size:.64rem;color:var(--text-muted)"><span>Evaluated</span><b style="color:var(--text)">${e.graded||0}/${e.attempts||0}</b></div><div class="tx-bar" style="margin-top:4px"><i style="width:${pct}%"></i></div></div>`:`<span class="tx-pill s">No submissions yet</span>`;
+  const newNames=nc>0?`<div class="tx-newnames">${ic('users')} New ${isM?'attempt':'submission'}${nc>1?'s':''}: ${esc(nnew.slice(0,6).map(function(x){return x.name;}).join(', '))}${nc>6?(' +'+(nc-6)+' more'):''}${isM?' — open Results to clear.':' — view/download each sheet to clear.'}</div>`:'';
+  return `<div class="tx-card ${isPend?'tx-live':''}${nc>0?' tx-newblink':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
+      <div style="flex:1;min-width:200px">
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.95rem">${esc(e.title)}</b>${tyPill}${stPill}${newPill}</div>
+        <div class="tx-meta">
+          ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
+          ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:`<span class="tx-pill s">All Classes</span>`}
+          ${e.batch_id&&_batName(e.batch_id)?`<span class="tx-pill s" title="Batch" style="border-color:rgba(184,148,31,.5);color:#9a7d1a">${ic('folder')} ${esc(_batName(e.batch_id))}</span>`:''}
+          ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
+          <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} ${e.duration_min?('<b>'+e.duration_min+'</b> min'):'No time limit'}</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
+        </div>
+        ${newNames}
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${subBar}</div>
+      </div>
+    </div>
+    <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
+      <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
+      <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
+      <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
+      <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
+      <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
+      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
+      ${isM?(e.public_enabled
+        ? `<button class="btn btn-sm" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:800;box-shadow:0 5px 14px -5px rgba(5,150,105,.65)" title="Public link is LIVE — guests can attempt without login. Click to manage or copy the link." onclick="examShareModal(${e.id})">${ic('link')} Link ON <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.35);margin-left:5px;vertical-align:middle;animation:txBlink 1.4s ease-in-out infinite"></span></button>`
+        : `<button class="btn btn-ghost btn-sm" title="Share this objective test as a public link — guests can attempt without login" onclick="examShareModal(${e.id})">${ic('link')} Share Link</button>`):''}
+      ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${isPend?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${isPend?` (${e.attempts-e.graded} to grade)`:''}</button>
+      <button class="btn btn-ghost btn-sm" title="View the formatted test (no download)" onclick="examPdfHub(${e.id},1)">${ic('eye')} View</button>
+      <button class="btn btn-primary btn-sm tst-pdfbtn" title="Download the formatted PDF" aria-label="Download PDF" onclick="examPdfHub(${e.id})">${ic('download')}</button>`}
+    </div>
+  </div></div>`;
+}
 async function loadTTests(){
   const el=document.getElementById('t-tests-content');
   try{
     const _allExams=await api('/api/teacher/exams');
     window._tExams=_allExams;
+    // Pehli baar: abhi ke saare submissions ko baseline "seen" maano -> sirf AAGE aane wale naye
+    // submissions blink karein (warna first visit pe sab purane blink karte). Material NEW-badge jaisa.
+    if(localStorage.getItem('mvs_texam_seen')===null){
+      var _bl=new Set(); (_allExams||[]).forEach(function(e){ (e.subs||[]).forEach(function(x){ if(x&&x.id!=null) _bl.add(x.id); }); });
+      _texSeenSave(_bl);
+    }
+    window._texSeenSet=_texSeenLoad();
     if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
     if(window._tTestBatch===undefined) window._tTestBatch='';
+    _tSubCss();
     const exams=_tBatchFilterRows(_allExams||[], window._tTestBatch||'');
-    const F=window._tTestFilter||'all';
     const totAtt=exams.reduce((sum,e)=>sum+(e.attempts||0),0);
     const totGrd=exams.reduce((sum,e)=>sum+(e.graded||0),0);
     const pend=Math.max(0,totAtt-totGrd);
-    const isPend=e=>(e.attempts||0)>(e.graded||0);
-    const isDone=e=>(e.attempts||0)>0&&(e.attempts||0)===(e.graded||0);
+    const totNew=exams.reduce((s,e)=>s+_texNew(e).length,0);
     const statsHtml=`<div class="tx-stats">`
       +`<div class="tx-stat"><b style="color:#c2410c">${exams.length}</b><span>Total tests</span></div>`
       +`<div class="tx-stat"><b>${totAtt}</b><span>Submissions</span></div>`
       +`<div class="tx-stat"><b style="color:#b45309">${pend}</b><span>Copies to evaluate</span></div>`
       +`<div class="tx-stat"><b style="color:#047857">${totGrd}</b><span>Evaluated</span></div></div>`;
-    const cnt={all:exams.length,mcq:exams.filter(e=>e.test_type==='mcq').length,subjective:exams.filter(e=>e.test_type!=='mcq').length,pending:exams.filter(isPend).length,done:exams.filter(isDone).length};
+    const header=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button><button class="btn btn-ghost btn-sm" onclick="openUploadMission75Pdf()">${ic('upload')} Upload Mission 75 PDF</button></div></div>`
+      +(window._ttBatchList&&window._ttBatchList.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center">${_tBatchDropdown(window._tTestBatch||'','tTestBatchPick')}</div>`:'')
+      +statsHtml;
+    if(!exams.length){
+      el.innerHTML=header+`<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests created yet</b><p>Create an Objective or Mission 75 test — Objective is graded instantly on submit, Mission 75 you grade manually from Results.</p></div>`;
+      return;
+    }
+    // ----- subject grid (default) -----
+    if(!window._tTestSub){
+      const groups={};
+      exams.forEach(e=>{ const k=(e.subject||'General').trim()||'General'; (groups[k]=groups[k]||[]).push(e); });
+      const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+      const cards=keys.map(k=>{
+        const list=groups[k];
+        const subAtt=list.reduce((s,e)=>s+(e.attempts||0),0);
+        const subPend=list.reduce((s,e)=>s+Math.max(0,(e.attempts||0)-(e.graded||0)),0);
+        const subNew=list.reduce((s,e)=>s+_texNew(e).length,0);
+        return `<div class="tsub-card" onclick="tSubOpen('${encodeURIComponent(k).replace(/'/g,'%27')}')">
+          ${subNew>0?`<span class="tsub-new">${subNew>99?'99+':subNew}</span>`:''}
+          <div class="tsub-top"><span class="tsub-ic">${esc(txInit(k))}</span><div style="min-width:0"><div class="tsub-name">${esc(k)}</div><div class="tsub-sub">${list.length} test${list.length>1?'s':''} · ${subAtt} submission${subAtt===1?'':'s'}</div></div></div>
+          <div class="tsub-foot">${subNew>0?`<span class="tsub-chip pend">${subNew} new to check</span>`:''}${subPend>0?`<span class="tsub-chip pend">${subPend} pending</span>`:''}${subPend===0&&subAtt>0?`<span class="tsub-chip done">All evaluated</span>`:''}</div>
+        </div>`;
+      }).join('');
+      el.innerHTML=header+`<div style="font-size:.78rem;color:var(--text-muted);margin:12px 2px 2px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${ic('book')} Subjects${totNew>0?` · <span style="color:#dc2626">${totNew} new submission${totNew>1?'s':''}</span>`:''}</div><div class="tsub-grid">${cards}</div>`;
+      _ttCardLogo(el);
+      return;
+    }
+    // ----- a single subject's tests -----
+    const sub=window._tTestSub;
+    let list=exams.filter(e=>((e.subject||'General').trim()||'General')===sub);
+    const F=window._tTestFilter||'all';
+    const isPend=e=>(e.attempts||0)>(e.graded||0);
+    const isDone=e=>(e.attempts||0)>0&&(e.attempts||0)===(e.graded||0);
+    const cnt={all:list.length,mcq:list.filter(e=>e.test_type==='mcq').length,subjective:list.filter(e=>e.test_type!=='mcq').length,pending:list.filter(isPend).length,done:list.filter(isDone).length};
     const tabs=[['all','All'],['mcq','Objective'],['subjective','Mission 75'],['pending','Pending Evaluation'],['done','Evaluated']]
       .map(t=>`<button class="tx-tab ${F===t[0]?'on':''}" onclick="tTestFilter('${t[0]}')">${t[1]} <b>${cnt[t[0]]}</b></button>`).join('');
-    let body='';
-    if(!exams.length){
-      body=`<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests created yet</b><p>Create an Objective or Mission 75 test — Objective is graded instantly on submit, Mission 75 you grade manually from Results.</p></div>`;
-    } else {
-      const list=exams.filter(e=> F==='all' ? true : F==='pending' ? isPend(e) : F==='done' ? isDone(e) : (F==='mcq') === (e.test_type==='mcq'));
-      body=list.length? list.map(e=>{
-        const isM=e.test_type==='mcq';
-        const pend2=isPend(e), done2=isDone(e);
-        const stPill=pend2?`<span class="tx-pill a">NEEDS EVALUATION</span>`:done2?`<span class="tx-pill g">EVALUATED ✓</span>`:`<span class="tx-pill s">SCHEDULED</span>`;
-        const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
-        const topCol=pend2?'linear-gradient(90deg,#d97706,#f59e0b)':done2?'linear-gradient(90deg,#059669,#10b981)':(isM?'linear-gradient(90deg,#b8941f,#ffb347)':'linear-gradient(90deg,#a1741a,#d4a94e)');
-        const pct=(e.attempts||0)?Math.round((e.graded||0)/(e.attempts||1)*100):0;
-        const _schT=spSchedOf(e),_schTF=_schT?spSchedFmt(_schT):'';
-        const subBar=(e.attempts||0)>0?`<div style="flex:1;max-width:240px"><div style="display:flex;justify-content:space-between;font-size:.64rem;color:var(--text-muted)"><span>Evaluated</span><b style="color:var(--text)">${e.graded||0}/${e.attempts||0}</b></div><div class="tx-bar" style="margin-top:4px"><i style="width:${pct}%"></i></div></div>`:`<span class="tx-pill s">No submissions yet</span>`;
-        return `<div class="tx-card ${pend2?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
-          <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-            <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
-            <div style="flex:1;min-width:200px">
-              <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.95rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
-              <div class="tx-meta">
-                ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
-                ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:`<span class="tx-pill s">All Classes</span>`}
-                ${e.batch_id&&_batName(e.batch_id)?`<span class="tx-pill s" title="Batch" style="border-color:rgba(184,148,31,.5);color:#9a7d1a">${ic('folder')} ${esc(_batName(e.batch_id))}</span>`:''}
-                ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
-                <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} ${e.duration_min?('<b>'+e.duration_min+'</b> min'):'No time limit'}</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
-              </div>
-              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">${subBar}</div>
-            </div>
-          </div>
-          <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
-            <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
-            <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
-            <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
-            <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
-            <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
-            ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
-            ${isM?(e.public_enabled
-              ? `<button class="btn btn-sm" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:800;box-shadow:0 5px 14px -5px rgba(5,150,105,.65)" title="Public link is LIVE — guests can attempt without login. Click to manage or copy the link." onclick="examShareModal(${e.id})">${ic('link')} Link ON <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.35);margin-left:5px;vertical-align:middle;animation:txBlink 1.4s ease-in-out infinite"></span></button>`
-              : `<button class="btn btn-ghost btn-sm" title="Share this objective test as a public link — guests can attempt without login" onclick="examShareModal(${e.id})">${ic('link')} Share Link</button>`):''}
-            ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${pend2?` (${e.attempts-e.graded} to grade)`:''}</button>
-            <button class="btn btn-ghost btn-sm" title="View the formatted test (no download)" onclick="examPdfHub(${e.id},1)">${ic('eye')} View</button>
-            <button class="btn btn-primary btn-sm tst-pdfbtn" title="Download the formatted PDF" aria-label="Download PDF" onclick="examPdfHub(${e.id})">${ic('download')}</button>`}
-          </div>
-        </div></div>`;
-      }).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
-    }
-    el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button><button class="btn btn-ghost btn-sm" onclick="openUploadMission75Pdf()">${ic('upload')} Upload Mission 75 PDF</button></div></div>`
-      +(window._ttBatchList&&window._ttBatchList.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center">${_tBatchDropdown(window._tTestBatch||'','tTestBatchPick')}</div>`:'')
-      +statsHtml+`<div class="tx-tabs">${tabs}</div>`+body;
-      _ttCardLogo(el);
+    const flt=list.filter(e=> F==='all' ? true : F==='pending' ? isPend(e) : F==='done' ? isDone(e) : (F==='mcq') === (e.test_type==='mcq'));
+    const body=flt.length? flt.map(_tExamCardHTML).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
+    el.innerHTML=header
+      +`<div style="display:flex;align-items:center;gap:12px;margin:12px 2px 6px"><button class="btn btn-ghost btn-sm" onclick="tSubBack()">← Back to subjects</button><h2 style="margin:0;font-size:1.25rem">${esc(sub)}</h2><span class="tsub-chip">${list.length} test${list.length>1?'s':''}</span></div>`
+      +`<div class="tx-tabs">${tabs}</div>`+body;
+    _ttCardLogo(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+function tSubOpen(s){ window._tTestSub=decodeURIComponent(s); window._tTestFilter='all'; loadTTests(); }
+function tSubBack(){ window._tTestSub=null; loadTTests(); }
 function tTestFilter(f){ window._tTestFilter=f; loadTTests(); }
+// behind-the-modal light refresh (debounced) so blink/counts update as the teacher clears papers
+function _tTestsRefreshIfOpen(){ try{ if(window._tTestsRefT) return; var el=document.getElementById('t-tests-content'); if(!el||el.offsetParent===null) return; window._tTestsRefT=setTimeout(function(){ window._tTestsRefT=null; try{ loadTTests(); }catch(e){} }, 700); }catch(e){} }
 function txInit(sub){
   const w=(sub||'').trim().split(/\s+/).filter(Boolean);
   if(!w.length) return 'GEN';
@@ -9023,8 +9103,10 @@ function _renderATests(){
   const st=_stat(sel===''?rows:selList);
   const _testRow=e=>{
     const sch=spSchedOf(e);
-    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min?e.duration_min+' min':'No time limit'}${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus">${e.attempts||0} submitted</span><span class="tstatus ${(e.graded||0)>0?'done':''}">${e.graded||0} evaluated</span><span class="tstatus" style="color:#b45309">${Math.max(0,(e.attempts||0)-(e.graded||0))} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+    const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
+    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min?e.duration_min+' min':'No time limit'}${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus tt-click" title="See which students submitted" onclick="openAExamStudents(${e.id},'submitted')">${e.attempts||0} submitted</span><span class="tstatus tt-click ${(e.graded||0)>0?'done':''}" title="See evaluated students" onclick="openAExamStudents(${e.id},'evaluated')">${e.graded||0} evaluated</span><span class="tstatus tt-click${pend>0?' tt-pendlink':''}" style="color:#b45309" title="See students still pending \u2014 follow up with the teacher" onclick="openAExamStudents(${e.id},'pending')">${pend} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
   };
+  _aTtkCss();
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
   const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aTestClassPick('${v}')">${lbl}</button>`;
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Subject-wise all tests · live submission tracking</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold btn-sm" onclick="loadAPublicTests()">${ic('link')} Public Tests</button><button class="btn btn-danger btn-sm" onclick="orphanCleanup()">${ic('trash')} Clean Old Data</button><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('refresh')} Refresh</button></div></div>`
@@ -9032,7 +9114,7 @@ function _renderATests(){
     +`<div class="tx-stats">`
     +`<div class="tx-stat"><b style="color:#c2410c">${st.t}</b><span>Total tests</span></div>`
     +`<div class="tx-stat"><b>${st.s}</b><span>Submissions</span></div>`
-    +`<div class="tx-stat"><b style="color:#b45309">${Math.max(0,st.s-st.g)}</b><span>Pending evaluation</span></div>`
+    +`<div class="tx-stat tt-click" title="See all tests still pending evaluation — nudge the teachers" onclick="openAPendingTests()"><b style="color:#b45309">${Math.max(0,st.s-st.g)}</b><span>Pending evaluation ›</span></div>`
     +`<div class="tx-stat"><b style="color:#047857">${st.g}</b><span>Evaluated</span></div></div>`
     +(rows.length? `<div class="dps-grid">`
       +`<div class="dps-card ${sel==='all'?'open':''}" onclick="aTestSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${rows.length} test${rows.length===1?'':'s'} \u00b7 ${_stat(rows).s} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
@@ -9048,6 +9130,52 @@ function aTestSubPickIdx(i){
   const rows=_testTrFiltered();
   const subs=[...new Set(rows.map(e=>e.subject||'General'))].sort();
   aTestSubPick(subs[i]||'all');
+}
+function _aTtkCss(){
+  if(document.getElementById('attk-css')) return;
+  var s=document.createElement('style'); s.id='attk-css';
+  s.textContent=[
+    '.tt-click{cursor:pointer;transition:transform .1s,color .12s}',
+    '.tt-click:hover{text-decoration:underline;transform:translateY(-1px)}',
+    '.tt-stat.tt-click:hover,.tx-stat.tt-click:hover{box-shadow:0 8px 20px -12px rgba(120,90,10,.5)}',
+    '.tt-pendlink{font-weight:800}'
+  ].join('');
+  document.head.appendChild(s);
+}
+// Admin drill-down: ek test ke students status-wise (submitted / evaluated / pending) + follow-up actions
+async function openAExamStudents(id, mode){
+  _examResCss(); _aTtkCss();
+  showModal('Loading…','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api('/api/admin/exam/'+id+'/students');
+    const ex=d.exam||{}; let list=d.students||[];
+    if(mode==='evaluated') list=list.filter(s=>s.status==='evaluated');
+    else if(mode==='pending') list=list.filter(s=>s.status==='pending');
+    const title=(mode==='evaluated'?'Evaluated':mode==='pending'?'Pending evaluation':'Submitted')+' — '+(ex.title||'Test');
+    const head=`<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5">${esc(ex.subject||'')}${ex.teacher_name?' · <b>'+esc(ex.teacher_name)+'</b>':''}<br>${ex.attempts||0} submitted · ${ex.graded||0} evaluated · <span style="color:#b45309">${ex.pending||0} pending</span></div>`;
+    const rows=list.length? list.map(s=>{
+      const ph=(s.phone||'').replace(/[^0-9]/g,'');
+      const call=ph?`<a class="btn btn-ghost btn-sm" href="tel:${esc(ph)}">Call</a>`:'';
+      const wa=ph?`<a class="btn btn-ghost btn-sm" href="https://wa.me/${ph.length===10?('91'+ph):esc(ph)}" target="_blank" rel="noopener">WhatsApp</a>`:'';
+      const badge=s.status==='evaluated'?`<span class="tx-pill g">Evaluated${s.score!=null?' · '+s.score+'/'+(ex.total_marks||0):''}</span>`:`<span class="tx-pill a">Pending</span>`;
+      const meta=[s.class_level?('Class '+s.class_level):'',s.batch||'',s.phone||''].filter(Boolean).map(esc).join(' · ');
+      return `<div class="exr"><div class="exr-head"><div class="exr-id"><div class="exr-name">${esc(s.name)}</div><div class="exr-info">${meta||'—'}</div></div>${badge}</div><div class="exr-actions">${call}${wa}</div></div>`;
+    }).join('') : `<div class="ws-empty"><p>No ${mode==='pending'?'pending':mode==='evaluated'?'evaluated':''} students${mode==='submitted'?' yet':''}.</p></div>`;
+    showModal(title, head+rows, '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  }catch(e){ showModal('Error', `<div class="alert alert-danger">${esc((e&&e.message)||'Could not load')}</div>`, '<button class="btn btn-ghost" onclick="closeModal()">Close</button>'); }
+}
+// Admin: saare tests jinme abhi evaluation pending hai -> teacher follow-up ke liye
+function openAPendingTests(){
+  _examResCss(); _aTtkCss();
+  const rows=_testTrFiltered().filter(e=>Math.max(0,(e.attempts||0)-(e.graded||0))>0)
+    .sort((a,b)=>((b.attempts-b.graded)-(a.attempts-a.graded)));
+  const body=rows.length? rows.map(e=>{
+    const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
+    return `<div class="exr" style="cursor:pointer" onclick="openAExamStudents(${e.id},'pending')"><div class="exr-head"><div class="exr-id"><div class="exr-name">${esc(e.title||'')}</div><div class="exr-info">${esc(e.subject||'')}${e.teacher_name?' · '+esc(e.teacher_name):''}</div></div><span class="tx-pill a">${pend} pending ›</span></div></div>`;
+  }).join('') : `<div class="ws-empty"><p>No pending evaluations — every test is up to date. 🎉</p></div>`;
+  showModal('Pending Evaluation — '+rows.length+' test'+(rows.length===1?'':'s'),
+    `<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Tap a test to see the students still waiting, then follow up with the teacher.</div>`+body,
+    '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
 }
 
 // ===== ADMIN DPP TRACKER — Tests Tracker jaisa. Nav item + page JS se inject (HTML file
@@ -10845,6 +10973,7 @@ async function importExamPdf(inp){
   await _importExamFile(f,'/api/teacher/parse-exam-pdf','PDF');
 }
 function downloadStudentAnswer(attId,name){
+  try{ _texSeeAttempt(attId); }catch(e){}
   try{ api('/api/teacher/attempt/'+attId+'/marking','POST',{}).catch(()=>{}); }catch(e){}
   toast('Fetching the answer sheet\u2026');
   fetch(API+'/api/teacher/attempt/'+attId+'/answer',{headers:{Authorization:'Bearer '+TOKEN}}).then(async r=>{
@@ -11161,6 +11290,9 @@ async function viewExamAttempts(id){
   try{
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     window._examAttData=d;
+    // OBJECTIVE test: Results kholte hi "dekh liya" -> us test ka NEW blink hat jaata hai.
+    // (SUBJECTIVE/Mission 75 me blink tab hatega jab teacher har student ka paper view/download karega.)
+    try{ if((d.exam&&d.exam.test_type)==='mcq'){ var _ex=(window._tExams||[]).find(function(x){return x.id===id;}); if(_ex) _texSeeExamObjective(_ex); } }catch(e){}
     _examResCss();
     const rows=d.attempts.length?d.attempts.map(a=>{
       const graded=(a.status==='graded');
@@ -22000,20 +22132,32 @@ async function submitAnswerFile(parentId){
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Submit'; }
 }
 
+function _sexSeenLoad(){ try{ var v=JSON.parse(localStorage.getItem('mvs_sexam_seen')||'null'); return new Set((v&&Array.isArray(v.ids))?v.ids:[]); }catch(e){ return new Set(); } }
+function _sexSeenSave(set){ try{ localStorage.setItem('mvs_sexam_seen', JSON.stringify({ids:[...set].slice(-4000)})); }catch(e){} }
+function _sexMarkSeen(ids){ if(!ids||!ids.length) return; var s=_sexSeenLoad(); ids.forEach(function(x){ if(x!=null) s.add(x); }); _sexSeenSave(s); }
+function _sexIsNew(e){ var s=window._sexSeenSet||(window._sexSeenSet=_sexSeenLoad()); return !s.has(e.id); }
+function _sSubjectOf(e){ return (e.subject||'General').trim()||'General'; }
+function sSubOpen(s){ window._sTestSub=decodeURIComponent(s); loadSTests(); }
+function sSubBack(){ window._sTestSub=null; loadSTests(); }
 async function loadSTests(){
   window._examPlayerOpen=false;
   const el=document.getElementById('s-tests-content');
   softSpin(el);
   try{
     const exams=await api('/api/student/exams'+_bq());
-    const F=window._sTestFilter||'mcq';
-    const mcqs=exams.filter(e=>e.test_type==='mcq'), subs=exams.filter(e=>e.test_type!=='mcq');
+    window._sExams=exams;
+    if(localStorage.getItem('mvs_sexam_seen')===null){
+      var _bl=new Set(); (exams||[]).forEach(function(e){ if(e&&e.id!=null) _bl.add(e.id); }); _sexSeenSave(_bl);
+    }
+    window._sexSeenSet=_sexSeenLoad();
+    _tSubCss();
     const graded=exams.filter(e=>e.status==='graded');
     const grading=exams.filter(e=>e.status==='grading');
     const upcoming=exams.filter(e=>e.status!=='graded'&&e.status!=='grading');
     const avg=graded.length?Math.round(graded.reduce((sm,e)=>sm+(e.score||0)/(e.total_marks||1)*100,0)/graded.length):null;
     const last=graded.length?graded[graded.length-1]:null;
     const nxt=upcoming[0]||null;
+    const totNew=exams.filter(_sexIsNew).length;
     const hero=`<div class="tx-hero"><div class="tx-hero-in">
       <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
         <div style="min-width:200px;flex:1">
@@ -22030,11 +22174,41 @@ async function loadSTests(){
       +`<div class="tx-stat"><b style="color:#047857">${graded.length}</b><span>Completed</span></div>`
       +`<div class="tx-stat"><b>${avg!==null?avg+'%':'—'}</b><span>Avg score</span></div>`
       +`<div class="tx-stat"><b style="color:#b45309">${grading.length}</b><span>Pending evaluation</span></div></div>`;
+    if(!exams.length){
+      el.innerHTML=hero+statsHtml+`<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`;
+      return;
+    }
+    // ----- subject grid (default) -----
+    if(!window._sTestSub){
+      const groups={};
+      exams.forEach(e=>{ const k=_sSubjectOf(e); (groups[k]=groups[k]||[]).push(e); });
+      const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
+      const cards=keys.map(k=>{
+        const list=groups[k];
+        const nNew=list.filter(_sexIsNew).length;
+        const nAvail=list.filter(e=>e.status!=='graded'&&e.status!=='grading').length;
+        const nDone=list.filter(e=>e.status==='graded').length;
+        return `<div class="tsub-card" onclick="sSubOpen('${encodeURIComponent(k).replace(/'/g,'%27')}')">
+          ${nNew>0?`<span class="tsub-new">${nNew>99?'99+':nNew}</span>`:''}
+          <div class="tsub-top"><span class="tsub-ic">${esc(txInit(k))}</span><div style="min-width:0"><div class="tsub-name">${esc(k)}</div><div class="tsub-sub">${list.length} test${list.length>1?'s':''}</div></div></div>
+          <div class="tsub-foot">${nNew>0?`<span class="tsub-chip pend">${nNew} new</span>`:''}${nAvail>0?`<span class="tsub-chip pend">${nAvail} to attempt</span>`:''}${nDone>0?`<span class="tsub-chip done">${nDone} done</span>`:''}</div>
+        </div>`;
+      }).join('');
+      el.innerHTML=hero+statsHtml+`<div style="font-size:.78rem;color:var(--text-muted);margin:14px 2px 2px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${ic('book')} Subjects${totNew>0?` · <span style="color:#dc2626">${totNew} new test${totNew>1?'s':''}</span>`:''}</div><div class="tsub-grid">${cards}</div>`;
+      spCdStart(); _txLoadLogos(el);
+      return;
+    }
+    // ----- a single subject's tests -----
+    const sub=window._sTestSub;
+    const list=exams.filter(e=>_sSubjectOf(e)===sub);
+    const newIds=list.filter(_sexIsNew).map(e=>e.id);
+    const body=list.length? list.map(e=>examCardHTML(e, newIds.indexOf(e.id)>=0)).join('')
+      : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in ${esc(sub)}</b></div>`;
     el.innerHTML=hero+statsHtml
-      +(exams.length? exams.map(examCardHTML).join('')
-        : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests yet</b><p>When your teacher creates a test, it will show up here.</p></div>`);
-    spCdStart();
-    _txLoadLogos(el);
+      +`<div style="display:flex;align-items:center;gap:12px;margin:14px 2px 8px"><button class="btn btn-ghost btn-sm" onclick="sSubBack()">← Back to subjects</button><h2 style="margin:0;font-size:1.25rem">${esc(sub)}</h2><span class="tsub-chip">${list.length} test${list.length>1?'s':''}</span></div>`
+      +body;
+    spCdStart(); _txLoadLogos(el);
+    if(newIds.length){ _sexMarkSeen(newIds); window._sexSeenSet=_sexSeenLoad(); }
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 /* swap subject-initial tiles for the teacher's real photo (falls back to initials) */
@@ -22143,10 +22317,11 @@ async function examPdfStudent(id,medium,withSol){
     if(!handed){ try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){} }
   }catch(e){ toast(e.message,true); try{w.close();}catch(_){} }
 }
-function examCardHTML(e){
+function examCardHTML(e, isNew){
   const isM=e.test_type==='mcq';
   // backend `awarded` bhejta hai; purana card `score` padhta tha -> undefined/45
   const _got=(e.score!=null?e.score:(e.awarded!=null?e.awarded:null));
+  const newPill=isNew?`<span class="tx-newtag">${ic('bell')} NEW</span>`:'';
   const tyPill=isM?`<span class="tx-pill o">OBJECTIVE</span>`:`<span class="tx-pill v">SUBJECTIVE</span>`;
   const topCol=isM?'linear-gradient(90deg,#b8941f,#ffb347)':'linear-gradient(90deg,#a1741a,#d4a94e)';
   let stPill='', right='';
@@ -22184,11 +22359,11 @@ function examCardHTML(e){
   if(e.is_pdf && _canSol && _hasSol){
     action=`<button class="btn btn-ghost btn-sm" onclick="_m75View(${e.id},'student','a')">${ic('eye')} View Solution</button>`+action;
   }
-  return `<div class="tx-card ${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
+  return `<div class="tx-card ${isNew?'tx-newblink ':''}${e.status!=='graded'&&e.status!=='grading'&&e.status!=='marking'?'tx-live':''}"><div class="top" style="background:${isNew?'linear-gradient(90deg,#dc2626,#f87171)':topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       <span class="tx-tile ${isM?'o':'v'} tx-tlogo" data-tid="${e.teacher_id||''}">${esc(txInit(e.subject||'GEN'))}</span>
       <div style="flex:1;min-width:190px">
-        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}</div>
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b style="font-size:.93rem">${esc(e.title)}</b>${tyPill}${stPill}${newPill}</div>
         <div class="tx-meta">
           ${e.subject?`<span class="tx-pill nv inf"><b>${esc(e.subject)}</b></span>`:''}
           ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:''}
