@@ -40440,6 +40440,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       eb.editor_deadline=d.editor_deadline||'';
       eb.editor_instructions=d.editor_instructions||'';
       eb.editor_reference=d.editor_reference||'';
+      // Editor section (EDIT mode): "Editing done" -> video pehle se edited -> seedha Ready for YouTube
+      // + jis editor ne edit kiya usko credit/rating. (Yahi block create-path me tha par edit-path me
+      // chhoot gaya tha -> isi liye edit karke "done" karne pe video move nahi hoti thi.)
+      if(d.editing_status==='done'){
+        eb.editing_status='done';
+        eb.edited_link=(d.edited_link||'').trim();
+        if(d.edited_editor_id) eb.editor_id=d.edited_editor_id;
+        if(d.edited_rating) eb.editor_rating=d.edited_rating;
+      }
       // Upload section: mark video live + credit/rate editor
       eb.video_status=(d.video_status==='done'?'done':'pending');
       if(d.video_status==='done'){

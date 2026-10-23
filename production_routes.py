@@ -6508,6 +6508,15 @@ def pm_edit_task(tid: int, payload: dict = Body(...), db: Session = Depends(get_
         pass
     # ---- URGENT PAUSE-REQUEST: Edit Task flow se bhi editor ke active task ko pause + new deadline ----
     _apply_pause_request(db, t, (t.editor_id or 0), payload, me)
+    # ---- EDITOR section: "Editing done" (video pehle se edited) -> seedha Ready for YouTube + credit.
+    # Ye create-path me tha par edit-path me call hi nahi hota tha -> isi liye edit karke "done" karne
+    # pe video approved pe hi atki rehti thi. Upload-done (already live) isse upar hai (wo guard karta hai).
+    try:
+        _apply_editing_done(db, t, payload, me)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     # ---- UPLOAD section: video already edited + live -> publish + editor credit/rating ----
     try:
         _apply_upload_done(db, t, payload, me)
