@@ -6674,7 +6674,9 @@ function _tSubCss(){
     '.tsub-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#e6ad4e,#c98a2e)}',
     'body.dark .tsub-card{background:linear-gradient(180deg,#152a45,#0f2238);border-color:#2c405e}',
     '.tsub-top{display:flex;align-items:center;gap:11px}',
-    '.tsub-ic{width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.82rem}',
+    '.tsub-ic{width:46px;height:46px;flex:0 0 46px;border-radius:13px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.82rem;overflow:hidden;background-size:cover;background-position:center;box-shadow:0 4px 12px -5px rgba(120,90,10,.5)}',
+    '.tsub-ic.tsub-ic-photo{color:transparent;box-shadow:0 0 0 2px #fff,0 0 0 4px rgba(201,138,46,.5),0 6px 14px -6px rgba(120,90,10,.6)}',
+    'body.dark .tsub-ic.tsub-ic-photo{box-shadow:0 0 0 2px #152a45,0 0 0 4px rgba(201,138,46,.6)}',
     '.tsub-name{font-weight:800;font-size:1.02rem;color:var(--text,#2b2410);line-height:1.15}',
     '.tsub-sub{font-size:.76rem;color:var(--text-muted,#8a7d5c);margin-top:2px}',
     '.tsub-foot{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}',
@@ -6688,6 +6690,50 @@ function _tSubCss(){
     '.tx-newnames{font-size:.72rem;color:#b91c1c;font-weight:600;margin-top:6px;line-height:1.4}'
   ].join('');
   document.head.appendChild(s);
+}
+/* Put teacher photo on Tests subject-cards (.tsub-ic). role:'teacher'=self photo, 'student'=per-subject teacher photo.
+   Uses same blob->objectURL + cache convention as _txLoadLogos/_ttCardLogo (window._tphotoCache[tid]=objectURL|false, window._ttSelfPhoto=objectURL|false). */
+function _tsubApplyPhoto(ic,url){
+  if(!ic||!url) return;
+  ic.style.backgroundImage='url("'+url+'")';
+  ic.classList.add('tsub-ic-photo');
+  ic.textContent='';
+}
+async function _tsubLoadPhotos(root,role){
+  try{
+    if(!root) return;
+    var ics=[].slice.call(root.querySelectorAll('.tsub-ic'));
+    if(!ics.length) return;
+    if(role==='teacher'){
+      if(window._ttSelfPhoto===false) return;
+      try{
+        if(!window._ttSelfPhoto){
+          const r=await fetch(API+_selfPhoto('teacher'),{headers:{Authorization:'Bearer '+TOKEN}});
+          if(!r.ok) throw new Error('x');
+          const b=await r.blob(); if(!b.size) throw new Error('x');
+          window._ttSelfPhoto=URL.createObjectURL(b);
+        }
+        for(var i=0;i<ics.length;i++) _tsubApplyPhoto(ics[i],window._ttSelfPhoto);
+      }catch(e){ window._ttSelfPhoto=false; }
+      return;
+    }
+    // student: each card's .tsub-ic carries data-tid of the subject's teacher
+    window._tphotoCache=window._tphotoCache||{};
+    var c=window._tphotoCache;
+    for(const ic of ics){
+      const tid=ic.getAttribute('data-tid');
+      if(!tid||c[tid]===false) continue;
+      try{
+        if(!(tid in c)){
+          const r=await fetch(API+'/api/student/teacher/'+tid+'/photo',{headers:{Authorization:'Bearer '+TOKEN}});
+          if(!r.ok) throw new Error('x');
+          const b=await r.blob(); if(!b.size) throw new Error('x');
+          c[tid]=URL.createObjectURL(b);
+        }
+        if(c[tid]) _tsubApplyPhoto(ic,c[tid]);
+      }catch(e){ c[tid]=false; }
+    }
+  }catch(_){}
 }
 function _tExamCardHTML(e){
   const isM=e.test_type==='mcq';
@@ -6784,6 +6830,7 @@ async function loadTTests(){
       }).join('');
       el.innerHTML=header+`<div style="font-size:.78rem;color:var(--text-muted);margin:12px 2px 2px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${ic('book')} Subjects${totNew>0?` · <span style="color:#dc2626">${totNew} new submission${totNew>1?'s':''}</span>`:''}</div><div class="tsub-grid">${cards}</div>`;
       _ttCardLogo(el);
+      _tsubLoadPhotos(el,'teacher');
       return;
     }
     // ----- a single subject's tests -----
@@ -22220,12 +22267,12 @@ async function loadSTests(){
         const nDone=list.filter(e=>e.status==='graded').length;
         return `<div class="tsub-card" onclick="sSubOpen('${encodeURIComponent(k).replace(/'/g,'%27')}')">
           ${nNew>0?`<span class="tsub-new">${nNew>99?'99+':nNew}</span>`:''}
-          <div class="tsub-top"><span class="tsub-ic">${esc(txInit(k))}</span><div style="min-width:0"><div class="tsub-name">${esc(k)}</div><div class="tsub-sub">${list.length} test${list.length>1?'s':''}</div></div></div>
+          <div class="tsub-top"><span class="tsub-ic" data-tid="${(list[0]&&list[0].teacher_id)||''}">${esc(txInit(k))}</span><div style="min-width:0"><div class="tsub-name">${esc(k)}</div><div class="tsub-sub">${list.length} test${list.length>1?'s':''}</div></div></div>
           <div class="tsub-foot">${nNew>0?`<span class="tsub-chip pend">${nNew} new</span>`:''}${nAvail>0?`<span class="tsub-chip pend">${nAvail} to attempt</span>`:''}${nDone>0?`<span class="tsub-chip done">${nDone} done</span>`:''}</div>
         </div>`;
       }).join('');
       el.innerHTML=hero+statsHtml+`<div style="font-size:.78rem;color:var(--text-muted);margin:14px 2px 2px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${ic('book')} Subjects${totNew>0?` · <span style="color:#dc2626">${totNew} new test${totNew>1?'s':''}</span>`:''}</div><div class="tsub-grid">${cards}</div>`;
-      spCdStart(); _txLoadLogos(el);
+      spCdStart(); _txLoadLogos(el); _tsubLoadPhotos(el,'student');
       return;
     }
     // ----- a single subject's tests -----
