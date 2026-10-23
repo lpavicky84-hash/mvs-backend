@@ -1290,116 +1290,203 @@ def _tt_export_rows(db, tp, batch):
     return es
 
 
-@router.get("/timetable-export")
-def teacher_timetable_export(batch: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Maujooda timetable ko Excel (.xlsx) me download karo — teacher sirf DATE badal ke
-    kisi bhi batch ke liye wapas upload kar sakta hai (formatting same rehti hai)."""
-    from fastapi import Response
-    import io
-    try:
-        import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
-    except Exception:
-        raise HTTPException(status_code=500, detail="Excel export is not available on the server.")
-    tp = get_teacher_profile(current_user, db)
-    es = _tt_export_rows(db, tp, batch)
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Timetable"
-    headers = ["Subject", "Class", "Chapter", "Part", "Date", "Day", "Time", "Type"]
-    ws.append(headers)
-    _hf = Font(bold=True, color="FFFFFF")
-    _hfill = PatternFill("solid", fgColor="1F3B6B")
-    for ci, _h in enumerate(headers, 1):
-        c = ws.cell(row=1, column=ci)
-        c.font = _hf; c.fill = _hfill; c.alignment = Alignment(horizontal="center")
-    for e in es:
-        ws.append([
-            e.subject or "", e.class_name or "", e.chapter or "", e.part or "",
-            (e.entry_date.strftime("%Y-%m-%d") if e.entry_date else ""),
-            e.day or "", getattr(e, "time_text", None) or "",
-            getattr(e, "entry_type", None) or "chapter",
-        ])
-    # friendly column widths
-    for ci, w in enumerate([22, 10, 40, 16, 12, 12, 12, 10], 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(ci)].width = w
-    ws.freeze_panes = "A2"
-    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
-    fname = "MVS_Timetable.xlsx"
-    return Response(content=buf.getvalue(),
-                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+def _col_letter(i):
+    """0-based column index -> A, B, ... Z, AA ..."""
+    s = ""
+    i += 1
+    while i > 0:
+        i, rem = divmod(i - 1, 26)
+        s = chr(65 + rem) + s
+    return s
 
 
-def _parse_timetable_xlsx(raw):
-    """Excel/CSV timetable ko rows me parse karo (PDF-preview jaisa shape). Header naam se
-    column match (case-insensitive): Subject, Class, Chapter, Part, Date, Day, Time, Type.
-    Date kisi bhi format me ho -> YYYY-MM-DD. Day date se auto-calc (galat/missing theek)."""
-    import io
-    import openpyxl
-    from datetime import datetime as _dt, date as _date
-    wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
-    ws = wb.active
-    rows_iter = ws.iter_rows(values_only=True)
-    header = None
-    out = []
+def _col_index(letters):
+    """'A'->0, 'B'->1, 'AA'->26 ..."""
+    n = 0
+    for ch in letters:
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def _xlsx_bytes(headers, rows, sheet_name="Timetable"):
+    """Build a minimal, valid .xlsx using ONLY the Python standard library (zipfile + XML).
+    Koi external package (openpyxl) ki zaroorat nahi -> server pe hamesha chalta hai. Saari cells
+    inline-string ke roop me (date bhi text) taaki teacher sirf date badal ke wapas upload kar sake."""
+    import io, zipfile
+
+    def _esc(s):
+        s = "" if s is None else str(s)
+        return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                 .replace('"', "&quot;"))
+
+    def _cell(col, r, val):
+        return ('<c r="%s%d" t="inlineStr"><is><t xml:space="preserve">%s</t></is></c>'
+                % (col, r, _esc(val)))
+
+    all_rows = [list(headers)] + [list(x) for x in rows]
+    body = []
+    for ri, row in enumerate(all_rows, start=1):
+        cells = "".join(_cell(_col_letter(ci), ri, v) for ci, v in enumerate(row))
+        body.append('<row r="%d">%s</row>' % (ri, cells))
+    sheet_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                 '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                 '<sheetData>' + "".join(body) + '</sheetData></worksheet>')
+    content_types = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                     '<Default Extension="xml" ContentType="application/xml"/>'
+                     '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                     '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                     '</Types>')
+    root_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                 '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                 '</Relationships>')
+    workbook = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                '<sheets><sheet name="%s" sheetId="1" r:id="rId1"/></sheets></workbook>' % _esc(sheet_name))
+    wb_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+               '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+               '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+               '</Relationships>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types)
+        z.writestr("_rels/.rels", root_rels)
+        z.writestr("xl/workbook.xml", workbook)
+        z.writestr("xl/_rels/workbook.xml.rels", wb_rels)
+        z.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+    return buf.getvalue()
+
+
+def _read_xlsx_grid(raw):
+    """Read an .xlsx into a list-of-rows (each row a list of string cells) using ONLY stdlib.
+    Handles sharedStrings (t='s'), inline strings (t='inlineStr'), 'str', and plain numbers —
+    so files re-saved by Excel bhi theek parse hote hain."""
+    import io, zipfile, re
+    from xml.etree import ElementTree as ET
+    NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    z = zipfile.ZipFile(io.BytesIO(raw))
+    names = z.namelist()
+    # shared strings (optional)
+    shared = []
+    if "xl/sharedStrings.xml" in names:
+        try:
+            sroot = ET.fromstring(z.read("xl/sharedStrings.xml"))
+            for si in sroot.findall(NS + "si"):
+                shared.append("".join((t.text or "") for t in si.iter(NS + "t")))
+        except Exception:
+            shared = []
+    # first worksheet
+    sheet = None
+    for n in sorted(x for x in names if x.startswith("xl/worksheets/") and x.endswith(".xml")):
+        sheet = n
+        break
+    if not sheet:
+        return []
+    root = ET.fromstring(z.read(sheet))
+    grid = []
+    for row in root.iter(NS + "row"):
+        cells = {}
+        maxc = -1
+        auto = 0
+        for c in row.findall(NS + "c"):
+            ref = c.get("r") or ""
+            m = re.match(r"([A-Z]+)", ref)
+            ci = _col_index(m.group(1)) if m else auto
+            auto = ci + 1
+            t = c.get("t")
+            v = c.find(NS + "v")
+            isn = c.find(NS + "is")
+            val = ""
+            if t == "s" and v is not None and v.text is not None:
+                try:
+                    val = shared[int(v.text)]
+                except Exception:
+                    val = ""
+            elif t == "inlineStr" and isn is not None:
+                val = "".join((tt.text or "") for tt in isn.iter(NS + "t"))
+            elif v is not None:
+                val = v.text or ""
+            cells[ci] = val
+            if ci > maxc:
+                maxc = ci
+        grid.append([cells.get(i, "") for i in range(maxc + 1)])
+    return grid
+
+
+def _parse_timetable_xlsx(raw, filename=""):
+    """Excel (.xlsx) ya CSV timetable ko rows me parse karo (PDF-preview jaisa shape), sirf stdlib se.
+    Header naam se column match (case-insensitive): Subject, Class, Chapter, Part, Date, Day, Time, Type.
+    Date kisi bhi format me ho -> YYYY-MM-DD (Excel serial-number date bhi handle). Day date se auto."""
+    from datetime import datetime as _dt, timedelta as _td
+    import csv, io
     import tt_parser
     DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    fn = (filename or "").lower()
+    is_csv = fn.endswith(".csv") or (raw[:4] not in (b"PK\x03\x04",) and b"," in raw[:400] and b"PK" != raw[:2])
+    if is_csv:
+        try:
+            text = raw.decode("utf-8-sig")
+        except Exception:
+            text = raw.decode("latin-1", "ignore")
+        grid = [list(r) for r in csv.reader(io.StringIO(text))]
+    else:
+        grid = _read_xlsx_grid(raw)
 
     def _norm(h):
         return str(h or "").strip().lower()
 
-    for raw_row in rows_iter:
-        if raw_row is None:
+    header = None
+    out = []
+    for cells in grid:
+        if cells is None:
             continue
-        cells = list(raw_row)
         if header is None:
-            # pehli non-empty row jisme 'subject'/'chapter' ho -> header
             low = [_norm(c) for c in cells]
             if any(x in ("subject", "chapter", "topic") for x in low):
                 header = {}
                 for i, c in enumerate(low):
-                    if c in ("subject",): header["subject"] = i
+                    if c == "subject": header["subject"] = i
                     elif c in ("class", "class_name", "class name"): header["class_name"] = i
                     elif c in ("chapter", "topic"): header["chapter"] = i
                     elif c in ("part", "topic/part", "part/topic"): header["part"] = i
-                    elif c in ("date",): header["date"] = i
-                    elif c in ("day",): header["day"] = i
+                    elif c == "date": header["date"] = i
+                    elif c == "day": header["day"] = i
                     elif c in ("time", "slot"): header["time"] = i
                     elif c in ("type", "entry_type"): header["type"] = i
-                continue
-            else:
-                continue
+            continue
+
         def _get(k):
             i = header.get(k)
             if i is None or i >= len(cells):
                 return ""
-            v = cells[i]
-            return v
+            return cells[i]
+
         subject = str(_get("subject") or "").strip()
         chapter = str(_get("chapter") or "").strip()
         if not subject and not chapter:
             continue
-        # date: excel date-cell ya string
-        dval = _get("date")
+        dval = str(_get("date") or "").strip()
         dstr = ""
-        if isinstance(dval, (_dt, _date)):
-            dstr = dval.strftime("%Y-%m-%d")
-        elif dval:
-            dd = tt_parser.parse_date(str(dval))
-            if dd:
-                dstr = dd.strftime("%Y-%m-%d")
+        if dval:
+            # Excel serial-number date (e.g. 46500) -> real date
+            if dval.replace(".", "", 1).isdigit() and 20000 <= float(dval) <= 80000:
+                try:
+                    dstr = (_dt(1899, 12, 30) + _td(days=int(float(dval)))).strftime("%Y-%m-%d")
+                except Exception:
+                    dstr = ""
+            if not dstr:
+                dd = tt_parser.parse_date(dval)
+                if dd:
+                    dstr = dd.strftime("%Y-%m-%d")
         day = str(_get("day") or "").strip()
         if dstr:
             try:
                 day = DAYS[_dt.strptime(dstr, "%Y-%m-%d").weekday()]
             except Exception:
                 pass
-        tval = _get("time")
-        if isinstance(tval, (_dt,)):
-            tstr = tval.strftime("%I:%M %p").lstrip("0")
-        else:
-            tstr = str(tval or "").strip()
         out.append({
             "subject": subject,
             "class_name": str(_get("class_name") or "").strip(),
@@ -1407,14 +1494,33 @@ def _parse_timetable_xlsx(raw):
             "part": str(_get("part") or "").strip(),
             "date": dstr,
             "day": day,
-            "time": tstr,
+            "time": str(_get("time") or "").strip(),
             "type": (str(_get("type") or "").strip() or "chapter"),
         })
-    try:
-        wb.close()
-    except Exception:
-        pass
     return out
+
+
+@router.get("/timetable-export")
+def teacher_timetable_export(batch: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Maujooda timetable ko Excel (.xlsx) me download karo — teacher sirf DATE badal ke
+    kisi bhi batch ke liye wapas upload kar sakta hai (formatting same rehti hai). stdlib-only,
+    server pe koi dependency nahi."""
+    from fastapi import Response
+    tp = get_teacher_profile(current_user, db)
+    es = _tt_export_rows(db, tp, batch)
+    headers = ["Subject", "Class", "Chapter", "Part", "Date", "Day", "Time", "Type"]
+    rows = []
+    for e in es:
+        rows.append([
+            e.subject or "", e.class_name or "", e.chapter or "", e.part or "",
+            (e.entry_date.strftime("%Y-%m-%d") if e.entry_date else ""),
+            e.day or "", getattr(e, "time_text", None) or "",
+            getattr(e, "entry_type", None) or "chapter",
+        ])
+    data = _xlsx_bytes(headers, rows)
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="MVS_Timetable.xlsx"'})
 
 
 @router.post("/timetable-xlsx")
@@ -1423,11 +1529,11 @@ async def upload_timetable_xlsx(
     db: Session = Depends(get_db),
     current_user=Depends(get_teacher)
 ):
-    """Excel timetable upload -> parse -> preview rows (PDF jaisa flow). Save commit se hota hai."""
+    """Excel/CSV timetable upload -> parse -> preview rows (PDF jaisa flow). Save commit se hota hai."""
     get_teacher_profile(current_user, db)
     raw = await file.read()
     try:
-        rows = _parse_timetable_xlsx(raw)
+        rows = _parse_timetable_xlsx(raw, getattr(file, "filename", "") or "")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Excel parse error: {e}")
     if not rows:

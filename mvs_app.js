@@ -4888,7 +4888,7 @@ function _ttUploadBatchField(selId,cur){
 }
 function openTTPdf(){
   showModal('Upload Timetable — PDF or Excel',
- `<div class="alert alert-info"><strong>PDF ya Excel timetable upload karo</strong> — columns auto-detect ho jaate hain (Chapter, Part, Date, Day, Time). <b>Tip:</b> "Download" button se maujooda timetable Excel me le lo, usme sirf <b>dates badlo</b>, aur neeche batch chun ke yahin wapas upload kar do.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">PDF demo format (All Subjects, Word)</a></div></div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div>${_ttUploadBatchField('pdf-batch',_ttBatch)}<div class="form-group"><label>Subject (optional — blank = file se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'))"></div><div class="form-group"><label>File (PDF or Excel)</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF or Excel (.xlsx) file, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf,.xlsx,.xls" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject (same course)</label></div><div id="pdf-status"></div>`,
+ `<div class="alert alert-info"><strong>PDF ya Excel timetable upload karo</strong> — columns auto-detect ho jaate hain (Chapter, Part, Date, Day, Time). <b>Tip:</b> "Download" button se maujooda timetable Excel me le lo, usme sirf <b>dates badlo</b>, aur neeche batch chun ke yahin wapas upload kar do.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">PDF demo format (All Subjects, Word)</a></div></div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div>${_ttUploadBatchField('pdf-batch',_ttBatch)}<div class="form-group"><label>Subject (optional — blank = file se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'))"></div><div class="form-group"><label>File (PDF or Excel)</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF or Excel (.xlsx) file, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf,.xlsx,.csv" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject (same course)</label></div><div id="pdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pdf-btn" onclick="uploadTTPdf()">Upload & Parse</button>`);
   const _clsC=document.getElementById('pdf-class');
   if(_clsC) _clsC.addEventListener('change',()=>pdfReplaceWarn(val('pdf-subject'),(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class')));
@@ -4897,7 +4897,7 @@ async function uploadTTPdf(){
   const fi=document.getElementById('pdf-file');
   if(!fi.files.length){ toast('Please select a PDF or Excel file.',true); return; }
   const file=fi.files[0];
-  const isXlsx=/\.(xlsx|xls)$/i.test(file.name||'');
+  const isXlsx=/\.(xlsx|csv)$/i.test(file.name||'');
   const btn=document.getElementById('pdf-btn'); btn.disabled=true; btn.textContent='Parsing...';
   const st=document.getElementById('pdf-status');
   st.innerHTML=`<div class="alert alert-info">Parsing the ${isXlsx?'Excel':'PDF'}, please wait... </div>`;
@@ -9416,12 +9416,15 @@ window._pdfResync = function(scope){
   }catch(e){}
 };
 
-async function loadAYtTasks(hostId){
+async function loadAYtTasks(hostId, silent){
   if(hostId) window._ytHost=hostId;
   var HOST=window._ytHost||'a-ytasks-content';
   var el=document.getElementById(HOST); if(!el) return;
   el.classList.add('yt-scope');
-  softSpin(el);
+  // SURGICAL refresh: agar page pehle se mounted hai to spinner/blank mat dikhao — background me
+  // data laao aur sirf badle hue cards update karo (koi action karne pe pura page refresh na ho).
+  var _canSilent = !!(silent && el.querySelector('.ptc-grid.yt-grid'));
+  if(!_canSilent) softSpin(el);
   try{
     window._pdfApplyFns['yt']=function(){ loadAYtTasks(); };
     var _ytDQ=(typeof window._pdfQS==='function')?window._pdfQS('yt'):'';
@@ -9435,8 +9438,41 @@ async function loadAYtTasks(hostId){
     window._ytChannels=(res[1]&&res[1].channels)||[];
     window._ytTypes=(res[2]&&res[2].types)||[];
     window._ytPeople=(((res[3]&&res[3].youtubers)||[]).map(function(y){return {profile_id:y.id, name:y.name};}));
+    if(_canSilent && _ytSilentRepaint()) return;
     _renderAYtTasks();
-  }catch(e){ el.innerHTML=errHtml(e); }
+  }catch(e){ if(!_canSilent) el.innerHTML=errHtml(e); }
+}
+// Surgical in-place update of the YouTuber Tasks page (stats + grid + series), no blank/spinner,
+// scroll + filters + search focus sab preserve. Returns false if page not mounted (caller full-render kare).
+function _ytSilentRepaint(){
+  var el=document.getElementById(window._ytHost||'a-ytasks-content'); if(!el) return false;
+  var grid=el.querySelector('.ptc-grid.yt-grid'); if(!grid) return false;
+  var all=window._ytTasks||[];
+  var total=all.length,done=0,prod=0,editdone=0,toshoot=0,overdue=0,newcnt=0;
+  all.forEach(function(t){ var b=_ytBucket(t);
+    if(b==='done')done++; else if(b==='editdone')editdone++; else if(b==='prod')prod++; else if(b==='toshoot')toshoot++;
+    if(_ytIsNew(t))newcnt++; if(_ytDelayed(t))overdue++; });
+  function stat(l,n,color,icn,bucket,blink){ return '<div class="vt-stat'+(bucket?' vt-stat-click':'')+((blink&&n>0)?' vt-ap-blink':'')+'"'+(bucket?' data-ytb="'+bucket+'" onclick="_ytBucketFilter(\''+bucket+'\')"':'')+'><div class="vs-ic" style="background:'+color+'1f;color:'+color+'">'+ic(icn)+'</div><div><div class="vs-n" style="color:'+color+'">'+n+'</div><div class="vs-l">'+l+'</div></div></div>'; }
+  var statRow=stat('Total Assigned',total,'#8a6d10','clipboard','all')+stat('To Shoot',toshoot,'#0891b2','clock','toshoot')+stat('New Task',newcnt,'#dc2626','bell','new',true)+stat('In Production',prod,'#7c4fc0','play','prod')+stat('Editing Done',editdone,'#0d9488','check','editdone',true)+stat('Published',done,'#059669','check','done')+stat('Delayed',overdue,'#dc2626','alert','over');
+  var _serTasks=all.filter(function(t){ return (t.series_name||'').trim(); });
+  var _soloTasks=all.filter(function(t){ return !(t.series_name||'').trim(); });
+  var _pcard=(typeof window._prodTaskCard==='function')?function(t){return window._prodTaskCard('production',t);}:_ytCard;
+  var _sc=(function(){ try{ var n=el; while(n&&n!==document.body){ var oy=getComputedStyle(n).overflowY; if((oy==='auto'||oy==='scroll')&&n.scrollHeight>n.clientHeight+4) return n; n=n.parentNode; } }catch(e){} return document.scrollingElement||document.documentElement; })();
+  var _top=_sc?_sc.scrollTop:0;
+  try{ var vc=el.querySelector('.vt-cards'); if(vc) vc.innerHTML=statRow; }catch(e){}
+  try{
+    if(window._reconcileProdGrid && typeof window._prodTaskCard==='function' && _soloTasks.length){
+      var _emp=grid.querySelector('.yt-empty'); if(_emp) _emp.remove();   // stale empty placeholder hatao
+      window._reconcileProdGrid(grid,'production',_soloTasks);
+    }
+    else { grid.innerHTML=_soloTasks.map(_pcard).join('')||'<div class="yt-empty" style="grid-column:1/-1"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>'; }
+  }catch(e){ try{ grid.innerHTML=_soloTasks.map(_pcard).join(''); }catch(_e){} }
+  try{ var ser=el.querySelector('.yt-ser-wrap'); var serHtml=_ytSeriesSection(_serTasks);
+    if(ser){ if(serHtml){ var tmp=document.createElement('div'); tmp.innerHTML=serHtml; if(tmp.firstElementChild) ser.replaceWith(tmp.firstElementChild); } else ser.remove(); }
+  }catch(e){}
+  try{ _ytClientFilter(); }catch(e){}
+  if(_sc){ try{ _sc.scrollTop=_top; }catch(e){} }
+  return true;
 }
 
 function _renderAYtTasks(){
@@ -9498,12 +9534,14 @@ function _renderAYtTasks(){
     +'</div>';
   var grid='<div class="ptc-grid yt-grid">'+(cards||'<div class="yt-empty" style="grid-column:1/-1"><div class="big">'+ic('clipboard')+'</div><p><b>No YouTuber tasks yet</b></p><small>Tap “Assign Work” to give a video or project to a YouTuber.</small></div>')+'</div>';
   el.insertAdjacentHTML('beforeend', typeHtml+_ytRankStrip(all)+_ytSeriesSection(_serTasks)+filters+grid);
+  // future surgical refresh ke liye har card pe signature tag kar do (pehle refresh se hi no-flicker)
+  try{ var _g=el.querySelector('.ptc-grid.yt-grid'); if(_g && typeof window._prodHash==='function' && typeof window._prodTaskCard==='function'){ var _bid={}; [].slice.call(_g.children).forEach(function(n){ var k=(n.getAttribute&&n.getAttribute('data-ptc')); if(k!=null) _bid[k]=n; }); _soloTasks.forEach(function(t){ var n=_bid[String(t.id)]; if(n) n.setAttribute('data-sig', window._prodHash(window._prodTaskCard('production',t))); }); } }catch(e){}
   if(f.q||f.creator||f.channel||f.video_type||f.bucket) _ytClientFilter();
 }
 
 window.ytAdminDelete=function(id){
   if(!confirm('Delete this video permanently? Ye youtuber aur production dono se hat jaayega.')) return;
-  api('/api/admin/video-tasks/'+id,'DELETE').then(function(){ toast('Deleted'); window._ytTasks=(window._ytTasks||[]).filter(function(x){return x.id!==id;}); if(typeof _renderAYtTasks==='function') _renderAYtTasks(); }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
+  api('/api/admin/video-tasks/'+id,'DELETE').then(function(){ toast('Deleted'); window._ytTasks=(window._ytTasks||[]).filter(function(x){return x.id!==id;}); if(!_ytSilentRepaint()){ if(typeof _renderAYtTasks==='function') _renderAYtTasks(); } }).catch(function(e){ toast((e&&e.message)||'Delete failed',true); });
 };
 window.ytGfxManage=function(id){
   Promise.all([
@@ -9548,9 +9586,9 @@ window.ytGfxStar=function(n){ window._ytgRating=n; document.querySelectorAll('#y
 function _ytgAfterSave(){
   var onYt=false;
   try{ var h=document.getElementById(window._ytHost||'a-ytasks-content'); onYt=!!(h && h.offsetParent!==null); }catch(e){}
-  if(onYt){ try{ loadAYtTasks(); return; }catch(e){} }
+  if(onYt){ try{ loadAYtTasks(undefined, true); return; }catch(e){} }
   try{ if(typeof window._prodRefresh==='function'){ window._prodRefresh('production'); return; } }catch(e){}
-  try{ if(typeof loadAYtTasks==='function') loadAYtTasks(); }catch(e){}
+  try{ if(typeof loadAYtTasks==='function') loadAYtTasks(undefined, true); }catch(e){}
 }
 window.ytGfxSubmit=function(){
   var id=window._ytgId; var gid=(document.getElementById('ytg-gid')||{}).value||'';
@@ -9686,13 +9724,13 @@ async function submitYtAssign(btn){
     thumbnail_required:document.getElementById('yta-thumb').checked };
   var dl=document.getElementById('yta-dl').value; if(dl) body.deadline=dl;
   if(btn){ btn.disabled=true; btn.textContent='Assigning…'; }
-  try{ await api('/api/production/tasks','POST',body); closeModal(); toast('Assigned to the youtuber.'); loadAYtTasks(); }
+  try{ await api('/api/production/tasks','POST',body); closeModal(); toast('Assigned to the youtuber.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Could not assign',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Assign'; } }
 }
 
 // ---- Creator review actions ----
 async function ytApprove(id){
-  try{ await api('/api/production/tasks/'+id+'/approve-creator','POST',{}); toast('Approved.'); loadAYtTasks(); }
+  try{ await api('/api/production/tasks/'+id+'/approve-creator','POST',{}); toast('Approved.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Failed',true); }
 }
 function ytReview(id, action){
@@ -9713,7 +9751,7 @@ async function submitYtReview(id, action, btn){
   var ep={changes:'request-creator-changes',reshoot:'reshoot-creator',reject:'reject-creator'}[action];
   var body={remarks:rem}; if(dl){ body.new_deadline=dl; } if(action==='reject'&&dl){ body.allow_resubmit=true; }
   if(btn){ btn.disabled=true; btn.textContent='Submitting…'; }
-  try{ await api('/api/production/tasks/'+id+'/'+ep,'POST',body); closeModal(); toast('Done.'); loadAYtTasks(); }
+  try{ await api('/api/production/tasks/'+id+'/'+ep,'POST',body); closeModal(); toast('Done.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.textContent='Submit'; } }
 }
 function ytPublish(id){
@@ -9726,7 +9764,7 @@ async function submitYtPublish(id, btn){
   var url=(document.getElementById('ytp-url').value||'').trim();
   if(!url){ toast('Paste the YouTube link',true); return; }
   if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
-  try{ await api('/api/production/tasks/'+id+'/youtube','POST',{youtube_url:url}); closeModal(); toast('Published.'); loadAYtTasks(); }
+  try{ await api('/api/production/tasks/'+id+'/youtube','POST',{youtube_url:url}); closeModal(); toast('Published.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Publish'; } }
 }
 
@@ -9923,7 +9961,7 @@ async function submitYtSeries(btn){
     approval_required:document.getElementById('yts-appr').checked };
   var dl=document.getElementById('yts-dl').value; if(dl) body.deadline=dl;
   if(btn){ btn.disabled=true; btn.textContent='Creating…'; }
-  try{ var r=await api('/api/production/youtuber-series','POST',body); closeModal(); toast('Series created — '+((r&&r.count)||vids.length)+' videos assigned.'); loadAYtTasks(); }
+  try{ var r=await api('/api/production/youtuber-series','POST',body); closeModal(); toast('Series created — '+((r&&r.count)||vids.length)+' videos assigned.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Could not create series',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Create Series'; } }
 }
 
@@ -10050,7 +10088,7 @@ async function ytAddComment(id){
   catch(e){ toast((e&&e.message)||'Could not send',true); el.disabled=false; }
 }
 async function ytComplete(id){
-  try{ await api('/api/production/tasks/'+id+'/complete','POST',{}); closeModal(); toast('Marked complete.'); loadAYtTasks(); }
+  try{ await api('/api/production/tasks/'+id+'/complete','POST',{}); closeModal(); toast('Marked complete.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Failed',true); }
 }
 async function ytAssignEditor(id){
@@ -10067,7 +10105,7 @@ async function submitYtEditor(id, btn){
   var eid=+((document.getElementById('yt-ed-sel')||{}).value||0);
   if(!eid){ toast('Choose an editor',true); return; }
   if(btn){ btn.disabled=true; btn.textContent='Assigning…'; }
-  try{ await api('/api/production/tasks/'+id+'/assign-editor','POST',{editor_id:eid}); closeModal(); toast('Editor assigned.'); loadAYtTasks(); }
+  try{ await api('/api/production/tasks/'+id+'/assign-editor','POST',{editor_id:eid}); closeModal(); toast('Editor assigned.'); loadAYtTasks(undefined, true); }
   catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.innerHTML=ic('check')+' Assign'; } }
 }
 
@@ -38386,6 +38424,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 
   // --- task detail (placeholder modal for now; full detail + timeline next phase) ---
   window._prodTaskCard=_prodTaskCard;
+  window._reconcileProdGrid=_reconcileProdGrid;   // YouTuber Tasks page bhi isi surgical diff ko use karta hai
+  window._prodHash=_prodHash;
   window.prodOpenTask=function(portal,id){
     ensureCSS(); // admin YouTuber page may open this without the portal shell's CSS
     try{ window._pasfPrevActs=null; window._pasfPause=null; }catch(e){}   // fresh drawer → assign-form back-state reset
@@ -38835,7 +38875,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     try{ var _av=document.getElementById('a-vtasks-content'); if(_av && _av.offsetParent!==null && typeof loadAVTasks==='function'){ _apiBust(); loadAVTasks(); } }catch(e){}
     if(portal==='production'){
       var _yh=document.getElementById(window._ytHost||'a-ytasks-content');
-      if(_yh && _yh.offsetParent!==null && typeof loadAYtTasks==='function'){ try{ loadAYtTasks(); return; }catch(e){} }
+      if(_yh && _yh.offsetParent!==null && typeof loadAYtTasks==='function'){ try{ loadAYtTasks(undefined, true); return; }catch(e){} }
       try{ _prodNavBadges(); }catch(e){}
     }
     var page=(window._prodCurPage&&window._prodCurPage[portal])||'dashboard';
@@ -39256,7 +39296,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       toast((r&&r.on_time===false)?'Submitted (delayed)':'Submitted on time');
       try{ _apiBust(); }catch(e){}
       _refresh(_activeProdPortal()||'production');
-      try{ if(document.getElementById(window._ytHost||'a-ytasks-content')) loadAYtTasks(); }catch(e){}
+      try{ if(document.getElementById(window._ytHost||'a-ytasks-content')) loadAYtTasks(undefined, true); }catch(e){}
     }).catch(function(e){ if(b){ b.disabled=false; b.style.opacity=''; } toast((e&&e.message)||'Could not submit',true); });
   };
   // ---- PM: full video review modal (admin-style premium) — Approve / Reshoot / Reject ----
