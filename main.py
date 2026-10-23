@@ -337,6 +337,20 @@ except Exception as _repair_err:
     except Exception:
         pass
 
+# ===== STUDENT PROFILE DEDUPE (ek student ko har device pe SAME tests dikhein) =====
+# Bug: ek user ke multiple StudentProfile rows (user_id ka UNIQUE index kabhi miss tha) ki wajah se
+# `.first()` har session pe alag profile uthata tha -> same student ko alag-alag device pe alag test
+# count (22/10/7/3) dikhta tha. Ye duplicates ko ek canonical profile me merge karta hai + UNIQUE
+# index lagata hai taaki dubara kabhi na ho. Idempotent; agar koi dup nahi to turant return.
+try:
+    from student_routes import dedupe_student_profiles as _dedupe_sp
+    _dedupe_sp()
+except Exception as _dedupe_err:
+    try:
+        print("student profile dedupe skipped:", str(_dedupe_err)[:200])
+    except Exception:
+        pass
+
 
 def ensure_fk_cascade():
     """Make child tables that FK to video_tasks use ON DELETE CASCADE, so deleting a

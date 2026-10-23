@@ -168,11 +168,133 @@ def _ensure_batch_columns_startup():
 _ensure_batch_columns_startup()
 
 
+def _profile_rank(db, sp):
+    """Canonical profile chunne ke liye rank: sabse zyada enrollment, phir sabse zyade subjects,
+    phir batch_id set, phir lowest id. Isse ek user ke multiple (duplicate) profiles me se HAMESHA
+    wahi ek (sabse complete) chuna jaata hai — har device/session pe same."""
+    try:
+        from models import StudentBatch
+        nb = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).count()
+    except Exception:
+        nb = 0
+    nsubs = len(sp.subjects or [])
+    return (nb, nsubs, 1 if getattr(sp, "batch_id", None) else 0, -(sp.id or 0))
+
+
 def get_student_profile(user, db) -> StudentProfile:
-    sp = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
-    if not sp:
+    # BULLETPROOF: ek user ke ek se zyada StudentProfile ho sakte hain (agar DB me user_id ka UNIQUE
+    # index missing tha to duplicate ban gaye). `.first()` bina ORDER ke har connection/session pe
+    # ALAG row de deta tha -> isi wajah se EK hi student ko alag-alag device pe alag tests dikhte the
+    # (22 / 10 / 7 / 3). Ab hamesha ek DETERMINISTIC canonical (sabse complete) profile chunte hain,
+    # taaki har jagah bilkul same data dikhe. (Startup dedupe in duplicates ko merge bhi kar deta hai.)
+    rows = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).all()
+    if not rows:
         raise HTTPException(status_code=404, detail="Student profile not found")
-    return sp
+    if len(rows) == 1:
+        return rows[0]
+    return max(rows, key=lambda sp: _profile_rank(db, sp))
+
+
+def dedupe_student_profiles(engine_override=None):
+    """Ek user ke multiple StudentProfile rows ko EK canonical profile me merge karo: saara child data
+    (enrollments, submissions, attempts, XP, doubts, flags...) canonical pe repoint, subjects union,
+    duplicate profiles delete, aur user_id pe UNIQUE index laga do taaki aage se duplicate bane hi na.
+    Fully idempotent + best-effort (koi step fail ho to baaki chalta rahe; get_student_profile ka
+    canonical read waise bhi consistency guarantee karta hai)."""
+    from sqlalchemy import text as _t
+    from models import StudentBatch
+    try:
+        from database import engine as _eng, SessionLocal
+    except Exception:
+        return
+    eng = engine_override or _eng
+    # 1) kaun se user_ids ke multiple profiles hain?
+    try:
+        with eng.connect() as conn:
+            dups = [r[0] for r in conn.execute(_t(
+                "SELECT user_id FROM student_profiles WHERE user_id IS NOT NULL "
+                "GROUP BY user_id HAVING COUNT(*) > 1")).fetchall()]
+    except Exception:
+        dups = []
+    if dups:
+        # 2) saari tables jinme 'student_id' column hai (dynamic -> koi table miss na ho). MySQL pe
+        #    information_schema; warna ek known fallback list.
+        try:
+            with eng.connect() as conn:
+                tables = [r[0] for r in conn.execute(_t(
+                    "SELECT TABLE_NAME FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME='student_id'")).fetchall()]
+        except Exception:
+            tables = []
+        if not tables:
+            tables = ["student_batches", "dpp_submissions", "test_submissions", "doubts",
+                      "dpp_answers", "dpp_events", "dpp_chunks", "app_reviews", "chapter_plans",
+                      "materials", "material_views", "exam_views", "exam_attempts",
+                      "lecture_verifications", "student_stats", "activity_logs", "student_flags"]
+        tables = [x for x in tables if x and x != "student_profiles"]
+        for uid in dups:
+            s = SessionLocal()
+            try:
+                rows = s.query(StudentProfile).filter(StudentProfile.user_id == uid).all()
+                if len(rows) < 2:
+                    continue
+                canon = max(rows, key=lambda sp: _profile_rank(s, sp))
+                dup_ids = [r.id for r in rows if r.id != canon.id]
+                if not dup_ids:
+                    continue
+                # subjects union + khaali fields backfill (canonical ko sabse complete banao)
+                subs = list(canon.subjects or [])
+                for r in rows:
+                    for x in (r.subjects or []):
+                        if x not in subs:
+                            subs.append(x)
+                canon.subjects = subs
+                for fld in ("batch_id", "class_name", "class_level", "medium", "batch_name",
+                            "phone", "email", "nios_ref", "exam_session"):
+                    if not getattr(canon, fld, None):
+                        for r in rows:
+                            v = getattr(r, fld, None)
+                            if v:
+                                try:
+                                    setattr(canon, fld, v)
+                                except Exception:
+                                    pass
+                                break
+                s.commit()
+                canon_id = canon.id
+                inlist = ",".join(str(int(d)) for d in dup_ids)
+                # child data repoint -> canonical (per-table best-effort; unique-conflict pe dup row drop)
+                with eng.begin() as conn:
+                    for tbl in tables:
+                        try:
+                            conn.execute(_t("UPDATE %s SET student_id=:c WHERE student_id IN (%s)"
+                                            % (tbl, inlist)), {"c": canon_id})
+                        except Exception:
+                            try:
+                                conn.execute(_t("DELETE FROM %s WHERE student_id IN (%s)"
+                                                % (tbl, inlist)))
+                            except Exception:
+                                pass
+                    try:
+                        conn.execute(_t("DELETE FROM student_profiles WHERE id IN (%s)" % inlist))
+                    except Exception:
+                        pass
+            except Exception:
+                try:
+                    s.rollback()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+    # 3) UNIQUE index -> aage se duplicate profile ban hi na sake (dups hatne ke baad hi lagega)
+    try:
+        with eng.begin() as conn:
+            conn.execute(_t("ALTER TABLE student_profiles ADD CONSTRAINT ux_sp_user_id UNIQUE (user_id)"))
+    except Exception:
+        pass
 
 
 def _student_batch_ids(db, sp, only_batch_id=None):
