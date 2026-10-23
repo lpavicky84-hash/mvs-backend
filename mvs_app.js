@@ -794,6 +794,9 @@ async function _apiCore(path, method='GET', body=null) {
   if (!res.ok) {
  if(method==='GET'){ try{ window._pgLastApiErr=Date.now(); }catch(e){} }   // failed page load -> retry allowed
  const msg = (data && data.detail) ? data.detail : ('Error ' + res.status);
+ // Single-session: ye ID kisi NAYE device pe login hui -> ye session supersede. Turant (bina
+ // 2-strike wait) professional message + clean logout.
+ if(res.status===401 && msg==='SESSION_SUPERSEDED'){ try{ _sessionKicked(); }catch(e){} }
  const err = new Error(msg); err.status = res.status; throw err;
   }
   if(typeof _auth401!=='undefined') _auth401=0;   // koi bhi success -> 401-streak reset
@@ -1631,6 +1634,38 @@ function _sessionExpired(){
   stopNotifPolling(); stopStudentHeartbeat(); stopAdminLivePoll();
   toast('Your session has expired — please log in again.', true);
   setTimeout(()=>{ window._sessDead=false; goHome(); }, 1600);
+}
+// Single-session: same ID kisi aur device pe login hui -> ye session kick. Professional English
+// message ek blocking overlay me (har portal me reliable), phir session clear + login screen.
+function _sessionKicked(){
+  if(window._sessKicked) return; window._sessKicked=true;
+  try{ stopNotifPolling(); }catch(e){}
+  try{ stopStudentHeartbeat(); }catch(e){}
+  try{ stopAdminLivePoll(); }catch(e){}
+  try{ if(window._hbTimer){ clearInterval(window._hbTimer); window._hbTimer=null; } }catch(e){}
+  try{ if(window._prodLiveInt){ clearInterval(window._prodLiveInt); window._prodLiveInt=null; } }catch(e){}
+  // saved session clear + token hatao -> refresh/redirect par dobara andar na aaye (loop na ho)
+  try{ _clearSession(); }catch(e){}
+  try{ TOKEN=null; }catch(e){}
+  var _ic=''; try{ _ic=ic('alert'); }catch(e){ _ic='!'; }
+  try{ var old=document.getElementById('sess-kick-ov'); if(old) old.remove(); }catch(e){}
+  var ov=document.createElement('div');
+  ov.id='sess-kick-ov';
+  ov.style.cssText='position:fixed;inset:0;z-index:2147483647;background:rgba(15,20,30,.82);display:flex;align-items:center;justify-content:center;padding:22px';
+  ov.innerHTML='<div style="max-width:430px;width:100%;background:#fff;border-radius:18px;padding:30px 26px;text-align:center;box-shadow:0 24px 60px -12px rgba(0,0,0,.55);font-family:inherit">'
+    +'<div style="width:58px;height:58px;margin:0 auto 16px;border-radius:50%;background:#fdecec;display:flex;align-items:center;justify-content:center;color:#d1443a">'+_ic+'</div>'
+    +'<div style="font-size:1.2rem;font-weight:800;color:#1f2430;margin-bottom:9px">Signed in on another device</div>'
+    +'<div style="font-size:.93rem;color:#5a6472;line-height:1.55;margin-bottom:22px">Your account was just opened on another device, so you have been signed out here. For your security, only one device can be signed in at a time.</div>'
+    +'<button id="sess-kick-btn" style="background:#b8941f;color:#fff;border:none;border-radius:11px;padding:13px 22px;font-weight:700;font-size:.95rem;cursor:pointer;width:100%">Log in again</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+  try{
+    document.getElementById('sess-kick-btn').onclick=function(){
+      try{ var o=document.getElementById('sess-kick-ov'); if(o) o.remove(); }catch(e){}
+      window._sessKicked=false;
+      try{ goHome(); }catch(e){ try{ location.href='/'; }catch(_e){} }
+    };
+  }catch(e){}
 }
 function startNotifPolling(role){ stopNotifPolling(); pollNotifs(role).catch(()=>{}); _notifInt=setInterval(()=>pollNotifs(role).catch(e=>{ if(e&&e.status===401) _authFail(); }),45000); }
 function stopNotifPolling(){ if(_notifInt){ clearInterval(_notifInt); _notifInt=null; } }

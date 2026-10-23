@@ -243,6 +243,9 @@ def ensure_columns():
         "ALTER TABLE student_batches ADD UNIQUE INDEX uq_student_batch (student_id, batch_id)",
         # v94: restricted sub-admin sections
         "ALTER TABLE users ADD COLUMN allowed_sections JSON",
+        # single-session (all roles): active session-id per user
+        "ALTER TABLE users ADD COLUMN active_session_token VARCHAR(64)",
+        "CREATE INDEX ix_users_sess ON users (active_session_token)",
         # v95: editable monthly target labels + custom targets
         "ALTER TABLE teacher_pay_configs ADD COLUMN target_labels JSON",
         "ALTER TABLE teacher_pay_configs ADD COLUMN custom_targets JSON",

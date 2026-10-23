@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from database import get_db
-from security import hash_password, verify_password, create_access_token, get_current_user
+from security import hash_password, verify_password, create_access_token, get_current_user, issue_session_token
 from models import User, TeacherProfile, StudentProfile, UserRole
 from schemas import RegisterRequest, LoginRequest, TokenResponse, UserOut
 
@@ -78,7 +78,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+    token = issue_session_token(db, user)
     return TokenResponse(
         access_token=token,
         role=user.role,
@@ -94,14 +94,15 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive hai. Admin se contact karein.")
 
-    # Single session enforcement for students
+    # SINGLE SESSION (all roles): naya sid issue -> is user ki koi bhi purani device apne-aap logout.
+    token = issue_session_token(db, user)
+    # students: online/last-seen detection sp.active_session_token par depend karta hai -> set rakho
     if user.role == UserRole.student and user.student_profile:
-        token = create_access_token({"sub": str(user.id), "role": user.role})
-        user.student_profile.active_session_token = token
-        db.commit()
-        return TokenResponse(access_token=token, role=user.role, name=user.name, user_db_id=user.id)
-
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+        try:
+            user.student_profile.active_session_token = token
+            db.commit()
+        except Exception:
+            db.rollback()
     return TokenResponse(access_token=token, role=user.role, name=user.name, user_db_id=user.id)
 
 @router.get("/me", response_model=UserOut)
@@ -157,7 +158,7 @@ def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     if _sd:
         if not password or not verify_password(password, user.password):
             raise HTTPException(status_code=401, detail="Password galat hai. Bhool gaye ho to 'Forgot Password' dabao.")
-    token = create_access_token({"sub": str(user.id), "role": user.role})
+    token = issue_session_token(db, user)
     try:
         sp.active_session_token = token
         db.commit()
@@ -405,7 +406,7 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
     # already exists? (double-tap safety)
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if sp and sp.user:
-        token = create_access_token({"sub": str(sp.user.id), "role": sp.user.role})
+        token = issue_session_token(db, sp.user)
         return {"access_token": token, "role": "student", "name": sp.user.name, "existing": True}
     # portal par verify (server-to-server — spoof-proof)
     from ext_materials import portal_fetch_student
@@ -455,7 +456,7 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
                           class_name="", is_verified=True, plain_password=phone,
                           source="mvs_portal"))
     db.commit()
-    token = create_access_token({"sub": str(u.id), "role": u.role})
+    token = issue_session_token(db, u)
     return {"access_token": token, "role": "student", "name": name, "user_id": cand}
 
 

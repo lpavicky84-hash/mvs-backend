@@ -166,6 +166,10 @@ class User(Base):
     password   = Column(String(255), nullable=False)
     role       = Column(Enum(UserRole), nullable=False)
     is_active  = Column(Boolean, default=True)
+    # Single-session enforcement (ALL roles): har login ek naya random session-id (sid) banata hai
+    # jo yahan store hota hai AUR token me bhi hota hai. Kisi NAYE device pe login hote hi ye sid
+    # badal jaata hai -> purane device ke token ka sid mismatch -> wo apne-aap logout (401).
+    active_session_token = Column(String(64), nullable=True)
     # v94: restricted sub-admin — NULL = full access (super admin),
     # otherwise JSON list of allowed admin section keys (e.g. ["dashboard","doubts"])
     allowed_sections = Column(JSON, nullable=True)

@@ -52,6 +52,30 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+
+# ---- Single-session (all roles) ----
+# Code the frontend looks for to show the "signed in on another device" message.
+SESSION_SUPERSEDED = "SESSION_SUPERSEDED"
+
+
+def issue_session_token(db, user):
+    """Login ke waqt call karo: ek naya random session-id (sid) banata hai, use user pe store karta
+    hai (purana session supersede), aur token me sid daal ke return karta hai. Isse jab bhi koi NAYE
+    device pe login karega, purane device ka token mismatch ho ke apne-aap logout ho jaayega."""
+    import uuid
+    sid = uuid.uuid4().hex
+    token = create_access_token({"sub": str(user.id), "role": user.role, "sid": sid})
+    try:
+        user.active_session_token = sid
+        db.add(user)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    return token
+
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -87,6 +111,20 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
         user = db.query(User).filter(User.id == int(user_id)).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User nahi mila ya inactive hai")
+    # SINGLE SESSION (all roles): token ka sid user ke stored active sid se match karna chahiye.
+    # Agar user ne kisi NAYE device pe login kiya -> stored sid badal gaya -> is purane token ka
+    # sid alag hoga -> 401 SESSION_SUPERSEDED (frontend professional message dikha ke logout karega).
+    # Backward-safe: sirf tab kick karo jab token me sid HO aur stored sid bhi HO aur dono alag hon
+    # (purane bina-sid token aur scoped tokens kabhi galti se logout na ho; naye login par enforce).
+    try:
+        _tok_sid = payload.get("sid")
+        _cur_sid = getattr(user, "active_session_token", None)
+        if _tok_sid and _cur_sid and _tok_sid != _cur_sid:
+            raise HTTPException(status_code=401, detail=SESSION_SUPERSEDED)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     return user
 
 def require_role(*roles):
