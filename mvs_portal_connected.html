@@ -6797,8 +6797,16 @@ function sylAdminRender(){
 }
 
 function _sylSessName(id){
-  var m={'oct2026':'October 2026','apr2027':'April 2027','stream2':'Stream 2 (no TMA)','ondemand':'On Demand'};
-  return m[id]||id||'\u2014';
+  // Backend _session_friendly ke saath match: koi bhi monthYYYY id (oct2027 -> October 2027)
+  var s=(id==null?'':String(id)).trim();
+  if(!s) return '\u2014';
+  var low=s.toLowerCase();
+  var m=low.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(20\d{2})$/);
+  if(m){ var M={jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December'}; return M[m[1]]+' '+m[2]; }
+  if(low==='stream2') return 'Stream 2 (no TMA)';
+  if(low==='stream1') return 'Stream 1';
+  if(low==='ondemand') return 'On Demand';
+  return s;
 }
 
 /* ---------- predicted results rank list (admin + teacher share this) ---------- */

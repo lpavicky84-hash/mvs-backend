@@ -2190,7 +2190,9 @@ async function _ttFillBatches(){
   try{
     var r=await api('/api/admin/batches');
     var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
-    sel.innerHTML='<option value="">All batches (global / legacy)</option>'+list.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.type?' ('+esc(b.type)+')':'')+'</option>';}).join('');
+    // Session-wise dikhao taaki "Lakshya Science · April 2027" aur "· October 2027" alag chun sakein
+    var _srt=list.slice().sort(function(a,b){var an=(a.name||'').toLowerCase(),bn=(b.name||'').toLowerCase();if(an!==bn)return an<bn?-1:1;return (a.session||'').localeCompare(b.session||'');});
+    sel.innerHTML='<option value="">All batches (global / legacy)</option>'+_srt.map(function(b){var lbl=esc(b.name)+(b.type?' ('+esc(b.type)+')':'')+(b.session?(' · '+esc(b.session)):'');return '<option value="'+b.id+'">'+lbl+'</option>';}).join('');
   }catch(e){}
 }
 async function uploadAdminPdf(){
@@ -18290,7 +18292,7 @@ async function openEditStudent(sid,data){
      <div class="form-group"><label>Subjects</label><div id="es-subj-wrap">${cls?subjectDropdown('es-subj-wrap',cls,data.subjects):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>'}</div></div>
      <div class="form-group"><label>Exam Session</label><select class="form-control" id="es-session">
        <option value="">— Not set —</option>
-       ${[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']].map(x=>`<option value="${x[0]}"${data.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('')}
+       ${[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['oct2027','October 2027 (Stream 1)'],['apr2028','April 2028 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']].map(x=>`<option value="${x[0]}"${data.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('')}
      </select></div>
      <div class="form-group"><label>NIOS Reference No.</label>
        <div style="display:flex;gap:8px;align-items:center">
@@ -20352,7 +20354,7 @@ async function showSubjectScreen(p){
   if(curBatch && !batches.some(function(b){return b.name===curBatch;})) batches.unshift({name:curBatch,class_level:(p.class_level||'12')});
   var batOpts='<option value="">\u2014 Select your batch \u2014</option>'+batches.map(function(b){return '<option value="'+esc(b.name).replace(/"/g,'&quot;')+'"'+(b.name===curBatch?' selected':'')+'>'+esc(b.name)+' \u00b7 Class '+esc(b.class_level||'')+'</option>';}).join('');
   var clsOpts=['','10','12'].map(function(c){return '<option value="'+c+'"'+((p.class_level||'')===c?' selected':'')+'>'+(c?('Class '+c):'\u2014 Select class \u2014')+'</option>';}).join('');
-  var sessList=[['','\u2014 Select exam session \u2014'],['oct2026','October 2026'],['apr2027','April 2027']];
+  var sessList=[['','\u2014 Select exam session \u2014'],['oct2026','October 2026'],['apr2027','April 2027'],['oct2027','October 2027'],['apr2028','April 2028']];
   var sessOpts=sessList.map(function(s){return '<option value="'+s[0]+'"'+((p.exam_session||'')===s[0]?' selected':'')+'>'+s[1]+'</option>';}).join('');
   var medOpts=['','Hindi','English'].map(function(m){return '<option value="'+m+'"'+((p.medium||'')===m?' selected':'')+'>'+(m||'\u2014 Select medium \u2014')+'</option>';}).join('');
   var initials=(function(){ var t=(p.name||'S').trim().split(/\s+/); return ((t[0]||'S')[0]+((t[1]||'')[0]||'')).toUpperCase(); })();
@@ -20682,7 +20684,7 @@ async function loadSProfile(){
 }
 
 // ---- Student self-edit: Medium / Exam Session / NIOS Ref only ----
-const _S_SESSIONS=[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']];
+const _S_SESSIONS=[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['oct2027','October 2027 (Stream 1)'],['apr2028','April 2028 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']];
 function openEditMyProfile(){
   const p=window._sProf||{};
   const medOpt=['Hindi','English','Both'].map(m=>`<option${(p.medium===m)?' selected':''}>${m}</option>`).join('');
