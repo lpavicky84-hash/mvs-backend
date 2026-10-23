@@ -297,27 +297,91 @@ def dedupe_student_profiles(engine_override=None):
         pass
 
 
-def _student_batch_ids(db, sp, only_batch_id=None):
-    """The batch ids a student belongs to. If only_batch_id is given (selector), just that one
-    (when the student is actually enrolled in it); else all their enrolled batches."""
+def _enrolled_batches_ordered(db, sp):
+    """Student ke enrolled ACTIVE batches, DETERMINISTIC priority order me (frontend auto-pick se
+    match): non-expired pehle, phir primary, phir id. Ye ek hi 'current' batch chunne ka base hai."""
+    from models import Batch, StudentBatch
+    from datetime import date as _date
     try:
-        from models import StudentBatch
-        bids = [e.batch_id for e in db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()]
+        enr = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
     except Exception:
-        bids = []
-    if not bids and getattr(sp, "batch_id", None):
-        bids = [sp.batch_id]
+        enr = []
+    prim = {}
+    order = []
+    for e in enr:
+        if e.batch_id not in prim:
+            order.append(e.batch_id)
+        prim[e.batch_id] = prim.get(e.batch_id, False) or bool(e.is_primary)
+    if not order:
+        return ([sp.batch_id] if getattr(sp, "batch_id", None) else [])
+    try:
+        bmap = {b.id: b for b in db.query(Batch).filter(Batch.id.in_(order), Batch.active != False).all()}
+    except Exception:
+        bmap = {}
+    today = _date.today()
+    active_ids = [bid for bid in order if bid in bmap] or order
+    def _rank(bid):
+        b = bmap.get(bid)
+        _end = getattr(b, "end_date", None) if b else None
+        expired = 1 if (_end and _end < today) else 0
+        return (expired, 0 if prim.get(bid) else 1, bid)
+    active_ids.sort(key=_rank)
+    return active_ids
+
+
+def _student_active_batch(db, sp):
+    """Ek hi DETERMINISTIC 'current' batch id (har device/session pe same). sp.active_batch_id agar
+    valid enrolled hai to wahi, warna priority-order ka pehla. Per-request cached."""
+    if hasattr(sp, "_active_batch_cached"):
+        return sp._active_batch_cached
+    ordered = _enrolled_batches_ordered(db, sp)
+    ab = getattr(sp, "active_batch_id", None)
+    res = ab if (ab and ab in ordered) else (ordered[0] if ordered else None)
+    try:
+        sp._active_batch_cached = res
+    except Exception:
+        pass
+    return res
+
+
+def _resolve_student_batch(db, sp, requested):
+    """Jis batch se scope karna hai uska id. Agar koi VALID enrolled batch explicitly requested hai
+    to wahi (aur use active_batch_id me PERSIST bhi karo -> doosre device/session bhi wahi default
+    lein = har jagah same tests). Warna server ka active/default batch."""
+    try:
+        req = int(requested or 0)
+    except Exception:
+        req = 0
+    ordered = _enrolled_batches_ordered(db, sp)
+    if req and req in ordered:
+        if getattr(sp, "active_batch_id", None) != req:
+            try:
+                sp.active_batch_id = req
+                sp._active_batch_cached = req
+                db.commit()
+            except Exception:
+                try: db.rollback()
+                except Exception: pass
+        return req
+    return _student_active_batch(db, sp)
+
+
+def _student_batch_ids(db, sp, only_batch_id=None):
+    """The batch ids to scope a student's content to. Explicit batch (selector) -> sirf wahi. Warna
+    EK hi DETERMINISTIC active batch (har device pe same) -> isi se 7/10/22 wala inconsistency khatam
+    (pehle batch=0 pe SAARE enrolled batches ka union aata tha jo device-wise alag dikhta tha)."""
     if only_batch_id:
         try:
             oid = int(only_batch_id)
-            # The app only ever offers batches the student is enrolled in, so trust the
-            # selected batch and scope strictly to it (even if the enrollment row's id differs
-            # slightly). This is what makes every section switch cleanly per batch.
             if oid:
                 return [oid]
         except Exception:
             pass
-    return bids
+    ab = _student_active_batch(db, sp)
+    if ab:
+        return [ab]
+    # koi enrollment nahi -> global/legacy (batch_id NULL) waala path
+    return ([sp.batch_id] if getattr(sp, "batch_id", None) else [])
 
 
 def _bids_standalone(db, bids):
@@ -621,7 +685,26 @@ def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_s
                     "expired": bool(_end and _end < _today),
                     "banner": getattr(bb, "banner_b64", "") or "",
                     "message": getattr(bb, "welcome_message", "") or ""})
-    return {"batches": out}
+    # SERVER source-of-truth active batch (har device pe same). Pehli baar deterministic default
+    # persist kar do taaki aage har session wahi dikhaye.
+    active = _student_active_batch(db, sp)
+    if active and getattr(sp, "active_batch_id", None) != active:
+        try:
+            sp.active_batch_id = active
+            db.commit()
+        except Exception:
+            try: db.rollback()
+            except Exception: pass
+    return {"batches": out, "active_batch_id": active}
+
+
+@router.post("/active-batch")
+def student_set_active_batch(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student batch switch kare to SERVER pe persist -> har doosre device/session bhi wahi batch
+    default le (same tests har jagah). Sirf valid enrolled batch accept hota hai."""
+    sp = get_student_profile(current_user, db)
+    eff = _resolve_student_batch(db, sp, payload.get("batch_id"))
+    return {"ok": True, "active_batch_id": eff}
 
 def notify(db, user_id, title, message, notif_type):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
@@ -684,8 +767,7 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
     today = ist_today()
 
@@ -1951,8 +2033,7 @@ def timetable_plan(batch: int = 0, db: Session = Depends(get_db), current_user=D
     sp = get_student_profile(current_user, db)
     # Default to the student's PRIMARY batch when the app didn't pass one, so a multi-batch
     # student never sees a mixed "all batches" timetable (e.g. finished batch + crash course).
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     from models import TimetableEntry
     from sqlalchemy import or_
     _scope = _subj_scope_for(db, TimetableEntry, sp.subjects or [])
@@ -2069,8 +2150,7 @@ def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_
     from sqlalchemy import or_ as _or
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     _q = db.query(Material).options(defer(Material.content_b64)).filter(
@@ -2141,8 +2221,7 @@ def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user
     from models import Material
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
     ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
                                    _mat_batch_filter(db, sp, batch),
@@ -2160,8 +2239,7 @@ def student_tests_list(batch: int = 0, db: Session = Depends(get_db), current_us
     from models import Material
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
     ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs),
                                    _mat_batch_filter(db, sp, batch),
@@ -2543,8 +2621,7 @@ def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=De
     _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     # TEST VISIBILITY = (1) student ka selected batch (strict: crash/own-test batch me global/doosre
     # batch ke test kabhi leak na ho) AUR (2) test ka subject student ke APNE enrolled subjects me ho
@@ -3348,8 +3425,7 @@ def student_dpp_packs(batch: int = 0, db: Session = Depends(get_db), current_use
     from sqlalchemy import func as _func
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     _dsubs = _sel_batch_subjects(db, sp, batch)
     packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf))
@@ -3896,8 +3972,7 @@ def student_batch_board(batch: int = 0, db: Session = Depends(get_db), current_u
     from models import User as _User, StudentBatch, Batch
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     # XP map ek hi query-set se banta hai (saare students) — 60s cache, har request par recompute nahi
     _xc = globals().setdefault("_XPMAP_CACHE", {"t": 0.0, "m": {}})
     if _time.time() - _xc["t"] > 60:
@@ -3949,8 +4024,7 @@ def student_performance(batch: int = 0, db: Session = Depends(get_db), current_u
     from models import Material, MaterialView, TimetableEntry
     sp = get_student_profile(current_user, db)
     _ensure_batch_cols(db)
-    if not batch and getattr(sp, "batch_id", None):
-        batch = sp.batch_id
+    batch = _resolve_student_batch(db, sp, batch)
     # short-TTL cache (per student+batch) — repeated polls/re-renders recompute na karein
     _ck = (sp.id, batch)
     _ce = _STU_PERF_CACHE.get(_ck)

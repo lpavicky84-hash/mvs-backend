@@ -232,6 +232,7 @@ class StudentProfile(Base):
     batch        = Column(Enum(BatchName))
     batch_name   = Column(String(160), nullable=True)  # free-text batch from app sales sheet
     batch_id     = Column(Integer, ForeignKey("batches.id"), nullable=True)  # Phase 3: link to Batch entity (additive, dual-written)
+    active_batch_id = Column(Integer, nullable=True)  # multi-batch: student ka chuna hua "current" batch — SERVER source of truth (har device pe same)
     medium       = Column(String(12), nullable=True)   # Hindi | English
     source       = Column(String(20), default="mvs_app")  # mvs_portal | mvs_app
     welcome_sent_at = Column(DateTime, nullable=True)     # WhatsApp welcome bheja gaya?

@@ -987,6 +987,7 @@ function goLogin(portal){
   try{ history.replaceState({mvs:1,auth:portal},'', _portalPath(portal)); }catch(e){}
   document.getElementById('landing').style.display='none';
   document.getElementById('login-screen').classList.add('active');
+  try{ _setupStaffLoginEye(); }catch(e){}   // password eye (teacher/admin/production/editor/graphics/youtuber)
   // show right sub-screen
   document.getElementById('login-standard').style.display='none';
   document.getElementById('login-student-phone').style.display='none';
@@ -1097,6 +1098,7 @@ async function _restoreSession(){
 window.addEventListener('DOMContentLoaded', function(){
   try{ _setFavicon(); }catch(e){}
   try{ _warmBackend(); }catch(e){}   // page load hote hi backend warm karna shuru
+  try{ _setupStaffLoginEye(); }catch(e){}   // password show/hide eye — sabhi staff portals ke login pe
   if(/^#sso=/.test(location.hash||'')) return;   // SSO hash ho to wo flow handle karega
   // Session ho to wahi khol do; warna URL path ke hisaab se sahi portal:
   //   /  -> Student, /teacher -> Teacher, /admin -> Admin, /portal -> 3-card chooser.
@@ -1113,7 +1115,9 @@ window.addEventListener('DOMContentLoaded', function(){
 // Student login — TWO STEP (secure, no pre-shown password):
 //  Step 1: phone number only -> precheck. First-time student -> straight to profile setup.
 //  Step 2: only if the student has already set a password -> ask for it.
-function _spTogglePw(){ var i=document.getElementById('sp-pass'); if(i) i.type=i.type==='password'?'text':'password'; }
+// NOTE: single _spTogglePw(id, btn) definition is below (near 19192). Pehle yahan ek no-arg wala
+// duplicate tha jo neeche wale ko shadow kar deta tha -> student login ka eye button kaam nahi
+// karta tha. Ab ek hi version (id-based, icon swap ke saath).
 function _injectStudentPwUI(){
   var host=document.getElementById('login-student-phone'); if(!host) return;
   var phone=document.getElementById('sp-phone');
@@ -1121,7 +1125,7 @@ function _injectStudentPwUI(){
   if(!document.getElementById('sp-pw-block')){
     var wrap=document.createElement('div'); wrap.id='sp-pw-block'; wrap.style.display='none'; wrap.style.marginTop='12px';
     wrap.innerHTML='<label style="display:block;font-weight:700;font-size:.9rem;margin-bottom:6px;color:#3a3320">Password</label>'
-      +'<div style="position:relative"><input id="sp-pass" type="password" class="form-control" autocomplete="new-password" placeholder="Enter your password" style="width:100%;padding-right:40px" onkeydown="if(event.key===\'Enter\')studentLoginNext()"><button type="button" onclick="_spTogglePw()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#9a8c66;cursor:pointer;padding:4px">'+(typeof ic==='function'?ic('eye'):'')+'</button></div>'
+      +'<div style="position:relative"><input id="sp-pass" type="password" class="form-control" autocomplete="new-password" placeholder="Enter your password" style="width:100%;padding-right:40px" onkeydown="if(event.key===\'Enter\')studentLoginNext()"><button type="button" tabindex="-1" onclick="_spTogglePw(\'sp-pass\',this)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#9a8c66;cursor:pointer;padding:4px;display:flex;align-items:center">'+(typeof ic==='function'?ic('eye'):'')+'</button></div>'
       +'<div style="text-align:right;margin-top:8px"><a href="javascript:void(0)" onclick="studentForgotPw()" style="color:#b8941f;font-size:.85rem;font-weight:600;text-decoration:none">Forgot password?</a></div>';
     if(phone && phone.parentNode){ phone.parentNode.insertBefore(wrap, phone.nextSibling); } else host.appendChild(wrap);
   } else { var pp=document.getElementById('sp-pass'); if(pp) pp.value=''; document.getElementById('sp-pw-block').style.display='none'; }
@@ -1211,6 +1215,26 @@ async function studentDirectLogin(){
   }catch(e){ toast(e.message,true); }
 }
 
+// Universal password show/hide eye — kisi bhi password <input> pe laga do. Staff login (teacher,
+// admin, production, editor, graphics, youtuber) sab ek hi #login-pass use karte hain, isliye ek
+// baar attach karne se sabhi portals pe eye button aa jaata hai.
+function _attachPwEye(input){
+  try{
+    if(!input || input._pwEye) return; input._pwEye=1;
+    var p=input.parentNode; if(!p) return;
+    var wrap;
+    if(p.classList && p.classList.contains('pw-eye-wrap')){ wrap=p; }
+    else { wrap=document.createElement('div'); wrap.className='pw-eye-wrap'; wrap.style.cssText='position:relative;display:block;width:100%'; p.insertBefore(wrap, input); wrap.appendChild(input); }
+    try{ input.style.paddingRight='42px'; }catch(e){}
+    var btn=document.createElement('button');
+    btn.type='button'; btn.title='Show / hide password'; btn.setAttribute('tabindex','-1');
+    btn.style.cssText='position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9a8c66;padding:4px;display:flex;align-items:center;z-index:5';
+    btn.innerHTML=(typeof ic==='function'?ic('eye'):'');
+    btn.addEventListener('click',function(){ var show=(input.type==='password'); input.type=show?'text':'password'; try{ btn.innerHTML=ic(show?'eyeOff':'eye'); }catch(e){} try{ input.focus(); }catch(e){} });
+    wrap.appendChild(btn);
+  }catch(e){}
+}
+function _setupStaffLoginEye(){ try{ _attachPwEye(document.getElementById('login-pass')); }catch(e){} }
 async function doLogin(){
   const uid=document.getElementById('login-uid').value.trim();
   const pass=document.getElementById('login-pass').value.trim();
@@ -17330,15 +17354,19 @@ async function _mountBatchSelector(hostId){
     var list=(d&&d.batches)||[];
     window._sBatchList=list;
     if(list.length<=1){ host.innerHTML=''; try{ host.dataset.sig=''; }catch(e){} return; }   // selector sirf multi-batch students ke liye
+    // SERVER active batch sabse upar — har device/session pe SAME batch -> same tests (7/10/22 fix).
+    var serverActive=(d&&d.active_batch_id)||0;
     var sel=_selBatch();
-    if(!sel || !list.some(function(b){return b.id===sel;})){
-      // auto-pick a LIVE (non-expired) batch; among those prefer the primary. So when the
-      // old batch has ended, the student lands on the new live batch automatically.
+    if(serverActive && list.some(function(b){return b.id===serverActive;})){
+      sel=serverActive;
+    } else if(!sel || !list.some(function(b){return b.id===sel;})){
+      // fallback auto-pick (server ne na diya ho): LIVE (non-expired) + primary.
       var _liveList=list.filter(function(b){return !b.expired;});
       var _pool=_liveList.length?_liveList:list;
       var prim=_pool.filter(function(b){return b.is_primary;})[0]||_pool[0];
-      sel=prim.id; try{ localStorage.setItem('sel_batch',String(sel)); }catch(e){}
+      sel=prim.id;
     }
+    try{ localStorage.setItem('sel_batch',String(sel)); }catch(e){}
     // selected batch ka naam + mode window pe set karo taaki sMode()/dashboard sahi dikhe
     var cur=list.filter(function(b){return b.id===sel;})[0];
     if(cur){ window._sBatch=cur.name||window._sBatch; window._sBatchMode=(cur.mode||'live'); try{ applyBatchMode(); }catch(e){} }
@@ -17389,6 +17417,8 @@ function _selBatchChange(bid){
   if(bid && bid===_selBatch()){ _syncBatchBarActive(); return; }   // pehle se isi batch pe -> koi reload nahi (bekaar flicker se bacho)
   var b=((window._sBatchList||[]).filter(function(x){return x.id===bid;})[0])||null;
   try{ localStorage.setItem('sel_batch',String(bid)); if(b){ localStorage.setItem('sel_batch_mode',b.mode||'live'); localStorage.setItem('sel_batch_name',b.name||''); } }catch(e){}
+  // SERVER pe persist -> ye student jis bhi device pe khole, yahi batch default milega (same tests).
+  try{ api('/api/student/active-batch','POST',{batch_id:bid}).catch(function(){}); }catch(e){}
   if(b){ window._sBatch=b.name||window._sBatch; window._sBatchMode=(b.mode||'live'); }
   try{ applyBatchMode(); }catch(e){}
   _syncBatchBarActive();             // INSTANT feedback — selected pill turant flip, bar hilti nahi
@@ -19183,7 +19213,7 @@ function _spReset(sid,name){
     +`<div id="sp-pw-msg" style="font-size:.79rem;margin-top:2px"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sp-pw-save" onclick="_spSavePassword(${sid},'${esc((name||'').replace(/'/g,''))}')">Save changes</button>`);
 }
-function _spTogglePw(id){ var i=document.getElementById(id); if(i) i.type=(i.type==='password'?'text':'password'); }
+function _spTogglePw(id, btn){ id=id||'sp-pass'; var i=document.getElementById(id); if(!i) return; var show=(i.type==='password'); i.type=show?'text':'password'; try{ if(btn&&typeof ic==='function') btn.innerHTML=ic(show?'eyeOff':'eye'); }catch(e){} try{ i.focus(); }catch(e){} }
 async function _spSavePassword(sid,name){
   var np=(document.getElementById('sp-np')||{}).value||''; var cp=(document.getElementById('sp-cp')||{}).value||'';
   var msg=document.getElementById('sp-pw-msg');

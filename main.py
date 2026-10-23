@@ -246,6 +246,8 @@ def ensure_columns():
         # single-session (all roles): active session-id per user
         "ALTER TABLE users ADD COLUMN active_session_token VARCHAR(64)",
         "CREATE INDEX ix_users_sess ON users (active_session_token)",
+        # multi-batch student: server-side current batch (har device pe same tests)
+        "ALTER TABLE student_profiles ADD COLUMN active_batch_id INT",
         # v95: editable monthly target labels + custom targets
         "ALTER TABLE teacher_pay_configs ADD COLUMN target_labels JSON",
         "ALTER TABLE teacher_pay_configs ADD COLUMN custom_targets JSON",
