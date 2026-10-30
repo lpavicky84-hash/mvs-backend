@@ -943,6 +943,29 @@ def editor_progress(tid: int, payload: dict = Body(...),
     return {"ok": True, "progress": pct}
 
 
+@router.get("/tasks/{tid}/collab")
+def editor_task_collab(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
+    """Read-only: is task ke saare collaborating teachers (naam + verified). Editor ko dikhane
+    ke liye — collab video me sabhi teachers feature karte hain. Koi edit/verify nahi (wo PM/admin)."""
+    sp = _me_staff(db, me)
+    t = _my_task(db, sp, tid)
+    try:
+        from video_tasks import (_collab_all_ids as _cai, _collab_vmap as _cvm,
+                                 _teacher_name as _tn)
+    except Exception:
+        return {"is_collab": False, "collaborators": []}
+    ids = _cai(t)
+    if len(ids) <= 1:
+        return {"is_collab": False, "collaborators": []}
+    vmap = _cvm(t) or {}
+    cols = [{"id": i, "name": (_tn(db, i) or ("Teacher #%s" % i)),
+             "verified": bool(vmap.get(str(i)))} for i in ids]
+    _sub = getattr(t, "submitted_by", None)
+    return {"is_collab": True, "collaborators": cols,
+            "submitted_by_name": ((_tn(db, _sub) if _sub else "") or ""),
+            "all_verified": all(vmap.get(str(i)) for i in ids)}
+
+
 @router.post("/tasks/{tid}/complete")
 def editor_complete(tid: int, db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)

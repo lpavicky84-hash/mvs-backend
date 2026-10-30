@@ -419,6 +419,34 @@ def gfx_task_detail(tid: int, db: Session = Depends(get_db), me=Depends(get_grap
     return out
 
 
+@router.get("/tasks/{tid}/collab")
+def gfx_task_collab(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
+    """Read-only: is thumbnail task ke saare collaborating teachers (naam + verified status).
+    Graphics designer ko collab task pe DIKHANA zaroori hai — warna sirf 1 (primary) teacher
+    dikhta tha aur wo single teacher ka thumbnail bana deta tha. Yahan koi edit/verify nahi,
+    sirf view (verify sirf PM/admin karte hain)."""
+    sp = _me_staff(db, me)
+    g = _my_gtask(db, sp, tid)   # designer isi thumbnail task ka owner hona chahiye
+    t = db.query(VideoTask).filter(VideoTask.id == g.task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    try:
+        from video_tasks import (_collab_all_ids as _cai, _collab_vmap as _cvm,
+                                 _teacher_name as _tn)
+    except Exception:
+        return {"is_collab": False, "collaborators": []}
+    ids = _cai(t)
+    if len(ids) <= 1:
+        return {"is_collab": False, "collaborators": []}
+    vmap = _cvm(t) or {}
+    cols = [{"id": i, "name": (_tn(db, i) or ("Teacher #%s" % i)),
+             "verified": bool(vmap.get(str(i)))} for i in ids]
+    _sub = getattr(t, "submitted_by", None)
+    return {"is_collab": True, "collaborators": cols,
+            "submitted_by_name": ((_tn(db, _sub) if _sub else "") or ""),
+            "all_verified": all(vmap.get(str(i)) for i in ids)}
+
+
 @router.get("/tasks/{tid}/comments")
 def gfx_comments(tid: int, db: Session = Depends(get_db), me=Depends(get_graphics)):
     sp = _me_staff(db, me)

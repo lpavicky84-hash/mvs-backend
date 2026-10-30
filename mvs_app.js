@@ -35356,7 +35356,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       var _ct=t.collab_total||(t.collab&&t.collab.length)||0, _cv=(t.collab_verified!=null?t.collab_verified:0);
       var _cstat=_ct?(_cv>=_ct?(' \u00b7 All '+_ct+' verified'):(' \u00b7 '+_cv+'/'+_ct+' verified')):'';
       var _cok=(_ct&&_cv>=_ct);
-      chips.push('<span class="pw-chip pw-collab-blink" style="background:'+(_cok?'rgba(46,158,107,.14)':'rgba(124,79,192,.14)')+';color:'+(_cok?'#1f7a44':'#7c4fc0')+';cursor:pointer" onclick="event.stopPropagation();prodCollabPopup('+t.id+')" title="View all collaborating teachers">'+ic('users')+' Collab'+_cstat+'</span>');
+      chips.push('<span class="pw-chip pw-collab-blink" style="background:'+(_cok?'rgba(46,158,107,.14)':'rgba(124,79,192,.14)')+';color:'+(_cok?'#1f7a44':'#7c4fc0')+';cursor:pointer" onclick="event.stopPropagation();_collabPopup(\''+portal+'\','+t.id+')" title="View all collaborating teachers">'+ic('users')+' Collab'+_cstat+'</span>');
     }
     if(t.creator_name) chips.push('<span class="pw-chip who">'+ic('user')+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
@@ -38838,6 +38838,25 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       dr.innerHTML='<div class="p-modal" style="max-width:460px"><div class="pd-head"><div class="h-title">Video Needs</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
         '<div class="p-modal-body">'+refBlock+remBlock+'<div style="margin-top:12px;font-size:.82rem;color:var(--muted)">To talk with the teacher, use the \u201cChat\u201d button on the card.</div></div>'+
         '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="document.getElementById(\'prod-modal2\').remove()">Close</button><button class="p-btn p-btn-primary" onclick="document.getElementById(\'prod-modal2\').remove();prodConvo('+id+')">Chat with Teacher</button></div></div></div>';
+      dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
+      document.body.appendChild(dr);
+    }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });
+  };
+  // Portal-aware collab view. PM/Admin -> editable popup (verify teachers). Graphics/Editor ->
+  // READ-ONLY list (apne portal ke /tasks/{id}/collab se) taaki unhe pata chale ki video kis-kis
+  // teacher ka collab hai — single-teacher confusion khatam.
+  window._collabPopup=function(portal,id){
+    if(portal==='production'||portal==='admin'){ try{ prodCollabPopup(id); }catch(e){} return; }
+    var base=(P[portal]&&P[portal].api)||('/api/'+portal);
+    api(base+'/tasks/'+id+'/collab').then(function(r){
+      var cols=(r&&r.collaborators)||[];
+      var subBy=(r&&r.submitted_by_name)?'<div style="padding:4px 4px 10px;font-size:.84rem;color:var(--muted)">Submitted by <b style="color:var(--text)">'+esc(r.submitted_by_name)+'</b></div>':'';
+      var body=cols.length?cols.map(function(c){ return '<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)"><span style="flex:1;font-weight:600">'+esc(c.name)+'</span><span style="font-size:.8rem;color:'+(c.verified?'#2e9e6b':'#a9791f')+'">'+(c.verified?'Approved':'Pending')+'</span></div>'; }).join(''):'<div class="p-opt">No collaborators.</div>';
+      var old=document.getElementById('prod-modal2'); if(old) old.remove();
+      var dr=document.createElement('div'); dr.className='p-modal-wrap'; dr.id='prod-modal2'; dr.style.zIndex='130';
+      dr.innerHTML='<div class="p-modal" style="max-width:420px"><div class="pd-head"><div class="h-title">Collaborating Teachers</div><button class="pd-x" onclick="document.getElementById(\'prod-modal2\').remove()">&times;</button></div>'+
+        '<div class="p-modal-body"><div style="font-size:.82rem;color:var(--muted);margin:0 4px 11px;line-height:1.5">'+ic('users')+' Ye video in sabhi teachers ka <b>collab</b> hai — thumbnail me <b>sabhi</b> ko include karo.</div>'+subBy+body+'</div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn p-btn-primary" onclick="document.getElementById(\'prod-modal2\').remove()">Got it</button></div></div></div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) dr.remove(); });
       document.body.appendChild(dr);
     }).catch(function(e){ toast((e&&e.message)||'Could not load',true); });

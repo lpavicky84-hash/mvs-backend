@@ -1955,6 +1955,19 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
         out["pause_req_deadline"] = _dt_raw(_prd)
         out["pause_req_deadline_iso"] = (_prd.strftime("%Y-%m-%dT%H:%M") if _prd else "")
         out["pause_req_urgent_id"] = getattr(t, "pause_req_urgent_id", None)
+    # ---- Collab info (HAR portal pe) — graphics/editor ko bhi pata chale ki video collab hai ----
+    # Pehle ye sirf PM list me add hota tha, isliye graphics designer ko sirf 1 (primary) teacher
+    # dikhta tha aur wo single teacher ka thumbnail bana deta tha. Ab shared serializer me hai ->
+    # collab chip har portal pe (parse-only, koi extra DB query nahi).
+    try:
+        from video_tasks import _collab_all_ids as _cai, _collab_vmap as _cvm
+        _allids = _cai(t)
+        _vmap = _cvm(t) or {}
+        out["is_collab"] = len(_allids) > 1
+        out["collab_total"] = len(_allids)
+        out["collab_verified"] = sum(1 for i in _allids if _vmap.get(str(i)))
+    except Exception:
+        pass
     # edited-link version history (Version 1 / Version 2 ...) — shown in every portal
     out["edited_versions"] = edited_versions_out(db, t) if t.edited_link else []
     if not light:
