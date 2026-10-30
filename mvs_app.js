@@ -33214,7 +33214,13 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var df=t.deadline_flag||{}; var dl=(df.kind&&['overdue','today','soon'].indexOf(df.kind)>=0)?'<span class="pt-dl '+df.kind+'">'+esc(df.label)+'</span>':'';
     // chips: creator, subject, type/channel, assignees
     var chips=[];
-    if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YouTuber)':'')+'</span>');
+    var _isCol=!!((t.collab&&t.collab.length)||t.is_collab);
+    if(_isCol){
+      var _ct2=t.collab_total||(t.collab&&t.collab.length)||0, _cv2=(t.collab_verified!=null?t.collab_verified:0);
+      var _cs2=_ct2?(_cv2>=_ct2?(' · All '+_ct2+' verified'):(' · '+_cv2+'/'+_ct2+' verified')):'';
+      var _cok2=(_ct2&&_cv2>=_ct2);
+      chips.push('<span class="pw-chip pw-collab-blink" style="cursor:pointer;background:'+(_cok2?'rgba(46,158,107,.14)':'rgba(124,79,192,.14)')+';color:'+(_cok2?'#1f7a44':'#7c4fc0')+'" onclick="event.stopPropagation();_collabPopup(\''+portal+'\','+t.id+')">'+ic('users')+' Collab'+_cs2+'</span>');
+    } else if(t.creator_name) chips.push('<span class="pw-chip who">'+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YouTuber)':'')+'</span>');
     if(t.subject) chips.push('<span class="pw-chip sub">'+esc(t.subject)+'</span>');
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
     if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
@@ -35352,13 +35358,15 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='editor' && (_elc==='creator_assigned'||_elc==='creator_working'||_elc==='changes_required'||_elc==='reshoot_required') && !t.submitted_link){
       chips.push('<span class="pw-chip pw-shoot-blink" onclick="event.stopPropagation();edtShootPending('+JSON.stringify(esc(t.creator_name||''))+','+JSON.stringify(esc(t.deadline||''))+')" title="Teacher hasn\'t shot the video yet \u2014 tap for their deadline">'+ic('clock')+' Shoot Pending</span>');
     }
-    if((t.collab&&t.collab.length)||t.is_collab){
+    var _isCollab=!!((t.collab&&t.collab.length)||t.is_collab);
+    if(_isCollab){
       var _ct=t.collab_total||(t.collab&&t.collab.length)||0, _cv=(t.collab_verified!=null?t.collab_verified:0);
       var _cstat=_ct?(_cv>=_ct?(' \u00b7 All '+_ct+' verified'):(' \u00b7 '+_cv+'/'+_ct+' verified')):'';
       var _cok=(_ct&&_cv>=_ct);
       chips.push('<span class="pw-chip pw-collab-blink" style="background:'+(_cok?'rgba(46,158,107,.14)':'rgba(124,79,192,.14)')+';color:'+(_cok?'#1f7a44':'#7c4fc0')+';cursor:pointer" onclick="event.stopPropagation();_collabPopup(\''+portal+'\','+t.id+')" title="View all collaborating teachers">'+ic('users')+' Collab'+_cstat+'</span>');
     }
-    if(t.creator_name) chips.push('<span class="pw-chip who">'+ic('user')+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
+    // Collab task pe single teacher ka "who" chip NAHI \u2014 Collab chip hi sabhi teachers dikhata hai (confusion khatam)
+    if(t.creator_name && !_isCollab) chips.push('<span class="pw-chip who">'+ic('user')+esc(t.creator_name)+((t.creator_type==='youtuber')?' (YT)':'')+'</span>');
     if(t.video_type) chips.push('<span class="pw-chip">'+esc(t.video_type)+'</span>');
     if(t.channel_name) chips.push('<span class="pw-chip">'+esc(t.channel_name)+'</span>');
     if(t.streaming) chips.push('<span class="pw-chip'+(/live/i.test(t.streaming)?' pwlive':'')+'">'+esc(t.streaming)+'</span>');
