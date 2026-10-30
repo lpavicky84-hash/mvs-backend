@@ -1942,7 +1942,12 @@ def task_out(db, t, g=None, timeline=False, light=False, viewer=None, comment_co
     out["live_editing_seconds"] = _live_secs
     out["editing_running"] = _editing_running
     # ---- Urgent pause-request (PM -> editor) ----
-    _prq = bool(getattr(t, "pause_req", False))
+    # Pause sirf tab meaningful jab editing abhi active/pending ho (wahi states jahan editor_pause
+    # allow karta hai). Agar editor ne video SUBMIT kar di (qc_pending) ya wo UPLOAD ho gayi
+    # (uploaded/completed) to pause moot hai -> pause_req ko False report karo, taaki editor ke
+    # portal pe popup dobara na aaye aur "Editing is not currently active" error na mile.
+    _PAUSE_ACTIVE_LC = ("editing", "editor_assigned", "editing_soon", "editing_paused", "approved")
+    _prq = bool(getattr(t, "pause_req", False)) and ((getattr(t, "lifecycle", "") or "") in _PAUSE_ACTIVE_LC)
     out["pause_req"] = _prq
     if _prq:
         _prd = getattr(t, "pause_req_deadline", None)

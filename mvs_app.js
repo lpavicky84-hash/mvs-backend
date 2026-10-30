@@ -29927,6 +29927,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.edtu-nextbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;font-size:.88rem;font-weight:800;padding:12px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#2fa06d,#1f8a54);cursor:pointer}',
 '.edtu-nextbtn.edtu-blink{animation:edtuBlink 1.15s ease-in-out infinite}',
 '.edtu-nextbtn svg{width:16px;height:16px}',
+'.p-btn.edtu-dismiss{display:inline-flex;align-items:center;gap:6px;color:#1f8a54;border:1px solid rgba(31,138,84,.45);background:rgba(31,138,84,.08);font-weight:700}',
+'.p-btn.edtu-dismiss:hover{background:rgba(31,138,84,.14)}',
+'.p-btn.edtu-dismiss svg{width:15px;height:15px}',
+'body.dark .p-btn.edtu-dismiss{color:#55d39a;border-color:rgba(85,211,154,.4);background:rgba(85,211,154,.1)}',
 /* ---- premium primary action: Submit Video Link (filled gradient pill, full-width row) ---- */
 '.ptc-submit{flex:1 1 100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;font-size:.8rem;font-weight:800;letter-spacing:.01em;padding:11px 16px;margin:2px 0 4px;border:none;border-radius:12px;color:#fff;background:linear-gradient(135deg,#1eb15f 0%,#0f8a45 100%);box-shadow:0 8px 20px rgba(15,138,69,.30),inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer;transition:transform .15s cubic-bezier(.2,.8,.2,1),box-shadow .15s,filter .15s;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
 '.ptc-submit svg{width:16px;height:16px;stroke-width:2.4}',
@@ -30962,9 +30966,20 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   };
   // ===== EDITOR: URGENT PAUSE-REQUEST POPUP (PM ne is task ko pause karne ko bola) =====
   window._edtPauseSeen=window._edtPauseSeen||{};
+  // Pause sirf tab meaningful jab editing abhi active/pending ho (wahi states jahan backend pause allow karta hai).
+  // Video submit/upload hone ke baad popup NAHI aana chahiye.
+  window._EDT_PAUSE_ACTIVE_LC={editing:1,editor_assigned:1,editing_soon:1,editing_paused:1,approved:1};
+  // Device-level PERMANENT dismiss (localStorage): ek baar dismiss kiya to us task ka popup dubara kabhi nahi
+  window._edtPauseDismissLoad=function(){ try{ return JSON.parse(localStorage.getItem('edtPauseDismiss')||'{}')||{}; }catch(e){ return {}; } };
+  window._edtPauseDismissSave=function(o){ try{ localStorage.setItem('edtPauseDismiss',JSON.stringify(o||{})); }catch(e){} };
   window._edtPauseReqPopup=function(tasks){
     try{
-      var list=(tasks||[]).filter(function(t){ return t && t.pause_req; });
+      var _dism=window._edtPauseDismissLoad();
+      var list=(tasks||[]).filter(function(t){
+        return t && t.pause_req
+          && window._EDT_PAUSE_ACTIVE_LC[(t.lifecycle||'')]   // submit/upload ho chuki to skip
+          && !_dism[t.id];                                     // is device pe dismiss kiya to skip
+      });
       if(!list.length) return;
       var t=null; for(var i=0;i<list.length;i++){ if(!window._edtPauseSeen[list[i].id]){ t=list[i]; break; } }
       if(!t) return;
@@ -30982,7 +30997,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           (urgentId?('<div class="edtu-next"><div class="edtu-next-h">'+ic('play')+' Then start the urgent task</div>'+
             '<button class="edtu-nextbtn edtu-blink" onclick="_edtOpenUrgent('+urgentId+')">'+ic('eye')+' View Details</button></div>'):'')+
         '</div>'+
-        '<div class="pd-foot"><div class="p-acts"><button class="p-btn" onclick="_edtPauseReqLater('+t.id+')">Later</button></div></div>'+
+        '<div class="pd-foot"><div class="p-acts"><button class="p-btn edtu-dismiss" onclick="_edtPauseReqDismiss('+t.id+')">'+ic('check')+' Already done — don’t show again</button><button class="p-btn" onclick="_edtPauseReqLater('+t.id+')">Later</button></div></div>'+
       '</div>';
       dr.addEventListener('click',function(e){ if(e.target===dr) _edtPauseReqLater(t.id); });
       document.body.appendChild(dr);
@@ -30991,6 +31006,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
   window._edtDoPauseFromReq=function(id){ var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); try{ edtPauseModal(id); }catch(e){} };
   window._edtOpenUrgent=function(id){ var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); try{ prodOpenTask('editor',id); }catch(e){} };
   window._edtPauseReqLater=function(id){ window._edtPauseSeen[id]=1; var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); };
+  // PERMANENT dismiss: device pe save -> is task ka pause-popup dubara kabhi nahi aayega
+  window._edtPauseReqDismiss=function(id){ try{ var d=window._edtPauseDismissLoad(); d[id]=1; window._edtPauseDismissSave(d); }catch(e){} window._edtPauseSeen[id]=1; var m=document.getElementById('edt-urgent-modal'); if(m) m.remove(); };
   // ---- Editor + PM/Admin: dashboard popup when a TEACHER requests changes on the edited video ----
   window._revAlertSeen=window._revAlertSeen||{};
   function _reviewAlertEnsureCss(){

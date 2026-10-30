@@ -953,6 +953,13 @@ def editor_complete(tid: int, db: Session = Depends(get_db), me=Depends(get_edit
     t.editing_progress = 100
     t.editing_done_at = datetime.utcnow()
     pc.set_state(db, t, "editing_done", actor=me, event="editing_completed")
+    # Editing done -> pause-request moot, clear kar do (popup band)
+    if getattr(t, "pause_req", False):
+        t.pause_req = False
+        t.pause_req_deadline = None
+        t.pause_req_by = ""
+        t.pause_req_urgent_id = None
+        t.pause_req_at = None
     pc.notify_pms(db, "Editing Completed", f'{me.name} finished editing "{t.title}".', "production", link=str(t.id))
     db.commit()
     return {"ok": True, "lifecycle": t.lifecycle, "editing_seconds": t.editing_seconds or 0}
@@ -993,6 +1000,14 @@ def editor_submit(tid: int, payload: dict = Body(...),
     pc.set_state(db, t, "qc_pending", actor=me,
                  event="revision_submitted" if is_revision else "edited_video_submitted",
                  meta={"link": link, "note": _rem[:200]})
+    # Edited video submit ho gayi -> PM ka urgent pause-request ab moot hai. Agar editor pause
+    # kiye bina hi submit kar de (bhool gaya), to bhi flag clear ho jaaye taaki popup dubara na aaye.
+    if getattr(t, "pause_req", False):
+        t.pause_req = False
+        t.pause_req_deadline = None
+        t.pause_req_by = ""
+        t.pause_req_urgent_id = None
+        t.pause_req_at = None
     # save the structured recording feedback ATOMICALLY in the same transaction (history-preserving).
     _fb_row = None
     if _fb_needed:
