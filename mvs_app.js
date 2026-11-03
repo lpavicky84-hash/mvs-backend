@@ -16115,7 +16115,7 @@ function _batchCard(b){
       +'<div class="bc-two"><label class="bc-f">Starts<input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
         +'<label class="bc-f">Expires<input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
       +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
-        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchDelete('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\','+used+')">'+ic('trash')+' Delete</button>':'<button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
+        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchDelete('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\','+used+')">'+ic('trash')+' Delete</button>':'<button class="btn btn-sm bc-restart" onclick="_attRestartModal('+b.id+')" title="Batch dubara shuru karo \u2014 purana timetable/DPP/test/material archive (hide) ho jaayega, batch fresh. Reversible.">'+ic('play')+' Restart</button><button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+b.id+')" title="Old / New sessions \u2014 archived data dekho, students ko Old card dikhao/chhipao, ya restore karo">'+ic('folder')+' Sessions</button><button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
     +'</div></div>';
 }
 function _batchMgrBody(list,unlinked){
@@ -16331,7 +16331,9 @@ function _bmInjectCSS(){
    '.bc-two .input{padding:6px 8px;font-size:.8rem;width:100%;box-sizing:border-box}',
    '.bc-f{display:flex;flex-direction:column;gap:3px;font-size:.66rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.02em}',
    '.bc-ck{flex-direction:row;align-items:center;gap:6px;text-transform:none;font-size:.8rem;font-weight:600;padding-top:15px}',
-   '.bc-acts{display:flex;gap:8px;margin-top:4px}.bc-acts .btn{flex:1}'
+   '.bc-acts{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}.bc-acts .btn{flex:1;min-width:84px}',
+   '.bc-restart{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;border:none;font-weight:800;box-shadow:0 6px 16px -9px rgba(201,138,46,.75)}',
+   '.bc-restart:hover{filter:brightness(1.05)}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -19830,7 +19832,9 @@ function _attInjectCSS(){
 function _attViewGen(gen){ window._attGen=gen||0; try{ closeModal(); }catch(e){} loadATimetable(); }
 function _attRestartModal(bid){
   _attInjectCSS();
-  var b=(window._attBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0]||{};
+  // batch ka naam kisi bhi loaded list se (Batches page -> _bmgrBatches; Timetable -> _attBatchList)
+  var _src=(window._attBatchList||[]).concat(window._bmgrBatches||[]).concat(window._admBatches||[]);
+  var b=_src.filter(function(x){return x&&String(x.id)===String(bid);})[0]||{};
   var nm=esc(b.name||('#'+bid))+(b.session?(' · '+esc(b.session)):'');
   var defLabel='Old — till '+(new Date()).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
   showModal('Restart Batch — '+nm,
@@ -19855,7 +19859,8 @@ async function _attRestartGo(bid){
     var a=r.archived||{}; var tot=(a.timetable||0)+(a.dpp||0)+(a.test||0)+(a.material||0);
     closeModal(); window._attGen=0;
     toast('Batch restarted — '+tot+' items archived (hidden). Ab naya timetable upload karo.');
-    loadATimetable();
+    try{ loadATimetable(); }catch(_e){}
+    try{ if(typeof loadABatches==='function') loadABatches(); }catch(_e){}
   }catch(e){ toast((e&&e.message)||'Restart failed',true); if(go){ go.disabled=false; go.innerHTML=ic('play')+' Restart &amp; Archive'; } }
 }
 async function _attSessionsPanel(bid){
