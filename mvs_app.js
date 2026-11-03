@@ -21554,7 +21554,8 @@ async function _loadSDppReal(){
         +old.map(d2=>`<div class="today-row"><div><div class="tr-sub"> ${esc(d2.subject)}</div><div class="tr-topic">${esc(d2.chapter||'')} — ${esc(d2.title||'DPP')}</div></div><div class="tmeta"><button class="btn btn-ghost btn-sm" onclick="downloadMaterial('student',${d2.id},'DPP.pdf')">${ic('download')} Download</button></div></div>`).join('')
         +`</div></div>`;
     }catch(_e){}
-    el.innerHTML=html;
+    el.innerHTML='<div id="s-dppoldnew-wrap"></div>'+html;
+    _sMountOldNew('s-dppoldnew-wrap', loadSDpp);
     // teacher photos (avatar) — auth header ke saath fetch karke lagao
     packs.filter(pk=>pk.has_teacher_photo).forEach(pk=>{
       _loadPhotoInto(`dppava-${pk.id}`,`/api/student/teacher/${pk.teacher_id}/photo`); });
@@ -22346,6 +22347,7 @@ async function loadSTests(){
     }
     window._sexSeenSet=_sexSeenLoad();
     _tSubCss();
+    setTimeout(function(){ _sMountOldNew('s-testoldnew-wrap', loadSTests); }, 0);
     const graded=exams.filter(e=>e.status==='graded');
     const grading=exams.filter(e=>e.status==='grading');
     const upcoming=exams.filter(e=>e.status!=='graded'&&e.status!=='grading');
@@ -22353,7 +22355,7 @@ async function loadSTests(){
     const last=graded.length?graded[graded.length-1]:null;
     const nxt=upcoming[0]||null;
     const totNew=exams.filter(_sexIsNew).length;
-    const hero=`<div class="tx-hero"><div class="tx-hero-in">
+    const hero=`<div id="s-testoldnew-wrap"></div><div class="tx-hero"><div class="tx-hero-in">
       <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
         <div style="min-width:200px;flex:1">
           <div class="tx-eyebrow">TEST CENTER</div>
