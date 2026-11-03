@@ -1222,6 +1222,19 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         nm = b.name or ""
         if nm and nm not in _name_credit_card:
             _name_credit_card[nm] = b.id
+    # Batch Restart: how many archived (not-restored) generations each batch has -> drives the
+    # "Restart / Sessions" button state on the Batches page.
+    _arch_ct = {}
+    try:
+        from models import BatchArchive as _BA
+        from sqlalchemy import func as _afunc
+        for _bid2, _c in (db.query(_BA.batch_id, _afunc.count(_BA.id))
+                          .filter(_BA.restored_at.is_(None))
+                          .group_by(_BA.batch_id).all()):
+            if _bid2 is not None:
+                _arch_ct[_bid2] = int(_c or 0)
+    except Exception:
+        _arch_ct = {}
     return {"unlinked": unlinked, "batches": [{
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
         "mode": getattr(b, "mode", "live") or "live",
@@ -1236,6 +1249,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         "banner": getattr(b, "banner_b64", "") or "",
         "welcome_message": getattr(b, "welcome_message", "") or "",
         "usage": int(by_id.get(b.id, 0) or 0) + (int(by_name.get(b.name, 0) or 0) if _name_credit_card.get(b.name) == b.id else 0),
+        "archive_count": int(_arch_ct.get(b.id, 0)),
         "addon": int(addon_by_id.get(b.id, 0) or 0),
     } for b in rows]}
 
@@ -2304,7 +2318,7 @@ def admin_batch_restart(payload: dict, db: Session = Depends(get_db), me=Depends
     types = [t for t in types if t in _arch_models()]
     active = _arch_counts(db, bid, None)
     if sum(active.get(t, 0) for t in types) == 0:
-        raise HTTPException(status_code=400, detail="Is batch me archive karne ke liye koi active content nahi hai.")
+        raise HTTPException(status_code=400, detail="This batch has no active content to archive. It is already fresh — upload the new timetable, or open Sessions to manage earlier ones.")
     gen = BatchArchive(batch_id=bid, label=label, note=note,
                        student_visible=student_visible, tagged_old=tagged_old,
                        counts_json=_json.dumps({t: active.get(t, 0) for t in types}),

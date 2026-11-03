@@ -16115,7 +16115,7 @@ function _batchCard(b){
       +'<div class="bc-two"><label class="bc-f">Starts<input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
         +'<label class="bc-f">Expires<input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
       +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
-        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchDelete('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\','+used+')">'+ic('trash')+' Delete</button>':'<button class="btn btn-sm bc-restart" onclick="_attRestartModal('+b.id+')" title="Batch dubara shuru karo \u2014 purana timetable/DPP/test/material archive (hide) ho jaayega, batch fresh. Reversible.">'+ic('play')+' Restart</button><button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+b.id+')" title="Old / New sessions \u2014 archived data dekho, students ko Old card dikhao/chhipao, ya restore karo">'+ic('folder')+' Sessions</button><button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
+        +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchDelete('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\','+used+')">'+ic('trash')+' Delete</button>':((b.archive_count||0)>0?('<button class="btn btn-ghost btn-sm" onclick="_attRestartModal('+b.id+')" title="Restart again \u2014 archives the current content as another previous session. Reversible.">'+ic('play')+' Restart again</button><button class="btn btn-sm bc-restart" onclick="_attSessionsPanel('+b.id+')" title="Manage previous (Old) sessions \u2014 view, show or hide for students, or restore.">'+ic('folder')+' Sessions ('+(b.archive_count||0)+')</button>'):('<button class="btn btn-sm bc-restart" onclick="_attRestartModal('+b.id+')" title="Restart this batch for a new session \u2014 the current timetable, DPP, tests and material are archived (hidden) and the batch starts fresh. Reversible.">'+ic('play')+' Restart</button><button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+b.id+')" title="Old and New sessions \u2014 view archived content, show or hide the Old card for students, or restore.">'+ic('folder')+' Sessions</button>'))+'<button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
     +'</div></div>';
 }
 function _batchMgrBody(list,unlinked){
@@ -17403,7 +17403,7 @@ async function _sMountOldNew(hostId, reloadFn){
         +'.son-s{font-size:.74rem;color:var(--text-muted,#8a7d5c);margin-top:2px}';
       document.head.appendChild(st); }
     window._sGen=window._sGen||0;
-    var cards='<div class="son-card '+(!window._sGen?'on':'')+'" onclick="_sSetGen(0)"><div class="son-k">'+ic('check')+' Current</div><div class="son-t">New session</div><div class="son-s">Jo abhi chal raha hai</div></div>';
+    var cards='<div class="son-card '+(!window._sGen?'on':'')+'" onclick="_sSetGen(0)"><div class="son-k">'+ic('check')+' Current</div><div class="son-t">New session</div><div class="son-s">Currently running</div></div>';
     arr.forEach(function(a){
       cards+='<div class="son-card '+(String(window._sGen)===String(a.id)?'on':'')+'" onclick="_sSetGen('+a.id+')"><div class="son-k">'+ic('clock')+' '+(a.tagged_old?'Old':'Previous')+'</div><div class="son-t">'+esc(a.label||'Old session')+'</div><div class="son-s">'+esc(a.created_at||'')+'</div></div>';
     });
@@ -19790,12 +19790,12 @@ async function _attMountBatchBar(){
         var _rmBtn=(_rm==='crash')
           ? '<button class="btn btn-ghost btn-sm" style="border-color:#7c3aed;color:#7c3aed" onclick="_attSetReportMode('+window._attBatch+',\'regular\')" title="Is batch ke class reports CRASH-COURSE system use karte hain (Day-wise chapters complete). Regular report pe wapas laane ke liye click karo.">'+ic('play')+' Report: Crash \u2713</button>'
           : '<button class="btn btn-ghost btn-sm" onclick="_attSetReportMode('+window._attBatch+',\'crash\')" title="Is batch ko CRASH-COURSE report system do (teacher class report me completed chapters chunta hai, distinct progress banti hai).">'+ic('play')+' Report: Regular</button>';
-        var _genChip=window._attGen?('<span class="att-gen-chip">'+ic('clock')+' Viewing: OLD session <button onclick="_attViewGen(0)">\u2715 back to New</button></span>'):'';
+        var _genChip=window._attGen?('<span class="att-gen-chip">'+ic('clock')+' Viewing a previous session <button onclick="_attViewGen(0)">\u2715 back to current</button></span>'):'';
         return '<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button>'
           +_saBtn+_rmBtn
           +'<button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>'
-          +'<button class="btn btn-sm att-restart-btn" onclick="_attRestartModal('+window._attBatch+')" title="Is batch ko dubara shuru karo \u2014 purana timetable/DPP/test/material archive (hide) ho jaayega, batch fresh ho jaayega. Reversible.">'+ic('play')+' Restart Batch</button>'
-          +'<button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+window._attBatch+')" title="Old / New sessions \u2014 archived data dekho, students ko Old card dikhao/chhipao, ya restore karo">'+ic('folder')+' Sessions (Old / New)</button>'
+          +'<button class="btn btn-sm att-restart-btn" onclick="_attRestartModal('+window._attBatch+')" title="Restart this batch for a new session \u2014 the current timetable, DPP, tests and material are archived (hidden) and the batch starts fresh. Reversible.">'+ic('play')+' Restart Batch</button>'
+          +'<button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+window._attBatch+')" title="Old and New sessions \u2014 view archived content, show or hide the Old card for students, or restore.">'+ic('folder')+' Sessions</button>'
           +_genChip;
       })():'')
       +'</div>';
@@ -19832,23 +19832,23 @@ function _attInjectCSS(){
 function _attViewGen(gen){ window._attGen=gen||0; try{ closeModal(); }catch(e){} loadATimetable(); }
 function _attRestartModal(bid){
   _attInjectCSS();
-  // batch ka naam kisi bhi loaded list se (Batches page -> _bmgrBatches; Timetable -> _attBatchList)
+  // Resolve the batch name from whichever list is loaded (Batches page -> _bmgrBatches; Timetable -> _attBatchList)
   var _src=(window._attBatchList||[]).concat(window._bmgrBatches||[]).concat(window._admBatches||[]);
   var b=_src.filter(function(x){return x&&String(x.id)===String(bid);})[0]||{};
   var nm=esc(b.name||('#'+bid))+(b.session?(' · '+esc(b.session)):'');
-  var defLabel='Old — till '+(new Date()).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  var defLabel='Previous — till '+(new Date()).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
   showModal('Restart Batch — '+nm,
-    '<div class="rst-warn">'+ic('alert')+' Ye <b>'+nm+'</b> ka saara <b>abhi active</b> content (timetable, DPP, tests, material) ek <b>Old session</b> me archive kar dega — students ko turant dikhना band. Batch fresh ho jaayega; aap naya timetable upload karoge. <b>Kuch delete nahi hota</b> — kabhi bhi Restore ho sakta hai. Dusre batch/session (jaise October) pe <b>koi asar nahi</b>.</div>'
-    +'<div class="form-group"><label>Is purane session ka naam (label)</label><input class="form-control" id="rst-label" value="'+esc(defLabel)+'" maxlength="80"></div>'
-    +'<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin:4px 2px 7px">Kya-kya archive karein</div>'
+    '<div class="rst-warn">'+ic('alert')+' This archives all of <b>'+nm+'</b>’s <b>current</b> content (timetable, DPP, tests and material) into a <b>previous session</b> and immediately hides it from students. The batch becomes empty so you can upload the new timetable. <b>Nothing is deleted</b> — you can restore it anytime. Other batches and sessions are not affected.</div>'
+    +'<div class="form-group"><label>Name for this previous session</label><input class="form-control" id="rst-label" value="'+esc(defLabel)+'" maxlength="80"></div>'
+    +'<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin:4px 2px 7px">What to archive</div>'
     +['timetable|Timetable (classes)','dpp|DPP','test|Tests','material|Classes Material'].map(function(t){var p=t.split('|');return '<label class="rst-opt"><input type="checkbox" class="rst-c" value="'+p[0]+'" checked><span><b>'+p[1]+'</b></span></label>';}).join('')
-    +'<label class="rst-opt"><input type="checkbox" id="rst-oldtag" checked><span><b>"Old" tag do</b><span>Archive ko "Old" naam se mark karega (students ko Old card dikhe to usme "Old" likha aayega). Band karoge to sirf hide rahega, Old tag nahi.</span></span></label>'
-    +'<label class="rst-opt"><input type="checkbox" id="rst-visible"><span><b>Abhi students ko "Old" card dikhao</b><span>Default OFF = sirf hide (admin-only). ON karoge to students ke portal pe <b>Old / New</b> 2 card aayenge. Baad me Sessions panel se kabhi bhi on/off kar sakte ho.</span></span></label>',
+    +'<label class="rst-opt"><input type="checkbox" id="rst-oldtag" checked><span><b>Label it as “Old”</b><span>Marks this archive with an “Old” tag, so if you later show it to students the card reads “Old”. Turn off to simply hide it without the Old tag.</span></span></label>'
+    +'<label class="rst-opt"><input type="checkbox" id="rst-visible"><span><b>Show students an “Old” card now</b><span>Default is off (hidden, admin-only). Turn on to show students both an <b>Old</b> and a <b>New</b> card. You can switch this on or off anytime from the Sessions panel.</span></span></label>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn att-restart-btn" id="rst-go" onclick="_attRestartGo('+bid+')">'+ic('play')+' Restart &amp; Archive</button>');
 }
 async function _attRestartGo(bid){
   var types=[].slice.call(document.querySelectorAll('.rst-c')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
-  if(!types.length){ toast('Kam se kam ek content type chuno.',true); return; }
+  if(!types.length){ toast('Select at least one content type to archive.',true); return; }
   var go=document.getElementById('rst-go'); if(go){ go.disabled=true; go.textContent='Archiving…'; }
   try{
     var r=await api('/api/admin/batch-restart','POST',{batch_id:bid,
@@ -19858,40 +19858,40 @@ async function _attRestartGo(bid){
       student_visible:!!(document.getElementById('rst-visible')||{}).checked});
     var a=r.archived||{}; var tot=(a.timetable||0)+(a.dpp||0)+(a.test||0)+(a.material||0);
     closeModal(); window._attGen=0;
-    toast('Batch restarted — '+tot+' items archived (hidden). Ab naya timetable upload karo.');
+    toast('Batch restarted — '+tot+' item'+(tot===1?'':'s')+' archived and hidden from students. You can now upload the new timetable.');
     try{ loadATimetable(); }catch(_e){}
     try{ if(typeof loadABatches==='function') loadABatches(); }catch(_e){}
   }catch(e){ toast((e&&e.message)||'Restart failed',true); if(go){ go.disabled=false; go.innerHTML=ic('play')+' Restart &amp; Archive'; } }
 }
 async function _attSessionsPanel(bid){
   _attInjectCSS();
-  showModal('Sessions — Old / New','<div class="spinner" style="margin:26px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  showModal('Sessions — Old &amp; New','<div class="spinner" style="margin:26px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
     var r=await api('/api/admin/batch-archives?batch='+bid);
-    var ac=r.active||{}; var actTot=(ac.timetable||0)+(ac.dpp||0)+(ac.test||0)+(ac.material||0);
+    var ac=r.active||{};
     var cchips=function(c){c=c||{};return '<div class="gen-counts"><span class="gen-chip">'+ic('calendar')+' '+(c.timetable||0)+' classes</span><span class="gen-chip">'+(c.dpp||0)+' DPP</span><span class="gen-chip">'+(c.test||0)+' tests</span><span class="gen-chip">'+(c.material||0)+' material</span></div>';};
-    var html='<div class="gen-card active"><div class="gen-top"><div><div class="gen-ttl">'+ic('check')+' NEW — Current (Active)</div><div class="gen-sub">Jo abhi students ko dikh raha hai</div></div><button class="btn btn-ghost btn-sm" onclick="_attViewGen(0)">View New</button></div>'+cchips(ac)+'</div>';
+    var html='<div class="gen-card active"><div class="gen-top"><div><div class="gen-ttl">'+ic('check')+' Current (New)</div><div class="gen-sub">What students see right now</div></div><button class="btn btn-ghost btn-sm" onclick="_attViewGen(0)">View current</button></div>'+cchips(ac)+'</div>';
     var arr=r.archives||[];
-    if(!arr.length){ html+='<div class="ws-empty" style="padding:22px"><p>Abhi koi archived (Old) session nahi. "Restart Batch" se banta hai.</p></div>'; }
+    if(!arr.length){ html+='<div class="ws-empty" style="padding:22px"><p>No previous sessions yet. Use <b>Restart Batch</b> to archive the current content as a previous session.</p></div>'; }
     arr.forEach(function(a){
-      var badge=a.restored?'<span class="gen-badge hid">Restored</span>':(a.student_visible?'<span class="gen-badge vis">Students: Old card ON</span>':'<span class="gen-badge hid">Hidden (admin-only)</span>');
+      var badge=a.restored?'<span class="gen-badge hid">Restored</span>':(a.student_visible?'<span class="gen-badge vis">Shown to students</span>':'<span class="gen-badge hid">Hidden (admin only)</span>');
       html+='<div class="gen-card"><div class="gen-top"><div><div class="gen-ttl">'+ic('clock')+' '+esc(a.label)+(a.tagged_old?' <span class="gen-badge vis">Old</span>':'')+'</div><div class="gen-sub">'+esc(a.created_at)+'</div></div>'+badge+'</div>'+cchips(a.counts)
         +(a.restored?'':('<div class="gen-acts">'
-          +'<button class="btn btn-ghost btn-sm" onclick="_attViewGen('+a.id+')">'+ic('eye')+' View this (Old)</button>'
+          +'<button class="btn btn-ghost btn-sm" onclick="_attViewGen('+a.id+')">'+ic('eye')+' View (admin)</button>'
           +(a.student_visible
             ? '<button class="btn btn-ghost btn-sm" onclick="_attGenVis('+a.id+',false,'+bid+')">'+ic('eye')+' Hide from students</button>'
-            : '<button class="btn btn-ghost btn-sm" style="border-color:#059669;color:#047857" onclick="_attGenVis('+a.id+',true,'+bid+')">'+ic('check')+' Show as Old card</button>')
-          +'<button class="btn btn-ghost btn-sm '+(a.tagged_old?'':'')+'" onclick="_attGenTag('+a.id+','+(a.tagged_old?'false':'true')+','+bid+')">'+(a.tagged_old?'Remove Old tag':'Add Old tag')+'</button>'
-          +'<button class="btn btn-danger btn-sm" onclick="_attGenRestore('+a.id+','+bid+')" title="Ye purana content wapas current (active) me le aayega — abhi ke naye content ke saath mix ho sakta hai">'+ic('play')+' Restore to active</button>'
+            : '<button class="btn btn-ghost btn-sm" style="border-color:#059669;color:#047857" onclick="_attGenVis('+a.id+',true,'+bid+')">'+ic('check')+' Show to students</button>')
+          +'<button class="btn btn-ghost btn-sm" onclick="_attGenTag('+a.id+','+(a.tagged_old?'false':'true')+','+bid+')">'+(a.tagged_old?'Remove Old tag':'Add Old tag')+'</button>'
+          +'<button class="btn btn-danger btn-sm" onclick="_attGenRestore('+a.id+','+bid+')" title="Brings this previous content back into the current session — it may mix with newly uploaded content">'+ic('play')+' Restore</button>'
           +'</div>'))
         +'</div>';
     });
     document.getElementById('modal-body').innerHTML=html;
   }catch(e){ document.getElementById('modal-body').innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load')+'</div>'; }
 }
-async function _attGenVis(gen,vis,bid){ try{ await api('/api/admin/batch-archive-update','POST',{archive_id:gen,student_visible:vis}); toast(vis?'Students ko Old card dikhega':'Students se hide kar diya'); _attSessionsPanel(bid); }catch(e){ toast((e&&e.message)||'Failed',true); } }
-async function _attGenTag(gen,tag,bid){ try{ await api('/api/admin/batch-archive-update','POST',{archive_id:gen,tagged_old:tag}); _attSessionsPanel(bid); }catch(e){ toast((e&&e.message)||'Failed',true); } }
-async function _attGenRestore(gen,bid){ if(!confirm('Is Old session ko wapas active karein? Ye purana content current me aa jaayega (naye ke saath mix ho sakta hai).')) return; try{ var r=await api('/api/admin/batch-archive-restore','POST',{archive_id:gen}); toast('Restored to active.'); window._attGen=0; _attSessionsPanel(bid); loadATimetable(); }catch(e){ toast((e&&e.message)||'Failed',true); } }
+async function _attGenVis(gen,vis,bid){ try{ await api('/api/admin/batch-archive-update','POST',{archive_id:gen,student_visible:vis}); toast(vis?'Now shown to students as an Old card.':'Hidden from students.'); _attSessionsPanel(bid); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
+async function _attGenTag(gen,tag,bid){ try{ await api('/api/admin/batch-archive-update','POST',{archive_id:gen,tagged_old:tag}); _attSessionsPanel(bid); }catch(e){ toast((e&&e.message)||'Could not update',true); } }
+async function _attGenRestore(gen,bid){ if(!confirm('Restore this previous session back to active? Its content will return to the current session and may mix with newly uploaded content.')) return; try{ var r=await api('/api/admin/batch-archive-restore','POST',{archive_id:gen}); toast('Restored to the current session.'); window._attGen=0; _attSessionsPanel(bid); loadATimetable(); }catch(e){ toast((e&&e.message)||'Could not restore',true); } }
 async function _attSetBatch(v){
   window._attBatch=v; window._attBatchSubs=null;
   if(v && v!=='global' && v!==''){ try{ var m=await api('/api/admin/batch-subjects?batch_id='+v); window._attBatchSubs=(m&&m.subjects)||[]; }catch(e){} }
