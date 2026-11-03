@@ -2794,6 +2794,23 @@ def _tt_text_line_parse(text, force_subject=None, is_event=None):
         })
     return rows
 
+import re as _re_tt
+# Trailing "Part N" ko chapter se alag karta hai. Kuch PDF me Part column chapter me merge ho
+# jaata hai ("L-5 : Atomic Structure Part 2") -> har part alag 'chapter' ban jaata tha (40 chapters
+# jabki 19 lessons). Ye use chapter="L-5 : Atomic Structure" + part="Part 2" me todta hai.
+_TT_PART_RE = _re_tt.compile(r'^(.*\S)[\s\-–—]+part\s*([0-9]{1,3}|[ivxlcdm]{1,6})\s*$', _re_tt.IGNORECASE)
+def _tt_split_part(chapter, existing_part=None):
+    """(chapter, part) return karta hai. Agar part column pehle se bhara hai to chapter as-is."""
+    ch = (chapter or "").strip()
+    if existing_part and str(existing_part).strip():
+        return ch, str(existing_part).strip()
+    m = _TT_PART_RE.match(ch)
+    if m and m.group(1).strip():
+        tok = m.group(2)
+        return m.group(1).strip(), "Part " + (tok if tok.isdigit() else tok.upper())
+    return ch, (existing_part or None)
+
+
 def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"):
     """Generic timetable table parser — tt_parser ka safety net.
     Row shape bilkul tt_parser jaisi: {subject, chapter, part, date, day, time, type}."""
@@ -2934,6 +2951,14 @@ async def admin_upload_timetable_pdf(
     if not any((r.get("subject") or "").strip() for r in rows):
         raise HTTPException(status_code=400,
             detail="Subject could not be detected from this PDF — please choose it in the Subject dropdown and upload again.")
+    # "Part N" ko chapter se alag karo (jab PDF me Part column chapter me merge ho gaya ho) —
+    # taaki ek lesson ke saare parts EK hi chapter counte hon (40 ki jagah 19), aur Part field bhare.
+    for r in rows:
+        if (r.get("type") or "chapter") != "event":
+            _ch, _pt = _tt_split_part(r.get("chapter"), r.get("part"))
+            r["chapter"] = _ch
+            if _pt:
+                r["part"] = _pt
     # Subject naam canonical karo (PHYSICS/Physics/Data Entry Op (229) -> official NIOS naam)
     if _SR is not None:
         for r in rows:
@@ -3157,13 +3182,34 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
             mode = "replace_all"
         else:
             mode = "auto"
-    diff = _safe_timetable_publish(db, _tt_bid, class_name, clean, mode, from_dt=from_dt)
+    # MULTI-BATCH: ek hi timetable kai batches me publish karo. batch_ids diya ho to har batch me
+    # (same safe per-batch replace), warna single batch_id (legacy). Koi na ho to global (NULL).
+    _bid_list = []
+    _raw_ids = payload.get("batch_ids")
+    if isinstance(_raw_ids, list):
+        for x in _raw_ids:
+            try:
+                xi = int(x)
+            except Exception:
+                xi = 0
+            if xi and xi not in _bid_list:
+                _bid_list.append(xi)
+    if not _bid_list:
+        _bid_list = [_tt_bid]   # single (may be None -> global)
+    per_batch = []
+    total_added = 0
+    for _b in _bid_list:
+        diff = _safe_timetable_publish(db, _b, class_name, clean, mode, from_dt=from_dt)
+        total_added += diff["added"]
+        per_batch.append({"batch_id": _b, "added": diff["added"], "removed": diff["removed"],
+                          "mode": diff["mode"], "new_active_count": diff["new_active_count"],
+                          "skipped_existing": diff["skipped_existing"]})
     db.commit()
-    return {"added": diff["added"], "subjects": subjects_found,
+    return {"added": total_added, "subjects": subjects_found, "batches": len(_bid_list),
             "from_date": (from_dt.isoformat() if from_dt else ""),
-            "mode": diff["mode"], "removed": diff["removed"],
-            "old_count": diff["old_count"], "new_active_count": diff["new_active_count"],
-            "skipped_existing": diff["skipped_existing"]}
+            "removed": sum(p["removed"] for p in per_batch),
+            "skipped_existing": sum(p["skipped_existing"] for p in per_batch),
+            "per_batch": per_batch}
 
 # ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
 @router.get("/notify-targets")

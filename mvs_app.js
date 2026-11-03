@@ -2172,7 +2172,7 @@ async function ttbReject(tid,subject,class_name,batch_id){
 
 function openAdminPdf(){
   showModal(' PDF Upload — All Subjects',
- `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div class="form-group"><label>Batch <span style="font-weight:400;color:var(--text-muted);font-size:.78rem">\u2014 iss batch ka apna timetable</span></label><select class="form-control" id="apdf-batch"><option value="">All batches (global / legacy)</option></select></div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div class="form-group" id="apdf-fd-wrap" style="display:none;margin-top:-6px"><label>Change only from this date onwards (optional)</label><input type="date" class="form-control" id="apdf-from"><div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Classes before this date stay exactly as they are — only entries from this date onwards are replaced by the new PDF.</div></div><div id="apdf-status"></div>`,
+ `<div class="alert alert-info"><strong>One PDF for all subjects</strong> — the subject of each page is detected automatically.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">Download the demo format (All Subjects, Word) — build your timetable in this format for a perfect parse</a></div></div><div class="form-group"><label>Class</label>${classSelect('apdf-class')}</div><div id="apdf-batch-wrap"></div><div class="form-group"><label>Subject</label><select class="form-control" id="apdf-subject"><option value="">\u2728 Auto-detect (PDF ke title se)</option></select></div><div class="form-group"><label>PDF File</label><div class="file-drop" onclick="document.getElementById('apdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'apdf-file','apdf-label')"><div class="fd-icon"></div><div id="apdf-label" style="font-size:.85rem">Click to choose a PDF, or drag and drop it here</div><input type="file" id="apdf-file" accept=".pdf" style="display:none" onchange="document.getElementById('apdf-label').textContent=this.files[0]?.name||''"></div></div><div id="apdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="apdf-replace"> Replace existing entries for the same subject</label></div><div class="form-group" id="apdf-fd-wrap" style="display:none;margin-top:-6px"><label>Change only from this date onwards (optional)</label><input type="date" class="form-control" id="apdf-from"><div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Classes before this date stay exactly as they are — only entries from this date onwards are replaced by the new PDF.</div></div><div id="apdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="apdf-btn" onclick="uploadAdminPdf()">Upload & Parse</button>`);
   setTimeout(_ttFillBatches, 40);
   const clsSel=document.getElementById('apdf-class');
@@ -2180,33 +2180,35 @@ function openAdminPdf(){
   pdfSubjOptions('apdf-subject',cls());
   if(clsSel) clsSel.addEventListener('change',()=>{ pdfSubjOptions('apdf-subject',cls()); const _w=document.getElementById('apdf-warn'); if(_w) _w.innerHTML=''; });
   const subSel=document.getElementById('apdf-subject');
-  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls(),val('apdf-batch')));
-  // batch badalne par warning dobara (batch-aware count)
-  const _batSel=document.getElementById('apdf-batch');
-  if(_batSel) _batSel.addEventListener('change',()=>pdfReplaceWarn(val('apdf-subject'),(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls(),val('apdf-batch')));
+  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls(),(_multiBatchIds()[0]||'')));
   // v124: partial replace — date picker sirf tab dikhao jab Replace on ho
   const repCb=document.getElementById('apdf-replace');
   if(repCb) repCb.addEventListener('change',()=>{ const w=document.getElementById('apdf-fd-wrap'); if(w) w.style.display=repCb.checked?'':'none'; });
 }
 async function _ttFillBatches(){
-  var sel=document.getElementById('apdf-batch'); if(!sel) return;
+  var wrap=document.getElementById('apdf-batch-wrap'); if(!wrap) return;
   try{
     var r=await api('/api/admin/batches');
     var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
-    // Session-wise dikhao taaki "Lakshya Science · April 2027" aur "· October 2027" alag chun sakein
+    // Session-wise sorted taaki "Lakshya Science · April 2027" aur "· October 2027" alag dikhein
     var _srt=list.slice().sort(function(a,b){var an=(a.name||'').toLowerCase(),bn=(b.name||'').toLowerCase();if(an!==bn)return an<bn?-1:1;return (a.session||'').localeCompare(b.session||'');});
-    sel.innerHTML='<option value="">All batches (global / legacy)</option>'+_srt.map(function(b){var lbl=esc(b.name)+(b.type?' ('+esc(b.type)+')':'')+(b.session?(' · '+esc(b.session)):'');return '<option value="'+b.id+'">'+lbl+'</option>';}).join('');
-  }catch(e){}
+    // type bhi label me (Science/Commerce) — same-name batches aur clear
+    var _withType=_srt.map(function(b){ return Object.assign({},b,{name:(b.name||'')+(b.type?(' ('+b.type+')'):'')}); });
+    // MULTI-BATCH: ek hi timetable kai batches me ek saath upload (checkbox). Kuch na chuno -> global.
+    wrap.innerHTML=_multiBatchDD('Batch / Course — select one or more (same timetable goes to all)', _withType);
+    _mbdSync();
+  }catch(e){ wrap.innerHTML=''; }
 }
 async function uploadAdminPdf(){
   const fi=document.getElementById('apdf-file');
   if(!fi.files.length){ toast('Please select a PDF.',true); return; }
   const btn=document.getElementById('apdf-btn'); btn.disabled=true; btn.textContent='Parsing...';
   const st=document.getElementById('apdf-status'); st.innerHTML=`<div class="alert alert-info">Parsing the PDF... </div>`;
+  var _bids=(typeof _multiBatchIds==='function')?_multiBatchIds():[];
   const fd=new FormData();
   fd.append('file',fi.files[0]); fd.append('class_name',val('apdf-class'));
   fd.append('subject',val('apdf-subject')||''); fd.append('replace',document.getElementById('apdf-replace').checked?'true':'false');
-  fd.append('batch_id',(document.getElementById('apdf-batch')||{}).value||'');
+  fd.append('batch_id',(_bids[0]||''));
   // v124: partial replace — date chuni ho to backend ko bhejo (sirf us date se aage badlega)
   const _fd=(document.getElementById('apdf-replace').checked)?(val('apdf-from')||''):'';
   if(_fd) fd.append('from_date',_fd);
@@ -2216,7 +2218,7 @@ async function uploadAdminPdf(){
  const d=await r.json(); if(!r.ok) throw new Error(d.detail||'Error');
  const _cls=val('apdf-class'), _rep=document.getElementById('apdf-replace')&&document.getElementById('apdf-replace').checked;
  closeModal();
- openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep,from_date:_fd,batch_id:((document.getElementById('apdf-batch')||{}).value||''),skipped_before:(d.skipped_before_date||0)});
+ openPdfPreview(d.preview||[],{isAdmin:true,class_name:_cls,replace:_rep,from_date:_fd,batch_id:(_bids[0]||''),batch_ids:_bids,skipped_before:(d.skipped_before_date||0)});
  return;
   }catch(e){ st.innerHTML=`<div class="alert alert-danger"> ${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Upload & Parse'; }
 }
@@ -25740,6 +25742,7 @@ function openPdfPreview(rows,opts){
   window._pdfPreview={rows:(rows||[]).map(r=>({subject:r.subject||'',chapter:r.chapter||'',part:r.part||'',date:r.date||'',day:r.day||'',time:r.time||'',type:r.type||'chapter',_grammar:(r.type||'chapter')!=='event'&&_isNonBookChapter(r.chapter),match_action:r.match_action||'',match_no:r.match_no||'',match_title:r.match_title||'',match_kind:r.match_kind||'',match_note:r.match_note||'',match_score:r.match_score,match_candidates:r.match_candidates||[]})),
     isAdmin:!!(opts&&opts.isAdmin), class_name:(opts&&opts.class_name)||'Class 12',
     replace:(opts&&opts.replace)?'true':'false', batch_id:(opts&&opts.batch_id)||'',
+    batch_ids:((opts&&opts.batch_ids)||[]),
     from_date:(opts&&opts.from_date)||'', skipped_before:+(opts&&opts.skipped_before)||0};
   showModal('Check Chapters \u2014 Preview',
    '<div id="pvw-head"></div><div class="pvw-list" id="pvw-list"></div>',
@@ -25753,8 +25756,13 @@ function renderPdfPreview(){
   const subs=[...new Set(P.rows.map(r=>r.subject).filter(Boolean))];
   const chaps=new Set(P.rows.filter(r=>r.type!=='event'&&!_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
   const gcount=new Set(P.rows.filter(r=>r.type!=='event'&&_isNonBookChapter(r.chapter)).map(r=>r.subject+'|'+(r.chapter||'').toLowerCase()));
-  var _bName=(P.batch_id?((window._ttBatchList||[]).filter(function(b){return String(b.id)===String(P.batch_id);})[0]||{}).name:'')||'';
-  var _tgt=P.batch_id?('Course: <b>'+esc(_bName||('#'+P.batch_id))+'</b>'):'<b>No course (global)</b> \u2014 sabhi batches ko dikhega';
+  var _blist=(window._mbdList||window._ttBatchList||[]);
+  var _nameOf=function(id){ var b=_blist.filter(function(x){return String(x.id)===String(id);})[0]; return b?b.name:('#'+id); };
+  var _bidArr=(P.batch_ids&&P.batch_ids.length)?P.batch_ids:(P.batch_id?[P.batch_id]:[]);
+  var _tgt;
+  if(_bidArr.length>1){ _tgt='Courses: <b>'+esc(_bidArr.map(_nameOf).join(', '))+'</b> ('+_bidArr.length+' batches)'; }
+  else if(_bidArr.length===1){ _tgt='Course: <b>'+esc(_nameOf(_bidArr[0]))+'</b>'; }
+  else { _tgt='<b>No course (global)</b> \u2014 shown to all batches'; }
   head.innerHTML=`<div class="alert alert-info" style="margin-bottom:8px"><strong>${P.rows.length} entries \u00b7 ${chaps.size} chapters</strong>${gcount.size?` <span style="color:#b07f1e">+ ${gcount.size} grammar</span>`:''} \u00b7 ${esc(P.class_name)}${subs.length?` \u00b7 ${esc(subs.join(', '))}`:''} \u00b7 ${_tgt}<br><span style="font-size:.8rem">Nothing is saved yet. Use the <b>Chapter/Grammar</b> toggle to mark entries (grammar is not counted), <b>Split</b> to separate merged entries, and delete to remove extras \u2014 then tap <b>Final Upload</b>.</span></div>`
    + ((P.from_date&&P.replace==='true')?`<div class="alert alert-warning" style="margin-bottom:8px"><strong>Partial replace active:</strong> entries from <b>${esc(fmtNice(P.from_date))}</b> onwards will be replaced \u2014 everything before that date stays exactly as it is.${P.skipped_before?` ${P.skipped_before} PDF row${P.skipped_before===1?'':'s'} before that date ${P.skipped_before===1?'was':'were'} left out.`:''}</div>`:'')
    + _sylSummary(P.rows);
@@ -25809,9 +25817,10 @@ async function commitPdfPreview(){
   try{
     // Explicit publish mode (TT-01/17): Replace checked -> replace (from-date agar partial), warna add-extra.
     var _mode=(P.from_date&&P.replace==='true')?'replace_from_date':(P.replace==='true'?'replace_all':'add_extra');
-    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,mode:_mode,from_date:(P.from_date||''),batch_id:(P.batch_id||'')});
+    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,mode:_mode,from_date:(P.from_date||''),batch_id:(P.batch_id||''),batch_ids:(P.batch_ids||[])});
     const isA=P.isAdmin; window._pdfPreview=null; closeModal();
-    toast((r.removed?('Replaced — '+r.added+' entries now active (old '+r.removed+' removed)'):(r.added+' entries uploaded!'))+(r.skipped_existing?(' · '+r.skipped_existing+' duplicate skipped'):''));
+    var _bn=(r.batches&&r.batches>1)?(' in '+r.batches+' batches'):'';
+    toast((r.removed?('Replaced — '+r.added+' entries now active'+_bn+(r.removed?(' (old '+r.removed+' removed)'):'')):(r.added+' entries uploaded'+_bn+'!'))+(r.skipped_existing?(' · '+r.skipped_existing+' duplicate skipped'):''));
     if(isA) loadATimetable(); else loadTTimetable();
   }catch(e){ toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Final Upload'; }
 }
