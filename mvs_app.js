@@ -2180,7 +2180,10 @@ function openAdminPdf(){
   pdfSubjOptions('apdf-subject',cls());
   if(clsSel) clsSel.addEventListener('change',()=>{ pdfSubjOptions('apdf-subject',cls()); const _w=document.getElementById('apdf-warn'); if(_w) _w.innerHTML=''; });
   const subSel=document.getElementById('apdf-subject');
-  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls()));
+  if(subSel) subSel.addEventListener('change',()=>pdfReplaceWarn(subSel.value,(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls(),val('apdf-batch')));
+  // batch badalne par warning dobara (batch-aware count)
+  const _batSel=document.getElementById('apdf-batch');
+  if(_batSel) _batSel.addEventListener('change',()=>pdfReplaceWarn(val('apdf-subject'),(typeof _attEntries!=='undefined'?_attEntries:[]),'apdf-warn','apdf-replace',cls(),val('apdf-batch')));
   // v124: partial replace — date picker sirf tab dikhao jab Replace on ho
   const repCb=document.getElementById('apdf-replace');
   if(repCb) repCb.addEventListener('change',()=>{ const w=document.getElementById('apdf-fd-wrap'); if(w) w.style.display=repCb.checked?'':'none'; });
@@ -4949,10 +4952,12 @@ function _ttUploadBatchField(selId,cur){
 }
 function openTTPdf(){
   showModal('Upload Timetable — PDF or Excel',
- `<div class="alert alert-info"><strong>PDF ya Excel timetable upload karo</strong> — columns auto-detect ho jaate hain (Chapter, Part, Date, Day, Time). <b>Tip:</b> "Download" button se maujooda timetable Excel me le lo, usme sirf <b>dates badlo</b>, aur neeche batch chun ke yahin wapas upload kar do.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">PDF demo format (All Subjects, Word)</a></div></div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div>${_ttUploadBatchField('pdf-batch',_ttBatch)}<div class="form-group"><label>Subject (optional — blank = file se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'))"></div><div class="form-group"><label>File (PDF or Excel)</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF or Excel (.xlsx) file, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf,.xlsx,.csv" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject (same course)</label></div><div id="pdf-status"></div>`,
+ `<div class="alert alert-info"><strong>PDF ya Excel timetable upload karo</strong> — columns auto-detect ho jaate hain (Chapter, Part, Date, Day, Time). <b>Tip:</b> "Download" button se maujooda timetable Excel me le lo, usme sirf <b>dates badlo</b>, aur neeche batch chun ke yahin wapas upload kar do.<div style="margin-top:6px"><a href="javascript:downloadDemoTT()" style="font-weight:700;color:var(--primary)">PDF demo format (All Subjects, Word)</a></div></div><div class="form-group"><label>Class</label>${classSelect('pdf-class')}</div>${_ttUploadBatchField('pdf-batch',_ttBatch)}<div class="form-group"><label>Subject (optional — blank = file se auto-detect)</label><input class="form-control" id="pdf-subject" placeholder="Blank = auto-detect" oninput="pdfReplaceWarn(this.value,(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'),val('pdf-batch'))"></div><div class="form-group"><label>File (PDF or Excel)</label><div class="file-drop" onclick="document.getElementById('pdf-file').click()" ondragover="fdOver(event,this)" ondragleave="fdLeave(event,this)" ondrop="fdDrop(event,this,'pdf-file','pdf-label')"><div class="fd-icon"></div><div id="pdf-label" style="font-size:.85rem">Click to choose a PDF or Excel (.xlsx) file, or drag and drop it here</div><input type="file" id="pdf-file" accept=".pdf,.xlsx,.csv" style="display:none" onchange="document.getElementById('pdf-label').textContent=this.files[0]?.name||''"></div></div><div id="pdf-warn"></div><div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pdf-replace"> Replace existing entries for the same subject (same course)</label></div><div id="pdf-status"></div>`,
  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="pdf-btn" onclick="uploadTTPdf()">Upload & Parse</button>`);
   const _clsC=document.getElementById('pdf-class');
-  if(_clsC) _clsC.addEventListener('change',()=>pdfReplaceWarn(val('pdf-subject'),(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class')));
+  if(_clsC) _clsC.addEventListener('change',()=>pdfReplaceWarn(val('pdf-subject'),(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'),val('pdf-batch')));
+  const _pdfBat=document.getElementById('pdf-batch');
+  if(_pdfBat) _pdfBat.addEventListener('change',()=>pdfReplaceWarn(val('pdf-subject'),(typeof _ttEntries!=='undefined'?_ttEntries:[]),'pdf-warn','pdf-replace',val('pdf-class'),val('pdf-batch')));
 }
 async function uploadTTPdf(){
   const fi=document.getElementById('pdf-file');
@@ -25684,23 +25689,30 @@ async function commitPdfPreview(){
   if(!P.rows.length){ toast('No rows left.',true); return; }
   const btn=document.getElementById('pvw-btn'); btn.disabled=true; btn.textContent='Uploading...';
   try{
-    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,from_date:(P.from_date||''),batch_id:(P.batch_id||'')});
+    // Explicit publish mode (TT-01/17): Replace checked -> replace (from-date agar partial), warna add-extra.
+    var _mode=(P.from_date&&P.replace==='true')?'replace_from_date':(P.replace==='true'?'replace_all':'add_extra');
+    const r=await api((P.isAdmin?'/api/admin/':'/api/teacher/')+'timetable-pdf-commit','POST',{rows:P.rows,class_name:P.class_name,replace:P.replace,mode:_mode,from_date:(P.from_date||''),batch_id:(P.batch_id||'')});
     const isA=P.isAdmin; window._pdfPreview=null; closeModal();
-    toast(r.added+' entries uploaded! ');
+    toast((r.removed?('Replaced — '+r.added+' entries now active (old '+r.removed+' removed)'):(r.added+' entries uploaded!'))+(r.skipped_existing?(' · '+r.skipped_existing+' duplicate skipped'):''));
     if(isA) loadATimetable(); else loadTTimetable();
   }catch(e){ toast('Error: '+e.message,true); btn.disabled=false; btn.textContent='Final Upload'; }
 }
 
-function pdfReplaceWarn(subj, entries, warnId, cbId, cls){
+function pdfReplaceWarn(subj, entries, warnId, cbId, cls, batchId){
   const w=document.getElementById(warnId); if(!w) return;
   subj=(subj||'').trim();
   if(!subj){ w.innerHTML=''; return; }
   const cl=String(cls||'').replace(/\D/g,'');
-  // duplicate sirf SAME CLASS me — same-name subject ki dusri class alag timetable hai
+  // BATCH-AWARE (TT-02): duplicate count sirf SAME batch/session + SAME class me.
+  // batchId '' = global/legacy upload -> sirf global (bina batch) entries gino.
+  // Isse April 2027 ka count October 2027 ki entries se kabhi prabhavit nahi hoga.
+  const _bid=(batchId===undefined||batchId===null)?'':String(batchId);
   const n=(entries||[]).filter(e=>(e.subject||'').trim().toLowerCase()===subj.toLowerCase()
-      &&(!cl||String(e.class_name||'').replace(/\D/g,'')===cl)).length;
+      &&(!cl||String(e.class_name||'').replace(/\D/g,'')===cl)
+      &&(_bid===''? !e.batch_id : String(e.batch_id||'')===_bid)).length;
   if(n>0){
-    w.innerHTML=`<div class="alert alert-warning"><strong>${esc(subj)}</strong>${cls?` (${esc(cls)})`:''} already has <strong>${n}</strong> timetable entr${n===1?'y':'ies'} uploaded. Tick "Replace existing entries" below to replace the old timetable, otherwise the new entries will be added on top of it.</div>`;
+    const _scope=_bid===''?'(global timetable)':'in this batch/session';
+    w.innerHTML=`<div class="alert alert-warning"><strong>${esc(subj)}</strong>${cls?` (${esc(cls)})`:''} already has <strong>${n}</strong> timetable entr${n===1?'y':'ies'} ${_scope}. <b>Replace</b> is ticked below — the old timetable for this subject will be replaced (October/other sessions stay untouched). Untick only if you want to <b>add extra classes</b> on top.</div>`;
     const cb=document.getElementById(cbId); if(cb&&!cb.checked) cb.checked=true;
   } else w.innerHTML='';
 }

@@ -2818,6 +2818,101 @@ async def admin_upload_timetable_pdf(
             "skipped_before_date": skipped_before}
 
 # ===== ADMIN: TIMETABLE PDF COMMIT (preview me edit/delete/split ke baad final save) =====
+def _tt_canon_key(subject, class_name):
+    """Canonical subject identity (legacy aliases 'PHYSICS' / 'Physics (312)' -> same key)."""
+    if _SR is not None:
+        try:
+            return _SR.canon_key(subject, class_name)
+        except Exception:
+            pass
+    return (subject or "").strip().lower()
+
+
+def _tt_norm_time(t):
+    return " ".join((t or "").strip().lower().split())
+
+
+def _tt_logical_key(ck, date_str, time_str, chapter, part, etype):
+    """Ek timetable row ki logical identity (batch+class ke andar) — duplicate detection ke liye."""
+    return (ck, (date_str or "").strip(),
+            _tt_norm_time(time_str),
+            (chapter or "").strip().lower(),
+            (part or "").strip().lower(),
+            (etype or "chapter"))
+
+
+def _safe_timetable_publish(db, batch_id, class_name, clean_rows, mode, from_dt=None):
+    """SINGLE safe, batch-scoped, canonical, idempotent timetable publication path.
+
+    mode:
+      - 'replace_all'       : is batch+canonical-subject+class ke saare active rows hatao, naye daalo.
+      - 'replace_from_date' : sirf from_dt se aage ke active rows hatao (pehle ka as-is), naye daalo.
+      - 'add_extra'         : kuch delete nahi — sirf naye (non-duplicate) rows add karo.
+      - 'auto'              : agar is batch+subject+class me pehle se active rows hain -> replace_all,
+                              warna add_extra (duplicate inflation 18+22=40 rokta hai).
+
+    SAFETY: sirf SAME batch_id + SAME canonical subject + SAME class touch hota hai. Koi doosra
+    batch/session (e.g. October 2027) kabhi touch nahi hota. Subject match CANONICAL identity se
+    (legacy alias bhi match). Incoming rows dedup hote hain, aur jo active row bilkul same hai use
+    dobara insert nahi karte (double-click / retry = idempotent). Sab ek hi transaction me.
+    """
+    from models import TimetableEntry
+    new_keys = {_tt_canon_key(r["subject"], class_name) for r in clean_rows}
+    existing = db.query(TimetableEntry).filter(
+        TimetableEntry.class_name == class_name,
+        TimetableEntry.batch_id == batch_id,
+    ).all()
+    existing_same_subj = [e for e in existing if _tt_canon_key(e.subject, class_name) in new_keys]
+    old_count = len(existing_same_subj)
+    if mode == "auto":
+        mode = "replace_all" if existing_same_subj else "add_extra"
+    removed_ids = []
+    if mode in ("replace_all", "replace_from_date"):
+        for e in existing_same_subj:
+            if mode == "replace_from_date" and from_dt is not None:
+                if not (getattr(e, "entry_date", None) and e.entry_date >= from_dt):
+                    continue
+            removed_ids.append(e.id)
+        if removed_ids:
+            db.query(TimetableEntry).filter(
+                TimetableEntry.id.in_(removed_ids)).delete(synchronize_session=False)
+    _removed_set = set(removed_ids)
+    survivors = [e for e in existing_same_subj if e.id not in _removed_set]
+    survivor_keys = {_tt_logical_key(_tt_canon_key(e.subject, class_name),
+                                     (e.entry_date.isoformat() if getattr(e, "entry_date", None) else ""),
+                                     getattr(e, "time_text", ""), getattr(e, "chapter", ""),
+                                     getattr(e, "part", ""), getattr(e, "entry_type", "chapter"))
+                     for e in survivors}
+    seen = set()
+    deduped = []
+    for r in clean_rows:
+        k = _tt_logical_key(_tt_canon_key(r["subject"], class_name), r.get("date"),
+                            r.get("time"), r.get("chapter"), r.get("part"), r.get("type"))
+        if k in seen:
+            continue
+        seen.add(k)
+        deduped.append((k, r))
+    added = 0
+    skipped_existing = 0
+    for k, r in deduped:
+        if k in survivor_keys:          # bilkul same active row pehle se hai -> idempotent skip
+            skipped_existing += 1
+            continue
+        edate = None
+        try:
+            edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception:
+            pass
+        db.add(TimetableEntry(
+            teacher_id=None, subject=r["subject"], class_name=class_name, batch_id=batch_id,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]))
+        added += 1
+    return {"mode": mode, "old_count": old_count, "removed": len(removed_ids),
+            "added": added, "skipped_existing": skipped_existing,
+            "new_active_count": len(survivors) + added}
+
+
 @router.post("/timetable-pdf-commit")
 def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import TimetableEntry
@@ -2864,29 +2959,24 @@ def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=D
         for r in clean:
             r["subject"] = _SR.canon_display(r.get("subject"), class_name)
     subjects_found = sorted(set(r["subject"] for r in clean))
-    if replace.lower() == "true":
-        _delq = db.query(TimetableEntry).filter(
-            TimetableEntry.subject.in_(subjects_found),
-            TimetableEntry.class_name == class_name,
-            TimetableEntry.batch_id == _tt_bid
-        )
+    # Publish mode: explicit 'mode' > legacy replace/from_date > SAFE AUTO.
+    # SAFE AUTO: agar is batch+subject+class me pehle se active rows hain to REPLACE kar do
+    # (purana cached client replace=false bheje tab bhi 18+22=40 inflation nahi hoga).
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in ("replace_all", "replace_from_date", "add_extra"):
         if from_dt:
-            _delq = _delq.filter(TimetableEntry.entry_date >= from_dt)
-        _delq.delete(synchronize_session=False)
-    added = 0
-    for r in clean:
-        edate = None
-        try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
-        except Exception: pass
-        db.add(TimetableEntry(
-            teacher_id=None, subject=r["subject"], class_name=class_name, batch_id=_tt_bid,
-            chapter=r["chapter"], part=r["part"], entry_date=edate,
-            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
-        ))
-        added += 1
+            mode = "replace_from_date"
+        elif replace.lower() == "true":
+            mode = "replace_all"
+        else:
+            mode = "auto"
+    diff = _safe_timetable_publish(db, _tt_bid, class_name, clean, mode, from_dt=from_dt)
     db.commit()
-    return {"added": added, "subjects": subjects_found,
-            "from_date": (from_dt.isoformat() if from_dt else "")}
+    return {"added": diff["added"], "subjects": subjects_found,
+            "from_date": (from_dt.isoformat() if from_dt else ""),
+            "mode": diff["mode"], "removed": diff["removed"],
+            "old_count": diff["old_count"], "new_active_count": diff["new_active_count"],
+            "skipped_existing": diff["skipped_existing"]}
 
 # ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
 @router.get("/notify-targets")
