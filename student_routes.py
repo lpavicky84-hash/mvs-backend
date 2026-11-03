@@ -468,7 +468,88 @@ def _bids_inherit_global(db, bids):
     return False
 
 
+def _archive_cond(Model, sp):
+    """Batch Restart filter: default = sirf ACTIVE content (archive_gen_id IS NULL). Agar student ne
+    ek visible 'Old' generation khola hai (sp._archive_gen set) to us generation ka content.
+    hasattr guard: migration deploy na hua ho to no-op (safe)."""
+    from sqlalchemy import true as _true
+    if not hasattr(Model, "archive_gen_id"):
+        return _true()
+    g = getattr(sp, "_archive_gen", None)
+    if g:
+        return Model.archive_gen_id == g
+    return Model.archive_gen_id.is_(None)
+
+
 def _tt_batch_filter(db, sp, only_batch_id=None):
+    from sqlalchemy import and_ as _and
+    from models import TimetableEntry
+    return _and(_tt_batch_filter_base(db, sp, only_batch_id), _archive_cond(TimetableEntry, sp))
+
+
+def _exam_batch_filter(db, sp, only_batch_id=None):
+    from sqlalchemy import and_ as _and
+    from models import Exam
+    return _and(_exam_batch_filter_base(db, sp, only_batch_id), _archive_cond(Exam, sp))
+
+
+def _dpp_batch_filter(db, sp, only_batch_id=None):
+    from sqlalchemy import and_ as _and
+    from models import DppPack
+    return _and(_dpp_batch_filter_base(db, sp, only_batch_id), _archive_cond(DppPack, sp))
+
+
+def _mat_batch_filter(db, sp, only_batch_id=None):
+    from sqlalchemy import and_ as _and
+    from models import Material
+    return _and(_mat_batch_filter_base(db, sp, only_batch_id), _archive_cond(Material, sp))
+
+
+def _apply_archive_gen(db, sp, gen, batch=None):
+    """Agar student ne ek VISIBLE 'Old' generation khola (gen param) -> sp._archive_gen set karo.
+    Sirf tabhi jab wo archive is student ke batch ka ho AUR student_visible=True ho AUR restore na
+    hua ho. Warna active (NULL) hi rahega. Isse 'Old' card ke peeche purana content dikhta hai."""
+    sp._archive_gen = None
+    try:
+        g = int(gen or 0)
+    except Exception:
+        g = 0
+    if not g:
+        return
+    try:
+        from models import BatchArchive
+        bids = set(_student_batch_ids(db, sp, batch) or [])
+        a = db.query(BatchArchive).filter(BatchArchive.id == g).first()
+        if a and a.student_visible and (a.batch_id in bids) and not a.restored_at:
+            sp._archive_gen = g
+    except Exception:
+        sp._archive_gen = None
+
+
+@router.get("/batch-archives")
+def student_batch_archives(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student ke selected batch ke VISIBLE 'Old' generations — Old/New card dikhane ke liye."""
+    sp = get_student_profile(current_user, db)
+    out = []
+    try:
+        from models import BatchArchive
+        bids = _student_batch_ids(db, sp, batch or None) or []
+        if bids:
+            rows = (db.query(BatchArchive)
+                    .filter(BatchArchive.batch_id.in_(bids),
+                            BatchArchive.student_visible == True,
+                            BatchArchive.restored_at.is_(None))
+                    .order_by(BatchArchive.created_at.desc()).all())
+            for a in rows:
+                out.append({"id": a.id, "label": a.label or "Old session",
+                            "tagged_old": bool(a.tagged_old),
+                            "created_at": (a.created_at.strftime("%d %b %Y") if a.created_at else "")})
+    except Exception:
+        out = []
+    return {"archives": out, "has_old": len(out) > 0}
+
+
+def _tt_batch_filter_base(db, sp, only_batch_id=None):
     """A TimetableEntry filter scoped to the student's batch. If the batch has a subject mapping,
     show its batch-specific entries PLUS global entries of the subjects it offers (shared subjects).
     Otherwise: batch-specific if any exist, else legacy global. Backward compatible."""
@@ -541,7 +622,7 @@ def _exam_subject_cond(db, sp):
     return _or(Exam.subject.in_(scope), Exam.subject.is_(None), Exam.subject == "")
 
 
-def _exam_batch_filter(db, sp, only_batch_id=None):
+def _exam_batch_filter_base(db, sp, only_batch_id=None):
     """Self-contained test scoping (mirrors _dpp_batch_filter) for the Exam model."""
     from models import Exam, TimetableEntry, Material, DppPack
     from sqlalchemy import or_ as _or, true as _true
@@ -571,7 +652,7 @@ def _exam_batch_filter(db, sp, only_batch_id=None):
     return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(bids))
 
 
-def _dpp_batch_filter(db, sp, only_batch_id=None):
+def _dpp_batch_filter_base(db, sp, only_batch_id=None):
     """Self-contained DPP scoping (mirrors _mat_batch_filter): a batch that has its OWN
     timetable/material/DPP shows ONLY its own DPP packs (a new Crash Course starts empty);
     a legacy batch (Oct 2026 / April 2027 / Stream 2) keeps showing the global DPP packs."""
@@ -594,7 +675,7 @@ def _dpp_batch_filter(db, sp, only_batch_id=None):
     return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(bids))
 
 
-def _mat_batch_filter(db, sp, only_batch_id=None):
+def _mat_batch_filter_base(db, sp, only_batch_id=None):
     """Material filter scoped to the student's SELECTED batch.
     A 'self-contained' batch — one that has its OWN timetable or its OWN material — shows ONLY
     its own material (e.g. a new Crash Course starts empty, not the old global DPPs/notes).
@@ -2029,8 +2110,9 @@ def _report_duration_min(e):
 
 
 @router.get("/timetable-plan")
-def timetable_plan(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     sp = get_student_profile(current_user, db)
+    _apply_archive_gen(db, sp, gen, batch)
     # Default to the student's PRIMARY batch when the app didn't pass one, so a multi-batch
     # student never sees a mixed "all batches" timetable (e.g. finished batch + crash course).
     batch = _resolve_student_batch(db, sp, batch)
@@ -2145,10 +2227,11 @@ def student_material_view(mid: int, db: Session = Depends(get_db), current_user=
     return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), False, sniff=True)
 
 @router.get("/materials-v2")
-def student_materials_v2(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_materials_v2(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     from sqlalchemy import or_ as _or
     sp = get_student_profile(current_user, db)
+    _apply_archive_gen(db, sp, gen, batch)
     _ensure_batch_cols(db)
     batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
@@ -2217,9 +2300,10 @@ def _my_submission(db, sp, parent_id):
         Material.student_id == sp.id).first()
 
 @router.get("/dpp-list")
-def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_dpp_list(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     sp = get_student_profile(current_user, db)
+    _apply_archive_gen(db, sp, gen, batch)
     _ensure_batch_cols(db)
     batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
@@ -2235,9 +2319,10 @@ def student_dpp_list(batch: int = 0, db: Session = Depends(get_db), current_user
     return out
 
 @router.get("/tests-list")
-def student_tests_list(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_tests_list(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import Material
     sp = get_student_profile(current_user, db)
+    _apply_archive_gen(db, sp, gen, batch)
     _ensure_batch_cols(db)
     batch = _resolve_student_batch(db, sp, batch)
     subs = _sel_batch_subjects(db, sp, batch)
@@ -2617,9 +2702,10 @@ def _class_digits(x):
 
 
 @router.get("/exams")
-def student_exams(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_exams(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     _ensure_exam_columns(db)
     sp = get_student_profile(current_user, db)
+    _apply_archive_gen(db, sp, gen, batch)
     _ensure_batch_cols(db)
     batch = _resolve_student_batch(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
@@ -3418,12 +3504,13 @@ def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
 
 # ================== STUDENT DPP PACKS ==================
 @router.get("/dpp-packs")
-def student_dpp_packs(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_dpp_packs(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Mere subjects+class ke DPP packs + meri submission status. (BATCHED — no N+1:
     ~6 queries total instead of ~5 per pack.)"""
     from models import DppPack, DppAnswer, TeacherProfile, User
     from sqlalchemy import func as _func
     sp = get_student_profile(current_user, db)
+    _apply_archive_gen(db, sp, gen, batch)
     _ensure_batch_cols(db)
     batch = _resolve_student_batch(db, sp, batch)
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)

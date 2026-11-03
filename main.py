@@ -50,6 +50,15 @@ for _boot_try in range(3):
 # ===== LIGHTWEIGHT MIGRATIONS (add new columns to existing tables) =====
 def ensure_columns():
     stmts = [
+        # Batch Restart (archive generations): content ko hide/restore karne ke liye archive_gen_id
+        "ALTER TABLE timetable_entries ADD COLUMN archive_gen_id INTEGER NULL",
+        "ALTER TABLE dpp_packs ADD COLUMN archive_gen_id INTEGER NULL",
+        "ALTER TABLE materials ADD COLUMN archive_gen_id INTEGER NULL",
+        "ALTER TABLE exams ADD COLUMN archive_gen_id INTEGER NULL",
+        "CREATE INDEX ix_tt_archgen ON timetable_entries (archive_gen_id)",
+        "CREATE INDEX ix_dpp_archgen ON dpp_packs (archive_gen_id)",
+        "CREATE INDEX ix_mat_archgen ON materials (archive_gen_id)",
+        "CREATE INDEX ix_exam_archgen ON exams (archive_gen_id)",
         # doubt thread replies me optional image/file attachment (admin/teacher/student)
         "ALTER TABLE doubt_responses ADD COLUMN attach_key TEXT",
         "ALTER TABLE doubt_responses ADD COLUMN attach_mime VARCHAR(100)",

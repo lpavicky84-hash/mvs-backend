@@ -48,6 +48,8 @@ ADMIN_SECTION_MAP = {
     "timetable-pdf": "timetable", "timetable-pdf-commit": "timetable", "timetable-subject": "timetable",
     "studio-reports": "timetable",
     "class-report-backfill": "timetable",
+    "batch-restart": "timetable", "batch-archives": "timetable",
+    "batch-archive-update": "timetable", "batch-archive-restore": "timetable",
     "questionbank": "qbank",
     "material": "material", "materials-tree": "material", "pending-materials": "material",
     "dpp-pack-pdf": "material",
@@ -2211,9 +2213,16 @@ def add_subject(class_level: str, name: str, code: str = "", mode: str = "live",
 
 # ===== TIMETABLE (all teachers) =====
 @router.get("/timetable-all")
-def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
+def timetable_all(archive_gen: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import TimetableEntry, TeacherProfile, Lecture
-    es = db.query(TimetableEntry).order_by(
+    _q = db.query(TimetableEntry)
+    # Batch Restart Old/New view: 0 = NEW (active only), -1 = sab (old+new), >0 = us archived generation
+    if archive_gen == 0:
+        if hasattr(TimetableEntry, "archive_gen_id"):
+            _q = _q.filter(TimetableEntry.archive_gen_id.is_(None))
+    elif archive_gen and archive_gen > 0:
+        _q = _q.filter(TimetableEntry.archive_gen_id == archive_gen)
+    es = _q.order_by(
         TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date
     ).all()
     # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
@@ -2243,6 +2252,147 @@ def timetable_all(db: Session = Depends(get_db), _=Depends(get_admin)):
             "remarks": e.remarks or "",
         })
     return result
+
+
+# ============================================================ BATCH RESTART (archive generations)
+# Owner flow: ek batch (e.g. Lakshya Science · April 2027) jab DUBARA shuru ho (naya session),
+# admin "Restart" karta hai -> us batch ka SAARA active content (timetable/DPP/tests/material) ek
+# nayi archived generation me chala jaata hai (students ko dikhna band ho jaata hai). Batch fresh.
+# Fully reversible (restore). student_visible=True -> wo generation student portal pe "Old" card.
+_ARCH_MODELS = None
+def _arch_models():
+    global _ARCH_MODELS
+    if _ARCH_MODELS is None:
+        from models import TimetableEntry, DppPack, Material, Exam
+        _ARCH_MODELS = {"timetable": TimetableEntry, "dpp": DppPack,
+                        "material": Material, "test": Exam}
+    return _ARCH_MODELS
+
+
+def _arch_counts(db, bid, gen):
+    """gen=None -> ACTIVE (archive_gen_id IS NULL) counts; warna us generation ke counts."""
+    out = {}
+    for k, M in _arch_models().items():
+        if not hasattr(M, "archive_gen_id"):
+            out[k] = 0
+            continue
+        q = db.query(M).filter(M.batch_id == bid)
+        q = q.filter(M.archive_gen_id.is_(None)) if gen is None else q.filter(M.archive_gen_id == gen)
+        out[k] = q.count()
+    return out
+
+
+@router.post("/batch-restart")
+def admin_batch_restart(payload: dict, db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Is batch ka active content ek nayi archived generation me daal do (students se hide).
+    Transaction-safe + batch-scoped: SIRF is batch_id ka content touch hota hai (doosra session/
+    batch kabhi nahi). Fully reversible (batch-archive-restore)."""
+    from models import BatchArchive, Batch
+    import json as _json
+    try:
+        bid = int(payload.get("batch_id") or 0)
+    except Exception:
+        bid = 0
+    if not bid or not db.query(Batch.id).filter(Batch.id == bid).first():
+        raise HTTPException(status_code=400, detail="Valid batch_id required.")
+    label = (payload.get("label") or "").strip()[:80] or "Old session"
+    note = (payload.get("note") or "").strip()[:300]
+    student_visible = bool(payload.get("student_visible"))
+    _to = payload.get("tagged_old")
+    tagged_old = True if _to is None else bool(_to)
+    types = payload.get("content") or ["timetable", "dpp", "material", "test"]
+    types = [t for t in types if t in _arch_models()]
+    active = _arch_counts(db, bid, None)
+    if sum(active.get(t, 0) for t in types) == 0:
+        raise HTTPException(status_code=400, detail="Is batch me archive karne ke liye koi active content nahi hai.")
+    gen = BatchArchive(batch_id=bid, label=label, note=note,
+                       student_visible=student_visible, tagged_old=tagged_old,
+                       counts_json=_json.dumps({t: active.get(t, 0) for t in types}),
+                       created_by=getattr(me, "id", None))
+    db.add(gen)
+    db.flush()
+    stamped = {}
+    for t in types:
+        M = _arch_models()[t]
+        if not hasattr(M, "archive_gen_id"):
+            continue
+        n = (db.query(M).filter(M.batch_id == bid, M.archive_gen_id.is_(None))
+             .update({M.archive_gen_id: gen.id}, synchronize_session=False))
+        stamped[t] = int(n or 0)
+    db.commit()
+    return {"ok": True, "archive_id": gen.id, "label": gen.label,
+            "student_visible": gen.student_visible, "tagged_old": gen.tagged_old,
+            "archived": stamped}
+
+
+@router.get("/batch-archives")
+def admin_batch_archives(batch: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Is batch ki saari archived generations + active/old counts (Admin Old/New panel ke liye)."""
+    from models import BatchArchive
+    if not batch:
+        raise HTTPException(status_code=400, detail="batch required")
+    rows = (db.query(BatchArchive).filter(BatchArchive.batch_id == batch)
+            .order_by(BatchArchive.created_at.desc()).all())
+    out = []
+    for a in rows:
+        out.append({"id": a.id, "label": a.label or "Old session", "note": a.note or "",
+                    "student_visible": bool(a.student_visible), "tagged_old": bool(a.tagged_old),
+                    "restored": bool(a.restored_at),
+                    "created_at": (a.created_at.strftime("%d %b %Y, %I:%M %p") if a.created_at else ""),
+                    "counts": _arch_counts(db, batch, a.id)})
+    return {"active": _arch_counts(db, batch, None), "archives": out}
+
+
+@router.post("/batch-archive-update")
+def admin_batch_archive_update(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Archive generation ki student-visibility / Old-tag / label toggle karo (hide<->show)."""
+    from models import BatchArchive
+    try:
+        gid = int(payload.get("archive_id") or 0)
+    except Exception:
+        gid = 0
+    a = db.query(BatchArchive).filter(BatchArchive.id == gid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Archive not found.")
+    if a.restored_at:
+        raise HTTPException(status_code=400, detail="This generation is already restored to active.")
+    if "student_visible" in payload:
+        a.student_visible = bool(payload.get("student_visible"))
+    if "tagged_old" in payload:
+        a.tagged_old = bool(payload.get("tagged_old"))
+    if payload.get("label") is not None:
+        a.label = (payload.get("label") or "").strip()[:80] or a.label
+    db.commit()
+    return {"ok": True, "id": a.id, "student_visible": a.student_visible,
+            "tagged_old": a.tagged_old, "label": a.label}
+
+
+@router.post("/batch-archive-restore")
+def admin_batch_archive_restore(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Archived generation ko wapas ACTIVE kar do (archive_gen_id -> NULL). Ye purana content
+    wapas current me aa jaayega — agar batch me abhi naya active content hai to mix ho sakta hai
+    (UI isse warn karti hai)."""
+    from models import BatchArchive
+    from datetime import datetime as _dt
+    try:
+        gid = int(payload.get("archive_id") or 0)
+    except Exception:
+        gid = 0
+    a = db.query(BatchArchive).filter(BatchArchive.id == gid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Archive not found.")
+    restored = {}
+    for t, M in _arch_models().items():
+        if not hasattr(M, "archive_gen_id"):
+            continue
+        n = (db.query(M).filter(M.batch_id == a.batch_id, M.archive_gen_id == a.id)
+             .update({M.archive_gen_id: None}, synchronize_session=False))
+        restored[t] = int(n or 0)
+    a.restored_at = _dt.utcnow()
+    a.student_visible = False
+    db.commit()
+    return {"ok": True, "restored": restored}
+
 
 # ===== v97: ADMIN STUDIO REPORTS (per timetable class) =====
 def _studio_report_json(r):

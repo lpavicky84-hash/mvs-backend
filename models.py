@@ -132,6 +132,25 @@ class Batch(Base):
     archived_at  = Column(DateTime, nullable=True)
 
 
+class BatchArchive(Base):
+    """A 'generation' created when a batch is RESTARTED (same batch runs a fresh session).
+    On restart, all currently-active content (timetable/DPP/tests/material) of the batch is
+    stamped with this archive's id (content.archive_gen_id = this.id) so students stop seeing it;
+    the batch then starts empty for the new session. Fully reversible (restore sets rows back to
+    NULL). student_visible=True turns this archive into an 'Old' card on the student portal."""
+    __tablename__ = "batch_archives"
+    id             = Column(Integer, primary_key=True)
+    batch_id       = Column(Integer, ForeignKey("batches.id"), index=True)
+    label          = Column(String(80), default="Old session")   # admin-facing + the Old card title
+    note           = Column(String(300), default="")
+    student_visible = Column(Boolean, default=False)              # False = hidden (admin-only); True = shows as "Old" card to students
+    tagged_old     = Column(Boolean, default=True)                # whether it carries the "Old" tag (admin choice at restart)
+    counts_json    = Column(Text, nullable=True)                  # snapshot counts {timetable,dpp,test,material} at restart
+    created_by     = Column(Integer, nullable=True)
+    created_at     = Column(DateTime, default=func.now())
+    restored_at    = Column(DateTime, nullable=True)              # set if admin fully restored it back to active
+
+
 # Multi-batch enrollment (Phase 3, sub-step 4). A student can belong to many batches.
 # batch_id on StudentProfile stays as the "primary" batch for backward compatibility;
 # this table is the additive multi-batch layer. Backfilled from batch_id.
@@ -484,6 +503,7 @@ class DppPack(Base):
     q_pdf       = Column(_FILETEXT)  # base64 — questions paper (no answers)
     s_pdf       = Column(_FILETEXT)  # base64 — solutions paper (with answers)
     batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped DPP (NULL = global/legacy)
+    archive_gen_id = Column(Integer, nullable=True, index=True)  # Batch Restart: NULL = active; set = archived generation
     created_at  = Column(DateTime, default=func.now())
 
 
@@ -830,6 +850,7 @@ class TimetableEntry(Base):
     subject     = Column(String(60))
     class_name  = Column(String(40))
     batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped timetable (Phase 3; NULL = legacy/global)
+    archive_gen_id = Column(Integer, nullable=True, index=True)  # Batch Restart: NULL = active/current; set = archived generation (batch_archives.id)
     chapter     = Column(Text)
     part        = Column(String(200), nullable=True)
     entry_date  = Column(Date, nullable=True)
@@ -914,6 +935,7 @@ class Material(Base):
     medium        = Column(String(20), nullable=True)    # Hindi | English (for question bank)
     is_global     = Column(Boolean, default=False)        # visible to ALL students
     batch_id      = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped classes material (NULL = global/legacy, shown to all)
+    archive_gen_id = Column(Integer, nullable=True, index=True)  # Batch Restart: NULL = active; set = archived generation
     external_link = Column(String(500), nullable=True)    # original PDF link (no-compress option)
     approval_status = Column(String(20), default="approved")  # approved | pending | rejected
     created_at    = Column(DateTime, default=func.now())
@@ -952,6 +974,7 @@ class Exam(Base):
     scheduled_at= Column(DateTime, nullable=True)        # test goes live at this date/time
     is_active   = Column(Boolean, default=True)
     batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped test (NULL = global/legacy). ORM me na hone se _exam_batch_filter scoping OFF ho jaata tha.
+    archive_gen_id = Column(Integer, nullable=True, index=True)  # Batch Restart: NULL = active; set = archived generation
     q_pdf       = Column(_BIGTEXT, nullable=True)   # Mission 75 PDF mode — question paper (R2 ref/base64)
     s_pdf       = Column(_BIGTEXT, nullable=True)   # answer/solution paper (students ko time khatam hone par)
     q_count     = Column(Integer, default=0)        # PDF test — total questions (attempted-count ke liye)

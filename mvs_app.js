@@ -17383,6 +17383,33 @@ function _bwInjectCSS(){
 }
 function _selBatch(){ try{ return parseInt(localStorage.getItem('sel_batch')||'0',10)||0; }catch(e){ return 0; } }
 function _bq(){ var b=_selBatch(); return b?('?batch='+b):''; }
+// Batch Restart: student "Old" generation view (0 = New/current). _gq() ko _bq() ke baad lagao.
+function _gq(){ var g=window._sGen||0; if(!g) return ''; return (_bq()?'&':'?')+'gen='+g; }
+async function _sMountOldNew(hostId, reloadFn){
+  var host=document.getElementById(hostId); if(!host) return;
+  try{
+    var r=await api('/api/student/batch-archives'+_bq());
+    var arr=(r&&r.archives)||[];
+    if(!arr.length){ host.innerHTML=''; window._sGen=window._sGen||0; return; }
+    if(!document.getElementById('soldnew-css')){ var st=document.createElement('style'); st.id='soldnew-css';
+      st.textContent='.son-wrap{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 14px}'
+        +'.son-card{flex:1;min-width:150px;cursor:pointer;border:1.5px solid var(--border,#ece2cd);border-radius:16px;padding:13px 15px;background:var(--card,#fffdf7);transition:transform .14s,border-color .14s,box-shadow .14s}'
+        +'.son-card:hover{transform:translateY(-2px)}'
+        +'.son-card.on{border-color:var(--primary,#c98a2e);box-shadow:0 10px 26px -16px rgba(201,138,46,.6);background:linear-gradient(180deg,rgba(201,138,46,.08),transparent)}'
+        +'.son-k{font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#998)}'
+        +'.son-t{font-weight:800;font-size:1rem;color:var(--text,#2b2410);margin-top:3px}'
+        +'.son-s{font-size:.74rem;color:var(--text-muted,#8a7d5c);margin-top:2px}';
+      document.head.appendChild(st); }
+    window._sGen=window._sGen||0;
+    var cards='<div class="son-card '+(!window._sGen?'on':'')+'" onclick="_sSetGen(0)"><div class="son-k">'+ic('check')+' Current</div><div class="son-t">New session</div><div class="son-s">Jo abhi chal raha hai</div></div>';
+    arr.forEach(function(a){
+      cards+='<div class="son-card '+(String(window._sGen)===String(a.id)?'on':'')+'" onclick="_sSetGen('+a.id+')"><div class="son-k">'+ic('clock')+' '+(a.tagged_old?'Old':'Previous')+'</div><div class="son-t">'+esc(a.label||'Old session')+'</div><div class="son-s">'+esc(a.created_at||'')+'</div></div>';
+    });
+    host.innerHTML='<div class="son-wrap">'+cards+'</div>';
+    window.__sOldNewReload=reloadFn;
+  }catch(e){ host.innerHTML=''; }
+}
+function _sSetGen(g){ window._sGen=g||0; try{ if(window.__sOldNewReload) window.__sOldNewReload(); }catch(e){} }
 function _pageBatchBar(contentId){
   try{
     var content=document.getElementById(contentId); if(!content || !content.parentNode) return;
@@ -19704,7 +19731,9 @@ async function loadSQBank(){ loadExtMaterials('s-qbank-content'); }
 async function loadATimetable(){
   try{
     const _prevSub=_attActiveSub; // keep the admin on the subject they're viewing
-    _attEntries=await api('/api/admin/timetable-all'); _attTeacherMap={};
+    // Batch Restart Old/New view: _attGen 0 = New (active), >0 = us archived generation (Old)
+    if(window._attGen===undefined) window._attGen=0;
+    _attEntries=await api('/api/admin/timetable-all'+(window._attGen?('?archive_gen='+window._attGen):'')); _attTeacherMap={};
     _attActiveSub=_prevSub||''; // don't kick back to the subject picker on reload/bg-refresh
     try{ const _sr=await api('/api/admin/studio-reports'); window._srReports={}; (_sr.reports||[]).forEach(r=>window._srReports[r.entry_id]=r); }catch(e){ window._srReports={}; }
     window._crUploaded={}; _attEntries.forEach(e=>{ if(e.has_lecture) window._crUploaded[e.id]=true; });
@@ -19759,9 +19788,13 @@ async function _attMountBatchBar(){
         var _rmBtn=(_rm==='crash')
           ? '<button class="btn btn-ghost btn-sm" style="border-color:#7c3aed;color:#7c3aed" onclick="_attSetReportMode('+window._attBatch+',\'regular\')" title="Is batch ke class reports CRASH-COURSE system use karte hain (Day-wise chapters complete). Regular report pe wapas laane ke liye click karo.">'+ic('play')+' Report: Crash \u2713</button>'
           : '<button class="btn btn-ghost btn-sm" onclick="_attSetReportMode('+window._attBatch+',\'crash\')" title="Is batch ko CRASH-COURSE report system do (teacher class report me completed chapters chunta hai, distinct progress banti hai).">'+ic('play')+' Report: Regular</button>';
+        var _genChip=window._attGen?('<span class="att-gen-chip">'+ic('clock')+' Viewing: OLD session <button onclick="_attViewGen(0)">\u2715 back to New</button></span>'):'';
         return '<button class="btn btn-ghost btn-sm" onclick="openBatchSubjects('+window._attBatch+')">'+ic('book')+' Assign Subjects</button>'
           +_saBtn+_rmBtn
-          +'<button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>';
+          +'<button class="btn btn-ghost btn-sm" onclick="_ttImportGlobal('+window._attBatch+')" title="Copy the shared/global timetable of this batch\u2019s subjects into this batch">'+ic('calendar')+' Import global timetable</button>'
+          +'<button class="btn btn-sm att-restart-btn" onclick="_attRestartModal('+window._attBatch+')" title="Is batch ko dubara shuru karo \u2014 purana timetable/DPP/test/material archive (hide) ho jaayega, batch fresh ho jaayega. Reversible.">'+ic('play')+' Restart Batch</button>'
+          +'<button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+window._attBatch+')" title="Old / New sessions \u2014 archived data dekho, students ko Old card dikhao/chhipao, ya restore karo">'+ic('folder')+' Sessions (Old / New)</button>'
+          +_genChip;
       })():'')
       +'</div>';
   }catch(e){ host.innerHTML=''; }
@@ -19774,9 +19807,86 @@ function _attInjectCSS(){
    '.att-sel{min-width:220px;font-weight:700}',
    '.bs-list{max-height:52vh;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}',
    '@media(max-width:560px){.bs-list{grid-template-columns:1fr}}',
-   '.bs-row{display:flex;align-items:center;gap:8px;padding:7px 4px;font-size:.9rem;cursor:pointer;border-bottom:1px dashed var(--border)}'].join('');
+   '.bs-row{display:flex;align-items:center;gap:8px;padding:7px 4px;font-size:.9rem;cursor:pointer;border-bottom:1px dashed var(--border)}',
+   '.att-restart-btn{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;border:none;font-weight:800;box-shadow:0 6px 16px -8px rgba(201,138,46,.7)}',
+   '.att-restart-btn:hover{filter:brightness(1.05)}',
+   '.att-gen-chip{display:inline-flex;align-items:center;gap:7px;font-size:.76rem;font-weight:800;color:#b45309;background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.35);border-radius:999px;padding:5px 11px}',
+   '.att-gen-chip button{border:none;background:#d97706;color:#fff;border-radius:999px;padding:2px 8px;font-weight:800;cursor:pointer;font-size:.72rem}',
+   '.rst-opt{display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border:1px solid var(--border);border-radius:13px;margin-bottom:9px;cursor:pointer;background:var(--card)}',
+   '.rst-opt input{margin-top:3px;width:17px;height:17px;flex:0 0 auto}',
+   '.rst-opt b{font-size:.92rem;color:var(--text)}.rst-opt span{font-size:.78rem;color:var(--text-muted);display:block;margin-top:2px}',
+   '.rst-warn{background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:12px;padding:11px 13px;font-size:.82rem;color:#92600b;line-height:1.5;margin-bottom:12px}',
+   '.gen-card{border:1px solid var(--border);border-radius:14px;padding:13px 15px;margin-bottom:11px;background:var(--card)}',
+   '.gen-card.active{border-color:#059669;background:rgba(5,150,105,.06)}',
+   '.gen-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}',
+   '.gen-ttl{font-weight:800;color:var(--text)}.gen-sub{font-size:.76rem;color:var(--text-muted);margin-top:2px}',
+   '.gen-counts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}',
+   '.gen-chip{font-size:.72rem;font-weight:700;border-radius:999px;padding:3px 10px;background:var(--surface-2,#f6f1e4);border:1px solid var(--border);color:var(--text-muted)}',
+   '.gen-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}',
+   '.gen-badge{font-size:.66rem;font-weight:800;padding:3px 9px;border-radius:999px}',
+   '.gen-badge.vis{background:rgba(5,150,105,.14);color:#047857}.gen-badge.hid{background:rgba(120,120,120,.14);color:#6b7280}'].join('');
   document.head.appendChild(s);
 }
+function _attViewGen(gen){ window._attGen=gen||0; try{ closeModal(); }catch(e){} loadATimetable(); }
+function _attRestartModal(bid){
+  _attInjectCSS();
+  var b=(window._attBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0]||{};
+  var nm=esc(b.name||('#'+bid))+(b.session?(' · '+esc(b.session)):'');
+  var defLabel='Old — till '+(new Date()).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  showModal('Restart Batch — '+nm,
+    '<div class="rst-warn">'+ic('alert')+' Ye <b>'+nm+'</b> ka saara <b>abhi active</b> content (timetable, DPP, tests, material) ek <b>Old session</b> me archive kar dega — students ko turant dikhना band. Batch fresh ho jaayega; aap naya timetable upload karoge. <b>Kuch delete nahi hota</b> — kabhi bhi Restore ho sakta hai. Dusre batch/session (jaise October) pe <b>koi asar nahi</b>.</div>'
+    +'<div class="form-group"><label>Is purane session ka naam (label)</label><input class="form-control" id="rst-label" value="'+esc(defLabel)+'" maxlength="80"></div>'
+    +'<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin:4px 2px 7px">Kya-kya archive karein</div>'
+    +['timetable|Timetable (classes)','dpp|DPP','test|Tests','material|Classes Material'].map(function(t){var p=t.split('|');return '<label class="rst-opt"><input type="checkbox" class="rst-c" value="'+p[0]+'" checked><span><b>'+p[1]+'</b></span></label>';}).join('')
+    +'<label class="rst-opt"><input type="checkbox" id="rst-oldtag" checked><span><b>"Old" tag do</b><span>Archive ko "Old" naam se mark karega (students ko Old card dikhe to usme "Old" likha aayega). Band karoge to sirf hide rahega, Old tag nahi.</span></span></label>'
+    +'<label class="rst-opt"><input type="checkbox" id="rst-visible"><span><b>Abhi students ko "Old" card dikhao</b><span>Default OFF = sirf hide (admin-only). ON karoge to students ke portal pe <b>Old / New</b> 2 card aayenge. Baad me Sessions panel se kabhi bhi on/off kar sakte ho.</span></span></label>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn att-restart-btn" id="rst-go" onclick="_attRestartGo('+bid+')">'+ic('play')+' Restart &amp; Archive</button>');
+}
+async function _attRestartGo(bid){
+  var types=[].slice.call(document.querySelectorAll('.rst-c')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
+  if(!types.length){ toast('Kam se kam ek content type chuno.',true); return; }
+  var go=document.getElementById('rst-go'); if(go){ go.disabled=true; go.textContent='Archiving…'; }
+  try{
+    var r=await api('/api/admin/batch-restart','POST',{batch_id:bid,
+      label:val('rst-label'),
+      content:types,
+      tagged_old:!!(document.getElementById('rst-oldtag')||{}).checked,
+      student_visible:!!(document.getElementById('rst-visible')||{}).checked});
+    var a=r.archived||{}; var tot=(a.timetable||0)+(a.dpp||0)+(a.test||0)+(a.material||0);
+    closeModal(); window._attGen=0;
+    toast('Batch restarted — '+tot+' items archived (hidden). Ab naya timetable upload karo.');
+    loadATimetable();
+  }catch(e){ toast((e&&e.message)||'Restart failed',true); if(go){ go.disabled=false; go.innerHTML=ic('play')+' Restart &amp; Archive'; } }
+}
+async function _attSessionsPanel(bid){
+  _attInjectCSS();
+  showModal('Sessions — Old / New','<div class="spinner" style="margin:26px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var r=await api('/api/admin/batch-archives?batch='+bid);
+    var ac=r.active||{}; var actTot=(ac.timetable||0)+(ac.dpp||0)+(ac.test||0)+(ac.material||0);
+    var cchips=function(c){c=c||{};return '<div class="gen-counts"><span class="gen-chip">'+ic('calendar')+' '+(c.timetable||0)+' classes</span><span class="gen-chip">'+(c.dpp||0)+' DPP</span><span class="gen-chip">'+(c.test||0)+' tests</span><span class="gen-chip">'+(c.material||0)+' material</span></div>';};
+    var html='<div class="gen-card active"><div class="gen-top"><div><div class="gen-ttl">'+ic('check')+' NEW — Current (Active)</div><div class="gen-sub">Jo abhi students ko dikh raha hai</div></div><button class="btn btn-ghost btn-sm" onclick="_attViewGen(0)">View New</button></div>'+cchips(ac)+'</div>';
+    var arr=r.archives||[];
+    if(!arr.length){ html+='<div class="ws-empty" style="padding:22px"><p>Abhi koi archived (Old) session nahi. "Restart Batch" se banta hai.</p></div>'; }
+    arr.forEach(function(a){
+      var badge=a.restored?'<span class="gen-badge hid">Restored</span>':(a.student_visible?'<span class="gen-badge vis">Students: Old card ON</span>':'<span class="gen-badge hid">Hidden (admin-only)</span>');
+      html+='<div class="gen-card"><div class="gen-top"><div><div class="gen-ttl">'+ic('clock')+' '+esc(a.label)+(a.tagged_old?' <span class="gen-badge vis">Old</span>':'')+'</div><div class="gen-sub">'+esc(a.created_at)+'</div></div>'+badge+'</div>'+cchips(a.counts)
+        +(a.restored?'':('<div class="gen-acts">'
+          +'<button class="btn btn-ghost btn-sm" onclick="_attViewGen('+a.id+')">'+ic('eye')+' View this (Old)</button>'
+          +(a.student_visible
+            ? '<button class="btn btn-ghost btn-sm" onclick="_attGenVis('+a.id+',false,'+bid+')">'+ic('eye')+' Hide from students</button>'
+            : '<button class="btn btn-ghost btn-sm" style="border-color:#059669;color:#047857" onclick="_attGenVis('+a.id+',true,'+bid+')">'+ic('check')+' Show as Old card</button>')
+          +'<button class="btn btn-ghost btn-sm '+(a.tagged_old?'':'')+'" onclick="_attGenTag('+a.id+','+(a.tagged_old?'false':'true')+','+bid+')">'+(a.tagged_old?'Remove Old tag':'Add Old tag')+'</button>'
+          +'<button class="btn btn-danger btn-sm" onclick="_attGenRestore('+a.id+','+bid+')" title="Ye purana content wapas current (active) me le aayega — abhi ke naye content ke saath mix ho sakta hai">'+ic('play')+' Restore to active</button>'
+          +'</div>'))
+        +'</div>';
+    });
+    document.getElementById('modal-body').innerHTML=html;
+  }catch(e){ document.getElementById('modal-body').innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load')+'</div>'; }
+}
+async function _attGenVis(gen,vis,bid){ try{ await api('/api/admin/batch-archive-update','POST',{archive_id:gen,student_visible:vis}); toast(vis?'Students ko Old card dikhega':'Students se hide kar diya'); _attSessionsPanel(bid); }catch(e){ toast((e&&e.message)||'Failed',true); } }
+async function _attGenTag(gen,tag,bid){ try{ await api('/api/admin/batch-archive-update','POST',{archive_id:gen,tagged_old:tag}); _attSessionsPanel(bid); }catch(e){ toast((e&&e.message)||'Failed',true); } }
+async function _attGenRestore(gen,bid){ if(!confirm('Is Old session ko wapas active karein? Ye purana content current me aa jaayega (naye ke saath mix ho sakta hai).')) return; try{ var r=await api('/api/admin/batch-archive-restore','POST',{archive_id:gen}); toast('Restored to active.'); window._attGen=0; _attSessionsPanel(bid); loadATimetable(); }catch(e){ toast((e&&e.message)||'Failed',true); } }
 async function _attSetBatch(v){
   window._attBatch=v; window._attBatchSubs=null;
   if(v && v!=='global' && v!==''){ try{ var m=await api('/api/admin/batch-subjects?batch_id='+v); window._attBatchSubs=(m&&m.subjects)||[]; }catch(e){} }
@@ -21210,9 +21320,10 @@ async function loadSTimetable(){
  // profile pehle — recorded batch ka timetable hota hi nahi
  try{ const p0=await api('/api/student/profile'); window._sBatch=p0.batch_name||p0.batch||window._sBatch||''; window._sClass=p0.class_level||window._sClass||'12'; window._sSubjects=p0.subjects||window._sSubjects||[]; _restoreSelBatch(); applyBatchMode(); }catch(e){}
  if(sMode()!=='live'){ renderRecordedTimetable(el); return; }
- _sttEntries=await api('/api/student/timetable-plan'+_bq());
+ _sttEntries=await api('/api/student/timetable-plan'+_bq()+_gq());
  // scaffolding sirf pehli baar — revisit par sections apni jagah silently update hote hain (no blank flash)
- if(!document.getElementById('s-tline-wrap')) el.innerHTML=`<div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
+ if(!document.getElementById('s-tline-wrap')) el.innerHTML=`<div id="s-oldnew-wrap"></div><div id="s-rec-wrap"></div><div id="s-verify-wrap"></div><div id="s-tline-wrap"></div>`;
+ _sMountOldNew('s-oldnew-wrap', loadSTimetable);
  _loadRecordedSubjects();
  /* verify-lectures "Lectures to Complete" list hata di — isse timetable neeche chala jaata
     tha. Ab timetable seedha dikhta hai; lecture completion/XP Syllabus Tracker se hoti hai. */
@@ -21396,7 +21507,7 @@ async function _loadSDppReal(){
   const el=document.getElementById('s-dpp-content');
   softSpin(el);
   try{
-    const d=await api('/api/student/dpp-packs'+_bq());
+    const d=await api('/api/student/dpp-packs'+_bq()+_gq());
     const packs=(d&&d.packs)||[];
     window._sDppPacks=packs;
     let html=`<div class="card"><div class="card-header"><h3> DPP — Practice & Submit</h3><span class="chip-sub">${packs.length} DPP</span></div><div class="card-body">`;
@@ -22228,7 +22339,7 @@ async function loadSTests(){
   const el=document.getElementById('s-tests-content');
   softSpin(el);
   try{
-    const exams=await api('/api/student/exams'+_bq());
+    const exams=await api('/api/student/exams'+_bq()+_gq());
     window._sExams=exams;
     if(localStorage.getItem('mvs_sexam_seen')===null){
       var _bl=new Set(); (exams||[]).forEach(function(e){ if(e&&e.id!=null) _bl.add(e.id); }); _sexSeenSave(_bl);
