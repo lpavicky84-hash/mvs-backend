@@ -298,8 +298,13 @@ def dedupe_student_profiles(engine_override=None):
 
 
 def _enrolled_batches_ordered(db, sp):
-    """Student ke enrolled ACTIVE batches, DETERMINISTIC priority order me (frontend auto-pick se
-    match): non-expired pehle, phir primary, phir id. Ye ek hi 'current' batch chunne ka base hai."""
+    """Student ke enrolled ACTIVE batches, DETERMINISTIC priority order me. Ranking:
+    (1) sp.batch_id (admin-set current/primary batch) — AUTHORITATIVE, hamesha pehle;
+    (2) jis batch ki session student ke exam_session se match kare (same-name sessions me sahi
+        wala chune — e.g. 'Udaan Class 10' ka April 2027 vs October 2026);
+    (3) non-expired; (4) primary; (5) id.
+    Isse same-name do-session batch me student ko uski ASLI session wala batch milta hai, na ki
+    purana name-matched enrollment (jiski wajah se April ka student October dekhta tha)."""
     from models import Batch, StudentBatch
     from datetime import date as _date
     try:
@@ -312,19 +317,34 @@ def _enrolled_batches_ordered(db, sp):
         if e.batch_id not in prim:
             order.append(e.batch_id)
         prim[e.batch_id] = prim.get(e.batch_id, False) or bool(e.is_primary)
+    # The admin-set primary batch (sp.batch_id) is authoritative — ALWAYS a candidate + primary.
+    _pb = getattr(sp, "batch_id", None)
+    if _pb and _pb not in prim:
+        order.insert(0, _pb)
+    if _pb:
+        prim[_pb] = True
     if not order:
-        return ([sp.batch_id] if getattr(sp, "batch_id", None) else [])
+        return ([_pb] if _pb else [])
     try:
         bmap = {b.id: b for b in db.query(Batch).filter(Batch.id.in_(order), Batch.active != False).all()}
     except Exception:
         bmap = {}
     today = _date.today()
     active_ids = [bid for bid in order if bid in bmap] or order
+    # student ki exam_session ko batch-session label me badlo (apr2027 -> "April 2027")
+    _ses = ""
+    try:
+        from admin_routes import _session_friendly as _sf
+        _ses = (_sf(getattr(sp, "exam_session", "") or "") or "").strip().lower()
+    except Exception:
+        _ses = (getattr(sp, "exam_session", "") or "").strip().lower()
     def _rank(bid):
         b = bmap.get(bid)
         _end = getattr(b, "end_date", None) if b else None
         expired = 1 if (_end and _end < today) else 0
-        return (expired, 0 if prim.get(bid) else 1, bid)
+        is_profile = 0 if (_pb and bid == _pb) else 1
+        ses_match = 0 if (b and _ses and (getattr(b, "session", "") or "").strip().lower() == _ses) else 1
+        return (is_profile, ses_match, expired, 0 if prim.get(bid) else 1, bid)
     active_ids.sort(key=_rank)
     return active_ids
 
@@ -732,23 +752,21 @@ def student_my_batches(db: Session = Depends(get_db), current_user=Depends(get_s
     from models import Batch, StudentBatch
     enr = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
     prim = {}
-    bids = []
     for e in enr:
-        if e.batch_id not in prim:
-            bids.append(e.batch_id)                      # unique batch_id, keep order
         prim[e.batch_id] = prim.get(e.batch_id, False) or bool(e.is_primary)
-    if not bids and getattr(sp, "batch_id", None):
-        bids = [sp.batch_id]
-        prim = {sp.batch_id: True}
-    # primary first, so it wins when two cards look identical
-    bids.sort(key=lambda b: 0 if prim.get(b) else 1)
+    if getattr(sp, "batch_id", None):
+        prim[sp.batch_id] = True
+    # Ranked best-first: sp.batch_id (admin-set current) + exam_session match win, so a same-name
+    # two-session course (Udaan April vs October) shows the student's ACTUAL session — not a stale
+    # name-matched enrollment.
+    bids = _enrolled_batches_ordered(db, sp)
     # ACTIVE batches only — a student may still be enrolled in an archived/merged duplicate,
     # which must NOT show up as a second card.
     bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids), Batch.active != False).all() if bids else [])}
     from datetime import date as _date
     _today = _date.today()
     out = []
-    seen = set()                                          # collapse identical (name, session)
+    seen = set()                                          # collapse same-name course to the best (ranked) session card
     for bid in bids:
         if bid not in bmap:
             continue

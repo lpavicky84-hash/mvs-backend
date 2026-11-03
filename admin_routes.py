@@ -2317,11 +2317,19 @@ def admin_batch_restart(payload: dict, db: Session = Depends(get_db), me=Depends
     types = payload.get("content") or ["timetable", "dpp", "material", "test"]
     types = [t for t in types if t in _arch_models()]
     active = _arch_counts(db, bid, None)
-    if sum(active.get(t, 0) for t in types) == 0:
+    _bt = db.query(Batch).filter(Batch.id == bid).first()
+    _prev_sa = getattr(_bt, "standalone", None) if _bt else None
+    _is_inherit = (_prev_sa is False)   # batch currently inherits shared/global content
+    # A restart must leave the student with a CLEAN batch. If the batch has no own content AND is
+    # not inheriting global, there is genuinely nothing to reset. Otherwise proceed — because even
+    # with 0 own rows, making the batch standalone stops the inherited/global content from showing.
+    if sum(active.get(t, 0) for t in types) == 0 and not _is_inherit:
         raise HTTPException(status_code=400, detail="This batch has no active content to archive. It is already fresh — upload the new timetable, or open Sessions to manage earlier ones.")
+    _meta = {t: active.get(t, 0) for t in types}
+    _meta["_prev_standalone"] = _prev_sa   # remember so Restore can bring global inheritance back
     gen = BatchArchive(batch_id=bid, label=label, note=note,
                        student_visible=student_visible, tagged_old=tagged_old,
-                       counts_json=_json.dumps({t: active.get(t, 0) for t in types}),
+                       counts_json=_json.dumps(_meta),
                        created_by=getattr(me, "id", None))
     db.add(gen)
     db.flush()
@@ -2333,10 +2341,14 @@ def admin_batch_restart(payload: dict, db: Session = Depends(get_db), me=Depends
         n = (db.query(M).filter(M.batch_id == bid, M.archive_gen_id.is_(None))
              .update({M.archive_gen_id: gen.id}, synchronize_session=False))
         stamped[t] = int(n or 0)
+    # Make the batch SELF-CONTAINED so the new session starts truly fresh — it no longer inherits
+    # the shared/global timetable, material, DPP or tests. (Reversible: Restore puts it back.)
+    if _bt is not None:
+        _bt.standalone = True
     db.commit()
     return {"ok": True, "archive_id": gen.id, "label": gen.label,
             "student_visible": gen.student_visible, "tagged_old": gen.tagged_old,
-            "archived": stamped}
+            "archived": stamped, "made_standalone": True}
 
 
 @router.get("/batch-archives")
@@ -2386,8 +2398,9 @@ def admin_batch_archive_restore(payload: dict, db: Session = Depends(get_db), _=
     """Archived generation ko wapas ACTIVE kar do (archive_gen_id -> NULL). Ye purana content
     wapas current me aa jaayega — agar batch me abhi naya active content hai to mix ho sakta hai
     (UI isse warn karti hai)."""
-    from models import BatchArchive
+    from models import BatchArchive, Batch
     from datetime import datetime as _dt
+    import json as _json
     try:
         gid = int(payload.get("archive_id") or 0)
     except Exception:
@@ -2402,6 +2415,16 @@ def admin_batch_archive_restore(payload: dict, db: Session = Depends(get_db), _=
         n = (db.query(M).filter(M.batch_id == a.batch_id, M.archive_gen_id == a.id)
              .update({M.archive_gen_id: None}, synchronize_session=False))
         restored[t] = int(n or 0)
+    # Revert the batch's standalone flag to what it was before this restart (so global inheritance,
+    # if any, comes back exactly as before).
+    try:
+        _meta = _json.loads(a.counts_json or "{}")
+        if "_prev_standalone" in _meta:
+            _bt = db.query(Batch).filter(Batch.id == a.batch_id).first()
+            if _bt is not None:
+                _bt.standalone = _meta["_prev_standalone"]
+    except Exception:
+        pass
     a.restored_at = _dt.utcnow()
     a.student_visible = False
     db.commit()
