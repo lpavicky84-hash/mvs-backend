@@ -19768,18 +19768,17 @@ async function loadATimetable(){
   }
   catch(e){ document.getElementById('a-timetable-content').innerHTML=errHtml(e); }
 }
-async function _attMountBatchBar(){
+function _attRenderBatchBar(list){
+  // REFRESH-PROOF: sirf tab render karo jab list ho; khaali/err pe host ko kabhi blank mat karo
+  // (warna aRenderTT ke double-call / transient fetch fail pe bar gayab ho jaata tha).
   var host=document.getElementById('a-tt-batchbar'); if(!host) return;
-  try{
-    var r=await api('/api/admin/batches'); var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
-    window._attBatchList=list;
-    if(!list.length){ host.innerHTML=''; return; }
-    if(window._attBatch===undefined) window._attBatch='';
-    _attInjectCSS();
-    var live=list.filter(function(b){return (b.mode||'live')==='live';}), rec=list.filter(function(b){return b.mode==='rec';}), syc=list.filter(function(b){return b.mode==='syc';});
-    var opt=function(b){ return '<option value="'+b.id+'"'+(String(window._attBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>'; };
-    var grp=function(lbl,arr){ return arr.length?'<optgroup label="'+lbl+'">'+arr.map(opt).join('')+'</optgroup>':''; };
-    host.innerHTML='<div class="att-bar"><span class="att-lbl">'+ic('folder')+' Batch timetable</span>'
+  if(!list || !list.length) return;
+  if(window._attBatch===undefined) window._attBatch='';
+  _attInjectCSS();
+  var live=list.filter(function(b){return (b.mode||'live')==='live';}), rec=list.filter(function(b){return b.mode==='rec';}), syc=list.filter(function(b){return b.mode==='syc';});
+  var opt=function(b){ return '<option value="'+b.id+'"'+(String(window._attBatch)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>'; };
+  var grp=function(lbl,arr){ return arr.length?'<optgroup label="'+lbl+'">'+arr.map(opt).join('')+'</optgroup>':''; };
+  host.innerHTML='<div class="att-bar"><span class="att-lbl">'+ic('folder')+' Batch timetable</span>'
       +'<select class="input att-sel" onchange="_attSetBatch(this.value)"><option value=""'+(!window._attBatch?' selected':'')+'>All batches</option>'
         +grp('\uD83D\uDD34 Live',live)+grp('\u25B6 Recorded',rec)+grp('\u25B6 On-Demand',syc)
         +'<option value="global"'+(window._attBatch==='global'?' selected':'')+'>Global (no batch)</option></select>'
@@ -19801,7 +19800,17 @@ async function _attMountBatchBar(){
           +_genChip;
       })():'')
       +'</div>';
-  }catch(e){ host.innerHTML=''; }
+}
+async function _attMountBatchBar(){
+  // 1) Cache-first: agar batches pehle se load hain to turant render (refresh/double-render pe gayab nahi).
+  if(window._attBatchList && window._attBatchList.length){ try{ _attRenderBatchBar(window._attBatchList); }catch(e){} }
+  // 2) Background refresh: fresh list laao; success pe cache update + re-render. Fail/empty pe
+  //    purana bar as-is rehta hai (kabhi blank nahi).
+  try{
+    var r=await api('/api/admin/batches');
+    var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
+    if(list.length){ window._attBatchList=list; _attRenderBatchBar(list); }
+  }catch(e){}
 }
 function _attInjectCSS(){
   if(document.getElementById('att-css')) return;
