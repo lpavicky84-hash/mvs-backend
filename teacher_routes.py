@@ -72,9 +72,11 @@ router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
 @router.get("/tt-batches")
 def teacher_tt_batches(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    """Active batches for the teacher's timetable builder."""
+    """Active batches for the teacher's timetable builder — 'Completed' batches are hidden
+    (admin marks a session Completed to retire it from the dropdowns)."""
     from models import Batch
     rows = db.query(Batch).filter(Batch.active == True).order_by(Batch.sort.asc(), Batch.id.asc()).all()
+    rows = [b for b in rows if (getattr(b, "status", "") or "").strip().lower() != "completed"]
     return {"batches": [{"id": b.id, "name": b.name, "session": getattr(b, "session", "") or "",
                          "mode": getattr(b, "mode", "live") or "live",
                          "type": getattr(b, "type", "") or "",

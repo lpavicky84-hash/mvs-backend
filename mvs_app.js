@@ -1904,7 +1904,7 @@ function _ttbBatchField(batches){
 }
 async function openAdminExtraClass(){
   var batches=[];
-  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }catch(e){}
   var batBoxes=batches.map(function(b){ return '<label class="ec-bchk"><input type="checkbox" value="'+b.id+'"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>'; }).join('')||'<span style="color:var(--text-muted)">No batches</span>';
   if(!document.getElementById('ec-css')){ var st=document.createElement('style'); st.id='ec-css'; st.textContent='.ec-blist{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:11px;padding:6px}.ec-bchk{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:.86rem}.ec-bchk:hover{background:rgba(184,148,31,.06)}.ec-bchk input{width:15px;height:15px}'; document.head.appendChild(st); }
   showModal('Add Extra Class',
@@ -1933,7 +1933,7 @@ async function submitAdminExtraClass(){
 }
 async function openCrashCourse(){
   var batches=[];
-  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }catch(e){}
   var batOpts='<option value="">Select batch\u2026</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';}).join('');
   var yr=new Date().getFullYear();
   if(!document.getElementById('cc-css')){ var st=document.createElement('style'); st.id='cc-css';
@@ -1999,7 +1999,7 @@ async function openTTBuilder(){
   window._ttbTeacher=false;
   _ttbRows=[{date:'',time:'',chapters:[],type:'lecture',youtube:''}];
   var batches=[];
-  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  try{ var r=await api('/api/admin/batches'); batches=((r&&r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }catch(e){}
   var batOpts='<option value="">No batch (global)</option>'+batches.map(function(b){return '<option value="'+b.id+'">'+esc(b.name)+(b.session?' \u00b7 '+esc(b.session):'')+'</option>';}).join('');
   showModal('Create Timetable',
     '<p class="vtc-help">Pick the <b>batch</b> + <b>subject</b>, then add classes. Type a chapter and press Enter \u2014 add multiple to <b>merge</b> them (e.g. crash course). Scoped to the batch, so it never clashes with another batch\u2019s timetable.</p>'
@@ -2189,7 +2189,7 @@ async function _ttFillBatches(){
   var wrap=document.getElementById('apdf-batch-wrap'); if(!wrap) return;
   try{
     var r=await api('/api/admin/batches');
-    var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
+    var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';});
     // Session-wise sorted taaki "Lakshya Science · April 2027" aur "· October 2027" alag dikhein
     var _srt=list.slice().sort(function(a,b){var an=(a.name||'').toLowerCase(),bn=(b.name||'').toLowerCase();if(an!==bn)return an<bn?-1:1;return (a.session||'').localeCompare(b.session||'');});
     // type bhi label me (Science/Commerce) — same-name batches aur clear
@@ -5343,7 +5343,7 @@ async function _renderMaterialTree(wrapId, endpoint, apiBase, keepSub){
   if(window._mtBatchBase!==apiBase){ window._mtBatchList=null; window._mtBatchBase=apiBase; window._mtBatch=''; }
   if(!window._mtBatchList){
     try{
-      if(apiBase.indexOf('admin')>=0){ var _rb=await api('/api/admin/batches'); window._mtBatchList=((_rb&&_rb.batches)||[]).filter(function(b){return b.active!==false;}); }
+      if(apiBase.indexOf('admin')>=0){ var _rb=await api('/api/admin/batches'); window._mtBatchList=((_rb&&_rb.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }
       else { var _tb=await api('/api/teacher/tt-batches'); window._mtBatchList=(_tb&&_tb.batches)||[]; }
     }catch(e){ window._mtBatchList=[]; }
   }
@@ -5615,7 +5615,7 @@ async function openCopyMatToBatch(who,mid,titleEnc){
   var title=decodeURIComponent(titleEnc||'');
   var bl=window._mtBatchList||[];
   if(!bl.length){
-    try{ if((who||'').indexOf('admin')>=0){ var ra=await api('/api/admin/batches'); bl=((ra&&ra.batches)||[]).filter(function(b){return b.active!==false;}); } else { var rt=await api('/api/teacher/tt-batches'); bl=(rt&&rt.batches)||[]; } }catch(e){}
+    try{ if((who||'').indexOf('admin')>=0){ var ra=await api('/api/admin/batches'); bl=((ra&&ra.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); } else { var rt=await api('/api/teacher/tt-batches'); bl=(rt&&rt.batches)||[]; } }catch(e){}
     window._mtBatchList=bl;
   }
   if(!bl.length){ toast('No batches found to copy into.',true); return; }
@@ -9280,7 +9280,7 @@ function initAdminDppTracker(){
 // ===== Shared admin batch filter (DPP Tracker + Tests Tracker) =====
 async function _admLoadBatches(){
   if(window._admBatches) return window._admBatches;
-  try{ var r=await api('/api/admin/batches'); window._admBatches=((r&&r.batches)||[]).filter(function(b){return b.active!==false;}); }
+  try{ var r=await api('/api/admin/batches'); window._admBatches=((r&&r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }
   catch(e){ window._admBatches=[]; }
   return window._admBatches;
 }
@@ -16209,7 +16209,7 @@ async function _ciParse(inp){
   if(!purchases.length){ if(out) out.innerHTML='<div class="alert alert-error">Koi purchase row nahi mili.</div>'; return; }
   window._ciPurchases=purchases;
   window._ciItems=Object.keys(itemCounts).map(function(it){return {item:it,count:itemCounts[it]};}).sort(function(a,b){return b.count-a.count;});
-  var bl=[]; try{ var rr=await api('/api/admin/batches'); bl=((rr&&rr.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  var bl=[]; try{ var rr=await api('/api/admin/batches'); bl=((rr&&rr.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }catch(e){}
   window._ciBatches=bl;
   _ciRenderMap();
 }
@@ -17606,7 +17606,7 @@ async function openStudentBatches(sid,name){
   _vtcInjectCSS();
   var enrolled=[], all=[];
   try{ var r=await api('/api/admin/students/'+sid+'/batches'); enrolled=(r&&r.batches)||[]; }catch(e){}
-  try{ var a=await api('/api/admin/batches'); all=((a&&a.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){}
+  try{ var a=await api('/api/admin/batches'); all=((a&&a.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }catch(e){}
   var have={}; enrolled.forEach(function(b){have[b.id]=1;});
   var avail=all.filter(function(b){return !have[b.id];});
   window._sbAll=avail; window._sbSel='';
@@ -19808,7 +19808,7 @@ async function _attMountBatchBar(){
   //    purana bar as-is rehta hai (kabhi blank nahi).
   try{
     var r=await api('/api/admin/batches');
-    var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false;});
+    var list=((r&&r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';});
     if(list.length){ window._attBatchList=list; _attRenderBatchBar(list); }
   }catch(e){}
 }
@@ -20079,7 +20079,7 @@ function ttdFillBatchSubs(){
 }
 async function openTTDelete(){
   if(!_attEntries.length){ toast('There are no timetable entries to delete.',true); return; }
-  if(!window._attBatchList){ try{ var _r=await api('/api/admin/batches'); window._attBatchList=((_r&&_r.batches)||[]).filter(function(b){return b.active!==false;}); }catch(e){ window._attBatchList=[]; } }
+  if(!window._attBatchList){ try{ var _r=await api('/api/admin/batches'); window._attBatchList=((_r&&_r.batches)||[]).filter(function(b){return b.active!==false && (b.status||'').toLowerCase()!=='completed';}); }catch(e){ window._attBatchList=[]; } }
   var _bWithTT={}; _attEntries.forEach(function(e){ if(e.batch_id) _bWithTT[e.batch_id]=1; });
   var batOpts=(window._attBatchList||[]).map(function(b){ var n=_attEntries.filter(function(e){return String(e.batch_id||'')===String(b.id);}).length; return '<option value="'+b.id+'">'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+' - '+n+' entries</option>'; }).join('');
   const subs=[...new Set(_attEntries.map(x=>x.subject).filter(Boolean))].sort();
