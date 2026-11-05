@@ -24290,7 +24290,9 @@ function renderStudentTimetable(entries, containerId, opts={}){
   el.innerHTML=`<div class="stt-head">${_hd?`<h2>${esc(_hd)}</h2>`:'<span></span>'}${toggle}</div>${overall}<div class="subj-tabs">${tabs}</div>${body}`;
 }
 function renderStudentChapters(list, subject, opts){
-  const tmap=(opts.tipTeacherMap||{})[subject]||opts.tipTeacher||{};
+  // class-aware teacher: is subject ke entries ki class se sahi teacher (Class 12 English -> Pooja)
+  var _scls=''; (list||[]).some(function(it){ var p=(it&&it.parts&&it.parts[0])||(it&&it.data)||{}; var c=String(p.class_name||'').replace(/\D/g,'').slice(-2); if(c){_scls=c;return true;} return false; });
+  const tmap=_ttTeacherFor(opts.tipTeacherMap, subject, _scls)||opts.tipTeacher||{};
   const chapters=[]; list.filter(it=>it.kind==='chapter'&&!_isNonBookChapter(it.chapter)).forEach(it=>{ const _n=(_expandMergedChapter(it.chapter)||[]).length||1; for(let _i=0;_i<_n;_i++) chapters.push(it); });
   const chDone=chapters.filter(c=>c.parts.every(_partDone)&&c.parts.length).length;
   let tp=0,dp=0; list.forEach(it=>{ if(it.kind==='chapter') it.parts.forEach(p=>{tp++; if(_partDone(p))dp++;}); else {tp++; if(_partDone(it.data))dp++;} });
@@ -24419,7 +24421,7 @@ function renderStudentWeekly(tl, subjects, opts){
     const _tmin=t=>{ const m=/(\d+):(\d+)\s*(am|pm)/i.exec(t||''); if(!m) return 9999; let h=+m[1]%12; if(/pm/i.test(m[3]))h+=12; return h*60+(+m[2]); };
     const list=byDay[d].slice().sort((a,b)=>_tmin(a.time)-_tmin(b.time));
     const rows=list.map(x=>{
-      const tmap=(opts.tipTeacherMap||{})[x.subject]||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
+      const tmap=_ttTeacherFor(opts.tipTeacherMap, x.subject, (opts.classLevel||String(x.class_name||'').replace(/\D/g,'').slice(-2)))||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
       // Is class ka running number (uski chronological position). Na mile to done-count fallback.
       const _tot=subTot[x.subject]||pr.total||0;
       const _pos=((subSeq[x.subject]||{})[x.id])||pr.done||0;
@@ -24442,7 +24444,7 @@ function wkDayDetail(day){
   list.sort((a,b)=>_tmin(a.time)-_tmin(b.time));
   const opts=window._wkOpts||{};
   const rows=list.map(x=>{
-    const tmap=(opts.tipTeacherMap||{})[x.subject]||{};
+    const tmap=_ttTeacherFor(opts.tipTeacherMap, x.subject, (opts.classLevel||String(x.class_name||'').replace(/\D/g,'').slice(-2)))||{};
     const stb=x.st==='current'?'<span class="wkc-status live">Live</span>':x.st==='done'?'<span class="wkc-status done">Completed</span>':'<span class="wkc-status up">Upcoming</span>';
     return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
   }).join('');
