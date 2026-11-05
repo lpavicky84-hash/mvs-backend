@@ -23870,6 +23870,20 @@ function renderTimelineItem(item, opts, tipT){
  </div></div>`).join('');
   return `<div class="tnode ${st}">${dotHtml}<div class="tcard" id="card-${accId}"><div class="tchapter-head" onclick="document.getElementById('card-${accId}').classList.toggle('open')"><div class="left"><span class="arrow">▶</span><h4> ${esc(item.chapter)}</h4></div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><span class="tstatus ${st}">${st}</span><span class="cnt-badge">${parts.length} ${parts.length>1?'parts':'part'}</span></div></div><div class="tparts">${partsHtml}</div></div></div>`;
 }
+// Class-aware teacher lookup: "English" Class 12 -> Pooja (302), Class 10 -> Manisha (202).
+// Pehle class-specific key (subject (Class X)) try karo, warna hi class-blind subject.
+function _ttTeacherFor(tmap, subject, cls){
+  if(!tmap||!subject) return null;
+  if(/\(\s*class/i.test(subject)) return tmap[subject]||null;   // naam me pehle se class ho
+  cls=String(cls||'').replace(/\D/g,'').slice(-2);
+  if(cls){ var k=subject+' (Class '+cls+')'; if(tmap[k]) return tmap[k]; }
+  return tmap[subject]||null;
+}
+function _ttActiveCls(entries, active, clsVal){
+  if(clsVal==='10'||clsVal==='12') return clsVal;
+  var e=(entries||[]).find(function(x){return x&&x.subject===active;})||{};
+  return String(e.class_name||'').replace(/\D/g,'').slice(-2);
+}
 // Main render: subject tabs + timeline for active subject
 function renderTimetableFlow(entries, containerId, opts={}){
   const el=document.getElementById(containerId);
@@ -23883,7 +23897,7 @@ function renderTimetableFlow(entries, containerId, opts={}){
   let tip=-1;
   for(let i=0;i<sts.length;i++){ if(sts[i]==='current'){ tip=i; break; } }
   if(tip<0){ for(let i=0;i<sts.length;i++){ if(sts[i]==='upcoming'){ tip=i; break; } } }
-  const tipT=opts.tipTeacher||(opts.tipTeacherMap&&opts.tipTeacherMap[active])||null;
+  const tipT=opts.tipTeacher||_ttTeacherFor(opts.tipTeacherMap, active, _ttActiveCls(entries, active, opts.activeClass))||null;
   const items=list.map((it,i)=>renderTimelineItem(it,opts,(tipT&&i===tip)?tipT:null)).join('');
   _ttLast={entries,containerId,opts};
   const toggle=`<div class="tt-toggle"><button class="${_ttView==='timeline'?'active':''}" onclick="setTtView('timeline')">Chapter Timeline</button><button class="${_ttView==='weekly'?'active':''}" onclick="setTtView('weekly')">Weekly Schedule</button></div>`;
@@ -24196,7 +24210,7 @@ function renderStudentTimetable(entries, containerId, opts={}){
     </div>`;
   } else if(active){
     // ---- Premium subject hero: avatar, ring, stat tiles, now-running footer ----
-    const _tinfo=(opts.tipTeacherMap||{})[active]||opts.tipTeacher||{};
+    const _tinfo=_ttTeacherFor(opts.tipTeacherMap, active, _ttActiveCls(entries, active, _clsVal))||opts.tipTeacher||{};
     const _clsTxt=(_clsVal==='10'||_clsVal==='12')?('Class '+_clsVal):((entries.find(e=>e.subject===active)||{}).class_name||'');
     const _init=active.replace(/\(.*?\)/g,'').trim().split(/\s+/).map(w=>w[0]).join('').slice(0,3).toUpperCase();
     const _tnm=esc((_tinfo.name||'').replace(/'/g,''));
