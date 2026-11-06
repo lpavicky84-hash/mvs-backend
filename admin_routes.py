@@ -46,6 +46,7 @@ ADMIN_SECTION_MAP = {
     "live-students": "live", "live-users": "live", "user": "live",
     "timetable-entry": "timetable", "timetable-all": "timetable", "timetable-clear": "timetable",
     "timetable-pdf": "timetable", "timetable-pdf-commit": "timetable", "timetable-subject": "timetable",
+    "timetable-copy": "timetable",
     "studio-reports": "timetable",
     "class-report-backfill": "timetable",
     "batch-restart": "timetable", "batch-archives": "timetable",
@@ -3123,6 +3124,80 @@ def _safe_timetable_publish(db, batch_id, class_name, clean_rows, mode, from_dt=
     return {"mode": mode, "old_count": old_count, "removed": len(removed_ids),
             "added": added, "skipped_existing": skipped_existing,
             "new_active_count": len(survivors) + added}
+
+
+@router.post("/timetable-copy")
+def admin_timetable_copy(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Copy a subject's (or ALL subjects') ACTIVE timetable from one batch into one or more
+    other batches — no re-upload. Only the schedule content (chapter/part/date/day/time/type)
+    is copied; the teacher shown in each target batch comes from that batch's own subject
+    assignment. Uses the SAFE, batch-scoped, canonical, idempotent publish path, so nothing in
+    any other batch/session is touched and re-copying never inflates duplicates."""
+    from models import TimetableEntry, Batch
+    try:
+        src = int(payload.get("source_batch_id") or 0)
+    except Exception:
+        src = 0
+    raw_targets = payload.get("target_batch_ids")
+    if raw_targets is None:
+        raw_targets = [payload.get("target_batch_id")]
+    targets = []
+    for t in (raw_targets or []):
+        try:
+            ti = int(t)
+        except Exception:
+            continue
+        if ti and ti != src and ti not in targets:
+            targets.append(ti)
+    subj = (payload.get("subject") or "").strip()
+    all_subj = (not subj) or subj == "__all"
+    mode = (payload.get("mode") or "auto").strip()
+    if mode not in ("auto", "replace_all", "add_extra"):
+        mode = "auto"
+    if not src:
+        return {"ok": False, "error": "Choose a source batch to copy from."}
+    if not targets:
+        return {"ok": False, "error": "Choose at least one target batch different from the source."}
+    rows = db.query(TimetableEntry).filter(
+        TimetableEntry.batch_id == src,
+        TimetableEntry.archive_gen_id.is_(None),
+    ).all()
+    if not all_subj:
+        rows = [r for r in rows
+                if _tt_canon_key(r.subject, r.class_name) == _tt_canon_key(subj, r.class_name)]
+    if not rows:
+        return {"ok": False,
+                "error": ("No active timetable found in the source batch."
+                          if all_subj else "No timetable found for that subject in the source batch.")}
+    by_class = {}
+    for e in rows:
+        cls = e.class_name or "Class 12"
+        by_class.setdefault(cls, []).append({
+            "subject": e.subject, "chapter": e.chapter or "", "part": e.part or "",
+            "date": (e.entry_date.isoformat() if e.entry_date else ""),
+            "day": e.day or "", "time": e.time_text or "", "type": e.entry_type or "chapter",
+        })
+    results = []
+    total_added = 0
+    for tb in targets:
+        tadded = 0
+        tremoved = 0
+        for cls, crows in by_class.items():
+            res = _safe_timetable_publish(db, tb, cls, crows, mode)
+            tadded += res.get("added", 0)
+            tremoved += res.get("removed", 0)
+        try:
+            b = db.query(Batch).filter(Batch.id == tb).first()
+            bname = (b.name if b and b.name else None) or ("Batch %d" % tb)
+        except Exception:
+            bname = "Batch %d" % tb
+        results.append({"batch_id": tb, "batch": bname, "added": tadded, "removed": tremoved})
+        total_added += tadded
+    db.commit()
+    return {"ok": True, "copied_rows": len(rows),
+            "subject": ("All subjects" if all_subj else subj),
+            "classes": sorted(by_class.keys()),
+            "targets": results, "total_added": total_added}
 
 
 @router.post("/timetable-pdf-commit")

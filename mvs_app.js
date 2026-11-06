@@ -19984,7 +19984,7 @@ function aFilteredTT(){
 }
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-secondary btn-sm" onclick="openTTDownloadPdf()" title="Download a premium, share-ready timetable PDF for a batch">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-ghost btn-sm" onclick="openAdminExtraClass()">${ic('plus')} Extra Class</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-secondary btn-sm" onclick="openTTDownloadPdf()" title="Download a premium, share-ready timetable PDF for a batch">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="openTTCopy()" title="Copy a subject's timetable from one batch into another — no re-upload">${ic('copy')||ic('layers')||''} Copy Timetable</button><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-ghost btn-sm" onclick="openAdminExtraClass()">${ic('plus')} Extra Class</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
   _attMountBatchBar();
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }
@@ -42094,28 +42094,26 @@ window._repDownloadPDF=function(){
     ctx.font='400 13.5px '+SANS; ctx.fillStyle='#c7d0e4'; ctx.fillText('Meet the teachers guiding this batch — tap any card to open their timetable.',34,130);
     return H;
   }
-  function drawFacCard(ctx,x,y,w,h,t){
+  function drawFacCard(ctx,x,y,w,h,e){
     card(ctx,x,y,w,h,16);
-    ctx.fillStyle=GOLD; RR(ctx,x,y+14,4,h-28,2); ctx.fill();
-    var pr=Math.min(36,h/2-12), pcx=x+22+pr, pcy=y+h/2;
-    drawTeacher(ctx,t.img,pcx,pcy,pr,t.name);
-    var tx=pcx+pr+18, mw=x+w-tx-16;
-    ctx.textAlign='left'; ctx.fillStyle=NAVY; ctx.font='800 17px '+SANS; ctx.fillText(ell(ctx,t.name||'MVS Faculty',mw),tx,y+h/2-14);
-    // subject chips
-    var cxp=tx, chy=y+h/2-2, chh=20, shown=0;
-    for(var i=0;i<t.subjects.length;i++){ var lbl=t.subjects[i].subj; ctx.font='700 10.5px '+SANS; var pwd=ctx.measureText(lbl).width+18;
-      if(cxp+pwd>x+w-14){ var more='+'+(t.subjects.length-shown); ctx.font='700 10.5px '+SANS; var mwd=ctx.measureText(more).width+16; ctx.fillStyle='#eef0f5'; RR(ctx,cxp,chy,mwd,chh,10); ctx.fill(); ctx.fillStyle=MUT; ctx.textAlign='center'; ctx.fillText(more,cxp+mwd/2,chy+14); ctx.textAlign='left'; break; }
-      ctx.fillStyle='#fef3e2'; RR(ctx,cxp,chy,pwd,chh,10); ctx.fill(); ctx.fillStyle='#b45309'; ctx.textAlign='center'; ctx.fillText(lbl,cxp+pwd/2,chy+14); ctx.textAlign='left'; cxp+=pwd+6; shown++; }
-    // view timetable hint
-    ctx.fillStyle=GOLD2; ctx.font='800 11px '+SANS; ctx.fillText('View Timetable  →',tx,y+h/2+34);
+    var cx=x+w/2;
+    var r=Math.min(44,Math.max(26,h*0.21));
+    var blockH=2*r+70, top0=y+Math.max(16,(h-blockH)/2), pcy=top0+r;
+    drawTeacher(ctx,e.img,cx,pcy,r,e.teacher);
+    ctx.textAlign='center';
+    ctx.fillStyle=NAVY; ctx.font='800 15.5px '+SANS; ctx.fillText(ell(ctx,e.teacher||'MVS Faculty',w-22),cx,pcy+r+26);
+    // subject chip (centered)
+    ctx.font='700 11.5px '+SANS; var lbl=e.subject||''; var pw=ctx.measureText(lbl).width+24; var chx=cx-pw/2, chy=pcy+r+36;
+    ctx.fillStyle='#fef3e2'; RR(ctx,chx,chy,pw,23,11); ctx.fill(); ctx.fillStyle='#b45309'; ctx.fillText(lbl,cx,chy+16);
+    ctx.textAlign='left';
   }
-  function drawFaculty(ctx,logo,teachers){
-    pageBg(ctx); var H=drawFacHeader(ctx,logo); var links=[]; var n=teachers.length; if(!n){ drawFooter(ctx,'Faculty Directory',2,THEMES[0]); return links; }
-    var gapX=18,gapY=14,cols=2,colW=(PW-68-gapX)/cols, top=H+26, bottom=PH-52, rows=Math.ceil(n/cols);
-    var cardH=Math.min(132,(bottom-top-(rows-1)*gapY)/rows);
-    for(var i=0;i<n;i++){ var t=teachers[i], c=i%cols, r=Math.floor(i/cols); var x=34+c*(colW+gapX), y=top+r*(cardH+gapY);
-      drawFacCard(ctx,x,y,colW,cardH,t); links.push({x:x,y:y,w:colW,h:cardH,startIdx:t.startIdx}); }
-    drawFooter(ctx,'Faculty Directory · '+n+' teacher'+(n>1?'s':''),2,THEMES[0]);
+  function drawFaculty(ctx,logo,entries){
+    pageBg(ctx); var H=drawFacHeader(ctx,logo); var links=[]; var n=entries.length; if(!n){ drawFooter(ctx,'Faculty Directory',2,THEMES[0]); return links; }
+    var gapX=16,gapY=16,cols=(n<=4?2:3),colW=(PW-68-(cols-1)*gapX)/cols, top=H+28, bottom=PH-54, rows=Math.ceil(n/cols);
+    var cardH=Math.min(208,Math.max(132,(bottom-top-(rows-1)*gapY)/rows));
+    for(var i=0;i<n;i++){ var e=entries[i], c=i%cols, r=Math.floor(i/cols); var x=34+c*(colW+gapX), y=top+r*(cardH+gapY);
+      drawFacCard(ctx,x,y,colW,cardH,e); links.push({x:x,y:y,w:colW,h:cardH,startIdx:e.startIdx}); }
+    drawFooter(ctx,'Faculty Directory · '+n+' subject'+(n>1?'s':''),2,THEMES[0]);
     return links;
   }
 
@@ -42158,11 +42156,9 @@ window._repDownloadPDF=function(){
         pg=newPage(); pageBg(pg.ctx); var Hc=drawHeader(pg.ctx,tphotos[subj].img,hopts,true,theme); ytop=Hc+26; sectionLabel(pg.ctx,34,ytop,'Date-wise Schedule (contd.)'); ytop+=22;
       }
     }
-    // ---- group teachers (by name) for faculty directory ----
-    var teachers=[], byKey={};
-    subs.forEach(function(subj){ var t=tphotos[subj]; var key=(t.name||'MVS Faculty').toLowerCase();
-      if(!byKey[key]){ byKey[key]={name:t.name||'MVS Faculty', img:t.img, subjects:[], startIdx:subjStart[subj]}; teachers.push(byKey[key]); }
-      byKey[key].subjects.push({subj:subj,cls:t.cls}); });
+    // ---- faculty directory: ONE card per subject (teacher photo + name + subject), like the app ----
+    var facEntries=subs.map(function(subj){ var t=tphotos[subj];
+      return {subject:(splitCode(subj)[0]||subj).trim()||subj, teacher:(t.name||'MVS Faculty'), img:t.img, startIdx:subjStart[subj]}; });
     // ---- cover ----
     var cp=newPage();
     drawCover(cp.ctx,logo,[
@@ -42173,7 +42169,7 @@ window._repDownloadPDF=function(){
       ['Generated On', opts.today||niceToday(), false]
     ]);
     // ---- faculty page ----
-    var fp=newPage(); var links=drawFaculty(fp.ctx,logo,teachers);
+    var fp=newPage(); var links=drawFaculty(fp.ctx,logo,facEntries);
     // ---- assemble: cover(1) + faculty(2) + subjects(3..) ----
     var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'});
     var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), SX=pw/PW, SY=ph/PH;
@@ -42297,6 +42293,73 @@ window._ttPdfDo=async function(){
     }
   }catch(e){ if(typeof toast==='function') toast('Could not generate the PDF.',true); }
   finally{ if(btn){ btn.disabled=false; if(btn.dataset._t) btn.innerHTML=btn.dataset._t; } }
+};
+
+
+/* ===== Admin: Copy Timetable between batches ===== */
+function _ttCopyBatchList(){ return (window._attBatchList||[]); }
+window.openTTCopy=function(){
+  var list=_ttCopyBatchList();
+  if(list.length<2){ if(typeof toast==='function') toast('You need at least two active batches to copy a timetable.',true); return; }
+  var curB=(window._attBatch===undefined?'':window._attBatch);
+  function bopt(sel){ return list.map(function(b){return '<option value="'+b.id+'"'+(String(sel)===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?' · '+esc(b.session):'')+'</option>';}).join(''); }
+  var SS='width:100%;box-sizing:border-box;padding:13px 16px;border:1.5px solid #e4d4ac;border-radius:12px;font-size:15px;font-weight:600;color:#1f2433;background:#fffdf8;cursor:pointer;min-height:50px;outline:none';
+  var LB='display:block;font-weight:700;font-size:.8rem;letter-spacing:.4px;text-transform:uppercase;color:#8a6d1f;margin-bottom:8px';
+  var HT='font-size:.76rem;color:var(--text-muted,#6b7280);margin-top:6px';
+  var RD='display:flex;align-items:center;gap:10px;background:#fffdf8;border:1px solid #ece0c2;border-radius:11px;padding:11px 13px;cursor:pointer;font-weight:600;font-size:.9rem;color:#1f2433';
+  var body=''
+    +'<div style="display:flex;flex-direction:column;gap:18px">'
+    +  '<div style="background:linear-gradient(110deg,#14213d,#243c66);border-radius:16px;padding:18px 20px;color:#fff;display:flex;align-items:center;gap:13px">'
+    +    '<div style="width:44px;height:44px;border-radius:12px;background:rgba(230,173,78,.18);display:flex;align-items:center;justify-content:center;color:#e6ad4e;font-size:1.2rem;flex:0 0 auto">'+(typeof ic==='function'?(ic('copy')||ic('layers')||''):'')+'</div>'
+    +    '<div><div style="font-weight:800;font-size:1.02rem">Copy Timetable Between Batches</div><div style="font-size:.8rem;color:#c7d0e4;margin-top:3px;line-height:1.4">Copy a subject’s full schedule from one batch into others — no re-upload. Only that batch’s own timetable is copied; nothing else is touched.</div></div>'
+    +  '</div>'
+    +  '<div><label style="'+LB+'">Copy From (source batch)</label><select id="ttcopy-src" style="'+SS+'" onchange="_ttCopyRepop()">'+bopt(curB)+'</select></div>'
+    +  '<div><label style="'+LB+'">Subject</label><select id="ttcopy-subj" style="'+SS+'"></select><div id="ttcopy-cnt" style="'+HT+'"></div></div>'
+    +  '<div><label style="'+LB+'">Copy To (target batches)</label><div id="ttcopy-targets" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto;padding:2px"></div></div>'
+    +  '<div><label style="'+LB+'">Mode</label><div style="display:flex;flex-direction:column;gap:8px">'
+    +    '<label style="'+RD+'"><input type="radio" name="ttcopy-mode" value="replace_all" checked style="width:17px;height:17px;accent-color:#c8912f"> Replace — clean copy (recommended)</label>'
+    +    '<label style="'+RD+'"><input type="radio" name="ttcopy-mode" value="add_extra" style="width:17px;height:17px;accent-color:#c8912f"> Add — keep target’s existing entries</label>'
+    +  '</div></div>'
+    +'</div>';
+  var footer='<div style="display:flex;gap:12px;justify-content:flex-end;align-items:center;width:100%">'
+    +'<button onclick="closeModal()" style="padding:12px 26px;border-radius:12px;border:1.5px solid #e4d4ac;background:#fff;color:#8a6d1f;font-weight:700;font-size:.95rem;cursor:pointer">Cancel</button>'
+    +'<button id="ttcopy-go" onclick="_ttCopyGo()" style="padding:12px 30px;border-radius:12px;border:0;background:linear-gradient(135deg,#e6ad4e,#c8912f);color:#2a2000;font-weight:800;font-size:.95rem;letter-spacing:.3px;cursor:pointer;box-shadow:0 8px 22px rgba(230,173,78,.38);display:inline-flex;align-items:center;gap:8px">'+(typeof ic==='function'?(ic('copy')||''):'')+' Copy Timetable</button>'
+  +'</div>';
+  showModal('Copy Timetable', body, footer);
+  _ttCopyRepop();
+};
+window._ttCopyRepop=function(){
+  var src=document.getElementById('ttcopy-src'); if(!src) return; var sid=src.value;
+  var ents=_ttPdfEntriesFor(sid,''); var tl=(typeof buildTimeline==='function')?buildTimeline(ents):{};
+  var subs=Object.keys(tl).filter(function(k){return tl[k]&&tl[k].length;});
+  var ss=document.getElementById('ttcopy-subj'); if(ss) ss.innerHTML='<option value="__all" selected>All subjects · '+subs.length+'</option>'+subs.map(function(x){return '<option value="'+esc(x)+'">'+esc(x)+'</option>';}).join('');
+  var cnt=document.getElementById('ttcopy-cnt'); if(cnt) cnt.textContent=subs.length?(subs.length+' subject'+(subs.length>1?'s':'')+' · '+ents.length+' classes in this batch'):'This batch has no timetable to copy';
+  var host=document.getElementById('ttcopy-targets');
+  if(host){ var list=_ttCopyBatchList().filter(function(b){return String(b.id)!==String(sid);});
+    host.innerHTML=list.length?list.map(function(b){
+      return '<label style="display:flex;align-items:center;gap:11px;background:#fffdf8;border:1px solid #ece0c2;border-radius:11px;padding:11px 13px;cursor:pointer">'
+        +'<input type="checkbox" class="ttcopy-tgt" value="'+b.id+'" style="width:18px;height:18px;accent-color:#c8912f;flex:0 0 auto">'
+        +'<span style="font-weight:700;font-size:.9rem;color:#1f2433">'+esc(b.name)+(b.session?' <span style="color:#9a8c66;font-weight:500">· '+esc(b.session)+'</span>':'')+'</span></label>';
+    }).join(''):'<div style="color:#9a8c66;font-size:.85rem">No other batches available.</div>'; }
+  var go=document.getElementById('ttcopy-go'); if(go){ go.disabled=!subs.length; go.style.opacity=subs.length?'1':'.5'; }
+};
+window._ttCopyGo=async function(){
+  var sid=(document.getElementById('ttcopy-src')||{}).value;
+  var subj=(document.getElementById('ttcopy-subj')||{}).value||'__all';
+  var targets=[].slice.call(document.querySelectorAll('.ttcopy-tgt')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
+  var mode=((document.querySelector('input[name="ttcopy-mode"]:checked')||{}).value)||'replace_all';
+  if(!targets.length){ if(typeof toast==='function') toast('Select at least one target batch.',true); return; }
+  var go=document.getElementById('ttcopy-go'); if(go){ go.disabled=true; go.dataset._t=go.innerHTML; go.textContent='Copying…'; }
+  try{
+    var r=await api('/api/admin/timetable-copy','POST',{source_batch_id:sid, target_batch_ids:targets, subject:subj, mode:mode});
+    if(r && r.ok){
+      var n=(r.targets||[]).length;
+      if(typeof toast==='function') toast('Timetable copied to '+n+' batch'+(n===1?'':'es')+' — '+(r.total_added||0)+' class'+((r.total_added||0)===1?'':'es')+' added.');
+      if(typeof closeModal==='function') closeModal();
+      try{ loadATimetable(); }catch(e){}
+    } else { if(typeof toast==='function') toast((r&&r.error)||'Could not copy the timetable.',true); }
+  }catch(e){ if(typeof toast==='function') toast('Could not copy the timetable.',true); }
+  finally{ if(go){ go.disabled=false; if(go.dataset._t) go.innerHTML=go.dataset._t; } }
 };
 
 
