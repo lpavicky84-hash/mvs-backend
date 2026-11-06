@@ -42080,6 +42080,45 @@ window._repDownloadPDF=function(){
   function statusOf(ds){ return (typeof _statusOf==='function')?_statusOf(ds):'upcoming'; }
   function isTest(t){ return (typeof _isTest==='function')?_isTest(t):/test|mock|pyq|assessment/i.test(t); }
 
+  /* ---------- FACULTY DIRECTORY PAGE ---------- */
+  function drawFacHeader(ctx,logo){
+    var H=146, th=THEMES[0];
+    var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,th.d); g.addColorStop(.6,th.m); g.addColorStop(1,th.l); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
+    var gl=ctx.createRadialGradient(PW-60,-10,0,PW-60,-10,230); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-320,0,320,230);
+    // logo + wordmark
+    drawCircleImg(ctx,logo,34+21,30+21,21); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(55,51,22,0,6.3); ctx.stroke();
+    ctx.textAlign='left'; ctx.font='800 13px '+SANS; _ls(ctx,1.2); ctx.fillStyle='#fff'; ctx.fillText('MVS ',86,46); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',86+mw,46); _ls(ctx,0);
+    // title
+    ctx.font='900 32px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText('Know Your ',34,104); var kw=ctx.measureText('Know Your ').width;
+    ctx.fillStyle=GOLD; ctx.font='italic 700 32px '+SERIF; ctx.fillText('MVS Faculties',34+kw,104);
+    ctx.font='400 13.5px '+SANS; ctx.fillStyle='#c7d0e4'; ctx.fillText('Meet the teachers guiding this batch — tap any card to open their timetable.',34,130);
+    return H;
+  }
+  function drawFacCard(ctx,x,y,w,h,t){
+    card(ctx,x,y,w,h,16);
+    ctx.fillStyle=GOLD; RR(ctx,x,y+14,4,h-28,2); ctx.fill();
+    var pr=Math.min(36,h/2-12), pcx=x+22+pr, pcy=y+h/2;
+    drawTeacher(ctx,t.img,pcx,pcy,pr,t.name);
+    var tx=pcx+pr+18, mw=x+w-tx-16;
+    ctx.textAlign='left'; ctx.fillStyle=NAVY; ctx.font='800 17px '+SANS; ctx.fillText(ell(ctx,t.name||'MVS Faculty',mw),tx,y+h/2-14);
+    // subject chips
+    var cxp=tx, chy=y+h/2-2, chh=20, shown=0;
+    for(var i=0;i<t.subjects.length;i++){ var lbl=t.subjects[i].subj; ctx.font='700 10.5px '+SANS; var pwd=ctx.measureText(lbl).width+18;
+      if(cxp+pwd>x+w-14){ var more='+'+(t.subjects.length-shown); ctx.font='700 10.5px '+SANS; var mwd=ctx.measureText(more).width+16; ctx.fillStyle='#eef0f5'; RR(ctx,cxp,chy,mwd,chh,10); ctx.fill(); ctx.fillStyle=MUT; ctx.textAlign='center'; ctx.fillText(more,cxp+mwd/2,chy+14); ctx.textAlign='left'; break; }
+      ctx.fillStyle='#fef3e2'; RR(ctx,cxp,chy,pwd,chh,10); ctx.fill(); ctx.fillStyle='#b45309'; ctx.textAlign='center'; ctx.fillText(lbl,cxp+pwd/2,chy+14); ctx.textAlign='left'; cxp+=pwd+6; shown++; }
+    // view timetable hint
+    ctx.fillStyle=GOLD2; ctx.font='800 11px '+SANS; ctx.fillText('View Timetable  →',tx,y+h/2+34);
+  }
+  function drawFaculty(ctx,logo,teachers){
+    pageBg(ctx); var H=drawFacHeader(ctx,logo); var links=[]; var n=teachers.length; if(!n){ drawFooter(ctx,'Faculty Directory',2,THEMES[0]); return links; }
+    var gapX=18,gapY=14,cols=2,colW=(PW-68-gapX)/cols, top=H+26, bottom=PH-52, rows=Math.ceil(n/cols);
+    var cardH=Math.min(132,(bottom-top-(rows-1)*gapY)/rows);
+    for(var i=0;i<n;i++){ var t=teachers[i], c=i%cols, r=Math.floor(i/cols); var x=34+c*(colW+gapX), y=top+r*(cardH+gapY);
+      drawFacCard(ctx,x,y,colW,cardH,t); links.push({x:x,y:y,w:colW,h:cardH,startIdx:t.startIdx}); }
+    drawFooter(ctx,'Faculty Directory · '+n+' teacher'+(n>1?'s':''),2,THEMES[0]);
+    return links;
+  }
+
   /* ============ MAIN ============ */
   window._ttPdfBuild=async function(opts){
     var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF; if(!J){ if(typeof toast==='function') toast('PDF library not loaded',true); return null; }
@@ -42092,20 +42131,11 @@ window._repDownloadPDF=function(){
     for(var i=0;i<subs.length;i++){ var s=subs[i]; var cls=clsOf(tl[s]);
       var tm=(typeof _ttTeacherFor==='function')?_ttTeacherFor(opts.teacherMap,s,cls):((opts.teacherMap||{})[s]); tm=tm||{};
       tphotos[s]={name:tm.name||'',img:null,cls:cls}; if(tm.url){ tphotos[s].img=await loadImg(tm.url); } }
-    var pages=[];
-    // cover
-    var cp=newPage();
-    drawCover(cp.ctx,logo,[
-      ['Batch', opts.batchName||'All batches', true],
-      ['Class', uniqCls(subs,tl)||'—', false],
-      ['Subjects', (opts.subjects&&opts.subjects.length?subs.join(', '):('All Subjects · '+subs.length)), false],
-      ['Schedule Period', opts.period||'—', false],
-      ['Generated On', opts.today||niceToday(), false]
-    ]);
-    pages.push(cp.cv);
-    var pageNo=2;
+    // ---- render SUBJECT pages first (page numbering starts at 3; cover=1, faculty=2) ----
+    var subjectPages=[], subjStart={}, pageNo=3;
     for(var si=0; si<subs.length; si++){
       var subj=subs[si], cls=tphotos[subj].cls, items=tl[subj];
+      subjStart[subj]=subjectPages.length;
       var model=subjectModel(subj,items,cls);
       var footL=subj+(cls?(' · Class '+cls):'')+(opts.batchName?(' · '+opts.batchName):'');
       var hopts={title:subj,teacher:tphotos[subj].name,pill:(cls?('Class '+cls):'Timetable')};
@@ -42123,14 +42153,35 @@ window._repDownloadPDF=function(){
         var rpcEff=(slice.length<=rpc)?Math.max(1,Math.ceil(slice.length/2)):rpc;
         for(var k=0;k<slice.length;k++){ var col=Math.floor(k/rpcEff), ric=k%rpcEff; var rx=34+col*(colW+COLGAP), ry=ytop+ric*(ROWH+ROWGAP); drawRow(pg.ctx,rx,ry,colW,slice[k],theme); }
         idx+=slice.length;
-        drawFooter(pg.ctx,footL,pageNo++,theme); pages.push(pg.cv);
+        drawFooter(pg.ctx,footL,pageNo++,theme); subjectPages.push(pg.cv);
         if(idx>=model.rows.length) break;
         pg=newPage(); pageBg(pg.ctx); var Hc=drawHeader(pg.ctx,tphotos[subj].img,hopts,true,theme); ytop=Hc+26; sectionLabel(pg.ctx,34,ytop,'Date-wise Schedule (contd.)'); ytop+=22;
       }
     }
+    // ---- group teachers (by name) for faculty directory ----
+    var teachers=[], byKey={};
+    subs.forEach(function(subj){ var t=tphotos[subj]; var key=(t.name||'MVS Faculty').toLowerCase();
+      if(!byKey[key]){ byKey[key]={name:t.name||'MVS Faculty', img:t.img, subjects:[], startIdx:subjStart[subj]}; teachers.push(byKey[key]); }
+      byKey[key].subjects.push({subj:subj,cls:t.cls}); });
+    // ---- cover ----
+    var cp=newPage();
+    drawCover(cp.ctx,logo,[
+      ['Batch', opts.batchName||'All batches', true],
+      ['Class', uniqCls(subs,tl)||'—', false],
+      ['Subjects', (opts.allMode?('All Subjects · '+subs.length):subs.join(', ')), false],
+      ['Schedule Period', opts.period||'—', false],
+      ['Generated On', opts.today||niceToday(), false]
+    ]);
+    // ---- faculty page ----
+    var fp=newPage(); var links=drawFaculty(fp.ctx,logo,teachers);
+    // ---- assemble: cover(1) + faculty(2) + subjects(3..) ----
     var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'});
-    var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
-    pages.forEach(function(cv,i){ if(i>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,ph); });
+    var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), SX=pw/PW, SY=ph/PH;
+    function addImg(cv){ pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,ph); }
+    addImg(cp.cv);
+    pdf.addPage(); addImg(fp.cv);
+    links.forEach(function(l){ try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:(3+l.startIdx)}); }catch(e){} });
+    subjectPages.forEach(function(cv){ pdf.addPage(); addImg(cv); });
     return pdf;
   };
   function clsOf(items){ var c=''; (items||[]).some(function(it){ var p=(it.kind==='event')?it.data:(it.parts&&it.parts[0]); if(p){ var cc=String(p.class_name||'').replace(/\D/g,'').slice(-2); if(cc){c=cc;return true;} } return false; }); return c; }
@@ -42161,6 +42212,29 @@ window._ttPdfRepopSubjects=function(){
   s.innerHTML='<option value="__all" selected>All Subjects · '+subs.length+'</option>'+subs.map(function(x){return '<option value="'+esc(x)+'">'+esc(x)+'</option>';}).join('');
   if(cnt) cnt.textContent=subs.length?(subs.length+' subject'+(subs.length>1?'s':'')+' · '+ents.length+' classes in this selection'):'No timetable found for this selection';
   var go=document.getElementById('ttpdf-go'); if(go){ go.disabled=!subs.length; go.style.opacity=subs.length?'1':'.5'; }
+  window._ttPdfOrder=subs.slice();
+  _ttPdfRenderOrder(); _ttPdfToggleOrder();
+};
+window._ttPdfOrder=[];
+window._ttPdfRenderOrder=function(){
+  var host=document.getElementById('ttpdf-order'); if(!host) return;
+  var o=window._ttPdfOrder||[];
+  if(o.length<2){ host.innerHTML=''; return; }
+  host.innerHTML=o.map(function(name,i){
+    var up=i===0, dn=i===o.length-1;
+    return '<div style="display:flex;align-items:center;gap:10px;background:#fffdf8;border:1px solid #ece0c2;border-radius:11px;padding:9px 11px;margin-bottom:7px">'
+      +'<span style="width:22px;height:22px;flex:0 0 auto;border-radius:7px;background:#14213d;color:#e6ad4e;font-weight:800;font-size:.72rem;display:flex;align-items:center;justify-content:center">'+(i+1)+'</span>'
+      +'<span style="flex:1;font-weight:700;font-size:.9rem;color:#1f2433;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(name)+'</span>'
+      +'<button type="button" onclick="_ttPdfMove('+i+',-1)"'+(up?' disabled':'')+' style="width:30px;height:30px;border-radius:8px;border:1px solid #e4d4ac;background:'+(up?'#f3f1ea':'#fff')+';color:'+(up?'#c9c3b4':'#8a6d1f')+';font-size:1rem;font-weight:800;cursor:'+(up?'default':'pointer')+';line-height:1">&#8593;</button>'
+      +'<button type="button" onclick="_ttPdfMove('+i+',1)"'+(dn?' disabled':'')+' style="width:30px;height:30px;border-radius:8px;border:1px solid #e4d4ac;background:'+(dn?'#f3f1ea':'#fff')+';color:'+(dn?'#c9c3b4':'#8a6d1f')+';font-size:1rem;font-weight:800;cursor:'+(dn?'default':'pointer')+';line-height:1">&#8595;</button>'
+      +'</div>';
+  }).join('');
+};
+window._ttPdfMove=function(i,d){ var o=window._ttPdfOrder||[]; var j=i+d; if(j<0||j>=o.length) return; var t=o[i]; o[i]=o[j]; o[j]=t; _ttPdfRenderOrder(); };
+window._ttPdfToggleOrder=function(){
+  var s=document.getElementById('ttpdf-subj'), wrap=document.getElementById('ttpdf-orderwrap');
+  if(!wrap) return; var all=(!s||s.value==='__all'); var many=(window._ttPdfOrder||[]).length>1;
+  wrap.style.display=(all&&many)?'block':'none';
 };
 window.openTTDownloadPdf=function(){
   var list=window._attBatchList||[];
@@ -42188,8 +42262,9 @@ window.openTTDownloadPdf=function(){
     +    '<option value=""'+(!curC?' selected':'')+'>All classes</option>'
     +    '<option value="10"'+(curC==='10'?' selected':'')+'>Class 10</option>'
     +    '<option value="12"'+(curC==='12'?' selected':'')+'>Class 12</option></select></div>'
-    +  '<div><label style="'+_LB+'">Subjects</label><select id="ttpdf-subj" style="'+_SS+'"></select>'
+    +  '<div><label style="'+_LB+'">Subjects</label><select id="ttpdf-subj" style="'+_SS+'" onchange="_ttPdfToggleOrder()"></select>'
     +    '<div id="ttpdf-cnt" style="'+_HT+'"></div></div>'
+    +  '<div id="ttpdf-orderwrap" style="display:none"><label style="'+_LB+'">PDF Order <span style="font-weight:600;text-transform:none;letter-spacing:0;color:#b2a788">(topmost subject appears first)</span></label><div id="ttpdf-order"></div></div>'
     +'</div>';
   var footer='<div style="display:flex;gap:12px;justify-content:flex-end;align-items:center;width:100%">'
     +'<button onclick="closeModal()" style="padding:12px 26px;border-radius:12px;border:1.5px solid #e4d4ac;background:#fff;color:#8a6d1f;font-weight:700;font-size:.95rem;cursor:pointer">Cancel</button>'
@@ -42203,7 +42278,8 @@ window._ttPdfDo=async function(){
   var bid=b?b.value:'all', cls=c?c.value:'', subj=s?s.value:'__all';
   var ents=_ttPdfEntriesFor(bid,cls);
   if(!ents.length){ if(typeof toast==='function') toast('No timetable for the selected batch/subject.',true); return; }
-  var subjects=(subj&&subj!=='__all')?[subj]:null;
+  var allMode=(!subj||subj==='__all');
+  var subjects=allMode?((window._ttPdfOrder&&window._ttPdfOrder.length)?window._ttPdfOrder.slice():null):[subj];
   var bl='All batches';
   if(bid==='global') bl='Global (no batch)';
   else if(bid && bid!=='all'){ var bo=(window._attBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0]; bl=bo?(bo.name+(bo.session?' · '+bo.session:'')):('Batch '+bid); }
@@ -42212,9 +42288,9 @@ window._ttPdfDo=async function(){
   var btn=document.getElementById('ttpdf-go'); if(btn){ btn.disabled=true; btn.dataset._t=btn.innerHTML; btn.textContent='Preparing…'; }
   if(typeof toast==='function') toast('Preparing premium PDF…');
   try{
-    var pdf=await window._ttPdfBuild({entries:ents, subjects:subjects, teacherMap:((typeof _attTeacherMap!=='undefined'?_attTeacherMap:window._attTeacherMap)||{}), batchName:bl, period:period});
+    var pdf=await window._ttPdfBuild({entries:ents, subjects:subjects, allMode:allMode, teacherMap:((typeof _attTeacherMap!=='undefined'?_attTeacherMap:window._attTeacherMap)||{}), batchName:bl, period:period});
     if(pdf){
-      var fn='MVS-Timetable-'+bl.replace(/[^a-z0-9]+/ig,'-').replace(/^-|-$/g,'')+(subjects?('-'+subjects[0].replace(/[^a-z0-9]+/ig,'-')):'')+'.pdf';
+      var fn='MVS-Timetable-'+bl.replace(/[^a-z0-9]+/ig,'-').replace(/^-|-$/g,'')+((!allMode&&subjects)?('-'+subjects[0].replace(/[^a-z0-9]+/ig,'-')):'')+'.pdf';
       pdf.save(fn);
       if(typeof toast==='function') toast('PDF downloaded — share it with your students.');
       if(typeof closeModal==='function') closeModal();
