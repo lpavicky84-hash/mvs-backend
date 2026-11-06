@@ -20462,6 +20462,26 @@ function enterStudentApp(){
   loadStudentLiveBanner();
   startStudentHeartbeat();
   startStudentPreload();
+  try{ _sHandleDeepLink(); }catch(e){}
+}
+/* Deep-link from the shared timetable PDF (faculty card) -> open Time Table + focus subject.
+   URL: https://app.mvsfoundation.in/?go=tt&s=<subject>&c=<class> */
+function _sHandleDeepLink(){
+  var qs; try{ qs=new URLSearchParams(location.search||''); }catch(e){ return; }
+  var go=(qs.get('go')||'').toLowerCase();
+  if(go!=='tt' && go!=='timetable') return;
+  var subj=qs.get('s')||'';
+  try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  setTimeout(function(){
+    try{
+      var nav=document.querySelector('#student-app .nav-item[onclick*="timetable"]');
+      sPage('timetable', nav||null);
+    }catch(e){}
+    if(subj){ var tries=0; var iv=setInterval(function(){ tries++;
+      try{ if(typeof _sttEntries!=='undefined' && _sttEntries && document.getElementById('s-tline-wrap')){ sSetSubj(encodeURIComponent(subj)); clearInterval(iv); return; } }catch(e){ clearInterval(iv); return; }
+      if(tries>20) clearInterval(iv);
+    }, 350); }
+  }, 400);
 }
 // Sab main pages ko background mein pehle se load kar do — pehli click par bhi
 // spinner nahi dikhega, sab kuch instant khulega (silent refresh hota rahega).
@@ -42113,7 +42133,7 @@ window._repDownloadPDF=function(){
     var gapX=16,gapY=16,cols=(n<=4?2:3),colW=(PW-68-(cols-1)*gapX)/cols, top=H+28, bottom=PH-54, rows=Math.ceil(n/cols);
     var cardH=Math.min(208,Math.max(132,(bottom-top-(rows-1)*gapY)/rows));
     for(var i=0;i<n;i++){ var e=entries[i], c=i%cols, r=Math.floor(i/cols); var x=34+c*(colW+gapX), y=top+r*(cardH+gapY);
-      drawFacCard(ctx,x,y,colW,cardH,e); links.push({x:x,y:y,w:colW,h:cardH,startIdx:e.startIdx}); }
+      drawFacCard(ctx,x,y,colW,cardH,e); links.push({x:x,y:y,w:colW,h:cardH,startIdx:e.startIdx,full:e.full,cls:e.cls}); }
     drawFooter(ctx,'Faculty Directory · '+n+' subject'+(n>1?'s':''),2,THEMES[0]);
     return links;
   }
@@ -42134,7 +42154,7 @@ window._repDownloadPDF=function(){
     if(!kids.length) throw new Error('no kids');
     function pageObj(p){ return kids[p-1]; }
     var facObjId = pageObj(facPage);
-    specs.forEach(function(sp){ sp.tgtObjId = pageObj(sp.tgtPage); });
+    specs.forEach(function(sp){ if(sp.tgtPage) sp.tgtObjId = pageObj(sp.tgtPage); });
     var sx = s.lastIndexOf('startxref');
     var pos = parseInt(/startxref\s+(\d+)/.exec(s.slice(sx))[1],10);
     var lines = s.slice(pos).split(/\r?\n/);
@@ -42155,10 +42175,13 @@ window._repDownloadPDF=function(){
     var header=s.slice(0, offsets[nums[0]]);
     var objBytes={};
     for(var i=0;i<nums.length;i++){ var st=offsets[nums[i]]; var en=(i+1<nums.length)?offsets[nums[i+1]]:pos; objBytes[nums[i]]=s.slice(st,en); }
+    function _escStr(u){ return String(u).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)'); }
     var nextNum=origSize, annotRefs=[], annotObjs=[];
     specs.forEach(function(sp){ var num=nextNum++; annotRefs.push(num+' 0 R');
       var rect='['+_pgFmt(sp.x0)+' '+_pgFmt(sp.y0)+' '+_pgFmt(sp.x1)+' '+_pgFmt(sp.y1)+']';
-      annotObjs.push({num:num, body:num+' 0 obj\n<</Type /Annot /Subtype /Link /Rect '+rect+' /Border [0 0 0] /H /N /A <</S /GoTo /D ['+sp.tgtObjId+' 0 R /Fit]>>>>\nendobj\n'}); });
+      var action = sp.url ? ('/A <</S /URI /URI ('+_escStr(sp.url)+')>>')
+                          : ('/A <</S /GoTo /D ['+sp.tgtObjId+' 0 R /Fit]>>');
+      annotObjs.push({num:num, body:num+' 0 obj\n<</Type /Annot /Subtype /Link /Rect '+rect+' /Border [0 0 0] /H /N '+action+'>>\nendobj\n'}); });
     var fb=objBytes[facObjId];
     if(!fb) throw new Error('no faculty obj');
     var endIdx=fb.lastIndexOf('endobj'); var dc=fb.lastIndexOf('>>',endIdx);
@@ -42213,7 +42236,7 @@ window._repDownloadPDF=function(){
     }
     // ---- faculty directory: ONE card per subject (teacher photo + name + subject), like the app ----
     var facEntries=subs.map(function(subj){ var t=tphotos[subj];
-      return {subject:(splitCode(subj)[0]||subj).trim()||subj, teacher:(t.name||'MVS Faculty'), img:t.img, startIdx:subjStart[subj]}; });
+      return {subject:(splitCode(subj)[0]||subj).trim()||subj, teacher:(t.name||'MVS Faculty'), img:t.img, startIdx:subjStart[subj], full:subj, cls:t.cls}; });
     // ---- cover ----
     var cp=newPage();
     drawCover(cp.ctx,logo,[
@@ -42232,19 +42255,22 @@ window._repDownloadPDF=function(){
     addImg(cp.cv);
     pdf.addPage(); addImg(fp.cv);
     subjectPages.forEach(function(cv){ pdf.addPage(); addImg(cv); });
-    // Build GoTo specs (PDF coords, bottom-left origin) and rewrite output so the
-    // faculty-card links are PROPER INDIRECT /A /GoTo /Fit annotations — honored by
-    // Google Drive, Android readers, iOS, Adobe, Chrome (jsPDF's inline annots are not).
+    // Build link specs (PDF coords, bottom-left origin). Faculty cards link to the LIVE
+    // portal timetable via an EXTERNAL URL — the one link type Google Drive honors — and
+    // they are written as PROPER INDIRECT annotations (jsPDF's inline annots are ignored
+    // by Drive/Android). base can be overridden via opts.portalBase.
+    var base=(opts.portalBase||'https://app.mvsfoundation.in/');
     var specs=links.map(function(l){ var yT=l.y*SY, hh=l.h*SY;
-      return {x0:l.x*SX, x1:(l.x+l.w)*SX, y0:ph-(yT+hh), y1:ph-yT, tgtPage:3+l.startIdx}; });
+      var url=base+'?go=tt&s='+encodeURIComponent(l.full||'')+(l.cls?('&c='+encodeURIComponent(l.cls)):'');
+      return {x0:l.x*SX, x1:(l.x+l.w)*SX, y0:ph-(yT+hh), y1:ph-yT, url:url}; });
     try{
       var u8=new Uint8Array(pdf.output('arraybuffer'));
       var fixed=pdfInjectGoto(_ab2str(u8), 2, specs);
       var outU8=_str2u8(fixed);
       return { save:function(fn){ _downloadBytes(outU8, fn); }, bytes:outU8 };
     }catch(e){
-      // fallback: jsPDF native /Fit links (inline) so iOS/Adobe/Chrome still jump
-      links.forEach(function(l){ try{ pdf.link(l.x*SX,l.y*SY,l.w*SX,l.h*SY,{pageNumber:(3+l.startIdx),magFactor:'Fit'}); }catch(_e){} });
+      // fallback: jsPDF native URL links (inline) so at least most readers open the portal
+      links.forEach(function(l){ try{ pdf.link(l.x*SX,l.y*SY,l.w*SX,l.h*SY,{url:base+'?go=tt&s='+encodeURIComponent(l.full||'')}); }catch(_e){} });
       return pdf;
     }
   };
