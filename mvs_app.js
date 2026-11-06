@@ -42082,15 +42082,17 @@ window._repDownloadPDF=function(){
 
   /* ---------- FACULTY DIRECTORY PAGE ---------- */
   function drawFacHeader(ctx,logo){
-    var H=126, th=THEMES[0];
-    var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,th.d); g.addColorStop(.6,th.m); g.addColorStop(1,th.l); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
-    var gl=ctx.createRadialGradient(PW-60,-10,0,PW-60,-10,230); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-320,0,320,230);
-    // logo + wordmark
-    drawCircleImg(ctx,logo,34+21,28+21,21); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(55,49,22,0,6.3); ctx.stroke();
-    ctx.textAlign='left'; ctx.font='800 13px '+SANS; _ls(ctx,1.2); ctx.fillStyle='#fff'; ctx.fillText('MVS ',86,44); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',86+mw,44); _ls(ctx,0);
-    // title
-    ctx.font='900 32px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText('Know Your ',34,102); var kw=ctx.measureText('Know Your ').width;
-    ctx.fillStyle=GOLD; ctx.font='italic 700 32px '+SERIF; ctx.fillText('MVS Faculties',34+kw,102);
+    var H=158, th=THEMES[0];
+    var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,th.d); g.addColorStop(.58,th.m); g.addColorStop(1,th.l); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
+    var gl=ctx.createRadialGradient(PW-50,0,0,PW-50,0,260); gl.addColorStop(0,'rgba(230,173,78,.24)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-360,0,360,260);
+    // logo + wordmark (top row, roomy)
+    drawCircleImg(ctx,logo,34+22,34+22,22); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(56,56,23,0,6.3); ctx.stroke();
+    ctx.textAlign='left'; ctx.font='800 13.5px '+SANS; _ls(ctx,1.4); ctx.fillStyle='#fff'; ctx.fillText('MVS ',90,52); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',90+mw,52); _ls(ctx,0);
+    // title (own line, generous spacing)
+    ctx.font='900 31px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText('Know Your ',34,120); var kw=ctx.measureText('Know Your ').width;
+    ctx.fillStyle=GOLD; ctx.font='italic 700 31px '+SERIF; ctx.fillText('MVS Faculties',34+kw,120);
+    // gold underline accent
+    var uw=ctx.measureText('MVS Faculties').width; ctx.fillStyle='rgba(230,173,78,.85)'; RR(ctx,34,133,64,3,2); ctx.fill();
     return H;
   }
   function drawFacCard(ctx,x,y,w,h,e){
@@ -42114,6 +42116,60 @@ window._repDownloadPDF=function(){
       drawFacCard(ctx,x,y,colW,cardH,e); links.push({x:x,y:y,w:colW,h:cardH,startIdx:e.startIdx}); }
     drawFooter(ctx,'Faculty Directory · '+n+' subject'+(n>1?'s':''),2,THEMES[0]);
     return links;
+  }
+
+  /* ---------- bulletproof internal links: rewrite jsPDF output so page links
+       are PROPER INDIRECT annotation objects with /A /GoTo /Fit actions. jsPDF
+       writes inline /Annots dicts which strict viewers (Google Drive, many
+       Android readers) ignore; indirect + GoTo is honored everywhere. ---------- */
+  function _pgFmt(n){ return (Math.round(n*100)/100).toString(); }
+  function _pad10(n){ n=''+n; while(n.length<10) n='0'+n; return n; }
+  function _ab2str(u8){ var CH=0x8000, parts=[]; for(var i=0;i<u8.length;i+=CH){ parts.push(String.fromCharCode.apply(null,u8.subarray(i,i+CH))); } return parts.join(''); }
+  function _str2u8(str){ var n=str.length, u=new Uint8Array(n); for(var i=0;i<n;i++) u[i]=str.charCodeAt(i)&0xff; return u; }
+  function _downloadBytes(u8,fn){ var blob=new Blob([u8],{type:'application/pdf'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=fn||'timetable.pdf'; (document.body||document.documentElement).appendChild(a); a.click(); setTimeout(function(){ try{a.parentNode.removeChild(a);}catch(e){} URL.revokeObjectURL(url); },1500); }
+  function pdfInjectGoto(s, facPage, specs){
+    var pagesM = /\/Type\s*\/Pages\b[\s\S]{0,6000}?\/Kids\s*\[([^\]]*)\]/.exec(s)
+              || /\/Kids\s*\[([^\]]*)\][\s\S]{0,600}?\/Type\s*\/Pages\b/.exec(s);
+    var kids = pagesM ? (pagesM[1].match(/(\d+)\s+0\s+R/g)||[]).map(function(r){return parseInt(r,10);}) : [];
+    if(!kids.length) throw new Error('no kids');
+    function pageObj(p){ return kids[p-1]; }
+    var facObjId = pageObj(facPage);
+    specs.forEach(function(sp){ sp.tgtObjId = pageObj(sp.tgtPage); });
+    var sx = s.lastIndexOf('startxref');
+    var pos = parseInt(/startxref\s+(\d+)/.exec(s.slice(sx))[1],10);
+    var lines = s.slice(pos).split(/\r?\n/);
+    var offsets = {}, k=1;
+    while(k<lines.length){ var ln=lines[k].trim();
+      if(ln===''){k++;continue;} if(ln.indexOf('trailer')===0) break;
+      var hdr=ln.split(/\s+/);
+      if(hdr.length===2 && /^\d+$/.test(hdr[0]) && /^\d+$/.test(hdr[1])){ var start=+hdr[0],count=+hdr[1]; k++;
+        for(var c=0;c<count;c++){ var e=lines[k].trim().split(/\s+/); var num=start+c; if(e[2]==='n') offsets[num]=+e[0]; k++; }
+      } else break; }
+    var trailer = s.slice(s.lastIndexOf('trailer'));
+    var rootRef=(/\/Root\s+(\d+\s+\d+\s+R)/.exec(trailer)||[])[1]||'';
+    var infoRef=(/\/Info\s+(\d+\s+\d+\s+R)/.exec(trailer)||[])[1]||'';
+    var idPart=(/\/ID\s*\[([^\]]*)\]/.exec(trailer)||[])[1];
+    var origSize=parseInt((/\/Size\s+(\d+)/.exec(trailer)||[])[1]||'0',10);
+    var nums=Object.keys(offsets).map(Number).sort(function(a,b){return offsets[a]-offsets[b];});
+    if(!nums.length) throw new Error('no objs');
+    var header=s.slice(0, offsets[nums[0]]);
+    var objBytes={};
+    for(var i=0;i<nums.length;i++){ var st=offsets[nums[i]]; var en=(i+1<nums.length)?offsets[nums[i+1]]:pos; objBytes[nums[i]]=s.slice(st,en); }
+    var nextNum=origSize, annotRefs=[], annotObjs=[];
+    specs.forEach(function(sp){ var num=nextNum++; annotRefs.push(num+' 0 R');
+      var rect='['+_pgFmt(sp.x0)+' '+_pgFmt(sp.y0)+' '+_pgFmt(sp.x1)+' '+_pgFmt(sp.y1)+']';
+      annotObjs.push({num:num, body:num+' 0 obj\n<</Type /Annot /Subtype /Link /Rect '+rect+' /Border [0 0 0] /H /N /A <</S /GoTo /D ['+sp.tgtObjId+' 0 R /Fit]>>>>\nendobj\n'}); });
+    var fb=objBytes[facObjId];
+    if(!fb) throw new Error('no faculty obj');
+    var endIdx=fb.lastIndexOf('endobj'); var dc=fb.lastIndexOf('>>',endIdx);
+    objBytes[facObjId]=fb.slice(0,dc)+' /Annots ['+annotRefs.join(' ')+']'+fb.slice(dc);
+    var out=header, newOff={};
+    for(var n=1;n<origSize;n++){ if(objBytes[n]==null) continue; newOff[n]=out.length; var ob=objBytes[n]; if(ob.charAt(ob.length-1)!=='\n') ob+='\n'; out+=ob; }
+    annotObjs.forEach(function(a){ newOff[a.num]=out.length; out+=a.body; });
+    var xrefStart=out.length, xref='xref\n0 '+nextNum+'\n';
+    for(var m=0;m<nextNum;m++){ if(m===0){xref+='0000000000 65535 f \n';continue;} xref+=(newOff[m]!=null?_pad10(newOff[m]):'0000000000')+' 00000 '+(newOff[m]!=null?'n':'f')+' \n'; }
+    out+=xref+'trailer\n<<\n/Size '+nextNum+'\n/Root '+rootRef+'\n/Info '+infoRef+'\n'+(idPart!=null?'/ID ['+idPart+']\n':'')+'>>\nstartxref\n'+xrefStart+'\n%%EOF\n';
+    return out;
   }
 
   /* ============ MAIN ============ */
@@ -42175,12 +42231,22 @@ window._repDownloadPDF=function(){
     function addImg(cv){ pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,ph); }
     addImg(cp.cv);
     pdf.addPage(); addImg(fp.cv);
-    // /Dest [page /Fit] = the most widely-honored internal jump (Android, iOS, Adobe, Chrome, Drive app).
-    links.forEach(function(l){ var tgt=3+l.startIdx;
-      try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt, magFactor:'Fit'}); }
-      catch(e){ try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt}); }catch(e2){} } });
     subjectPages.forEach(function(cv){ pdf.addPage(); addImg(cv); });
-    return pdf;
+    // Build GoTo specs (PDF coords, bottom-left origin) and rewrite output so the
+    // faculty-card links are PROPER INDIRECT /A /GoTo /Fit annotations — honored by
+    // Google Drive, Android readers, iOS, Adobe, Chrome (jsPDF's inline annots are not).
+    var specs=links.map(function(l){ var yT=l.y*SY, hh=l.h*SY;
+      return {x0:l.x*SX, x1:(l.x+l.w)*SX, y0:ph-(yT+hh), y1:ph-yT, tgtPage:3+l.startIdx}; });
+    try{
+      var u8=new Uint8Array(pdf.output('arraybuffer'));
+      var fixed=pdfInjectGoto(_ab2str(u8), 2, specs);
+      var outU8=_str2u8(fixed);
+      return { save:function(fn){ _downloadBytes(outU8, fn); }, bytes:outU8 };
+    }catch(e){
+      // fallback: jsPDF native /Fit links (inline) so iOS/Adobe/Chrome still jump
+      links.forEach(function(l){ try{ pdf.link(l.x*SX,l.y*SY,l.w*SX,l.h*SY,{pageNumber:(3+l.startIdx),magFactor:'Fit'}); }catch(_e){} });
+      return pdf;
+    }
   };
   function clsOf(items){ var c=''; (items||[]).some(function(it){ var p=(it.kind==='event')?it.data:(it.parts&&it.parts[0]); if(p){ var cc=String(p.class_name||'').replace(/\D/g,'').slice(-2); if(cc){c=cc;return true;} } return false; }); return c; }
   function uniqCls(subs,tl){ var set={}; subs.forEach(function(s){ var c=clsOf(tl[s]); if(c) set['Class '+c]=1; }); var k=Object.keys(set); return k.length?k.join(' & '):''; }
