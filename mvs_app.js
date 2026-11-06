@@ -42155,7 +42155,7 @@ window._repDownloadPDF=function(){
 
 /* ===== Admin: Download Timetable PDF — modal + glue ===== */
 function _ttPdfEntriesFor(bid, cls){
-  var ents=(window._attEntries||[]).slice();
+  var ents=((typeof _attEntries!=='undefined'?_attEntries:(window._attEntries||[]))||[]).slice();
   if(bid==='global'){ ents=ents.filter(function(e){return !e.batch_id;}); }
   else if(bid && bid!=='all'){
     var own=ents.filter(function(e){return String(e.batch_id||'')===String(bid);});
@@ -42203,8 +42203,10 @@ window.openTTDownloadPdf=function(){
     +  '<div class="form-group"><label>Subjects</label><select class="input" id="ttpdf-subj"></select>'
     +    '<div id="ttpdf-cnt" style="font-size:.74rem;color:var(--text-muted,#6b7280);margin-top:5px"></div></div>'
     +'</div>';
-  var footer='<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>'
-    +'<button class="btn btn-primary" id="ttpdf-go" onclick="_ttPdfDo()">'+(typeof ic==='function'?ic('download'):'')+' Download PDF</button>';
+  var footer='<div style="display:flex;gap:12px;justify-content:flex-end;align-items:center;width:100%">'
+    +'<button onclick="closeModal()" style="padding:12px 26px;border-radius:12px;border:1.5px solid #e4d4ac;background:#fff;color:#8a6d1f;font-weight:700;font-size:.95rem;cursor:pointer">Cancel</button>'
+    +'<button id="ttpdf-go" onclick="_ttPdfDo()" style="padding:12px 30px;border-radius:12px;border:0;background:linear-gradient(135deg,#e6ad4e,#c8912f);color:#2a2000;font-weight:800;font-size:.95rem;letter-spacing:.3px;cursor:pointer;box-shadow:0 8px 22px rgba(230,173,78,.38);display:inline-flex;align-items:center;gap:8px">'+(typeof ic==='function'?ic('download'):'')+' Download PDF</button>'
+  +'</div>';
   showModal('Download Timetable PDF', body, footer);
   _ttPdfRepopSubjects();
 };
@@ -42222,7 +42224,7 @@ window._ttPdfDo=async function(){
   var btn=document.getElementById('ttpdf-go'); if(btn){ btn.disabled=true; btn.dataset._t=btn.innerHTML; btn.textContent='Preparing…'; }
   if(typeof toast==='function') toast('Preparing premium PDF…');
   try{
-    var pdf=await window._ttPdfBuild({entries:ents, subjects:subjects, teacherMap:(window._attTeacherMap||{}), batchName:bl, period:period});
+    var pdf=await window._ttPdfBuild({entries:ents, subjects:subjects, teacherMap:((typeof _attTeacherMap!=='undefined'?_attTeacherMap:window._attTeacherMap)||{}), batchName:bl, period:period});
     if(pdf){
       var fn='MVS-Timetable-'+bl.replace(/[^a-z0-9]+/ig,'-').replace(/^-|-$/g,'')+(subjects?('-'+subjects[0].replace(/[^a-z0-9]+/ig,'-')):'')+'.pdf';
       pdf.save(fn);
