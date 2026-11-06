@@ -42082,16 +42082,15 @@ window._repDownloadPDF=function(){
 
   /* ---------- FACULTY DIRECTORY PAGE ---------- */
   function drawFacHeader(ctx,logo){
-    var H=146, th=THEMES[0];
+    var H=126, th=THEMES[0];
     var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,th.d); g.addColorStop(.6,th.m); g.addColorStop(1,th.l); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
     var gl=ctx.createRadialGradient(PW-60,-10,0,PW-60,-10,230); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-320,0,320,230);
     // logo + wordmark
-    drawCircleImg(ctx,logo,34+21,30+21,21); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(55,51,22,0,6.3); ctx.stroke();
-    ctx.textAlign='left'; ctx.font='800 13px '+SANS; _ls(ctx,1.2); ctx.fillStyle='#fff'; ctx.fillText('MVS ',86,46); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',86+mw,46); _ls(ctx,0);
+    drawCircleImg(ctx,logo,34+21,28+21,21); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(55,49,22,0,6.3); ctx.stroke();
+    ctx.textAlign='left'; ctx.font='800 13px '+SANS; _ls(ctx,1.2); ctx.fillStyle='#fff'; ctx.fillText('MVS ',86,44); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',86+mw,44); _ls(ctx,0);
     // title
-    ctx.font='900 32px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText('Know Your ',34,104); var kw=ctx.measureText('Know Your ').width;
-    ctx.fillStyle=GOLD; ctx.font='italic 700 32px '+SERIF; ctx.fillText('MVS Faculties',34+kw,104);
-    ctx.font='400 13.5px '+SANS; ctx.fillStyle='#c7d0e4'; ctx.fillText('Meet the teachers guiding this batch — tap any card to open their timetable.',34,130);
+    ctx.font='900 32px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText('Know Your ',34,102); var kw=ctx.measureText('Know Your ').width;
+    ctx.fillStyle=GOLD; ctx.font='italic 700 32px '+SERIF; ctx.fillText('MVS Faculties',34+kw,102);
     return H;
   }
   function drawFacCard(ctx,x,y,w,h,e){
@@ -42176,7 +42175,9 @@ window._repDownloadPDF=function(){
     function addImg(cv){ pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,ph); }
     addImg(cp.cv);
     pdf.addPage(); addImg(fp.cv);
-    links.forEach(function(l){ try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:(3+l.startIdx)}); }catch(e){} });
+    links.forEach(function(l){ var tgt=3+l.startIdx;
+      try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt, top:0}); }
+      catch(e){ try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt}); }catch(e2){} } });
     subjectPages.forEach(function(cv){ pdf.addPage(); addImg(cv); });
     return pdf;
   };
