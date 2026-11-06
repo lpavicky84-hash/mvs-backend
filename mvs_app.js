@@ -41893,209 +41893,177 @@ window._repDownloadPDF=function(){
    MVS Foundation — Premium Timetable PDF (admin)
    Canvas-per-A4-page -> jsPDF -> direct .pdf download.
    Batch-scoped (no merge). All subjects (each on its own page) or one subject.
-   Reuses app helpers when present: _rr, initials, buildTimeline, _statusOf,
-   _partDone, _isTest, fmtNice, _ttTeacherFor, _repLogo, api, toast, esc.
+   2-column compact schedule => 1-2 pages per subject.
+   Subject band shows ONLY the teacher photo (logo-style ring), on every page.
    ============================================================ */
 (function(){
   'use strict';
-  var PW=794, PH=1123, S=2;               // A4 logical px + 2x render
+  var PW=794, PH=1123, S=2;
   var NAVY='#14213d', NAVY2='#0b1630', GOLD='#e6ad4e', GOLD2='#c8912f';
   var INK='#1f2433', MUT='#6b7280', LINE='#e7e9f0', BG='#f4f5f9';
   var SANS='Inter, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
   var SERIF='Georgia, "Times New Roman", serif';
+  // premium per-subject themes (d=darkest/footer, m=mid, l=header gradient end). All gold-friendly, white-text safe.
+  var THEMES=[
+    {d:'#0f1b33',m:'#1b2d52',l:'#2b4677'}, // navy
+    {d:'#0c2e2b',m:'#14504a',l:'#1f6f66'}, // emerald
+    {d:'#2e1230',m:'#4a1f4c',l:'#6a2d6a'}, // plum
+    {d:'#1c1640',m:'#2f2566',l:'#473a8f'}, // indigo
+    {d:'#331018',m:'#58202e',l:'#7d2f42'}, // maroon
+    {d:'#17202e',m:'#2c3e57',l:'#415b7d'}  // slate
+  ];
+  function themeFor(i){ return THEMES[((i%THEMES.length)+THEMES.length)%THEMES.length]; }
 
-  function RR(ctx,x,y,w,h,r){ if(typeof _rr==='function'){ _rr(ctx,x,y,w,h,r); return; }
-    if(r>h/2)r=h/2; if(r>w/2)r=w/2; ctx.beginPath(); ctx.moveTo(x+r,y);
+  function RR(ctx,x,y,w,h,r){ if(r>h/2)r=h/2; if(r>w/2)r=w/2; ctx.beginPath(); ctx.moveTo(x+r,y);
     ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
-  function _ini(n){ if(typeof initials==='function') return initials(n); var p=(n||'U').trim().split(' '); return ((p[0]||'')[0]||'')+((p[1]||'')[0]||''); }
+  function _ini(n){ if(typeof initials==='function'){ try{var v=initials(n); if(v) return v;}catch(e){} } var p=(n||'MVS').trim().split(/\s+/); return (((p[0]||'')[0]||'')+((p[1]||'')[0]||'')).toUpperCase()||'M'; }
   function _ls(ctx,v){ try{ ctx.letterSpacing=(v||0)+'px'; }catch(e){} }
   function newPage(){ var cv=document.createElement('canvas'); cv.width=PW*S; cv.height=PH*S; var ctx=cv.getContext('2d'); ctx.scale(S,S); ctx.textBaseline='alphabetic'; return {cv:cv,ctx:ctx}; }
-
-  // load an <img> from a url (blob or http); resolves null on fail
   function loadImg(url){ return new Promise(function(res){ if(!url){res(null);return;} var im=new Image(); try{im.crossOrigin='anonymous';}catch(e){} im.onload=function(){res(im);}; im.onerror=function(){res(null);}; im.src=url; }); }
-  function logoImg(){ return new Promise(function(res){ if(typeof _repLogo==='function'){ _repLogo(function(l){res(l||null);}); } else { loadImg('/api/student/logo').then(res); } }); }
-
+  function logoImg(){ return new Promise(function(res){ if(typeof _repLogo==='function'){ try{ _repLogo(function(l){res(l||null);}); }catch(e){ res(null); } } else { loadImg('/api/student/logo').then(res); } }); }
   function drawCircleImg(ctx,img,cx,cy,r){ ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.closePath(); ctx.clip();
-    if(img){ var s=Math.max((2*r)/img.width,(2*r)/img.height); var w=img.width*s,h=img.height*s; ctx.drawImage(img,cx-w/2,cy-h/2,w,h); }
-    ctx.restore(); }
+    if(img){ var s=Math.max((2*r)/img.width,(2*r)/img.height); var w=img.width*s,h=img.height*s; ctx.drawImage(img,cx-w/2,cy-h/2,w,h); } ctx.restore(); }
+  function ell(ctx,txt,maxW){ txt=String(txt==null?'':txt); if(ctx.measureText(txt).width<=maxW) return txt; var t=txt; while(t.length>1 && ctx.measureText(t+'…').width>maxW) t=t.slice(0,-1); return t+'…'; }
 
-  function ell(ctx,txt,maxW){ txt=String(txt==null?'':txt); if(ctx.measureText(txt).width<=maxW) return txt;
-    var t=txt; while(t.length>1 && ctx.measureText(t+'…').width>maxW) t=t.slice(0,-1); return t+'…'; }
-
-  /* ---------- COVER PAGE ---------- */
-  function drawCover(ctx,logo,meta){
-    var g=ctx.createRadialGradient(PW/2,0,0,PW/2,0,PH*1.1);
-    g.addColorStop(0,'#1d3157'); g.addColorStop(.42,NAVY); g.addColorStop(1,NAVY2);
-    ctx.fillStyle=g; ctx.fillRect(0,0,PW,PH);
-    // subtle dot texture
-    ctx.save(); ctx.globalAlpha=.06; ctx.fillStyle='#ffffff';
-    for(var yy=40;yy<PH-60;yy+=26){ for(var xx=40;xx<PW;xx+=26){ ctx.beginPath(); ctx.arc(xx,yy,1,0,6.3); ctx.fill(); } }
-    ctx.restore();
-    // top glow
-    var gg=ctx.createRadialGradient(PW/2,120,0,PW/2,120,300); gg.addColorStop(0,'rgba(230,173,78,.22)'); gg.addColorStop(1,'rgba(230,173,78,0)');
-    ctx.fillStyle=gg; ctx.fillRect(0,0,PW,420);
-    // logo ring
-    var cx=PW/2, cy=210, r=96;
-    ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r+18,0,6.3); var rg=ctx.createRadialGradient(cx,cy,r,cx,cy,r+18); rg.addColorStop(0,'rgba(230,173,78,.16)'); rg.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=rg; ctx.fill(); ctx.restore();
-    drawCircleImg(ctx,logo,cx,cy,r);
-    ctx.lineWidth=2; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(cx,cy,r+6,0,6.3); ctx.stroke();
-    // kicker
-    ctx.textAlign='center'; _ls(ctx,6); ctx.fillStyle=GOLD; ctx.font='700 13px '+SANS;
-    ctx.fillText('MVS FOUNDATION · NIOS COACHING',PW/2,yk(cy,r)); _ls(ctx,0);
-    // title
-    var ty=yk(cy,r)+70; ctx.font='700 62px '+SERIF;
-    var w1=ctx.measureText('Study ').width, w2b=ctx.measureText('Timetable').width, tot=w1+w2b, sx=PW/2-tot/2;
-    ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.fillText('Study ',sx,ty);
-    ctx.fillStyle=GOLD; ctx.font='italic 600 62px '+SERIF; ctx.fillText('Timetable',sx+w1,ty);
-    // subtitle
-    ctx.textAlign='center'; ctx.fillStyle='#c7d0e4'; ctx.font='400 16px '+SANS;
-    ctx.fillText('Complete session schedule & learning roadmap',PW/2,ty+40);
-    // divider
-    var dy=ty+72; var dg=ctx.createLinearGradient(PW/2-45,0,PW/2+45,0); dg.addColorStop(0,'rgba(230,173,78,0)'); dg.addColorStop(.5,GOLD); dg.addColorStop(1,'rgba(230,173,78,0)');
-    ctx.fillStyle=dg; RR(ctx,PW/2-45,dy,90,3,2); ctx.fill();
-    // meta card
-    var cw=470, cxx=PW/2-cw/2, cyy=dy+36, rows=meta, rh=52, ch=rows.length*rh+16;
-    ctx.fillStyle='rgba(255,255,255,.055)'; RR(ctx,cxx,cyy,cw,ch,18); ctx.fill();
-    ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.12)'; RR(ctx,cxx,cyy,cw,ch,18); ctx.stroke();
-    rows.forEach(function(r,i){ var ry=cyy+8+i*rh;
-      if(i>0){ ctx.strokeStyle='rgba(255,255,255,.1)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(cxx+26,ry); ctx.lineTo(cxx+cw-26,ry); ctx.stroke(); }
-      ctx.textAlign='left'; _ls(ctx,1.5); ctx.fillStyle='#9fb0ce'; ctx.font='600 12px '+SANS;
-      ctx.fillText(r[0].toUpperCase(),cxx+28,ry+rh/2+4); _ls(ctx,0);
-      ctx.textAlign='right'; ctx.fillStyle=r[2]?GOLD:'#fff'; ctx.font='700 16px '+SANS;
-      ctx.fillText(ell(ctx,r[1],cw-180),cxx+cw-28,ry+rh/2+5);
-    });
-    // footer
-    var fg=ctx.createLinearGradient(0,PH-80,0,PH); fg.addColorStop(0,'rgba(0,0,0,0)'); fg.addColorStop(1,'rgba(0,0,0,.28)'); ctx.fillStyle=fg; ctx.fillRect(0,PH-80,PW,80);
-    ctx.textAlign='center'; ctx.fillStyle='#aab6d0'; ctx.font='400 12.5px '+SANS;
-    ctx.fillText('Prepared by MVS Foundation   ·   Share with students on WhatsApp   ·   mvsfoundation.in',PW/2,PH-34);
-    ctx.textAlign='left';
+  /* ---------- teacher avatar (logo-style circle) ---------- */
+  function drawTeacher(ctx,img,cx,cy,r,name){
+    if(img){ drawCircleImg(ctx,img,cx,cy,r); }
+    else { var g=ctx.createLinearGradient(cx-r,cy-r,cx+r,cy+r); g.addColorStop(0,'#223a66'); g.addColorStop(1,'#16233f');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,r,0,6.3); ctx.fill();
+      ctx.fillStyle=GOLD; ctx.font='800 '+Math.round(r*0.8)+'px '+SERIF; ctx.textAlign='center'; ctx.fillText(_ini(name),cx,cy+r*0.28); ctx.textAlign='left'; }
+    // double gold ring (logo-style)
+    ctx.lineWidth=2.5; ctx.strokeStyle=GOLD; ctx.beginPath(); ctx.arc(cx,cy,r,0,6.3); ctx.stroke();
+    ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.beginPath(); ctx.arc(cx,cy,r+3.5,0,6.3); ctx.stroke();
   }
-  function yk(cy,r){ return cy+r+50; }
+  function wordmark(ctx,x,y){ _ls(ctx,1.2); ctx.textAlign='left'; ctx.font='800 12.5px '+SANS; ctx.fillStyle='rgba(255,255,255,.92)';
+    ctx.fillText('MVS ',x,y); var w=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',x+w,y); _ls(ctx,0); }
+  function classPill(ctx,txt){ if(!txt) return; ctx.font='700 11px '+SANS; _ls(ctx,1); var pw=ctx.measureText(txt.toUpperCase()).width+28;
+    var x=PW-34-pw, y=24; ctx.fillStyle='rgba(230,173,78,.16)'; RR(ctx,x,y,pw,30,15); ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle='rgba(230,173,78,.45)'; RR(ctx,x,y,pw,30,15); ctx.stroke();
+    ctx.fillStyle=GOLD; ctx.textAlign='center'; ctx.fillText(txt.toUpperCase(),x+pw/2,y+20); _ls(ctx,0); ctx.textAlign='left'; }
 
-  /* ---------- SUBJECT HEADER BAND ---------- */
-  function drawHeader(ctx,logo,tphoto,o,cont){
-    var H=cont?104:150;
-    var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,NAVY); g.addColorStop(.6,'#1b2d52'); g.addColorStop(1,'#243c66');
-    ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
-    var gl=ctx.createRadialGradient(PW-40,-10,0,PW-40,-10,180); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-240,0,240,180);
-    // brand top-left
-    drawCircleImg(ctx,logo,34+19,22+19,19); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(34+19,22+19,20,0,6.3); ctx.stroke();
-    ctx.textAlign='left'; ctx.font='800 15px '+SANS; ctx.fillStyle='#fff'; ctx.fillText('MVS ',82,47); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('Foundation',82+mw,47);
-    // pill top-right
-    var pill=o.pill||''; if(pill){ ctx.font='700 11px '+SANS; _ls(ctx,1); var pw=ctx.measureText(pill.toUpperCase()).width+26; ctx.fillStyle='rgba(230,173,78,.16)'; RR(ctx,PW-34-pw,24,pw,30,15); ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle='rgba(230,173,78,.4)'; RR(ctx,PW-34-pw,24,pw,30,15); ctx.stroke(); ctx.fillStyle=GOLD; ctx.textAlign='center'; ctx.fillText(pill.toUpperCase(),PW-34-pw/2,43); _ls(ctx,0); ctx.textAlign='left'; }
+  /* ---------- COVER ---------- */
+  function drawCover(ctx,logo,meta){
+    var g=ctx.createRadialGradient(PW/2,0,0,PW/2,0,PH*1.1); g.addColorStop(0,'#1d3157'); g.addColorStop(.42,NAVY); g.addColorStop(1,NAVY2);
+    ctx.fillStyle=g; ctx.fillRect(0,0,PW,PH);
+    ctx.save(); ctx.globalAlpha=.06; ctx.fillStyle='#fff'; for(var yy=40;yy<PH-60;yy+=26){ for(var xx=40;xx<PW;xx+=26){ ctx.beginPath(); ctx.arc(xx,yy,1,0,6.3); ctx.fill(); } } ctx.restore();
+    var gg=ctx.createRadialGradient(PW/2,120,0,PW/2,120,300); gg.addColorStop(0,'rgba(230,173,78,.22)'); gg.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gg; ctx.fillRect(0,0,PW,420);
+    var cx=PW/2, cy=210, r=96; drawCircleImg(ctx,logo,cx,cy,r);
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(230,173,78,.6)'; ctx.beginPath(); ctx.arc(cx,cy,r+6,0,6.3); ctx.stroke();
+    ctx.textAlign='center'; _ls(ctx,6); ctx.fillStyle=GOLD; ctx.font='700 13px '+SANS; ctx.fillText('MVS FOUNDATION · NIOS COACHING',PW/2,cy+r+50); _ls(ctx,0);
+    var ty=cy+r+120; ctx.font='700 62px '+SERIF; var w1=ctx.measureText('Study ').width, w2=ctx.measureText('Timetable').width, sx=PW/2-(w1+w2)/2;
+    ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.fillText('Study ',sx,ty); ctx.fillStyle=GOLD; ctx.font='italic 600 62px '+SERIF; ctx.fillText('Timetable',sx+w1,ty);
+    ctx.textAlign='center'; ctx.fillStyle='#c7d0e4'; ctx.font='400 16px '+SANS; ctx.fillText('Complete session schedule & learning roadmap',PW/2,ty+40);
+    var dy=ty+72; var dg=ctx.createLinearGradient(PW/2-45,0,PW/2+45,0); dg.addColorStop(0,'rgba(230,173,78,0)'); dg.addColorStop(.5,GOLD); dg.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=dg; RR(ctx,PW/2-45,dy,90,3,2); ctx.fill();
+    var cw=470, cxx=PW/2-cw/2, cyy=dy+36, rh=52, ch=meta.length*rh+16;
+    ctx.fillStyle='rgba(255,255,255,.055)'; RR(ctx,cxx,cyy,cw,ch,18); ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.12)'; RR(ctx,cxx,cyy,cw,ch,18); ctx.stroke();
+    meta.forEach(function(rw,i){ var ry=cyy+8+i*rh;
+      if(i>0){ ctx.strokeStyle='rgba(255,255,255,.1)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(cxx+26,ry); ctx.lineTo(cxx+cw-26,ry); ctx.stroke(); }
+      ctx.textAlign='left'; _ls(ctx,1.5); ctx.fillStyle='#9fb0ce'; ctx.font='600 12px '+SANS; ctx.fillText(rw[0].toUpperCase(),cxx+28,ry+rh/2+4); _ls(ctx,0);
+      ctx.textAlign='right'; ctx.fillStyle=rw[2]?GOLD:'#fff'; ctx.font='700 16px '+SANS; ctx.fillText(ell(ctx,rw[1],cw-180),cxx+cw-28,ry+rh/2+5); });
+    var fg=ctx.createLinearGradient(0,PH-80,0,PH); fg.addColorStop(0,'rgba(0,0,0,0)'); fg.addColorStop(1,'rgba(0,0,0,.28)'); ctx.fillStyle=fg; ctx.fillRect(0,PH-80,PW,80);
+    ctx.textAlign='center'; ctx.fillStyle='#aab6d0'; ctx.font='400 12.5px '+SANS; ctx.fillText('Prepared by MVS Foundation   ·   Share with students on WhatsApp   ·   mvsfoundation.in',PW/2,PH-34); ctx.textAlign='left';
+  }
+
+  /* ---------- SUBJECT HEADER (teacher photo only; on every page) ---------- */
+  function drawHeader(ctx,tphoto,o,cont,theme){
+    theme=theme||THEMES[0];
+    var H=cont?108:150;
+    var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,theme.d); g.addColorStop(.6,theme.m); g.addColorStop(1,theme.l); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
+    var gl=ctx.createRadialGradient(PW-40,-10,0,PW-40,-10,180); gl.addColorStop(0,'rgba(230,173,78,.2)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-240,0,240,180);
+    wordmark(ctx,34,40); classPill(ctx,o.pill);
     if(cont){
-      ctx.font='italic 600 22px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText(o.title,82,86); var tw=ctx.measureText(o.title).width;
-      ctx.font='400 14px '+SANS; ctx.fillStyle='#c7d0e4'; ctx.fillText('  — continued',82+tw,86);
+      var pr=23, px=34+pr, py=74; drawTeacher(ctx,tphoto,px,py,pr,o.teacher);
+      var tx=px+pr+16; ctx.font='italic 600 23px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText(o.title,tx,py+2); var tw=ctx.measureText(o.title).width;
+      ctx.font='400 14px '+SANS; ctx.fillStyle='#c7d0e4'; ctx.fillText('  — continued',tx+tw,py+2);
       return H;
     }
-    // teacher photo + subject
-    var py=82, pr=35, px=34+pr;
-    if(tphoto){ drawCircleImg(ctx,tphoto,px,py,pr); } else { ctx.fillStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(px,py,pr,0,6.3); ctx.fill(); ctx.fillStyle=GOLD; ctx.font='800 26px '+SERIF; ctx.textAlign='center'; ctx.fillText(_ini(o.teacher||'MVS'),px,py+10); ctx.textAlign='left'; }
-    ctx.lineWidth=2.5; ctx.strokeStyle=GOLD; ctx.beginPath(); ctx.arc(px,py,pr,0,6.3); ctx.stroke();
-    var tx=px+pr+18;
-    // subject (name + code gold)
-    ctx.font='900 30px '+SANS; ctx.fillStyle='#fff';
-    var parts=splitCode(o.title); ctx.fillText(parts[0],tx,py-2); var nw=ctx.measureText(parts[0]).width;
-    if(parts[1]){ ctx.fillStyle=GOLD; ctx.fillText(parts[1],tx+nw,py-2); }
-    // faculty line
-    ctx.font='400 14px '+SANS; ctx.fillStyle='#c7d0e4'; var fl='Faculty  ·  '; ctx.fillText(fl,tx,py+24); var flw=ctx.measureText(fl).width;
-    ctx.font='700 14px '+SANS; ctx.fillStyle='#fff'; ctx.fillText(o.teacher||'MVS Faculty',tx+flw,py+24);
+    var R=35, cx=34+R, cy=90; drawTeacher(ctx,tphoto,cx,cy,R,o.teacher);
+    var tx2=cx+R+20;
+    ctx.font='900 30px '+SANS; var sp=splitCode(o.title); ctx.fillStyle='#fff'; ctx.fillText(sp[0],tx2,cy-2); var nw=ctx.measureText(sp[0]).width;
+    if(sp[1]){ ctx.fillStyle=GOLD; ctx.fillText(sp[1],tx2+nw,cy-2); }
+    ctx.font='400 14px '+SANS; ctx.fillStyle='#c7d0e4'; var fl='Faculty  ·  '; ctx.fillText(fl,tx2,cy+24); var flw=ctx.measureText(fl).width;
+    ctx.font='700 14px '+SANS; ctx.fillStyle='#fff'; ctx.fillText(o.teacher||'MVS Faculty',tx2+flw,cy+24);
     return H;
   }
-  function splitCode(t){ var m=String(t||'').match(/^(.*?)(\s*\d{3})\s*$/); if(m) return [m[1],m[2]]; return [t,'']; }
+  function splitCode(t){ var m=String(t||'').match(/^(.*?)(\s*\d{3})\s*$/); return m?[m[1],m[2]]:[t,'']; }
 
   function sectionLabel(ctx,x,y,txt){ ctx.fillStyle=GOLD; RR(ctx,x,y-13,4,17,2); ctx.fill(); ctx.fillStyle=NAVY; ctx.font='800 13px '+SANS; _ls(ctx,1.5); ctx.textAlign='left'; ctx.fillText(txt.toUpperCase(),x+12,y+1); _ls(ctx,0); }
+  function card(ctx,x,y,w,h,r){ r=r||14; ctx.save(); ctx.shadowColor='rgba(20,33,61,.06)'; ctx.shadowBlur=9; ctx.shadowOffsetY=3; ctx.fillStyle='#fff'; RR(ctx,x,y,w,h,r); ctx.fill(); ctx.restore(); ctx.lineWidth=1; ctx.strokeStyle=LINE; RR(ctx,x,y,w,h,r); ctx.stroke(); }
 
-  /* ---------- PROGRESS STRIP (ring + stat chips) ---------- */
+  /* ---------- PROGRESS STRIP ---------- */
   function drawProgress(ctx,x,y,w,st){
-    var h=118, gap=14, cardW=(w-2*gap)/3;
-    // ring card
-    drawCard(ctx,x,y,cardW,h);
-    var rcx=x+cardW/2, rcy=y+h/2, R=40;
-    ctx.lineWidth=11; ctx.strokeStyle='#eef0f5'; ctx.beginPath(); ctx.arc(rcx,rcy,R,0,6.3); ctx.stroke();
-    var pct=st.pct||0; var lg=ctx.createLinearGradient(rcx-R,rcy-R,rcx+R,rcy+R); lg.addColorStop(0,GOLD); lg.addColorStop(1,GOLD2);
-    ctx.strokeStyle=lg; ctx.lineCap='round'; ctx.beginPath(); ctx.arc(rcx,rcy,R,-Math.PI/2,-Math.PI/2+6.2832*(pct/100)); ctx.stroke(); ctx.lineCap='butt';
-    ctx.textAlign='center'; ctx.fillStyle=NAVY; ctx.font='900 24px '+SERIF; ctx.fillText(pct+'%',rcx,rcy+2);
+    var h=116, gap=14, cw=(w-2*gap)/3;
+    card(ctx,x,y,cw,h,16);
+    var rcx=x+cw/2, rcy=y+h/2, R=40; ctx.lineWidth=11; ctx.strokeStyle='#eef0f5'; ctx.beginPath(); ctx.arc(rcx,rcy,R,0,6.3); ctx.stroke();
+    var lg=ctx.createLinearGradient(rcx-R,rcy-R,rcx+R,rcy+R); lg.addColorStop(0,GOLD); lg.addColorStop(1,GOLD2); ctx.strokeStyle=lg; ctx.lineCap='round';
+    ctx.beginPath(); ctx.arc(rcx,rcy,R,-Math.PI/2,-Math.PI/2+6.2832*((st.pct||0)/100)); ctx.stroke(); ctx.lineCap='butt';
+    ctx.textAlign='center'; ctx.fillStyle=NAVY; ctx.font='900 24px '+SERIF; ctx.fillText((st.pct||0)+'%',rcx,rcy+2);
     ctx.fillStyle=MUT; ctx.font='700 9px '+SANS; _ls(ctx,1); ctx.fillText('COMPLETE',rcx,rcy+18); _ls(ctx,0);
-    // two stat cards
-    statCard(ctx,x+cardW+gap,y,cardW,h,[[st.chDone+'/'+st.chTot,'CHAPTERS DONE'],[String(st.tests),'TESTS SCHEDULED']]);
-    statCard(ctx,x+2*(cardW+gap),y,cardW,h,[[String(st.lectures),'TOTAL LECTURES'],[st.classLabel||'—','CLASS']]);
-    ctx.textAlign='left';
-    return h;
+    statCard(ctx,x+cw+gap,y,cw,h,[[st.chDone+'/'+st.chTot,'CHAPTERS DONE'],[String(st.tests),'TESTS SCHEDULED']]);
+    statCard(ctx,x+2*(cw+gap),y,cw,h,[[String(st.lectures),'TOTAL LECTURES'],[st.period||'—','SCHEDULE']]);
+    ctx.textAlign='left'; return h;
   }
-  function statCard(ctx,x,y,w,h,pairs){ drawCard(ctx,x,y,w,h); ctx.textAlign='center';
-    pairs.forEach(function(p,i){ var cy=y+ (pairs.length===1? h/2 : (i===0? h*0.33 : h*0.74));
-      ctx.fillStyle=NAVY; ctx.font='900 26px '+SERIF; var val=String(p[0]);
-      // color the "/x" or "%" part gold
+  function statCard(ctx,x,y,w,h,pairs){ card(ctx,x,y,w,h,16); ctx.textAlign='center';
+    pairs.forEach(function(p,i){ var cy=y+(pairs.length===1?h/2:(i===0?h*0.33:h*0.74)); var val=String(p[0]);
+      var big=36, fs=(val.length>9?15:(val.length>6?20:26)); ctx.font='900 '+fs+'px '+SERIF;
       var m=val.match(/^(.*?)([\/%].*)$/);
-      if(m){ var wa=ctx.measureText(m[1]).width, wb=ctx.measureText(m[2]).width, sx=x+w/2-(wa+wb)/2; ctx.textAlign='left'; ctx.fillStyle=NAVY; ctx.fillText(m[1],sx,cy); ctx.fillStyle=GOLD; ctx.fillText(m[2],sx+wa,cy); ctx.textAlign='center'; }
-      else { ctx.fillText(val,x+w/2,cy); }
-      ctx.fillStyle=MUT; ctx.font='700 10px '+SANS; _ls(ctx,1); ctx.fillText(p[1],x+w/2,cy+18); _ls(ctx,0);
-    });
+      if(m && fs>=20){ var wa=ctx.measureText(m[1]).width, wb=ctx.measureText(m[2]).width, sx=x+w/2-(wa+wb)/2; ctx.textAlign='left'; ctx.fillStyle=NAVY; ctx.fillText(m[1],sx,cy+fs/3); ctx.fillStyle=GOLD; ctx.fillText(m[2],sx+wa,cy+fs/3); ctx.textAlign='center'; }
+      else { ctx.fillStyle=NAVY; ctx.fillText(ell(ctx,val,w-20),x+w/2,cy+fs/3); }
+      ctx.fillStyle=MUT; ctx.font='700 10px '+SANS; _ls(ctx,1); ctx.fillText(p[1],x+w/2,cy+18); _ls(ctx,0); });
     ctx.textAlign='left';
   }
-  function drawCard(ctx,x,y,w,h){ ctx.save(); ctx.shadowColor='rgba(20,33,61,.06)'; ctx.shadowBlur=10; ctx.shadowOffsetY=3; ctx.fillStyle='#fff'; RR(ctx,x,y,w,h,16); ctx.fill(); ctx.restore(); ctx.lineWidth=1; ctx.strokeStyle=LINE; RR(ctx,x,y,w,h,16); ctx.stroke(); }
 
-  /* ---------- DATE ROW ---------- */
-  var ROWH=74, ROWGAP=11;
-  function drawRow(ctx,x,y,w,row){
-    drawCard(ctx,x,y,w,ROWH);
-    // date badge
-    var bx=x+15, by=y+12, bw=58, bh=ROWH-24;
-    var dg=ctx.createLinearGradient(bx,by,bx,by+bh); dg.addColorStop(0,NAVY); dg.addColorStop(1,'#20335a'); ctx.fillStyle=dg; RR(ctx,bx,by,bw,bh,12); ctx.fill();
-    var dd=row.dd||'--', mo=row.mo||'', dow=row.dow||'';
-    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='900 22px '+SANS; ctx.fillText(dd,bx+bw/2,by+24);
-    ctx.fillStyle=GOLD; ctx.font='700 9px '+SANS; _ls(ctx,1.5); ctx.fillText(mo.toUpperCase(),bx+bw/2,by+37); _ls(ctx,0);
-    ctx.fillStyle='#aeb9d4'; ctx.font='500 9px '+SANS; ctx.fillText(dow,bx+bw/2,by+49);
-    ctx.textAlign='left';
-    // status pill (right)
-    var stp=pillStyle(row.st); ctx.font='800 11.5px '+SANS; var sw=ctx.measureText(stp.txt).width+26, sx=x+w-15-sw, sy=y+ROWH/2-13;
-    ctx.fillStyle=stp.bg; RR(ctx,sx,sy,sw,26,13); ctx.fill(); ctx.fillStyle=stp.fg; ctx.textAlign='center'; ctx.fillText(stp.txt,sx+sw/2,sy+17); ctx.textAlign='left';
-    // middle: title + meta
-    var mx=bx+bw+16, mw=sx-mx-14;
-    ctx.fillStyle=INK; ctx.font='700 16px '+SANS; ctx.fillText(ell(ctx,row.title,mw),mx,y+30);
-    ctx.fillStyle=MUT; ctx.font='500 12px '+SANS;
-    var meta=row.meta||''; ctx.fillText(ell(ctx,meta,mw),mx,y+50);
+  /* ---------- COMPACT ROW (2-column) ---------- */
+  var ROWH=58, ROWGAP=9, COLGAP=18;
+  function drawRow(ctx,x,y,w,row,theme){
+    theme=theme||THEMES[0];
+    card(ctx,x,y,w,ROWH,13);
+    // status accent bar (left edge)
+    var stp=pillStyle(row.st); ctx.fillStyle=stp.fg; RR(ctx,x,y+10,3.5,ROWH-20,2); ctx.fill();
+    // date badge (themed)
+    var bx=x+13, by=y+9, bw=44, bh=ROWH-18; var dg=ctx.createLinearGradient(bx,by,bx,by+bh); dg.addColorStop(0,theme.d); dg.addColorStop(1,theme.m); ctx.fillStyle=dg; RR(ctx,bx,by,bw,bh,10); ctx.fill();
+    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='900 18px '+SANS; ctx.fillText(row.dd||'--',bx+bw/2,by+19);
+    ctx.fillStyle=GOLD; ctx.font='700 8px '+SANS; _ls(ctx,1.2); ctx.fillText((row.mo||'').toUpperCase(),bx+bw/2,by+30); _ls(ctx,0);
+    ctx.fillStyle='#aeb9d4'; ctx.font='500 8px '+SANS; ctx.fillText(row.dow||'',bx+bw/2,by+39); ctx.textAlign='left';
+    // status pill (compact, right)
+    ctx.font='800 10px '+SANS; var sw=ctx.measureText(stp.txt).width+18, sx=x+w-12-sw, sy=y+ROWH/2-11;
+    ctx.fillStyle=stp.bg; RR(ctx,sx,sy,sw,22,11); ctx.fill(); ctx.fillStyle=stp.fg; ctx.textAlign='center'; ctx.fillText(stp.txt,sx+sw/2,sy+15); ctx.textAlign='left';
+    // title + meta
+    var mx=bx+bw+12, mw=sx-mx-10;
+    ctx.fillStyle=INK; ctx.font='700 13px '+SANS; ctx.fillText(ell(ctx,row.title,mw),mx,y+24);
+    ctx.fillStyle=MUT; ctx.font='500 10.5px '+SANS; ctx.fillText(ell(ctx,row.meta||'',mw),mx,y+40);
   }
-  function pillStyle(st){ if(st==='done') return {txt:'Completed',bg:'#e7f6ec',fg:'#15803d'};
-    if(st==='current') return {txt:'Today · Live',bg:'#fde8e8',fg:'#c0392b'};
-    return {txt:'Upcoming',bg:'#fef3e2',fg:'#b45309'}; }
+  function pillStyle(st){ if(st==='done') return {txt:'Completed',bg:'#e7f6ec',fg:'#15803d'}; if(st==='current') return {txt:'Today',bg:'#fde8e8',fg:'#c0392b'}; return {txt:'Upcoming',bg:'#fef3e2',fg:'#b45309'}; }
 
-  function drawFooter(ctx,left,pageNo){
-    ctx.fillStyle=NAVY; ctx.fillRect(0,PH-44,PW,44);
+  function drawFooter(ctx,left,pageNo,theme){ ctx.fillStyle=(theme||THEMES[0]).d; ctx.fillRect(0,PH-44,PW,44);
     ctx.fillStyle='#aab6d0'; ctx.font='400 11px '+SANS; ctx.textAlign='left'; ctx.fillText(left,34,PH-18);
-    ctx.textAlign='right'; ctx.font='400 11px '+SANS; ctx.fillStyle='#aab6d0';
-    ctx.fillText('MVS Foundation · Page '+pageNo,PW-34,PH-18); ctx.textAlign='left';
-  }
+    ctx.textAlign='right'; ctx.fillText('MVS Foundation · Page '+pageNo,PW-34,PH-18); ctx.textAlign='left'; }
   function pageBg(ctx){ ctx.fillStyle=BG; ctx.fillRect(0,0,PW,PH); }
 
-  /* ---------- build rows + stats for one subject ---------- */
+  /* ---------- model ---------- */
   function subjectModel(subject, items, cls){
     var chapters=items.filter(function(it){return it.kind==='chapter';});
     var chTot=chapters.length;
     var chDone=chapters.filter(function(it){return it.parts.length&&it.parts.every(function(p){return (typeof _partDone==='function')?_partDone(p):p.completed;});}).length;
-    var tests=items.filter(function(it){return it.kind==='event'&&(typeof _isTest==='function'?_isTest(it.data.chapter):/test/i.test(it.data.chapter));}).length;
+    var tests=items.filter(function(it){return it.kind==='event'&&isTest(it.data.chapter);}).length;
     var rows=[], lectures=0;
     items.forEach(function(it){
-      if(it.kind==='event'){ var e=it.data; var isT=(typeof _isTest==='function'?_isTest(e.chapter):/test/i.test(e.chapter));
+      if(it.kind==='event'){ var e=it.data; var isT=isTest(e.chapter);
         rows.push({date:e.date,day:e.day,title:e.chapter,meta:(isT?'Assessment':'Session')+(e.time?'  ·  '+e.time:''),st:statusOf([e.date])});
-      } else {
-        it.parts.forEach(function(p){ lectures++; var pn=(p.part&&!/full/i.test(p.part))?('  —  '+p.part):'';
-          rows.push({date:p.date,day:p.day,title:(it.chapter||'Chapter')+pn,meta:'Lecture '+lectures+(p.time?'  ·  '+p.time:''),
-            st:((typeof _partDone==='function'&&_partDone(p))?'done':statusOf([p.date]))});
-        });
-      }
+      } else { it.parts.forEach(function(p){ lectures++; var pn=(p.part&&!/full/i.test(p.part))?('  —  '+p.part):'';
+        rows.push({date:p.date,day:p.day,title:(it.chapter||'Chapter')+pn,meta:'Lecture '+lectures+(p.time?'  ·  '+p.time:''),st:((typeof _partDone==='function'&&_partDone(p))?'done':statusOf([p.date]))}); }); }
     });
     rows.sort(function(a,b){ var da=a.date?new Date(a.date).getTime():8e15, db=b.date?new Date(b.date).getTime():8e15; return da-db; });
+    var fmin=null,fmax=null;
     rows.forEach(function(r){ var dt=r.date?new Date(String(r.date).length===10?r.date+'T00:00:00':r.date):null;
-      if(dt&&!isNaN(dt)){ r.dd=String(dt.getDate()).padStart(2,'0'); r.mo=dt.toLocaleDateString('en-US',{month:'short'}); r.dow=dt.toLocaleDateString('en-US',{weekday:'short'}); } });
-    var pct=chTot?Math.round(chDone/chTot*100):0;
-    return {rows:rows,chDone:chDone,chTot:chTot,tests:tests,lectures:lectures,pct:pct,classLabel:(cls?('Class '+cls):'—')};
+      if(dt&&!isNaN(dt)){ r.dd=String(dt.getDate()).padStart(2,'0'); r.mo=dt.toLocaleDateString('en-US',{month:'short'}); r.dow=dt.toLocaleDateString('en-US',{weekday:'short'}); if(!fmin||dt<fmin)fmin=dt; if(!fmax||dt>fmax)fmax=dt; } });
+    var per='—'; if(fmin&&fmax){ var f=function(d){return d.getDate()+' '+d.toLocaleDateString('en-US',{month:'short'});}; per=f(fmin)+' – '+f(fmax); }
+    return {rows:rows,chDone:chDone,chTot:chTot,tests:tests,lectures:lectures,pct:chTot?Math.round(chDone/chTot*100):0,period:per};
   }
   function statusOf(ds){ return (typeof _statusOf==='function')?_statusOf(ds):'upcoming'; }
+  function isTest(t){ return (typeof _isTest==='function')?_isTest(t):/test|mock|pyq|assessment/i.test(t); }
 
   /* ============ MAIN ============ */
-  // opts: {entries, batchName, session, subjects:[names] | null(all), teacherMap, meta:{...}}
   window._ttPdfBuild=async function(opts){
     var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF; if(!J){ if(typeof toast==='function') toast('PDF library not loaded',true); return null; }
     var tl=(typeof buildTimeline==='function')?buildTimeline(opts.entries||[]):{};
@@ -42103,49 +42071,49 @@ window._repDownloadPDF=function(){
     subs=subs.filter(function(s){return tl[s]&&tl[s].length;});
     if(!subs.length){ if(typeof toast==='function') toast('No timetable for the selected batch/subject.',true); return null; }
     var logo=await logoImg();
-    // preload teacher photos per subject (class-aware)
     var tphotos={};
     for(var i=0;i<subs.length;i++){ var s=subs[i]; var cls=clsOf(tl[s]);
       var tm=(typeof _ttTeacherFor==='function')?_ttTeacherFor(opts.teacherMap,s,cls):((opts.teacherMap||{})[s]); tm=tm||{};
-      tphotos[s]={name:tm.name||'',url:tm.url||null,img:null,cls:cls};
-      if(tm.url){ tphotos[s].img=await loadImg(tm.url); }
-    }
+      tphotos[s]={name:tm.name||'',img:null,cls:cls}; if(tm.url){ tphotos[s].img=await loadImg(tm.url); } }
     var pages=[];
     // cover
-    var totalCh=0,totalLec=0; subs.forEach(function(s){ var m=subjectModel(s,tl[s],clsOf(tl[s])); totalCh+=m.chTot; });
-    var allCls=uniqCls(subs,tl);
     var cp=newPage();
     drawCover(cp.ctx,logo,[
       ['Batch', opts.batchName||'All batches', true],
-      ['Class', allCls||'—', false],
+      ['Class', uniqCls(subs,tl)||'—', false],
       ['Subjects', (opts.subjects&&opts.subjects.length?subs.join(', '):('All Subjects · '+subs.length)), false],
       ['Schedule Period', opts.period||'—', false],
       ['Generated On', opts.today||niceToday(), false]
     ]);
     pages.push(cp.cv);
     var pageNo=2;
-    // subject pages
     for(var si=0; si<subs.length; si++){
-      var subj=subs[si]; var cls=tphotos[subj].cls; var items=tl[subj];
+      var subj=subs[si], cls=tphotos[subj].cls, items=tl[subj];
       var model=subjectModel(subj,items,cls);
       var footL=subj+(cls?(' · Class '+cls):'')+(opts.batchName?(' · '+opts.batchName):'');
+      var hopts={title:subj,teacher:tphotos[subj].name,pill:(cls?('Class '+cls):'Timetable')};
+      var theme=themeFor(si);
       var pg=newPage(); pageBg(pg.ctx);
-      var H=drawHeader(pg.ctx,logo,tphotos[subj].img,{title:subj,teacher:tphotos[subj].name,pill:(cls?('Class '+cls):'Timetable')},false);
-      var y=H+26;
-      y+=drawProgress(pg.ctx,34,y,PW-68,model)+22;
-      sectionLabel(pg.ctx,34,y,'Date-wise Schedule'); y+=20;
-      var maxY=PH-60;
-      for(var ri=0; ri<model.rows.length; ri++){
-        if(y+ROWH>maxY){ drawFooter(pg.ctx,footL,pageNo++); pages.push(pg.cv);
-          pg=newPage(); pageBg(pg.ctx); var hc=drawHeader(pg.ctx,logo,tphotos[subj].img,{title:subj,teacher:tphotos[subj].name,pill:(cls?('Class '+cls):'Timetable')},true); y=hc+26; sectionLabel(pg.ctx,34,y,'Date-wise Schedule (contd.)'); y+=20; }
-        drawRow(pg.ctx,34,y,PW-68,model.rows[ri]); y+=ROWH+ROWGAP;
+      var H=drawHeader(pg.ctx,tphotos[subj].img,hopts,false,theme);
+      var ytop=H+26; ytop+=drawProgress(pg.ctx,34,ytop,PW-68,model)+20;
+      sectionLabel(pg.ctx,34,ytop,'Date-wise Schedule'); ytop+=22;
+      var idx=0, colW=(PW-68-COLGAP)/2;
+      while(true){
+        var bottom=PH-58;
+        var rpc=Math.max(1,Math.floor((bottom-ytop)/(ROWH+ROWGAP)));
+        var cap=rpc*2;
+        var slice=model.rows.slice(idx, idx+cap);
+        var rpcEff=(slice.length<=rpc)?Math.max(1,Math.ceil(slice.length/2)):rpc;
+        for(var k=0;k<slice.length;k++){ var col=Math.floor(k/rpcEff), ric=k%rpcEff; var rx=34+col*(colW+COLGAP), ry=ytop+ric*(ROWH+ROWGAP); drawRow(pg.ctx,rx,ry,colW,slice[k],theme); }
+        idx+=slice.length;
+        drawFooter(pg.ctx,footL,pageNo++,theme); pages.push(pg.cv);
+        if(idx>=model.rows.length) break;
+        pg=newPage(); pageBg(pg.ctx); var Hc=drawHeader(pg.ctx,tphotos[subj].img,hopts,true,theme); ytop=Hc+26; sectionLabel(pg.ctx,34,ytop,'Date-wise Schedule (contd.)'); ytop+=22;
       }
-      drawFooter(pg.ctx,footL,pageNo++); pages.push(pg.cv);
     }
-    // assemble PDF
     var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'});
     var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
-    pages.forEach(function(cv,i){ if(i>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.94),'JPEG',0,0,pw,ph); });
+    pages.forEach(function(cv,i){ if(i>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,ph); });
     return pdf;
   };
   function clsOf(items){ var c=''; (items||[]).some(function(it){ var p=(it.kind==='event')?it.data:(it.parts&&it.parts[0]); if(p){ var cc=String(p.class_name||'').replace(/\D/g,'').slice(-2); if(cc){c=cc;return true;} } return false; }); return c; }
