@@ -42175,8 +42175,9 @@ window._repDownloadPDF=function(){
     function addImg(cv){ pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,ph); }
     addImg(cp.cv);
     pdf.addPage(); addImg(fp.cv);
+    // /Dest [page /Fit] = the most widely-honored internal jump (Android, iOS, Adobe, Chrome, Drive app).
     links.forEach(function(l){ var tgt=3+l.startIdx;
-      try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt, top:0}); }
+      try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt, magFactor:'Fit'}); }
       catch(e){ try{ pdf.link(l.x*SX, l.y*SY, l.w*SX, l.h*SY, {pageNumber:tgt}); }catch(e2){} } });
     subjectPages.forEach(function(cv){ pdf.addPage(); addImg(cv); });
     return pdf;
