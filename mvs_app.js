@@ -41990,48 +41990,64 @@ window._repDownloadPDF=function(){
   function sectionLabel(ctx,x,y,txt){ ctx.fillStyle=GOLD; RR(ctx,x,y-13,4,17,2); ctx.fill(); ctx.fillStyle=NAVY; ctx.font='800 13px '+SANS; _ls(ctx,1.5); ctx.textAlign='left'; ctx.fillText(txt.toUpperCase(),x+12,y+1); _ls(ctx,0); }
   function card(ctx,x,y,w,h,r){ r=r||14; ctx.save(); ctx.shadowColor='rgba(20,33,61,.06)'; ctx.shadowBlur=9; ctx.shadowOffsetY=3; ctx.fillStyle='#fff'; RR(ctx,x,y,w,h,r); ctx.fill(); ctx.restore(); ctx.lineWidth=1; ctx.strokeStyle=LINE; RR(ctx,x,y,w,h,r); ctx.stroke(); }
 
-  /* ---------- PROGRESS STRIP ---------- */
+  /* ---------- PROGRESS STRIP (single card: ring + 4 stat columns) ---------- */
   function drawProgress(ctx,x,y,w,st){
-    var h=116, gap=14, cw=(w-2*gap)/3;
-    card(ctx,x,y,cw,h,16);
-    var rcx=x+cw/2, rcy=y+h/2, R=40; ctx.lineWidth=11; ctx.strokeStyle='#eef0f5'; ctx.beginPath(); ctx.arc(rcx,rcy,R,0,6.3); ctx.stroke();
+    var h=120; card(ctx,x,y,w,h,18);
+    // ring (left)
+    var rcx=x+80, rcy=y+h/2, R=42; ctx.lineWidth=11; ctx.strokeStyle='#eef0f5'; ctx.beginPath(); ctx.arc(rcx,rcy,R,0,6.3); ctx.stroke();
     var lg=ctx.createLinearGradient(rcx-R,rcy-R,rcx+R,rcy+R); lg.addColorStop(0,GOLD); lg.addColorStop(1,GOLD2); ctx.strokeStyle=lg; ctx.lineCap='round';
     ctx.beginPath(); ctx.arc(rcx,rcy,R,-Math.PI/2,-Math.PI/2+6.2832*((st.pct||0)/100)); ctx.stroke(); ctx.lineCap='butt';
-    ctx.textAlign='center'; ctx.fillStyle=NAVY; ctx.font='900 24px '+SERIF; ctx.fillText((st.pct||0)+'%',rcx,rcy+2);
-    ctx.fillStyle=MUT; ctx.font='700 9px '+SANS; _ls(ctx,1); ctx.fillText('COMPLETE',rcx,rcy+18); _ls(ctx,0);
-    statCard(ctx,x+cw+gap,y,cw,h,[[st.chDone+'/'+st.chTot,'CHAPTERS DONE'],[String(st.tests),'TESTS SCHEDULED']]);
-    statCard(ctx,x+2*(cw+gap),y,cw,h,[[String(st.lectures),'TOTAL LECTURES'],[st.period||'—','SCHEDULE']]);
+    ctx.textAlign='center'; ctx.fillStyle=NAVY; ctx.font='900 25px '+SERIF; ctx.fillText((st.pct||0)+'%',rcx,rcy+3);
+    ctx.fillStyle=MUT; ctx.font='700 9px '+SANS; _ls(ctx,1.2); ctx.fillText('COMPLETE',rcx,rcy+21); _ls(ctx,0);
+    // divider
+    var dx=x+162; ctx.strokeStyle='#edeff4'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(dx,y+24); ctx.lineTo(dx,y+h-24); ctx.stroke();
+    // 4 stat columns
+    var sx0=dx, colW=(x+w-sx0)/4, cyv=y+h/2-8, cyl=y+h/2+16;
+    var stats=[['Chapters',st.chDone+'/'+st.chTot],['Tests',String(st.tests)],['Lectures',String(st.lectures)],['Period',st.period||'—']];
+    stats.forEach(function(s,i){ var cx=sx0+i*colW+colW/2;
+      if(i>0){ ctx.strokeStyle='#edeff4'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(sx0+i*colW,y+30); ctx.lineTo(sx0+i*colW,y+h-30); ctx.stroke(); }
+      drawStat(ctx,cx,cyv,s[1],colW-16);
+      ctx.fillStyle=MUT; ctx.font='700 10px '+SANS; _ls(ctx,1); ctx.textAlign='center'; ctx.fillText(s[0].toUpperCase(),cx,cyl); _ls(ctx,0);
+    });
     ctx.textAlign='left'; return h;
   }
-  function statCard(ctx,x,y,w,h,pairs){ card(ctx,x,y,w,h,16); ctx.textAlign='center';
-    pairs.forEach(function(p,i){ var cy=y+(pairs.length===1?h/2:(i===0?h*0.33:h*0.74)); var val=String(p[0]);
-      var big=36, fs=(val.length>9?15:(val.length>6?20:26)); ctx.font='900 '+fs+'px '+SERIF;
-      var m=val.match(/^(.*?)([\/%].*)$/);
-      if(m && fs>=20){ var wa=ctx.measureText(m[1]).width, wb=ctx.measureText(m[2]).width, sx=x+w/2-(wa+wb)/2; ctx.textAlign='left'; ctx.fillStyle=NAVY; ctx.fillText(m[1],sx,cy+fs/3); ctx.fillStyle=GOLD; ctx.fillText(m[2],sx+wa,cy+fs/3); ctx.textAlign='center'; }
-      else { ctx.fillStyle=NAVY; ctx.fillText(ell(ctx,val,w-20),x+w/2,cy+fs/3); }
-      ctx.fillStyle=MUT; ctx.font='700 10px '+SANS; _ls(ctx,1); ctx.fillText(p[1],x+w/2,cy+18); _ls(ctx,0); });
-    ctx.textAlign='left';
+  function drawStat(ctx,cx,cy,val,maxW){ val=String(val);
+    var fs=(val.length>10?13:(val.length>7?17:24)); ctx.textAlign='center';
+    var m=val.match(/^(.*?)([\/%].*)$/);
+    if(m && fs>=17){ ctx.font='900 '+fs+'px '+SERIF; var wa=ctx.measureText(m[1]).width, wb=ctx.measureText(m[2]).width, sx=cx-(wa+wb)/2;
+      ctx.textAlign='left'; ctx.fillStyle=NAVY; ctx.fillText(m[1],sx,cy+fs/3); ctx.fillStyle=GOLD; ctx.fillText(m[2],sx+wa,cy+fs/3); ctx.textAlign='center'; }
+    else { ctx.font='900 '+fs+'px '+SERIF; ctx.fillStyle=NAVY; ctx.fillText(ell(ctx,val,maxW),cx,cy+fs/3); }
   }
 
   /* ---------- COMPACT ROW (2-column) ---------- */
-  var ROWH=58, ROWGAP=9, COLGAP=18;
+  var ROWH=62, ROWGAP=9, COLGAP=18;
   function drawRow(ctx,x,y,w,row,theme){
     theme=theme||THEMES[0];
-    card(ctx,x,y,w,ROWH,13);
-    // status accent bar (left edge)
-    var stp=pillStyle(row.st); ctx.fillStyle=stp.fg; RR(ctx,x,y+10,3.5,ROWH-20,2); ctx.fill();
-    // date badge (themed)
-    var bx=x+13, by=y+9, bw=44, bh=ROWH-18; var dg=ctx.createLinearGradient(bx,by,bx,by+bh); dg.addColorStop(0,theme.d); dg.addColorStop(1,theme.m); ctx.fillStyle=dg; RR(ctx,bx,by,bw,bh,10); ctx.fill();
-    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='900 18px '+SANS; ctx.fillText(row.dd||'--',bx+bw/2,by+19);
-    ctx.fillStyle=GOLD; ctx.font='700 8px '+SANS; _ls(ctx,1.2); ctx.fillText((row.mo||'').toUpperCase(),bx+bw/2,by+30); _ls(ctx,0);
-    ctx.fillStyle='#aeb9d4'; ctx.font='500 8px '+SANS; ctx.fillText(row.dow||'',bx+bw/2,by+39); ctx.textAlign='left';
-    // status pill (compact, right)
-    ctx.font='800 10px '+SANS; var sw=ctx.measureText(stp.txt).width+18, sx=x+w-12-sw, sy=y+ROWH/2-11;
-    ctx.fillStyle=stp.bg; RR(ctx,sx,sy,sw,22,11); ctx.fill(); ctx.fillStyle=stp.fg; ctx.textAlign='center'; ctx.fillText(stp.txt,sx+sw/2,sy+15); ctx.textAlign='left';
+    var isT=!!row.test, stp=pillStyle(row.st);
+    // card background (test => soft gold; else white)
+    if(isT){ ctx.save(); ctx.shadowColor='rgba(200,145,47,.16)'; ctx.shadowBlur=10; ctx.shadowOffsetY=3;
+      var bg=ctx.createLinearGradient(x,y,x+w,y); bg.addColorStop(0,'#fff8ea'); bg.addColorStop(1,'#fcefd1'); ctx.fillStyle=bg; RR(ctx,x,y,w,ROWH,13); ctx.fill(); ctx.restore();
+      ctx.lineWidth=1.4; ctx.strokeStyle='#e9c878'; RR(ctx,x,y,w,ROWH,13); ctx.stroke();
+    } else { card(ctx,x,y,w,ROWH,13); }
+    // left accent bar
+    ctx.fillStyle=isT?GOLD2:stp.fg; RR(ctx,x,y+11,3.5,ROWH-22,2); ctx.fill();
+    // date badge (2 lines, centered)
+    var bx=x+13, by=y+10, bw=46, bh=ROWH-20; var dg=ctx.createLinearGradient(bx,by,bx,by+bh);
+    if(isT){ dg.addColorStop(0,'#caa23f'); dg.addColorStop(1,'#9a751d'); } else { dg.addColorStop(0,theme.d); dg.addColorStop(1,theme.m); }
+    ctx.fillStyle=dg; RR(ctx,bx,by,bw,bh,10); ctx.fill();
+    ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='900 19px '+SANS; ctx.fillText(row.dd||'--',bx+bw/2,by+bh*0.5);
+    ctx.fillStyle=isT?'#fff4d6':GOLD; ctx.font='700 8.5px '+SANS; _ls(ctx,1.4); ctx.fillText((row.mo||'').toUpperCase(),bx+bw/2,by+bh*0.5+14); _ls(ctx,0); ctx.textAlign='left';
+    // right pill: TEST tag for tests, else status
+    var mx=bx+bw+13;
+    if(isT){ var tt='★ TEST'; ctx.font='800 10.5px '+SANS; var tw=ctx.measureText(tt).width+20, tx=x+w-12-tw, ty=y+ROWH/2-12;
+      var tg=ctx.createLinearGradient(tx,ty,tx,ty+24); tg.addColorStop(0,GOLD); tg.addColorStop(1,GOLD2); ctx.fillStyle=tg; RR(ctx,tx,ty,tw,24,12); ctx.fill();
+      ctx.fillStyle='#3a2a00'; ctx.textAlign='center'; ctx.fillText(tt,tx+tw/2,ty+16); ctx.textAlign='left'; var rightX=tx; }
+    else { ctx.font='800 10px '+SANS; var sw=ctx.measureText(stp.txt).width+18, sx=x+w-12-sw, sy=y+ROWH/2-11;
+      ctx.fillStyle=stp.bg; RR(ctx,sx,sy,sw,22,11); ctx.fill(); ctx.fillStyle=stp.fg; ctx.textAlign='center'; ctx.fillText(stp.txt,sx+sw/2,sy+15); ctx.textAlign='left'; var rightX=sx; }
     // title + meta
-    var mx=bx+bw+12, mw=sx-mx-10;
-    ctx.fillStyle=INK; ctx.font='700 13px '+SANS; ctx.fillText(ell(ctx,row.title,mw),mx,y+24);
-    ctx.fillStyle=MUT; ctx.font='500 10.5px '+SANS; ctx.fillText(ell(ctx,row.meta||'',mw),mx,y+40);
+    var mw=rightX-mx-10;
+    ctx.fillStyle=isT?'#5a4312':INK; ctx.font='700 13.5px '+SANS; ctx.fillText(ell(ctx,row.title,mw),mx,y+26);
+    ctx.fillStyle=isT?'#9a7b36':MUT; ctx.font='500 10.5px '+SANS; ctx.fillText(ell(ctx,row.meta||'',mw),mx,y+43);
   }
   function pillStyle(st){ if(st==='done') return {txt:'Completed',bg:'#e7f6ec',fg:'#15803d'}; if(st==='current') return {txt:'Today',bg:'#fde8e8',fg:'#c0392b'}; return {txt:'Upcoming',bg:'#fef3e2',fg:'#b45309'}; }
 
@@ -42049,14 +42065,15 @@ window._repDownloadPDF=function(){
     var rows=[], lectures=0;
     items.forEach(function(it){
       if(it.kind==='event'){ var e=it.data; var isT=isTest(e.chapter);
-        rows.push({date:e.date,day:e.day,title:e.chapter,meta:(isT?'Assessment':'Session')+(e.time?'  ·  '+e.time:''),st:statusOf([e.date])});
+        rows.push({date:e.date,day:e.day,title:e.chapter,core:(isT?'Assessment':'Session')+(e.time?'  ·  '+e.time:''),test:isT,st:statusOf([e.date])});
       } else { it.parts.forEach(function(p){ lectures++; var pn=(p.part&&!/full/i.test(p.part))?('  —  '+p.part):'';
-        rows.push({date:p.date,day:p.day,title:(it.chapter||'Chapter')+pn,meta:'Lecture '+lectures+(p.time?'  ·  '+p.time:''),st:((typeof _partDone==='function'&&_partDone(p))?'done':statusOf([p.date]))}); }); }
+        rows.push({date:p.date,day:p.day,title:(it.chapter||'Chapter')+pn,core:'Lecture '+lectures+(p.time?'  ·  '+p.time:''),test:false,st:((typeof _partDone==='function'&&_partDone(p))?'done':statusOf([p.date]))}); }); }
     });
     rows.sort(function(a,b){ var da=a.date?new Date(a.date).getTime():8e15, db=b.date?new Date(b.date).getTime():8e15; return da-db; });
     var fmin=null,fmax=null;
     rows.forEach(function(r){ var dt=r.date?new Date(String(r.date).length===10?r.date+'T00:00:00':r.date):null;
-      if(dt&&!isNaN(dt)){ r.dd=String(dt.getDate()).padStart(2,'0'); r.mo=dt.toLocaleDateString('en-US',{month:'short'}); r.dow=dt.toLocaleDateString('en-US',{weekday:'short'}); if(!fmin||dt<fmin)fmin=dt; if(!fmax||dt>fmax)fmax=dt; } });
+      if(dt&&!isNaN(dt)){ r.dd=String(dt.getDate()).padStart(2,'0'); r.mo=dt.toLocaleDateString('en-US',{month:'short'}); r.dow=dt.toLocaleDateString('en-US',{weekday:'short'}); if(!fmin||dt<fmin)fmin=dt; if(!fmax||dt>fmax)fmax=dt; }
+      r.meta=(r.dow?r.dow+'  ·  ':'')+r.core; });
     var per='—'; if(fmin&&fmax){ var f=function(d){return d.getDate()+' '+d.toLocaleDateString('en-US',{month:'short'});}; per=f(fmin)+' – '+f(fmax); }
     return {rows:rows,chDone:chDone,chTot:chTot,tests:tests,lectures:lectures,pct:chTot?Math.round(chDone/chTot*100):0,period:per};
   }
@@ -42156,20 +42173,23 @@ window.openTTDownloadPdf=function(){
     +(syc.length?'<optgroup label="▶ On-Demand">'+opts(syc)+'</optgroup>':'')
     +'<option value="global"'+(curB==='global'?' selected':'')+'>Global (no batch)</option>';
   var curC=(typeof _attClass!=='undefined'?_attClass:'')||'';
+  var _SS='width:100%;box-sizing:border-box;padding:13px 16px;border:1.5px solid #e4d4ac;border-radius:12px;font-size:15px;font-weight:600;color:#1f2433;background:#fffdf8;cursor:pointer;line-height:1.35;min-height:50px;outline:none';
+  var _LB='display:block;font-weight:700;font-size:.8rem;letter-spacing:.4px;text-transform:uppercase;color:#8a6d1f;margin-bottom:8px';
+  var _HT='font-size:.76rem;color:var(--text-muted,#6b7280);margin-top:6px';
   var body=''
-    +'<div style="display:flex;flex-direction:column;gap:14px">'
-    +  '<div style="background:linear-gradient(110deg,#14213d,#243c66);border-radius:14px;padding:16px 18px;color:#fff;display:flex;align-items:center;gap:12px">'
-    +    '<div style="width:40px;height:40px;border-radius:10px;background:rgba(230,173,78,.18);display:flex;align-items:center;justify-content:center;color:#e6ad4e">'+(typeof ic==='function'?ic('download'):'')+'</div>'
-    +    '<div><div style="font-weight:800;font-size:1rem">Premium Timetable PDF</div><div style="font-size:.8rem;color:#c7d0e4;margin-top:2px">Cover page · subject-wise schedule · teacher photos · progress — ready to share on WhatsApp.</div></div>'
+    +'<div style="display:flex;flex-direction:column;gap:18px">'
+    +  '<div style="background:linear-gradient(110deg,#14213d,#243c66);border-radius:16px;padding:18px 20px;color:#fff;display:flex;align-items:center;gap:13px">'
+    +    '<div style="width:44px;height:44px;border-radius:12px;background:rgba(230,173,78,.18);display:flex;align-items:center;justify-content:center;color:#e6ad4e;font-size:1.2rem;flex:0 0 auto">'+(typeof ic==='function'?ic('download'):'')+'</div>'
+    +    '<div><div style="font-weight:800;font-size:1.02rem">Premium Timetable PDF</div><div style="font-size:.8rem;color:#c7d0e4;margin-top:3px;line-height:1.4">Cover page · subject-wise schedule · teacher photos · progress — ready to share on WhatsApp.</div></div>'
     +  '</div>'
-    +  '<div class="form-group"><label>Batch</label><select class="input" id="ttpdf-batch" onchange="_ttPdfRepopSubjects()">'+batchOpts+'</select>'
-    +    '<div style="font-size:.74rem;color:var(--text-muted,#6b7280);margin-top:5px">Only the selected batch’s own timetable is exported — nothing is merged.</div></div>'
-    +  '<div class="form-group"><label>Class</label><select class="input" id="ttpdf-cls" onchange="_ttPdfRepopSubjects()">'
+    +  '<div><label style="'+_LB+'">Batch</label><select id="ttpdf-batch" style="'+_SS+'" onchange="_ttPdfRepopSubjects()">'+batchOpts+'</select>'
+    +    '<div style="'+_HT+'">Only the selected batch’s own timetable is exported — nothing is merged.</div></div>'
+    +  '<div><label style="'+_LB+'">Class</label><select id="ttpdf-cls" style="'+_SS+'" onchange="_ttPdfRepopSubjects()">'
     +    '<option value=""'+(!curC?' selected':'')+'>All classes</option>'
     +    '<option value="10"'+(curC==='10'?' selected':'')+'>Class 10</option>'
     +    '<option value="12"'+(curC==='12'?' selected':'')+'>Class 12</option></select></div>'
-    +  '<div class="form-group"><label>Subjects</label><select class="input" id="ttpdf-subj"></select>'
-    +    '<div id="ttpdf-cnt" style="font-size:.74rem;color:var(--text-muted,#6b7280);margin-top:5px"></div></div>'
+    +  '<div><label style="'+_LB+'">Subjects</label><select id="ttpdf-subj" style="'+_SS+'"></select>'
+    +    '<div id="ttpdf-cnt" style="'+_HT+'"></div></div>'
     +'</div>';
   var footer='<div style="display:flex;gap:12px;justify-content:flex-end;align-items:center;width:100%">'
     +'<button onclick="closeModal()" style="padding:12px 26px;border-radius:12px;border:1.5px solid #e4d4ac;background:#fff;color:#8a6d1f;font-weight:700;font-size:.95rem;cursor:pointer">Cancel</button>'
