@@ -9149,7 +9149,7 @@ async function openAPublicTest(id){
       +'<td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td><td>'+esc(at)+'</td></tr>';
   }).join(''):'<tr><td colspan="'+(9+cc.length)+'" style="text-align:center;color:var(--text-muted);padding:20px">No responses yet.</td></tr>';
   const html=`<div class="apt-stats"><div class="apt-stat"><b>${d.views||0}</b><span>Opened</span></div><div class="apt-stat"><b>${d.count||0}</b><span>Attempted</span></div></div>`
-    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px"><div style="font-size:.8rem;color:var(--text-muted)">${esc(d.title||'')}${d.teacher_name?' · By '+esc(d.teacher_name):''}</div>${(d.count||0)?`<button class="btn btn-primary btn-sm" onclick="exportAPublicTest(${id})">${ic('download')} Export CSV</button>`:''}</div>`
+    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px"><div style="font-size:.8rem;color:var(--text-muted)">${esc(d.title||'')}${d.teacher_name?' · By '+esc(d.teacher_name):''}</div><div style="display:flex;gap:7px;flex-wrap:wrap">${(d.count||0)?`<button class="btn btn-gold btn-sm" onclick="_ptResultPdf(${id})">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="exportAPublicTest(${id})">${ic('download')} Export CSV</button>`:''}</div></div>`
     +`<div class="apt-table-wrap"><table class="apt-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
   showModal('Public Test — '+esc(d.title||'Responses'), html,'<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
 }
@@ -9161,6 +9161,80 @@ async function exportAPublicTest(id){
     setTimeout(function(){ URL.revokeObjectURL(u); },4000);
   }catch(e){ toast(e.message||'Export failed',true); }
 }
+/* ===== Admin: Premium Public-Test RESULTS PDF (ranked, MVS logo + header) ===== */
+window._ptResultPdf=async function(id){
+  var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
+  if(!J){ if(typeof toast==='function') toast('PDF library not loaded',true); return; }
+  if(typeof toast==='function') toast('Preparing results PDF…');
+  var d; try{ d=await api('/api/admin/public-tests/'+id+'/responses'); }catch(e){ if(typeof toast==='function') toast('Could not load results',true); return; }
+  var resp=(d&&d.responses)||[];
+  if(!resp.length){ if(typeof toast==='function') toast('No responses yet to export.',true); return; }
+  var logo=await new Promise(function(res){ try{ if(typeof _repLogo==='function'){_repLogo(function(l){res(l||null);});} else res(null); }catch(e){res(null);} });
+  var PW=794,PH=1123,S=2;
+  var NAVY='#14213d',NMID='#243c66',GOLD='#e6ad4e',GOLD2='#c8912f',INK='#1f2433',MUT='#6b7280',LINE='#e7e9f0',BG='#f4f5f9';
+  var SANS='Inter,-apple-system,"Segoe UI",Roboto,Arial,sans-serif',SERIF='Georgia,"Times New Roman",serif';
+  function RR(c,x,y,w,h,r){ if(typeof _rr==='function'){_rr(c,x,y,w,h,r);return;} if(r>h/2)r=h/2; if(r>w/2)r=w/2; c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+  function LS(c,v){ try{c.letterSpacing=(v||0)+'px';}catch(e){} }
+  function newPage(){ var cv=document.createElement('canvas'); cv.width=PW*S; cv.height=PH*S; var c=cv.getContext('2d'); c.scale(S,S); c.textBaseline='alphabetic'; return {cv:cv,ctx:c}; }
+  function circImg(c,img,cx,cy,r){ c.save(); c.beginPath(); c.arc(cx,cy,r,0,6.3); c.closePath(); c.clip(); if(img){ var s=Math.max(2*r/img.width,2*r/img.height),w=img.width*s,h=img.height*s; c.drawImage(img,cx-w/2,cy-h/2,w,h);} else { c.fillStyle='#223a66'; c.fillRect(cx-r,cy-r,2*r,2*r); c.fillStyle=GOLD; c.font='800 '+Math.round(r*0.8)+'px '+SERIF; c.textAlign='center'; c.fillText('MVS',cx,cy+r*0.3);} c.restore(); c.lineWidth=2; c.strokeStyle=GOLD; c.beginPath(); c.arc(cx,cy,r,0,6.3); c.stroke(); }
+  function ell(c,t,m){ t=String(t==null?'':t); if(c.measureText(t).width<=m) return t; while(t.length>1&&c.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; }
+  function fmtAt(iso){ if(!iso) return '—'; try{ return new Date(iso).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }catch(e){ return '—'; } }
+  var X=34, CW=PW-68;
+  var cols=[{k:'rank',w:62,l:'RANK',al:'c'},{k:'name',w:250,l:'NAME',al:'l'},{k:'class',w:88,l:'CLASS',al:'c'},{k:'score',w:92,l:'SCORE',al:'c'},{k:'correct',w:84,l:'CORRECT',al:'c'},{k:'at',w:CW-62-250-88-92-84,l:'SUBMITTED',al:'c'}];
+  function colX(i){ var x=X; for(var j=0;j<i;j++) x+=cols[j].w; return x; }
+  function header(ctx,cont){
+    var H=cont?92:162;
+    var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,NAVY); g.addColorStop(.6,'#1b2d52'); g.addColorStop(1,NMID); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
+    var gl=ctx.createRadialGradient(PW-50,0,0,PW-50,0,240); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-340,0,340,240);
+    circImg(ctx,logo,34+23,28+23,23);
+    ctx.textAlign='left'; ctx.font='800 13px '+SANS; LS(ctx,1.3); ctx.fillStyle='#fff'; ctx.fillText('MVS ',90,44); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',90+mw,44); LS(ctx,0);
+    if(cont){ ctx.font='italic 600 20px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText((d.title||'Public Test')+'  — results (contd.)',34,78); return H; }
+    ctx.font='900 27px '+SANS; ctx.fillStyle='#fff'; ctx.fillText(ell(ctx,d.title||'Public Test',PW-220),34,98);
+    ctx.font='700 12px '+SANS; LS(ctx,1.5); ctx.fillStyle=GOLD; ctx.fillText('PUBLIC TEST · RESULTS LEADERBOARD',34,120); LS(ctx,0);
+    var meta=[]; if(d.subject)meta.push(d.subject); if(d.teacher_name)meta.push('By '+d.teacher_name); if(d.class_name)meta.push(d.class_name); meta.push((d.total_marks||0)+' marks'); meta.push((d.count||resp.length)+' students'); meta.push('Generated '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}));
+    ctx.font='400 12px '+SANS; ctx.fillStyle='#c7d0e4'; ctx.fillText(ell(ctx,meta.join('   ·   '),PW-68),34,142);
+    return H;
+  }
+  function tableHead(ctx,y){ ctx.fillStyle=NAVY; RR(ctx,X,y,CW,32,8); ctx.fill();
+    ctx.font='800 10.5px '+SANS; LS(ctx,.8); ctx.fillStyle=GOLD;
+    cols.forEach(function(c,i){ var cx=colX(i); ctx.textAlign=c.al==='l'?'left':'center'; var tx=c.al==='l'?cx+14:cx+c.w/2; ctx.fillText(c.l,tx,y+21); }); LS(ctx,0); ctx.textAlign='left'; return 32; }
+  var ROWH=40;
+  function row(ctx,y,r,alt){
+    var top3=r.rank<=3;
+    if(top3){ var bg=ctx.createLinearGradient(X,y,X+CW,y); bg.addColorStop(0,'#fff8ea'); bg.addColorStop(1,'#fcefd1'); ctx.fillStyle=bg; } else ctx.fillStyle=alt?'#faf9f5':'#ffffff';
+    RR(ctx,X,y,CW,ROWH-6,9); ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle=top3?'#ecd79a':LINE; RR(ctx,X,y,CW,ROWH-6,9); ctx.stroke();
+    var midY=y+(ROWH-6)/2+4;
+    // rank badge
+    var rcx=colX(0)+cols[0].w/2, medal=r.rank===1?'★':''; var bw=26,bh=22,bx=rcx-bw/2,by=y+(ROWH-6)/2-bh/2;
+    if(top3){ var rg=ctx.createLinearGradient(bx,by,bx,by+bh); rg.addColorStop(0,GOLD); rg.addColorStop(1,GOLD2); ctx.fillStyle=rg; } else ctx.fillStyle=NAVY;
+    RR(ctx,bx,by,bw,bh,7); ctx.fill(); ctx.fillStyle=top3?'#3a2a00':'#fff'; ctx.font='900 12px '+SANS; ctx.textAlign='center'; ctx.fillText(String(r.rank),rcx,by+15);
+    // name
+    ctx.textAlign='left'; ctx.fillStyle=INK; ctx.font='700 13px '+SANS; ctx.fillText(ell(ctx,r.name||'—',cols[1].w-20),colX(1)+14,midY);
+    // class
+    ctx.textAlign='center'; ctx.fillStyle=MUT; ctx.font='500 12px '+SANS; ctx.fillText(ell(ctx,r.class_course||'—',cols[2].w-10),colX(2)+cols[2].w/2,midY);
+    // score
+    ctx.fillStyle=NAVY; ctx.font='900 14px '+SERIF; var sc=String(r.score)+'', scx=colX(3)+cols[3].w/2; ctx.fillText(r.score+' / '+r.total,scx,midY);
+    // correct
+    ctx.fillStyle=MUT; ctx.font='600 12px '+SANS; ctx.fillText((r.correct!=null?r.correct:'—')+(r.q_total?('/'+r.q_total):''),colX(4)+cols[4].w/2,midY);
+    // submitted
+    ctx.fillStyle=MUT; ctx.font='500 11px '+SANS; ctx.fillText(fmtAt(r.at),colX(5)+cols[5].w/2,midY);
+    ctx.textAlign='left';
+  }
+  function footer(ctx,pg){ ctx.fillStyle=NAVY; ctx.fillRect(0,PH-40,PW,40); ctx.fillStyle='#aab6d0'; ctx.font='400 10.5px '+SANS; ctx.textAlign='left'; ctx.fillText((d.title||'Public Test')+' · Results',34,PH-15); ctx.textAlign='right'; ctx.fillText('MVS Foundation · Page '+pg,PW-34,PH-15); ctx.textAlign='left'; }
+  function bg(ctx){ ctx.fillStyle=BG; ctx.fillRect(0,0,PW,PH); }
+  var pages=[], pg=newPage(); bg(pg.ctx); var y=header(pg.ctx,false)+22; y+=tableHead(pg.ctx,y)+8; var pageNo=1;
+  for(var i=0;i<resp.length;i++){
+    if(y+ROWH>PH-52){ footer(pg.ctx,pageNo++); pages.push(pg.cv); pg=newPage(); bg(pg.ctx); y=header(pg.ctx,true)+20; y+=tableHead(pg.ctx,y)+8; }
+    row(pg.ctx,y,resp[i],i%2===1); y+=ROWH;
+  }
+  footer(pg.ctx,pageNo); pages.push(pg.cv);
+  var pdf=new J({unit:'pt',format:'a4',orientation:'portrait'}); var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+  pages.forEach(function(cv,i){ if(i>0) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',0.93),'JPEG',0,0,pw,ph); });
+  var fn='MVS-Results-'+String(d.title||'test').replace(/[^a-z0-9]+/ig,'-').replace(/^-|-$/g,'')+'.pdf';
+  pdf.save(fn);
+  if(typeof toast==='function') toast('Results PDF downloaded.');
+};
+
 function aTestSubPick(s){ window._aTestSub=(window._aTestSub===s?'':s); _renderATests(); }
 function _testTrFiltered(){
   const all=_admBatchFilter(window._aTestsRows||[], window._aTestBatch||'');

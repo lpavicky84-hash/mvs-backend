@@ -82,6 +82,16 @@ def _ist_now():
     return _dt.utcnow() + _td(hours=5, minutes=30)
 
 
+def _rank_rows(db, exam_id):
+    """All attempts for an exam, ranked: highest score first; on a TIE, whoever submitted
+    EARLIER ranks higher (created_at asc); id asc is the final stable tie-break."""
+    return (db.query(PublicExamAttempt)
+            .filter(PublicExamAttempt.exam_id == exam_id)
+            .order_by(PublicExamAttempt.total_awarded.desc(),
+                      PublicExamAttempt.created_at.asc(),
+                      PublicExamAttempt.id.asc()).all())
+
+
 def _exam_by_token(db, token):
     token = (token or "").strip()
     if not token:
@@ -189,5 +199,13 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
         "your_answer": (ans.get(str(q.q_no), ans.get(q.q_no))),
         "correct_answer": q.correct_option, "explanation": q.explanation,
     } for q in qs]
+    # leaderboard (top 10) + this student's rank — tie-break: earlier submission ranks higher
+    ranked = _rank_rows(db, ex.id)
+    leaderboard = [{"rank": i + 1, "name": (r.name or "Student"),
+                    "score": r.total_awarded, "total": r.total_marks,
+                    "correct": r.correct_count}
+                   for i, r in enumerate(ranked[:10])]
+    my_rank = next((i + 1 for i, r in enumerate(ranked) if r.id == row.id), None)
     return {"total_awarded": total, "total_marks": (ex.total_marks or 0),
-            "correct": correct, "q_total": len(qs), "title": ex.title, "results": review}
+            "correct": correct, "q_total": len(qs), "title": ex.title, "results": review,
+            "leaderboard": leaderboard, "my_rank": my_rank, "total_students": len(ranked)}

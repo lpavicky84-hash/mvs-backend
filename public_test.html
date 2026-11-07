@@ -411,9 +411,27 @@
       var expl=(it.explanation&&String(it.explanation).trim())?'<div class="expl"><b>Explanation:</b> '+esc(it.explanation)+'</div>':"";
       return '<div class="q rv" id="pq-'+it.q_no+'"><div class="q-h">Q'+it.q_no+'. '+qText(it)+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
     }).join("");
+    // ---- premium Top 10 leaderboard (ranked; tie -> earlier submit higher) ----
+    var lb=(r.leaderboard||[]), myRank=r.my_rank, lbHtml="";
+    if(lb.length){
+      var rows=lb.map(function(it){
+        var isMe=(myRank&&it.rank===myRank);
+        var medal=it.rank===1?"🥇":it.rank===2?"🥈":it.rank===3?"🥉":"";
+        var rankBg=it.rank<=3?"linear-gradient(145deg,#e2b458,#b8941f)":"#14213d";
+        return '<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;margin-bottom:7px;'
+          +(isMe?"background:rgba(226,180,88,.18);border:1.5px solid #e2b458":"background:#fff;border:1px solid #ece4d0")+'">'
+          +'<div style="width:36px;height:36px;flex:0 0 auto;border-radius:11px;background:'+rankBg+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:'+(medal?"1.1rem":".92rem")+'">'+(medal||it.rank)+'</div>'
+          +'<div style="flex:1;min-width:0;font-weight:800;color:#14213d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.name)+(isMe?' <span style="background:#14213d;color:#e2b458;font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:20px;vertical-align:middle;letter-spacing:.05em">YOU</span>':"")+'</div>'
+          +'<div style="font-weight:900;color:#14213d;font-variant-numeric:tabular-nums">'+it.score+'<span style="color:#9a8c66;font-weight:700;font-size:.82em">/'+it.total+'</span></div>'
+          +'</div>';
+      }).join("");
+      var myChip=(myRank?'<div style="text-align:center;margin:0 0 14px"><span style="background:rgba(20,33,61,.07);color:#14213d;font-weight:700;font-size:.86rem;padding:7px 17px;border-radius:30px">Your rank: <b style="color:#b8941f">#'+myRank+'</b> of '+(r.total_students||lb.length)+'</span></div>':"");
+      lbHtml='<div class="card" style="margin-top:14px;padding:18px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:13px"><span style="font-size:1.2rem">🏆</span><b style="color:#14213d;font-size:1.02rem">Top 10 Leaderboard</b></div>'+myChip+rows+'</div>';
+    }
     APP.innerHTML=
       '<div class="narrow"><div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
       +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc(window._reg.name)+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
+      +lbHtml
       +rev
       +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div></div>';
     H1.textContent="Your Result"; HM.innerHTML="";

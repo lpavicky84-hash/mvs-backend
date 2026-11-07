@@ -10486,25 +10486,32 @@ def admin_public_test_responses(exam_id: int, db: Session = Depends(get_db), _=D
     ex = db.query(Exam).filter(Exam.id == exam_id).first()
     if not ex:
         raise HTTPException(404, "Test not found")
+    # RANKED: highest score first; tie -> earlier submission ranks higher (then id)
     rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
-            .order_by(PublicExamAttempt.created_at.desc()).all())
+            .order_by(PublicExamAttempt.total_awarded.desc(),
+                      PublicExamAttempt.created_at.asc(),
+                      PublicExamAttempt.id.asc()).all())
     cfg = _pr.public_fields_cfg(ex)
     custom_cols = [{"key": f["key"], "label": f["label"]} for f in cfg if f["key"] not in _pr._KNOWN_KEYS]
     return {
         "exam_id": ex.id, "title": ex.title or "", "teacher_name": ex.teacher_name or "",
         "subject": ex.subject or "", "enabled": bool(ex.public_enabled),
+        "class_name": getattr(ex, "class_name", "") or "",
+        "duration_min": ex.duration_min or 0,
+        "scheduled_at": (ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None),
         "token": ex.public_token or "", "link": (("/t/" + ex.public_token) if ex.public_token else ""),
         "views": int(getattr(ex, "public_views", 0) or 0),
         "total_marks": ex.total_marks or 0, "count": len(rows),
         "custom_cols": custom_cols,
         "responses": [{
+            "rank": i + 1,
             "id": r.id, "name": r.name, "phone": r.phone, "email": r.email,
             "class_course": r.class_course, "city": r.city, "nios_ref": r.nios_ref,
             "extra": _pub_extra_vals(r),
             "score": r.total_awarded, "total": r.total_marks,
             "correct": r.correct_count, "q_total": r.q_total,
             "at": (r.created_at.isoformat() if r.created_at else None),
-        } for r in rows]}
+        } for i, r in enumerate(rows)]}
 
 
 @router.get("/public-tests/{exam_id}/export")
