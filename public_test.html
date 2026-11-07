@@ -419,11 +419,40 @@
     H1.textContent="Your Result"; HM.innerHTML="";
   }
 
+  // ---------- SCHEDULED: premium countdown + details (test opens automatically) ----------
+  function _pad2(n){ return (n<10?"0":"")+n; }
+  function _fmtSched(iso){ try{ return new Date(iso).toLocaleString("en-IN",{weekday:"short",day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; } }
+  function screenScheduled(ex){
+    if(HM) HM.innerHTML="";   // no test details before start — only the timer
+    var secs=Math.max(0,parseInt(ex.seconds_to_start||0,10));
+    function seg(v,l){ return '<div style="min-width:66px;background:linear-gradient(150deg,#14213d,#243c66);color:#fff;border-radius:15px;padding:13px 9px;box-shadow:0 10px 24px -12px rgba(20,33,61,.6)"><div style="font-size:1.75rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1">'+v+'</div><div style="font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:#e2b458;margin-top:6px;font-weight:700">'+l+'</div></div>'; }
+    APP.innerHTML=
+      '<div class="narrow"><div class="card center" style="padding:40px 22px">'
+      +'<div style="width:78px;height:78px;margin:0 auto 18px;border-radius:22px;background:linear-gradient(150deg,#14213d,#243c66);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 32px -12px rgba(20,33,61,.55);border:2px solid rgba(226,180,88,.4)"><span style="font-size:2.2rem">⏳</span></div>'
+      +'<div style="font-weight:800;font-size:1.2rem;color:#14213d">This test is scheduled</div>'
+      +'<div class="lead" style="margin:6px 0 0">It opens automatically when the timer ends. Keep this page open — no need to refresh.</div>'
+      +'<div style="margin:28px 0 12px;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:#9a8c66;font-weight:800">Starts in</div>'
+      +'<div id="cd-box" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"></div>'
+      +'<div style="display:inline-block;margin-top:20px;background:rgba(226,180,88,.12);border:1px solid rgba(226,180,88,.4);color:#8a6d1f;font-weight:700;font-size:.9rem;padding:9px 18px;border-radius:30px">🗓 '+esc(_fmtSched(ex.scheduled_at))+'</div>'
+      +'</div><div class="note" style="margin-top:16px">MVS Foundation · Manish Verma Classes</div></div>';
+    H1.textContent=ex.title||"Test";
+    var box=document.getElementById("cd-box");
+    function paint(){ var s=secs,d=Math.floor(s/86400); s-=d*86400; var h=Math.floor(s/3600); s-=h*3600; var m=Math.floor(s/60), ss=s-m*60;
+      var html=""; if(d>0) html+=seg(d,"Days"); html+=seg(_pad2(h),"Hours")+seg(_pad2(m),"Min")+seg(_pad2(ss),"Sec"); box.innerHTML=html; }
+    function openNow(){ if(TIMER){clearInterval(TIMER);TIMER=null;} box.innerHTML='<div style="font-weight:800;color:#047857;font-size:1.15rem">Starting the test…</div>'; setTimeout(function(){ location.reload(); },1200); }
+    if(secs<=0){ openNow(); return; }
+    paint();
+    if(TIMER){ clearInterval(TIMER); }
+    TIMER=setInterval(function(){ secs--; if(secs<=0){ openNow(); return; } paint(); },1000);
+  }
+
   // ---------- boot ----------
   function fail(msg){ H1.textContent="Test unavailable"; HM.innerHTML=""; APP.innerHTML='<div class="card center" style="padding:40px 20px"><div style="font-size:2rem">🔒</div><p style="font-weight:700;margin:10px 0 4px">'+esc(msg)+'</p><div class="lead">Please check the link with MVS Foundation.</div></div>'; }
   if(!token){ fail("Invalid test link."); return; }
   api("/exam/"+encodeURIComponent(token)).then(function(ex){
-    EX=ex; HASHI=hasHindi(); H1.textContent=ex.title||"Test"; screenRegister();
+    EX=ex; HASHI=hasHindi(); H1.textContent=ex.title||"Test";
+    if(ex.not_started){ screenScheduled(ex); return; }
+    screenRegister();
   }).catch(function(err){ fail(err.message||"This test link is not available."); });
 })();
 </script>

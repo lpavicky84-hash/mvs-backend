@@ -12,6 +12,7 @@ Privacy split:
 """
 import re as _re
 import json as _json
+from datetime import datetime as _dt, timedelta as _td
 from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session
 
@@ -75,6 +76,12 @@ def public_fields_cfg(ex):
     return out
 
 
+def _ist_now():
+    """Current wall-clock time in IST. scheduled_at is stored as naive IST (the time the
+    teacher typed), and all MVS users are in India, so we compare against IST now."""
+    return _dt.utcnow() + _td(hours=5, minutes=30)
+
+
 def _exam_by_token(db, token):
     token = (token or "").strip()
     if not token:
@@ -98,6 +105,21 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
         db.commit()
     except Exception:
         db.rollback()
+    sched = getattr(ex, "scheduled_at", None)
+    meta = {"id": ex.id, "title": ex.title, "subject": ex.subject, "medium": ex.medium,
+            "duration_min": ex.duration_min, "total_marks": ex.total_marks,
+            "teacher_name": ex.teacher_name, "fields": public_fields_cfg(ex),
+            "scheduled_at": sched.isoformat() if sched else None}
+    # SCHEDULED TEST: before the start time, show only the countdown + details — never the
+    # questions (so the paper can't be read early). Opens automatically at the scheduled time.
+    if sched is not None:
+        now = _ist_now()
+        if now < sched:
+            qn = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).count()
+            meta.update({"not_started": True,
+                         "seconds_to_start": max(0, int((sched - now).total_seconds())),
+                         "question_count": qn, "questions": []})
+            return meta
     qs = (db.query(ExamQuestion)
           .filter(ExamQuestion.exam_id == ex.id)
           .order_by(ExamQuestion.q_no).all())
@@ -107,16 +129,17 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
         "options": q.options or [], "options_hi": q.options_hi,
         "max_marks": q.max_marks, "image_b64": q.image_b64,
     } for q in qs]
-    return {"id": ex.id, "title": ex.title, "subject": ex.subject, "medium": ex.medium,
-            "duration_min": ex.duration_min, "total_marks": ex.total_marks,
-            "teacher_name": ex.teacher_name, "fields": public_fields_cfg(ex),
-            "question_count": len(questions), "questions": questions}
+    meta.update({"not_started": False, "question_count": len(questions), "questions": questions})
+    return meta
 
 
 @router.post("/exam/{token}/submit")
 def public_submit(token: str, payload: dict = Body(...), request: Request = None,
                   db: Session = Depends(get_db)):
     ex = _exam_by_token(db, token)
+    _sched = getattr(ex, "scheduled_at", None)
+    if _sched is not None and _ist_now() < _sched:
+        raise HTTPException(403, "This test has not started yet.")
     details = payload.get("details") or {}
     name = (str(details.get("name") or "")).strip()
     phone = _re.sub(r"[^0-9]", "", str(details.get("phone") or ""))
