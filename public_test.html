@@ -666,18 +666,44 @@
   function _pad2(n){ return (n<10?"0":"")+n; }
   function _fmtSched(iso){ try{ return new Date(iso).toLocaleString("en-IN",{weekday:"short",day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}); }catch(e){ return ""; } }
   function screenScheduled(ex){
-    if(HM) HM.innerHTML="";   // no test details before start — only the timer
+    if(HM) HM.innerHTML="";   // test start se pehle koi detail nahi — sirf countdown + instructions
     var secs=Math.max(0,parseInt(ex.seconds_to_start||0,10));
-    function seg(v,l){ return '<div style="min-width:66px;background:linear-gradient(150deg,#14213d,#243c66);color:#fff;border-radius:15px;padding:13px 9px;box-shadow:0 10px 24px -12px rgba(20,33,61,.6)"><div style="font-size:1.75rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1">'+v+'</div><div style="font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:#e2b458;margin-top:6px;font-weight:700">'+l+'</div></div>'; }
+    var ig=ex.integrity||{}, igMon=!!ig.monitor, igStrict=(ig.mode==="STRICT");
+    function seg(v,l){ return '<div style="min-width:76px;background:linear-gradient(158deg,#22396180,#14213d),linear-gradient(158deg,#1d3156,#14213d);background-blend-mode:overlay;color:#fff;border-radius:18px;padding:16px 11px;box-shadow:0 16px 34px -16px rgba(20,33,61,.8),inset 0 1px 0 rgba(255,255,255,.1);border:1px solid rgba(226,180,88,.26)"><div style="font-size:2.1rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.25)">'+v+'</div><div style="font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#e2b458;margin-top:9px;font-weight:800">'+l+'</div></div>'; }
+    // ---- instructions ONLY (generic rules; test ke specifics start hone par dikhenge) ----
+    var ins=[];
+    ins.push("The test will open <b>automatically</b> at the scheduled time — just keep this page open.");
+    ins.push("Once it opens, a <b>live timer</b> runs and the test <b>submits automatically</b> when the time ends.");
+    ins.push("Your answers are <b>saved automatically</b>. Even if the page reloads, your progress and remaining time stay the same.");
+    ins.push("All <b>test details and the marking scheme</b> will be shown on screen the moment the test begins.");
+    if(igStrict) ins.push("This is a <b>secure test</b> — it runs in fullscreen, and copy, paste and right-click are disabled.");
+    else if(igMon) ins.push("Please <b>stay on this tab</b> during the test — switching tabs or apps will be recorded.");
+    ins.push("Enter your <b>correct name and phone number</b> — your result and rank are linked to them.");
+    ins.push("Use a device with a <b>stable internet connection</b> and enough battery.");
+    var insHtml=ins.map(function(t,i){ return '<li style="display:flex;gap:13px;align-items:flex-start;padding:12px 0;'+(i<ins.length-1?'border-bottom:1px solid rgba(20,33,61,.07)':'')+'">'
+      +'<span style="flex:0 0 auto;width:27px;height:27px;border-radius:50%;background:linear-gradient(145deg,#e8c56b,#b8941f);color:#14213d;font-weight:900;font-size:.84rem;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px -3px rgba(184,148,31,.6),inset 0 1px 0 rgba(255,255,255,.4)">'+(i+1)+'</span>'
+      +'<span style="font-size:.92rem;color:#2e2716;line-height:1.55;padding-top:2px">'+t+'</span></li>'; }).join("");
     APP.innerHTML=
-      '<div class="narrow"><div class="card center" style="padding:40px 22px">'
-      +'<div style="width:78px;height:78px;margin:0 auto 18px;border-radius:22px;background:linear-gradient(150deg,#14213d,#243c66);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 32px -12px rgba(20,33,61,.55);border:2px solid rgba(226,180,88,.4)"><span style="font-size:2.2rem">⏳</span></div>'
-      +'<div style="font-weight:800;font-size:1.2rem;color:#14213d">This test is scheduled</div>'
-      +'<div class="lead" style="margin:6px 0 0">It opens automatically when the timer ends. Keep this page open — no need to refresh.</div>'
-      +'<div style="margin:28px 0 12px;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:#9a8c66;font-weight:800">Starts in</div>'
-      +'<div id="cd-box" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"></div>'
-      +'<div style="display:inline-block;margin-top:20px;background:rgba(226,180,88,.12);border:1px solid rgba(226,180,88,.4);color:#8a6d1f;font-weight:700;font-size:.9rem;padding:9px 18px;border-radius:30px">🗓 '+esc(_fmtSched(ex.scheduled_at))+'</div>'
-      +'</div><div class="note" style="margin-top:16px">MVS Foundation · Manish Verma Classes</div></div>';
+      '<div class="narrow">'
+      // ---- HERO (gold-accented, glowing emblem, countdown) ----
+      +'<div class="card center" style="padding:0;overflow:hidden;position:relative">'
+      +'<div style="height:5px;background:linear-gradient(90deg,#b8941f,#e8c56b 45%,#f2dd9e 55%,#b8941f)"></div>'
+      +'<div style="padding:40px 24px 34px">'
+      +'<div style="width:88px;height:88px;margin:0 auto 20px;border-radius:27px;background:linear-gradient(155deg,#243c66,#14213d);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 7px rgba(226,180,88,.1),0 20px 44px -16px rgba(20,33,61,.7);border:1.5px solid rgba(226,180,88,.5)"><span style="font-size:2.5rem">⌛</span></div>'
+      +'<div style="font-weight:900;font-size:1.4rem;color:#14213d;letter-spacing:-.015em">This test is scheduled</div>'
+      +'<div style="display:inline-block;margin:16px 0 2px;background:linear-gradient(135deg,rgba(232,197,107,.22),rgba(226,180,88,.1));border:1px solid rgba(226,180,88,.55);color:#8a6d1f;font-weight:800;font-size:.94rem;padding:11px 22px;border-radius:30px;box-shadow:0 6px 16px -10px rgba(184,148,31,.5)">🗓 '+esc(_fmtSched(ex.scheduled_at))+'</div>'
+      +'<div style="margin:28px 0 14px;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#9a8c66;font-weight:800">Starts in</div>'
+      +'<div id="cd-box" style="display:flex;gap:11px;justify-content:center;flex-wrap:wrap"></div>'
+      +'</div></div>'
+      // ---- INSTRUCTIONS ----
+      +'<div class="card" style="padding:0;overflow:hidden;margin-top:14px">'
+      +'<div style="padding:16px 22px;background:linear-gradient(135deg,#14213d,#243c66);display:flex;align-items:center;gap:10px">'
+      +'<span style="font-size:1.1rem">📋</span><span style="color:#fff;font-weight:800;font-size:1.02rem;letter-spacing:.01em">Instructions</span>'
+      +'<span style="margin-left:auto;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:#e2b458;font-weight:800">Please read</span></div>'
+      +'<div style="padding:8px 22px 20px"><ul style="list-style:none;padding:0;margin:0">'+insHtml+'</ul></div>'
+      +'</div>'
+      +'<div class="note" style="margin-top:16px">MVS Foundation · Manish Verma Classes</div>'
+      +'</div>';
     H1.textContent=ex.title||"Test";
     var box=document.getElementById("cd-box");
     function paint(){ var s=secs,d=Math.floor(s/86400); s-=d*86400; var h=Math.floor(s/3600); s-=h*3600; var m=Math.floor(s/60), ss=s-m*60;
