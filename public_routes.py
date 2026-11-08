@@ -17,8 +17,12 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Exam, ExamQuestion, PublicExamAttempt
+from models import Exam, ExamQuestion, PublicExamAttempt, PublicExamSession
 import grading
+
+# server-authoritative timer: submit kitne late tak accept ho (network/lag ke liye thodi chhoot).
+# Resume-safe timing isse bachati hai; ye grace sirf honest last-second submits ke liye hai.
+_SUBMIT_GRACE_SEC = 120
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -153,6 +157,192 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
     return meta
 
 
+def _validate_details(ex, details):
+    """name + phone + har required field validate karo; custom fields `extra` me collect.
+    Submit aur Start dono isi se validate karte hain (ek hi jagah logic)."""
+    details = details or {}
+    name = (str(details.get("name") or "")).strip()
+    phone = _re.sub(r"[^0-9]", "", str(details.get("phone") or ""))
+    if not name:
+        raise HTTPException(400, "Please enter your name.")
+    if len(phone) < 10:
+        raise HTTPException(400, "Please enter a valid 10-digit phone number.")
+    extra = {}
+    for f in public_fields_cfg(ex):
+        v = str(details.get(f["key"]) or "").strip()
+        if f["required"] and not v:
+            raise HTTPException(400, "Please fill: %s" % f["label"])
+        if f["key"] not in _KNOWN_KEYS and v:
+            extra[f["key"]] = {"label": f["label"], "value": v}
+    return name, phone, extra
+
+
+def _get_session(db, exam_id, phone):
+    return (db.query(PublicExamSession)
+            .filter(PublicExamSession.exam_id == exam_id,
+                    PublicExamSession.phone == phone).first())
+
+
+def _create_attempt(db, ex, name, phone, details, ans, ip=None):
+    """Grade answers through the central service and persist ONE PublicExamAttempt. Returns the row."""
+    details = details or {}
+    ans = ans or {}
+    extra = {}
+    for f in public_fields_cfg(ex):
+        v = str(details.get(f["key"]) or "").strip()
+        if f["key"] not in _KNOWN_KEYS and v:
+            extra[f["key"]] = {"label": f["label"], "value": v}
+    qs = (db.query(ExamQuestion)
+          .filter(ExamQuestion.exam_id == ex.id)
+          .order_by(ExamQuestion.q_no).all())
+    _mode = (getattr(ex, "exam_mode", None) or "NORMAL").strip().upper()
+    _results, tot = grading.score_objective(
+        qs, ans, exam_mode=_mode,
+        mark_correct=getattr(ex, "mark_correct", 1.0),
+        mark_wrong=getattr(ex, "mark_wrong", 0.0),
+        mark_unanswered=getattr(ex, "mark_unanswered", 0.0))
+    out_of = (tot["total_possible"] if _mode == "COMPETITIVE" else (ex.total_marks or 0))
+    row = PublicExamAttempt(
+        exam_id=ex.id, name=(name or "Student")[:160], phone=phone[:20],
+        email=((str(details.get("email") or "")).strip()[:160] or None),
+        class_course=((str(details.get("class") or "")).strip()[:120] or None),
+        city=((str(details.get("city") or "")).strip()[:120] or None),
+        nios_ref=((str(details.get("nios_ref") or "")).strip()[:60] or None),
+        extra=(extra or None),
+        mcq_answers=ans, total_awarded=tot["total_awarded"], total_marks=out_of,
+        correct_count=tot["correct"], wrong_count=tot["wrong"],
+        unanswered_count=tot["unanswered"], q_total=len(qs),
+        ip=((ip or "")[:50]))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _build_result(db, ex, row):
+    """Result payload (review + leaderboard + breakdown) kisi bhi attempt row se banao.
+    Fresh submit aur idempotent re-submit dono isi se result dete hain (same shape)."""
+    _mode = (getattr(ex, "exam_mode", None) or "NORMAL").strip().upper()
+    ans = row.mcq_answers or {}
+    qs = (db.query(ExamQuestion)
+          .filter(ExamQuestion.exam_id == ex.id)
+          .order_by(ExamQuestion.q_no).all())
+    results, _tot = grading.score_objective(
+        qs, ans, exam_mode=_mode,
+        mark_correct=getattr(ex, "mark_correct", 1.0),
+        mark_wrong=getattr(ex, "mark_wrong", 0.0),
+        mark_unanswered=getattr(ex, "mark_unanswered", 0.0))
+    _rmap = {r["q_no"]: r for r in results}
+    review = [{
+        "q_no": q.q_no, "question_text": q.question_text, "question_text_hi": q.question_text_hi,
+        "options": q.options or [], "options_hi": q.options_hi,
+        "your_answer": (ans.get(str(q.q_no), ans.get(q.q_no))),
+        "correct_answer": q.correct_option, "explanation": q.explanation,
+        "marks": (_rmap.get(q.q_no, {}).get("marks")),
+        "status": (_rmap.get(q.q_no, {}).get("status")),
+    } for q in qs]
+    ranked = _rank_rows(db, ex.id)
+    leaderboard = [{"rank": i + 1, "name": (r.name or "Student"),
+                    "score": r.total_awarded, "total": r.total_marks,
+                    "correct": r.correct_count}
+                   for i, r in enumerate(ranked[:10])]
+    my_rank = next((i + 1 for i, r in enumerate(ranked) if r.id == row.id), None)
+    return {"total_awarded": row.total_awarded, "total_marks": (row.total_marks or 0),
+            "correct": row.correct_count,
+            "wrong": int(getattr(row, "wrong_count", 0) or 0),
+            "unanswered": int(getattr(row, "unanswered_count", 0) or 0),
+            "q_total": row.q_total, "title": ex.title, "results": review,
+            "exam_mode": _mode,
+            "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
+            "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
+            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0),
+            "leaderboard": leaderboard, "my_rank": my_rank, "total_students": len(ranked)}
+
+
+def _finalize_session(db, ex, sess, auto=False, ip=None):
+    """Session ke saved answers se attempt bana ke session ko final mark karo
+    (server-side auto-submit: time khatam / student reload pe)."""
+    row = _create_attempt(db, ex, sess.name or "Student", sess.phone,
+                          (sess.details or {}), (sess.answers or {}), ip=ip)
+    sess.submitted = True
+    sess.auto_submitted = bool(auto)
+    sess.updated_at = _ist_now()
+    db.commit()
+    return row
+
+
+def _client_ip(request):
+    return ((request.client.host if (request and request.client) else "") or "")
+
+
+@router.post("/exam/{token}/start")
+def public_start(token: str, payload: dict = Body(...), request: Request = None,
+                 db: Session = Depends(get_db)):
+    """Server-authoritative START: ek attempt session banata/resume karta hai, server `started_at`
+    + `expires_at` store karta hai, aur server time + bacha hua time deta hai. Timer isi se chalta
+    hai (localStorage se nahi), isliye reload/band karne pe time reset nahi hota."""
+    ex = _exam_by_token(db, token)
+    sched = getattr(ex, "scheduled_at", None)
+    if sched is not None and _ist_now() < sched:
+        raise HTTPException(403, "This test has not started yet.")
+    name, phone, _extra = _validate_details(ex, payload.get("details") or {})
+    # already submitted (idempotent) -> seedha result do, dubara attempt nahi
+    existing = (db.query(PublicExamAttempt)
+                .filter(PublicExamAttempt.exam_id == ex.id,
+                        PublicExamAttempt.phone == phone).first())
+    if existing:
+        return {"already": True, "result": _build_result(db, ex, existing)}
+    now = _ist_now()
+    dur = int(ex.duration_min or 0)
+    sess = _get_session(db, ex.id, phone)
+    if sess is None:
+        sess = PublicExamSession(
+            exam_id=ex.id, phone=phone[:20], name=name[:160],
+            details=(payload.get("details") or {}),
+            started_at=now, duration_min=dur,
+            expires_at=(now + _td(minutes=dur)) if dur > 0 else None,
+            answers={}, submitted=False)
+        db.add(sess)
+        db.commit()
+        db.refresh(sess)
+    elif sess.submitted:
+        # session final ho chuka par attempt nahi mila (rare) -> dubara start block
+        raise HTTPException(400, "You have already submitted this test from this number.")
+    # time already khatam + submit nahi -> server abhi finalize kare (reopen auto-submit)
+    if sess.expires_at is not None and now >= sess.expires_at:
+        row = _finalize_session(db, ex, sess, auto=True, ip=_client_ip(request))
+        return {"already": True, "result": _build_result(db, ex, row)}
+    secs_left = (max(0, int((sess.expires_at - now).total_seconds()))
+                 if sess.expires_at is not None else None)
+    return {"already": False, "session_id": sess.id,
+            "started_at": sess.started_at.isoformat() if sess.started_at else None,
+            "expires_at": sess.expires_at.isoformat() if sess.expires_at else None,
+            "server_now": now.isoformat(), "seconds_left": secs_left,
+            "duration_min": sess.duration_min, "saved_answers": (sess.answers or {})}
+
+
+@router.post("/exam/{token}/save")
+def public_save(token: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Autosave + heartbeat: answers server pe save (refresh pe wapas), aur server ka
+    bacha hua time + expired flag wapas. Ek hi writer (phone) hai to last-write-wins safe hai."""
+    ex = _exam_by_token(db, token)
+    phone = _re.sub(r"[^0-9]", "", str((payload.get("phone")) or ""))
+    now = _ist_now()
+    sess = _get_session(db, ex.id, phone) if len(phone) >= 10 else None
+    if not sess or sess.submitted:
+        return {"ok": False, "server_now": now.isoformat()}
+    ans = payload.get("mcq_answers")
+    if isinstance(ans, dict):
+        sess.answers = ans
+        sess.updated_at = now
+        db.commit()
+    secs_left = (max(0, int((sess.expires_at - now).total_seconds()))
+                 if sess.expires_at is not None else None)
+    expired = (sess.expires_at is not None and now >= sess.expires_at)
+    return {"ok": True, "server_now": now.isoformat(),
+            "seconds_left": secs_left, "expired": bool(expired)}
+
+
 @router.post("/exam/{token}/submit")
 def public_submit(token: str, payload: dict = Body(...), request: Request = None,
                   db: Session = Depends(get_db)):
@@ -160,80 +350,28 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
     _sched = getattr(ex, "scheduled_at", None)
     if _sched is not None and _ist_now() < _sched:
         raise HTTPException(403, "This test has not started yet.")
-    details = payload.get("details") or {}
-    name = (str(details.get("name") or "")).strip()
-    phone = _re.sub(r"[^0-9]", "", str(details.get("phone") or ""))
-    if not name:
-        raise HTTPException(400, "Please enter your name.")
-    if len(phone) < 10:
-        raise HTTPException(400, "Please enter a valid 10-digit phone number.")
-    # validate every configured field; custom fields collected into `extra`
-    cfg = public_fields_cfg(ex)
-    extra = {}
-    for f in cfg:
-        v = str(details.get(f["key"]) or "").strip()
-        if f["required"] and not v:
-            raise HTTPException(400, "Please fill: %s" % f["label"])
-        if f["key"] not in _KNOWN_KEYS and v:
-            extra[f["key"]] = {"label": f["label"], "value": v}
-    # one attempt per phone per exam (open link abuse guard)
-    if db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == ex.id,
-                                          PublicExamAttempt.phone == phone).first():
-        raise HTTPException(400, "You have already submitted this test from this number.")
+    name, phone, _extra = _validate_details(ex, payload.get("details") or {})
+
+    # IDEMPOTENT: is phone ne already submit kiya -> wahi result do (dusra row nahi, error nahi).
+    existing = (db.query(PublicExamAttempt)
+                .filter(PublicExamAttempt.exam_id == ex.id,
+                        PublicExamAttempt.phone == phone).first())
+    if existing:
+        sess = _get_session(db, ex.id, phone)
+        if sess and not sess.submitted:
+            sess.submitted = True
+            sess.updated_at = _ist_now()
+            db.commit()
+        return _build_result(db, ex, existing)
 
     ans = payload.get("mcq_answers") or {}
-    qs = (db.query(ExamQuestion)
-          .filter(ExamQuestion.exam_id == ex.id)
-          .order_by(ExamQuestion.q_no).all())
-    # CENTRAL scoring service — NORMAL = har question apne max_marks; COMPETITIVE = +4/-1/0
-    _mode = (getattr(ex, "exam_mode", None) or "NORMAL").strip().upper()
-    results, tot = grading.score_objective(
-        qs, ans, exam_mode=_mode,
-        mark_correct=getattr(ex, "mark_correct", 1.0),
-        mark_wrong=getattr(ex, "mark_wrong", 0.0),
-        mark_unanswered=getattr(ex, "mark_unanswered", 0.0))
-    total = tot["total_awarded"]
-    correct = tot["correct"]
-    # "out of": NORMAL = exam.total_marks (sum of max); COMPETITIVE = q_count * mark_correct
-    out_of = (tot["total_possible"] if _mode == "COMPETITIVE" else (ex.total_marks or 0))
-
-    row = PublicExamAttempt(
-        exam_id=ex.id, name=name[:160], phone=phone[:20],
-        email=((str(details.get("email") or "")).strip()[:160] or None),
-        class_course=((str(details.get("class") or "")).strip()[:120] or None),
-        city=((str(details.get("city") or "")).strip()[:120] or None),
-        nios_ref=((str(details.get("nios_ref") or "")).strip()[:60] or None),
-        extra=(extra or None),
-        mcq_answers=ans, total_awarded=total, total_marks=out_of,
-        correct_count=correct, wrong_count=tot["wrong"], unanswered_count=tot["unanswered"],
-        q_total=len(qs),
-        ip=(((request.client.host if (request and request.client) else "") or "")[:50]))
-    db.add(row)
-    db.commit()
-
-    # instant result — ab submit ho gaya to correct answers safe to reveal
-    _rmap = {r["q_no"]: r for r in results}
-    review = [{
-        "q_no": q.q_no, "question_text": q.question_text, "question_text_hi": q.question_text_hi,
-        "options": q.options or [], "options_hi": q.options_hi,
-        "your_answer": (ans.get(str(q.q_no), ans.get(q.q_no))),
-        "correct_answer": q.correct_option, "explanation": q.explanation,
-        # per-question marks/status (NORMAL: full/0; COMPETITIVE: +4/-1/0)
-        "marks": (_rmap.get(q.q_no, {}).get("marks")),
-        "status": (_rmap.get(q.q_no, {}).get("status")),
-    } for q in qs]
-    # leaderboard (top 10) + this student's rank — tie-break: earlier submission ranks higher
-    ranked = _rank_rows(db, ex.id)
-    leaderboard = [{"rank": i + 1, "name": (r.name or "Student"),
-                    "score": r.total_awarded, "total": r.total_marks,
-                    "correct": r.correct_count}
-                   for i, r in enumerate(ranked[:10])]
-    my_rank = next((i + 1 for i, r in enumerate(ranked) if r.id == row.id), None)
-    return {"total_awarded": total, "total_marks": out_of,
-            "correct": correct, "wrong": tot["wrong"], "unanswered": tot["unanswered"],
-            "q_total": len(qs), "title": ex.title, "results": review,
-            "exam_mode": _mode,
-            "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
-            "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
-            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0),
-            "leaderboard": leaderboard, "my_rank": my_rank, "total_students": len(ranked)}
+    row = _create_attempt(db, ex, name, phone, payload.get("details") or {},
+                          ans, ip=_client_ip(request))
+    # session finalize (agar server timer use hua tha)
+    sess = _get_session(db, ex.id, phone)
+    if sess and not sess.submitted:
+        sess.submitted = True
+        sess.auto_submitted = bool(payload.get("auto"))
+        sess.updated_at = _ist_now()
+        db.commit()
+    return _build_result(db, ex, row)

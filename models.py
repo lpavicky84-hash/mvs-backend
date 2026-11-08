@@ -1015,6 +1015,28 @@ class PublicExamAttempt(Base):
     ip            = Column(String(50), nullable=True)
     created_at    = Column(DateTime, default=func.now(), index=True)
 
+
+class PublicExamSession(Base):
+    """Server-authoritative attempt session for a PUBLIC test (Phase 2).
+    Timer ab server se chalta hai — student ke reload/band karne pe time reset nahi hota,
+    aur time khatam hone par server ke hisaab se auto-submit hota hai.
+    Ek (exam_id, phone) ka ek hi session — dusri baar Start karne pe wahi resume hota hai."""
+    __tablename__ = "public_exam_sessions"
+    id            = Column(Integer, primary_key=True)
+    exam_id       = Column(Integer, ForeignKey("exams.id"), index=True)
+    phone         = Column(String(20), index=True)
+    name          = Column(String(160), nullable=True)
+    details       = Column(JSON, nullable=True)      # register form (email/class/city...) — finalize ke liye
+    started_at    = Column(DateTime)                 # server IST wall-clock jab student ne Start kiya
+    expires_at    = Column(DateTime, nullable=True)  # started_at + duration (NULL = untimed test)
+    duration_min  = Column(Integer, default=0)       # start ke waqt ka snapshot (duration baad me badle to bhi locked)
+    answers       = Column(JSON, nullable=True)      # autosave: q_no -> selected option (refresh pe wapas aa jaate hain)
+    submitted     = Column(Boolean, default=False)   # final ho gaya (resume band)
+    auto_submitted= Column(Boolean, default=False)   # time khatam hone par server/ client ne khud submit kiya
+    created_at    = Column(DateTime, default=func.now())
+    updated_at    = Column(DateTime, default=func.now())
+
+
 class ExamQuestion(Base):
     __tablename__ = "exam_questions"
     id          = Column(Integer, primary_key=True)
