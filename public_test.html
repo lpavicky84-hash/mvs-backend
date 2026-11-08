@@ -140,6 +140,28 @@
     .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;align-items:center;gap:10px;background:linear-gradient(135deg,var(--navy),var(--navy2));padding:10px 14px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px -8px rgba(0,0,0,.45)}
   }
   @media(max-width:480px){ .hero h1{font-size:1.25rem} .score .big{font-size:1.8rem} .side-grid{grid-template-columns:repeat(5,1fr)} .tbar .tt{min-width:90px;font-size:.9rem} }
+
+  /* ---- SCHEDULED screen: fully fluid (phone → tablet → laptop → desktop) ---- */
+  .sch-wrap{max-width:560px;margin:0 auto}
+  .sch-hero{padding:clamp(28px,6vw,42px) clamp(16px,5vw,26px) clamp(24px,5vw,34px)!important;text-align:center}
+  .sch-emblem{width:clamp(70px,18vw,90px);height:clamp(70px,18vw,90px);border-radius:clamp(20px,5vw,27px);margin:0 auto clamp(14px,3.5vw,20px);display:flex;align-items:center;justify-content:center;background:linear-gradient(155deg,#243c66,#14213d);box-shadow:0 0 0 7px rgba(226,180,88,.1),0 20px 44px -16px rgba(20,33,61,.7);border:1.5px solid rgba(226,180,88,.5)}
+  .sch-emblem span{font-size:clamp(2rem,6.5vw,2.6rem);line-height:1}
+  .sch-title{font-weight:900;font-size:clamp(1.15rem,5.4vw,1.5rem);color:#14213d;letter-spacing:-.015em;line-height:1.2}
+  .sch-pill{display:inline-block;margin:clamp(12px,3vw,16px) 0 2px;background:linear-gradient(135deg,rgba(232,197,107,.22),rgba(226,180,88,.1));border:1px solid rgba(226,180,88,.55);color:#8a6d1f;font-weight:800;font-size:clamp(.8rem,3.4vw,.96rem);padding:clamp(9px,2.4vw,12px) clamp(15px,4vw,24px);border-radius:30px;box-shadow:0 6px 16px -10px rgba(184,148,31,.5);max-width:100%}
+  .sch-starts{margin:clamp(22px,5vw,30px) 0 clamp(11px,3vw,15px);font-size:clamp(.66rem,2.6vw,.72rem);letter-spacing:.18em;text-transform:uppercase;color:#9a8c66;font-weight:800}
+  .sch-cd{display:flex;gap:clamp(7px,2.4vw,12px);justify-content:center;flex-wrap:nowrap;max-width:430px;margin:0 auto}
+  .sch-seg{flex:1 1 0;min-width:0;max-width:100px;background:linear-gradient(158deg,#1d3156,#14213d);color:#fff;border-radius:clamp(13px,3.6vw,18px);padding:clamp(11px,3.2vw,17px) clamp(4px,1.6vw,11px);box-shadow:0 16px 34px -16px rgba(20,33,61,.8),inset 0 1px 0 rgba(255,255,255,.1);border:1px solid rgba(226,180,88,.26);text-align:center}
+  .sch-seg b{display:block;font-size:clamp(1.45rem,6.6vw,2.1rem);font-weight:900;font-variant-numeric:tabular-nums;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.25)}
+  .sch-seg i{display:block;font-style:normal;font-size:clamp(.5rem,2.1vw,.58rem);letter-spacing:.14em;text-transform:uppercase;color:#e2b458;margin-top:clamp(5px,1.6vw,9px);font-weight:800}
+  .sch-insh{padding:clamp(13px,3.6vw,17px) clamp(16px,5vw,22px);background:linear-gradient(135deg,#14213d,#243c66);display:flex;align-items:center;gap:10px}
+  .sch-insh .t{color:#fff;font-weight:800;font-size:clamp(.95rem,4vw,1.04rem);letter-spacing:.01em}
+  .sch-insh .r{margin-left:auto;font-size:clamp(.6rem,2.4vw,.66rem);letter-spacing:.1em;text-transform:uppercase;color:#e2b458;font-weight:800}
+  .sch-insb{padding:clamp(4px,1vw,8px) clamp(16px,5vw,22px) clamp(14px,3.6vw,20px)}
+  .sch-insb ul{list-style:none;padding:0;margin:0}
+  .sch-insb li{display:flex;gap:clamp(10px,3vw,13px);align-items:flex-start;padding:clamp(10px,2.8vw,13px) 0}
+  .sch-insb li+li{border-top:1px solid rgba(20,33,61,.07)}
+  .sch-num{flex:0 0 auto;width:clamp(24px,6.2vw,28px);height:clamp(24px,6.2vw,28px);border-radius:50%;background:linear-gradient(145deg,#e8c56b,#b8941f);color:#14213d;font-weight:900;font-size:clamp(.76rem,3vw,.86rem);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px -3px rgba(184,148,31,.6),inset 0 1px 0 rgba(255,255,255,.4)}
+  .sch-insb li .t{font-size:clamp(.87rem,3.7vw,.94rem);color:#2e2716;line-height:1.55;padding-top:2px}
 </style>
 </head>
 <body>
@@ -669,7 +691,7 @@
     if(HM) HM.innerHTML="";   // test start se pehle koi detail nahi — sirf countdown + instructions
     var secs=Math.max(0,parseInt(ex.seconds_to_start||0,10));
     var ig=ex.integrity||{}, igMon=!!ig.monitor, igStrict=(ig.mode==="STRICT");
-    function seg(v,l){ return '<div style="min-width:76px;background:linear-gradient(158deg,#22396180,#14213d),linear-gradient(158deg,#1d3156,#14213d);background-blend-mode:overlay;color:#fff;border-radius:18px;padding:16px 11px;box-shadow:0 16px 34px -16px rgba(20,33,61,.8),inset 0 1px 0 rgba(255,255,255,.1);border:1px solid rgba(226,180,88,.26)"><div style="font-size:2.1rem;font-weight:900;font-variant-numeric:tabular-nums;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.25)">'+v+'</div><div style="font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:#e2b458;margin-top:9px;font-weight:800">'+l+'</div></div>'; }
+    function seg(v,l){ return '<div class="sch-seg"><b>'+v+'</b><i>'+l+'</i></div>'; }
     // ---- instructions ONLY (generic rules; test ke specifics start hone par dikhenge) ----
     var ins=[];
     ins.push("The test will open <b>automatically</b> at the scheduled time — just keep this page open.");
@@ -680,27 +702,23 @@
     else if(igMon) ins.push("Please <b>stay on this tab</b> during the test — switching tabs or apps will be recorded.");
     ins.push("Enter your <b>correct name and phone number</b> — your result and rank are linked to them.");
     ins.push("Use a device with a <b>stable internet connection</b> and enough battery.");
-    var insHtml=ins.map(function(t,i){ return '<li style="display:flex;gap:13px;align-items:flex-start;padding:12px 0;'+(i<ins.length-1?'border-bottom:1px solid rgba(20,33,61,.07)':'')+'">'
-      +'<span style="flex:0 0 auto;width:27px;height:27px;border-radius:50%;background:linear-gradient(145deg,#e8c56b,#b8941f);color:#14213d;font-weight:900;font-size:.84rem;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px -3px rgba(184,148,31,.6),inset 0 1px 0 rgba(255,255,255,.4)">'+(i+1)+'</span>'
-      +'<span style="font-size:.92rem;color:#2e2716;line-height:1.55;padding-top:2px">'+t+'</span></li>'; }).join("");
+    var insHtml=ins.map(function(t,i){ return '<li><span class="sch-num">'+(i+1)+'</span><span class="t">'+t+'</span></li>'; }).join("");
     APP.innerHTML=
-      '<div class="narrow">'
+      '<div class="sch-wrap">'
       // ---- HERO (gold-accented, glowing emblem, countdown) ----
-      +'<div class="card center" style="padding:0;overflow:hidden;position:relative">'
+      +'<div class="card" style="padding:0;overflow:hidden;position:relative">'
       +'<div style="height:5px;background:linear-gradient(90deg,#b8941f,#e8c56b 45%,#f2dd9e 55%,#b8941f)"></div>'
-      +'<div style="padding:40px 24px 34px">'
-      +'<div style="width:88px;height:88px;margin:0 auto 20px;border-radius:27px;background:linear-gradient(155deg,#243c66,#14213d);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 7px rgba(226,180,88,.1),0 20px 44px -16px rgba(20,33,61,.7);border:1.5px solid rgba(226,180,88,.5)"><span style="font-size:2.5rem">⌛</span></div>'
-      +'<div style="font-weight:900;font-size:1.4rem;color:#14213d;letter-spacing:-.015em">This test is scheduled</div>'
-      +'<div style="display:inline-block;margin:16px 0 2px;background:linear-gradient(135deg,rgba(232,197,107,.22),rgba(226,180,88,.1));border:1px solid rgba(226,180,88,.55);color:#8a6d1f;font-weight:800;font-size:.94rem;padding:11px 22px;border-radius:30px;box-shadow:0 6px 16px -10px rgba(184,148,31,.5)">🗓 '+esc(_fmtSched(ex.scheduled_at))+'</div>'
-      +'<div style="margin:28px 0 14px;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#9a8c66;font-weight:800">Starts in</div>'
-      +'<div id="cd-box" style="display:flex;gap:11px;justify-content:center;flex-wrap:wrap"></div>'
+      +'<div class="sch-hero">'
+      +'<div class="sch-emblem"><span>⌛</span></div>'
+      +'<div class="sch-title">This test is scheduled</div>'
+      +'<div class="sch-pill">🗓 '+esc(_fmtSched(ex.scheduled_at))+'</div>'
+      +'<div class="sch-starts">Starts in</div>'
+      +'<div id="cd-box" class="sch-cd"></div>'
       +'</div></div>'
       // ---- INSTRUCTIONS ----
       +'<div class="card" style="padding:0;overflow:hidden;margin-top:14px">'
-      +'<div style="padding:16px 22px;background:linear-gradient(135deg,#14213d,#243c66);display:flex;align-items:center;gap:10px">'
-      +'<span style="font-size:1.1rem">📋</span><span style="color:#fff;font-weight:800;font-size:1.02rem;letter-spacing:.01em">Instructions</span>'
-      +'<span style="margin-left:auto;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:#e2b458;font-weight:800">Please read</span></div>'
-      +'<div style="padding:8px 22px 20px"><ul style="list-style:none;padding:0;margin:0">'+insHtml+'</ul></div>'
+      +'<div class="sch-insh"><span style="font-size:1.1rem">📋</span><span class="t">Instructions</span><span class="r">Please read</span></div>'
+      +'<div class="sch-insb"><ul>'+insHtml+'</ul></div>'
       +'</div>'
       +'<div class="note" style="margin-top:16px">MVS Foundation · Manish Verma Classes</div>'
       +'</div>';
