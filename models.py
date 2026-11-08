@@ -985,6 +985,11 @@ class Exam(Base):
     public_fields  = Column(String(200), default="")                # guest se maangne wale optional fields (CSV: email,class,city,nios_ref). name+phone hamesha required.
     public_field_config = Column(Text, default="")                   # rich JSON config: dropdown (class) + custom fields (Google-Form style)
     public_views   = Column(Integer, default=0)                      # kitne logo ne public link khola (tracker)
+    # ---- Competitive scoring (Phase 1): NORMAL = har question apne max_marks; COMPETITIVE = +4/-1/0 JEE-style ----
+    exam_mode       = Column(String(16), default="NORMAL")           # NORMAL | COMPETITIVE
+    mark_correct    = Column(Float, default=1.0)                     # COMPETITIVE: har sahi answer ke marks (+4)
+    mark_wrong      = Column(Float, default=0.0)                     # COMPETITIVE: har galat answer ke marks (-1, negative allowed)
+    mark_unanswered = Column(Float, default=0.0)                     # COMPETITIVE: blank chhode question ke marks (0)
 
 
 class PublicExamAttempt(Base):
@@ -1004,6 +1009,8 @@ class PublicExamAttempt(Base):
     total_awarded = Column(Float, default=0)
     total_marks   = Column(Integer, default=0)
     correct_count = Column(Integer, default=0)
+    wrong_count   = Column(Integer, default=0)     # Competitive breakdown: galat answers
+    unanswered_count = Column(Integer, default=0)  # Competitive breakdown: blank chhode
     q_total       = Column(Integer, default=0)
     ip            = Column(String(50), nullable=True)
     created_at    = Column(DateTime, default=func.now(), index=True)

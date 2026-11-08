@@ -116,16 +116,24 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
     sched = getattr(ex, "scheduled_at", None)
+    _mode = (getattr(ex, "exam_mode", None) or "NORMAL").strip().upper()
     meta = {"id": ex.id, "title": ex.title, "subject": ex.subject, "medium": ex.medium,
             "duration_min": ex.duration_min, "total_marks": ex.total_marks,
             "teacher_name": ex.teacher_name, "fields": public_fields_cfg(ex),
-            "scheduled_at": sched.isoformat() if sched else None}
+            "scheduled_at": sched.isoformat() if sched else None,
+            # Competitive scoring info (frontend: negative-marking notice + correct "out of")
+            "exam_mode": _mode,
+            "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
+            "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
+            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0)}
     # SCHEDULED TEST: before the start time, show only the countdown + details — never the
     # questions (so the paper can't be read early). Opens automatically at the scheduled time.
     if sched is not None:
         now = _ist_now()
         if now < sched:
             qn = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).count()
+            if _mode == "COMPETITIVE":
+                meta["total_marks"] = round(qn * meta["mark_correct"], 2)
             meta.update({"not_started": True,
                          "seconds_to_start": max(0, int((sched - now).total_seconds())),
                          "question_count": qn, "questions": []})
@@ -139,6 +147,8 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
         "options": q.options or [], "options_hi": q.options_hi,
         "max_marks": q.max_marks, "image_b64": q.image_b64,
     } for q in qs]
+    if _mode == "COMPETITIVE":
+        meta["total_marks"] = round(len(questions) * meta["mark_correct"], 2)
     meta.update({"not_started": False, "question_count": len(questions), "questions": questions})
     return meta
 
@@ -175,9 +185,17 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
     qs = (db.query(ExamQuestion)
           .filter(ExamQuestion.exam_id == ex.id)
           .order_by(ExamQuestion.q_no).all())
-    results, total = grading.grade_mcq(qs, ans)
-    correct = sum(1 for r in results
-                  if (r.get("max") or 0) > 0 and (r.get("marks") or 0) >= (r.get("max") or 0))
+    # CENTRAL scoring service — NORMAL = har question apne max_marks; COMPETITIVE = +4/-1/0
+    _mode = (getattr(ex, "exam_mode", None) or "NORMAL").strip().upper()
+    results, tot = grading.score_objective(
+        qs, ans, exam_mode=_mode,
+        mark_correct=getattr(ex, "mark_correct", 1.0),
+        mark_wrong=getattr(ex, "mark_wrong", 0.0),
+        mark_unanswered=getattr(ex, "mark_unanswered", 0.0))
+    total = tot["total_awarded"]
+    correct = tot["correct"]
+    # "out of": NORMAL = exam.total_marks (sum of max); COMPETITIVE = q_count * mark_correct
+    out_of = (tot["total_possible"] if _mode == "COMPETITIVE" else (ex.total_marks or 0))
 
     row = PublicExamAttempt(
         exam_id=ex.id, name=name[:160], phone=phone[:20],
@@ -186,18 +204,23 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
         city=((str(details.get("city") or "")).strip()[:120] or None),
         nios_ref=((str(details.get("nios_ref") or "")).strip()[:60] or None),
         extra=(extra or None),
-        mcq_answers=ans, total_awarded=total, total_marks=(ex.total_marks or 0),
-        correct_count=correct, q_total=len(qs),
+        mcq_answers=ans, total_awarded=total, total_marks=out_of,
+        correct_count=correct, wrong_count=tot["wrong"], unanswered_count=tot["unanswered"],
+        q_total=len(qs),
         ip=(((request.client.host if (request and request.client) else "") or "")[:50]))
     db.add(row)
     db.commit()
 
     # instant result — ab submit ho gaya to correct answers safe to reveal
+    _rmap = {r["q_no"]: r for r in results}
     review = [{
         "q_no": q.q_no, "question_text": q.question_text, "question_text_hi": q.question_text_hi,
         "options": q.options or [], "options_hi": q.options_hi,
         "your_answer": (ans.get(str(q.q_no), ans.get(q.q_no))),
         "correct_answer": q.correct_option, "explanation": q.explanation,
+        # per-question marks/status (NORMAL: full/0; COMPETITIVE: +4/-1/0)
+        "marks": (_rmap.get(q.q_no, {}).get("marks")),
+        "status": (_rmap.get(q.q_no, {}).get("status")),
     } for q in qs]
     # leaderboard (top 10) + this student's rank — tie-break: earlier submission ranks higher
     ranked = _rank_rows(db, ex.id)
@@ -206,6 +229,11 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
                     "correct": r.correct_count}
                    for i, r in enumerate(ranked[:10])]
     my_rank = next((i + 1 for i, r in enumerate(ranked) if r.id == row.id), None)
-    return {"total_awarded": total, "total_marks": (ex.total_marks or 0),
-            "correct": correct, "q_total": len(qs), "title": ex.title, "results": review,
+    return {"total_awarded": total, "total_marks": out_of,
+            "correct": correct, "wrong": tot["wrong"], "unanswered": tot["unanswered"],
+            "q_total": len(qs), "title": ex.title, "results": review,
+            "exam_mode": _mode,
+            "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
+            "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
+            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0),
             "leaderboard": leaderboard, "my_rank": my_rank, "total_students": len(ranked)}

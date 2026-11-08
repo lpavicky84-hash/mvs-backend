@@ -11323,6 +11323,11 @@ function _renderShareModal(id,d){
   });
   cfg.forEach(function(f){ if(['email','class','city','nios_ref'].indexOf(f.key)<0){
     window._pshF.push({key:f.key,label:f.label,type:(f.type==='select'?'select':'text'),options:f.options||[],required:(f.required!==false),custom:true,on:true}); } });
+  // ---- scoring state (Normal / Competitive +4/-1/0) ----
+  var sc=d.scoring||{}; window._pshScoring={mode:((sc.mode==='COMPETITIVE')?'COMPETITIVE':'NORMAL'),
+    correct:(sc.correct!=null&&sc.correct>0?sc.correct:4),
+    wrong:(sc.wrong!=null?sc.wrong:-1),
+    unanswered:(sc.unanswered!=null?sc.unanswered:0)};
   var linkBlock=(d.enabled&&link)
     ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
     : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
@@ -11338,6 +11343,8 @@ function _renderShareModal(id,d){
     +'<div class="psh-fl"><b>Details to collect from each student</b><div class="psh-subtle">Name &amp; phone are always asked. Toggle the rest, make Class a dropdown, or add your own fields.</div>'
     +'<div id="psh-fields" class="psh-fields">'+_pshFieldsHtml()+'</div>'
     +'<button class="psh-add" onclick="_pshAdd()">+ Add custom field</button></div>'
+    +'<div class="psh-sc"><b>Scoring &amp; Ranking</b><div class="psh-subtle">Normal = har question apne marks. Competitive = sabhi questions ke uniform marks with negative marking (JEE-style). Rank: jyada score upar; same score pe pehle submit karne wala upar.</div>'
+    +'<div id="psh-scoring">'+_pshScoringHtml()+'</div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
     +'<div class="psh-note2">You see each student&#39;s <b>name &amp; score</b> only. Phone and all personal details are in the <b>Admin panel</b>.</div>'
@@ -11365,6 +11372,36 @@ function _pshCollect(){
     if(f.type==='select'){ var op=document.getElementById('psh-op-'+i); if(op) f.options=op.value.split(',').map(function(s){return s.trim();}).filter(Boolean); }
   });
 }
+function _pshScoringHtml(){
+  var s=window._pshScoring||{mode:'NORMAL',correct:4,wrong:-1,unanswered:0};
+  var comp=(s.mode==='COMPETITIVE');
+  var seg='<div class="psh-seg">'
+    +'<button type="button" class="psh-seg-b'+(!comp?' on':'')+'" onclick="_pshSetMode(\'NORMAL\')">Normal</button>'
+    +'<button type="button" class="psh-seg-b'+(comp?' on':'')+'" onclick="_pshSetMode(\'COMPETITIVE\')">Competitive</button>'
+    +'</div>';
+  if(!comp){
+    return seg+'<div class="psh-sc-note">Har question apne marks ka — sahi answer = poore marks, galat ya khaali = 0. Koi negative marking nahi (aapke abhi ke tests jaise).</div>';
+  }
+  return seg
+    +'<div class="psh-sc-grid">'
+    +'<div class="psh-sc-cell"><label>Sahi (+)</label><input type="number" step="0.25" id="psh-sc-correct" value="'+esc(String(s.correct))+'"></div>'
+    +'<div class="psh-sc-cell"><label>Galat (−)</label><input type="number" step="0.25" id="psh-sc-wrong" value="'+esc(String(s.wrong))+'"></div>'
+    +'<div class="psh-sc-cell"><label>Khaali</label><input type="number" step="0.25" id="psh-sc-unans" value="'+esc(String(s.unanswered))+'"></div>'
+    +'</div>'
+    +'<div class="psh-sc-row"><button type="button" class="psh-preset" onclick="_pshJEE()">⚡ JEE Main (+4 / −1 / 0)</button>'
+    +'<span class="psh-sc-hint">Galat answer me minus (−) do to negative marking ON. “Out of” = questions × sahi marks.</span></div>';
+}
+function _pshScCollect(){
+  var s=window._pshScoring||(window._pshScoring={mode:'NORMAL',correct:4,wrong:-1,unanswered:0});
+  var c=document.getElementById('psh-sc-correct'),w=document.getElementById('psh-sc-wrong'),u=document.getElementById('psh-sc-unans');
+  if(c&&c.value!=='') s.correct=parseFloat(c.value)||0;
+  if(w&&w.value!=='') s.wrong=parseFloat(w.value)||0;
+  if(u&&u.value!=='') s.unanswered=parseFloat(u.value)||0;
+  return s;
+}
+function _pshScRender(){ var box=document.getElementById('psh-scoring'); if(box) box.innerHTML=_pshScoringHtml(); }
+window._pshSetMode=function(m){ _pshScCollect(); window._pshScoring.mode=(m==='COMPETITIVE'?'COMPETITIVE':'NORMAL'); _pshScRender(); };
+window._pshJEE=function(){ var s=_pshScCollect(); s.mode='COMPETITIVE'; s.correct=4; s.wrong=-1; s.unanswered=0; _pshScRender(); };
 function _pshRenderFields(){ var box=document.getElementById('psh-fields'); if(box) box.innerHTML=_pshFieldsHtml(); }
 window._pshReaRender=function(){ _pshCollect(); _pshRenderFields(); };
 window._pshRemove=function(i){ _pshCollect(); (window._pshF||[]).splice(i,1); _pshRenderFields(); };
@@ -11381,7 +11418,9 @@ async function _examShareSave(id){
     if(f.type==='select' && !(f.options||[]).length){ f.type='text'; }   // empty dropdown -> text
     field_config.push({key:f.key,label:(f.label||'').trim(),type:f.type,options:(f.type==='select'?f.options:[]),required:(f.custom?!!f.required:true)});
   });
-  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config}); toast(enabled?'Public link saved':'Public link turned OFF');
+  var scoring=null;
+  try{ var s=_pshScCollect(); scoring={mode:(s.mode==='COMPETITIVE'?'COMPETITIVE':'NORMAL'),correct:s.correct,wrong:s.wrong,unanswered:s.unanswered}; }catch(e){}
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring}); toast(enabled?'Public link saved':'Public link turned OFF');
     try{ if(window._aTestsRows){ var _r=window._aTestsRows.find(function(x){return x.id===id;}); if(_r)_r.public_enabled=enabled; } }catch(e){}
     examShareModal(id);
     try{ loadTTests(); }catch(e){}   // list ka Share Link button turant ON/OFF rang update
@@ -11438,7 +11477,21 @@ function _pshCss(){ if(document.getElementById('psh-css')) return; var s=documen
   '.psh-table th{text-align:left;background:rgba(184,148,31,.06);padding:9px 11px;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted)}',
   '.psh-table td{padding:9px 11px;border-top:1px solid var(--border)}',
   'body.dark .psh-off,body.dark .psh-table th{background:rgba(255,255,255,.05)}',
-  'body.dark .psh-sl{background:#3a4a63}'
+  'body.dark .psh-sl{background:#3a4a63}',
+  // ---- Competitive scoring section ----
+  '.psh-sc{border-top:1px solid var(--border);padding-top:13px;margin-top:14px}',
+  '.psh-seg{display:flex;gap:0;border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin:10px 0 12px;max-width:320px}',
+  '.psh-seg-b{flex:1;border:none;background:transparent;padding:9px 12px;font-size:.85rem;font-weight:800;color:var(--text-muted);cursor:pointer}',
+  '.psh-seg-b.on{background:linear-gradient(135deg,#b8941f,#9a7b19);color:#fff}',
+  '.psh-sc-note{font-size:.8rem;color:var(--text-muted);background:rgba(46,158,107,.07);border:1px solid rgba(46,158,107,.2);border-radius:9px;padding:9px 12px}',
+  '.psh-sc-grid{display:flex;gap:9px;flex-wrap:wrap}',
+  '.psh-sc-cell{flex:1;min-width:95px}',
+  '.psh-sc-cell label{display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted);margin-bottom:4px}',
+  '.psh-sc-cell input{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 11px;font-size:1rem;font-weight:800;text-align:center;background:var(--card,#fff);color:var(--text)}',
+  '.psh-sc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:11px}',
+  '.psh-preset{border:1.5px solid rgba(184,148,31,.5);background:rgba(184,148,31,.08);color:#9a7b19;border-radius:999px;padding:8px 15px;font-weight:800;font-size:.82rem;cursor:pointer;white-space:nowrap}',
+  '.psh-preset:hover{background:rgba(184,148,31,.16)}',
+  '.psh-sc-hint{font-size:.76rem;color:var(--text-muted);flex:1;min-width:180px}'
 ].join(''); document.head.appendChild(s); }
 async function viewExamAttempts(id){
   try{

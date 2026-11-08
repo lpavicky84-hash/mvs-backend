@@ -226,8 +226,18 @@
       }
       return '<label class="fl">'+esc(f.label)+star+'</label><input class="inp" id="f-'+esc(f.key)+'" autocomplete="off">';
     }).join("");
+    var negNote="";
+    if(EX.exam_mode==="COMPETITIVE"){
+      var _mc=(+EX.mark_correct||0), _mw=(+EX.mark_wrong||0), _mu=(+EX.mark_unanswered||0);
+      negNote='<div style="background:linear-gradient(135deg,#fff6e0,#ffedc7);border:1.5px solid #e2b458;border-radius:12px;padding:12px 14px;margin-bottom:14px">'
+        +'<div style="font-weight:900;color:#8a6a12;font-size:.92rem">⚡ Competitive Test · Marking Scheme</div>'
+        +'<div style="font-size:.84rem;color:#6b5a28;margin-top:5px;font-weight:700">Correct: <b>+'+_mc+'</b> &nbsp;·&nbsp; Wrong: <b>'+_mw+'</b> &nbsp;·&nbsp; Unanswered: <b>'+_mu+'</b></div>'
+        +((_mw<0)?'<div style="font-size:.78rem;color:#b45309;margin-top:5px;font-weight:600">⚠ Negative marking hai — galat answer pe marks katenge. Sure na ho to skip karna behtar.</div>':'')
+        +'</div>';
+    }
     APP.innerHTML=
       '<div class="narrow"><div class="card">'
+      +negNote
       +'<div style="font-weight:800;font-size:1.1rem">Enter your details to begin</div>'
       +'<div class="lead">Fill the form below, then start the test. You can attempt it only once.</div>'
       +'<label class="fl">Full Name <span class="req">*</span></label><input class="inp" id="f-name" autocomplete="name">'
@@ -393,9 +403,11 @@
   }
 
   // ---------- 3) RESULT ----------
+  function _fmtMk(v){ v=Math.round(v*100)/100; return (v>0?"+":"")+v; }
   function screenResult(r){
     window.scrollTo(0,0); if(TIMER){ clearInterval(TIMER); TIMER=null; }
     var pct=r.total_marks?Math.round(r.total_awarded/r.total_marks*100):0;
+    var comp=(r.exam_mode==="COMPETITIVE");
     var rev=(r.results||[]).map(function(it){
       var yourN=(it.your_answer==null?"":String(it.your_answer).trim().toLowerCase());
       var corN=String(it.correct_answer==null?"":it.correct_answer).trim().toLowerCase();
@@ -407,10 +419,35 @@
         else if(isCor){ cls+=" cor"; badge='<span class="badge g">Correct answer</span>'; }
         return '<div class="'+cls+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+optText(it,oi)+'</span>'+badge+'</div>';
       }).join("");
+      // per-question marks badge (COMPETITIVE: +4 / -1 / 0)
+      var mkB="";
+      if(comp&&it.marks!=null){
+        var mc=(it.status==="correct")?"#1f7a52":(it.status==="wrong")?"#c0392b":"#777";
+        var mbg=(it.status==="correct")?"rgba(46,158,107,.14)":(it.status==="wrong")?"rgba(209,68,58,.12)":"rgba(0,0,0,.06)";
+        mkB=' <span style="float:right;font-size:.8rem;font-weight:900;color:'+mc+';background:'+mbg+';border-radius:20px;padding:2px 10px">'+_fmtMk(it.marks)+'</span>';
+      }
       var skip=(yourN==="")?'<div class="note" style="text-align:left;color:#b91c1c;font-weight:700">⚠ You did not answer this</div>':"";
       var expl=(it.explanation&&String(it.explanation).trim())?'<div class="expl"><b>Explanation:</b> '+esc(it.explanation)+'</div>':"";
-      return '<div class="q rv" id="pq-'+it.q_no+'"><div class="q-h">Q'+it.q_no+'. '+qText(it)+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
+      return '<div class="q rv" id="pq-'+it.q_no+'"><div class="q-h">Q'+it.q_no+'. '+qText(it)+mkB+'</div><div class="opts">'+opts+'</div>'+skip+expl+'</div>';
     }).join("");
+    // ---- COMPETITIVE breakdown: correct / wrong / skipped with marks contribution ----
+    var breakdown="";
+    if(comp){
+      var MC=(r.mark_correct||0), MW=(r.mark_wrong||0), MU=(r.mark_unanswered||0);
+      var cell=function(n,lbl,contrib,col,bg){ return '<div style="flex:1;background:'+bg+';border-radius:12px;padding:11px 6px">'
+        +'<div style="font-size:1.35rem;font-weight:900;color:'+col+';line-height:1">'+n+'</div>'
+        +'<div style="font-size:.66rem;font-weight:800;color:'+col+';text-transform:uppercase;letter-spacing:.04em;margin-top:3px">'+lbl+'</div>'
+        +'<div style="font-size:.74rem;font-weight:700;color:'+col+';opacity:.85;margin-top:2px">'+contrib+'</div></div>'; };
+      breakdown='<div class="card" style="margin-top:14px;padding:14px 12px">'
+        +'<div style="display:flex;gap:8px;text-align:center">'
+        +cell(r.correct,"Correct",_fmtMk(r.correct*MC),"#1f7a52","rgba(46,158,107,.1)")
+        +cell(r.wrong,"Wrong",_fmtMk(r.wrong*MW),"#c0392b","rgba(209,68,58,.09)")
+        +cell(r.unanswered,"Skipped",(MU?_fmtMk(r.unanswered*MU):"0"),"#555","rgba(0,0,0,.045)")
+        +'</div>'
+        +'<div style="text-align:center;margin-top:11px;font-size:.84rem;color:#14213d"><b>Net Score:</b> <span style="color:#b8941f;font-weight:900">'+r.total_awarded+'</span> / '+r.total_marks
+        +' <span style="color:#9a8c66">· marking +'+(+MC)+' / '+(+MW)+' / '+(+MU)+'</span></div>'
+        +'</div>';
+    }
     // ---- premium Top 10 leaderboard (ranked; tie -> earlier submit higher) ----
     var lb=(r.leaderboard||[]), myRank=r.my_rank, lbHtml="";
     if(lb.length){
@@ -430,6 +467,7 @@
     }
     APP.innerHTML=
       '<div class="narrow"><div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
+      +breakdown
       +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc(window._reg.name)+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
       +lbHtml
       +rev

@@ -329,6 +329,13 @@ def ensure_columns():
         "ALTER TABLE video_tasks ADD COLUMN pause_req_by VARCHAR(120) DEFAULT ''",
         "ALTER TABLE video_tasks ADD COLUMN pause_req_urgent_id INTEGER NULL",
         "ALTER TABLE video_tasks ADD COLUMN pause_req_at DATETIME NULL",
+        # Competitive scoring (Phase 1): public tests me +4/-1/0 JEE-style. Default NORMAL = koi change nahi.
+        "ALTER TABLE exams ADD COLUMN exam_mode VARCHAR(16) DEFAULT 'NORMAL'",
+        "ALTER TABLE exams ADD COLUMN mark_correct FLOAT DEFAULT 1.0",
+        "ALTER TABLE exams ADD COLUMN mark_wrong FLOAT DEFAULT 0.0",
+        "ALTER TABLE exams ADD COLUMN mark_unanswered FLOAT DEFAULT 0.0",
+        "ALTER TABLE public_exam_attempts ADD COLUMN wrong_count INTEGER DEFAULT 0",
+        "ALTER TABLE public_exam_attempts ADD COLUMN unanswered_count INTEGER DEFAULT 0",
     ]
     for s in stmts:
         try:

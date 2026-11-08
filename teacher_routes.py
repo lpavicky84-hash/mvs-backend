@@ -5168,10 +5168,34 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
     ex.public_enabled = enabled
     if enabled and not (ex.public_token or "").strip():
         ex.public_token = secrets.token_urlsafe(9)   # ~12-char unguessable slug
+    # ---- Competitive scoring (Phase 1): NORMAL (har question apne max_marks) ya
+    #      COMPETITIVE (+4/-1/0 JEE-style). Default/galat input -> NORMAL, koi change nahi. ----
+    sc = payload.get("scoring")
+    if isinstance(sc, dict):
+        mode = str(sc.get("mode") or "NORMAL").strip().upper()
+        if mode != "COMPETITIVE":
+            mode = "NORMAL"
+        ex.exam_mode = mode
+        if mode == "COMPETITIVE":
+            def _num(v, d):
+                try:
+                    return float(v)
+                except Exception:
+                    return d
+            mc = _num(sc.get("correct"), 4.0)
+            if mc <= 0:            # correct marks hamesha > 0 warna "out of" toot jaata
+                mc = 4.0
+            ex.mark_correct = mc
+            ex.mark_wrong = _num(sc.get("wrong"), -1.0)       # negative allowed (penalty)
+            ex.mark_unanswered = _num(sc.get("unanswered"), 0.0)
     db.commit()
     return {"ok": True, "enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
-            "field_config": _pr.public_fields_cfg(ex)}
+            "field_config": _pr.public_fields_cfg(ex),
+            "scoring": {"mode": (ex.exam_mode or "NORMAL"),
+                        "correct": float(ex.mark_correct or 0),
+                        "wrong": float(ex.mark_wrong or 0),
+                        "unanswered": float(ex.mark_unanswered or 0)}}
 
 
 @router.get("/exam/{exam_id}/public-responses")
@@ -5191,6 +5215,10 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
             "field_config": _pr.public_fields_cfg(ex),
             "views": int(getattr(ex, "public_views", 0) or 0),
+            "scoring": {"mode": (getattr(ex, "exam_mode", None) or "NORMAL"),
+                        "correct": float(getattr(ex, "mark_correct", 1.0) or 0),
+                        "wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
+                        "unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0)},
             "total_marks": (ex.total_marks or 0), "count": len(rows),
             # name + score ONLY — no personal details for the teacher
             "responses": [{"id": r.id, "name": r.name,

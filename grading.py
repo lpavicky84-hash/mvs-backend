@@ -111,6 +111,74 @@ def grade_mcq(questions, mcq_answers):
     return results, total
 
 
+def score_objective(questions, mcq_answers, exam_mode="NORMAL",
+                    mark_correct=1.0, mark_wrong=0.0, mark_unanswered=0.0):
+    """CENTRAL objective (MCQ) scoring service — one source of truth for marks.
+
+    NORMAL  : har question apne OWN max_marks ka — correct = +max_marks, wrong/blank = 0.
+              (grade_mcq jaisa bilkul same — Normal tests pe koi asar nahi.)
+    COMPETITIVE: har question ke uniform marks — correct = +mark_correct,
+              wrong = mark_wrong (negative ho sakta hai, jaise JEE -1),
+              blank = mark_unanswered. Per-question max_marks scoring me ignore;
+              display max = mark_correct.
+
+    Returns (results, totals):
+      results: [{q_no, marks, max, status('correct'|'wrong'|'blank'),
+                 correct_option, remark}]
+      totals : {total_awarded, total_possible, correct, wrong, unanswered, q_total}
+
+    Ye function kabhi exception nahi deta — har value defensively parse hoti hai.
+    """
+    ans = mcq_answers or {}
+    comp = ((exam_mode or "NORMAL").strip().upper() == "COMPETITIVE")
+
+    def _f(v, d):
+        try:
+            return float(v)
+        except Exception:
+            return d
+    mc = _f(mark_correct, 1.0)
+    mw = _f(mark_wrong, 0.0)
+    mu = _f(mark_unanswered, 0.0)
+
+    results = []
+    total = 0.0
+    possible = 0.0
+    n_correct = n_wrong = n_blank = 0
+    qlist = list(questions or [])
+    for q in qlist:
+        sel = ans.get(str(q.q_no), ans.get(q.q_no))
+        answered = sel is not None and str(sel).strip() != ""
+        correct = (q.correct_option or "").strip()
+        is_correct = answered and str(sel).strip().lower() == correct.lower()
+        qmax = _f(getattr(q, "max_marks", 0), 0.0)
+        if comp:
+            per_max = mc
+            awarded = mc if is_correct else (mw if answered else mu)
+        else:
+            per_max = qmax
+            awarded = qmax if is_correct else 0.0
+        if is_correct:
+            n_correct += 1
+            status, remark = "correct", "Correct"
+        elif answered:
+            n_wrong += 1
+            status = "wrong"
+            remark = (("Incorrect (%+g). Correct answer: %s" % (awarded, correct))
+                      if (comp and awarded) else ("Incorrect. Correct answer: %s" % correct))
+        else:
+            n_blank += 1
+            status, remark = "blank", ("Not answered. Correct answer: %s" % correct)
+        total += awarded
+        possible += per_max
+        results.append({"q_no": q.q_no, "marks": awarded, "max": per_max,
+                        "status": status, "correct_option": correct, "remark": remark})
+    totals = {"total_awarded": round(total, 2), "total_possible": round(possible, 2),
+              "correct": n_correct, "wrong": n_wrong, "unanswered": n_blank,
+              "q_total": len(qlist)}
+    return results, totals
+
+
 def grade_subjective(questions, image_b64, mime_type="image/jpeg"):
     if not GEMINI_KEY:
         return None, 0.0, "GEMINI_API_KEY is not set", ""
