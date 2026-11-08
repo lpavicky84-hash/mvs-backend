@@ -10503,6 +10503,7 @@ def admin_public_test_responses(exam_id: int, db: Session = Depends(get_db), _=D
         "views": int(getattr(ex, "public_views", 0) or 0),
         "total_marks": ex.total_marks or 0, "count": len(rows),
         "custom_cols": custom_cols,
+        "integrity_mode": (getattr(ex, "integrity_mode", None) or "OFF"),
         "responses": [{
             "rank": i + 1,
             "id": r.id, "name": r.name, "phone": r.phone, "email": r.email,
@@ -10510,6 +10511,8 @@ def admin_public_test_responses(exam_id: int, db: Session = Depends(get_db), _=D
             "extra": _pub_extra_vals(r),
             "score": r.total_awarded, "total": r.total_marks,
             "correct": r.correct_count, "q_total": r.q_total,
+            "violations": int(getattr(r, "violations", 0) or 0),
+            "flagged": bool(getattr(r, "flagged", False)),
             "at": (r.created_at.isoformat() if r.created_at else None),
         } for i, r in enumerate(rows)]}
 

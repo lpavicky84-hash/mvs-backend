@@ -990,6 +990,10 @@ class Exam(Base):
     mark_correct    = Column(Float, default=1.0)                     # COMPETITIVE: har sahi answer ke marks (+4)
     mark_wrong      = Column(Float, default=0.0)                     # COMPETITIVE: har galat answer ke marks (-1, negative allowed)
     mark_unanswered = Column(Float, default=0.0)                     # COMPETITIVE: blank chhode question ke marks (0)
+    # ---- Integrity / Secure mode (Phase 3): OFF (default) = kuch nahi; STANDARD = tab-switch detect+warn+flag;
+    #      STRICT = fullscreen + copy/paste block + max_violations ke baad auto-submit ----
+    integrity_mode  = Column(String(16), default="OFF")             # OFF | STANDARD | STRICT
+    max_violations  = Column(Integer, default=3)                    # itne violations ke baad STRICT me auto-submit
 
 
 class PublicExamAttempt(Base):
@@ -1012,6 +1016,9 @@ class PublicExamAttempt(Base):
     wrong_count   = Column(Integer, default=0)     # Competitive breakdown: galat answers
     unanswered_count = Column(Integer, default=0)  # Competitive breakdown: blank chhode
     q_total       = Column(Integer, default=0)
+    violations    = Column(Integer, default=0)     # Integrity: kitne tab-switch/exit violations hue
+    flagged       = Column(Boolean, default=False) # Integrity: review ke liye flag (violations > 0 ya auto-submit)
+    integrity_log = Column(JSON, nullable=True)    # Integrity: events ki list (type, at) — admin review
     ip            = Column(String(50), nullable=True)
     created_at    = Column(DateTime, default=func.now(), index=True)
 
@@ -1033,6 +1040,8 @@ class PublicExamSession(Base):
     answers       = Column(JSON, nullable=True)      # autosave: q_no -> selected option (refresh pe wapas aa jaate hain)
     submitted     = Column(Boolean, default=False)   # final ho gaya (resume band)
     auto_submitted= Column(Boolean, default=False)   # time khatam hone par server/ client ne khud submit kiya
+    violations    = Column(Integer, default=0)       # Integrity: running violation count (tab-switch/exit/copy...)
+    integrity_log = Column(JSON, nullable=True)      # Integrity: events ki list (type, at, seq)
     created_at    = Column(DateTime, default=func.now())
     updated_at    = Column(DateTime, default=func.now())
 

@@ -255,7 +255,7 @@
       if(phone.length<10) return regErr("Please enter a valid 10-digit phone number.");
       for(var i=0;i<(EX.fields||[]).length;i++){ var f=EX.fields[i]; if(f.required!==false && !val("f-"+f.key).trim()) return regErr((f.type==="select"?"Please select: ":"Please fill: ")+f.label); }
       window._reg={name:name,phone:phone}; (EX.fields||[]).forEach(function(f){ window._reg[f.key]=val("f-"+f.key).trim(); });
-      if(HASHI) screenMedium(); else { MED="en"; screenTest(); }
+      if(HASHI) screenMedium(); else { MED="en"; _enterTest(); }
     };
   }
   function regErr(m){ var e=document.getElementById("reg-err"); if(e){ e.textContent=m; e.style.display="block"; } }
@@ -273,8 +273,51 @@
       +'<button class="mp-opt" data-m="hg"><span class="mp-ic" style="font-size:.86rem">Aअ</span><span class="mp-tx"><b>Hinglish</b><small>English + हिंदी — bilingual</small></span></button>'
       +'</div></div></div>';
     Array.prototype.forEach.call(APP.querySelectorAll(".mp-opt"),function(b){
-      b.onclick=function(){ MED=b.getAttribute("data-m"); screenTest(); };
+      b.onclick=function(){ MED=b.getAttribute("data-m"); _enterTest(); };
     });
+  }
+
+  // ---------- 1c) SECURE GATE (integrity mode) ----------
+  function _ig(){ return (EX&&EX.integrity)||{mode:"OFF",monitor:false}; }
+  function _fsSupported(){ var el=document.documentElement; return !!(el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen); }
+  function _reqFS(){ try{ var el=document.documentElement; var fn=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen; if(fn) fn.call(el); }catch(e){} }
+  function _inFS(){ return !!(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement); }
+  // register/medium ke baad: integrity ON ho to pehle policy gate, warna seedha test
+  function _enterTest(){
+    var ig=_ig();
+    if(ig.monitor && !STARTED){ screenSecureGate(); return; }
+    screenTest();
+  }
+  function screenSecureGate(){
+    window.scrollTo(0,0);
+    var ig=_ig(); var strict=(ig.mode==="STRICT");
+    var fsOK=_fsSupported();
+    var rules=[];
+    rules.push("Test khulne ke baad ismein hi raho — tab/app badalna ya minimize karna <b>record</b> hoga.");
+    if(strict && fsOK) rules.push("Test <b>fullscreen</b> me chalega. Fullscreen band karoge to warning milegi.");
+    if(ig.block_copy||ig.block_paste) rules.push("Copy / paste band hai.");
+    if(ig.block_context) rules.push("Right-click band hai.");
+    if(strict) rules.push("<b>"+(ig.max_violations||3)+"</b> baar bahar jaane par test apne aap submit ho jaayega.");
+    else rules.push("Har baar bahar jaane par warning aayegi aur record teacher ko dikhega.");
+    var noFS=(strict && !fsOK)?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.3);border-radius:10px;padding:10px 12px;font-size:.82rem;color:#b45309;margin-top:10px">Is device par fullscreen available nahi hai — phir bhi tab/app switching monitor hogi.</div>':"";
+    var btnLabel=(strict&&fsOK)?"Enter Fullscreen & Start":"Start Test";
+    APP.innerHTML=
+      '<div class="narrow"><div class="card">'
+      +'<div style="display:flex;align-items:center;gap:9px"><span style="font-size:1.5rem">🔒</span><div style="font-weight:800;font-size:1.12rem">'+(strict?"Secure Test":"Monitored Test")+'</div></div>'
+      +'<div class="lead" style="margin:6px 0 0">Shuru karne se pehle ye niyam padho:</div>'
+      +'<ul style="margin:12px 0 0;padding-left:20px;line-height:1.9;font-size:.9rem">'+rules.map(function(r){return "<li>"+r+"</li>";}).join("")+'</ul>'
+      +noFS
+      +'<label style="display:flex;align-items:center;gap:9px;margin-top:16px;font-size:.88rem;font-weight:600;cursor:pointer"><input type="checkbox" id="sg-ok" style="width:17px;height:17px"> Main samajh gaya / gayi — niyam manunga</label>'
+      +'<div class="err" id="sg-err"></div>'
+      +'<button class="btn" id="sg-go" style="margin-top:16px;opacity:.6" disabled>'+btnLabel+'</button>'
+      +'</div></div>';
+    var ok=document.getElementById("sg-ok"), go=document.getElementById("sg-go");
+    ok.onchange=function(){ go.disabled=!ok.checked; go.style.opacity=ok.checked?1:.6; };
+    go.onclick=function(){
+      if(!ok.checked) return;
+      if(strict && fsOK){ _reqFS(); }   // fullscreen is user gesture (abhi click me) se
+      screenTest();
+    };
   }
 
   // ---------- 2) TEST ----------
@@ -291,6 +334,7 @@
         if(s && s.seconds_left!=null){ DEADLINE=Date.now()+s.seconds_left*1000; }
         else { DEADLINE=null; }                                            // untimed test
         renderTest(); startTimer(); startHeartbeat();
+        if(s && s.integrity && s.integrity.monitor){ _vCount=(s.violations||0); startIntegrityWatch(s.integrity); }
       })
       .catch(function(){
         // FALLBACK (purana behaviour): server start na chale to client timer — test kabhi block na ho
@@ -409,6 +453,62 @@
   }
   function startHeartbeat(){ if(HB){ clearInterval(HB); } if(SESS){ HB=setInterval(doSave,15000); } }   // har 15s server se sync + save
 
+  // ---------- integrity / secure mode (Phase 3) ----------
+  var _vSeq=0, _vCool=false, _vCount=0, _IGCFG=null, _watchFns=[];
+  function startIntegrityWatch(cfg){
+    _IGCFG=cfg||{}; _detachWatch();
+    var add=function(tgt,ev,fn,opts){ tgt.addEventListener(ev,fn,opts||false); _watchFns.push([tgt,ev,fn,opts||false]); };
+    // tab/app switch + minimize (ek transition = ek violation, cooldown se coalesce)
+    add(document,"visibilitychange",function(){ if(document.hidden) _reportViolation("VISIBILITY_HIDDEN"); });
+    add(window,"blur",function(){ _reportViolation("WINDOW_BLUR"); });
+    add(window,"pagehide",function(){ _reportViolation("PAGE_EXIT"); });
+    // fullscreen exit (STRICT)
+    if(_IGCFG.require_fullscreen){
+      var fsFn=function(){ if(!_inFS() && !SUBMITTED) _reportViolation("FULLSCREEN_EXIT"); };
+      add(document,"fullscreenchange",fsFn); add(document,"webkitfullscreenchange",fsFn);
+    }
+    if(_IGCFG.block_copy) add(document,"copy",function(e){ e.preventDefault(); _reportViolation("COPY_ATTEMPT"); });
+    if(_IGCFG.block_paste) add(document,"paste",function(e){ e.preventDefault(); _reportViolation("PASTE_ATTEMPT"); });
+    if(_IGCFG.block_context) add(document,"contextmenu",function(e){ e.preventDefault(); _reportViolation("CONTEXT_MENU_ATTEMPT"); });
+    if(_IGCFG.block_print) add(document,"keydown",function(e){
+      var k=(e.key||"").toLowerCase();
+      if((e.ctrlKey||e.metaKey)&&(k==="p"||k==="s"||k==="u")){ e.preventDefault(); _reportViolation("PRINT_SHORTCUT_ATTEMPT"); }
+    });
+  }
+  function _detachWatch(){ _watchFns.forEach(function(w){ try{ w[0].removeEventListener(w[1],w[2],w[3]); }catch(e){} }); _watchFns=[]; }
+  function _reportViolation(type){
+    if(!_IGCFG||!_IGCFG.monitor||SUBMITTED) return;
+    if(_vCool) return;                                   // ek hi transition ke multiple events -> ek violation
+    _vCool=true; setTimeout(function(){ _vCool=false; },1000);
+    _vSeq++;
+    api("/exam/"+encodeURIComponent(token)+"/event","POST",{phone:window._reg.phone,type:type,seq:_vSeq})
+      .then(function(r){ if(!r||!r.ok) return;
+        _vCount=(r.violations!=null?r.violations:_vCount);
+        _showViolationWarn(_vCount, r.max_violations, !!r.limit_reached);
+        if(r.limit_reached && !SUBMITTED){ doSubmit(true); }   // STRICT limit -> auto-submit
+      }).catch(function(){});                                   // network fail -> penalty nahi
+  }
+  function _showViolationWarn(count, max, reached){
+    var strict=(_IGCFG&&_IGCFG.auto_submit);
+    // top chip (persistent)
+    var chip=document.getElementById("vchip");
+    if(!chip){ chip=document.createElement("div"); chip.id="vchip";
+      chip.style.cssText="position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:60;background:#b91c1c;color:#fff;font-weight:800;font-size:.76rem;padding:5px 12px;border-radius:999px;box-shadow:0 6px 16px -6px rgba(0,0,0,.5)";
+      document.body.appendChild(chip); }
+    chip.textContent="⚠ Warning "+count+(max?("/"+max):"");
+    // flash banner
+    var b=document.getElementById("vbanner");
+    if(!b){ b=document.createElement("div"); b.id="vbanner";
+      b.style.cssText="position:fixed;left:12px;right:12px;top:40px;z-index:61;background:#fff;border:2px solid #b91c1c;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px -10px rgba(0,0,0,.4);text-align:center;font-size:.9rem;color:#991b1b;font-weight:700";
+      document.body.appendChild(b); }
+    b.innerHTML = reached
+      ? "⚠ Aapne test ke niyam tode — test ab submit ho raha hai."
+      : ("⚠ Warning: test se bahar mat jao! ("+count+(max?("/"+max):"")+")"+(strict&&max?("<div style='font-size:.78rem;font-weight:600;margin-top:3px'>"+(max-count)+" aur baar par test apne aap submit ho jaayega.</div>"):""));
+    b.style.display="block";
+    if(b._t) clearTimeout(b._t);
+    b._t=setTimeout(function(){ if(b) b.style.display="none"; },4000);
+  }
+
   // ---------- submit ----------
   function subBtns(){ return Array.prototype.slice.call(document.querySelectorAll(".js-sub")); }
   function doSubmit(auto){
@@ -423,11 +523,15 @@
     SUBMITTED=true; sheet(false);
     if(TIMER){ clearInterval(TIMER); TIMER=null; }
     if(HB){ clearInterval(HB); HB=null; } if(SAVE_T){ clearTimeout(SAVE_T); SAVE_T=null; }
+    _detachWatch();   // integrity watch band — result ke baad warning na aaye
+    try{ var _vc=document.getElementById("vchip"); if(_vc) _vc.remove(); var _vb=document.getElementById("vbanner"); if(_vb) _vb.remove(); }catch(e){}
     subBtns().forEach(function(b){ b.disabled=true; b.textContent="Submitting…"; });
     api("/exam/"+encodeURIComponent(token)+"/submit","POST",{details:window._reg,mcq_answers:ANS,auto:!!auto})
       .then(screenResult)
       .catch(function(err){ SUBMITTED=false;
         subBtns().forEach(function(b){ b.disabled=false; b.textContent=(b.id==="mbar-sub"?"Submit":"Submit Test"); });
+        if(HB){ clearInterval(HB); } if(SESS){ HB=setInterval(doSave,15000); }   // heartbeat wapas
+        if(_IGCFG && _IGCFG.monitor && !auto){ startIntegrityWatch(_IGCFG); }     // monitoring wapas (manual retry)
         updAtt();
         var e=document.getElementById("t-err"); if(e){ e.textContent=err.message||"Could not submit. Try again."; e.style.display="block"; e.scrollIntoView({behavior:"smooth",block:"center"}); } });
   }

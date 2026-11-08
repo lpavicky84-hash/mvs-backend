@@ -129,7 +129,8 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
             "exam_mode": _mode,
             "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
             "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
-            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0)}
+            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0),
+            "integrity": _integrity_cfg(ex)}
     # SCHEDULED TEST: before the start time, show only the countdown + details — never the
     # questions (so the paper can't be read early). Opens automatically at the scheduled time.
     if sched is not None:
@@ -183,7 +184,8 @@ def _get_session(db, exam_id, phone):
                     PublicExamSession.phone == phone).first())
 
 
-def _create_attempt(db, ex, name, phone, details, ans, ip=None):
+def _create_attempt(db, ex, name, phone, details, ans, ip=None,
+                    violations=0, integrity_log=None):
     """Grade answers through the central service and persist ONE PublicExamAttempt. Returns the row."""
     details = details or {}
     ans = ans or {}
@@ -202,6 +204,7 @@ def _create_attempt(db, ex, name, phone, details, ans, ip=None):
         mark_wrong=getattr(ex, "mark_wrong", 0.0),
         mark_unanswered=getattr(ex, "mark_unanswered", 0.0))
     out_of = (tot["total_possible"] if _mode == "COMPETITIVE" else (ex.total_marks or 0))
+    viol = int(violations or 0)
     row = PublicExamAttempt(
         exam_id=ex.id, name=(name or "Student")[:160], phone=phone[:20],
         email=((str(details.get("email") or "")).strip()[:160] or None),
@@ -212,6 +215,7 @@ def _create_attempt(db, ex, name, phone, details, ans, ip=None):
         mcq_answers=ans, total_awarded=tot["total_awarded"], total_marks=out_of,
         correct_count=tot["correct"], wrong_count=tot["wrong"],
         unanswered_count=tot["unanswered"], q_total=len(qs),
+        violations=viol, flagged=bool(viol > 0), integrity_log=(integrity_log or None),
         ip=((ip or "")[:50]))
     db.add(row)
     db.commit()
@@ -263,7 +267,9 @@ def _finalize_session(db, ex, sess, auto=False, ip=None):
     """Session ke saved answers se attempt bana ke session ko final mark karo
     (server-side auto-submit: time khatam / student reload pe)."""
     row = _create_attempt(db, ex, sess.name or "Student", sess.phone,
-                          (sess.details or {}), (sess.answers or {}), ip=ip)
+                          (sess.details or {}), (sess.answers or {}), ip=ip,
+                          violations=int(getattr(sess, "violations", 0) or 0),
+                          integrity_log=getattr(sess, "integrity_log", None))
     sess.submitted = True
     sess.auto_submitted = bool(auto)
     sess.updated_at = _ist_now()
@@ -273,6 +279,31 @@ def _finalize_session(db, ex, sess, auto=False, ip=None):
 
 def _client_ip(request):
     return ((request.client.host if (request and request.client) else "") or "")
+
+
+# ---------- Integrity / Secure mode (Phase 3) ----------
+# Ek app-switch / exit = EK violation (client coalesce karta hai, server seq se dedup).
+_VIOLATION_TYPES = {"VISIBILITY_HIDDEN", "WINDOW_BLUR", "FULLSCREEN_EXIT", "COPY_ATTEMPT",
+                    "PASTE_ATTEMPT", "CONTEXT_MENU_ATTEMPT", "PRINT_SHORTCUT_ATTEMPT",
+                    "PAGE_EXIT"}
+
+
+def _integrity_cfg(ex):
+    """Per-test integrity policy — server owns it. Mode se flags derive hote hain:
+    OFF = kuch nahi; STANDARD = detect + warn + flag (auto-submit NAHI);
+    STRICT = fullscreen + copy/paste/right-click block + max_violations ke baad auto-submit."""
+    mode = (getattr(ex, "integrity_mode", None) or "OFF").strip().upper()
+    if mode not in ("OFF", "STANDARD", "STRICT"):
+        mode = "OFF"
+    maxv = int(getattr(ex, "max_violations", 3) or 0)
+    if maxv < 1:
+        maxv = 3
+    strict = (mode == "STRICT")
+    on = (mode != "OFF")
+    return {"mode": mode, "monitor": on, "warn": on,
+            "require_fullscreen": strict, "max_violations": maxv,
+            "auto_submit": strict, "block_copy": strict, "block_paste": strict,
+            "block_context": strict, "block_print": strict}
 
 
 @router.post("/exam/{token}/start")
@@ -318,7 +349,9 @@ def public_start(token: str, payload: dict = Body(...), request: Request = None,
             "started_at": sess.started_at.isoformat() if sess.started_at else None,
             "expires_at": sess.expires_at.isoformat() if sess.expires_at else None,
             "server_now": now.isoformat(), "seconds_left": secs_left,
-            "duration_min": sess.duration_min, "saved_answers": (sess.answers or {})}
+            "duration_min": sess.duration_min, "saved_answers": (sess.answers or {}),
+            "integrity": _integrity_cfg(ex),
+            "violations": int(getattr(sess, "violations", 0) or 0)}
 
 
 @router.post("/exam/{token}/save")
@@ -343,6 +376,42 @@ def public_save(token: str, payload: dict = Body(...), db: Session = Depends(get
             "seconds_left": secs_left, "expired": bool(expired)}
 
 
+@router.post("/exam/{token}/event")
+def public_event(token: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Integrity event report (tab-switch, fullscreen exit, copy/paste, etc.).
+    Client ek app-switch ko EK event me coalesce karta hai; server seq se dedup karta hai
+    aur violation count badhata hai. STRICT me limit par pahunchte hi limit_reached=True
+    (client auto-submit karega). Server policy ka maalik hai."""
+    ex = _exam_by_token(db, token)
+    cfg = _integrity_cfg(ex)
+    phone = _re.sub(r"[^0-9]", "", str((payload.get("phone")) or ""))
+    sess = _get_session(db, ex.id, phone) if len(phone) >= 10 else None
+    if not sess or sess.submitted or cfg["mode"] == "OFF":
+        return {"ok": False, "violations": (int(getattr(sess, "violations", 0) or 0) if sess else 0),
+                "limit_reached": False}
+    etype = str(payload.get("type") or "").strip().upper()[:40]
+    seq = payload.get("seq")
+    now = _ist_now()
+    log = list(getattr(sess, "integrity_log", None) or [])
+    # dedup: same client seq already recorded? (network retry safety)
+    if seq is not None and any(e.get("seq") == seq for e in log[-30:]):
+        reached = (cfg["auto_submit"] and int(sess.violations or 0) >= cfg["max_violations"])
+        return {"ok": True, "violations": int(sess.violations or 0),
+                "max_violations": cfg["max_violations"], "limit_reached": bool(reached)}
+    counted = etype in _VIOLATION_TYPES
+    log.append({"type": (etype or "UNKNOWN"), "at": now.isoformat(),
+                "seq": seq, "counted": bool(counted)})
+    sess.integrity_log = log[-100:]
+    if counted:
+        sess.violations = int(sess.violations or 0) + 1
+    sess.updated_at = now
+    db.commit()
+    reached = (cfg["auto_submit"] and cfg["max_violations"] > 0
+               and int(sess.violations or 0) >= cfg["max_violations"])
+    return {"ok": True, "violations": int(sess.violations or 0),
+            "max_violations": cfg["max_violations"], "limit_reached": bool(reached)}
+
+
 @router.post("/exam/{token}/submit")
 def public_submit(token: str, payload: dict = Body(...), request: Request = None,
                   db: Session = Depends(get_db)):
@@ -365,10 +434,14 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
         return _build_result(db, ex, existing)
 
     ans = payload.get("mcq_answers") or {}
-    row = _create_attempt(db, ex, name, phone, payload.get("details") or {},
-                          ans, ip=_client_ip(request))
-    # session finalize (agar server timer use hua tha)
+    # integrity: session se violations lo (attempt me permanently store honge)
     sess = _get_session(db, ex.id, phone)
+    viol = int(getattr(sess, "violations", 0) or 0) if sess else 0
+    ilog = getattr(sess, "integrity_log", None) if sess else None
+    row = _create_attempt(db, ex, name, phone, payload.get("details") or {},
+                          ans, ip=_client_ip(request),
+                          violations=viol, integrity_log=ilog)
+    # session finalize (agar server timer use hua tha)
     if sess and not sess.submitted:
         sess.submitted = True
         sess.auto_submitted = bool(payload.get("auto"))

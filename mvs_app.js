@@ -9144,7 +9144,8 @@ async function openAPublicTest(id){
   const head='<tr><th>Name</th><th>Phone</th><th>Email</th><th>Class/Course</th><th>City</th><th>NIOS Ref</th>'+cc.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th>Score</th><th>Correct</th><th>Submitted</th></tr>';
   const rows=resp.length?resp.map(r=>{
     const at=r.at?new Date(r.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-    return '<tr><td><b>'+esc(r.name||'')+'</b></td><td>'+esc(r.phone||'')+'</td><td>'+esc(r.email||'—')+'</td><td>'+esc(r.class_course||'—')+'</td><td>'+esc(r.city||'—')+'</td><td>'+esc(r.nios_ref||'—')+'</td>'
+    const fl=(r.flagged||r.violations>0)?' <span title="'+(r.violations||0)+' integrity violation(s)" style="background:rgba(185,28,28,.12);color:#b91c1c;font-size:.6rem;font-weight:800;padding:2px 6px;border-radius:999px;vertical-align:middle">⚠ '+(r.violations||0)+'</span>':'';
+    return '<tr><td><b>'+esc(r.name||'')+'</b>'+fl+'</td><td>'+esc(r.phone||'')+'</td><td>'+esc(r.email||'—')+'</td><td>'+esc(r.class_course||'—')+'</td><td>'+esc(r.city||'—')+'</td><td>'+esc(r.nios_ref||'—')+'</td>'
       +cc.map(c=>'<td>'+esc((r.extra&&r.extra[c.key])||'—')+'</td>').join('')
       +'<td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td><td>'+esc(at)+'</td></tr>';
   }).join(''):'<tr><td colspan="'+(9+cc.length)+'" style="text-align:center;color:var(--text-muted);padding:20px">No responses yet.</td></tr>';
@@ -11328,12 +11329,15 @@ function _renderShareModal(id,d){
     correct:(sc.correct!=null&&sc.correct>0?sc.correct:4),
     wrong:(sc.wrong!=null?sc.wrong:-1),
     unanswered:(sc.unanswered!=null?sc.unanswered:0)};
+  // ---- integrity state (OFF / STANDARD / STRICT) ----
+  var ig=d.integrity||{}; window._pshIntegrity={mode:(['STANDARD','STRICT'].indexOf(ig.mode)>=0?ig.mode:'OFF'),
+    max_violations:(ig.max_violations!=null&&ig.max_violations>0?ig.max_violations:3)};
   var linkBlock=(d.enabled&&link)
     ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
     : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
   var resp=(d.responses||[]);
   // TEACHER: name + score ONLY (phone/personal details admin panel me hain)
-  var rows=resp.length?resp.map(function(r){ return '<tr><td>'+esc(r.name||'')+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
+  var rows=resp.length?resp.map(function(r){ var fl=(r.flagged||r.violations>0)?' <span title="'+(r.violations||0)+' integrity violation(s) — tab/app switch ya rule break" style="background:rgba(185,28,28,.12);color:#b91c1c;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">⚠ '+(r.violations||0)+'</span>':''; return '<tr><td>'+esc(r.name||'')+fl+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
     : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:18px">No responses yet — share the link to start collecting.</td></tr>';
   var statLine=(d.enabled)?'<div class="psh-stat"><span><b>'+(d.views||0)+'</b> opened</span><span><b>'+(d.count||0)+'</b> attempted</span></div>':'';
   var html=
@@ -11345,6 +11349,8 @@ function _renderShareModal(id,d){
     +'<button class="psh-add" onclick="_pshAdd()">+ Add custom field</button></div>'
     +'<div class="psh-sc"><b>Scoring &amp; Ranking</b><div class="psh-subtle">Normal = har question apne marks. Competitive = sabhi questions ke uniform marks with negative marking (JEE-style). Rank: jyada score upar; same score pe pehle submit karne wala upar.</div>'
     +'<div id="psh-scoring">'+_pshScoringHtml()+'</div></div>'
+    +'<div class="psh-sc"><b>Integrity / Secure Mode</b><div class="psh-subtle">Off = kuch nahi. Standard = tab/app switch detect + warning + record. Strict = fullscreen + copy/paste block + set baar bahar jaane par test khud submit.</div>'
+    +'<div id="psh-integrity">'+_pshIntegrityHtml()+'</div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
     +'<div class="psh-note2">You see each student&#39;s <b>name &amp; score</b> only. Phone and all personal details are in the <b>Admin panel</b>.</div>'
@@ -11402,6 +11408,31 @@ function _pshScCollect(){
 function _pshScRender(){ var box=document.getElementById('psh-scoring'); if(box) box.innerHTML=_pshScoringHtml(); }
 window._pshSetMode=function(m){ _pshScCollect(); window._pshScoring.mode=(m==='COMPETITIVE'?'COMPETITIVE':'NORMAL'); _pshScRender(); };
 window._pshJEE=function(){ var s=_pshScCollect(); s.mode='COMPETITIVE'; s.correct=4; s.wrong=-1; s.unanswered=0; _pshScRender(); };
+function _pshIntegrityHtml(){
+  var s=window._pshIntegrity||{mode:'OFF',max_violations:3};
+  var seg='<div class="psh-seg" style="max-width:420px">'
+    +['OFF','STANDARD','STRICT'].map(function(m){ var lbl=(m==='OFF'?'Off':m==='STANDARD'?'Standard':'Strict');
+      return '<button type="button" class="psh-seg-b'+(s.mode===m?' on':'')+'" onclick="_pshSetIg(\''+m+'\')">'+lbl+'</button>'; }).join('')
+    +'</div>';
+  if(s.mode==='OFF') return seg+'<div class="psh-sc-note">Koi monitoring nahi — normal test (jaise abhi chal rahe hain).</div>';
+  var strict=(s.mode==='STRICT');
+  var body='<div class="psh-sc-note" style="background:rgba(37,99,235,.06);border-color:rgba(37,99,235,.2)">'
+    +(strict
+      ? 'Fullscreen zaroori + copy/paste/right-click band. Student jab tab/app badlega ya fullscreen chhodega to warning + record, aur limit par test <b>khud submit</b>.'
+      : 'Student jab tab/app badlega ya minimize karega to warning aayegi aur record teacher/admin ko dikhega. Auto-submit nahi.')+'</div>';
+  if(strict){
+    body+='<div class="psh-sc-row"><label style="font-size:.82rem;font-weight:700;color:var(--text-muted)">Kitne violations ke baad auto-submit:</label>'
+      +'<input type="number" min="1" max="20" id="psh-ig-max" value="'+esc(String(s.max_violations))+'" style="width:72px;border:1.5px solid var(--border);border-radius:9px;padding:7px 10px;font-size:1rem;font-weight:800;text-align:center;background:var(--card,#fff);color:var(--text)"></div>';
+  }
+  return seg+body;
+}
+function _pshIgCollect(){
+  var s=window._pshIntegrity||(window._pshIntegrity={mode:'OFF',max_violations:3});
+  var mx=document.getElementById('psh-ig-max'); if(mx&&mx.value!=='') s.max_violations=Math.max(1,Math.min(20,parseInt(mx.value)||3));
+  return s;
+}
+function _pshIgRender(){ var box=document.getElementById('psh-integrity'); if(box) box.innerHTML=_pshIntegrityHtml(); }
+window._pshSetIg=function(m){ _pshIgCollect(); window._pshIntegrity.mode=(['STANDARD','STRICT'].indexOf(m)>=0?m:'OFF'); _pshIgRender(); };
 function _pshRenderFields(){ var box=document.getElementById('psh-fields'); if(box) box.innerHTML=_pshFieldsHtml(); }
 window._pshReaRender=function(){ _pshCollect(); _pshRenderFields(); };
 window._pshRemove=function(i){ _pshCollect(); (window._pshF||[]).splice(i,1); _pshRenderFields(); };
@@ -11420,7 +11451,9 @@ async function _examShareSave(id){
   });
   var scoring=null;
   try{ var s=_pshScCollect(); scoring={mode:(s.mode==='COMPETITIVE'?'COMPETITIVE':'NORMAL'),correct:s.correct,wrong:s.wrong,unanswered:s.unanswered}; }catch(e){}
-  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring}); toast(enabled?'Public link saved':'Public link turned OFF');
+  var integrity=null;
+  try{ var g=_pshIgCollect(); integrity={mode:g.mode,max_violations:g.max_violations}; }catch(e){}
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring,integrity:integrity}); toast(enabled?'Public link saved':'Public link turned OFF');
     try{ if(window._aTestsRows){ var _r=window._aTestsRows.find(function(x){return x.id===id;}); if(_r)_r.public_enabled=enabled; } }catch(e){}
     examShareModal(id);
     try{ loadTTests(); }catch(e){}   // list ka Share Link button turant ON/OFF rang update

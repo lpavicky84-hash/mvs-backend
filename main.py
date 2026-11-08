@@ -336,6 +336,15 @@ def ensure_columns():
         "ALTER TABLE exams ADD COLUMN mark_unanswered FLOAT DEFAULT 0.0",
         "ALTER TABLE public_exam_attempts ADD COLUMN wrong_count INTEGER DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN unanswered_count INTEGER DEFAULT 0",
+        # Integrity / Secure mode (Phase 3). Default OFF = koi monitoring nahi, purane tests same.
+        "ALTER TABLE exams ADD COLUMN integrity_mode VARCHAR(16) DEFAULT 'OFF'",
+        "ALTER TABLE exams ADD COLUMN max_violations INTEGER DEFAULT 3",
+        "ALTER TABLE public_exam_attempts ADD COLUMN violations INTEGER DEFAULT 0",
+        "ALTER TABLE public_exam_attempts ADD COLUMN flagged BOOLEAN DEFAULT 0",
+        "ALTER TABLE public_exam_attempts ADD COLUMN integrity_log JSON",
+        # public_exam_sessions table Phase 2 me ban chuka ho sakta hai -> naye columns ALTER se
+        "ALTER TABLE public_exam_sessions ADD COLUMN violations INTEGER DEFAULT 0",
+        "ALTER TABLE public_exam_sessions ADD COLUMN integrity_log JSON",
     ]
     for s in stmts:
         try:

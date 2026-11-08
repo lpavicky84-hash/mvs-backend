@@ -5188,6 +5188,18 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
             ex.mark_correct = mc
             ex.mark_wrong = _num(sc.get("wrong"), -1.0)       # negative allowed (penalty)
             ex.mark_unanswered = _num(sc.get("unanswered"), 0.0)
+    # ---- Integrity / Secure mode (Phase 3) ----
+    ig = payload.get("integrity")
+    if isinstance(ig, dict):
+        m = str(ig.get("mode") or "OFF").strip().upper()
+        if m not in ("OFF", "STANDARD", "STRICT"):
+            m = "OFF"
+        ex.integrity_mode = m
+        try:
+            mv = int(ig.get("max_violations"))
+        except Exception:
+            mv = 3
+        ex.max_violations = min(20, max(1, mv))
     db.commit()
     return {"ok": True, "enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
@@ -5195,7 +5207,9 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
             "scoring": {"mode": (ex.exam_mode or "NORMAL"),
                         "correct": float(ex.mark_correct or 0),
                         "wrong": float(ex.mark_wrong or 0),
-                        "unanswered": float(ex.mark_unanswered or 0)}}
+                        "unanswered": float(ex.mark_unanswered or 0)},
+            "integrity": {"mode": (getattr(ex, "integrity_mode", None) or "OFF"),
+                          "max_violations": int(getattr(ex, "max_violations", 3) or 3)}}
 
 
 @router.get("/exam/{exam_id}/public-responses")
@@ -5219,11 +5233,15 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
                         "correct": float(getattr(ex, "mark_correct", 1.0) or 0),
                         "wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
                         "unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0)},
+            "integrity": {"mode": (getattr(ex, "integrity_mode", None) or "OFF"),
+                          "max_violations": int(getattr(ex, "max_violations", 3) or 3)},
             "total_marks": (ex.total_marks or 0), "count": len(rows),
             # name + score ONLY — no personal details for the teacher
             "responses": [{"id": r.id, "name": r.name,
                            "score": r.total_awarded, "total": r.total_marks,
                            "correct": r.correct_count, "q_total": r.q_total,
+                           "violations": int(getattr(r, "violations", 0) or 0),
+                           "flagged": bool(getattr(r, "flagged", False)),
                            "at": (r.created_at.isoformat() if r.created_at else None)} for r in rows]}
 
 
