@@ -22952,9 +22952,10 @@ function _plStart(id){
 }
 function _plDurLeft(ex){
   if(!ex.duration_min)return null;
+  if(window._plDeadline!=null) return window._plDeadline-Date.now();   // server-authoritative (Phase 6)
   const sch=spSchedOf(ex);
   if(sch) return sch.getTime()+ex.duration_min*60000-Date.now();   // fixed window end
-  return _plStart(ex.id)+ex.duration_min*60000-Date.now();
+  return _plStart(ex.id)+ex.duration_min*60000-Date.now();         // fallback: localStorage
 }
 async function openExamPlayer(id){
   navPushView('player');
@@ -22971,7 +22972,18 @@ async function openExamPlayer(id){
     if(_gsch&&_gsch.getTime()>Date.now()){ el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(ex.title||'Test')}</div></div><div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('clock')}</div><p><b>This test is scheduled</b></p><small>Start time: ${spSchedFmt(_gsch)} — a live countdown is running on the Tests page.</small></div></div></div>`; return; }
     const _gend=_gsch?(_gsch.getTime()+(ex.duration_min||60)*60000):null;
     if(_gend&&Date.now()>_gend){ _expiredView(el,ex,id); return; }
-    _plStart(id);
+    // Phase 6: server-authoritative timer. Reload/incognito/dusre device pe time reset nahi hota.
+    window._plDeadline=null; window._plAutoDone=false; window._plSessionOn=false; window._plSubmitting=false;
+    if(window._plSaveT){ clearTimeout(window._plSaveT); window._plSaveT=null; }
+    try{
+      const st=await api('/api/student/exam/'+id+'/start','POST',{});
+      if(st&&st.already_submitted){ openExamResult(id); return; }
+      if(st){
+        window._plSessionOn=true;
+        if(st.seconds_left!=null) window._plDeadline=Date.now()+st.seconds_left*1000;
+        if(st.saved_answers&&typeof st.saved_answers==='object') _plAns=Object.assign({}, st.saved_answers);
+      }
+    }catch(e){ _plStart(id); }   // fallback: purana localStorage client timer — test kabhi block na ho
     if(ex.medium==='Bilingual'){ _plMediumScreen(id); }
     else { _plMed=(ex.medium==='Hindi')?'hi':'en'; await _plRender(id); }
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -23101,6 +23113,7 @@ function _plPal(){
   });
   const sa=document.getElementById('pls-a'); if(sa) sa.textContent=a;
   const ma=document.getElementById('pls-ma'); if(ma) ma.textContent=a;
+  _plSaveSoon();   // Phase 6: answer change -> server pe autosave
 }
 // mobile palette bottom-sheet + jump + current-highlight (NTA feel)
 function _plSheet(open){ const s=document.getElementById('pls-side'), ov=document.getElementById('pls-ov'); if(s) s.classList.toggle('open',!!open); if(ov) ov.classList.toggle('open',!!open); }
@@ -23200,9 +23213,43 @@ function _plTimerStart(ex){
     t.innerHTML=`${ic('clock')} <b>${h}:${m}:${ss}</b>`;
     t.classList.toggle('over',over);
     t.classList.toggle('warn',warn);
-    t.title=over?'Time over — please submit now':(warn?'Less than 5 minutes left!':'Time remaining');
+    t.title=over?'Time over — submitting…':(warn?'Less than 5 minutes left!':'Time remaining');
+    if(over && !window._plAutoDone && !window._plSubmitting){   // time khatam -> auto-submit
+      window._plAutoDone=true; clearInterval(_plTimerI); _plTimerI=null; _plAutoSubmit(ex.id);
+    }
   };
   tick(); _plTimerI=setInterval(tick,1000);
+}
+// ---- autosave (MCQ answers server pe, refresh pe wapas) + heartbeat ----
+function _plSaveSoon(){
+  if(!window._plSessionOn) return;
+  if(window._plSaveT) clearTimeout(window._plSaveT);
+  window._plSaveT=setTimeout(_plSaveNow,1500);
+}
+function _plSaveNow(){
+  const ex=window._curExam;
+  if(!ex||ex.test_type!=='mcq'||!window._plSessionOn||window._plSubmitting) return;
+  const ans={};
+  for(const q of ex.questions){ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); const v=(s?s.value:_plAns[q.q_no]); if(v!=null&&v!=='')ans[q.q_no]=v; }
+  api('/api/student/exam/'+ex.id+'/save','POST',{mcq_answers:ans})
+    .then(d=>{ if(!d)return; if(d.seconds_left!=null&&window._plDeadline!=null) window._plDeadline=Date.now()+d.seconds_left*1000;
+      if(d.expired&&!window._plAutoDone&&!window._plSubmitting){ window._plAutoDone=true; _plAutoSubmit(ex.id); } })
+    .catch(()=>{});   // network hiccup -> local timer chalta rahe
+}
+// ---- time khatam: MCQ auto-submit (jo answer tab tak the) ----
+async function _plAutoSubmit(id){
+  const ex=window._curExam; if(!ex||window._plSubmitting) return;
+  if(ex.test_type==='mcq'){
+    window._plSubmitting=true;
+    _plRev={}; const ans={}; const attempted=[], skipped=[];
+    ex.questions.forEach(q=>{ const s=document.querySelector('input[name="pl-'+q.q_no+'"]:checked'); const v=(s?s.value:_plAns[q.q_no]);
+      if(v!=null&&v!==''){ _plAns[q.q_no]=v; ans[q.q_no]=v; _plRev[q.q_no]=true; attempted.push(q.q_no); } else { skipped.push(q.q_no); } });
+    try{ toast('Time is up — submitting your test automatically.'); }catch(e){}
+    return _plSubmitSend(id,{mcq_answers:ans,attempted,skipped});
+  }
+  // subjective: file ke bina submit nahi ho sakta. File hai to submit, warna upload ka prompt.
+  if(window._examFile){ window._plSubmitting=true; return _plSubmit(id); }
+  try{ toast('Time is up. Please upload and submit your answer sheet now.',true); }catch(e){}
 }
 /* ---- review & submit (attempted / not-answered marking) ---- */
 function _plReview(id){
@@ -23314,6 +23361,8 @@ function _plXhrSubmit(id, body, onprog){
 }
 async function _plSubmitSend(id, body){
   const ex=window._curExam;
+  window._plSubmitting=true;   // Phase 6: autosave/auto-submit se collision na ho
+  if(window._plSaveT){ clearTimeout(window._plSaveT); window._plSaveT=null; }
   window._plRetryBody=body; window._plRetryId=id;   // keep answers safe for a retry
   const el=document.getElementById('s-tests-content');
   if(!document.getElementById('pl-prog-fill')) _plProgUI(id,'Uploading your answer sheet\u2026',15);
@@ -23333,6 +23382,8 @@ async function _plSubmitSend(id, body){
   }
   _plProgSet(100);
   if(_plTimerI){ clearInterval(_plTimerI); _plTimerI=null; }
+  if(window._plSaveT){ clearTimeout(window._plSaveT); window._plSaveT=null; }
+  window._plSessionOn=false;
   window._plRetryBody=null; window._examPlayerOpen=false;
   let attM=0,skM=0;
   if(!ex.has_qpdf){ ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; }); }

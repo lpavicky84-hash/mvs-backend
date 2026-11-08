@@ -1090,6 +1090,24 @@ class ExamAttempt(Base):
     reupload_allowed = Column(Boolean, default=False)   # teacher ne is single student ko dubara upload allow kiya
     reupload_remark  = Column(Text, nullable=True)      # teacher ka reason — student ko test + notification me dikhta hai
 
+class ExamSession(Base):
+    """Server-authoritative timer for a PORTAL (logged-in student) test (Phase 6).
+    Non-scheduled test ka timer ab server se — reload/incognito/dusre device pe reset nahi hota;
+    time khatam hone par auto-submit. Ek (exam_id, student_id) ka ek session.
+    Scheduled test ke liye expires_at = global window end (scheduled_at + duration)."""
+    __tablename__ = "exam_sessions"
+    id            = Column(Integer, primary_key=True)
+    exam_id       = Column(Integer, index=True)
+    student_id    = Column(Integer, index=True)
+    started_at    = Column(DateTime)                 # server IST wall-clock jab student ne test khola
+    expires_at    = Column(DateTime, nullable=True)  # deadline (NULL = untimed)
+    duration_min  = Column(Integer, default=0)       # start ke waqt ka snapshot
+    answers       = Column(JSON, nullable=True)      # autosave: q_no -> selected option (refresh pe wapas)
+    submitted     = Column(Boolean, default=False)
+    created_at    = Column(DateTime, default=func.now())
+    updated_at    = Column(DateTime, default=func.now())
+
+
 class ExamResult(Base):
     __tablename__ = "exam_results"
     id          = Column(Integer, primary_key=True)

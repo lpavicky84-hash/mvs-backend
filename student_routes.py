@@ -12,7 +12,7 @@ from models import (
     User, StudentProfile, TeacherProfile, ClassEntry, ClassStatus,
     DPP, DPPSubmission, Test, TestSubmission, TestStatus,
     SubmissionStatus, Doubt, DoubtStatus, Notification, Timetable
-    , Exam, ExamQuestion, ExamAttempt, ExamResult, ist_iso, ist_now, ist_today
+    , Exam, ExamQuestion, ExamAttempt, ExamResult, ExamSession, ist_iso, ist_now, ist_today
 )
 from schemas import (
 
@@ -2916,6 +2916,75 @@ def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=D
             "reupload_remark": (getattr(att, "reupload_remark", None) if att else None),
             "already_submitted": bool(att and att.status == "graded") and not _reup}
 
+def _exam_session(db, exam_id, student_id):
+    return (db.query(ExamSession)
+            .filter(ExamSession.exam_id == exam_id, ExamSession.student_id == student_id).first())
+
+
+@router.post("/exam/{exam_id}/start")
+def student_exam_start(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Server-authoritative START (Phase 6). Non-scheduled test ka timer server se chalta hai —
+    reload/incognito/dusre device pe reset nahi hota. Scheduled test ka deadline global window end
+    (scheduled_at + duration). Resume par wahi bacha hua time + saved answers."""
+    _ensure_exam_columns(db)
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    # already submitted? (graded attempt, re-upload nahi) -> result dikhao
+    graded = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id,
+                                          ExamAttempt.student_id == sp.id,
+                                          ExamAttempt.status == "graded").first()
+    _reup = bool(getattr(graded, "reupload_allowed", False)) if graded else False
+    if graded and not _reup:
+        return {"already_submitted": True}
+    now = ist_now()
+    dur = int(ex.duration_min or 0)
+    sched = getattr(ex, "scheduled_at", None)
+    sess = _exam_session(db, exam_id, sp.id)
+    if sess is None:
+        sess = ExamSession(exam_id=exam_id, student_id=sp.id, started_at=now, duration_min=dur,
+                           expires_at=((sched + timedelta(minutes=dur)) if sched is not None
+                                       else ((now + timedelta(minutes=dur)) if dur else None)),
+                           answers={}, submitted=False)
+        db.add(sess)
+        db.commit()
+        db.refresh(sess)
+    if sched is not None:
+        # scheduled test: deadline hamesha global window end (resume par bhi), per-student nahi
+        sess.expires_at = (sched + timedelta(minutes=dur)) if dur else None
+        db.commit()
+    exp = sess.expires_at
+    secs_left = (max(0, int((exp - now).total_seconds())) if exp is not None else None)
+    return {"already_submitted": False, "scheduled": (sched is not None),
+            "server_now": now.isoformat(),
+            "expires_at": (exp.isoformat() if exp else None),
+            "seconds_left": secs_left, "duration_min": dur,
+            "saved_answers": (sess.answers or {})}
+
+
+@router.post("/exam/{exam_id}/save")
+def student_exam_save(exam_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                      current_user=Depends(get_student)):
+    """Autosave MCQ answers + heartbeat (Phase 6). Refresh par answers wapas; server se bacha hua
+    time + expired flag. Ek hi writer (student) -> last-write-wins safe."""
+    sp = get_student_profile(current_user, db)
+    now = ist_now()
+    sess = _exam_session(db, exam_id, sp.id)
+    if not sess or sess.submitted:
+        return {"ok": False, "server_now": now.isoformat()}
+    ans = payload.get("mcq_answers")
+    if isinstance(ans, dict):
+        sess.answers = ans
+        sess.updated_at = now
+        db.commit()
+    exp = sess.expires_at
+    secs_left = (max(0, int((exp - now).total_seconds())) if exp is not None else None)
+    expired = (exp is not None and now >= exp)
+    return {"ok": True, "server_now": now.isoformat(),
+            "seconds_left": secs_left, "expired": bool(expired)}
+
+
 @router.post("/exam/{exam_id}/submit")
 def student_submit_exam(exam_id: int, payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_student)):
     _ensure_exam_columns(db)
@@ -2941,6 +3010,14 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
                       attempted=(payload.get("attempted") if isinstance(payload.get("attempted"), list) else None),
                       skipped=(payload.get("skipped") if isinstance(payload.get("skipped"), list) else None))
     db.add(att); db.flush()
+    # Phase 6: server timer session ko final mark karo (resume band) — ye commit submit ke saath persist hota hai
+    try:
+        _sess = _exam_session(db, exam_id, sp.id)
+        if _sess and not _sess.submitted:
+            _sess.submitted = True
+            _sess.updated_at = ist_now()
+    except Exception:
+        pass
     if not _reup:   # re-upload par dobara XP nahi (farming se bachao)
         try:
             _award_xp(db, sp.id, _XP_TEST, "test", "Attempted test: %s" % (ex.title or ex.subject or ""))
