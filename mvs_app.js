@@ -11332,6 +11332,8 @@ function _renderShareModal(id,d){
   // ---- integrity state (OFF / STANDARD / STRICT) ----
   var ig=d.integrity||{}; window._pshIntegrity={mode:(['STANDARD','STRICT'].indexOf(ig.mode)>=0?ig.mode:'OFF'),
     max_violations:(ig.max_violations!=null&&ig.max_violations>0?ig.max_violations:3)};
+  // ---- randomization state ----
+  var rnd=d.randomize||{}; window._pshRandomize={questions:!!rnd.questions,options:!!rnd.options};
   var linkBlock=(d.enabled&&link)
     ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
     : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
@@ -11351,6 +11353,10 @@ function _renderShareModal(id,d){
     +'<div id="psh-scoring">'+_pshScoringHtml()+'</div></div>'
     +'<div class="psh-sc"><b>Integrity / Secure Mode</b><div class="psh-subtle">Off = kuch nahi. Standard = tab/app switch detect + warning + record. Strict = fullscreen + copy/paste block + set baar bahar jaane par test khud submit.</div>'
     +'<div id="psh-integrity">'+_pshIntegrityHtml()+'</div></div>'
+    +'<div class="psh-sc"><b>Randomization (Shuffle)</b><div class="psh-subtle">Har student ko questions / options alag order me — paper share karke ya side-by-side nakal mushkil. (Marks pe koi asar nahi.)</div>'
+    +'<div class="psh-rnd-row"><label class="psh-chk"><input type="checkbox" id="psh-rnd-q" '+(window._pshRandomize.questions?'checked':'')+'><span>Shuffle questions</span></label>'
+    +'<label class="psh-chk"><input type="checkbox" id="psh-rnd-o" '+(window._pshRandomize.options?'checked':'')+'><span>Shuffle options</span></label></div></div>'
+    +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Result aur answers student ko submit karte hi dikhte hain. Ranking automatic: non-scheduled test me turant &amp; live; scheduled test me time khatam hone par apne aap reveal. (Koi manual setting nahi.)</div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
     +'<div class="psh-note2">You see each student&#39;s <b>name &amp; score</b> only. Phone and all personal details are in the <b>Admin panel</b>.</div>'
@@ -11453,7 +11459,9 @@ async function _examShareSave(id){
   try{ var s=_pshScCollect(); scoring={mode:(s.mode==='COMPETITIVE'?'COMPETITIVE':'NORMAL'),correct:s.correct,wrong:s.wrong,unanswered:s.unanswered}; }catch(e){}
   var integrity=null;
   try{ var g=_pshIgCollect(); integrity={mode:g.mode,max_violations:g.max_violations}; }catch(e){}
-  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring,integrity:integrity}); toast(enabled?'Public link saved':'Public link turned OFF');
+  var randomize=null;
+  try{ var rq=document.getElementById('psh-rnd-q'), ro=document.getElementById('psh-rnd-o'); randomize={questions:!!(rq&&rq.checked),options:!!(ro&&ro.checked)}; }catch(e){}
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring,integrity:integrity,randomize:randomize}); toast(enabled?'Public link saved':'Public link turned OFF');
     try{ if(window._aTestsRows){ var _r=window._aTestsRows.find(function(x){return x.id===id;}); if(_r)_r.public_enabled=enabled; } }catch(e){}
     examShareModal(id);
     try{ loadTTests(); }catch(e){}   // list ka Share Link button turant ON/OFF rang update
@@ -11524,7 +11532,8 @@ function _pshCss(){ if(document.getElementById('psh-css')) return; var s=documen
   '.psh-sc-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:11px}',
   '.psh-preset{border:1.5px solid rgba(184,148,31,.5);background:rgba(184,148,31,.08);color:#9a7b19;border-radius:999px;padding:8px 15px;font-weight:800;font-size:.82rem;cursor:pointer;white-space:nowrap}',
   '.psh-preset:hover{background:rgba(184,148,31,.16)}',
-  '.psh-sc-hint{font-size:.76rem;color:var(--text-muted);flex:1;min-width:180px}'
+  '.psh-sc-hint{font-size:.76rem;color:var(--text-muted);flex:1;min-width:180px}',
+  '.psh-rnd-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}'
 ].join(''); document.head.appendChild(s); }
 async function viewExamAttempts(id){
   try{

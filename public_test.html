@@ -176,6 +176,33 @@
   var EX=null, ANS={}, MED="en", HASHI=false, STARTMS=0, TIMER=null, SUBMITTED=false;
   // Phase 2 — server-authoritative timer: timer server ke expires_at se chalta hai (reload pe reset nahi).
   var STARTED=false, SESS=null, DEADLINE=null, SAVE_T=null, HB=null;
+  var _RANDOMIZED=false;   // Phase 4 — randomization sirf ek baar apply ho
+
+  // ---------- randomization (Phase 4): per-student deterministic shuffle ----------
+  function _hash32(s){ var h=2166136261>>>0; for(var i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
+  function _mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; var t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+  function _seededShuffle(arr, seedStr){ var rnd=_mulberry32(_hash32(seedStr)); for(var i=arr.length-1;i>0;i--){ var j=Math.floor(rnd()*(i+1)); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+  // seed = phone + exam id -> same student ko reload pe SAME order (stable), alag students ko alag.
+  // answers q_no se store hote hain + grading text se, isliye order change grading ko affect nahi karta.
+  function _applyRandomization(cfg){
+    if(_RANDOMIZED || !cfg) return;
+    var doQ=!!cfg.randomize_questions, doO=!!cfg.randomize_options;
+    if(!doQ && !doO) return;
+    var base=((window._reg&&window._reg.phone)||"")+":"+(EX.id||"");
+    if(doO){
+      (EX.questions||[]).forEach(function(q){
+        var opts=q.options||[]; if(opts.length<2) return;
+        var idx=opts.map(function(_,i){ return i; });
+        _seededShuffle(idx, base+":o"+q.q_no);
+        q.options=idx.map(function(i){ return opts[i]; });
+        if(Array.isArray(q.options_hi) && q.options_hi.length===opts.length){
+          var oh=q.options_hi; q.options_hi=idx.map(function(i){ return oh[i]; });   // bilingual lockstep
+        }
+      });
+    }
+    if(doQ){ _seededShuffle(EX.questions||[], base+":q"); }
+    _RANDOMIZED=true;
+  }
 
   // premium: asli MVS logo (public /api/student/logo); na mile to gold 'MVS' box
   (function(){ var im=document.getElementById("lg-img"), sv=document.querySelector("#lg-wrap .lg-svg");
@@ -234,7 +261,7 @@
       negNote='<div style="background:linear-gradient(135deg,#fff6e0,#ffedc7);border:1.5px solid #e2b458;border-radius:12px;padding:12px 14px;margin-bottom:14px">'
         +'<div style="font-weight:900;color:#8a6a12;font-size:.92rem">⚡ Competitive Test · Marking Scheme</div>'
         +'<div style="font-size:.84rem;color:#6b5a28;margin-top:5px;font-weight:700">Correct: <b>+'+_mc+'</b> &nbsp;·&nbsp; Wrong: <b>'+_mw+'</b> &nbsp;·&nbsp; Unanswered: <b>'+_mu+'</b></div>'
-        +((_mw<0)?'<div style="font-size:.78rem;color:#b45309;margin-top:5px;font-weight:600">⚠ Negative marking hai — galat answer pe marks katenge. Sure na ho to skip karna behtar.</div>':'')
+        +((_mw<0)?'<div style="font-size:.78rem;color:#b45309;margin-top:5px;font-weight:600">⚠ Negative marking applies — marks will be deducted for a wrong answer. If unsure, it is better to skip.</div>':'')
         +'</div>';
     }
     APP.innerHTML=
@@ -293,21 +320,21 @@
     var ig=_ig(); var strict=(ig.mode==="STRICT");
     var fsOK=_fsSupported();
     var rules=[];
-    rules.push("Test khulne ke baad ismein hi raho — tab/app badalna ya minimize karna <b>record</b> hoga.");
-    if(strict && fsOK) rules.push("Test <b>fullscreen</b> me chalega. Fullscreen band karoge to warning milegi.");
-    if(ig.block_copy||ig.block_paste) rules.push("Copy / paste band hai.");
-    if(ig.block_context) rules.push("Right-click band hai.");
-    if(strict) rules.push("<b>"+(ig.max_violations||3)+"</b> baar bahar jaane par test apne aap submit ho jaayega.");
-    else rules.push("Har baar bahar jaane par warning aayegi aur record teacher ko dikhega.");
-    var noFS=(strict && !fsOK)?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.3);border-radius:10px;padding:10px 12px;font-size:.82rem;color:#b45309;margin-top:10px">Is device par fullscreen available nahi hai — phir bhi tab/app switching monitor hogi.</div>':"";
+    rules.push("Stay on this test once it opens — switching tabs/apps or minimising will be <b>recorded</b>.");
+    if(strict && fsOK) rules.push("The test runs in <b>fullscreen</b>. Exiting fullscreen will trigger a warning.");
+    if(ig.block_copy||ig.block_paste) rules.push("Copy / paste is disabled.");
+    if(ig.block_context) rules.push("Right-click is disabled.");
+    if(strict) rules.push("Leaving the test <b>"+(ig.max_violations||3)+"</b> time(s) will submit it automatically.");
+    else rules.push("Each time you leave the test, you'll get a warning and it will be recorded for the teacher.");
+    var noFS=(strict && !fsOK)?'<div style="background:rgba(180,83,9,.08);border:1px solid rgba(180,83,9,.3);border-radius:10px;padding:10px 12px;font-size:.82rem;color:#b45309;margin-top:10px">Fullscreen is not available on this device — tab/app switching will still be monitored.</div>':"";
     var btnLabel=(strict&&fsOK)?"Enter Fullscreen & Start":"Start Test";
     APP.innerHTML=
       '<div class="narrow"><div class="card">'
       +'<div style="display:flex;align-items:center;gap:9px"><span style="font-size:1.5rem">🔒</span><div style="font-weight:800;font-size:1.12rem">'+(strict?"Secure Test":"Monitored Test")+'</div></div>'
-      +'<div class="lead" style="margin:6px 0 0">Shuru karne se pehle ye niyam padho:</div>'
+      +'<div class="lead" style="margin:6px 0 0">Please read these rules before you begin:</div>'
       +'<ul style="margin:12px 0 0;padding-left:20px;line-height:1.9;font-size:.9rem">'+rules.map(function(r){return "<li>"+r+"</li>";}).join("")+'</ul>'
       +noFS
-      +'<label style="display:flex;align-items:center;gap:9px;margin-top:16px;font-size:.88rem;font-weight:600;cursor:pointer"><input type="checkbox" id="sg-ok" style="width:17px;height:17px"> Main samajh gaya / gayi — niyam manunga</label>'
+      +'<label style="display:flex;align-items:center;gap:9px;margin-top:16px;font-size:.88rem;font-weight:600;cursor:pointer"><input type="checkbox" id="sg-ok" style="width:17px;height:17px"> I understand and agree to follow these rules</label>'
       +'<div class="err" id="sg-err"></div>'
       +'<button class="btn" id="sg-go" style="margin-top:16px;opacity:.6" disabled>'+btnLabel+'</button>'
       +'</div></div>';
@@ -333,6 +360,7 @@
         if(s && s.saved_answers){ ANS=s.saved_answers||{}; }               // refresh pe answers wapas
         if(s && s.seconds_left!=null){ DEADLINE=Date.now()+s.seconds_left*1000; }
         else { DEADLINE=null; }                                            // untimed test
+        _applyRandomization((s&&s.integrity)||EX.integrity);               // per-student shuffle (ek baar)
         renderTest(); startTimer(); startHeartbeat();
         if(s && s.integrity && s.integrity.monitor){ _vCount=(s.violations||0); startIntegrityWatch(s.integrity); }
       })
@@ -340,6 +368,7 @@
         // FALLBACK (purana behaviour): server start na chale to client timer — test kabhi block na ho
         SESS=null; STARTMS=Date.now();
         DEADLINE=(EX.duration_min?Date.now()+EX.duration_min*60000:null);
+        _applyRandomization(EX.integrity);
         renderTest(); startTimer();
       });
   }
@@ -352,7 +381,7 @@
       : '';
     var timer=EX.duration_min?'<span class="timer" id="timer"><span class="clk">⏱</span> --:--:--</span>':'';
     var N=(EX.questions||[]).length;
-    var palNums=(EX.questions||[]).map(function(q){ var a=ANS[q.q_no]!=null; return '<button type="button" class="pn'+(a?" done":"")+'" id="pn-'+q.q_no+'" data-go="'+q.q_no+'">'+q.q_no+'</button>'; }).join("");
+    var palNums=(EX.questions||[]).map(function(q,di){ var a=ANS[q.q_no]!=null; return '<button type="button" class="pn'+(a?" done":"")+'" id="pn-'+q.q_no+'" data-go="'+q.q_no+'">'+(di+1)+'</button>'; }).join("");
     var side='<aside class="exam-side" id="exam-side">'
       +'<div class="side-h"><span>Question Palette</span><button type="button" class="side-close" id="side-close" aria-label="Close">✕</button></div>'
       +'<div class="legend"><span><i class="lg-dot done"></i>Answered</span><span><i class="lg-dot cur"></i>Current</span><span><i class="lg-dot"></i>Not answered</span></div>'
@@ -360,13 +389,14 @@
       +'<div class="side-foot"><div class="side-att"><b id="side-a">0</b> / '+N+' answered</div>'
       +'<button class="btn js-sub" id="sub-side">Submit Test</button></div>'
       +'</aside>';
-    var qs=(EX.questions||[]).map(function(q){
+    var qs=(EX.questions||[]).map(function(q,di){
+      // di+1 = DISPLAY number (shuffle hone par sequential dikhe); q.q_no internal (storage/grading)
       var opts=(q.options||[]).map(function(o,oi){
         var sel=(ANS[q.q_no]!=null && String(ANS[q.q_no])===String(o))?" sel":"";
         return '<label class="opt'+sel+'" data-q="'+q.q_no+'" data-v="'+esc(o)+'"><span class="k">'+String.fromCharCode(65+oi)+'</span><span>'+optText(q,oi)+'</span><input type="radio" name="q'+q.q_no+'"></label>';
       }).join("");
       var img=q.image_b64?'<img class="q-img" src="'+esc(q.image_b64)+'">':'';
-      return '<div class="q" id="pq-'+q.q_no+'" data-qn="'+q.q_no+'"><div class="q-h">Q'+q.q_no+'. '+qText(q)+'</div>'+img+'<div class="opts">'+opts+'</div></div>';
+      return '<div class="q" id="pq-'+q.q_no+'" data-qn="'+q.q_no+'"><div class="q-h">Q'+(di+1)+'. '+qText(q)+'</div>'+img+'<div class="opts">'+opts+'</div></div>';
     }).join("");
     APP.innerHTML=
       '<div class="tbar"><div class="tbar-row"><span class="tt">'+esc(window._reg.name)+'</span>'+medSel+timer+'</div>'
@@ -502,8 +532,8 @@
       b.style.cssText="position:fixed;left:12px;right:12px;top:40px;z-index:61;background:#fff;border:2px solid #b91c1c;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px -10px rgba(0,0,0,.4);text-align:center;font-size:.9rem;color:#991b1b;font-weight:700";
       document.body.appendChild(b); }
     b.innerHTML = reached
-      ? "⚠ Aapne test ke niyam tode — test ab submit ho raha hai."
-      : ("⚠ Warning: test se bahar mat jao! ("+count+(max?("/"+max):"")+")"+(strict&&max?("<div style='font-size:.78rem;font-weight:600;margin-top:3px'>"+(max-count)+" aur baar par test apne aap submit ho jaayega.</div>"):""));
+      ? "⚠ You have broken the test rules — the test is now being submitted."
+      : ("⚠ Warning: please do not leave the test! ("+count+(max?("/"+max):"")+")"+(strict&&max?("<div style='font-size:.78rem;font-weight:600;margin-top:3px'>Leaving "+(max-count)+" more time(s) will submit the test automatically.</div>"):""));
     b.style.display="block";
     if(b._t) clearTimeout(b._t);
     b._t=setTimeout(function(){ if(b) b.style.display="none"; },4000);
@@ -583,30 +613,53 @@
         +'</div>';
     }
     // ---- premium Top 10 leaderboard (ranked; tie -> earlier submit higher) ----
-    var lb=(r.leaderboard||[]), myRank=r.my_rank, lbHtml="";
-    if(lb.length){
-      var rows=lb.map(function(it){
-        var isMe=(myRank&&it.rank===myRank);
-        var medal=it.rank===1?"🥇":it.rank===2?"🥈":it.rank===3?"🥉":"";
-        var rankBg=it.rank<=3?"linear-gradient(145deg,#e2b458,#b8941f)":"#14213d";
-        return '<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;margin-bottom:7px;'
-          +(isMe?"background:rgba(226,180,88,.18);border:1.5px solid #e2b458":"background:#fff;border:1px solid #ece4d0")+'">'
-          +'<div style="width:36px;height:36px;flex:0 0 auto;border-radius:11px;background:'+rankBg+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:'+(medal?"1.1rem":".92rem")+'">'+(medal||it.rank)+'</div>'
-          +'<div style="flex:1;min-width:0;font-weight:800;color:#14213d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.name)+(isMe?' <span style="background:#14213d;color:#e2b458;font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:20px;vertical-align:middle;letter-spacing:.05em">YOU</span>':"")+'</div>'
-          +'<div style="font-weight:900;color:#14213d;font-variant-numeric:tabular-nums">'+it.score+'<span style="color:#9a8c66;font-weight:700;font-size:.82em">/'+it.total+'</span></div>'
-          +'</div>';
-      }).join("");
-      var myChip=(myRank?'<div style="text-align:center;margin:0 0 14px"><span style="background:rgba(20,33,61,.07);color:#14213d;font-weight:700;font-size:.86rem;padding:7px 17px;border-radius:30px">Your rank: <b style="color:#b8941f">#'+myRank+'</b> of '+(r.total_students||lb.length)+'</span></div>':"");
-      lbHtml='<div class="card" style="margin-top:14px;padding:18px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:13px"><span style="font-size:1.2rem">🏆</span><b style="color:#14213d;font-size:1.02rem">Top 10 Leaderboard</b></div>'+myChip+rows+'</div>';
-    }
     APP.innerHTML=
       '<div class="narrow"><div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
       +breakdown
       +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc(window._reg.name)+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
-      +lbHtml
+      +'<div id="lb-box">'+_lbHtml(r)+'</div>'
       +rev
       +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div></div>';
     H1.textContent="Your Result"; HM.innerHTML="";
+    _startLbPoll();   // live ranking (non-scheduled) + scheduled test ka auto-reveal
+  }
+  // leaderboard / ranking card — visible ya "ranking abhi band" dono handle karta hai
+  function _lbHtml(r){
+    if(r.ranking_pending){
+      var when=r.ranking_at?_fmtSched(r.ranking_at):"";
+      return '<div class="card" style="margin-top:14px;padding:18px 16px;text-align:center;background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.18)">'
+        +'<div style="font-size:1.7rem">🏆</div>'
+        +'<b style="color:#14213d">Ranking opens after the test closes</b>'
+        +(when?'<div class="lead" style="margin:5px 0 0;font-size:.86rem">The live leaderboard will appear automatically after '+esc(when)+'.</div>':'')
+        +((r.total_students)?'<div style="margin-top:9px;font-size:.82rem;color:#5b6472">'+r.total_students+' student(s) submitted so far</div>':'')
+        +'</div>';
+    }
+    var lb=(r.leaderboard||[]), myRank=r.my_rank;
+    if(!lb.length) return '';
+    var rows=lb.map(function(it){
+      var isMe=(myRank&&it.rank===myRank);
+      var medal=it.rank===1?"🥇":it.rank===2?"🥈":it.rank===3?"🥉":"";
+      var rankBg=it.rank<=3?"linear-gradient(145deg,#e2b458,#b8941f)":"#14213d";
+      return '<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;margin-bottom:7px;'
+        +(isMe?"background:rgba(226,180,88,.18);border:1.5px solid #e2b458":"background:#fff;border:1px solid #ece4d0")+'">'
+        +'<div style="width:36px;height:36px;flex:0 0 auto;border-radius:11px;background:'+rankBg+';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:'+(medal?"1.1rem":".92rem")+'">'+(medal||it.rank)+'</div>'
+        +'<div style="flex:1;min-width:0;font-weight:800;color:#14213d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.name)+(isMe?' <span style="background:#14213d;color:#e2b458;font-size:.6rem;font-weight:800;padding:2px 8px;border-radius:20px;vertical-align:middle;letter-spacing:.05em">YOU</span>':"")+'</div>'
+        +'<div style="font-weight:900;color:#14213d;font-variant-numeric:tabular-nums">'+it.score+'<span style="color:#9a8c66;font-weight:700;font-size:.82em">/'+it.total+'</span></div>'
+        +'</div>';
+    }).join("");
+    var myChip=(myRank?'<div style="text-align:center;margin:0 0 14px"><span style="background:rgba(20,33,61,.07);color:#14213d;font-weight:700;font-size:.86rem;padding:7px 17px;border-radius:30px">Your rank: <b style="color:#b8941f">#'+myRank+'</b> of '+(r.total_students||lb.length)+'</span></div>':"");
+    return '<div class="card" style="margin-top:14px;padding:18px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:13px"><span style="font-size:1.2rem">🏆</span><b style="color:#14213d;font-size:1.02rem">Top 10 Leaderboard</b><span style="margin-left:auto;font-size:.6rem;font-weight:800;color:#1f7a52;background:rgba(46,158,107,.12);padding:2px 8px;border-radius:999px;letter-spacing:.05em">● LIVE</span></div>'+myChip+rows+'</div>';
+  }
+  // har ~20s current ranking laakar leaderboard update karo (live + scheduled auto-reveal)
+  function _startLbPoll(){
+    if(window._lbT){ clearInterval(window._lbT); }
+    var n=0;
+    window._lbT=setInterval(function(){
+      n++; if(n>45){ clearInterval(window._lbT); window._lbT=null; return; }   // ~15 min baad ruk jao
+      api("/exam/"+encodeURIComponent(token)+"/leaderboard?phone="+encodeURIComponent((window._reg&&window._reg.phone)||""),"GET")
+        .then(function(d){ var box=document.getElementById("lb-box"); if(box&&d){ box.innerHTML=_lbHtml(d); } })
+        .catch(function(){});
+    }, 20000);
   }
 
   // ---------- SCHEDULED: premium countdown + details (test opens automatically) ----------

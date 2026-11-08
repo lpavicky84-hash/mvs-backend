@@ -223,9 +223,54 @@ def _create_attempt(db, ex, name, phone, details, ans, ip=None,
     return row
 
 
+def _ranking_state(ex):
+    """Ranking kab dikhe — AUTOMATIC (koi manual nahi):
+    - Non-scheduled test -> hamesha visible (live, jaise-jaise students submit karein).
+    - Scheduled test -> tabhi visible jab submission window close ho jaaye
+      (scheduled_at + duration_min). Usse pehle ranking chhupi — fairness ke liye."""
+    sched = getattr(ex, "scheduled_at", None)
+    if sched is None:
+        return {"visible": True, "unlock_at": None, "seconds_to_unlock": 0}
+    dur = int(getattr(ex, "duration_min", 0) or 0)
+    close = sched + _td(minutes=dur)
+    now = _ist_now()
+    vis = (now >= close)
+    return {"visible": vis, "unlock_at": close,
+            "seconds_to_unlock": (0 if vis else max(0, int((close - now).total_seconds())))}
+
+
+def _leaderboard_payload(db, ex, my_phone=None, my_row=None):
+    """Current ranking state + top 10 + my_rank. Har call pe fresh compute hota hai,
+    isliye jaise-jaise students submit karein ranking live update hoti hai."""
+    rk = _ranking_state(ex)
+    if not rk["visible"]:
+        total = db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == ex.id).count()
+        return {"ranking_visible": False, "ranking_pending": True,
+                "ranking_at": (rk["unlock_at"].isoformat() if rk["unlock_at"] else None),
+                "seconds_to_ranking": rk["seconds_to_unlock"],
+                "leaderboard": [], "my_rank": None, "total_students": total}
+    ranked = _rank_rows(db, ex.id)
+    leaderboard = [{"rank": i + 1, "name": (r.name or "Student"),
+                    "score": r.total_awarded, "total": r.total_marks,
+                    "correct": r.correct_count}
+                   for i, r in enumerate(ranked[:10])]
+    my_rank = None
+    if my_row is not None:
+        my_rank = next((i + 1 for i, r in enumerate(ranked) if r.id == my_row.id), None)
+    elif my_phone:
+        mp = _re.sub(r"[^0-9]", "", str(my_phone))
+        if len(mp) >= 10:
+            my_rank = next((i + 1 for i, r in enumerate(ranked)
+                            if _re.sub(r"[^0-9]", "", str(r.phone or "")) == mp), None)
+    return {"ranking_visible": True, "ranking_pending": False, "ranking_at": None,
+            "seconds_to_ranking": 0, "leaderboard": leaderboard,
+            "my_rank": my_rank, "total_students": len(ranked)}
+
+
 def _build_result(db, ex, row):
-    """Result payload (review + leaderboard + breakdown) kisi bhi attempt row se banao.
-    Fresh submit aur idempotent re-submit dono isi se result dete hain (same shape)."""
+    """Result payload kisi bhi attempt row se banao. Score + answers HAMESHA turant dikhte hain.
+    Ranking visibility automatic (_ranking_state): non-scheduled turant live; scheduled test ka
+    time khatam (scheduled_at+duration) hone par auto reveal. Koi manual release nahi."""
     _mode = (getattr(ex, "exam_mode", None) or "NORMAL").strip().upper()
     ans = row.mcq_answers or {}
     qs = (db.query(ExamQuestion)
@@ -245,22 +290,18 @@ def _build_result(db, ex, row):
         "marks": (_rmap.get(q.q_no, {}).get("marks")),
         "status": (_rmap.get(q.q_no, {}).get("status")),
     } for q in qs]
-    ranked = _rank_rows(db, ex.id)
-    leaderboard = [{"rank": i + 1, "name": (r.name or "Student"),
-                    "score": r.total_awarded, "total": r.total_marks,
-                    "correct": r.correct_count}
-                   for i, r in enumerate(ranked[:10])]
-    my_rank = next((i + 1 for i, r in enumerate(ranked) if r.id == row.id), None)
-    return {"total_awarded": row.total_awarded, "total_marks": (row.total_marks or 0),
-            "correct": row.correct_count,
-            "wrong": int(getattr(row, "wrong_count", 0) or 0),
-            "unanswered": int(getattr(row, "unanswered_count", 0) or 0),
-            "q_total": row.q_total, "title": ex.title, "results": review,
-            "exam_mode": _mode,
-            "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
-            "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
-            "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0),
-            "leaderboard": leaderboard, "my_rank": my_rank, "total_students": len(ranked)}
+    lb = _leaderboard_payload(db, ex, my_row=row)
+    out = {"total_awarded": row.total_awarded, "total_marks": (row.total_marks or 0),
+           "correct": row.correct_count,
+           "wrong": int(getattr(row, "wrong_count", 0) or 0),
+           "unanswered": int(getattr(row, "unanswered_count", 0) or 0),
+           "q_total": row.q_total, "title": ex.title, "results": review,
+           "exam_mode": _mode,
+           "mark_correct": float(getattr(ex, "mark_correct", 1.0) or 0),
+           "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
+           "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0)}
+    out.update(lb)
+    return out
 
 
 def _finalize_session(db, ex, sess, auto=False, ip=None):
@@ -303,7 +344,10 @@ def _integrity_cfg(ex):
     return {"mode": mode, "monitor": on, "warn": on,
             "require_fullscreen": strict, "max_violations": maxv,
             "auto_submit": strict, "block_copy": strict, "block_paste": strict,
-            "block_context": strict, "block_print": strict}
+            "block_context": strict, "block_print": strict,
+            # Randomization (independent of integrity mode — OFF hone par bhi shuffle ho sakta hai)
+            "randomize_questions": bool(getattr(ex, "randomize_questions", False)),
+            "randomize_options": bool(getattr(ex, "randomize_options", False))}
 
 
 @router.post("/exam/{token}/start")
@@ -410,6 +454,14 @@ def public_event(token: str, payload: dict = Body(...), db: Session = Depends(ge
                and int(sess.violations or 0) >= cfg["max_violations"])
     return {"ok": True, "violations": int(sess.violations or 0),
             "max_violations": cfg["max_violations"], "limit_reached": bool(reached)}
+
+
+@router.get("/exam/{token}/leaderboard")
+def public_leaderboard(token: str, phone: str = "", db: Session = Depends(get_db)):
+    """Live ranking poll — result screen har ~20s ye call karke ranking refresh karti hai.
+    Scheduled test me jab tak time khatam na ho, ranking_pending True rehta hai (ranking chhupi)."""
+    ex = _exam_by_token(db, token)
+    return _leaderboard_payload(db, ex, my_phone=phone)
 
 
 @router.post("/exam/{token}/submit")

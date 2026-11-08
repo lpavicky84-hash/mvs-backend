@@ -5200,6 +5200,11 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
         except Exception:
             mv = 3
         ex.max_violations = min(20, max(1, mv))
+    # ---- Randomization (Phase 4) ----
+    rnd = payload.get("randomize")
+    if isinstance(rnd, dict):
+        ex.randomize_questions = bool(rnd.get("questions"))
+        ex.randomize_options = bool(rnd.get("options"))
     db.commit()
     return {"ok": True, "enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
@@ -5209,7 +5214,9 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
                         "wrong": float(ex.mark_wrong or 0),
                         "unanswered": float(ex.mark_unanswered or 0)},
             "integrity": {"mode": (getattr(ex, "integrity_mode", None) or "OFF"),
-                          "max_violations": int(getattr(ex, "max_violations", 3) or 3)}}
+                          "max_violations": int(getattr(ex, "max_violations", 3) or 3)},
+            "randomize": {"questions": bool(getattr(ex, "randomize_questions", False)),
+                          "options": bool(getattr(ex, "randomize_options", False))}}
 
 
 @router.get("/exam/{exam_id}/public-responses")
@@ -5235,6 +5242,8 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
                         "unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0)},
             "integrity": {"mode": (getattr(ex, "integrity_mode", None) or "OFF"),
                           "max_violations": int(getattr(ex, "max_violations", 3) or 3)},
+            "randomize": {"questions": bool(getattr(ex, "randomize_questions", False)),
+                          "options": bool(getattr(ex, "randomize_options", False))},
             "total_marks": (ex.total_marks or 0), "count": len(rows),
             # name + score ONLY — no personal details for the teacher
             "responses": [{"id": r.id, "name": r.name,

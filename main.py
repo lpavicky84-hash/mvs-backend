@@ -345,6 +345,10 @@ def ensure_columns():
         # public_exam_sessions table Phase 2 me ban chuka ho sakta hai -> naye columns ALTER se
         "ALTER TABLE public_exam_sessions ADD COLUMN violations INTEGER DEFAULT 0",
         "ALTER TABLE public_exam_sessions ADD COLUMN integrity_log JSON",
+        # Randomization (Phase 4)
+        "ALTER TABLE exams ADD COLUMN randomize_questions BOOLEAN DEFAULT 0",
+        "ALTER TABLE exams ADD COLUMN randomize_options BOOLEAN DEFAULT 0",
+        # (Phase 5 ab automatic hai — ranking visibility scheduling se tay hoti hai, koi column nahi.)
     ]
     for s in stmts:
         try:
