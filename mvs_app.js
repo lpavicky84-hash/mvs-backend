@@ -9135,6 +9135,8 @@ async function loadAPublicTests(){
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Public Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Shareable (no-login) tests · opens, attempts &amp; all collected details</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('back')} Back to Tests</button><button class="btn btn-ghost btn-sm" onclick="loadAPublicTests()">${ic('refresh')} Refresh</button></div></div>`
     +(cards?`<div class="apt-grid">${cards}</div>`:`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('link')}</div><p><b>No public tests yet</b></p><small>When a teacher turns ON a shareable link for an objective test, it appears here with full tracking.</small></div></div></div>`);
 }
+// IST-safe time format: public attempt times DB me UTC (naive) store hote hain — yaha IST me dikhao
+function _istFmt(iso){ if(!iso) return ''; try{ var s=String(iso); if(!/([zZ]|[+-]\d\d:?\d\d)$/.test(s)) s+='Z'; return new Date(s).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}); }catch(e){ return ''; } }
 async function openAPublicTest(id){
   showModal('Public Test Responses','<div style="padding:34px;text-align:center;color:var(--text-muted)">Loading…</div>','');
   let d; try{ d=await api('/api/admin/public-tests/'+id+'/responses'); }catch(e){ showModal('Public Test Responses',errHtml(e)); return; }
@@ -9143,9 +9145,13 @@ async function openAPublicTest(id){
   const resp=(d.responses||[]);
   const head='<tr><th>Name</th><th>Phone</th><th>Email</th><th>Class/Course</th><th>City</th><th>NIOS Ref</th>'+cc.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th>Score</th><th>Correct</th><th>Submitted</th></tr>';
   const rows=resp.length?resp.map(r=>{
-    const at=r.at?new Date(r.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    const at=_istFmt(r.at);
     const fl=(r.flagged||r.violations>0)?' <span title="'+(r.violations||0)+' integrity violation(s)" style="background:rgba(185,28,28,.12);color:#b91c1c;font-size:.6rem;font-weight:800;padding:2px 6px;border-radius:999px;vertical-align:middle">⚠ '+(r.violations||0)+'</span>':'';
-    return '<tr><td><b>'+esc(r.name||'')+'</b>'+fl+'</td><td>'+esc(r.phone||'')+'</td><td>'+esc(r.email||'—')+'</td><td>'+esc(r.class_course||'—')+'</td><td>'+esc(r.city||'—')+'</td><td>'+esc(r.nios_ref||'—')+'</td>'
+    const rk=r.rank||0, t3=rk>=1&&rk<=3, t10=rk>=1&&rk<=10;
+    const medal=rk===1?'#e6ad4e':rk===2?'#b9c0cc':rk===3?'#cc8a52':null;
+    const badge=t10?('<span style="display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:19px;padding:0 6px;border-radius:7px;font-size:.64rem;font-weight:800;margin-right:8px;vertical-align:middle;'+(medal?('background:'+medal+';color:#2a2000'):'background:#14213d;color:#fff')+'">'+rk+'</span>'):'';
+    const rowStyle=t3?' style="background:linear-gradient(90deg,rgba(255,248,234,.9),rgba(253,241,214,.75))"':t10?' style="background:rgba(255,250,235,.6)"':'';
+    return '<tr'+rowStyle+'><td>'+badge+'<b>'+esc(r.name||'')+'</b>'+fl+'</td><td>'+esc(r.phone||'')+'</td><td>'+esc(r.email||'—')+'</td><td>'+esc(r.class_course||'—')+'</td><td>'+esc(r.city||'—')+'</td><td>'+esc(r.nios_ref||'—')+'</td>'
       +cc.map(c=>'<td>'+esc((r.extra&&r.extra[c.key])||'—')+'</td>').join('')
       +'<td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td><td>'+esc(at)+'</td></tr>';
   }).join(''):'<tr><td colspan="'+(9+cc.length)+'" style="text-align:center;color:var(--text-muted);padding:20px">No responses yet.</td></tr>';
@@ -9179,17 +9185,24 @@ window._ptResultPdf=async function(id){
   function newPage(){ var cv=document.createElement('canvas'); cv.width=PW*S; cv.height=PH*S; var c=cv.getContext('2d'); c.scale(S,S); c.textBaseline='alphabetic'; return {cv:cv,ctx:c}; }
   function circImg(c,img,cx,cy,r){ c.save(); c.beginPath(); c.arc(cx,cy,r,0,6.3); c.closePath(); c.clip(); if(img){ var s=Math.max(2*r/img.width,2*r/img.height),w=img.width*s,h=img.height*s; c.drawImage(img,cx-w/2,cy-h/2,w,h);} else { c.fillStyle='#223a66'; c.fillRect(cx-r,cy-r,2*r,2*r); c.fillStyle=GOLD; c.font='800 '+Math.round(r*0.8)+'px '+SERIF; c.textAlign='center'; c.fillText('MVS',cx,cy+r*0.3);} c.restore(); c.lineWidth=2; c.strokeStyle=GOLD; c.beginPath(); c.arc(cx,cy,r,0,6.3); c.stroke(); }
   function ell(c,t,m){ t=String(t==null?'':t); if(c.measureText(t).width<=m) return t; while(t.length>1&&c.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; }
-  function fmtAt(iso){ if(!iso) return '—'; try{ return new Date(iso).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }catch(e){ return '—'; } }
+  function fmtAt(iso){ if(!iso) return '—'; try{ var s=String(iso); if(!/([zZ]|[+-]\d\d:?\d\d)$/.test(s)) s+='Z'; return new Date(s).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}); }catch(e){ return '—'; } }
   var X=34, CW=PW-68;
   var cols=[{k:'rank',w:62,l:'RANK',al:'c'},{k:'name',w:250,l:'NAME',al:'l'},{k:'class',w:88,l:'CLASS',al:'c'},{k:'score',w:92,l:'SCORE',al:'c'},{k:'correct',w:84,l:'CORRECT',al:'c'},{k:'at',w:CW-62-250-88-92-84,l:'SUBMITTED',al:'c'}];
   function colX(i){ var x=X; for(var j=0;j<i;j++) x+=cols[j].w; return x; }
   function header(ctx,cont){
-    var H=cont?92:162;
+    var H=cont?96:162;
     var g=ctx.createLinearGradient(0,0,PW,H); g.addColorStop(0,NAVY); g.addColorStop(.6,'#1b2d52'); g.addColorStop(1,NMID); ctx.fillStyle=g; ctx.fillRect(0,0,PW,H);
     var gl=ctx.createRadialGradient(PW-50,0,0,PW-50,0,240); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); ctx.fillStyle=gl; ctx.fillRect(PW-340,0,340,240);
+    // thin gold baseline accent
+    ctx.fillStyle=GOLD; ctx.fillRect(0,H-3,PW,3);
     circImg(ctx,logo,34+23,28+23,23);
     ctx.textAlign='left'; ctx.font='800 13px '+SANS; LS(ctx,1.3); ctx.fillStyle='#fff'; ctx.fillText('MVS ',90,44); var mw=ctx.measureText('MVS ').width; ctx.fillStyle=GOLD; ctx.fillText('FOUNDATION',90+mw,44); LS(ctx,0);
-    if(cont){ ctx.font='italic 600 20px '+SERIF; ctx.fillStyle='#fff'; ctx.fillText((d.title||'Public Test')+'  — results (contd.)',34,78); return H; }
+    if(cont){
+      // clean continuation header: title (bold sans) + a gold "results · continued" tag — no overlap
+      ctx.font='800 17px '+SANS; ctx.fillStyle='#fff'; var tt=ell(ctx,(d.title||'Public Test'),PW-300); ctx.fillText(tt,90,70); var tw=ctx.measureText(tt).width;
+      ctx.font='700 10.5px '+SANS; LS(ctx,1); ctx.fillStyle=GOLD; ctx.fillText('  ·  RESULTS (CONTINUED)',90+tw,69); LS(ctx,0);
+      return H;
+    }
     ctx.font='900 27px '+SANS; ctx.fillStyle='#fff'; ctx.fillText(ell(ctx,d.title||'Public Test',PW-220),34,98);
     ctx.font='700 12px '+SANS; LS(ctx,1.5); ctx.fillStyle=GOLD; ctx.fillText('PUBLIC TEST · RESULTS LEADERBOARD',34,120); LS(ctx,0);
     var meta=[]; if(d.subject)meta.push(d.subject); if(d.teacher_name)meta.push('By '+d.teacher_name); if(d.class_name)meta.push(d.class_name); meta.push((d.total_marks||0)+' marks'); meta.push((d.count||resp.length)+' students'); meta.push('Generated '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}));
@@ -9201,24 +9214,30 @@ window._ptResultPdf=async function(id){
     cols.forEach(function(c,i){ var cx=colX(i); ctx.textAlign=c.al==='l'?'left':'center'; var tx=c.al==='l'?cx+14:cx+c.w/2; ctx.fillText(c.l,tx,y+21); }); LS(ctx,0); ctx.textAlign='left'; return 32; }
   var ROWH=40;
   function row(ctx,y,r,alt){
-    var top3=r.rank<=3;
-    if(top3){ var bg=ctx.createLinearGradient(X,y,X+CW,y); bg.addColorStop(0,'#fff8ea'); bg.addColorStop(1,'#fcefd1'); ctx.fillStyle=bg; } else ctx.fillStyle=alt?'#faf9f5':'#ffffff';
-    RR(ctx,X,y,CW,ROWH-6,9); ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle=top3?'#ecd79a':LINE; RR(ctx,X,y,CW,ROWH-6,9); ctx.stroke();
+    var rk=r.rank||0, t3=rk>=1&&rk<=3, t10=rk>=1&&rk<=10;
+    // row background — top 3 rich gold, top 10 soft gold, rest clean
+    if(t3){ var bg=ctx.createLinearGradient(X,y,X+CW,y); bg.addColorStop(0,'#fff7e6'); bg.addColorStop(1,'#fcedcb'); ctx.fillStyle=bg; }
+    else if(t10){ ctx.fillStyle='#fffdf4'; }
+    else ctx.fillStyle=alt?'#faf9f5':'#ffffff';
+    RR(ctx,X,y,CW,ROWH-6,9); ctx.fill(); ctx.lineWidth=1; ctx.strokeStyle=t3?'#e9d191':(t10?'#efe6c9':LINE); RR(ctx,X,y,CW,ROWH-6,9); ctx.stroke();
     var midY=y+(ROWH-6)/2+4;
-    // rank badge
-    var rcx=colX(0)+cols[0].w/2, medal=r.rank===1?'★':''; var bw=26,bh=22,bx=rcx-bw/2,by=y+(ROWH-6)/2-bh/2;
-    if(top3){ var rg=ctx.createLinearGradient(bx,by,bx,by+bh); rg.addColorStop(0,GOLD); rg.addColorStop(1,GOLD2); ctx.fillStyle=rg; } else ctx.fillStyle=NAVY;
-    RR(ctx,bx,by,bw,bh,7); ctx.fill(); ctx.fillStyle=top3?'#3a2a00':'#fff'; ctx.font='900 12px '+SANS; ctx.textAlign='center'; ctx.fillText(String(r.rank),rcx,by+15);
+    // rank badge — medal colours for 1/2/3, gold-ringed navy for 4–10
+    var rcx=colX(0)+cols[0].w/2; var bw=28,bh=22,bx=rcx-bw/2,by=y+(ROWH-6)/2-bh/2;
+    var mA=rk===1?'#eab84f':rk===2?'#d7dbe3':rk===3?'#e3a97a':null, mB=rk===1?'#c8912f':rk===2?'#a7afbb':rk===3?'#c07c48':null;
+    if(t3){ var rg=ctx.createLinearGradient(bx,by,bx,by+bh); rg.addColorStop(0,mA); rg.addColorStop(1,mB); ctx.fillStyle=rg; } else ctx.fillStyle=NAVY;
+    RR(ctx,bx,by,bw,bh,7); ctx.fill();
+    if(t10&&!t3){ ctx.lineWidth=1.3; ctx.strokeStyle='rgba(230,173,78,.6)'; RR(ctx,bx,by,bw,bh,7); ctx.stroke(); }
+    ctx.fillStyle=t3?'#3a2a00':(t10?GOLD:'#fff'); ctx.font='900 12px '+SANS; ctx.textAlign='center'; ctx.fillText(String(rk),rcx,by+15);
     // name
-    ctx.textAlign='left'; ctx.fillStyle=INK; ctx.font='700 13px '+SANS; ctx.fillText(ell(ctx,r.name||'—',cols[1].w-20),colX(1)+14,midY);
+    ctx.textAlign='left'; ctx.fillStyle=INK; ctx.font=(t3?'800':'700')+' 13px '+SANS; ctx.fillText(ell(ctx,r.name||'—',cols[1].w-20),colX(1)+14,midY);
     // class
     ctx.textAlign='center'; ctx.fillStyle=MUT; ctx.font='500 12px '+SANS; ctx.fillText(ell(ctx,r.class_course||'—',cols[2].w-10),colX(2)+cols[2].w/2,midY);
     // score
-    ctx.fillStyle=NAVY; ctx.font='900 14px '+SERIF; var sc=String(r.score)+'', scx=colX(3)+cols[3].w/2; ctx.fillText(r.score+' / '+r.total,scx,midY);
+    ctx.fillStyle=NAVY; ctx.font='800 13.5px '+SANS; var scx=colX(3)+cols[3].w/2; ctx.fillText(r.score+'  /  '+r.total,scx,midY);
     // correct
     ctx.fillStyle=MUT; ctx.font='600 12px '+SANS; ctx.fillText((r.correct!=null?r.correct:'—')+(r.q_total?('/'+r.q_total):''),colX(4)+cols[4].w/2,midY);
-    // submitted
-    ctx.fillStyle=MUT; ctx.font='500 11px '+SANS; ctx.fillText(fmtAt(r.at),colX(5)+cols[5].w/2,midY);
+    // submitted (IST)
+    ctx.fillStyle=MUT; ctx.font='500 10px '+SANS; ctx.fillText(fmtAt(r.at),colX(5)+cols[5].w/2,midY);
     ctx.textAlign='left';
   }
   function footer(ctx,pg){ ctx.fillStyle=NAVY; ctx.fillRect(0,PH-40,PW,40); ctx.fillStyle='#aab6d0'; ctx.font='400 10.5px '+SANS; ctx.textAlign='left'; ctx.fillText((d.title||'Public Test')+' · Results',34,PH-15); ctx.textAlign='right'; ctx.fillText('MVS Foundation · Page '+pg,PW-34,PH-15); ctx.textAlign='left'; }
