@@ -86,6 +86,22 @@ def _ist_now():
     return _dt.utcnow() + _td(hours=5, minutes=30)
 
 
+def _window_close_at(ex):
+    """Scheduled public test ka submission window close time = scheduled_at + duration.
+    Non-scheduled ya bina-duration test ka koi window close nahi (None)."""
+    sched = getattr(ex, "scheduled_at", None)
+    dur = int(getattr(ex, "duration_min", 0) or 0)
+    if sched is None or dur <= 0:
+        return None
+    return sched + _td(minutes=dur)
+
+
+def _window_closed(ex):
+    """Scheduled test ka time (scheduled_at + duration) khatam ho gaya? (window band)."""
+    close_at = _window_close_at(ex)
+    return (close_at is not None and _ist_now() >= close_at)
+
+
 def _rank_rows(db, exam_id):
     """All attempts for an exam, ranked: highest score first; on a TIE, whoever submitted
     EARLIER ranks higher (created_at asc); id asc is the final stable tie-break."""
@@ -141,6 +157,15 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
                 meta["total_marks"] = round(qn * meta["mark_correct"], 2)
             meta.update({"not_started": True,
                          "seconds_to_start": max(0, int((sched - now).total_seconds())),
+                         "question_count": qn, "questions": []})
+            return meta
+        # WINDOW CLOSED: scheduled_at + duration ke baad test band — naye students ko paper nahi
+        close_at = _window_close_at(ex)
+        if close_at is not None and now >= close_at:
+            qn = db.query(ExamQuestion).filter(ExamQuestion.exam_id == ex.id).count()
+            if _mode == "COMPETITIVE":
+                meta["total_marks"] = round(qn * meta["mark_correct"], 2)
+            meta.update({"closed": True, "closed_at": close_at.isoformat(),
                          "question_count": qn, "questions": []})
             return meta
     qs = (db.query(ExamQuestion)
@@ -367,7 +392,16 @@ def public_start(token: str, payload: dict = Body(...), request: Request = None,
                         PublicExamAttempt.phone == phone).first())
     if existing:
         return {"already": True, "result": _build_result(db, ex, existing)}
+    close_at = _window_close_at(ex)
     now = _ist_now()
+    # SCHEDULED WINDOW CLOSED: time khatam. Jisne pehle start kiya tha (session hai) uska
+    # auto-submit karke result; naya student -> "closed" (dubara attempt nahi bana sakta).
+    if close_at is not None and now >= close_at:
+        _s = _get_session(db, ex.id, phone)
+        if _s is not None and not _s.submitted:
+            row = _finalize_session(db, ex, _s, auto=True, ip=_client_ip(request))
+            return {"already": True, "result": _build_result(db, ex, row)}
+        return {"closed": True, "closed_at": close_at.isoformat()}
     dur = int(ex.duration_min or 0)
     sess = _get_session(db, ex.id, phone)
     if sess is None:
@@ -375,7 +409,9 @@ def public_start(token: str, payload: dict = Body(...), request: Request = None,
             exam_id=ex.id, phone=phone[:20], name=name[:160],
             details=(payload.get("details") or {}),
             started_at=now, duration_min=dur,
-            expires_at=(now + _td(minutes=dur)) if dur > 0 else None,
+            # scheduled test -> deadline = global window end (late starter ko fresh time nahi)
+            expires_at=(close_at if close_at is not None
+                        else ((now + _td(minutes=dur)) if dur > 0 else None)),
             answers={}, submitted=False)
         db.add(sess)
         db.commit()
@@ -383,6 +419,10 @@ def public_start(token: str, payload: dict = Body(...), request: Request = None,
     elif sess.submitted:
         # session final ho chuka par attempt nahi mila (rare) -> dubara start block
         raise HTTPException(400, "You have already submitted this test from this number.")
+    # scheduled resume: deadline hamesha global window end
+    if close_at is not None and sess.expires_at != close_at:
+        sess.expires_at = close_at
+        db.commit()
     # time already khatam + submit nahi -> server abhi finalize kare (reopen auto-submit)
     if sess.expires_at is not None and now >= sess.expires_at:
         row = _finalize_session(db, ex, sess, auto=True, ip=_client_ip(request))
@@ -456,6 +496,22 @@ def public_event(token: str, payload: dict = Body(...), db: Session = Depends(ge
             "max_violations": cfg["max_violations"], "limit_reached": bool(reached)}
 
 
+@router.get("/exam/{token}/myresult")
+def public_myresult(token: str, phone: str = "", db: Session = Depends(get_db)):
+    """Jis phone ne submit kiya hai uska result seedha do — taaki dubara aane par student ko
+    form fill na karna pade, direct result page khule. Nahi mila to found:False."""
+    ex = _exam_by_token(db, token)
+    ph = _re.sub(r"[^0-9]", "", str(phone or ""))
+    if len(ph) < 10:
+        return {"found": False}
+    row = (db.query(PublicExamAttempt)
+           .filter(PublicExamAttempt.exam_id == ex.id,
+                   PublicExamAttempt.phone == ph).first())
+    if not row:
+        return {"found": False}
+    return {"found": True, "result": _build_result(db, ex, row)}
+
+
 @router.get("/exam/{token}/leaderboard")
 def public_leaderboard(token: str, phone: str = "", db: Session = Depends(get_db)):
     """Live ranking poll — result screen har ~20s ye call karke ranking refresh karti hai.
@@ -484,6 +540,13 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
             sess.updated_at = _ist_now()
             db.commit()
         return _build_result(db, ex, existing)
+
+    # SCHEDULED WINDOW CLOSED: jo student window ke andar start nahi hua (koi session nahi)
+    # wo ab submit na kar sake. Jisne start kiya tha (session hai) uska submit accept (wo window me tha).
+    _close_at = _window_close_at(ex)
+    if _close_at is not None and _ist_now() >= _close_at:
+        if _get_session(db, ex.id, phone) is None:
+            raise HTTPException(403, "This test is now closed.")
 
     ans = payload.get("mcq_answers") or {}
     # integrity: session se violations lo (attempt me permanently store honge)

@@ -377,7 +377,8 @@
     // SERVER START: session banao/resume karo — timer server se, reload pe reset nahi.
     api("/exam/"+encodeURIComponent(token)+"/start","POST",{details:window._reg})
       .then(function(s){
-        if(s && s.already && s.result){ screenResult(s.result); return; }   // pehle hi submit/expire ho chuka
+        if(s && s.already && s.result){ try{_saveDone(window._reg&&window._reg.phone, window._reg&&window._reg.name);}catch(e){} screenResult(s.result); return; }   // pehle hi submit/expire
+        if(s && s.closed){ STARTED=false; screenClosed(EX); return; }       // window band ho gaya
         SESS=s||null;
         if(s && s.saved_answers){ ANS=s.saved_answers||{}; }               // refresh pe answers wapas
         if(s && s.seconds_left!=null){ DEADLINE=Date.now()+s.seconds_left*1000; }
@@ -579,7 +580,7 @@
     try{ var _vc=document.getElementById("vchip"); if(_vc) _vc.remove(); var _vb=document.getElementById("vbanner"); if(_vb) _vb.remove(); }catch(e){}
     subBtns().forEach(function(b){ b.disabled=true; b.textContent="Submitting…"; });
     api("/exam/"+encodeURIComponent(token)+"/submit","POST",{details:window._reg,mcq_answers:ANS,auto:!!auto})
-      .then(screenResult)
+      .then(function(r){ try{ _saveDone(window._reg&&window._reg.phone, window._reg&&window._reg.name); }catch(e){} screenResult(r); })
       .catch(function(err){ SUBMITTED=false;
         subBtns().forEach(function(b){ b.disabled=false; b.textContent=(b.id==="mbar-sub"?"Submit":"Submit Test"); });
         if(HB){ clearInterval(HB); } if(SESS){ HB=setInterval(doSave,15000); }   // heartbeat wapas
@@ -638,7 +639,7 @@
     APP.innerHTML=
       '<div class="narrow"><div class="score"><div><div class="big">'+r.total_awarded+' / '+r.total_marks+'</div><div class="sub">'+r.correct+' of '+r.q_total+' correct</div></div><div class="ring"><div class="pct">'+pct+'%</div></div></div>'
       +breakdown
-      +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc(window._reg.name)+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
+      +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc((window._reg&&window._reg.name)||'Student')+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
       +'<div id="lb-box">'+_lbHtml(r)+'</div>'
       +rev
       +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div></div>';
@@ -733,13 +734,46 @@
     TIMER=setInterval(function(){ secs--; if(secs<=0){ openNow(); return; } paint(); },1000);
   }
 
+  // ---------- window CLOSED screen (scheduled test ka time khatam) ----------
+  function screenClosed(ex){
+    if(HM) HM.innerHTML="";
+    var whenTxt=ex.closed_at?_fmtSched(ex.closed_at):"";
+    APP.innerHTML=
+      '<div class="sch-wrap">'
+      +'<div class="card" style="padding:0;overflow:hidden;position:relative">'
+      +'<div style="height:5px;background:linear-gradient(90deg,#8a6d1f,#c8912f 50%,#8a6d1f)"></div>'
+      +'<div class="sch-hero">'
+      +'<div class="sch-emblem" style="background:linear-gradient(155deg,#3a1620,#24101a);box-shadow:0 0 0 7px rgba(176,88,70,.12),0 20px 44px -16px rgba(58,22,32,.6);border:1.5px solid rgba(226,180,88,.4)"><span>🔒</span></div>'
+      +'<div class="sch-title">This test is closed</div>'
+      +'<div class="lead" style="margin:12px auto 0;max-width:430px;font-size:clamp(.88rem,3.6vw,.96rem)">The time window for this test has ended. New responses are no longer being accepted.</div>'
+      +(whenTxt?'<div class="sch-pill" style="margin-top:16px">🗓 Closed · '+esc(whenTxt)+'</div>':'')
+      +'</div></div>'
+      +'<div class="note" style="margin-top:16px">MVS Foundation · Manish Verma Classes</div>'
+      +'</div>';
+    H1.textContent=ex.title||"Test";
+  }
+
   // ---------- boot ----------
+  function _savedPhone(){ try{ return localStorage.getItem('mvs_ph_'+token)||''; }catch(e){ return ''; } }
+  function _savedName(){ try{ return localStorage.getItem('mvs_nm_'+token)||''; }catch(e){ return ''; } }
+  function _saveDone(ph,nm){ try{ if(ph){ localStorage.setItem('mvs_ph_'+token, String(ph)); if(nm) localStorage.setItem('mvs_nm_'+token, String(nm)); } }catch(e){} }
+  function _routeOpen(ex){
+    if(ex.not_started){ screenScheduled(ex); return; }
+    if(ex.closed){ screenClosed(ex); return; }      // window khatam -> closed (naye students)
+    screenRegister();
+  }
   function fail(msg){ H1.textContent="Test unavailable"; HM.innerHTML=""; APP.innerHTML='<div class="card center" style="padding:40px 20px"><div style="font-size:2rem">🔒</div><p style="font-weight:700;margin:10px 0 4px">'+esc(msg)+'</p><div class="lead">Please check the link with MVS Foundation.</div></div>'; }
   if(!token){ fail("Invalid test link."); return; }
   api("/exam/"+encodeURIComponent(token)).then(function(ex){
     EX=ex; HASHI=hasHindi(); H1.textContent=ex.title||"Test";
-    if(ex.not_started){ screenScheduled(ex); return; }
-    screenRegister();
+    // isi browser se pehle submit kiya tha? -> seedha result, dubara form nahi
+    var savedPh=_savedPhone();
+    if(savedPh){
+      return api("/exam/"+encodeURIComponent(token)+"/myresult?phone="+encodeURIComponent(savedPh),"GET")
+        .then(function(mr){ if(mr&&mr.found&&mr.result){ if(!window._reg) window._reg={name:_savedName()||"Student",phone:savedPh}; screenResult(mr.result); } else { _routeOpen(ex); } })
+        .catch(function(){ _routeOpen(ex); });
+    }
+    _routeOpen(ex);
   }).catch(function(err){ fail(err.message||"This test link is not available."); });
 })();
 </script>
