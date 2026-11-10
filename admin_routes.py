@@ -5880,8 +5880,13 @@ def admin_notifications(db: Session = Depends(get_db), current_user=Depends(get_
     notifs = db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).limit(50).all()
+    # notif_type + link ZAROORI hain: inke bina frontend ko pata nahi chalta notification kis
+    # section ka hai -> click karne par dashboard pe atak jaata tha (teacher/student endpoints raw
+    # ORM bhejte hain isliye unme ye fields aate the aur unka redirect chalta tha). Ab admin me bhi
+    # notif_type + link + image_url bhejo -> sahi section redirect + exact record deep-link.
     return [{"id": n.id, "title": n.title, "message": n.message,
-             "is_read": n.is_read,
+             "is_read": n.is_read, "notif_type": n.notif_type,
+             "link": getattr(n, "link", None), "image_url": getattr(n, "image_url", None),
              "created_at": n.created_at.isoformat() if n.created_at else None} for n in notifs]
 
 @router.patch("/notifications/read-all")

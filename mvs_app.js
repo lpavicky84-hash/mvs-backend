@@ -1413,16 +1413,22 @@ const NOTIF_GO={
 };
 /* Fallback: agar exact type map me na ho, to type ke keywords se sahi section dhoondo —
    isse har notification click sahi jagah le jaata hai (dashboard pe atak nahi jaata). */
-function _notifResolvePage(role,type,fbPage){
+function _notifResolvePage(role,type,fbPage,hint){
   const exact=(NOTIF_GO[role]||{})[type||''];
   if(exact) return exact;
-  const t=(type||'').toLowerCase();
+  // ROOT-CAUSE FIX: server kabhi kabhi admin notifications ko BLANK notif_type ke saath bhejta hai
+  // (type='' -> koi section resolve nahi hota -> dashboard pe atak jaata tha). Isliye type ke saath
+  // notification ka TITLE (hint) bhi keyword-match me shaamil karo — title se sahi section mil jaata hai.
+  const t=((type||'')+' '+(hint||'')).toLowerCase();
   const has=w=>t.indexOf(w)>=0;
   let g='';
   if(has('complaint')) g='complaints';
-  else if(has('feedback')) g='feedback';
+  else if(has('feedback')||has('rating')) g='feedback';
+  // batch/subject change request -> Student Requests page (generic 'request' se PEHLE, warna approvals chala jaata)
+  else if(role==='admin' && (has('batch')||has('student request')||(has('subject')&&has('request'))||(has('request')&&has('change')))) g='requests';
   else if(has('doubt')) g='doubts';
-  else if(has('video')||has('task')||has('reshoot')||has('proposal')) g='vtasks';
+  else if(has('video')||has('proposal')||has('reshoot')||has('task manager')) g='vtasks';
+  else if(role==='admin' && (has('material submit')||has('material resubmit')||has('material checked')||has('material checker'))) g='matcheck';
   else if(has('reschedule')||has('class')||has('timetable')||has('slot')) g='timetable';
   else if(has('payout')||has('salary')||has('incentive')) g=(role==='admin'?'payouts':'payout');
   else if(has('attend')||has('leave')||has('punch')) g='attendance';
@@ -1431,6 +1437,7 @@ function _notifResolvePage(role,type,fbPage){
   else if(has('material')||has('note')||has('qbank')||has('syllabus')) g=(role==='student'?'materials':'qbank');
   else if(has('approval')||has('request')) g=(role==='admin'?'approvals':'timetable');
   else if(has('message')||has('broadcast')) g=(role==='admin'?'reports':'notifications');
+  else if(has('task')) g='vtasks';
   // admin ke case me section-access check — na ho to fallback page
   if(g && role==='admin'){ try{ if(!adminAllowed(g)) g=''; }catch(e){} }
   return g||fbPage||'';
@@ -1475,14 +1482,16 @@ function _notifItemClick(ev,el){
     var fb=el.getAttribute('data-nfb')||(role==='admin'?'dashboard':'notifications');
     var hasLink=el.getAttribute('data-nhas')==='1';
     var encLink=el.getAttribute('data-nlink')||'';
-    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+type+' hasLink='+hasLink+' link='+(decodeURIComponent(encLink||'')||'(none)')+' → '+(hasLink?'notifLinkOpen':'notifGo')); }catch(_){} }
-    if(hasLink) notifLinkOpen(role,id,encLink,type,fb);
-    else notifGo(role,id,type,fb);
+    var ttl=el.getAttribute('data-ntitle')||'';   // title -> blank-type notifications ka section nikalne ke liye
+    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' → '+(hasLink?'notifLinkOpen':'notifGo')); }catch(_){} }
+    if(hasLink) notifLinkOpen(role,id,encLink,type,fb,ttl);
+    else notifGo(role,id,type,fb,ttl);
   }catch(e){ try{ _notifDbg('ITEMCLICK THREW: '+((e&&e.message)||e)); }catch(_){} try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
   return false;
 }
 function _notifDbg(line){
   try{
+    if(!window._NOTIF_DEBUG) return;   // production me chup rehta hai; debug ke liye console me: window._NOTIF_DEBUG=1
     var box=document.getElementById('notif-dbg');
     if(!box){
       box=document.createElement('div'); box.id='notif-dbg';
@@ -1499,13 +1508,12 @@ function _notifDbg(line){
     box.scrollTop=box.scrollHeight;
   }catch(e){}
 }
-async function notifGo(role,nid,type,fbPage){
+async function notifGo(role,nid,type,fbPage,hint){
   // NAVIGATE PEHLE (read-call ka intezaar nahi) — warna slow/failed read navigation ko rok deta tha.
-  const page=_notifResolvePage(role,type,fbPage);
+  const page=_notifResolvePage(role,type,fbPage,hint);
   if(role==='admin'){
     var _al; try{ _al=adminAllowed(page); }catch(e){ _al='ERR:'+((e&&e.message)||e); }
-    var _me=window._adminMe;
-    _notifDbg('CLICK type='+type+' fb='+fbPage+' → resolved='+page+' | allowed='+_al+' | div='+(!!document.getElementById('a-page-'+page))+' | me='+(_me?('full='+_me.full_access+' secs='+JSON.stringify(_me.sections||[])):'NULL'));
+    _notifDbg('CLICK type='+(type||'(blank)')+' title="'+(hint||'')+'" → resolved='+page+' | allowed='+_al+' | div='+(!!document.getElementById('a-page-'+page)));
   }
   closeModal();
   if(page){
@@ -1531,7 +1539,7 @@ async function openNotifPanel(role){
   const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?list.map(n=>{
     const hasLink=!!n.link;
-    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
+    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
     const unread=!n.is_read;
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
     const isBroadcast=(n.notif_type==='admin_broadcast');
@@ -1542,7 +1550,7 @@ async function openNotifPanel(role){
     const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
     return `<div class="notif-item ${unread?'unread':''}" data-go="1" ${_da} style="${itStyle}" onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
-  var _verTop='<div style="text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.1em;color:var(--primary);background:var(--primary-50,rgba(184,148,31,.12));border-radius:8px;padding:5px;margin-bottom:10px">BUILD: notif-nav-v5 (diagnostic)</div>';
+  var _verTop='<div style="text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.1em;color:var(--primary);background:var(--primary-50,rgba(184,148,31,.12));border-radius:8px;padding:5px;margin-bottom:10px">BUILD: notif-nav-v6</div>';
   showModal(' Notifications',_verTop+html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
   // SMART: panel khulte hi sab read -> badge/count clear, bell blink band, dobara na dikhe
@@ -1562,7 +1570,7 @@ function _setBellUnread(role,on){
   const b=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   const w=b&&b.closest('.bell-wrap'); if(w) w.classList.toggle('has-unread',!!on);
 }
-async function notifLinkOpen(role,id,encLink,ntype,fbPage){
+async function notifLinkOpen(role,id,encLink,ntype,fbPage,hint){
   try{ await api(notifEp(role,'/notifications/'+id+'/read'),'PATCH'); }catch(e){}
   const link=decodeURIComponent(encLink||'');
   // track the click for the sender's notification tracker (students clicking a video link)
@@ -1639,7 +1647,7 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
     closeModal();
     // edited video ready for the teacher's review -> My Tasks, Editing Done filter, open it
     if(role==='teacher' && (ntype||'')==='video_review'){ try{ tGotoReview(tid); return; }catch(e){} }
-    const page=_notifResolvePage(role,ntype||'video_task',fbPage||'vtasks');
+    const page=_notifResolvePage(role,ntype||'video_task',fbPage||'vtasks',hint);
     if(page){
       const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
       try{ navTo(page,null); }catch(e){}
@@ -1654,7 +1662,7 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   // pehle yahan relative link window.open ho jaata tha aur user dashboard pe atak jaata tha.
   if(/^https?:\/\//i.test(link)){ if(link) window.open(link,'_blank','noopener'); openNotifPanel(role); return; }
   try{ closeModal(); }catch(e){}
-  var _fpage=_notifResolvePage(role,ntype,fbPage);
+  var _fpage=_notifResolvePage(role,ntype,fbPage,hint);
   if(_fpage){
     var _navF=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
     try{ _navF(_fpage,null); }catch(e){}
@@ -24387,10 +24395,12 @@ async function loadNotif(path,elId){
  if(ns.length===0) html+=`<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>`;
  const fbPage=role==='admin'?'dashboard':'notifications';
  ns.forEach(n=>{
-   const go=(NOTIF_GO[role]||{})[n.notif_type||''];
    const av=_notifAvHtml(n,'MVS');
+   const hasLink=!!n.link;
+   // same robust, link-aware, title-fallback handler as the bell panel (data-attrs -> _notifItemClick)
+   const _da=`data-nrole="${role}" data-nid="${n.id||0}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
    const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)} <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span></h4><small style="color:var(--text-muted);flex-shrink:0">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${_msgHtml(n.message)}</p>`;
-   html+=`<div class="doubt-card notif-click" style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'};cursor:pointer" onclick="notifGo('${role}',${n.id||0},'${esc(n.notif_type||'')}'${go?'':" ,'"+fbPage+"'"})" title="${go?'Tap to open this section':'Tap to mark as read'}">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
+   html+=`<div class="doubt-card notif-click" ${_da} style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'};cursor:pointer" onclick="_notifItemClick(event,this)" title="Tap to open">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
  });
  html+=`</div></div>`;
  el.innerHTML=html;
