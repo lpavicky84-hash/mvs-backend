@@ -12780,18 +12780,26 @@ const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:
 function aPage(page,el){
   if(!adminAllowed(page)){ toast('You do not have access to this section.',true); return; }
   navPush('admin-app',page);
-  const _pel=document.getElementById('a-page-'+page);
-  if(_pel){
-    document.querySelectorAll('#admin-app .page').forEach(p=>p.classList.remove('active'));
-    _pel.classList.add('active');
-  }
+  // nav item highlight
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
   const titles=ADMIN_PAGE_TITLES;
   _setPage(titles[page]||page);
-  document.getElementById('a-title').textContent=titles[page]||page;
+  var _ttl=document.getElementById('a-title'); if(_ttl) _ttl.textContent=titles[page]||page;
   _curLoader=function(){ _aLoadPage(page); };
+  // LOAD FIRST: bahut se admin section (requests/complaints/feedback/batches...) ka page-div
+  // LAZY banta hai (load function ke andar). Pehle activate karte the -> jab notification se
+  // seedha aao aur section pehle kabhi na khula ho, div exist hi nahi karta tha -> page switch
+  // nahi hota tha, user dashboard pe hi reh jaata tha. Ab pehle load (div ban jaata hai),
+  // phir activate.
   if(!_pgSkipLoad('admin',page)) _aLoadPage(page);   // recently-loaded -> instant, no reload
+  // ACTIVATE — sync try; lazy-create async ho to short poll (bulletproof navigation)
+  var _activate=function(){
+    var _pel=document.getElementById('a-page-'+page);
+    if(_pel){ document.querySelectorAll('#admin-app .page').forEach(function(p){ p.classList.remove('active'); }); _pel.classList.add('active'); return true; }
+    return false;
+  };
+  if(!_activate()){ var _t=0, _iv=setInterval(function(){ if(_activate()||_t++>40) clearInterval(_iv); }, 25); }
 }
 function _aLoadPage(page){
   if(page==='dashboard') loadADashboard();
