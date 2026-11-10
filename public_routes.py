@@ -102,14 +102,31 @@ def _window_closed(ex):
     return (close_at is not None and _ist_now() >= close_at)
 
 
+#: har integrity-violation par ranking me itne marks ki penalty (sirf ORDER ke liye; dikhne
+#: wale ACTUAL marks nahi badalte). Isse jis bachche ne imaandari se diya wo rule-todne wale
+#: se upar aata hai — tie par ya 1-2 marks ke chhote fark par bhi. Integrity OFF tha to
+#: violations=0 -> koi asar nahi (pure score ranking).
+_RANK_VIOLATION_PENALTY = 2.0
+
+
+def _integrity_rank_key(total_awarded, violations, created_at, row_id):
+    """Shared ranking key (public + regular tests) — effective score desc, fewer violations
+    first, earlier submission first, stable id."""
+    v = int(violations or 0)
+    eff = float(total_awarded or 0) - min(v, 25) * _RANK_VIOLATION_PENALTY
+    ct = created_at or _dt(1970, 1, 1)
+    return (-eff, v, ct, int(row_id or 0))
+
+
 def _rank_rows(db, exam_id):
-    """All attempts for an exam, ranked: highest score first; on a TIE, whoever submitted
-    EARLIER ranks higher (created_at asc); id asc is the final stable tie-break."""
-    return (db.query(PublicExamAttempt)
-            .filter(PublicExamAttempt.exam_id == exam_id)
-            .order_by(PublicExamAttempt.total_awarded.desc(),
-                      PublicExamAttempt.created_at.asc(),
-                      PublicExamAttempt.id.asc()).all())
+    """All attempts for an exam, ranked by INTEGRITY-AWARE effective score (see
+    _integrity_rank_key): honest students rank above rule-breakers on a tie or a small gap.
+    Displayed marks stay the ACTUAL score; only the order accounts for integrity."""
+    rows = (db.query(PublicExamAttempt)
+            .filter(PublicExamAttempt.exam_id == exam_id).all())
+    rows.sort(key=lambda r: _integrity_rank_key(
+        r.total_awarded, getattr(r, "violations", 0), r.created_at, r.id))
+    return rows
 
 
 def _exam_by_token(db, token):

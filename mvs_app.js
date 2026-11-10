@@ -6672,6 +6672,15 @@ function _texNew(e){ var s=window._texSeenSet||(window._texSeenSet=_texSeenLoad(
 function _texSeeExamObjective(e){ if(!e) return; var ids=(e.subs||[]).map(function(x){return x.id;}); if(!ids.length) return; _texMarkSeen(ids); window._texSeenSet=_texSeenLoad(); _tTestsRefreshIfOpen(); }
 // subjective: ek student ka paper view/download hote hi uska submission seen
 function _texSeeAttempt(attId){ if(attId==null) return; _texMarkSeen([attId]); window._texSeenSet=_texSeenLoad(); _tTestsRefreshIfOpen(); }
+// Blinking NEW badge (results modal + public responses)
+function _newBlinkCss(){ if(document.getElementById('newblink-css'))return; var s=document.createElement('style'); s.id='newblink-css';
+  s.textContent='.newblink{display:inline-block;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;margin-left:7px;vertical-align:middle;animation:nbBlink 1s ease-in-out infinite;box-shadow:0 0 0 3px rgba(220,38,38,.16)}'
+    +'@keyframes nbBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.94)}}';
+  document.head.appendChild(s); }
+// Public-test responses "seen" tracking (localStorage, per exam) — for the NEW badge.
+function _pubSeenKey(id){ return 'mvs_pubseen_'+id; }
+function _pubSeenLoad(id){ try{ return new Set(JSON.parse(localStorage.getItem(_pubSeenKey(id))||'[]')); }catch(e){ return new Set(); } }
+function _pubSeenSave(id,ids){ try{ var s=_pubSeenLoad(id); (ids||[]).forEach(function(x){ s.add(x); }); localStorage.setItem(_pubSeenKey(id),JSON.stringify(Array.from(s).slice(-4000))); }catch(e){} }
 
 function _tSubCss(){
   if(document.getElementById('tsub-css')) return;
@@ -11359,8 +11368,11 @@ function _renderShareModal(id,d){
     ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
     : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
   var resp=(d.responses||[]);
+  // NEW badge: snapshot which public attempts are new (not seen before), then mark them seen.
+  _newBlinkCss();
+  try{ var _ps=_pubSeenLoad(id); resp.forEach(function(r){ r.is_new=!_ps.has(r.id); }); _pubSeenSave(id, resp.map(function(r){return r.id;})); }catch(e){}
   // TEACHER: name + score ONLY (phone/personal details admin panel me hain)
-  var rows=resp.length?resp.map(function(r){ var fl=(r.flagged||r.violations>0)?' <span title="'+(r.violations||0)+' integrity violation(s) — tab/app switch ya rule break" style="background:rgba(185,28,28,.12);color:#b91c1c;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">⚠ '+(r.violations||0)+'</span>':''; return '<tr><td>'+esc(r.name||'')+fl+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
+  var rows=resp.length?resp.map(function(r){ var fl=(r.flagged||r.violations>0)?' <span title="'+(r.violations||0)+' integrity violation(s) — tab/app switch or rule break" style="background:rgba(185,28,28,.12);color:#b91c1c;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:999px;vertical-align:middle">⚠ '+(r.violations||0)+'</span>':''; return '<tr><td>'+esc(r.name||'')+(r.is_new?' <span class="newblink">NEW</span>':'')+fl+'</td><td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td></tr>'; }).join('')
     : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:18px">No responses yet — share the link to start collecting.</td></tr>';
   var statLine=(d.enabled)?'<div class="psh-stat"><span><b>'+(d.views||0)+'</b> opened</span><span><b>'+(d.count||0)+'</b> attempted</span></div>':'';
   var html=
@@ -11370,16 +11382,17 @@ function _renderShareModal(id,d){
     +'<div class="psh-fl"><b>Details to collect from each student</b><div class="psh-subtle">Name &amp; phone are always asked. Toggle the rest, make Class a dropdown, or add your own fields.</div>'
     +'<div id="psh-fields" class="psh-fields">'+_pshFieldsHtml()+'</div>'
     +'<button class="psh-add" onclick="_pshAdd()">+ Add custom field</button></div>'
-    +'<div class="psh-sc"><b>Scoring &amp; Ranking</b><div class="psh-subtle">Normal = har question apne marks. Competitive = sabhi questions ke uniform marks with negative marking (JEE-style). Rank: jyada score upar; same score pe pehle submit karne wala upar.</div>'
+    +'<div class="psh-sc"><b>Scoring &amp; Ranking</b><div class="psh-subtle">Normal = each question carries its own marks. Competitive = uniform marks for every question with negative marking (JEE-style). Ranking: higher score ranks first; on a tie, the earlier submission ranks higher.</div>'
     +'<div id="psh-scoring">'+_pshScoringHtml()+'</div></div>'
-    +'<div class="psh-sc"><b>Integrity / Secure Mode</b><div class="psh-subtle">Off = kuch nahi. Standard = tab/app switch detect + warning + record. Strict = fullscreen + copy/paste block + set baar bahar jaane par test khud submit.</div>'
+    +'<div class="psh-sc"><b>Integrity / Secure Mode</b><div class="psh-subtle">Off = no monitoring. Standard = detects tab/app switching + warns + records it. Strict = fullscreen required + copy/paste blocked + auto-submits after the set number of violations.</div>'
     +'<div id="psh-integrity">'+_pshIntegrityHtml()+'</div></div>'
-    +'<div class="psh-sc"><b>Randomization (Shuffle)</b><div class="psh-subtle">Har student ko questions / options alag order me — paper share karke ya side-by-side nakal mushkil. (Marks pe koi asar nahi.)</div>'
+    +'<div class="psh-sc"><b>Randomization (Shuffle)</b><div class="psh-subtle">Each student gets questions / options in a different order — makes copying by sharing the paper or sitting side-by-side much harder. (No effect on marks.)</div>'
     +'<div class="psh-rnd-row"><label class="psh-chk"><input type="checkbox" id="psh-rnd-q" '+(window._pshRandomize.questions?'checked':'')+'><span>Shuffle questions</span></label>'
     +'<label class="psh-chk"><input type="checkbox" id="psh-rnd-o" '+(window._pshRandomize.options?'checked':'')+'><span>Shuffle options</span></label></div></div>'
-    +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Marks &amp; answers student ko submit karte hi dikhte hain. Yahan sirf <b>ranking</b> ka control hai.</div>'
+    +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Students see their marks &amp; answers as soon as they submit. This setting only controls the <b>ranking</b>.</div>'
     +'<div id="psh-ranking">'+_pshRankingHtml()+'</div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
+    +_pshLbHtml(d)
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
     +'<div class="psh-note2">You see each student&#39;s <b>name &amp; score</b> only. Phone and all personal details are in the <b>Admin panel</b>.</div>'
     +'<div class="psh-table-wrap"><table class="psh-table"><thead><tr><th>Name</th><th>Score</th><th>Correct</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
@@ -11414,16 +11427,16 @@ function _pshScoringHtml(){
     +'<button type="button" class="psh-seg-b'+(comp?' on':'')+'" onclick="_pshSetMode(\'COMPETITIVE\')">Competitive</button>'
     +'</div>';
   if(!comp){
-    return seg+'<div class="psh-sc-note">Har question apne marks ka — sahi answer = poore marks, galat ya khaali = 0. Koi negative marking nahi (aapke abhi ke tests jaise).</div>';
+    return seg+'<div class="psh-sc-note">Each question carries its own marks — correct answer = full marks, wrong or blank = 0. No negative marking (same as your current tests).</div>';
   }
   return seg
     +'<div class="psh-sc-grid">'
-    +'<div class="psh-sc-cell"><label>Sahi (+)</label><input type="number" step="0.25" id="psh-sc-correct" value="'+esc(String(s.correct))+'"></div>'
-    +'<div class="psh-sc-cell"><label>Galat (−)</label><input type="number" step="0.25" id="psh-sc-wrong" value="'+esc(String(s.wrong))+'"></div>'
-    +'<div class="psh-sc-cell"><label>Khaali</label><input type="number" step="0.25" id="psh-sc-unans" value="'+esc(String(s.unanswered))+'"></div>'
+    +'<div class="psh-sc-cell"><label>Correct (+)</label><input type="number" step="0.25" id="psh-sc-correct" value="'+esc(String(s.correct))+'"></div>'
+    +'<div class="psh-sc-cell"><label>Wrong (−)</label><input type="number" step="0.25" id="psh-sc-wrong" value="'+esc(String(s.wrong))+'"></div>'
+    +'<div class="psh-sc-cell"><label>Unanswered</label><input type="number" step="0.25" id="psh-sc-unans" value="'+esc(String(s.unanswered))+'"></div>'
     +'</div>'
     +'<div class="psh-sc-row"><button type="button" class="psh-preset" onclick="_pshJEE()">⚡ JEE Main (+4 / −1 / 0)</button>'
-    +'<span class="psh-sc-hint">Galat answer me minus (−) do to negative marking ON. “Out of” = questions × sahi marks.</span></div>';
+    +'<span class="psh-sc-hint">Set a minus (−) value for wrong answers to turn on negative marking. “Out of” = questions × correct marks.</span></div>';
 }
 function _pshScCollect(){
   var s=window._pshScoring||(window._pshScoring={mode:'NORMAL',correct:4,wrong:-1,unanswered:0});
@@ -11453,6 +11466,20 @@ function _pshRankingHtml(){
   h+='</div>';
   return h;
 }
+// Top-10 integrity-aware ranking (teacher view of public-test leaderboard)
+function _pshLbHtml(d){
+  var lb=(d&&d.leaderboard)||[]; if(!lb.length) return '';
+  var medal=['#e6ad4e','#b9c0cc','#cc8a52'];
+  var rows=lb.map(function(it){ var top3=it.rank<=3;
+    var mc=top3?medal[it.rank-1]:'#14243f';
+    return '<div class="psh-lb-row'+(top3?' top':'')+'">'
+      +'<span class="psh-lb-rk" style="background:'+mc+';color:'+(top3?'#241a05':'#fff')+'">'+it.rank+'</span>'
+      +'<span class="psh-lb-nm">'+esc(it.name||'Student')+(it.violations>0?' <span class="psh-lb-v" title="'+it.violations+' integrity violation(s) — ranked lower for fairness">⚠'+it.violations+'</span>':'')+'</span>'
+      +'<b class="psh-lb-sc">'+it.score+'<small>/'+it.total+'</small></b></div>';
+  }).join('');
+  return '<div class="psh-lb"><div class="psh-lb-h">'+ic('chart')+' Ranking — Top '+lb.length
+    +'<span class="psh-lb-note">Honest students rank above rule-breakers on a tie or small gap</span></div>'+rows+'</div>';
+}
 window._pshRkMode=function(m){ var R=window._pshRanking||(window._pshRanking={}); R.mode=(['manual','off'].indexOf(m)>=0?m:'auto'); if(m!=='manual') R.declared=false; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };
 window._pshRkDeclareToggle=function(on){ var R=window._pshRanking||(window._pshRanking={}); R.declared=!!on; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };
 window._pshJEE=function(){ var s=_pshScCollect(); s.mode='COMPETITIVE'; s.correct=4; s.wrong=-1; s.unanswered=0; _pshScRender(); };
@@ -11462,14 +11489,14 @@ function _pshIntegrityHtml(){
     +['OFF','STANDARD','STRICT'].map(function(m){ var lbl=(m==='OFF'?'Off':m==='STANDARD'?'Standard':'Strict');
       return '<button type="button" class="psh-seg-b'+(s.mode===m?' on':'')+'" onclick="_pshSetIg(\''+m+'\')">'+lbl+'</button>'; }).join('')
     +'</div>';
-  if(s.mode==='OFF') return seg+'<div class="psh-sc-note">Koi monitoring nahi — normal test (jaise abhi chal rahe hain).</div>';
+  if(s.mode==='OFF') return seg+'<div class="psh-sc-note">No monitoring — a normal test (same as your current ones).</div>';
   var strict=(s.mode==='STRICT');
   var body='<div class="psh-sc-note" style="background:rgba(37,99,235,.06);border-color:rgba(37,99,235,.2)">'
     +(strict
-      ? 'Fullscreen zaroori + copy/paste/right-click band. Student jab tab/app badlega ya fullscreen chhodega to warning + record, aur limit par test <b>khud submit</b>.'
-      : 'Student jab tab/app badlega ya minimize karega to warning aayegi aur record teacher/admin ko dikhega. Auto-submit nahi.')+'</div>';
+      ? 'Fullscreen required + copy/paste/right-click blocked. If the student switches tabs/apps or leaves fullscreen, they get a warning and it is recorded; at the set limit the test is <b>auto-submitted</b>.'
+      : 'If the student switches tabs/apps or minimizes, they get a warning and it is recorded for the teacher/admin. No auto-submit.')+'</div>';
   if(strict){
-    body+='<div class="psh-sc-row"><label style="font-size:.82rem;font-weight:700;color:var(--text-muted)">Kitne violations ke baad auto-submit:</label>'
+    body+='<div class="psh-sc-row"><label style="font-size:.82rem;font-weight:700;color:var(--text-muted)">Auto-submit after this many violations:</label>'
       +'<input type="number" min="1" max="20" id="psh-ig-max" value="'+esc(String(s.max_violations))+'" style="width:72px;border:1.5px solid var(--border);border-radius:9px;padding:7px 10px;font-size:1rem;font-weight:800;text-align:center;background:var(--card,#fff);color:var(--text)"></div>';
   }
   return seg+body;
@@ -11555,6 +11582,16 @@ function _pshCss(){ if(document.getElementById('psh-css')) return; var s=documen
   '.psh-add{margin-top:10px;width:100%;border:1.5px dashed var(--border);background:transparent;color:#a9791f;border-radius:10px;padding:10px;font-weight:800;font-size:.85rem;cursor:pointer}',
   '.psh-add:hover{border-color:#b8941f;background:rgba(184,148,31,.05)}',
   '.psh-note2{font-size:.76rem;color:var(--text-muted);background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.18);border-radius:9px;padding:8px 11px;margin-bottom:10px}',
+  '.psh-lb{margin-top:16px;border:1px solid var(--border);border-radius:14px;padding:12px 13px;background:linear-gradient(135deg,rgba(184,148,31,.06),rgba(184,148,31,.01))}',
+  '.psh-lb-h{display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:10px;flex-wrap:wrap}',
+  '.psh-lb-h svg{width:15px;height:15px}',
+  '.psh-lb-note{font-size:.64rem;font-weight:600;color:var(--text-muted);background:var(--card,#fff);border:1px solid var(--border);padding:2px 8px;border-radius:999px}',
+  '.psh-lb-row{display:flex;align-items:center;gap:11px;padding:7px 8px;border-radius:10px}',
+  '.psh-lb-row.top{background:rgba(230,173,78,.1)}',
+  '.psh-lb-rk{flex:0 0 auto;width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.8rem}',
+  '.psh-lb-nm{flex:1;min-width:0;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.psh-lb-v{background:rgba(185,28,28,.12);color:#b91c1c;font-size:.6rem;font-weight:800;padding:1px 6px;border-radius:999px;margin-left:5px}',
+  '.psh-lb-sc{flex:0 0 auto;font-size:.92rem;font-weight:800;color:var(--text)}.psh-lb-sc small{font-weight:600;color:var(--text-muted)}',
   '.psh-resp{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}',
   '.psh-resp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px;flex-wrap:wrap}',
   '.psh-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}',
@@ -11583,9 +11620,14 @@ async function viewExamAttempts(id){
   try{
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     window._examAttData=d;
+    // SNAPSHOT which attempts are NEW (not yet seen) BEFORE we mark them seen — so the NEW
+    // badge shows next to the names of students who just attempted.
+    var _newSnap;
+    try{ var _seenNow=window._texSeenSet||_texSeenLoad(); _newSnap=new Set((d.attempts||[]).filter(function(a){return !_seenNow.has(a.attempt_id);}).map(function(a){return a.attempt_id;})); }catch(e){ _newSnap=new Set(); }
     // OBJECTIVE test: Results kholte hi "dekh liya" -> us test ka NEW blink hat jaata hai.
     // (SUBJECTIVE/Mission 75 me blink tab hatega jab teacher har student ka paper view/download karega.)
     try{ if((d.exam&&d.exam.test_type)==='mcq'){ var _ex=(window._tExams||[]).find(function(x){return x.id===id;}); if(_ex) _texSeeExamObjective(_ex); } }catch(e){}
+    _newBlinkCss();
     _examResCss();
     const rows=d.attempts.length?d.attempts.map(a=>{
       const graded=(a.status==='graded');
@@ -11613,7 +11655,7 @@ async function viewExamAttempts(id){
       return `<div class="exr">
           <div class="exr-head">
             <div class="exr-id sd-toggle" title="Click to see the full student details" onclick="_toggleStuDet(${a.attempt_id})">
-              <div class="exr-name">${esc(a.student_name||('Student #'+a.student_id))}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
+              <div class="exr-name">${esc(a.student_name||('Student #'+a.student_id))}${_newSnap.has(a.attempt_id)?' <span class="newblink">NEW</span>':''}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
               <div class="exr-info">${info}</div>
             </div>
             <span class="tag ${graded?'tag-done':'tag-pending'} exr-badge">${stTxt}</span>

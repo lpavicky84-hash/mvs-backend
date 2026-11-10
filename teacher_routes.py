@@ -5245,8 +5245,18 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
     if not ex:
         raise HTTPException(404, "Exam not found")
     rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
-            .order_by(PublicExamAttempt.created_at.desc()).all())
+            .order_by(PublicExamAttempt.created_at.desc()).all())  # time-desc: table + NEW badge
+    # INTEGRITY-AWARE ranking (honest students above rule-breakers) — top 10 + per-row rank
+    ranked = sorted(rows, key=lambda r: _pr._integrity_rank_key(
+        r.total_awarded, getattr(r, "violations", 0), r.created_at, r.id))
+    rank_of = {r.id: i + 1 for i, r in enumerate(ranked)}
+    leaderboard = [{"rank": i + 1, "name": (r.name or "Student"),
+                    "score": r.total_awarded, "total": r.total_marks,
+                    "correct": r.correct_count,
+                    "violations": int(getattr(r, "violations", 0) or 0)}
+                   for i, r in enumerate(ranked[:10])]
     return {"enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
+            "leaderboard": leaderboard,
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
             "field_config": _pr.public_fields_cfg(ex),
             "views": int(getattr(ex, "public_views", 0) or 0),
@@ -5263,7 +5273,7 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
             "scheduled": bool(getattr(ex, "scheduled_at", None)),
             "total_marks": (ex.total_marks or 0), "count": len(rows),
             # name + score ONLY — no personal details for the teacher
-            "responses": [{"id": r.id, "name": r.name,
+            "responses": [{"id": r.id, "name": r.name, "rank": rank_of.get(r.id),
                            "score": r.total_awarded, "total": r.total_marks,
                            "correct": r.correct_count, "q_total": r.q_total,
                            "violations": int(getattr(r, "violations", 0) or 0),
