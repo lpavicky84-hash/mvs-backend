@@ -19385,10 +19385,23 @@ window.openBatchAlign=function(){
   showModal('Fix Batch ↔ Session','<div style="padding:22px;text-align:center"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-muted)">Scanning students…</div></div>','<button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>');
   api('/api/admin/students/session-batch-scan').then(function(r){
     var n=r.changed||0; var sm=(r.samples||[]);
-    var _eng=(r.engine?('Engine: '+esc(r.engine)):'Engine: (purana code — naya deploy nahi hua)')+(typeof r.scanned!=='undefined'?(' · '+r.scanned+' students scanned'):'');
+    var _eng=(r.engine?('Engine: '+esc(r.engine)):'Engine: (purana code — naya deploy nahi hua)')+(typeof r.scanned!=='undefined'?(' · scanned '+r.scanned):'')+(typeof r.with_session!=='undefined'&&r.with_session!=null?(' · with_session '+r.with_session):'')+(typeof r.total_students!=='undefined'&&r.total_students!=null?(' · total '+r.total_students):'');
+    var _aud=(r.audit||[]);
     if(!n){
+      var _audH='';
+      if(_aud.length){
+        _audH='<div style="text-align:left;margin-top:16px;border-top:1px solid rgba(0,0,0,.08);padding-top:12px">'+
+          '<div style="font-weight:800;color:#b45309;font-size:.84rem;margin-bottom:8px">⚠ '+_aud.length+' student(s) display pe mismatch dikha rahe hain — raw data (screenshot bhejo):</div>'+
+          _aud.map(function(a){ return '<div style="font-size:.72rem;font-family:monospace;background:rgba(0,0,0,.04);border-radius:6px;padding:7px 9px;margin-bottom:6px;white-space:pre-wrap;word-break:break-word">'+
+            esc(a.name||('#'+a.id))+'\nexam_raw='+esc(JSON.stringify(a.exam_raw))+' norm='+esc(JSON.stringify(a.exam_norm))+
+            '\ndisplay_session='+esc(JSON.stringify(a.display_batch_session))+
+            '\nbatch_id='+esc(JSON.stringify(a.batch_id))+' batch_session='+esc(JSON.stringify(a.batch_id_session))+
+            '\nactive_id='+esc(JSON.stringify(a.active_batch_id))+' active_session='+esc(JSON.stringify(a.active_session))+
+            '\nbatch_name_text='+esc(JSON.stringify(a.batch_name_text))+' engine_flagged='+esc(JSON.stringify(a.engine_flagged))+
+          '</div>'; }).join('')+'</div>';
+      }
       showModal('Fix Batch ↔ Session',
-        '<div style="text-align:center;padding:18px 4px"><div style="font-size:2.4rem">✅</div><div style="font-weight:800;font-size:1.05rem;margin-top:8px">All good — every student’s batch matches their session.</div><div style="color:var(--text-muted);margin-top:6px">No changes needed.</div><div style="color:var(--text-muted);font-size:.68rem;margin-top:14px;opacity:.7">'+_eng+'</div></div>',
+        '<div style="text-align:center;padding:18px 4px"><div style="font-size:2.4rem">'+(_aud.length?'⚠️':'✅')+'</div><div style="font-weight:800;font-size:1.05rem;margin-top:8px">'+(_aud.length?'Scan ne 0 bola, par kuch students galat dikh rahe hain':'All good — every student’s batch matches their session.')+'</div><div style="color:var(--text-muted);margin-top:6px">'+(_aud.length?'Neeche raw data ka screenshot bhejo':'No changes needed.')+'</div>'+_audH+'<div style="color:var(--text-muted);font-size:.68rem;margin-top:14px;opacity:.7">'+_eng+'</div></div>',
         '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
       return;
     }

@@ -756,6 +756,7 @@ def _scan_realign_session_batch(db, apply=False):
     skipped_crash = 0
     scanned = 0
     samples = []
+    audit = []        # DIAGNOSTIC: display-level mismatch jahan engine ne flag nahi kiya
     q = (db.query(StudentProfile)
          .filter(StudentProfile.exam_session.isnot(None),
                  StudentProfile.exam_session != ""))
@@ -774,10 +775,45 @@ def _scan_realign_session_batch(db, apply=False):
                 except Exception:
                     pass
                 samples.append(s)
+        # DIAGNOSTIC (preview only): jo admin card pe DIKHTA hai (display batch-session) use
+        # exam_session se compare karo. Agar alag hai par engine ne flag NAHI kiya -> yehi woh
+        # hidden case hai, raw values ke saath capture karo taaki asli wajah dikh jaaye.
+        if not apply and len(audit) < 15:
+            try:
+                _dn, _dses, _dlbl = _student_batch_fields(db, sp, bmap)
+                _en = _norm_session_label(db, sp.exam_session or "")
+                if _en and _dses and _dses.strip() != _en:
+                    _bb = bmap.get(sp.batch_id) if sp.batch_id else None
+                    _ab = bmap.get(sp.active_batch_id) if sp.active_batch_id else None
+                    audit.append({
+                        "id": sp.id,
+                        "name": (sp.user.name if sp.user else ""),
+                        "exam_raw": sp.exam_session,
+                        "exam_norm": _en,
+                        "display_batch_session": _dses,
+                        "batch_id": sp.batch_id,
+                        "batch_id_name": (getattr(_bb, "name", None) if _bb else None),
+                        "batch_id_session": (getattr(_bb, "session", None) if _bb else None),
+                        "active_batch_id": sp.active_batch_id,
+                        "active_session": (getattr(_ab, "session", None) if _ab else None),
+                        "batch_name_text": sp.batch_name,
+                        "engine_flagged": bool(s),
+                    })
+            except Exception:
+                pass
     if apply:
         db.commit()
+    try:
+        total_students = db.query(StudentProfile).count()
+        with_session = (db.query(StudentProfile)
+                        .filter(StudentProfile.exam_session.isnot(None),
+                                StudentProfile.exam_session != "").count())
+    except Exception:
+        total_students = with_session = None
     return {"changed": changed, "skipped_crash": skipped_crash, "scanned": scanned,
-            "samples": samples, "applied": bool(apply), "engine": _BATCHFIX_ENGINE}
+            "total_students": total_students, "with_session": with_session,
+            "samples": samples, "applied": bool(apply), "engine": _BATCHFIX_ENGINE,
+            "audit": audit, "audit_count": len(audit)}
 
 
 def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
