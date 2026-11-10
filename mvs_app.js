@@ -21133,7 +21133,16 @@ function _rqxCSS(){
     +'.rqx-f:focus-within{border-color:var(--primary,#b8941f);box-shadow:0 6px 22px -12px rgba(184,148,31,.5)}.rqx-f:focus-within::before{opacity:1}'
     +'.rqx-l{display:flex;align-items:center;gap:9px;font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--primary,#9a7d1a);margin-bottom:9px}'
     +'.rqx-l .rqx-ic{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:rgba(184,148,31,.14);color:var(--primary,#9a7d1a)}.rqx-l .rqx-ic svg{width:14px;height:14px}'
-    +'.rqx-f .input,.rqx-f select.input,.rqx-f textarea.input{border:none;background:transparent;padding:0;font-size:1rem;font-weight:700;color:var(--text,#2b2410);width:100%;box-shadow:none;resize:vertical}'
+    +'.rqx-f .input,.rqx-f select.input,.rqx-f textarea.input{font-family:inherit;border:none;background:transparent;padding:0;font-size:1rem;font-weight:700;color:var(--text,#2b2410);width:100%;box-shadow:none;resize:vertical}'
+    +'.rqx-f textarea.input::placeholder{font-family:inherit;font-weight:500;color:var(--text-muted,#b0a06f);opacity:.85}'
+    +'.rqx-pend{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:14px 6px 4px}'
+    +'.rqx-pend-ic{width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,rgba(184,148,31,.18),rgba(184,148,31,.06));color:var(--primary,#b8941f);display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 22px -12px rgba(184,148,31,.6)}.rqx-pend-ic svg{width:28px;height:28px}'
+    +'.rqx-pend-t{font-size:1.08rem;font-weight:800;color:var(--text,#2b2410);line-height:1.35}'
+    +'.rqx-pend-s{font-size:.86rem;color:var(--text-muted,#9a8a5f);line-height:1.55;max-width:360px}'
+    +'.rqx-pend-box{margin-top:6px;width:100%;background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.22));border-radius:14px;padding:13px 15px;text-align:left}'
+    +'.rqx-pend-k{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#a08a55);margin-bottom:4px}'
+    +'.rqx-pend-v{font-size:.92rem;font-weight:700;color:#8a6d1a;line-height:1.4}'
+    +'.rqx-pend-note{margin-top:8px;font-size:.82rem;color:var(--text,#4a3d16);font-style:italic}'
     +'.rqx-f select.input{appearance:none;-webkit-appearance:none;-moz-appearance:none;width:100%;margin-top:3px;padding:13px 42px 13px 15px;font-size:1.02rem;font-weight:800;color:var(--text,#2b2410);border:1.6px solid var(--border,rgba(184,148,31,.35));border-radius:13px;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2714%27 height=%279%27 viewBox=%270 0 14 9%27%3E%3Cpath d=%27M1 1.5l6 6 6-6%27 stroke=%27%239a7d1a%27 stroke-width=%272.2%27 fill=%27none%27 stroke-linecap=%27round%27/%3E%3C/svg%3E") no-repeat right 15px center;background-size:14px 9px}'
     +'.rqx-f select.input:hover{border-color:rgba(184,148,31,.6)}.rqx-f select.input:focus{outline:none;border-color:var(--primary,#b8941f);box-shadow:0 0 0 3px rgba(184,148,31,.16)}'
     +'.rqx-f textarea.input{font-weight:600;font-size:.92rem;min-height:48px}.rqx-f .input:focus{outline:none;box-shadow:none}'
@@ -21146,13 +21155,33 @@ function _rqxCSS(){
   document.head.appendChild(s); return '';
 }
 function _rqxToggle(el){ el.classList.toggle('on'); }
+// Already-pending view (batch/subject) — student dobara request na bhej paaye jab tak
+// admin approve/reject na kare. Reject hone par pending hat jaata hai -> form phir khulta hai.
+function _pendingReqView(title, info, typeLabel){
+  info=info||{};
+  var when=(info.at||'').slice(0,10);
+  var reqTxt=Array.isArray(info.requested)?((info.requested.join(', '))||'—'):((info.requested||'—'));
+  if(info.session_label && !Array.isArray(info.requested)) reqTxt+=' — '+info.session_label;
+  showModal(title,
+    '<div class="rqx"><div class="rqx-pend">'
+    +'<div class="rqx-pend-ic">'+ic('refresh')+'</div>'
+    +'<div class="rqx-pend-t">Your '+esc(typeLabel)+'-change request is already pending</div>'
+    +'<div class="rqx-pend-s">You can’t send a new request until the admin <b>approves or rejects</b> this one. You’ll be notified as soon as there’s a decision.</div>'
+    +'<div class="rqx-pend-box"><div class="rqx-pend-k">You requested'+(when?(' · '+esc(when)):'')+'</div><div class="rqx-pend-v">'+esc(reqTxt)+'</div>'
+    +(info.note?('<div class="rqx-pend-note">“'+esc(info.note)+'”</div>'):'')+'</div>'
+    +'</div></div>',
+    '<button class="btn btn-primary" onclick="closeModal()">Got it</button>');
+}
 async function openRequestSubjects(){
   const p=window._sProf||{};
   const cls=(p.class_level||'').trim();
   showModal('Request Subject Change','<div class="spinner"></div>','');
+  _rqxCSS();
+  // PENDING GUARD: pehle se subject request pending ho to form nahi, 'already pending' dikhao
+  let _mp={}; try{ _mp=((await api('/api/student/my-requests'))||{}).pending||{}; }catch(e){}
+  if(_mp.subject){ _pendingReqView('Request Subject Change', _mp.subject, 'subject'); return; }
   let avail=[];
   try{ if(cls) avail=await api('/api/student/available-subjects?class_level='+encodeURIComponent(cls)); }catch(e){}
-  _rqxCSS();
   const cur=new Set(p.subjects||[]);
   const chips=(avail||[]).map(s=>`<span class="rqx-chip${cur.has(s.name)?' on':''}" data-sub="${esc(s.name)}" onclick="_rqxToggle(this)"><span class="rqx-tick">${ic('check')}</span>${esc(s.name)}</span>`).join('')
     || '<p style="color:var(--text-muted);font-size:.82rem">Subject list unavailable — describe your change in the note below.</p>';
@@ -21169,16 +21198,19 @@ async function submitSubjectRequest(){
   const note=val('rsub-note');
   if(!subs.length && !note){ toast('Pick subjects or add a note.'); return; }
   try{ const r=await api('/api/student/request-subject-change','POST',{subjects:subs,note:note});
-    if(r&&r.pending){ toast(r.message||'Aapka request pehle se pending hai.',true); closeModal(); return; }
+    if(r&&r.pending){ toast(r.message||'You already have a pending request.',true); closeModal(); return; }
     toast((r&&r.message)||'Request sent.'); closeModal(); }
   catch(e){ toast((e&&e.message)||'Could not send request',true); }
 }
 async function openRequestBatch(){
   const p=window._sProf||{};
   showModal('Request Batch Change','<div class="spinner"></div>','');
+  _rqxCSS();
+  // PENDING GUARD: pehle se batch request pending ho to form nahi, 'already pending' dikhao
+  let _mp={}; try{ _mp=((await api('/api/student/my-requests'))||{}).pending||{}; }catch(e){}
+  if(_mp.batch){ _pendingReqView('Request Batch Change', _mp.batch, 'batch'); return; }
   let batches=[];
   try{ batches=await api('/api/student/batches'); }catch(e){}
-  _rqxCSS();
   const cur=(p.batch_name||'').trim();
   const _sl=_sesShortLbl(p.exam_session||'');
   const opts='<option value="">— Select the correct batch —</option>'+(batches||[]).map(b=>`<option value="${esc(b.name)}"${cur===b.name?' selected':''}>${esc(b.name)}${_sl?(' — '+esc(_sl)):''}</option>`).join('');
@@ -21206,7 +21238,7 @@ async function submitBatchRequest(){
   const bn=val('rbat-sel'); const note=val('rbat-note');
   if(!bn && !note){ toast('Pick a batch or add a note.'); return; }
   try{ const r=await api('/api/student/request-batch-change','POST',{batch_name:bn,note:note});
-    if(r&&r.pending){ toast(r.message||'Aapka request pehle se pending hai.',true); closeModal(); return; }
+    if(r&&r.pending){ toast(r.message||'You already have a pending request.',true); closeModal(); return; }
     toast((r&&r.message)||'Request sent.'); closeModal(); }
   catch(e){ toast((e&&e.message)||'Could not send request',true); }
 }

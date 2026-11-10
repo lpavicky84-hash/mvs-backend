@@ -1835,7 +1835,7 @@ def student_request_subject_change(payload: dict = Body(...), db: Session = Depe
         from admin_routes import _has_pending_request as _hpr
         if _hpr(db, sp.id, "subject"):
             return {"ok": False, "pending": True,
-                    "message": "Aapka ek subject-change request pehle se pending hai. Admin ke approve/reject hone tak naya request nahi bhej sakte."}
+                    "message": "You already have a subject-change request pending. You can't send a new one until the admin approves or rejects it."}
     except Exception:
         pass
     cur = ", ".join(sp.subjects or []) or "—"
@@ -1882,7 +1882,7 @@ def student_request_batch_change(payload: dict = Body(...), db: Session = Depend
         from admin_routes import _has_pending_request as _hpr
         if _hpr(db, sp.id, "batch"):
             return {"ok": False, "pending": True,
-                    "message": "Aapka ek batch-change request pehle se pending hai. Admin ke approve/reject hone tak naya request nahi bhej sakte."}
+                    "message": "You already have a batch-change request pending. You can't send a new one until the admin approves or rejects it."}
     except Exception:
         pass
     # session label (batch ke aage dikhane ke liye)
@@ -1917,6 +1917,28 @@ def student_request_batch_change(payload: dict = Body(...), db: Session = Depend
     except Exception:
         pass
     return {"ok": True, "message": "Your batch change request has been sent to the admin."}
+
+
+@router.get("/my-requests")
+def student_my_requests(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student ke apne PENDING change-requests (batch/subject). Frontend isse modal khulne par
+    check karta hai: agar pehle se pending hai to dobara form nahi, 'already pending' dikhata hai.
+    Returns {'pending': {'batch': {...}, 'subject': {...}}} — jo type pending nahi, wo absent."""
+    sp = get_student_profile(current_user, db)
+    try:
+        from admin_routes import _student_requests_list
+        lst = _student_requests_list(db)
+    except Exception:
+        lst = []
+    pend = {}
+    for r in lst:
+        if (r.get("status") or "pending") == "pending" and int(r.get("student_id", 0) or 0) == sp.id:
+            t = r.get("type") or ""
+            if t and t not in pend:
+                pend[t] = {"id": r.get("id"), "at": r.get("at", ""),
+                           "requested": r.get("requested"), "note": r.get("note", ""),
+                           "session_label": r.get("session_label", "")}
+    return {"pending": pend}
 
 
 @router.get("/available-subjects")
