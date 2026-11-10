@@ -1595,8 +1595,19 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
     setTimeout(()=>_focusTaskCard(tid),650);
     return;
   }
-  if(link) window.open(link,'_blank','noopener');
-  openNotifPanel(role);
+  // BULLETPROOF fallback: koi specific handler match nahi hua. http link -> naye tab me.
+  // warna (relative/unknown link) notif_type se SAHI section pe in-app navigate karo —
+  // pehle yahan relative link window.open ho jaata tha aur user dashboard pe atak jaata tha.
+  if(/^https?:\/\//i.test(link)){ if(link) window.open(link,'_blank','noopener'); openNotifPanel(role); return; }
+  try{ closeModal(); }catch(e){}
+  var _fpage=_notifResolvePage(role,ntype,fbPage);
+  if(_fpage){
+    var _navF=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
+    try{ _navF(_fpage,null); }catch(e){}
+    var _aid2=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+    document.querySelectorAll('#'+_aid2+' .nav-item').forEach(function(el){ el.classList.remove('active'); if((el.getAttribute('onclick')||'').includes("'"+_fpage+"'")) el.classList.add('active'); });
+    try{ refreshNotifBadge(role); }catch(e){}
+  } else { openNotifPanel(role); }
 }
 function _focusTaskCard(tid){
   // find the task card by any known data-attribute and scroll+flash it
@@ -9150,6 +9161,7 @@ async function openAPublicTest(id){
   showModal('Public Test Responses','<div style="padding:34px;text-align:center;color:var(--text-muted)">Loading…</div>','');
   let d; try{ d=await api('/api/admin/public-tests/'+id+'/responses'); }catch(e){ showModal('Public Test Responses',errHtml(e)); return; }
   _aptCss();
+  window._aptData=d;
   const cc=(d.custom_cols||[]);
   const resp=(d.responses||[]);
   const head='<tr><th>Name</th><th>Phone</th><th>Email</th><th>Class/Course</th><th>City</th><th>NIOS Ref</th>'+cc.map(c=>'<th>'+esc(c.label)+'</th>').join('')+'<th>Score</th><th>Correct</th><th>Submitted</th></tr>';
@@ -9165,7 +9177,7 @@ async function openAPublicTest(id){
       +'<td style="text-align:center"><b>'+r.score+'</b>/'+r.total+'</td><td style="text-align:center">'+r.correct+'/'+r.q_total+'</td><td>'+esc(at)+'</td></tr>';
   }).join(''):'<tr><td colspan="'+(9+cc.length)+'" style="text-align:center;color:var(--text-muted);padding:20px">No responses yet.</td></tr>';
   const html=`<div class="apt-stats"><div class="apt-stat"><b>${d.views||0}</b><span>Opened</span></div><div class="apt-stat"><b>${d.count||0}</b><span>Attempted</span></div></div>`
-    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px"><div style="font-size:.8rem;color:var(--text-muted)">${esc(d.title||'')}${d.teacher_name?' · By '+esc(d.teacher_name):''}</div><div style="display:flex;gap:7px;flex-wrap:wrap">${(d.count||0)?`<button class="btn btn-gold btn-sm" onclick="_ptResultPdf(${id})">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="exportAPublicTest(${id})">${ic('download')} Export CSV</button>`:''}</div></div>`
+    +`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px"><div style="font-size:.8rem;color:var(--text-muted)">${esc(d.title||'')}${d.teacher_name?' · By '+esc(d.teacher_name):''}</div><div style="display:flex;gap:7px;flex-wrap:wrap">${(d.count||0)?`<button class="btn btn-gold btn-sm" onclick="_dlTop10Img((window._aptData||{}).responses,{title:(window._aptData||{}).title,subject:(window._aptData||{}).subject,teacher:(window._aptData||{}).teacher_name,totalMarks:(window._aptData||{}).total_marks})">${ic('download')} Top 10 image</button><button class="btn btn-gold btn-sm" onclick="_ptResultPdf(${id})">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="exportAPublicTest(${id})">${ic('download')} Export CSV</button>`:''}</div></div>`
     +`<div class="apt-table-wrap"><table class="apt-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
   showModal('Public Test — '+esc(d.title||'Responses'), html,'<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
 }
@@ -11466,9 +11478,57 @@ function _pshRankingHtml(){
   h+='</div>';
   return h;
 }
+// Download a premium PNG of the TOP 10 students' results (admin + teacher portals).
+window._dlTop10Img=async function(rows,meta){
+  try{
+    rows=(rows||[]).slice(0,10);
+    if(!rows.length){ if(typeof toast==='function') toast('No responses yet to download',true); return; }
+    meta=meta||{};
+    if(typeof toast==='function') toast('Preparing top-10 image…');
+    var logo=await new Promise(function(res){ try{ if(typeof _repLogo==='function'){_repLogo(function(l){res(l||null);});} else res(null);}catch(e){res(null);} });
+    var S=2, W=760, rowH=60, headH=160, padB=46;
+    var H=headH + rows.length*rowH + padB;
+    var cv=document.createElement('canvas'); cv.width=W*S; cv.height=H*S; var c=cv.getContext('2d'); c.scale(S,S);
+    var NAVY='#14213d', GOLD='#e6ad4e', INK='#1f2433', MUT='#6b7280', BG='#fffdf6';
+    var SANS='Inter,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
+    function RR(x,y,w,h,r){ if(r>h/2)r=h/2; if(r>w/2)r=w/2; c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+    function ell(t,m){ t=String(t==null?'':t); if(c.measureText(t).width<=m) return t; while(t.length>1&&c.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; }
+    c.fillStyle=BG; c.fillRect(0,0,W,H);
+    var g=c.createLinearGradient(0,0,W,headH); g.addColorStop(0,NAVY); g.addColorStop(1,'#243c66'); c.fillStyle=g; c.fillRect(0,0,W,headH);
+    var gl=c.createRadialGradient(W-60,0,0,W-60,0,230); gl.addColorStop(0,'rgba(230,173,78,.22)'); gl.addColorStop(1,'rgba(230,173,78,0)'); c.fillStyle=gl; c.fillRect(W-320,0,320,230);
+    c.fillStyle=GOLD; c.fillRect(0,headH-4,W,4);
+    // logo
+    c.save(); c.beginPath(); c.arc(34+26,34+26,26,0,6.3); c.closePath(); c.clip();
+    if(logo){ var s=Math.max(52/logo.width,52/logo.height),lw=logo.width*s,lh=logo.height*s; c.drawImage(logo,34+26-lw/2,34+26-lh/2,lw,lh); }
+    else { c.fillStyle='#223a66'; c.fillRect(34,34,52,52); c.fillStyle=GOLD; c.font='800 16px '+SANS; c.textAlign='center'; c.fillText('MVS',34+26,34+32); }
+    c.restore(); c.lineWidth=2; c.strokeStyle=GOLD; c.beginPath(); c.arc(34+26,34+26,26,0,6.3); c.stroke();
+    c.textAlign='left'; c.fillStyle='#fff'; c.font='800 25px '+SANS; c.fillText(ell(meta.title||'Public Test',W-210),104,54);
+    c.font='700 12px '+SANS; c.fillStyle=GOLD; c.fillText('TOP 10 — RESULTS',104,80);
+    var m2=[]; if(meta.subject)m2.push(meta.subject); if(meta.teacher)m2.push('By '+meta.teacher); if(meta.totalMarks)m2.push(meta.totalMarks+' marks'); m2.push(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}));
+    c.fillStyle='#c7d0e4'; c.font='400 12.5px '+SANS; c.fillText(ell(m2.join('   ·   '),W-130),104,102);
+    var medal=['#e6ad4e','#b9c0cc','#cc8a52'];
+    rows.forEach(function(r,i){ var y=headH+i*rowH, cy=y+rowH/2, top3=(r.rank<=3);
+      if(top3){ c.fillStyle='rgba(230,173,78,.10)'; c.fillRect(0,y,W,rowH); }
+      else if(i%2){ c.fillStyle='rgba(184,148,31,.04)'; c.fillRect(0,y,W,rowH); }
+      c.fillStyle='#efe7d2'; c.fillRect(34,y+rowH-1,W-68,1);
+      c.fillStyle=top3?medal[r.rank-1]:NAVY; RR(34,cy-16,36,32,10); c.fill();
+      c.fillStyle=top3?'#241a05':'#fff'; c.font='800 16px '+SANS; c.textAlign='center'; c.fillText(String(r.rank),52,cy+6);
+      c.textAlign='left'; c.fillStyle=INK; c.font='700 17px '+SANS; var nx=88; var nm=ell(r.name||'Student',W-300);
+      c.fillText(nm,nx,cy+6); var nw=c.measureText(nm).width;
+      if((r.violations||0)>0){ var bx=nx+nw+10; c.fillStyle='rgba(185,28,28,.12)'; RR(bx,cy-10,42,20,10); c.fill(); c.fillStyle='#b91c1c'; c.font='800 11px '+SANS; c.textAlign='left'; c.fillText('⚠'+r.violations,bx+7,cy+4); }
+      c.textAlign='right'; c.fillStyle=MUT; c.font='600 13px '+SANS; var tot='/'+(r.total||meta.totalMarks||0);
+      c.fillText(tot,W-40,cy+6); var tw=c.measureText(tot).width;
+      c.fillStyle=INK; c.font='800 18px '+SANS; c.fillText(String(r.score),W-40-tw-2,cy+6);
+    });
+    c.textAlign='center'; c.fillStyle=MUT; c.font='600 11px '+SANS; c.fillText('MVS FOUNDATION · Ranked by integrity-aware score (honest students rank above rule-breakers)',W/2,H-18);
+    var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download=((meta.title||'public-test').replace(/[^a-z0-9]+/gi,'-').toLowerCase())+'-top10.png'; document.body.appendChild(a); a.click(); a.remove();
+    if(typeof toast==='function') toast('Top-10 image downloaded');
+  }catch(e){ if(typeof toast==='function') toast((e&&e.message)||'Could not create image',true); }
+};
 // Top-10 integrity-aware ranking (teacher view of public-test leaderboard)
 function _pshLbHtml(d){
   var lb=(d&&d.leaderboard)||[]; if(!lb.length) return '';
+  try{ window._pshLbDl={rows:lb,meta:{title:(d.title||'Public Test'),subject:(d.subject||''),teacher:(d.teacher_name||''),totalMarks:(d.total_marks||0)}}; }catch(e){}
   var medal=['#e6ad4e','#b9c0cc','#cc8a52'];
   var rows=lb.map(function(it){ var top3=it.rank<=3;
     var mc=top3?medal[it.rank-1]:'#14243f';
@@ -11478,6 +11538,7 @@ function _pshLbHtml(d){
       +'<b class="psh-lb-sc">'+it.score+'<small>/'+it.total+'</small></b></div>';
   }).join('');
   return '<div class="psh-lb"><div class="psh-lb-h">'+ic('chart')+' Ranking — Top '+lb.length
+    +'<button class="btn btn-gold btn-sm" style="margin-left:auto" onclick="_dlTop10Img((window._pshLbDl||{}).rows,(window._pshLbDl||{}).meta)">'+ic('download')+' Top 10 image</button>'
     +'<span class="psh-lb-note">Honest students rank above rule-breakers on a tie or small gap</span></div>'+rows+'</div>';
 }
 window._pshRkMode=function(m){ var R=window._pshRanking||(window._pshRanking={}); R.mode=(['manual','off'].indexOf(m)>=0?m:'auto'); if(m!=='manual') R.declared=false; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };

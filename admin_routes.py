@@ -10879,11 +10879,12 @@ def admin_public_test_responses(exam_id: int, db: Session = Depends(get_db), _=D
     ex = db.query(Exam).filter(Exam.id == exam_id).first()
     if not ex:
         raise HTTPException(404, "Test not found")
-    # RANKED: highest score first; tie -> earlier submission ranks higher (then id)
-    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
-            .order_by(PublicExamAttempt.total_awarded.desc(),
-                      PublicExamAttempt.created_at.asc(),
-                      PublicExamAttempt.id.asc()).all())
+    # RANKED — INTEGRITY-AWARE (teacher portal ke SAME order): honest students rule-todne
+    # walon se upar (tie ya chhote gap par bhi). Pehle admin yahan pure-score se rank karta tha
+    # isliye teacher vs admin ranking MISMATCH ho raha tha.
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id).all())
+    rows.sort(key=lambda r: _pr._integrity_rank_key(
+        r.total_awarded, getattr(r, "violations", 0), r.created_at, r.id))
     cfg = _pr.public_fields_cfg(ex)
     custom_cols = [{"key": f["key"], "label": f["label"]} for f in cfg if f["key"] not in _pr._KNOWN_KEYS]
     return {

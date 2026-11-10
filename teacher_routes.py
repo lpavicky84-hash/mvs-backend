@@ -5256,6 +5256,8 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
                     "violations": int(getattr(r, "violations", 0) or 0)}
                    for i, r in enumerate(ranked[:10])]
     return {"enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
+            "title": ex.title or "", "subject": ex.subject or "",
+            "teacher_name": ex.teacher_name or "",
             "leaderboard": leaderboard,
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
             "field_config": _pr.public_fields_cfg(ex),
