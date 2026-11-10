@@ -1475,20 +1475,45 @@ function _notifItemClick(ev,el){
     var fb=el.getAttribute('data-nfb')||(role==='admin'?'dashboard':'notifications');
     var hasLink=el.getAttribute('data-nhas')==='1';
     var encLink=el.getAttribute('data-nlink')||'';
+    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+type+' hasLink='+hasLink+' link='+(decodeURIComponent(encLink||'')||'(none)')+' → '+(hasLink?'notifLinkOpen':'notifGo')); }catch(_){} }
     if(hasLink) notifLinkOpen(role,id,encLink,type,fb);
     else notifGo(role,id,type,fb);
-  }catch(e){ try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
+  }catch(e){ try{ _notifDbg('ITEMCLICK THREW: '+((e&&e.message)||e)); }catch(_){} try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
   return false;
+}
+function _notifDbg(line){
+  try{
+    var box=document.getElementById('notif-dbg');
+    if(!box){
+      box=document.createElement('div'); box.id='notif-dbg';
+      box.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:999999;background:#1a1a1a;color:#8fffcf;font:12px/1.5 monospace;padding:10px 12px;border-radius:10px;max-height:46vh;overflow:auto;box-shadow:0 6px 24px rgba(0,0,0,.4);white-space:pre-wrap;word-break:break-word';
+      var x=document.createElement('div'); x.textContent='✕ close'; x.style.cssText='position:sticky;top:0;float:right;cursor:pointer;color:#ff9d9d;font-weight:800';
+      x.onclick=function(){ box.remove(); };
+      box.appendChild(x);
+      document.body.appendChild(box);
+    }
+    var row=document.createElement('div');
+    var ts=new Date().toLocaleTimeString();
+    row.textContent='['+ts+'] '+line;
+    box.appendChild(row);
+    box.scrollTop=box.scrollHeight;
+  }catch(e){}
 }
 async function notifGo(role,nid,type,fbPage){
   // NAVIGATE PEHLE (read-call ka intezaar nahi) — warna slow/failed read navigation ko rok deta tha.
   const page=_notifResolvePage(role,type,fbPage);
+  if(role==='admin'){
+    var _al; try{ _al=adminAllowed(page); }catch(e){ _al='ERR:'+((e&&e.message)||e); }
+    var _me=window._adminMe;
+    _notifDbg('CLICK type='+type+' fb='+fbPage+' → resolved='+page+' | allowed='+_al+' | div='+(!!document.getElementById('a-page-'+page))+' | me='+(_me?('full='+_me.full_access+' secs='+JSON.stringify(_me.sections||[])):'NULL'));
+  }
   closeModal();
   if(page){
     const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
     // pehle silent catch tha -> admin me aPage koi error deta to chup-chaap nigal jaata tha
     // (navigation fail, user dashboard pe). Ab error dikhate hain taaki pakad saken.
-    try{ navTo(page,null); }catch(e){ try{ toast('Could not open "'+page+'": '+((e&&e.message)||e),true); }catch(_){} }
+    try{ navTo(page,null); }catch(e){ try{ toast('Could not open "'+page+'": '+((e&&e.message)||e),true); _notifDbg('navTo THREW: '+((e&&e.message)||e)); }catch(_){} }
+    if(role==='admin'){ setTimeout(function(){ var a=document.querySelector('#admin-app .page.active'); _notifDbg('AFTER nav → active='+(a?a.id:'(none)')); }, 250); }
     // navbar me active item bhi sahi dikhe
     const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
     document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{
@@ -1517,7 +1542,7 @@ async function openNotifPanel(role){
     const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
     return `<div class="notif-item ${unread?'unread':''}" data-go="1" ${_da} style="${itStyle}" onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
-  var _verTop='<div style="text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.1em;color:var(--primary);background:var(--primary-50,rgba(184,148,31,.12));border-radius:8px;padding:5px;margin-bottom:10px">BUILD: notif-nav-v4</div>';
+  var _verTop='<div style="text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.1em;color:var(--primary);background:var(--primary-50,rgba(184,148,31,.12));border-radius:8px;padding:5px;margin-bottom:10px">BUILD: notif-nav-v5 (diagnostic)</div>';
   showModal(' Notifications',_verTop+html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
   // SMART: panel khulte hi sab read -> badge/count clear, bell blink band, dobara na dikhe
@@ -1565,16 +1590,20 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage){
   }
   // Support deep links -> open the exact record INSIDE the portal
   if(link.indexOf('/support/')===0){
+    if(role==='admin'){ try{ _notifDbg('LINKOPEN /support/ link='+link+' allowed(complaints)='+adminAllowed('complaints')+' div='+(!!document.getElementById('a-page-complaints'))); }catch(_){} }
     closeModal();
     var _appId=role==='admin'?'admin-app':'student-app';
     var _navTo=(role==='admin')?aPage:sPage;
     if(link.indexOf('/support/feedback')===0){
       try{ _navTo('feedback',null); }catch(e){}
-      _supActivateNav(_appId,'feedback'); return;
+      _supActivateNav(_appId,'feedback');
+      if(role==='admin'){ setTimeout(function(){ var a=document.querySelector('#admin-app .page.active'); _notifDbg('AFTER /support/feedback → active='+(a?a.id:'(none)')); },300); }
+      return;
     }
     var _m=link.match(/\/support\/complaint\/(\d+)/);
     try{ _navTo('complaints',null); }catch(e){}
     _supActivateNav(_appId,'complaints');
+    if(role==='admin'){ setTimeout(function(){ var a=document.querySelector('#admin-app .page.active'); _notifDbg('AFTER /support/complaint → active='+(a?a.id:'(none)')); },300); }
     if(_m){ var _cid=parseInt(_m[1],10); setTimeout(function(){ try{ (role==='admin')?amcCmpOpen(_cid):scOpenDetail(_cid); }catch(e){} }, 420); }
     return;
   }
