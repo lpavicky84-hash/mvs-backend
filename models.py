@@ -997,9 +997,12 @@ class Exam(Base):
     # ---- Randomization (Phase 4): har student ko questions/options alag order me (nakal mushkil) ----
     randomize_questions = Column(Boolean, default=False)            # questions ka order har student ke liye shuffle
     randomize_options   = Column(Boolean, default=False)            # har question ke options ka order shuffle
-    # ---- Ranking visibility (Phase 5, automatic): result+answers hamesha turant;
-    #      ranking non-scheduled me turant (live), scheduled me time khatam (scheduled_at+duration) ke baad auto. ----
-    # (Koi manual release nahi — niyam server khud lagata hai.)
+    # ---- Ranking visibility (Phase 5): per-test control. Marks hamesha dikhte hain; ranking:
+    #      "auto"   = pehle jaisa (non-scheduled live, scheduled time-khatam ke baad auto)
+    #      "manual" = teacher/admin ke "Declare ranking" dabane par hi dikhega (ranking_declared)
+    #      "off"    = ranking kabhi nahi, sirf marks
+    ranking_mode     = Column(String(16), default="auto")          # auto | manual | off
+    ranking_declared = Column(Boolean, default=False)              # manual mode: declare hone par True
 
 
 class PublicExamAttempt(Base):

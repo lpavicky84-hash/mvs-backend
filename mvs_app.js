@@ -9114,9 +9114,9 @@ function _aptCss(){ if(document.getElementById('apt-css')) return; var s=documen
   'body.dark .apt-stat b{color:#eaf0fb}',
   '.apt-stat span{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);font-weight:700}',
   '.apt-acts{display:flex;gap:8px;flex-wrap:wrap}',
-  '.apt-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;margin-top:12px}',
+  '.apt-table-wrap{overflow:auto;max-height:62vh;border:1px solid var(--border);border-radius:12px;margin-top:12px;-webkit-overflow-scrolling:touch}',
   '.apt-table{width:100%;border-collapse:collapse;font-size:.84rem;min-width:620px}',
-  '.apt-table th{position:sticky;top:0;text-align:left;background:#14243f;color:#fff;padding:10px 12px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}',
+  '.apt-table th{position:sticky;top:0;z-index:3;text-align:left;background:#14243f;color:#fff;padding:10px 12px;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}',
   '.apt-table td{padding:9px 12px;border-top:1px solid var(--border);white-space:nowrap}',
   '.apt-table tr:nth-child(even) td{background:rgba(184,148,31,.035)}'
 ].join(''); document.head.appendChild(s); }
@@ -22920,9 +22920,20 @@ async function openExamRanking(examId,role){
   try{
     const d=await api(`/api/${role}/exam/${examId}/ranking`);
     window._rankData=d; window._rankRole=role;
+    // Student + ranking locked (manual not declared / off) -> marks dikhte hain, ranking nahi
+    if(role==='student' && d.locked){
+      const off=(d.mode==='off');
+      showModal(`${esc((d.exam&&d.exam.title)||'Test')} — Result`,
+        `<div class="ws-empty"><div class="big">${ic(off?'shield':'clock')||ic('chart')}</div>`
+        +`<p><b>${off?'Ranking is not published for this test':'Ranking not declared yet'}</b></p>`
+        +`<small>${off?'Your marks are shown with your result. The teacher has chosen not to publish a ranking for this test.':'Your marks are shown with your result. You’ll see the ranking here as soon as your teacher publishes it.'}</small></div>`,
+        `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      return;
+    }
     const rows=d.rows||[];
+    const adminCtl=(role==='admin')?_rankAdminCtl(examId,d,role):'';
     if(!rows.length){
-      showModal('Test Ranking',`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated copies yet</b></p><small>Ranking appears as soon as the checking is done.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      showModal('Test Ranking',adminCtl+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated copies yet</b></p><small>Ranking appears as soon as the checking is done.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
       return;
     }
     const medal=['#f59e0b','#a2946d','#b45309'];
@@ -22944,11 +22955,51 @@ async function openExamRanking(examId,role){
       ${r.attempted!=null?`<span style="font-size:.68rem;color:var(--text-muted)">${r.attempted} Qs</span>`:''}
       <b class="sbb-xp">${r.marks}<small style="font-weight:600;color:var(--text-muted)">/${total}</small></b></div>`).join('');
     showModal(`${esc(d.exam.title||'Test')} — Ranking`,
-      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(d.exam.subject||'')}${d.exam.chapter?' &middot; '+esc(d.exam.chapter):''} &middot; ${total} marks &middot; ${d.graded} evaluated</div>
+      `${adminCtl}<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(d.exam.subject||'')}${d.exam.chapter?' &middot; '+esc(d.exam.chapter):''} &middot; ${total} marks &middot; ${d.graded} evaluated</div>
        ${podHtml}${meHtml}<div class="hide-scroll" style="max-height:280px;overflow-y:auto;padding-right:4px">${list}</div>
        ${rows.length>5?`<div class="trk-scroll-hint">Scroll for all ${rows.length} students</div>`:''}`,
       `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   }catch(e){ showModal('Test Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+// Admin/teacher control bar inside the ranking modal: choose student visibility (Auto/Manual/Off)
+// + declare/hide for manual. Works for existing tests too.
+function _rankAdminCtl(examId,d,role){
+  var mode=(d.ranking_mode||'auto'); var declared=!!d.ranking_declared;
+  function seg(m,lbl,sub){ var on=mode===m;
+    return '<button class="rkc-seg'+(on?' on':'')+'" onclick="_rankSetMode('+examId+',\''+m+'\',\''+role+'\')"><b>'+lbl+'</b><small>'+sub+'</small></button>'; }
+  var declareBtn='';
+  if(mode==='manual'){
+    declareBtn = declared
+      ? '<div class="rkc-dec"><span class="rkc-live">'+ic('check')+' Ranking is LIVE for students</span><button class="btn btn-ghost btn-sm" onclick="_rankDeclare('+examId+',true,\''+role+'\')">Hide again</button></div>'
+      : '<div class="rkc-dec"><span class="rkc-hold">Ranking hidden from students</span><button class="btn btn-primary btn-sm" onclick="_rankDeclare('+examId+',false,\''+role+'\')">'+ic('check')+' Declare ranking now</button></div>';
+  }
+  _rkcCSS();
+  return '<div class="rkc"><div class="rkc-t">Student visibility</div>'
+    +'<div class="rkc-segs">'+seg('auto','Auto','Shows automatically')+seg('manual','Manual','You declare it')+seg('off','Off','Marks only')+'</div>'
+    +declareBtn+'</div>';
+}
+function _rkcCSS(){ if(document.getElementById('rkc-css'))return; var s=document.createElement('style'); s.id='rkc-css';
+  s.textContent='.rkc{background:var(--card,#fffdf6);border:1px solid var(--border,rgba(184,148,31,.22));border-radius:14px;padding:12px 13px;margin-bottom:14px}'
+    +'.rkc-t{font-size:.64rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#a08a55);margin-bottom:8px}'
+    +'.rkc-segs{display:flex;gap:7px}'
+    +'.rkc-seg{flex:1;display:flex;flex-direction:column;gap:1px;align-items:flex-start;padding:8px 11px;border:1.5px solid var(--border,rgba(184,148,31,.28));border-radius:10px;background:transparent;cursor:pointer;text-align:left;transition:all .13s}'
+    +'.rkc-seg b{font-size:.84rem;color:var(--text,#2b2410)}.rkc-seg small{font-size:.64rem;color:var(--text-muted,#a08a55)}'
+    +'.rkc-seg:hover{border-color:rgba(184,148,31,.55)}'
+    +'.rkc-seg.on{border-color:var(--primary,#b8941f);background:linear-gradient(135deg,rgba(184,148,31,.15),rgba(184,148,31,.05))}.rkc-seg.on b{color:#8a6d1a}'
+    +'.rkc-dec{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--border,rgba(184,148,31,.18))}'
+    +'.rkc-live{display:inline-flex;align-items:center;gap:5px;font-size:.78rem;font-weight:700;color:#059669}.rkc-live svg{width:14px;height:14px}'
+    +'.rkc-hold{font-size:.78rem;font-weight:600;color:#b45309}';
+  document.head.appendChild(s);
+}
+async function _rankSetMode(examId,mode,role){
+  try{ await api('/api/admin/exam/'+examId+'/ranking-mode','POST',{mode:mode});
+    toast('Ranking visibility: '+mode.toUpperCase()); openExamRanking(examId,role); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+async function _rankDeclare(examId,undo,role){
+  try{ await api('/api/admin/exam/'+examId+'/declare-ranking','POST',{undo:!!undo});
+    toast(undo?'Ranking hidden from students':'Ranking declared — students can see it now'); openExamRanking(examId,role); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
 function rankClick(sid){
   const d=window._rankData; if(!d) return;

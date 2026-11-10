@@ -3804,11 +3804,53 @@ def _exam_ranking_rows(db, exam_id):
 
 @router.get("/exam/{exam_id}/ranking")
 def admin_exam_ranking(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Exam
     data = _exam_ranking_rows(db, exam_id)
     if not data:
         raise HTTPException(status_code=404, detail="Test not found")
     data["me_id"] = None
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if ex:
+        data["ranking_mode"] = (getattr(ex, "ranking_mode", "") or "auto")
+        data["ranking_declared"] = bool(getattr(ex, "ranking_declared", False))
     return data
+
+
+@router.post("/exam/{exam_id}/ranking-mode")
+def admin_set_exam_ranking_mode(exam_id: int, payload: dict = Body(...),
+                                db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Per-test ranking visibility set karo (purane tests pe bhi chalta hai).
+    mode: auto | manual | off. 'manual' chunne par declared reset ho jaata hai (jab tak
+    teacher/admin declare na kare, students ko ranking nahi dikhegi)."""
+    from models import Exam
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in ("auto", "manual", "off"):
+        raise HTTPException(status_code=400, detail="mode must be auto, manual or off")
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Test not found")
+    ex.ranking_mode = mode
+    if mode != "manual":
+        ex.ranking_declared = False          # auto/off me declare flag ka matlab nahi
+    db.commit()
+    return {"ok": True, "ranking_mode": mode, "ranking_declared": bool(ex.ranking_declared)}
+
+
+@router.post("/exam/{exam_id}/declare-ranking")
+def admin_declare_exam_ranking(exam_id: int, payload: dict = Body(default={}),
+                               db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Manual mode me ranking ko ABHI declare karo (students ko dikhne lagegi). undo:true bhejo
+    to wapas chhupa do."""
+    from models import Exam
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Test not found")
+    undo = bool(payload.get("undo"))
+    if (getattr(ex, "ranking_mode", "") or "auto") != "manual":
+        ex.ranking_mode = "manual"           # declare dabaya to mode manual kar do
+    ex.ranking_declared = (not undo)
+    db.commit()
+    return {"ok": True, "ranking_mode": ex.ranking_mode, "ranking_declared": bool(ex.ranking_declared)}
 
 
 @router.get("/student-counts")

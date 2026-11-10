@@ -339,6 +339,8 @@ def ensure_columns():
         # Integrity / Secure mode (Phase 3). Default OFF = koi monitoring nahi, purane tests same.
         "ALTER TABLE exams ADD COLUMN integrity_mode VARCHAR(16) DEFAULT 'OFF'",
         "ALTER TABLE exams ADD COLUMN max_violations INTEGER DEFAULT 3",
+        "ALTER TABLE exams ADD COLUMN ranking_mode VARCHAR(16) DEFAULT 'auto'",
+        "ALTER TABLE exams ADD COLUMN ranking_declared BOOLEAN DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN violations INTEGER DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN flagged BOOLEAN DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN integrity_log JSON",

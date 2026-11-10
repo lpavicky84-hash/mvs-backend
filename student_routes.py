@@ -3620,6 +3620,18 @@ def _exam_ranking_rows(db, exam_id):
                      "test_type": exam.test_type},
             "graded": len(rows), "rows": rows}
 
+
+def _exam_ranking_locked(exam):
+    """RANKING student ko dikhe ya nahi (marks hamesha dikhte hain — ye sirf ranking gate).
+    auto -> dikhe (pehle jaisa). manual -> declare hone par hi. off -> kabhi nahi.
+    Returns (locked: bool, mode: str)."""
+    mode = (getattr(exam, "ranking_mode", "") or "auto").lower()
+    if mode == "off":
+        return True, "off"
+    if mode == "manual":
+        return (not bool(getattr(exam, "ranking_declared", False))), "manual"
+    return False, "auto"
+
 @router.get("/exam/{exam_id}/pdf")
 def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Mission 75 PDF test: question paper hamesha; answer paper sirf time khatam hone par."""
@@ -3656,8 +3668,16 @@ def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Test not found")
+    locked, mode = _exam_ranking_locked(exam)
+    if locked:
+        # marks to student ko dikhte rehte hain; sirf RANKING band hai
+        return {"locked": True, "mode": mode, "me_id": sp.id, "graded": 0, "rows": [],
+                "exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
+                         "chapter": exam.chapter, "total_marks": exam.total_marks,
+                         "test_type": exam.test_type}}
     data = _exam_ranking_rows(db, exam_id)
     data["me_id"] = sp.id
+    data["mode"] = mode
     return data
 
 
