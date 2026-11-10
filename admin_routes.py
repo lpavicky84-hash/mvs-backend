@@ -580,110 +580,167 @@ def _norm_session_label(db, s):
     return _session_id_to_batch_label(db, sid) if sid else ""
 
 
-def _realign_one(db, sp, bmap=None, flush=True):
-    """SINGLE SOURCE OF TRUTH: ek student ka PRIMARY batch uske exam_session ke hisaab se sahi
-    session-batch par le jaao. Har jagah (onboarding, admin edit, session change, bulk realign)
-    yahi call hoti hai -> batch hamesha session se match karta hai.
-    SAFE + idempotent: crash/add-on kabhi nahi chhedta, koi enrollment delete nahi karta (sirf
-    primary link sahi session par), active_batch_id bhi sync karta hai (agar wo stale primary pe
-    tha). Returns a sample dict if it changed something, else None."""
+def _realign_one(db, sp, bmap=None, flush=True, dry=False, sbmap=None):
+    """SINGLE SOURCE OF TRUTH: ek student ko uske exam_session ke hisaab se sahi session-batch
+    par le jaao — teeno pointer sync: profile.batch_id, primary StudentBatch link, aur
+    active_batch_id. DISPLAY (batch_id) aur ACCESS (StudentBatch/active) dono mein se kisi bhi
+    jagah galat session ho to pakad leta hai (isi liye bug chhoot raha tha: October sirf
+    access-layer mein tha).
+    SAFE + idempotent: crash-course PRIMARY kabhi nahi chhedta; sirf SAME-COURSE purane-session
+    links hatata hai, dusre course ke add-on (crash) ko sirf non-primary karta hai, delete nahi.
+    dry=True -> koi DB change / batch-create nahi, bas mismatch detect karke sample deta hai
+    (scan preview isi se chalta hai -> preview aur apply ek hi logic).
+    sbmap -> {student_id: [StudentBatch,...]} prefetch (bulk scan me N+1 se bachne ke liye).
+    Returns a sample dict agar kuch change hua/hoga, warna None."""
     from models import Batch, StudentBatch
-    pbid = getattr(sp, "batch_id", None)
-    cur = None
-    if pbid is not None:
-        cur = (bmap.get(pbid) if bmap is not None else db.query(Batch).get(pbid))
-    # base course name: current batch ka naam, warna sales-sheet ka batch_name
-    cur_name = ((cur.name if cur else None) or getattr(sp, "batch_name", None) or "").strip()
-    if not cur_name:
-        return None
-    if "crash" in cur_name.lower():                 # crash = session-less add-on -> chhodo
-        return None
+
+    def _b(bid):
+        if not bid:
+            return None
+        return (bmap.get(bid) if bmap is not None else db.query(Batch).get(bid))
+
+    def _sb_rows():
+        if sbmap is not None:
+            return list(sbmap.get(sp.id, []))
+        return db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
+
     target_label = _norm_session_label(db, getattr(sp, "exam_session", "") or "")
     if not target_label:                            # exam_session month-bucket nahi -> chhodo
+        return None
+
+    pbid = getattr(sp, "batch_id", None)
+    abid = getattr(sp, "active_batch_id", None)
+    _all_rows = _sb_rows()
+    prim_row = next((r for r in _all_rows if r.is_primary), None)
+    prim_bid = prim_row.batch_id if prim_row else None
+
+    # Agar student ka CURRENT primary (batch_id ya primary-link) crash-course hai -> deliberate
+    # add-on, kabhi mat chhedo (purana guarantee barqaraar).
+    _prim_b = _b(pbid) or _b(prim_bid)
+    if _prim_b and "crash" in ((_prim_b.name or "").lower()):
+        return None
+
+    # base course naam: pehla non-crash pointer, warna sales-sheet ka batch_name
+    cur_name = ""
+    for cand in (pbid, prim_bid, abid):
+        b = _b(cand)
+        if b and b.name and "crash" not in (b.name or "").lower():
+            cur_name = b.name.strip()
+            break
+    if not cur_name:
+        cur_name = (getattr(sp, "batch_name", "") or "").strip()
+    if not cur_name or "crash" in cur_name.lower():
         return None
     base_name = _normalize_batch(cur_name) or cur_name
     if not base_name:
         return None
+
+    # ---- mismatch detect karo (koi side-effect nahi: na create, na write) ----
+    cur_sessions = set()
+    for bid in (pbid, prim_bid, abid):
+        b = _b(bid)
+        if not b or "crash" in ((b.name or "").lower()):
+            continue
+        if (_normalize_batch(b.name or "") or (b.name or "").strip()) != base_name:
+            continue                                # sirf isi course ke pointers dekho
+        cur_sessions.add((getattr(b, "session", "") or "").strip())
+    # mismatch agar koi same-course pointer galat session par hai, YA is course ka koi
+    # session-batch pointer hai hi nahi (student ko sahi session-batch par rakhna hai)
+    mismatch = any(s != target_label for s in cur_sessions) or (not cur_sessions)
+    if not mismatch:
+        # Session sab sahi hai. Par active_batch_id None / same-course stale par ho to use
+        # SILENTLY aligned primary par le aao (purana behaviour) — ye koi session-mismatch
+        # nahi, isliye scan count me nahi aata (return None).
+        if not dry:
+            aligned_bid = None
+            for cand in (pbid, prim_bid):
+                b = _b(cand)
+                if b and (getattr(b, "session", "") or "").strip() == target_label \
+                        and (_normalize_batch(b.name or "") or (b.name or "").strip()) == base_name:
+                    aligned_bid = cand
+                    break
+            if aligned_bid:
+                ab = _b(abid)
+                ab_stale = bool(ab and "crash" not in ((ab.name or "").lower())
+                                and (_normalize_batch(ab.name or "") or "") == base_name
+                                and (getattr(ab, "session", "") or "").strip() != target_label)
+                if (abid is None or abid in (pbid, prim_bid) or ab_stale) \
+                        and getattr(sp, "active_batch_id", None) != aligned_bid:
+                    sp.active_batch_id = aligned_bid
+                    if flush:
+                        db.flush()
+        return None
+
+    _cb = _b(pbid) or _b(prim_bid) or _b(abid)
+    _from = ((_cb.name or "") + (" — " + _cb.session if (_cb and _cb.session) else "")) \
+        if _cb else (cur_name + " — (no batch)")
+    sample = {"id": sp.id, "from": _from, "to": base_name + " — " + target_label}
+    if dry:
+        return sample
+
+    # ---- APPLY: sahi session-batch resolve/create karke teeno pointer set karo ----
     correct_id = _resolve_session_batch_id(db, base_name, target_label)
     if not correct_id:
         return None
-    cur_ses = (cur.session or "").strip() if cur else ""
-    if pbid == correct_id and cur_ses == target_label:   # already aligned
-        if getattr(sp, "active_batch_id", None) in (None, pbid) and sp.active_batch_id != correct_id:
-            sp.active_batch_id = correct_id
-            if flush:
-                db.flush()
-        return None
-    old_bid = pbid
-    ex = (db.query(StudentBatch)
-          .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == correct_id).first())
-    old_row = (db.query(StudentBatch)
-               .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == old_bid).first()) if old_bid else None
-    if ex:
-        ex.is_primary = True
-        if old_row and old_row.id != ex.id:
-            db.delete(old_row)                      # old primary link removed (add-ons untouched)
-    elif old_row:
-        old_row.batch_id = correct_id
-        old_row.is_primary = True
+    rows = _all_rows
+    correct_row = next((r for r in rows if r.batch_id == correct_id), None)
+    for r in rows:
+        if r is correct_row:
+            continue
+        rb = _b(r.batch_id)
+        rb_name = (_normalize_batch(rb.name or "") or (rb.name or "").strip()) if rb else ""
+        same_course = bool(rb and "crash" not in ((rb.name or "").lower()) and rb_name == base_name)
+        if same_course:
+            db.delete(r)                            # same course ka purana-session link -> hatao
+        elif r.is_primary:
+            r.is_primary = False                    # dusra add-on: rakho, par primary nahi
+    if correct_row:
+        correct_row.is_primary = True
     else:
         db.add(StudentBatch(student_id=sp.id, batch_id=correct_id, is_primary=True))
-    _old_active = getattr(sp, "active_batch_id", None)
+
+    old_ptrs = {pbid, prim_bid}
     sp.batch_id = correct_id
     sp.batch_name = base_name
-    if _old_active in (None, old_bid):              # stale primary pe tha -> correct par (add-on choice preserve)
+    if abid in old_ptrs or abid is None:
         sp.active_batch_id = correct_id
+    else:
+        ab = _b(abid)                               # active kisi same-course stale par tha? to le jaao
+        if ab and "crash" not in ((ab.name or "").lower()) \
+                and (_normalize_batch(ab.name or "") or "") == base_name:
+            sp.active_batch_id = correct_id
     if flush:
         db.flush()
-    return {"id": sp.id,
-            "from": cur_name + (" — " + cur_ses if cur_ses else " — (no session)"),
-            "to": base_name + " — " + target_label}
+    return sample
 
 
 def _scan_realign_session_batch(db, apply=False):
     """Har student jiska exam_session ek month-session hai (April 2027 / October 2026),
-    uska PRIMARY batch usi session ka hona chahiye. Legacy data mein session April hai par
-    batch October linked hai -> galat access + galat counting. Ye us mismatch ko dhoondhta
-    (apply=False) ya theek karta (apply=True) hai. SAFE: crash-course/add-on kabhi nahi
-    chhedta, koi enrollment delete nahi karta, active_batch_id bhi sync karta hai, idempotent
-    hai (dobara chalao -> 0 change). Core work _realign_one me hai."""
-    from models import StudentProfile, Batch
+    uska batch (DISPLAY + ACCESS dono) usi session ka hona chahiye. Legacy data mein session
+    April hai par batch/StudentBatch/active October par linked hai -> galat access + galat
+    counting. Ye us mismatch ko dhoondhta (apply=False, dry-run) ya theek karta (apply=True) hai.
+
+    AHEM: ab batch_id-null wale bhi scan hote hain (October sirf access-layer mein ho to bhi
+    pakdega) — isiliye pehle kuch students chhoot rahe the. Preview aur apply EK HI _realign_one
+    logic use karte hain (dry flag), to 'preview 0 par asli mismatch' kabhi nahi hoga.
+    SAFE: crash-course PRIMARY kabhi nahi chhedta, idempotent (dobara -> 0 change)."""
+    from models import StudentProfile, Batch, StudentBatch
     bmap = {b.id: b for b in db.query(Batch).all()}
+    sbmap = {}
+    for r in db.query(StudentBatch).all():          # ek hi query -> N+1 se bachao
+        sbmap.setdefault(r.student_id, []).append(r)
     changed = 0
     skipped_crash = 0
     samples = []
     q = (db.query(StudentProfile)
-         .filter(StudentProfile.batch_id.isnot(None),
-                 StudentProfile.exam_session.isnot(None),
+         .filter(StudentProfile.exam_session.isnot(None),
                  StudentProfile.exam_session != ""))
     for sp in q.yield_per(500):
-        cur = bmap.get(sp.batch_id)
+        cur = bmap.get(sp.batch_id) if sp.batch_id else None
         if cur and "crash" in (cur.name or "").lower():
             skipped_crash += 1
             continue
-        if not apply:
-            # PREVIEW: koi change nahi, sirf gin lo ki kaun mismatch hai
-            target_label = _norm_session_label(db, sp.exam_session)
-            if not target_label:
-                continue
-            cur_ses = (cur.session or "").strip() if cur else ""
-            if cur_ses == target_label:
-                continue
-            base_name = _normalize_batch((cur.name if cur else sp.batch_name) or "") or ""
-            if not base_name:
-                continue
-            changed += 1
-            if len(samples) < 50:
-                try:
-                    _nm = sp.user.name if sp.user else ""
-                except Exception:
-                    _nm = ""
-                samples.append({"id": sp.id, "name": _nm,
-                                "from": ((cur.name if cur else sp.batch_name) or "")
-                                        + (" — " + cur_ses if cur_ses else " — (no session)"),
-                                "to": base_name + " — " + target_label})
-            continue
-        s = _realign_one(db, sp, bmap=bmap)
+        s = _realign_one(db, sp, bmap=bmap, dry=not apply, sbmap=sbmap)
         if s:
             changed += 1
             if len(samples) < 50:
@@ -4851,6 +4908,68 @@ def admin_session_batch_realign(db: Session = Depends(get_db), _=Depends(get_adm
     except Exception:
         pass
     return res
+
+
+@router.get("/students/session-batch-debug")
+def admin_session_batch_debug(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """READ-ONLY diagnostic: har student ke RAW batch pointers dikhata hai jahan display/access
+    session uske exam_session se match nahi karta — batch_id + uska session, active_batch_id +
+    session, primary StudentBatch + session, exam_session, aur engine ne kya target socha.
+    Kuch change nahi karta. q = naam/phone se filter (optional). Jab preview '0' bole par koi
+    student galat dikh raha ho, isse asli data turant pata chal jaata hai (guess nahi)."""
+    from models import StudentProfile, Batch, StudentBatch, User
+    bmap = {b.id: b for b in db.query(Batch).all()}
+    sbmap = {}
+    for r in db.query(StudentBatch).all():
+        sbmap.setdefault(r.student_id, []).append(r)
+    ql = (q or "").strip().lower()
+
+    def _ses(bid):
+        b = bmap.get(bid) if bid else None
+        return (getattr(b, "session", "") or "") if b else None
+
+    def _nm(bid):
+        b = bmap.get(bid) if bid else None
+        return (getattr(b, "name", "") or "") if b else None
+
+    out = []
+    qy = (db.query(StudentProfile)
+          .filter(StudentProfile.exam_session.isnot(None), StudentProfile.exam_session != ""))
+    for sp in qy.yield_per(500):
+        target = _norm_session_label(db, sp.exam_session or "")
+        if not target:
+            continue
+        rows = sbmap.get(sp.id, [])
+        prim = next((r for r in rows if r.is_primary), None)
+        prim_bid = prim.batch_id if prim else None
+        # mismatch = koi non-crash same-area pointer target se alag, ya koi pointer hi nahi
+        sessions = []
+        for bid in (sp.batch_id, prim_bid, sp.active_batch_id):
+            b = bmap.get(bid) if bid else None
+            if b and "crash" not in ((b.name or "").lower()):
+                sessions.append((getattr(b, "session", "") or ""))
+        mism = any(s != target for s in sessions) or (not sessions)
+        if not mism:
+            continue
+        try:
+            nm = sp.user.name if sp.user else ""
+        except Exception:
+            nm = ""
+        if ql and ql not in (nm or "").lower() and ql not in (sp.phone or ""):
+            continue
+        out.append({
+            "id": sp.id, "name": nm, "phone": sp.phone,
+            "exam_session_raw": sp.exam_session, "target_session": target,
+            "batch_id": sp.batch_id, "batch_id_name": _nm(sp.batch_id), "batch_id_session": _ses(sp.batch_id),
+            "active_batch_id": sp.active_batch_id, "active_name": _nm(sp.active_batch_id), "active_session": _ses(sp.active_batch_id),
+            "primary_sb_batch_id": prim_bid, "primary_sb_name": _nm(prim_bid), "primary_sb_session": _ses(prim_bid),
+            "batch_name_text": sp.batch_name,
+            "all_enrollments": [{"batch_id": r.batch_id, "name": _nm(r.batch_id),
+                                 "session": _ses(r.batch_id), "is_primary": bool(r.is_primary)} for r in rows],
+        })
+        if len(out) >= 60:
+            break
+    return {"count": len(out), "students": out}
 
 
 @router.post("/students/bulk-phone")
