@@ -1517,7 +1517,8 @@ async function openNotifPanel(role){
     const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
     return `<div class="notif-item ${unread?'unread':''}" data-go="1" ${_da} style="${itStyle}" onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
-  showModal(' Notifications',html+'<div style="text-align:center;font-size:.6rem;color:var(--text-muted);opacity:.6;margin-top:8px">notif-nav-v3</div>',`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  var _verTop='<div style="text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.1em;color:var(--primary);background:var(--primary-50,rgba(184,148,31,.12));border-radius:8px;padding:5px;margin-bottom:10px">BUILD: notif-nav-v4</div>';
+  showModal(' Notifications',_verTop+html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
   // SMART: panel khulte hi sab read -> badge/count clear, bell blink band, dobara na dikhe
   // jab tak koi naya notification na aaye. (Items is view me highlighted rehte hain jisse
