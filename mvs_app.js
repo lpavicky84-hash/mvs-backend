@@ -19385,9 +19385,10 @@ window.openBatchAlign=function(){
   showModal('Fix Batch ↔ Session','<div style="padding:22px;text-align:center"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-muted)">Scanning students…</div></div>','<button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>');
   api('/api/admin/students/session-batch-scan').then(function(r){
     var n=r.changed||0; var sm=(r.samples||[]);
+    var _eng=(r.engine?('Engine: '+esc(r.engine)):'Engine: (purana code — naya deploy nahi hua)')+(typeof r.scanned!=='undefined'?(' · '+r.scanned+' students scanned'):'');
     if(!n){
       showModal('Fix Batch ↔ Session',
-        '<div style="text-align:center;padding:18px 4px"><div style="font-size:2.4rem">✅</div><div style="font-weight:800;font-size:1.05rem;margin-top:8px">All good — every student’s batch matches their session.</div><div style="color:var(--text-muted);margin-top:6px">No changes needed.</div></div>',
+        '<div style="text-align:center;padding:18px 4px"><div style="font-size:2.4rem">✅</div><div style="font-weight:800;font-size:1.05rem;margin-top:8px">All good — every student’s batch matches their session.</div><div style="color:var(--text-muted);margin-top:6px">No changes needed.</div><div style="color:var(--text-muted);font-size:.68rem;margin-top:14px;opacity:.7">'+_eng+'</div></div>',
         '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Close</button>');
       return;
     }
@@ -19400,7 +19401,8 @@ window.openBatchAlign=function(){
         '<div style="font-size:.84rem;color:#8a5a12;margin-top:5px;line-height:1.55">After fixing, each student moves to the batch of their own exam session (April 2027 / October 2026). Crash-course & add-on batches stay untouched, and no enrollment is deleted.</div>'+
       '</div>'+
       '<div style="font-weight:700;margin-bottom:6px;font-size:.82rem;color:var(--text-muted)">Sample of changes'+(n>sm.length?(' (showing '+sm.length+' of '+n+')'):'')+':</div>'+
-      '<div style="max-height:42vh;overflow-y:auto">'+rowsH+'</div>';
+      '<div style="max-height:42vh;overflow-y:auto">'+rowsH+'</div>'+
+      '<div style="color:var(--text-muted);font-size:.68rem;margin-top:12px;opacity:.7">'+_eng+'</div>';
     showModal('Fix Batch ↔ Session',body,
       '<button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button><button class="btn btn-primary btn-sm" onclick="_doBatchAlign('+n+')">Fix all '+n+' now</button>');
   }).catch(function(e){ var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML='<div class="cmy-empty">Could not scan. '+esc((e&&e.message)||'')+'</div>'; });

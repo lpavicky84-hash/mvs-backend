@@ -734,6 +734,9 @@ def _realign_one(db, sp, bmap=None, flush=True, dry=False, sbmap=None):
     return sample
 
 
+_BATCHFIX_ENGINE = "batchfix-v4 (all-pointers + tolerant-session)"
+
+
 def _scan_realign_session_batch(db, apply=False):
     """Har student jiska exam_session ek month-session hai (April 2027 / October 2026),
     uska batch (DISPLAY + ACCESS dono) usi session ka hona chahiye. Legacy data mein session
@@ -751,11 +754,13 @@ def _scan_realign_session_batch(db, apply=False):
         sbmap.setdefault(r.student_id, []).append(r)
     changed = 0
     skipped_crash = 0
+    scanned = 0
     samples = []
     q = (db.query(StudentProfile)
          .filter(StudentProfile.exam_session.isnot(None),
                  StudentProfile.exam_session != ""))
     for sp in q.yield_per(500):
+        scanned += 1
         cur = bmap.get(sp.batch_id) if sp.batch_id else None
         if cur and "crash" in (cur.name or "").lower():
             skipped_crash += 1
@@ -771,8 +776,8 @@ def _scan_realign_session_batch(db, apply=False):
                 samples.append(s)
     if apply:
         db.commit()
-    return {"changed": changed, "skipped_crash": skipped_crash,
-            "samples": samples, "applied": bool(apply)}
+    return {"changed": changed, "skipped_crash": skipped_crash, "scanned": scanned,
+            "samples": samples, "applied": bool(apply), "engine": _BATCHFIX_ENGINE}
 
 
 def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
