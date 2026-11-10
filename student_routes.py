@@ -1830,6 +1830,14 @@ def student_request_subject_change(payload: dict = Body(...), db: Session = Depe
     note = (payload.get("note") or "").strip()[:300]
     if not want and not note:
         raise HTTPException(status_code=400, detail="Please pick the subjects you want or add a note.")
+    # DUPLICATE GUARD: pehle se koi subject request pending ho to dusra mat banne do
+    try:
+        from admin_routes import _has_pending_request as _hpr
+        if _hpr(db, sp.id, "subject"):
+            return {"ok": False, "pending": True,
+                    "message": "Aapka ek subject-change request pehle se pending hai. Admin ke approve/reject hone tak naya request nahi bhej sakte."}
+    except Exception:
+        pass
     cur = ", ".join(sp.subjects or []) or "—"
     req = ", ".join(want) or "—"
     title = "Subject change request"
@@ -1869,6 +1877,21 @@ def student_request_batch_change(payload: dict = Body(...), db: Session = Depend
     note = (payload.get("note") or "").strip()[:300]
     if not bn and not note:
         raise HTTPException(status_code=400, detail="Please choose the batch you want or add a note.")
+    # DUPLICATE GUARD: pehle se koi batch request pending ho to dusra mat banne do
+    try:
+        from admin_routes import _has_pending_request as _hpr
+        if _hpr(db, sp.id, "batch"):
+            return {"ok": False, "pending": True,
+                    "message": "Aapka ek batch-change request pehle se pending hai. Admin ke approve/reject hone tak naya request nahi bhej sakte."}
+    except Exception:
+        pass
+    # session label (batch ke aage dikhane ke liye)
+    _ses_label = ""
+    try:
+        from admin_routes import _norm_session_label as _nsl
+        _ses_label = _nsl(db, sp.exam_session or "") or ""
+    except Exception:
+        _ses_label = ""
     cur = sp.batch_name or "\u2014"
     msg = ("%s (%s%s) says their batch is wrong / wants a change.\nCurrent: %s\nRequested: %s%s"
            % (current_user.name or "A student", (sp.phone or "no phone"),
@@ -1889,6 +1912,7 @@ def student_request_batch_change(payload: dict = Body(...), db: Session = Depend
         add_student_request(db, {"type": "batch", "student_id": sp.id,
                                  "name": current_user.name or "", "phone": sp.phone or "",
                                  "class_level": sp.class_level or "", "requested": bn,
+                                 "exam_session": sp.exam_session or "", "session_label": _ses_label,
                                  "note": note, "at": _dt.utcnow().isoformat()})
     except Exception:
         pass

@@ -734,6 +734,59 @@ def _realign_one(db, sp, bmap=None, flush=True, dry=False, sbmap=None):
     return sample
 
 
+def _force_primary_batch(db, sp, requested_name):
+    """Student batch-change request APPROVE: student jo batch maangta hai usi par le jaao —
+    session-aware (exam_session ka session-batch), aur TEENO pointer update: profile.batch_id,
+    primary StudentBatch link, active_batch_id. Isi liye pehle 'approve karne par batch change
+    nahi hota tha' — sirf naam set hota tha, access-layer (StudentBatch/active) nahi badalta tha.
+    Crash-course request -> add-on ke roop me (primary ko chhede bina). Returns applied label."""
+    from models import StudentBatch, Batch
+    bn = (requested_name or "").strip()
+    if not bn:
+        return ""
+    base = _normalize_batch(bn) or bn
+    is_crash = "crash" in base.lower() or "crash" in bn.lower()
+    ses_label = _norm_session_label(db, getattr(sp, "exam_session", "") or "")
+    if is_crash:
+        new_bid = _resolve_crash_batch_id(db, base)
+        if new_bid:
+            _ensure_primary_enrollment(db, sp.id)
+            _add_extra_enrollment(db, sp.id, new_bid)
+        db.flush()
+        _cb = db.query(Batch).get(new_bid) if new_bid else None
+        return ((_cb.name if _cb else base) + " (crash add-on)")
+    new_bid = _resolve_session_batch_id(db, base, ses_label) if ses_label else _resolve_batch_id(db, bn)
+    sp.batch_name = base
+    if not new_bid:
+        db.flush()
+        return base
+    sp.batch_id = new_bid
+    rows = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
+    correct = None
+    for r in rows:
+        if r.batch_id == new_bid:
+            if correct is None:
+                correct = r
+            else:
+                db.delete(r)                         # duplicate link hatao
+    for r in rows:
+        if r is correct:
+            continue
+        rb = db.query(Batch).get(r.batch_id)
+        if rb and "crash" in ((rb.name or "").lower()):
+            r.is_primary = False                     # crash add-on rakho (primary nahi)
+        else:
+            db.delete(r)                             # purana non-crash enrollment hatao (course/session change)
+    if correct:
+        correct.is_primary = True
+    else:
+        db.add(StudentBatch(student_id=sp.id, batch_id=new_bid, is_primary=True))
+    sp.active_batch_id = new_bid
+    db.flush()
+    bb = db.query(Batch).get(new_bid)
+    return (bb.name + (" — " + bb.session if (bb and bb.session) else "")) if bb else base
+
+
 _BATCHFIX_ENGINE = "batchfix-v4 (all-pointers + tolerant-session)"
 
 
@@ -7111,14 +7164,29 @@ def _student_requests_save(db, lst):
     db.commit()
 
 
+def _has_pending_request(db, student_id, rtype):
+    """Kya is student ka isi type (subject/batch) ka koi request ABHI pending hai?"""
+    for r in _student_requests_list(db):
+        if (r.get("status") or "pending") == "pending" \
+                and int(r.get("student_id", 0) or 0) == int(student_id or 0) \
+                and (r.get("type") or "") == rtype:
+            return r
+    return None
+
+
 def add_student_request(db, rec):
-    """Append a pending change request (called from the student endpoints)."""
+    """Append a pending change request (called from the student endpoints).
+    DUPLICATE GUARD: ek student ka ek type ka sirf EK request pending reh sakta hai — jab tak
+    approve/reject na ho, dusra same request nahi banta. Returns {'id':..} ya {'duplicate':True}."""
     lst = _student_requests_list(db)
+    existing = _has_pending_request(db, rec.get("student_id"), rec.get("type") or "")
+    if existing:
+        return {"duplicate": True, "id": existing.get("id")}
     rec["id"] = (max([int(r.get("id", 0) or 0) for r in lst] + [0]) + 1)
     rec.setdefault("status", "pending")
     lst.append(rec)
     _student_requests_save(db, lst)
-    return rec["id"]
+    return {"duplicate": False, "id": rec["id"]}
 
 
 @router.get("/student-requests")
@@ -7133,9 +7201,15 @@ def admin_student_requests(status: str = "pending", db: Session = Depends(get_db
     out = []
     for r in sorted(lst, key=lambda x: x.get("at", ""), reverse=True)[:300]:
         sp = db.query(StudentProfile).filter(StudentProfile.id == r.get("student_id")).first()
+        # session label: request me jo aaya wahi, warna student ke current exam_session se
+        _slbl = r.get("session_label") or ""
+        if not _slbl and sp:
+            _slbl = _norm_session_label(db, sp.exam_session or "") or _session_friendly(sp.exam_session or "")
         out.append({**r,
                     "current_subjects": ((sp.subjects or []) if sp else []),
                     "current_batch": ((sp.batch_name if sp else "") or ""),
+                    "current_batch_label": (_student_batch_fields(db, sp)[2] if sp else ""),
+                    "session_label": _slbl,
                     "student_name": (sp.user.name if sp and sp.user else r.get("name") or "Student"),
                     "phone": ((sp.phone if sp else "") or r.get("phone") or ""),
                     "class_level": ((sp.class_level if sp else "") or r.get("class_level") or ""),
@@ -7150,13 +7224,18 @@ def admin_student_requests_count(db: Session = Depends(get_db), _=Depends(get_ad
 
 @router.post("/student-requests/{rid}/review")
 def admin_student_request_review(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
-    """Approve -> apply the change to the student's profile automatically (subjects or
-    batch) and notify them. Reject -> just close it and notify. No manual editing needed."""
+    """Approve -> student ke profile me change APPLY karo (subjects ya batch) + har jagah
+    propagate (admin record, student profile, teachers, know-your-teachers \u2014 sab sp.subjects /
+    batch pointers se LIVE padhte hain) + notify. Reject -> REASON zaroori; wahi reason student
+    ko notification me dikhta hai. BULLETPROOF: batch approve ab session-aware + teeno pointer."""
     from models import StudentProfile, Notification
     from datetime import datetime as _dt
     action = (payload.get("action") or "").strip().lower()
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="action must be approve or reject")
+    reason = (payload.get("reason") or "").strip()[:400]
+    if action == "reject" and not reason:
+        raise HTTPException(status_code=400, detail="Reject karne ke liye reason zaroori hai (student ko dikhega).")
     lst = _student_requests_list(db)
     rec = next((r for r in lst if int(r.get("id", 0) or 0) == int(rid)), None)
     if not rec:
@@ -7167,35 +7246,39 @@ def admin_student_request_review(rid: int, payload: dict = Body(...), db: Sessio
     applied = ""
     if not sp:
         rec["status"] = "rejected"
+        rec["reason"] = "Student record no longer exists"
+        rec["reviewed_at"] = _dt.utcnow().isoformat()
         _student_requests_save(db, lst)
         raise HTTPException(status_code=404, detail="Student no longer exists")
     if action == "approve":
         if rec.get("type") == "subject":
-            subs = rec.get("requested") or []
-            sp.subjects = (_SR.canon_list(subs, sp.class_level) if _SR else subs)
-            applied = "Subjects updated"
+            subs = [str(s).strip() for s in (rec.get("requested") or []) if str(s).strip()]
+            canon = (_SR.canon_list(subs, sp.class_level) if _SR else subs)
+            # canon kabhi-kabhi unknown subject gira deta -> agar khaali ho jaye to raw rakho
+            sp.subjects = canon if canon else subs
+            applied = "Subjects updated to: " + (", ".join(sp.subjects) or "\u2014")
         elif rec.get("type") == "batch":
             bn = (rec.get("requested") or "").strip()
             if bn:
-                sp.batch_name = bn
                 try:
-                    sp.batch_id = _resolve_batch_id(db, bn)
+                    applied = "Batch changed to " + _force_primary_batch(db, sp, bn)
                 except Exception:
-                    pass
-                applied = "Batch changed to " + bn
+                    sp.batch_name = bn
+                    applied = "Batch changed to " + bn
         rec["status"] = "approved"
     else:
         rec["status"] = "rejected"
+        rec["reason"] = reason
     rec["reviewed_at"] = _dt.utcnow().isoformat()
-    _student_requests_save(db, lst)   # commits sp changes too (same session)
+    _student_requests_save(db, lst)   # commits sp + batch pointer changes too (same session)
     if sp.user:
         if action == "approve":
+            title = "\u2705 Request approved"
             msg = "Your %s-change request has been approved. %s." % (rec.get("type", ""), applied or "Done")
         else:
-            msg = "Your %s-change request was reviewed but not approved. Contact the admin if needed." % rec.get("type", "")
-        db.add(Notification(user_id=sp.user_id,
-                            title=("\u2705 Request approved" if action == "approve" else "Request reviewed"),
-                            message=msg, notif_type="student_request"))
+            title = "Request not approved"
+            msg = "Your %s-change request was not approved.\nReason: %s" % (rec.get("type", ""), reason)
+        db.add(Notification(user_id=sp.user_id, title=title, message=msg, notif_type="student_request"))
         db.commit()
     return {"ok": True, "status": rec["status"], "applied": applied}
 

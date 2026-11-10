@@ -16298,13 +16298,13 @@ function _batchCard(b){
     +'<div class="bc-body">'
       +'<input class="bc-nm" value="'+esc(b.name)+'" onchange="batchRename('+b.id+',this.value)" title="Rename">'
       +'<div class="bc-chips">'+(b.type?'<span class="bc-chip">'+esc(b.type)+'</span>':'')+'<span class="bc-chip">'+(used>0?used+' students':'no students')+'</span>'+((b.addon||0)>0?'<span class="bc-chip" style="cursor:pointer;background:rgba(201,162,39,.18);color:#8a6d15;font-weight:700" onclick="openAddonStudents('+b.id+',\''+esc(String(b.name||'').replace(/'/g,''))+'\')" title="Students jinke paas ye batch add-on hai (primary batch alag)">'+b.addon+' add-on \u25b8</span>':'')+'</div>'
-      +'<div class="bc-two"><select class="input" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\uD83D\uDD34 Live</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
+      +'<div class="bc-two"><select class="input" title="Student dashboard style" onchange="batchSetMode('+b.id+',this.value)"><option value="live"'+((b.mode||'live')==='live'?' selected':'')+'>\u25CF Live</option><option value="rec"'+(b.mode==='rec'?' selected':'')+'>\u25B6 Recorded</option><option value="syc"'+(b.mode==='syc'?' selected':'')+'>\u25B6 On-Demand</option></select>'
         +'<select class="input" onchange="batchSetStatus('+b.id+',this.value)"><option value="live"'+((b.status||'live')==='live'?' selected':'')+'>Live</option><option value="upcoming"'+(b.status==='upcoming'?' selected':'')+'>Upcoming</option><option value="draft"'+(b.status==='draft'?' selected':'')+'>Draft</option><option value="completed"'+(b.status==='completed'?' selected':'')+'>Completed</option></select></div>'
       +'<div class="bc-two"><label class="bc-f">Session<input class="input" placeholder="Oct 2026" value="'+esc(b.session||'')+'" onchange="batchSetSession('+b.id+',this.value)"></label>'
         +'<label class="bc-f bc-ck"><input type="checkbox" '+(b.is_new?'checked':'')+' onchange="batchSetNew('+b.id+',this.checked)"> NEW badge</label></div>'
       +'<div class="bc-two"><label class="bc-f">Starts<input type="date" class="input" value="'+esc(b.start_date||'')+'" onchange="batchSetDate('+b.id+',\'start_date\',this.value)"></label>'
         +'<label class="bc-f">Expires<input type="date" class="input" value="'+esc(b.end_date||'')+'" onchange="batchSetDate('+b.id+',\'end_date\',this.value)"></label></div>'
-      +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+(b.has_banner?'\uD83C\uDF89':'\uD83D\uDDBC')+' Banner</button>'
+      +'<div class="bc-acts"><button class="btn btn-ghost btn-sm" onclick="openBatchBanner('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\')">'+ic('image')+' Banner</button>'
         +(b.active===false?'<button class="btn btn-ghost btn-sm" onclick="batchToggleActive('+b.id+',true,0)">'+ic('refresh')+' Restore</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchDelete('+b.id+',\''+esc((b.name||'').replace(/'/g,''))+'\','+used+')">'+ic('trash')+' Delete</button>':((b.archive_count||0)>0?('<button class="btn btn-ghost btn-sm" onclick="_attRestartModal('+b.id+')" title="Restart again \u2014 archives the current content as another previous session. Reversible.">'+ic('play')+' Restart again</button><button class="btn btn-sm bc-restart" onclick="_attSessionsPanel('+b.id+')" title="Manage previous (Old) sessions \u2014 view, show or hide for students, or restore.">'+ic('folder')+' Sessions ('+(b.archive_count||0)+')</button>'):('<button class="btn btn-sm bc-restart" onclick="_attRestartModal('+b.id+')" title="Restart this batch for a new session \u2014 the current timetable, DPP, tests and material are archived (hidden) and the batch starts fresh. Reversible.">'+ic('play')+' Restart</button><button class="btn btn-ghost btn-sm" onclick="_attSessionsPanel('+b.id+')" title="Old and New sessions \u2014 view archived content, show or hide the Old card for students, or restore.">'+ic('folder')+' Sessions</button>'))+'<button class="btn btn-ghost btn-sm" onclick="openBatchMerge('+b.id+')" title="Move all students, timetable &amp; subjects into another batch, then archive this one">\u21C4 Merge</button><button class="btn btn-ghost btn-sm vtc-del" onclick="batchToggleActive('+b.id+',false,'+used+')">'+ic('trash')+' '+(used>0?'Archive':'Remove')+'</button>')+'</div>'
     +'</div></div>';
 }
@@ -16521,7 +16521,8 @@ function _bmInjectCSS(){
    '.bc-two .input{padding:6px 8px;font-size:.8rem;width:100%;box-sizing:border-box}',
    '.bc-f{display:flex;flex-direction:column;gap:3px;font-size:.66rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.02em}',
    '.bc-ck{flex-direction:row;align-items:center;gap:6px;text-transform:none;font-size:.8rem;font-weight:600;padding-top:15px}',
-   '.bc-acts{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}.bc-acts .btn{flex:1;min-width:84px}',
+   '.bc-acts{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}.bc-acts .btn{flex:1 1 auto;min-width:116px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 12px;font-size:.82rem}',
+   '.bc-acts .btn svg{flex:0 0 auto}',
    '.bc-restart{background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;border:none;font-weight:800;box-shadow:0 6px 16px -9px rgba(201,138,46,.75)}',
    '.bc-restart:hover{filter:brightness(1.05)}'
   ].join('');
@@ -17389,15 +17390,18 @@ async function loadAStudentRequests(){
 function _reqCard(r){
   var isSub=r.type==='subject';
   var when=(r.at||'').slice(0,10);
-  var reqTxt=isSub?((r.requested||[]).join(', ')||'\u2014'):(r.requested||'\u2014');
-  var curTxt=isSub?((r.current_subjects||[]).join(', ')||'\u2014'):(r.current_batch||'\u2014');
+  var _ses=(r.session_label||'').trim();
+  var reqTxt=isSub?((r.requested||[]).join(', ')||'\u2014')
+                  :((r.requested||'\u2014')+(_ses?(' \u2014 '+_ses):''));
+  var curTxt=isSub?((r.current_subjects||[]).join(', ')||'\u2014')
+                  :((r.current_batch_label||r.current_batch||'\u2014'));
   return '<div class="req-card">'
     +'<div class="req-top"><span class="req-tag '+(isSub?'sub':'bat')+'">'+ic(isSub?'book':'folder')+' '+(isSub?'Subjects':'Batch')+'</span><span class="req-when">'+esc(when)+'</span></div>'
     +'<div class="req-name">'+esc(r.student_name||'Student')+'</div>'
-    +'<div class="req-meta">'+esc(r.phone||'')+(r.class_level?(' \u00b7 Class '+esc(r.class_level)):'')+(r.exists?'':' \u00b7 <span style="color:#dc2626">student deleted</span>')+'</div>'
+    +'<div class="req-meta">'+esc(r.phone||'')+(r.class_level?(' \u00b7 Class '+esc(r.class_level)):'')+(_ses?(' \u00b7 <span class="req-sesc">'+esc(_ses)+'</span>'):'')+(r.exists?'':' \u00b7 <span style="color:#dc2626">student deleted</span>')+'</div>'
     +'<div class="req-diff"><div><div class="req-k">Current</div><div class="req-v">'+esc(curTxt)+'</div></div><div class="req-arrow">'+ic('refresh')+'</div><div><div class="req-k">Requested</div><div class="req-v req-new">'+esc(reqTxt)+'</div></div></div>'
     +(r.note?('<div class="req-note">\u201c'+esc(r.note)+'\u201d</div>'):'')
-    +'<div class="req-acts"><button class="btn btn-ghost btn-sm" onclick="reqReview('+r.id+',\'reject\')">'+ic('trash')+' Reject</button><button class="btn btn-primary btn-sm" onclick="reqReview('+r.id+',\'approve\')">'+ic('check')+' Approve &amp; apply</button></div>'
+    +'<div class="req-acts"><button class="btn btn-ghost btn-sm req-rej" onclick="openRejectReason('+r.id+')">'+ic('trash')+' Reject</button><button class="btn btn-primary btn-sm" onclick="reqReview('+r.id+',\'approve\')">'+ic('check')+' Approve &amp; apply</button></div>'
     +'</div>';
 }
 async function reqReview(id,action){
@@ -17406,6 +17410,25 @@ async function reqReview(id,action){
     toast(action==='approve'?('Approved \u2014 '+(r.applied||'done')):'Request rejected'); loadAStudentRequests(); }
   catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
+// Reject karne se pehle REASON lo \u2014 bina reason ke reject nahi hoga, aur wahi reason
+// student ko notification me dikhega.
+window.openRejectReason=function(id){
+  showModal('Reject Request',
+    '<div style="font-size:.86rem;color:var(--text-muted);line-height:1.5;margin-bottom:12px">Reject karne ki wajah likhiye \u2014 ye <b>student ko notification</b> me dikhegi. Bina reason ke reject nahi hoga.</div>'
+    +'<textarea id="rej-reason" class="form-control" rows="3" placeholder="e.g. Commerce batch ki seats abhi full hain, agli session me change ho payega" style="width:100%;box-sizing:border-box" oninput="var m=document.getElementById(\'rej-msg\');if(m)m.textContent=\'\'"></textarea>'
+    +'<div id="rej-msg" style="color:#dc2626;font-size:.8rem;margin-top:6px"></div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="rej-btn" onclick="_doReject('+id+')">Reject &amp; notify student</button>');
+  setTimeout(function(){ var t=document.getElementById('rej-reason'); if(t) t.focus(); },50);
+};
+window._doReject=async function(id){
+  var t=document.getElementById('rej-reason'); var reason=((t&&t.value)||'').trim();
+  var m=document.getElementById('rej-msg');
+  if(!reason){ if(m) m.textContent='Reason likhna zaroori hai.'; if(t) t.focus(); return; }
+  var btn=document.getElementById('rej-btn'); if(btn){ btn.disabled=true; btn.textContent='Rejecting...'; }
+  try{ await api('/api/admin/student-requests/'+id+'/review','POST',{action:'reject',reason:reason});
+    closeModal(); toast('Request rejected \u2014 student ko reason bhej diya'); loadAStudentRequests(); }
+  catch(e){ if(m) m.textContent=(e&&e.message)||'Could not reject'; if(btn){ btn.disabled=false; btn.textContent='Reject & notify student'; } }
+};
 function _reqInjectCSS(){
   if(document.getElementById('req-css')) return;
   var s=document.createElement('style'); s.id='req-css';
@@ -17424,7 +17447,9 @@ function _reqInjectCSS(){
     +'.req-v.req-new{color:#059669}'
     +'.req-arrow{color:var(--primary,#b8941f)}.req-arrow svg{width:16px;height:16px}'
     +'.req-note{margin-top:10px;font-size:.8rem;color:var(--text,#4a3d16);background:rgba(184,148,31,.06);border-radius:10px;padding:8px 10px}'
-    +'.req-acts{display:flex;gap:8px;margin-top:12px}.req-acts .btn{flex:1}'
+    +'.req-acts{display:flex;gap:8px;margin-top:12px}.req-acts .btn{flex:1;white-space:nowrap}'
+    +'.req-acts .req-rej{color:#dc2626;border-color:rgba(220,38,38,.3)}.req-acts .req-rej:hover{background:rgba(220,38,38,.08)}'
+    +'.req-sesc{display:inline-block;background:rgba(139,92,246,.14);color:#7c3aed;font-weight:700;font-size:.7rem;padding:1px 8px;border-radius:999px}'
     +'.nav-req-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:10px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.64rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center}';
   document.head.appendChild(s);
 }
@@ -21143,7 +21168,9 @@ async function submitSubjectRequest(){
   const subs=[...document.querySelectorAll('.rqx-chip.on')].map(x=>x.getAttribute('data-sub'));
   const note=val('rsub-note');
   if(!subs.length && !note){ toast('Pick subjects or add a note.'); return; }
-  try{ const r=await api('/api/student/request-subject-change','POST',{subjects:subs,note:note}); toast((r&&r.message)||'Request sent.'); closeModal(); }
+  try{ const r=await api('/api/student/request-subject-change','POST',{subjects:subs,note:note});
+    if(r&&r.pending){ toast(r.message||'Aapka request pehle se pending hai.',true); closeModal(); return; }
+    toast((r&&r.message)||'Request sent.'); closeModal(); }
   catch(e){ toast((e&&e.message)||'Could not send request',true); }
 }
 async function openRequestBatch(){
@@ -21153,7 +21180,8 @@ async function openRequestBatch(){
   try{ batches=await api('/api/student/batches'); }catch(e){}
   _rqxCSS();
   const cur=(p.batch_name||'').trim();
-  const opts='<option value="">— Select the correct batch —</option>'+(batches||[]).map(b=>`<option value="${esc(b.name)}"${cur===b.name?' selected':''}>${esc(b.name)}</option>`).join('');
+  const _sl=_sesShortLbl(p.exam_session||'');
+  const opts='<option value="">— Select the correct batch —</option>'+(batches||[]).map(b=>`<option value="${esc(b.name)}"${cur===b.name?' selected':''}>${esc(b.name)}${_sl?(' — '+esc(_sl)):''}</option>`).join('');
   showModal('Request Batch Change',
     '<div class="rqx">'
     +'<div class="rqx-note"><span class="rqx-ni">'+ic('folder')+'</span><span>Your current batch is <b>'+esc(cur||'\u2014')+'</b>. If it\u2019s wrong, pick the correct one and send a <b>request</b> — the admin will update it.</span></div>'
@@ -21162,10 +21190,24 @@ async function openRequestBatch(){
     +'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitBatchRequest()">Send request</button>');
 }
+// exam_session id (apr2027) -> short label (April 2027). batch picker me session dikhane ke liye.
+function _sesShortLbl(id){
+  id=String(id||'').trim().toLowerCase();
+  if(!id) return '';
+  var M={jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December'};
+  var m=id.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(20\d{2})$/);
+  if(m) return M[m[1]]+' '+m[2];
+  if(id==='stream2') return 'Stream 2';
+  if(id==='stream1') return 'Stream 1';
+  if(id==='ondemand') return 'On Demand';
+  return '';
+}
 async function submitBatchRequest(){
   const bn=val('rbat-sel'); const note=val('rbat-note');
   if(!bn && !note){ toast('Pick a batch or add a note.'); return; }
-  try{ const r=await api('/api/student/request-batch-change','POST',{batch_name:bn,note:note}); toast((r&&r.message)||'Request sent.'); closeModal(); }
+  try{ const r=await api('/api/student/request-batch-change','POST',{batch_name:bn,note:note});
+    if(r&&r.pending){ toast(r.message||'Aapka request pehle se pending hai.',true); closeModal(); return; }
+    toast((r&&r.message)||'Request sent.'); closeModal(); }
   catch(e){ toast((e&&e.message)||'Could not send request',true); }
 }
 // ============ MANISH VERMA CLASSES APP — SMART OPEN ============
