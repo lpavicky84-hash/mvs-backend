@@ -4897,13 +4897,17 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     from models import StudentProfile
     base = db.query(StudentProfile)
     if source: base = base.filter(StudentProfile.source == source)
+    if medium: base = base.filter(StudentProfile.medium == medium)
+    if cls: base = base.filter(StudentProfile.class_level == str(cls))
+    # SESSION facet ko session-filter se ALAG rakho: warna ek session chunne par baaki sessions
+    # dropdown se gayab ho jaate the (user ko 'All Sessions' pe jaana padta tha). base_nosess
+    # (source+medium+cls, par session nahi) se sessions list banao -> hamesha saare sessions.
+    base_nosess = base
     if session:
         if session == "__none__":
             base = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
         else:
             base = base.filter(StudentProfile.exam_session == session)
-    if medium: base = base.filter(StudentProfile.medium == medium)
-    if cls: base = base.filter(StudentProfile.class_level == str(cls))
     total = base.count()
     # ---- SESSION-SEPARATED batch counts (value = "id:<batch_id>"; label = "Name — Session") ----
     # Purana bug: sirf batch_name par group hota tha, isliye October 2026 + April 2027 ke
@@ -4934,23 +4938,28 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
         _bagg[key]["count"] += c
     batches = sorted(_bagg.values(), key=lambda x: (-x["count"], x["label"].lower()))
     classes = sorted([c for (c,) in base.with_entities(StudentProfile.class_level).distinct().all() if c])
-    sessions = [s for (s,) in base.with_entities(StudentProfile.exam_session).distinct().all() if s]
-    none_session = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == "")).count()
-    # subject counts — sirf subjects+class column load karke Python me gino (light)
-    subj = {}
-    for ssubs, clv in base.with_entities(StudentProfile.subjects, StudentProfile.class_level):
-        clv = str(clv or "")
-        disp = _SR.canon_list(ssubs or [], clv) if _SR else (ssubs or [])
-        seen = set()
-        for x in disp:
-            k = str(x) + "|" + clv
-            if k in seen:
-                continue
-            seen.add(k)
-            if k not in subj:
-                subj[k] = {"subject": str(x), "class": clv, "count": 0}
-            subj[k]["count"] += 1
-    subjects = sorted(subj.values(), key=lambda a: (-a["count"], str(a["subject"]).lower()))
+    # sessions = base_nosess se (session-filter ignore) -> dropdown me hamesha saare sessions
+    sessions = sorted([s for (s,) in base_nosess.with_entities(StudentProfile.exam_session).distinct().all() if s])
+    none_session = base_nosess.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == "")).count()
+    # subject counts — ye HEAVY hai (har student ki subjects list Python me canon karni padti).
+    # Frontend subject-dropdown TABHI dikhata hai jab class chuni ho, isliye bina class ke ye
+    # bhaari loop skip -> default Students view bahut fast khulta hai.
+    subjects = []
+    if cls:
+        subj = {}
+        for ssubs, clv in base.with_entities(StudentProfile.subjects, StudentProfile.class_level):
+            clv = str(clv or "")
+            disp = _SR.canon_list(ssubs or [], clv) if _SR else (ssubs or [])
+            seen = set()
+            for x in disp:
+                k = str(x) + "|" + clv
+                if k in seen:
+                    continue
+                seen.add(k)
+                if k not in subj:
+                    subj[k] = {"subject": str(x), "class": clv, "count": 0}
+                subj[k]["count"] += 1
+        subjects = sorted(subj.values(), key=lambda a: (-a["count"], str(a["subject"]).lower()))
     res = {"total": total, "batches": batches, "classes": classes, "sessions": sessions, "none_session": none_session, "subjects": subjects}
     _SFC_CACHE[ckey] = (_time.time(), res)
     return res

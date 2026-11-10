@@ -18618,9 +18618,12 @@ async function loadAStudents(){
   const el=document.getElementById('a-students-content');
   try{
     _stuFilter='';_stuSearch='';_stuPage=1;_stuSess='';_stuMed='';_stuBatch='';_stuClass='';_stuSrcFilter='';
-    window._aPortalOv=await api('/api/admin/portal-overview').catch(()=>null);
+    if(el && !(_aStuPageRows&&_aStuPageRows.length)) el.innerHTML='<div style="padding:40px;text-align:center"><div class="spinner"></div></div>';
+    // FAST: pehle list+counts dikhao. portal-overview ek EXTERNAL (MVS Portal) call hai jo slow
+    // ho sakti hai — usko block mat karo, background me laao aur aane par re-render kar do.
     await _stuReloadCounts();
     await _stuReload();
+    api('/api/admin/portal-overview').then(function(ov){ window._aPortalOv=ov; try{ aRenderStudents(); }catch(e){} }).catch(function(){});
     // v170: fresh open par hi filters reset hote hain (upar). Background SWR refresh ab
     // filters/search ko WIPE na kare — sirf current filters ke saath list dobara laaye.
     _curLoader=function(){ try{ _stuReloadCounts(); }catch(e){} _stuReload(); };
