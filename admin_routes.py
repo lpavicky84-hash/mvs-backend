@@ -564,20 +564,40 @@ def _student_batch_fields(db, sp, bmap=None):
 
 
 def _norm_session_label(db, s):
-    """Kisi bhi session value (id 'apr2027', label 'April 2027', ya free text)
-    ko canonical batch-session label ('April 2027' / 'October 2026') mein badlo.
-    Map na ho (ondemand/blank) -> '' (matlab ye month-bucket nahi, chhod do)."""
+    """Kisi bhi session value ko canonical batch-session label ('April 2027' / 'October 2026')
+    mein badlo. BULLETPROOF/tolerant: id ('apr2027'), label ('April 2027'), weird spacing
+    (non-breaking space, double space), separators ('Apr-2027', 'apr_2027', 'April/2027'),
+    ulta order ('2027 April'), ya suffix ('apr2027 (Stream 1)') — sab handle. Month na mile to
+    stream/id/free-text mapping. Kuch na mile (ondemand/blank) -> '' (month-bucket nahi).
+
+    NOTE: pehle ye bahut strict tha (sirf 'April 2027' exact) -> jin students ka exam_session
+    kisi aur format me tha unka target '' aa jaata tha aur scan unhe SKIP kar deta tha
+    (isiliye 'all good' dikhta tha par batch galat rehta tha). Ab aisa nahi hoga."""
     s = (s or "").strip()
     if not s:
         return ""
     import re as _re
-    if _re.fullmatch(r"[A-Z][a-z]+ 20\d{2}", s):   # already a label like 'April 2027'
-        return s
-    lbl = _session_id_to_batch_label(db, s.lower())  # id -> label
+    # saare separators (space, nbsp, - _ / . ,) ko single space banao
+    t = _re.sub(r"[\s \-_/.,]+", " ", s.lower()).strip()
+    mon = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*"
+    m = _re.search(r"\b" + mon + r"\s*(20\d{2})\b", t)        # 'april 2027' / 'apr2027'
+    if m:
+        return _MONTH_FULL[m.group(1)[:3]] + " " + m.group(2)
+    m2 = _re.search(r"\b(20\d{2})\s*" + mon + r"\b", t)        # '2027 april'
+    if m2:
+        return _MONTH_FULL[m2.group(2)[:3]] + " " + m2.group(1)
+    lbl = _session_id_to_batch_label(db, t.replace(" ", ""))   # id -> label (stream1/2 etc.)
     if lbl:
         return lbl
-    sid = _map_session_text(db, s)                   # free text -> id -> label
-    return _session_id_to_batch_label(db, sid) if sid else ""
+    sid = _map_session_text(db, s)                             # free text -> id -> label
+    if sid:
+        lbl2 = _session_id_to_batch_label(db, sid)
+        if lbl2:
+            return lbl2
+    # aakhri koshish: display-friendly se month-year nikaalo
+    fr = _session_friendly(s)
+    m3 = _re.fullmatch(r"([A-Z][a-z]+) (20\d{2})", fr or "")
+    return fr if m3 else ""
 
 
 def _realign_one(db, sp, bmap=None, flush=True, dry=False, sbmap=None):
@@ -4936,26 +4956,32 @@ def admin_session_batch_debug(q: str = "", db: Session = Depends(get_db), _=Depe
     qy = (db.query(StudentProfile)
           .filter(StudentProfile.exam_session.isnot(None), StudentProfile.exam_session != ""))
     for sp in qy.yield_per(500):
+        try:
+            nm = sp.user.name if sp.user else ""
+        except Exception:
+            nm = ""
+        name_match = bool(ql) and (ql in (nm or "").lower() or ql in (sp.phone or ""))
         target = _norm_session_label(db, sp.exam_session or "")
-        if not target:
-            continue
         rows = sbmap.get(sp.id, [])
         prim = next((r for r in rows if r.is_primary), None)
         prim_bid = prim.batch_id if prim else None
-        # mismatch = koi non-crash same-area pointer target se alag, ya koi pointer hi nahi
         sessions = []
         for bid in (sp.batch_id, prim_bid, sp.active_batch_id):
             b = bmap.get(bid) if bid else None
             if b and "crash" not in ((b.name or "").lower()):
                 sessions.append((getattr(b, "session", "") or ""))
-        mism = any(s != target for s in sessions) or (not sessions)
-        if not mism:
+        if target:
+            mism = any(s != target for s in sessions) or (not sessions)
+        else:
+            # target '' = exam_session format normalize nahi hua. Agar batch ka koi
+            # month-session hai to bhi surface karo (raw value dikhane ke liye) -> format bug.
+            mism = any(s.strip() for s in sessions)
+        # q diya hai aur naam match hua -> hamesha dikhao (chahe aligned ho) taaki raw data mile
+        if name_match:
+            pass
+        elif ql:
             continue
-        try:
-            nm = sp.user.name if sp.user else ""
-        except Exception:
-            nm = ""
-        if ql and ql not in (nm or "").lower() and ql not in (sp.phone or ""):
+        elif not mism:
             continue
         out.append({
             "id": sp.id, "name": nm, "phone": sp.phone,
