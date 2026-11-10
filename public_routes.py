@@ -249,18 +249,24 @@ def _create_attempt(db, ex, name, phone, details, ans, ip=None,
 
 
 def _ranking_state(ex):
-    """Ranking kab dikhe — AUTOMATIC (koi manual nahi):
-    - Non-scheduled test -> hamesha visible (live, jaise-jaise students submit karein).
-    - Scheduled test -> tabhi visible jab submission window close ho jaaye
-      (scheduled_at + duration_min). Usse pehle ranking chhupi — fairness ke liye."""
+    """Ranking kab dikhe — per-test ranking_mode ke hisaab se:
+    - off    -> kabhi nahi (sirf marks).
+    - manual -> tabhi jab teacher/admin ne DECLARE kiya ho (ranking_declared).
+    - auto   -> pehle jaisa: non-scheduled live; scheduled test ka window close hone par."""
+    mode = (getattr(ex, "ranking_mode", "") or "auto").strip().lower()
+    if mode == "off":
+        return {"visible": False, "mode": "off", "unlock_at": None, "seconds_to_unlock": 0}
+    if mode == "manual":
+        vis = bool(getattr(ex, "ranking_declared", False))
+        return {"visible": vis, "mode": "manual", "unlock_at": None, "seconds_to_unlock": 0}
     sched = getattr(ex, "scheduled_at", None)
     if sched is None:
-        return {"visible": True, "unlock_at": None, "seconds_to_unlock": 0}
+        return {"visible": True, "mode": "auto", "unlock_at": None, "seconds_to_unlock": 0}
     dur = int(getattr(ex, "duration_min", 0) or 0)
     close = sched + _td(minutes=dur)
     now = _ist_now()
     vis = (now >= close)
-    return {"visible": vis, "unlock_at": close,
+    return {"visible": vis, "mode": "auto", "unlock_at": close,
             "seconds_to_unlock": (0 if vis else max(0, int((close - now).total_seconds())))}
 
 
@@ -270,7 +276,9 @@ def _leaderboard_payload(db, ex, my_phone=None, my_row=None):
     rk = _ranking_state(ex)
     if not rk["visible"]:
         total = db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == ex.id).count()
-        return {"ranking_visible": False, "ranking_pending": True,
+        _off = (rk.get("mode") == "off")
+        return {"ranking_visible": False, "ranking_pending": (not _off), "ranking_off": _off,
+                "ranking_mode": rk.get("mode", "auto"),
                 "ranking_at": (rk["unlock_at"].isoformat() if rk["unlock_at"] else None),
                 "seconds_to_ranking": rk["seconds_to_unlock"],
                 "leaderboard": [], "my_rank": None, "total_students": total}

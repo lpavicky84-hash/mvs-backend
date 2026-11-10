@@ -11353,6 +11353,8 @@ function _renderShareModal(id,d){
     max_violations:(ig.max_violations!=null&&ig.max_violations>0?ig.max_violations:3)};
   // ---- randomization state ----
   var rnd=d.randomize||{}; window._pshRandomize={questions:!!rnd.questions,options:!!rnd.options};
+  // ---- ranking visibility state (auto / manual / off) ----
+  var rk=d.ranking||{}; window._pshRanking={mode:(['manual','off'].indexOf(rk.mode)>=0?rk.mode:'auto'),declared:!!rk.declared,scheduled:!!d.scheduled,examId:id};
   var linkBlock=(d.enabled&&link)
     ? '<div class="psh-link"><input class="form-control" id="psh-link" readonly value="'+esc(link)+'"><button class="btn btn-primary btn-sm" onclick="_examCopyLink()">'+ic('copy')+' Copy</button><a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ic('eye')+' Open</a></div>'
     : '<div class="psh-off">Turn the public link ON below, then Save — a shareable URL will appear here.</div>';
@@ -11375,7 +11377,8 @@ function _renderShareModal(id,d){
     +'<div class="psh-sc"><b>Randomization (Shuffle)</b><div class="psh-subtle">Har student ko questions / options alag order me — paper share karke ya side-by-side nakal mushkil. (Marks pe koi asar nahi.)</div>'
     +'<div class="psh-rnd-row"><label class="psh-chk"><input type="checkbox" id="psh-rnd-q" '+(window._pshRandomize.questions?'checked':'')+'><span>Shuffle questions</span></label>'
     +'<label class="psh-chk"><input type="checkbox" id="psh-rnd-o" '+(window._pshRandomize.options?'checked':'')+'><span>Shuffle options</span></label></div></div>'
-    +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Result aur answers student ko submit karte hi dikhte hain. Ranking automatic: non-scheduled test me turant &amp; live; scheduled test me time khatam hone par apne aap reveal. (Koi manual setting nahi.)</div></div>'
+    +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Marks &amp; answers student ko submit karte hi dikhte hain. Yahan sirf <b>ranking</b> ka control hai.</div>'
+    +'<div id="psh-ranking">'+_pshRankingHtml()+'</div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
     +'<div class="psh-note2">You see each student&#39;s <b>name &amp; score</b> only. Phone and all personal details are in the <b>Admin panel</b>.</div>'
@@ -11432,6 +11435,26 @@ function _pshScCollect(){
 }
 function _pshScRender(){ var box=document.getElementById('psh-scoring'); if(box) box.innerHTML=_pshScoringHtml(); }
 window._pshSetMode=function(m){ _pshScCollect(); window._pshScoring.mode=(m==='COMPETITIVE'?'COMPETITIVE':'NORMAL'); _pshScRender(); };
+// ---- Ranking visibility control (Auto / Manual / Off) inside the public-test settings ----
+function _pshRankingHtml(){
+  if(typeof _rkcCSS==='function') _rkcCSS();
+  var R=window._pshRanking||{mode:'auto',declared:false,scheduled:false};
+  function seg(m,lbl,sub){ return '<button type="button" class="rkc-seg'+(R.mode===m?' on':'')+'" onclick="_pshRkMode(\''+m+'\')"><b>'+lbl+'</b><small>'+esc(sub)+'</small></button>'; }
+  var autoSub=R.scheduled?'After test ends':'Live, instantly';
+  var h='<div class="rkc" style="margin-top:10px;margin-bottom:0;padding:11px 12px"><div class="rkc-segs">'
+    +seg('auto','Auto',autoSub)+seg('manual','Manual','You declare it')+seg('off','Off','Marks only')+'</div>';
+  if(R.mode==='manual'){
+    h+='<div class="rkc-dec"><span class="'+(R.declared?'rkc-live':'rkc-hold')+'">'
+      +(R.declared?(ic('check')+' Ranking visible to students'):'Hidden until you declare')+'</span>'
+      +'<label class="psh-chk" style="margin:0"><input type="checkbox" id="psh-rk-dec" '+(R.declared?'checked':'')+' onchange="_pshRkDeclareToggle(this.checked)"><span>Show to students now</span></label></div>';
+  } else if(R.mode==='off'){
+    h+='<div style="font-size:.76rem;color:var(--text-muted);margin-top:9px">Students will only see their <b>marks</b> — no ranking for this test.</div>';
+  }
+  h+='</div>';
+  return h;
+}
+window._pshRkMode=function(m){ var R=window._pshRanking||(window._pshRanking={}); R.mode=(['manual','off'].indexOf(m)>=0?m:'auto'); if(m!=='manual') R.declared=false; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };
+window._pshRkDeclareToggle=function(on){ var R=window._pshRanking||(window._pshRanking={}); R.declared=!!on; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };
 window._pshJEE=function(){ var s=_pshScCollect(); s.mode='COMPETITIVE'; s.correct=4; s.wrong=-1; s.unanswered=0; _pshScRender(); };
 function _pshIntegrityHtml(){
   var s=window._pshIntegrity||{mode:'OFF',max_violations:3};
@@ -11480,7 +11503,9 @@ async function _examShareSave(id){
   try{ var g=_pshIgCollect(); integrity={mode:g.mode,max_violations:g.max_violations}; }catch(e){}
   var randomize=null;
   try{ var rq=document.getElementById('psh-rnd-q'), ro=document.getElementById('psh-rnd-o'); randomize={questions:!!(rq&&rq.checked),options:!!(ro&&ro.checked)}; }catch(e){}
-  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring,integrity:integrity,randomize:randomize}); toast(enabled?'Public link saved':'Public link turned OFF');
+  var ranking=null;
+  try{ var R=window._pshRanking||{}; ranking={mode:(['manual','off'].indexOf(R.mode)>=0?R.mode:'auto'),declared:!!R.declared}; }catch(e){}
+  try{ await api('/api/teacher/exam/'+id+'/public-share','POST',{enabled:enabled,field_config:field_config,scoring:scoring,integrity:integrity,randomize:randomize,ranking:ranking}); toast(enabled?'Public link saved':'Public link turned OFF');
     try{ if(window._aTestsRows){ var _r=window._aTestsRows.find(function(x){return x.id===id;}); if(_r)_r.public_enabled=enabled; } }catch(e){}
     examShareModal(id);
     try{ loadTTests(); }catch(e){}   // list ka Share Link button turant ON/OFF rang update

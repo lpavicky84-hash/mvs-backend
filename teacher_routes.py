@@ -5205,6 +5205,18 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
     if isinstance(rnd, dict):
         ex.randomize_questions = bool(rnd.get("questions"))
         ex.randomize_options = bool(rnd.get("options"))
+    # ---- Ranking visibility (Phase 5): auto | manual | off, + manual declare ----
+    rkp = payload.get("ranking")
+    if isinstance(rkp, dict):
+        rm = str(rkp.get("mode") or "auto").strip().lower()
+        if rm not in ("auto", "manual", "off"):
+            rm = "auto"
+        ex.ranking_mode = rm
+        if rm == "manual":
+            if "declared" in rkp:
+                ex.ranking_declared = bool(rkp.get("declared"))
+        else:
+            ex.ranking_declared = False       # auto/off me declare flag ka matlab nahi
     db.commit()
     return {"ok": True, "enabled": bool(ex.public_enabled), "token": (ex.public_token or ""),
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
@@ -5216,7 +5228,9 @@ def exam_public_share(exam_id: int, payload: dict = Body(...), db: Session = Dep
             "integrity": {"mode": (getattr(ex, "integrity_mode", None) or "OFF"),
                           "max_violations": int(getattr(ex, "max_violations", 3) or 3)},
             "randomize": {"questions": bool(getattr(ex, "randomize_questions", False)),
-                          "options": bool(getattr(ex, "randomize_options", False))}}
+                          "options": bool(getattr(ex, "randomize_options", False))},
+            "ranking": {"mode": (getattr(ex, "ranking_mode", None) or "auto"),
+                        "declared": bool(getattr(ex, "ranking_declared", False))}}
 
 
 @router.get("/exam/{exam_id}/public-responses")
@@ -5244,6 +5258,9 @@ def exam_public_responses(exam_id: int, db: Session = Depends(get_db),
                           "max_violations": int(getattr(ex, "max_violations", 3) or 3)},
             "randomize": {"questions": bool(getattr(ex, "randomize_questions", False)),
                           "options": bool(getattr(ex, "randomize_options", False))},
+            "ranking": {"mode": (getattr(ex, "ranking_mode", None) or "auto"),
+                        "declared": bool(getattr(ex, "ranking_declared", False))},
+            "scheduled": bool(getattr(ex, "scheduled_at", None)),
             "total_marks": (ex.total_marks or 0), "count": len(rows),
             # name + score ONLY — no personal details for the teacher
             "responses": [{"id": r.id, "name": r.name,

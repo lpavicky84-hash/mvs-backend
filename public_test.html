@@ -649,11 +649,15 @@
   // leaderboard / ranking card — visible ya "ranking abhi band" dono handle karta hai
   function _lbHtml(r){
     if(r.ranking_pending){
+      var _manual=(r.ranking_mode==='manual');
       var when=r.ranking_at?_fmtSched(r.ranking_at):"";
+      var _title=_manual?'Ranking will be published by your teacher':'Ranking opens after the test closes';
+      var _sub=_manual?'You’ll see the leaderboard here once your teacher declares it.'
+                      :(when?('The live leaderboard will appear automatically after '+esc(when)+'.'):'');
       return '<div class="card" style="margin-top:14px;padding:18px 16px;text-align:center;background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.18)">'
         +'<div style="font-size:1.7rem">🏆</div>'
-        +'<b style="color:#14213d">Ranking opens after the test closes</b>'
-        +(when?'<div class="lead" style="margin:5px 0 0;font-size:.86rem">The live leaderboard will appear automatically after '+esc(when)+'.</div>':'')
+        +'<b style="color:#14213d">'+_title+'</b>'
+        +(_sub?'<div class="lead" style="margin:5px 0 0;font-size:.86rem">'+_sub+'</div>':'')
         +((r.total_students)?'<div style="margin-top:9px;font-size:.82rem;color:#5b6472">'+r.total_students+' student(s) submitted so far</div>':'')
         +'</div>';
     }
