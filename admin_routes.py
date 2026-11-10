@@ -2467,14 +2467,23 @@ def timetable_all(archive_gen: int = 0, db: Session = Depends(get_db), _=Depends
     # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
     lec_entry_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
         Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())
-    from models import Batch
+    from models import Batch, User
+    from sqlalchemy import func as _func
     _bnames = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()}
+    # PERF: teacher name/photo/id ek hi baar prefetch karo (pehle har entry par alag query +
+    # lazy tp.user chal raha tha = N+1, isliye section 30-45s le raha tha). photo_b64 blob load
+    # nahi karte — sirf uski length se has_photo (bada blob avoid).
+    _tp_rows = db.query(TeacherProfile.id, TeacherProfile.user_id,
+                        _func.coalesce(_func.length(TeacherProfile.photo_b64), 0)).all()
+    _uids = [r[1] for r in _tp_rows if r[1]]
+    _unames = {}
+    if _uids:
+        for _uid, _nm in db.query(User.id, User.name).filter(User.id.in_(_uids)):
+            _unames[_uid] = _nm
+    _tmap = {r[0]: (_unames.get(r[1], "") or "", bool(r[2]), r[0]) for r in _tp_rows}
     result = []
     for e in es:
-        tname = ""; tphoto = False; tpid = None
-        tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
-        if tp and tp.user:
-            tname = tp.user.name; tphoto = bool(tp.photo_b64); tpid = tp.id
+        tname, tphoto, tpid = _tmap.get(e.teacher_id, ("", False, None))
         result.append({
             "id": e.id, "subject": e.subject, "class_name": e.class_name,
             "batch_id": getattr(e, "batch_id", None),

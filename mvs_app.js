@@ -1458,6 +1458,28 @@ async function _notifImgs(root){
     }catch(e){}
   }
 }
+// Single robust click handler for every notification item (no fragile inline-string onclick).
+// Agar message me koi link (anchor) click hua to usko apna kaam karne do; warna section-redirect.
+function _notifItemClick(ev,el){
+  try{
+    if(ev){
+      var tg=ev.target;
+      if(tg && tg.closest && tg.closest('a')) return;   // message ke andar ka real link apne aap khule
+      if(ev.preventDefault) ev.preventDefault();
+      if(ev.stopPropagation) ev.stopPropagation();
+    }
+    if(!el) return;
+    var role=el.getAttribute('data-nrole')||(typeof ROLE!=='undefined'?ROLE:'admin');
+    var id=parseInt(el.getAttribute('data-nid'),10)||0;
+    var type=el.getAttribute('data-ntype')||'';
+    var fb=el.getAttribute('data-nfb')||(role==='admin'?'dashboard':'notifications');
+    var hasLink=el.getAttribute('data-nhas')==='1';
+    var encLink=el.getAttribute('data-nlink')||'';
+    if(hasLink) notifLinkOpen(role,id,encLink,type,fb);
+    else notifGo(role,id,type,fb);
+  }catch(e){ try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
+  return false;
+}
 async function notifGo(role,nid,type,fbPage){
   // NAVIGATE PEHLE (read-call ka intezaar nahi) — warna slow/failed read navigation ko rok deta tha.
   const page=_notifResolvePage(role,type,fbPage);
@@ -1482,7 +1504,7 @@ async function openNotifPanel(role){
   const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?list.map(n=>{
     const hasLink=!!n.link;
-    const click=hasLink?`notifLinkOpen('${role}',${n.id},'${encodeURIComponent(n.link)}','${esc(n.notif_type||'')}','${fbPage}')`:`notifGo('${role}',${n.id},'${esc(n.notif_type||'')}','${fbPage}')`;
+    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
     const unread=!n.is_read;
     const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
     const isBroadcast=(n.notif_type==='admin_broadcast');
@@ -1491,7 +1513,7 @@ async function openNotifPanel(role){
     const dot=unread?`<span style="width:9px;height:9px;border-radius:50%;background:var(--primary);flex:0 0 9px;margin-top:6px;box-shadow:0 0 0 3px var(--primary-50)"></span>`:'';
     const inner=`<div class="ni-title" style="font-weight:${unread?'800':'600'}">${esc(n.title)}${hint}</div><div class="ni-msg"${unread?' style="color:var(--text);font-weight:500"':''}>${_msgHtml(n.message)}</div>${imgPrev}<div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
     const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
-    return `<div class="notif-item ${unread?'unread':''}" data-go="1" style="${itStyle}" onclick="${click}" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
+    return `<div class="notif-item ${unread?'unread':''}" data-go="1" ${_da} style="${itStyle}" onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
   showModal(' Notifications',html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
