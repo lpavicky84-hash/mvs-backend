@@ -1486,7 +1486,9 @@ async function notifGo(role,nid,type,fbPage){
   closeModal();
   if(page){
     const navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
-    try{ navTo(page,null); }catch(e){}
+    // pehle silent catch tha -> admin me aPage koi error deta to chup-chaap nigal jaata tha
+    // (navigation fail, user dashboard pe). Ab error dikhate hain taaki pakad saken.
+    try{ navTo(page,null); }catch(e){ try{ toast('Could not open "'+page+'": '+((e&&e.message)||e),true); }catch(_){} }
     // navbar me active item bhi sahi dikhe
     const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
     document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{
@@ -1515,7 +1517,7 @@ async function openNotifPanel(role){
     const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
     return `<div class="notif-item ${unread?'unread':''}" data-go="1" ${_da} style="${itStyle}" onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
   }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
-  showModal(' Notifications',html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  showModal(' Notifications',html+'<div style="text-align:center;font-size:.6rem;color:var(--text-muted);opacity:.6;margin-top:8px">notif-nav-v3</div>',`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
   // SMART: panel khulte hi sab read -> badge/count clear, bell blink band, dobara na dikhe
   // jab tak koi naya notification na aaye. (Items is view me highlighted rehte hain jisse
@@ -12777,9 +12779,26 @@ async function openUserSessions(uid){
 // koi bhi naya section yahan add karo -> nav title bhi milega AUR admin-user access
 // dropdown (ADMIN_SECTIONS) mein apne aap aa jaayega (neeche derive hota hai).
 const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice'};
+// Dynamic admin pages: inka page-div STATIC HTML me nahi hota — openAdmin() ke init me banta hai.
+// page-key -> uska init function (jo a-page-<key> div banata hai). aPage() navigate se PEHLE isse
+// ensure karta hai ki div zaroor exist kare. (Teacher/Student ke notification-target pages — timetable,
+// doubts, tests, notifications — sab STATIC hote hain, isiliye wahan ye issue kabhi aata hi nahi;
+// SIRF admin ke requests/complaints/feedback/matcheck jaise dynamic pages pe aata tha -> click
+// dashboard pe atak jaata tha.) Har init idempotent hai (pehle se bana div dobara nahi banta).
+const _A_DYN_INIT={dpptracker:'initAdminDppTracker',ytasks:'initAdminYtTasks',requests:'initAdminRequests',chatmgr:'initAdminChat',community:'initAdminCommunity',batches:'initAdminBatches',prodtrack:'initAdminLiveTracker',upsched:'initAdminUploadSchedule',prodteam:'initAdminProdTeam',prodmon:'initAdminProdMonitor',prodboard:'initAdminProdMonitor',translation:'initAdminTranslation',categories:'initAdminCategories',matcheck:'initAdminMatCheck',complaints:'initAdminSupport',feedback:'initAdminSupport'};
+function _aEnsurePage(page){
+  if(document.getElementById('a-page-'+page)) return true;
+  var _ini=_A_DYN_INIT[page];
+  if(_ini && typeof window[_ini]==='function'){ try{ window[_ini](); }catch(e){} }
+  return !!document.getElementById('a-page-'+page);
+}
 function aPage(page,el){
   if(!adminAllowed(page)){ toast('You do not have access to this section.',true); return; }
   navPush('admin-app',page);
+  // BULLETPROOF: dynamic section ka div missing ho to uska init turant (sync) chala do — taaki
+  // neeche _aLoadPage aur _activate ko div zaroor mile. Ye ek hi admin-specific structural wajah
+  // thi jisse notification/nav click dashboard pe atak jaata tha.
+  _aEnsurePage(page);
   // nav item highlight
   if(!el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>{ if((n.getAttribute('onclick')||'').includes("'"+page+"'")) el=n; }); }
   if(el){ document.querySelectorAll('#admin-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
