@@ -18511,10 +18511,10 @@ async function openEditStudent(sid,data){
      <div class="form-group"><label>Phone</label><input class="form-control" id="es-phone" value="${esc(data.phone||'')}"></div>
      <div class="form-group"><label>Email</label><input class="form-control" id="es-email" value="${esc(data.email||'')}"></div>
      <div class="form-group"><label>Class</label><select class="form-control" id="es-class" onchange="esClassChange()"><option value="">\u2014 Select class \u2014</option><option value="10"${cls==='10'?' selected':''}>Class 10</option><option value="12"${cls==='12'?' selected':''}>Class 12</option></select></div>
-     <div class="form-group"><label>Batch</label><select class="form-control" id="es-batch">${batchOptions(data.batch_name||'',cls)}</select></div>
+     <div class="form-group"><label>Batch</label><select class="form-control" id="es-batch" onchange="esBatchSessionHint()">${batchOptions(data.batch_name||'',cls)}</select><div id="es-batch-hint" style="font-size:.74rem;margin-top:5px"></div></div>
      <div class="form-group"><label>Medium</label><select class="form-control" id="es-medium"><option value="">\u2014 Select medium \u2014</option><option ${data.medium==='Hindi'?'selected':''}>Hindi</option><option ${data.medium==='English'?'selected':''}>English</option></select></div>
      <div class="form-group"><label>Subjects</label><div id="es-subj-wrap">${cls?subjectDropdown('es-subj-wrap',cls,data.subjects):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>'}</div></div>
-     <div class="form-group"><label>Exam Session</label><select class="form-control" id="es-session">
+     <div class="form-group"><label>Exam Session</label><select class="form-control" id="es-session" onchange="esBatchSessionHint()">
        <option value="">— Not set —</option>
        ${[['oct2026','October 2026 (Stream 1)'],['apr2027','April 2027 (Stream 1)'],['oct2027','October 2027 (Stream 1)'],['apr2028','April 2028 (Stream 1)'],['stream2','Stream 2 Examination'],['ondemand','On Demand Examination']].map(x=>`<option value="${x[0]}"${data.exam_session===x[0]?' selected':''}>${x[1]}</option>`).join('')}
      </select></div>
@@ -18527,11 +18527,29 @@ async function openEditStudent(sid,data){
      </div>
      <div id="es-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="es-btn" onclick="saveEditStudent(${sid})">Save</button>`);
+  try{ esBatchSessionHint(); }catch(e){}
 }
 function esClassChange(){
   const cls=val('es-class');
   document.getElementById('es-batch').innerHTML=batchOptions(val('es-batch'),cls);
   document.getElementById('es-subj-wrap').innerHTML=cls?subjectDropdown('es-subj-wrap',cls,(window._esData||{}).subjects||[]):'<span style="color:var(--text-muted);font-size:.82rem">Select a class first.</span>';
+  try{ esBatchSessionHint(); }catch(e){}
+}
+// Edit Student modal: Batch dropdown base-course deta hai, session alag field se.
+// Server batch_id = course + exam_session se resolve karta hai. Ye hint admin ko
+// save se pehle effective "batch · session" live dikhata hai (image-2 fix).
+function esBatchSessionHint(){
+  const el=document.getElementById('es-batch-hint'); if(!el) return;
+  const course=val('es-batch');
+  const sid=val('es-session');
+  const SMAP={oct2026:'October 2026',apr2027:'April 2027',oct2027:'October 2027',apr2028:'April 2028',stream2:'Stream 2',ondemand:'On Demand'};
+  const ses=SMAP[sid]||'';
+  if(!course){ el.innerHTML=''; return; }
+  if(ses){
+    el.innerHTML=`<span style="color:var(--text-muted)">Batch session: </span><b>${esc(course)} · ${esc(ses)}</b>`;
+  }else{
+    el.innerHTML=`<span style="color:#b45309">⚠ Exam Session set karo — batch ka session usi se decide hota hai.</span>`;
+  }
 }
 async function saveEditStudent(sid){
   const subjects=pickedSubjects('es-subj-wrap');

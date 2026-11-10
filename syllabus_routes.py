@@ -913,6 +913,16 @@ def syl_profile(payload: dict = Body(...), db: Session = Depends(get_db), user=D
         if payload.get("exam_session") is not None:
             sp.exam_session = params.get("e", old_session)
             sp.exam_stream = params.get("s", getattr(sp, "exam_stream", "") or "")
+        # BULLETPROOF: session badli -> student ka batch bhi usi session wala ho jaaye
+        try:
+            from admin_routes import _realign_one
+            if _realign_one(db, sp):
+                db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
         _refresh_stored_cards(db, sp)
     return {"ok": True}
 

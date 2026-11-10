@@ -342,8 +342,14 @@ def _enrolled_batches_ordered(db, sp):
         b = bmap.get(bid)
         _end = getattr(b, "end_date", None) if b else None
         expired = 1 if (_end and _end < today) else 0
-        is_profile = 0 if (_pb and bid == _pb) else 1
-        ses_match = 0 if (b and _ses and (getattr(b, "session", "") or "").strip().lower() == _ses) else 1
+        bses = (getattr(b, "session", "") or "").strip().lower() if b else ""
+        ses_match = 0 if (_ses and bses == _ses) else 1
+        # SAFETY NET: profile batch (sp.batch_id) hamesha top — PAR jab uski session student ke
+        # exam_session se saaf contradict kare (April student, October batch) to top priority chhin
+        # jaati hai aur session-matching enrolled batch jeet jaata hai. Isse stale batch_id hone par
+        # bhi student ko uski ASLI session wala batch dikhta hai.
+        _contradicts = bool(_pb and bid == _pb and _ses and bses and bses != _ses)
+        is_profile = 0 if (_pb and bid == _pb and not _contradicts) else 1
         return (is_profile, ses_match, expired, 0 if prim.get(bid) else 1, bid)
     active_ids.sort(key=_rank)
     return active_ids
@@ -2053,13 +2059,25 @@ def setup_profile(payload: dict = Body(...), db: Session = Depends(get_db), curr
         sp.user.password = hash_password(password)   # login (secure)
     sp.plain_password = password                     # admin copy (send if forgotten)
     _sf_set(db, sp.id, setup_done=True, forgot_pw=False)
+    # Batch ko SESSION ke hisaab se resolve karo (name-only .first() galat session pakad leta tha).
     try:
-        from models import Batch
-        b = db.query(Batch).filter(Batch.name == batch_name).first()
-        if b:
-            sp.batch_id = b.id
+        from admin_routes import _map_session_text, _realign_one
+        # exam_session ko canonical id me badlo taaki _realign_one sahi session-label nikaale
+        try:
+            _mapped = _map_session_text(db, exam_session)
+            if _mapped:
+                sp.exam_session = _mapped
+        except Exception:
+            pass
+        _realign_one(db, sp)
     except Exception:
-        pass
+        try:
+            from models import Batch
+            b = db.query(Batch).filter(Batch.name == batch_name).first()
+            if b:
+                sp.batch_id = b.id
+        except Exception:
+            pass
     db.commit()
     return {"ok": True, "message": "Profile setup complete."}
 

@@ -580,14 +580,74 @@ def _norm_session_label(db, s):
     return _session_id_to_batch_label(db, sid) if sid else ""
 
 
+def _realign_one(db, sp, bmap=None, flush=True):
+    """SINGLE SOURCE OF TRUTH: ek student ka PRIMARY batch uske exam_session ke hisaab se sahi
+    session-batch par le jaao. Har jagah (onboarding, admin edit, session change, bulk realign)
+    yahi call hoti hai -> batch hamesha session se match karta hai.
+    SAFE + idempotent: crash/add-on kabhi nahi chhedta, koi enrollment delete nahi karta (sirf
+    primary link sahi session par), active_batch_id bhi sync karta hai (agar wo stale primary pe
+    tha). Returns a sample dict if it changed something, else None."""
+    from models import Batch, StudentBatch
+    pbid = getattr(sp, "batch_id", None)
+    cur = None
+    if pbid is not None:
+        cur = (bmap.get(pbid) if bmap is not None else db.query(Batch).get(pbid))
+    # base course name: current batch ka naam, warna sales-sheet ka batch_name
+    cur_name = ((cur.name if cur else None) or getattr(sp, "batch_name", None) or "").strip()
+    if not cur_name:
+        return None
+    if "crash" in cur_name.lower():                 # crash = session-less add-on -> chhodo
+        return None
+    target_label = _norm_session_label(db, getattr(sp, "exam_session", "") or "")
+    if not target_label:                            # exam_session month-bucket nahi -> chhodo
+        return None
+    base_name = _normalize_batch(cur_name) or cur_name
+    if not base_name:
+        return None
+    correct_id = _resolve_session_batch_id(db, base_name, target_label)
+    if not correct_id:
+        return None
+    cur_ses = (cur.session or "").strip() if cur else ""
+    if pbid == correct_id and cur_ses == target_label:   # already aligned
+        if getattr(sp, "active_batch_id", None) in (None, pbid) and sp.active_batch_id != correct_id:
+            sp.active_batch_id = correct_id
+            if flush:
+                db.flush()
+        return None
+    old_bid = pbid
+    ex = (db.query(StudentBatch)
+          .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == correct_id).first())
+    old_row = (db.query(StudentBatch)
+               .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == old_bid).first()) if old_bid else None
+    if ex:
+        ex.is_primary = True
+        if old_row and old_row.id != ex.id:
+            db.delete(old_row)                      # old primary link removed (add-ons untouched)
+    elif old_row:
+        old_row.batch_id = correct_id
+        old_row.is_primary = True
+    else:
+        db.add(StudentBatch(student_id=sp.id, batch_id=correct_id, is_primary=True))
+    _old_active = getattr(sp, "active_batch_id", None)
+    sp.batch_id = correct_id
+    sp.batch_name = base_name
+    if _old_active in (None, old_bid):              # stale primary pe tha -> correct par (add-on choice preserve)
+        sp.active_batch_id = correct_id
+    if flush:
+        db.flush()
+    return {"id": sp.id,
+            "from": cur_name + (" — " + cur_ses if cur_ses else " — (no session)"),
+            "to": base_name + " — " + target_label}
+
+
 def _scan_realign_session_batch(db, apply=False):
     """Har student jiska exam_session ek month-session hai (April 2027 / October 2026),
     uska PRIMARY batch usi session ka hona chahiye. Legacy data mein session April hai par
     batch October linked hai -> galat access + galat counting. Ye us mismatch ko dhoondhta
     (apply=False) ya theek karta (apply=True) hai. SAFE: crash-course/add-on kabhi nahi
-    chhedta, koi enrollment delete nahi karta (sirf primary link ko sahi session par le
-    jaata hai), idempotent hai (dobara chalao -> 0 change)."""
-    from models import StudentProfile, Batch, StudentBatch
+    chhedta, koi enrollment delete nahi karta, active_batch_id bhi sync karta hai, idempotent
+    hai (dobara chalao -> 0 change). Core work _realign_one me hai."""
+    from models import StudentProfile, Batch
     bmap = {b.id: b for b in db.query(Batch).all()}
     changed = 0
     skipped_crash = 0
@@ -598,51 +658,40 @@ def _scan_realign_session_batch(db, apply=False):
                  StudentProfile.exam_session != ""))
     for sp in q.yield_per(500):
         cur = bmap.get(sp.batch_id)
-        if not cur:
-            continue
-        cur_name = (cur.name or "").strip()
-        low = cur_name.lower()
-        if "crash" in low:            # crash course = session-less add-on, never touch
+        if cur and "crash" in (cur.name or "").lower():
             skipped_crash += 1
             continue
-        target_label = _norm_session_label(db, sp.exam_session)
-        if not target_label:          # session not a month bucket (ondemand/unknown)
+        if not apply:
+            # PREVIEW: koi change nahi, sirf gin lo ki kaun mismatch hai
+            target_label = _norm_session_label(db, sp.exam_session)
+            if not target_label:
+                continue
+            cur_ses = (cur.session or "").strip() if cur else ""
+            if cur_ses == target_label:
+                continue
+            base_name = _normalize_batch((cur.name if cur else sp.batch_name) or "") or ""
+            if not base_name:
+                continue
+            changed += 1
+            if len(samples) < 50:
+                try:
+                    _nm = sp.user.name if sp.user else ""
+                except Exception:
+                    _nm = ""
+                samples.append({"id": sp.id, "name": _nm,
+                                "from": ((cur.name if cur else sp.batch_name) or "")
+                                        + (" — " + cur_ses if cur_ses else " — (no session)"),
+                                "to": base_name + " — " + target_label})
             continue
-        cur_ses = (cur.session or "").strip()
-        if cur_ses == target_label:   # already aligned
-            continue
-        base_name = _normalize_batch(cur_name) or cur_name
-        if not base_name:
-            continue
-        changed += 1
-        if len(samples) < 50:
-            try:
-                _nm = sp.user.name if sp.user else ""
-            except Exception:
-                _nm = ""
-            samples.append({"id": sp.id, "name": _nm,
-                            "from": cur_name + (" — " + cur_ses if cur_ses else " — (no session)"),
-                            "to": base_name + " — " + target_label})
-        if apply:
-            correct_id = _resolve_session_batch_id(db, base_name, target_label)
-            if correct_id and correct_id != sp.batch_id:
-                old_bid = sp.batch_id
-                ex = (db.query(StudentBatch)
-                      .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == correct_id).first())
-                old_row = (db.query(StudentBatch)
-                           .filter(StudentBatch.student_id == sp.id, StudentBatch.batch_id == old_bid).first())
-                if ex:
-                    ex.is_primary = True
-                    if old_row and old_row.id != ex.id:
-                        db.delete(old_row)          # old primary link removed (add-ons untouched)
-                elif old_row:
-                    old_row.batch_id = correct_id
-                    old_row.is_primary = True
-                else:
-                    db.add(StudentBatch(student_id=sp.id, batch_id=correct_id, is_primary=True))
-                sp.batch_id = correct_id
-                sp.batch_name = base_name
-                db.flush()
+        s = _realign_one(db, sp, bmap=bmap)
+        if s:
+            changed += 1
+            if len(samples) < 50:
+                try:
+                    s["name"] = sp.user.name if sp.user else ""
+                except Exception:
+                    pass
+                samples.append(s)
     if apply:
         db.commit()
     return {"changed": changed, "skipped_crash": skipped_crash,
@@ -5010,6 +5059,14 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                         existing.exam_session = _sheet_sess_id
                     _bucket = _session_id_to_batch_label(db, existing.exam_session) or _sheet_sess_label
                     existing.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+                    # BULLETPROOF: sales-sheet se bhi primary StudentBatch + active_batch_id
+                    # hamesha exam_session se match kare (same engine jaisa edit/onboarding).
+                    try:
+                        db.flush()
+                        _ensure_primary_enrollment(db, existing.id)
+                        _realign_one(db, existing)
+                    except Exception:
+                        pass
             if email:
                 existing.email = email
             if existing.user and name and existing.user.name == ("Student " + phone[-4:]):
@@ -5084,6 +5141,13 @@ def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(ge
                 else:
                     _bucket = _session_id_to_batch_label(db, _nsp.exam_session) or _sheet_sess_label
                     _nsp.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+                    # BULLETPROOF: naya student bhi sales-sheet se sahi session-batch par link ho
+                    try:
+                        db.flush()
+                        _ensure_primary_enrollment(db, _nsp.id)
+                        _realign_one(db, _nsp)
+                    except Exception:
+                        pass
         except Exception:
             pass
         if psrc == "mvs_portal":
@@ -5394,6 +5458,11 @@ def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depen
     elif payload.get("nios_ref"):
         ref = (payload.get("nios_ref") or "").strip().upper()[:40]
         sp.nios_ref = ref
+    # BULLETPROOF: session ya batch badla -> primary batch hamesha exam_session se match kare
+    try:
+        _realign_one(db, sp)
+    except Exception:
+        pass
     db.commit()
     return {"message": "Student updated"}
 
