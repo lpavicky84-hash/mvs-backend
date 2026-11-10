@@ -6312,6 +6312,94 @@ def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),
             "teachers": teachers, "per_teacher": per_teacher}
 
 
+@router.get("/pending-class-reports")
+def admin_pending_class_reports(days: int = 60, db: Session = Depends(get_db),
+                                current_user=Depends(get_admin)):
+    """Jo classes ho chuki hain par unka class report (lecture) ab tak submit NAHI hua —
+    teacher-wise grouped + poori details (subject/chapter/date/time/kitne din overdue).
+    'Done' = us class ka active Lecture exist karta hai (bilkul wahi definition jo frontend
+    ke Done chip me hai). Isse admin ko ek jagah dikh jaata hai kis teacher ki kitni report
+    pending hai aur kaun si class ki."""
+    from models import TimetableEntry, TeacherProfile, User, Lecture
+    from teacher_routes import _slot_start, _ist_now
+    now = _ist_now()
+    today = now.date()
+    now_min = now.hour * 60 + now.minute
+    cutoff = today - timedelta(days=max(7, min(int(days or 60), 180)))
+    # report ho chuki (active lecture) — ek query
+    done_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
+        Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())  # noqa: E712
+    # teacher naam prefetch (N+1 avoid)
+    tpairs = db.query(TeacherProfile.id, TeacherProfile.user_id).all()
+    uids = [uid for _tid, uid in tpairs if uid]
+    unames = {}
+    if uids:
+        for uid, nm in db.query(User.id, User.name).filter(User.id.in_(uids)):
+            unames[uid] = nm
+    tmap = {tid: (unames.get(uid) or ("Teacher #%d" % tid)) for tid, uid in tpairs}
+    # sirf LIVE (archived nahi) chapter classes, cutoff window me
+    q = db.query(TimetableEntry).filter(
+        TimetableEntry.entry_type == "chapter",
+        TimetableEntry.entry_date.isnot(None),
+        TimetableEntry.entry_date <= today,
+        TimetableEntry.entry_date >= cutoff)
+    if hasattr(TimetableEntry, "archive_gen_id"):
+        q = q.filter(TimetableEntry.archive_gen_id.is_(None))
+    by_teacher = {}
+    for e in q.all():
+        if e.id in done_ids:
+            continue
+        d = e.entry_date
+        # class over? (aaj ki class -> scheduled start time nikal gaya ho tabhi)
+        if d == today:
+            sm = _slot_start(getattr(e, "time_text", None))
+            if sm is None or now_min <= sm:
+                continue
+        tid = e.teacher_id
+        g = by_teacher.setdefault(tid, {"teacher_id": tid,
+                                        "teacher_name": tmap.get(tid, "—") or "—",
+                                        "count": 0, "items": []})
+        g["count"] += 1
+        g["items"].append({
+            "id": e.id, "subject": e.subject or "", "chapter": e.chapter or "",
+            "part": e.part or "", "class_name": e.class_name or "",
+            "date": str(d), "time": getattr(e, "time_text", None) or "",
+            "days_overdue": (today - d).days,
+        })
+    groups = sorted(by_teacher.values(), key=lambda x: -x["count"])
+    for g in groups:
+        g["items"].sort(key=lambda x: (-x["days_overdue"], x["date"], x["time"]))
+        g["items"] = g["items"][:150]
+    return {"total": sum(g["count"] for g in groups),
+            "teacher_count": len(groups), "teachers": groups}
+
+
+@router.get("/teacher-report")
+def admin_teacher_report_data(teacher_ids: str = "", period: str = "month",
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Report ka JSON (UI preview/teacher-picker ke liye) — PDF ke bina."""
+    import teacher_report as TR
+    ids = [int(x) for x in teacher_ids.split(",") if x.strip().isdigit()] or None
+    label, data = TR.collect_all(db, ids, "week" if period == "week" else "month")
+    return {"period_label": label, "teachers": data}
+
+
+@router.get("/teacher-report-pdf")
+def admin_teacher_report_pdf(teacher_ids: str = "all", period: str = "month",
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Premium teacher progress PDF — all / selective / single teacher, weekly ya monthly.
+    teacher_ids='all' -> saare; warna comma-separated ids (e.g. '3,7,12')."""
+    from fastapi import Response
+    import teacher_report as TR
+    ids = None
+    if teacher_ids and teacher_ids != "all":
+        ids = [int(x) for x in teacher_ids.split(",") if x.strip().isdigit()] or None
+    pdf = TR.build_report_pdf(db, ids, "week" if period == "week" else "month")
+    fn = "MVS_Teacher_Report_%s.pdf" % ("weekly" if period == "week" else "monthly")
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
+
+
 # ============================================================ MATERIAL ANALYTICS
 @router.get("/materials-tree")
 def admin_materials_tree(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_admin)):

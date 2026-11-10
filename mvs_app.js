@@ -12017,7 +12017,10 @@ async function loadTPerformance(){
     const tl=pf.recent.length?pf.recent.map(a=>`<div class="act-item"><div class="act-dot ${esc(a.type)}"></div><div><div class="act-text">${esc(a.text)}</div><div class="act-time">${esc(a.at)}</div></div></div>`).join(''):'<div class="empty-state"><p>No recent activity.</p></div>';
     const timeline=`<div class="card"><div class="card-header"><h3>Recent Activity</h3></div><div class="card-body"><div class="act-list">${tl}</div></div></div>`;
     const _allTimeHdr='<div style="display:flex;align-items:baseline;gap:8px;margin:18px 2px 8px"><div style="font-size:.82rem;font-weight:800;color:var(--text)">Overall activity</div><span style="font-size:.68rem;font-weight:700;color:var(--text-muted);background:var(--primary-50);padding:2px 8px;border-radius:99px">all-time · leaderboard month se independent</span></div>';
-    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+_allTimeHdr+cards+`<div id="t-reports-wrap"></div>`;
+    _ensureRpDlCss();
+    if(!window._myRepP) window._myRepP='month';
+    const myDl=`<div class="card rpdl-card"><div class="card-body"><div class="rpdl-top"><div><b>${ic('download')} Download My Progress</b><div class="rpdl-sub">Premium PDF — aapka poora progress: active hours, classes &amp; hours, on-time vs delayed reports, doubts solved, video tasks</div></div><div class="rpdl-period"><button class="rpdl-pbtn ${window._myRepP==='week'?'on':''}" id="mrp-pw" onclick="_myRepPeriod('week')">Weekly</button><button class="rpdl-pbtn ${window._myRepP==='month'?'on':''}" id="mrp-pm" onclick="_myRepPeriod('month')">Monthly</button></div></div><div class="rpdl-actions"><button class="btn btn-primary" onclick="_dlMyReport()">${ic('download')} Download PDF</button></div></div></div>`;
+    el.innerHTML=`<div id="t-rankboard-wrap"></div><div id="t-vc-wrap"></div>`+_allTimeHdr+cards+myDl+`<div id="t-reports-wrap"></div>`;
     loadTRankBoard();
     renderVideoContribution('t-vc-wrap');
     _renderClassReports('t-reports-wrap','/api/teacher/class-reports');
@@ -18478,7 +18481,18 @@ async function loadAReports(){
         <span class="rp-dur">${t.week_hours}h wk \u00b7 ${t.month_hours}h mo</span>
       </div>`).join(''):'<div class="ws-empty"><p>No class reports yet</p><small>Reports appear once teachers mark classes Done.</small></div>';
     const opts='<option value="">All teachers</option>'+(d.teachers||[]).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    _ensureRpDlCss();
+    if(!window._rpPeriod) window._rpPeriod='month';
+    const tchips=(d.teachers||[]).map(t=>`<label class="rp-tchip"><input type="checkbox" class="rp-tchk" value="${t.id}" onchange="document.getElementById('rp-all').checked=false"> ${esc(t.name)}</label>`).join('');
+    const dlPanel=`<div class="card rpdl-card"><div class="card-body">
+      <div class="rpdl-top"><div><b>${ic('download')} Download Progress Report</b><div class="rpdl-sub">Premium PDF — charts + har teacher ka poora progress (active hours, classes, reports, doubts, video tasks)</div></div>
+        <div class="rpdl-period"><button class="rpdl-pbtn ${window._rpPeriod==='week'?'on':''}" id="rp-pw" onclick="_rpSetPeriod('week')">Weekly</button><button class="rpdl-pbtn ${window._rpPeriod==='month'?'on':''}" id="rp-pm" onclick="_rpSetPeriod('month')">Monthly</button></div></div>
+      <div class="rpdl-tsel"><label class="rp-tchip rp-all-lbl"><input type="checkbox" id="rp-all" checked onchange="_rpToggleAll(this.checked)"> <b>All teachers</b></label>${tchips}</div>
+      <div class="rpdl-sub" style="margin-top:4px">Tip: kisi ek ya kuch teachers chahiye to "All teachers" hata ke unhe tick karo.</div>
+      <div class="rpdl-actions"><button class="btn btn-primary" onclick="_dlTeacherReport()">${ic('download')} Download PDF</button></div>
+    </div></div>`;
     el.innerHTML=`<div class="sm-head"><h2>Teacher Reports</h2><p>Punctuality and teaching hours from every submitted class report.</p></div>
+      ${dlPanel}
       <div class="card"><div class="card-header"><h3>Teachers</h3></div><div class="card-body">${cards}</div></div>
       <div style="display:flex;justify-content:flex-end;margin:18px 0 10px"><select class="form-control" style="max-width:220px" id="a-rp-filter" onchange="_renderClassReports('a-rp-detail','/api/admin/class-reports'+(this.value?('?teacher_id='+this.value):''),true)">${opts}</select></div>
       <div id="a-rp-detail"></div>`;
@@ -18486,6 +18500,66 @@ async function loadAReports(){
   }catch(e){ el.innerHTML=errHtml(e); }
 }
 
+function _ensureRpDlCss(){
+  if(document.getElementById('rpdl-css')) return;
+  var s=document.createElement('style'); s.id='rpdl-css';
+  s.textContent=[
+    '.rpdl-card{border:1.5px solid rgba(184,148,31,.3);background:linear-gradient(180deg,rgba(184,148,31,.05),transparent)}',
+    '.rpdl-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}',
+    '.rpdl-sub{font-size:.75rem;color:var(--text-muted);margin-top:3px}',
+    '.rpdl-period{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;flex-shrink:0}',
+    '.rpdl-pbtn{border:none;background:transparent;padding:7px 16px;font-weight:800;font-size:.8rem;cursor:pointer;color:var(--text-muted)}',
+    '.rpdl-pbtn.on{background:var(--primary,#B8941F);color:#fff}',
+    '.rpdl-tsel{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}',
+    '.rp-tchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:99px;padding:6px 12px;font-size:.82rem;cursor:pointer;background:var(--card,#fff)}',
+    '.rp-tchip input{width:15px;height:15px;cursor:pointer}',
+    '.rp-all-lbl{border-color:rgba(184,148,31,.5);background:rgba(184,148,31,.08)}',
+    '.rpdl-actions{margin-top:16px}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _rpSetPeriod(p){
+  window._rpPeriod=(p==='week'?'week':'month');
+  var w=document.getElementById('rp-pw'), m=document.getElementById('rp-pm');
+  if(w) w.classList.toggle('on', p==='week'); if(m) m.classList.toggle('on', p==='month');
+}
+function _rpToggleAll(checked){
+  if(checked){ [].slice.call(document.querySelectorAll('.rp-tchk')).forEach(function(c){ c.checked=false; }); }
+}
+async function _dlPdf(path, fname){
+  try{
+    toast('Report ban rahi hai… (thoda ruko)');
+    var r=await fetch(API+path,{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok){ toast('Report generate nahi hui (status '+r.status+')',true); return; }
+    var blob=await r.blob();
+    if(!blob || blob.size<200){ toast('Empty report mila',true); return; }
+    var u=URL.createObjectURL(blob); var a=document.createElement('a');
+    a.href=u; a.download=fname; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); }, 1500);
+    toast('Report download ho gayi.');
+  }catch(e){ toast((e&&e.message)||'Download failed',true); }
+}
+function _dlTeacherReport(){
+  var period=window._rpPeriod||'month';
+  var all=document.getElementById('rp-all');
+  var ids='all';
+  if(all && !all.checked){
+    var sel=[].slice.call(document.querySelectorAll('.rp-tchk:checked')).map(function(c){ return c.value; });
+    if(!sel.length){ toast('Kam se kam ek teacher tick karo, ya "All teachers" on karo.',true); return; }
+    ids=sel.join(',');
+  }
+  _dlPdf('/api/admin/teacher-report-pdf?teacher_ids='+encodeURIComponent(ids)+'&period='+period,
+         'MVS_Teacher_Report_'+(period==='week'?'weekly':'monthly')+'.pdf');
+}
+function _myRepPeriod(p){
+  window._myRepP=(p==='week'?'week':'month');
+  var w=document.getElementById('mrp-pw'), m=document.getElementById('mrp-pm');
+  if(w) w.classList.toggle('on', p==='week'); if(m) m.classList.toggle('on', p==='month');
+}
+function _dlMyReport(){
+  var p=window._myRepP||'month';
+  _dlPdf('/api/teacher/my-report-pdf?period='+p, 'My_Progress_'+(p==='week'?'weekly':'monthly')+'.pdf');
+}
 // ============ LOGIN CREDENTIAL ROWS (per-field copy, like the app) ============
 // renders: [Login ID  | value | copy] [Password | value | eye | copy] [Copy both]
 function _credRows(uid,pass,shareWith){
@@ -20446,9 +20520,56 @@ function aFilteredTT(){
     return true;
   });
 }
+// ===== PENDING CLASS REPORTS (admin) — kis teacher ki kitni report pending =====
+function _ensurePendRepCss(){
+  if(document.getElementById('pendrep-css')) return;
+  var s=document.createElement('style'); s.id='pendrep-css';
+  s.textContent=[
+    '.pr-card{border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden}',
+    '.pr-head{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:rgba(220,38,38,.06);border-bottom:1px solid var(--border)}',
+    '.pr-tname{font-weight:800;font-size:.95rem}',
+    '.pr-cnt{font-size:.72rem;font-weight:800;color:#b91c1c;background:rgba(220,38,38,.12);padding:3px 10px;border-radius:99px;white-space:nowrap}',
+    '.pr-item{display:flex;align-items:center;gap:12px;padding:9px 14px;border-top:1px solid rgba(0,0,0,.05)}',
+    '.pr-when{min-width:92px;font-size:.72rem;font-weight:800;display:flex;flex-direction:column;line-height:1.3}',
+    '.pr-when span{font-weight:600;opacity:.75;color:var(--text-muted)}',
+    '.pr-mid{flex:1;min-width:0}',
+    '.pr-sub{font-weight:700;font-size:.86rem}',
+    '.pr-cls{font-size:.64rem;font-weight:700;color:var(--text-muted);background:rgba(0,0,0,.05);padding:1px 7px;border-radius:99px;margin-left:4px}',
+    '.pr-ch{font-size:.76rem;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.pr-od{font-size:.7rem;font-weight:800;white-space:nowrap;text-align:right}',
+    '.pr-sev-hi{color:#b91c1c}','.pr-sev-md{color:#c2410c}','.pr-sev-lo{color:#a16207}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _pendRepCard(g){
+  var rows=(g.items||[]).map(function(it){
+    var od=it.days_overdue||0;
+    var odTxt= od<=0 ? 'Today' : (od+' day'+(od>1?'s':'')+' overdue');
+    var sev= od>=3 ? 'pr-sev-hi' : (od>=1?'pr-sev-md':'pr-sev-lo');
+    var dnice; try{ dnice=fmtNice(it.date); }catch(_){ dnice=it.date||''; }
+    return '<div class="pr-item"><div class="pr-when '+sev+'">'+esc(dnice)+(it.time?('<span>'+esc(it.time)+'</span>'):'')+'</div>'
+      +'<div class="pr-mid"><div class="pr-sub">'+esc(it.subject||'')+(it.class_name?('<span class="pr-cls">'+esc(it.class_name)+'</span>'):'')+'</div>'
+      +(it.chapter?('<div class="pr-ch">'+esc(it.chapter)+(it.part?(' - '+esc(it.part)):'')+'</div>'):'')+'</div>'
+      +'<div class="pr-od '+sev+'">'+odTxt+'</div></div>';
+  }).join('');
+  return '<div class="pr-card"><div class="pr-head"><div class="pr-tname">'+esc(g.teacher_name||'—')+'</div>'
+    +'<div class="pr-cnt">'+g.count+' pending</div></div><div class="pr-body">'+rows+'</div></div>';
+}
+async function openPendingReports(){
+  _ensurePendRepCss();
+  showModal('Pending Class Reports','<div class="empty-state" style="padding:30px"><p>Loading…</p></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var d=await api('/api/admin/pending-class-reports');
+    var teachers=d.teachers||[];
+    var body=document.getElementById('modal-body'); if(!body) return;
+    if(!teachers.length){ body.innerHTML='<div class="empty-state" style="padding:36px;text-align:center"><p>'+(ic('check')||'')+' Sab class reports submitted — koi pending nahi! 🎉</p></div>'; return; }
+    var head='<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5"><b style="color:#b91c1c">'+d.total+'</b> class report'+(d.total>1?'s':'')+' pending across <b>'+(d.teacher_count||teachers.length)+'</b> teacher'+((d.teacher_count||teachers.length)>1?'s':'')+'. Ye wo classes hain jo ho chuki par report submit nahi hui — sabse jyada overdue sabse upar.</div>';
+    body.innerHTML=head+teachers.map(_pendRepCard).join('');
+  }catch(e){ var b=document.getElementById('modal-body'); if(b) b.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load')+'</div>'; }
+}
 function aRenderTT(){
   const el=document.getElementById('a-timetable-content');
-  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-secondary btn-sm" onclick="openTTDownloadPdf()" title="Download a premium, share-ready timetable PDF for a batch">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="openTTCopy()" title="Copy a subject's timetable from one batch into another — no re-upload">${ic('copy')||ic('layers')||''} Copy Timetable</button><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-ghost btn-sm" onclick="openAdminExtraClass()">${ic('plus')} Extra Class</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
+  el.innerHTML=`<div class="card"><div class="card-header"><h3>All Teachers' Time Table</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-secondary btn-sm" onclick="openTTDownloadPdf()" title="Download a premium, share-ready timetable PDF for a batch">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="openTTCopy()" title="Copy a subject's timetable from one batch into another — no re-upload">${ic('copy')||ic('layers')||''} Copy Timetable</button><button class="btn btn-ghost btn-sm" onclick="openDeadlines()">${ic('calendar')} Session Deadlines</button><button class="btn btn-ghost btn-sm" onclick="openAdminMaterial()">Upload Material</button><button class="btn btn-primary btn-sm" onclick="openTTBuilder()">${ic('plus')} Create Timetable</button><button class="btn btn-secondary btn-sm" onclick="openCrashCourse()">${ic('play')} Crash Course</button><button class="btn btn-ghost btn-sm" onclick="openAdminExtraClass()">${ic('plus')} Extra Class</button><button class="btn btn-secondary btn-sm" onclick="openTTApprovals()">${ic('check')} Approvals</button><button class="btn btn-secondary btn-sm" onclick="openPendingReports()" title="Kis teacher ki kitni class report pending hai - poori details">${ic('clipboard')} Pending Reports</button><button class="btn btn-ghost btn-sm" onclick="openAdminPdf()">PDF Upload</button><button class="btn btn-danger btn-sm" onclick="openTTDelete()">${ic('trash')} Delete Timetable</button></div></div><div class="card-body"><div id="a-tt-batchbar"></div><div id="a-tline-wrap"></div></div></div>`;
   _attMountBatchBar();
   renderStudentTimetable(aFilteredTT(),'a-tline-wrap',{onDelete:'adminDeleteTT',onEditAny:'adminEditTT',onClassFilter:'aClassFilter',activeClass:_attClass,emptyMsg:'No timetable uploaded yet',onTab:'aSetSubj',activeSubject:_attActiveSub,tipTeacherMap:_attTeacherMap,heading:'',scopeLabel:'All Teachers',onReport:true});
 }
@@ -25065,7 +25186,7 @@ function renderStudentWeekly(tl, subjects, opts){
       const _rpct=_tot?Math.round(_pos/_tot*100):0;
       const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')" title="Click to view photo"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';
       const stb=x.st==='current'?`<span class="wkc-status live">Live</span>`:x.st==='done'?`<span class="wkc-status done">Completed</span>`:`<span class="wkc-status up">Upcoming</span>`;
-      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span>${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${_rpct}%"></div></div><div class="wkc-cnt">${_pos}/${_tot} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${_rpct}%</div></div></div>`;
+      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span>${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${_rpct}%"></div></div><div class="wkc-cnt">${_pos}/${_tot} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${_rpct}%</div>${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
     }).join('');
     const n=list.length;
     const _isTodayW=byDay[d].some(x=>x.date===_todayKW);
@@ -25086,7 +25207,7 @@ function wkDayDetail(day){
     return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
   }).join('');
   showModal(`${day} \u2014 ${list.length} class${list.length>1?'es':''}`,
-    (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px"><b>Class Report</b> = class report + notes for students (studio note inside) &nbsp;\u00b7&nbsp; <b>Done</b> = report already submitted.</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
+    (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px"><b>Done</b> = report submitted &nbsp;\u00b7&nbsp; <b>Pending</b> (blinking) = class ho chuki, report abhi baaki (click karke upload karo).</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
 }
 // ===== v97: STUDIO REPORTS (admin — per timetable class) =====
 function _srChipHTML(id){
@@ -25199,7 +25320,18 @@ function _crChipHTML(e){
   const up=(window._crUploaded||{})[id];
   if(up) return `<span class="tl-report done" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Class report submitted \u2014 click to view / update">${ic('check')} Done</span>`;
   if(ent && !_classOver(ent)) return '';   // class time nahi aaya -> report chip mat dikhao
-  return `<span class="tl-report" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Upload this class's report + notes for students">${ic('upload')} Class Report</span>`;
+  // class ho chuki par report nahi aayi -> PENDING (blinking) — admin aur teacher dono ko turant dikhe
+  _ensureCrPendCss();
+  return `<span class="tl-report pending" onclick="event.stopPropagation();openClassReportUpload(${id})" title="Class report pending - click to upload the report + notes for students"><span class="crp-dot"></span> Pending</span>`;
+}
+function _ensureCrPendCss(){
+  if(document.getElementById('crpend-css')) return;
+  var s=document.createElement('style'); s.id='crpend-css';
+  s.textContent='.tl-report.pending{border-color:rgba(220,38,38,.5)!important;color:#b91c1c!important;background:rgba(220,38,38,.1)!important;animation:crPendBlink 1.15s ease-in-out infinite}'
+    +'.tl-report.pending:hover{background:rgba(220,38,38,.18)!important}'
+    +'.crp-dot{width:6px;height:6px;border-radius:50%;background:#dc2626;display:inline-block;flex-shrink:0}'
+    +'@keyframes crPendBlink{0%,100%{opacity:1}50%{opacity:.32}}';
+  document.head.appendChild(s);
 }
 function openClassReportUpload(id){
   const e=(_attEntries||[]).find(x=>x.id===id);

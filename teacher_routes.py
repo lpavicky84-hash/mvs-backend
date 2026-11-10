@@ -6093,6 +6093,29 @@ def teacher_class_reports(db: Session = Depends(get_db), current_user=Depends(ge
     return {"summary": _report_summary(rows), "rows": rows[:60]}
 
 
+@router.get("/my-report")
+def teacher_my_report_data(period: str = "month", db: Session = Depends(get_db),
+                           current_user=Depends(get_teacher)):
+    """Teacher ka apna progress metrics (JSON) — weekly ya monthly."""
+    import teacher_report as TR
+    tp = get_teacher_profile(current_user, db)
+    nm = current_user.name if getattr(current_user, "name", None) else None
+    m = TR.collect_teacher_metrics(db, tp.id, nm, "week" if period == "week" else "month")
+    return m
+
+
+@router.get("/my-report-pdf")
+def teacher_my_report_pdf(period: str = "month", db: Session = Depends(get_db),
+                          current_user=Depends(get_teacher)):
+    """Teacher apna premium progress PDF download kar sake (weekly/monthly)."""
+    import teacher_report as TR
+    tp = get_teacher_profile(current_user, db)
+    pdf = TR.build_report_pdf(db, [tp.id], "week" if period == "week" else "month")
+    fn = "My_Progress_%s.pdf" % ("weekly" if period == "week" else "monthly")
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
+
+
 # ============================================================ MATERIAL ANALYTICS
 # Subject -> chapter -> part view of everything uploaded, with view/download
 # counts and the actual student lists behind those counts. Shared shape so the
