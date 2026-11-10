@@ -760,7 +760,11 @@ def _scan_realign_session_batch(db, apply=False):
     q = (db.query(StudentProfile)
          .filter(StudentProfile.exam_session.isnot(None),
                  StudentProfile.exam_session != ""))
-    for sp in q.yield_per(500):
+    # .all() — NOT yield_per: loop ke andar queries (sessions/batch) streaming cursor ko tod
+    # deti thi -> iteration sirf pehle 500 pe ruk jaati thi (8156 me se). Isi wajah se baaki
+    # ~7600 students kabhi scan hi nahi hote the aur 'all good' aata tha. Ab poori list memory
+    # me le aao (batches/enrollments pehle se memory me hain), phir safe iterate.
+    for sp in q.all():
         scanned += 1
         cur = bmap.get(sp.batch_id) if sp.batch_id else None
         if cur and "crash" in (cur.name or "").lower():
@@ -4996,7 +5000,7 @@ def admin_session_batch_debug(q: str = "", db: Session = Depends(get_db), _=Depe
     out = []
     qy = (db.query(StudentProfile)
           .filter(StudentProfile.exam_session.isnot(None), StudentProfile.exam_session != ""))
-    for sp in qy.yield_per(500):
+    for sp in qy.all():          # .all() — yield_per loop-ke-andar-query se tut jaata tha
         try:
             nm = sp.user.name if sp.user else ""
         except Exception:
