@@ -2152,10 +2152,15 @@ def review_history_out(db, t):
     return out
 
 
-def timeline_out(db, t):
-    rows = (db.query(ProductionEvent)
-            .filter(ProductionEvent.task_id == t.id)
-            .order_by(ProductionEvent.created_at.asc(), ProductionEvent.id.asc()).all())
+def timeline_out(db, t, events=None):
+    # events (pre-fetched, is task ke ProductionEvent rows) diye ho to per-task query SKIP —
+    # list endpoints N+1 se bachne ke liye saare events ek hi query me laakar yahan pass karte hain.
+    if events is not None:
+        rows = events
+    else:
+        rows = (db.query(ProductionEvent)
+                .filter(ProductionEvent.task_id == t.id)
+                .order_by(ProductionEvent.created_at.asc(), ProductionEvent.id.asc()).all())
     merged = []
     for e in rows:
         _note = ""

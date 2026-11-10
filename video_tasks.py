@@ -605,7 +605,7 @@ def _hist_out(t):
     return out
 
 
-def _full_hist_out(db, t):
+def _full_hist_out(db, t, events=None):
     """Complete status timeline for the teacher/admin Status-History modal.
 
     Uses the SAME source as the production portal — production_core.timeline_out,
@@ -619,7 +619,7 @@ def _full_hist_out(db, t):
     """
     try:
         import production_core as pc
-        tl = pc.timeline_out(db, t) or []
+        tl = pc.timeline_out(db, t, events=events) or []
     except Exception:
         tl = []
     if not tl:
@@ -3200,7 +3200,71 @@ def _thumb_id_set(db, ids):
     return out
 
 
-def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=None):
+def _vt_batch_maps(db, ids):
+    """N+1 KILLER: _task_out ke saare per-task lookups ko EK-EK batched query me badal deta hai.
+    Returns (cc_map, staff_map, gt_map, ev_map):
+      cc_map   {task_id: comment_count}          — creator-visible comments ka count
+      staff_map{production_staff_profile_id: name} — editor/graphics/collab-editor naam
+      gt_map   {task_id: latest GraphicsTask}     — thumbnail/graphics info
+      ev_map   {task_id: [ProductionEvent...]}    — status-history timeline (sorted asc)
+    Pehle ye sab har task ke liye alag query karte the -> 100-300 tasks = hazaaron queries =
+    30-45s. Ab total ~4 queries. staff_map hamesha poora (chhota table) banta hai."""
+    ids = [int(x) for x in set(ids or []) if x]
+    cc_map, staff_map, gt_map, ev_map = {}, {}, {}, {}
+    # staff_map — ProductionStaffProfile.id -> User.name (poora table, bina .user lazy-load ke)
+    try:
+        from models import ProductionStaffProfile as _PSP, User as _U
+        for _sid, _nm in db.query(_PSP.id, _U.name).join(_U, _U.id == _PSP.user_id).all():
+            staff_map[_sid] = _nm or ""
+    except Exception:
+        staff_map = {}
+    if not ids:
+        return cc_map, staff_map, gt_map, ev_map
+    # comment counts — ek GROUP BY query
+    try:
+        from sqlalchemy import func as _f
+        rows = (db.query(VideoTaskComment.task_id, _f.count(VideoTaskComment.id))
+                .filter(VideoTaskComment.task_id.in_(ids),
+                        or_(VideoTaskComment.audience == None, VideoTaskComment.audience == "",
+                            VideoTaskComment.audience == "creator"))
+                .group_by(VideoTaskComment.task_id).all())
+        cc_map = {tid: cnt for tid, cnt in rows}
+    except Exception:
+        cc_map = {}
+    # latest GraphicsTask per task — id asc iterate, overwrite -> final = highest id (latest)
+    try:
+        from models import GraphicsTask as _GT
+        for g in (db.query(_GT).filter(_GT.task_id.in_(ids)).order_by(_GT.id.asc())):
+            gt_map[g.task_id] = g
+    except Exception:
+        gt_map = {}
+    # saare ProductionEvents ek query me (already sorted asc) -> per-task timeline map
+    try:
+        from models import ProductionEvent as _PE
+        for e in (db.query(_PE).filter(_PE.task_id.in_(ids))
+                  .order_by(_PE.created_at.asc(), _PE.id.asc())):
+            ev_map.setdefault(e.task_id, []).append(e)
+    except Exception:
+        ev_map = {}
+    return cc_map, staff_map, gt_map, ev_map
+
+
+def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=None,
+              staff_map=None, gt_map=None, ev_map=None):
+    # staff_map {production_staff_profile_id: name}, gt_map {task_id: latest GraphicsTask},
+    # ev_map {task_id: [ProductionEvent...]} — list endpoints N+1 khatam karne ke liye ye maps
+    # ek-ek query me bhar ke pass karte hain. None ho to purana per-task query fallback chalta hai.
+    def _staff_nm(pid):
+        if pid is None:
+            return ""
+        if staff_map is not None:
+            return staff_map.get(pid, "")
+        try:
+            from models import ProductionStaffProfile as _PSPn
+            p = db.query(_PSPn).filter(_PSPn.id == pid).first()
+            return (p.user.name if p and p.user else "") or ""
+        except Exception:
+            return ""
     def _tn(tid):
         if tname_map is not None:
             return tname_map.get(tid, "")
@@ -3265,7 +3329,7 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=Non
         # legacy/admin tasks (blank lifecycle) bhi sabhi stepwise events dikhayein —
         # deadline change, editor assign, editing, approve, upload sab. _full_hist_out
         # khud _hist_out par fall back karta hai jab kuch na ho.
-        "history": _full_hist_out(db, t),
+        "history": _full_hist_out(db, t, events=(ev_map.get(t.id) if ev_map is not None else None)),
     }
     # ---- collab (multi-teacher) info
     _allids = _collab_all_ids(t)
@@ -3293,13 +3357,8 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=Non
     out["editor_id"] = getattr(t, "editor_id", None)
     out["graphics_id"] = getattr(t, "graphics_id", None)
     try:
-        from models import ProductionStaffProfile as _PSPx
-        if out["editor_id"]:
-            ep = db.query(_PSPx).filter(_PSPx.id == out["editor_id"]).first()
-            out["editor_name"] = (ep.user.name if ep and ep.user else "") or ""
-        else:
-            out["editor_name"] = ""
-        # collab editors (2 editors on an urgent video)
+        out["editor_name"] = _staff_nm(out["editor_id"]) if out["editor_id"] else ""
+        # collab editors (2 editors on an urgent video) — staff_map se naam (per-editor query nahi)
         _cei = []
         try:
             import json as _jce3
@@ -3309,26 +3368,23 @@ def _task_out(db, t, with_thumb=True, tname_map=None, cc_map=None, thumb_set=Non
             _cei = []
         _cnames = []
         for _ei in _cei:
-            _ep2 = db.query(_PSPx).filter(_PSPx.id == _ei).first()
-            if _ep2 and _ep2.user and _ep2.user.name:
-                _cnames.append(_ep2.user.name)
+            _nm2 = _staff_nm(_ei)
+            if _nm2:
+                _cnames.append(_nm2)
         out["collab_editor_names"] = _cnames
-        if out["graphics_id"]:
-            gpx = db.query(_PSPx).filter(_PSPx.id == out["graphics_id"]).first()
-            out["graphics_name"] = (gpx.user.name if gpx and gpx.user else "") or ""
-        else:
-            out["graphics_name"] = ""
+        out["graphics_name"] = _staff_nm(out["graphics_id"]) if out["graphics_id"] else ""
     except Exception:
         out["editor_name"] = ""; out["graphics_name"] = ""
     try:
         if out["thumbnail_required"] or getattr(t, "graphics_id", None):
-            from models import GraphicsTask as _GTt, ProductionStaffProfile as _PSP
-            g = db.query(_GTt).filter(_GTt.task_id == t.id).order_by(_GTt.id.desc()).first()
+            # gt_map (task_id -> latest GraphicsTask) diya ho to per-task query SKIP
+            if gt_map is not None:
+                g = gt_map.get(t.id)
+            else:
+                from models import GraphicsTask as _GTt
+                g = db.query(_GTt).filter(_GTt.task_id == t.id).order_by(_GTt.id.desc()).first()
             if g:
-                designer = ""
-                gp = db.query(_PSP).filter(_PSP.id == g.graphics_id).first()
-                if gp and gp.user:
-                    designer = gp.user.name or ""
+                designer = _staff_nm(getattr(g, "graphics_id", None))
                 _tsecs = int((g.deadline - _now_ist()).total_seconds()) if g.deadline else None
                 out["thumbnail"] = {
                     "status": g.status or "pending",
@@ -3395,9 +3451,11 @@ def vt_thumb(tid: int, db: Session = Depends(get_db)):
                     headers={"Cache-Control": "public, max-age=604800, immutable"})
 
 
-def _special_out(db, t, tname_map=None, ch_map=None):
+def _special_out(db, t, tname_map=None, ch_map=None,
+                 cc_map=None, staff_map=None, gt_map=None, ev_map=None):
     """One Shot / Rapid Revision task — chapters ke saath progress + NEW blink."""
-    out = _task_out(db, t, with_thumb=False, tname_map=tname_map)
+    out = _task_out(db, t, with_thumb=False, tname_map=tname_map,
+                    cc_map=cc_map, staff_map=staff_map, gt_map=gt_map, ev_map=ev_map)
     if ch_map is not None:
         chs = ch_map.get(t.id, [])   # pre-fetched in one batched query by the caller
     else:
@@ -3415,12 +3473,16 @@ def _special_out(db, t, tname_map=None, ch_map=None):
     if _pe: _sids.add(_pe)
     _snm = {}
     if _sids:
-        try:
-            from models import ProductionStaffProfile as _SP
-            for s in db.query(_SP).filter(_SP.id.in_(list(_sids))).all():
-                _snm[s.id] = (s.user.name if s.user else "") or ("#%d" % s.id)
-        except Exception:
-            pass
+        if staff_map is not None:
+            # batched staff_map se naam — per-task chapter-staff query khatam
+            _snm = {sid: ((staff_map.get(sid) or ("#%d" % sid))) for sid in _sids}
+        else:
+            try:
+                from models import ProductionStaffProfile as _SP
+                for s in db.query(_SP).filter(_SP.id.in_(list(_sids))).all():
+                    _snm[s.id] = (s.user.name if s.user else "") or ("#%d" % s.id)
+            except Exception:
+                pass
     # v91: chapter-level change flag — link add/update/remove admin_seen ke baad hua ho
     out["chapters"] = [{
         "id": c.id, "title": c.title, "link": c.link or "",
@@ -3468,18 +3530,36 @@ def vt_task_rank_rows(db):
     """Task completion ranking — on-time delivery rate. Collab tasks kisi ek teacher ko
     nahi, ek alag 'Collab' row me (click par saare teacher naam)."""
     rows = []
-    tps = db.query(TeacherProfile).all()
+    from sqlalchemy.orm import defer as _defer
+    from sqlalchemy import func as _f
+    # photo_b64 (bada blob) list me load NAHI karte -> tez. Existence alag halki query se.
+    tps = db.query(TeacherProfile).options(_defer(TeacherProfile.photo_b64)).all()
     _name = {}
+    # teacher naam EK query me (pehle per-teacher User query = N+1)
+    _uids = [tp.user_id for tp in tps if tp.user_id]
+    _un = {}
+    if _uids:
+        for _uid, _nm in db.query(User.id, User.name).filter(User.id.in_(_uids)):
+            _un[_uid] = _nm
     for tp in tps:
-        u = db.query(User).filter(User.id == tp.user_id).first()
-        _name[tp.id] = (u.name if u else "") or ("Teacher #%d" % tp.id)
+        _name[tp.id] = (_un.get(tp.user_id) or "") or ("Teacher #%d" % tp.id)
+    # kis teacher ke paas photo hai — blob content load kiye bina (sirf existence), ek query
+    _photo_ids = set()
+    try:
+        for (_pid,) in db.query(TeacherProfile.id).filter(_f.length(_f.coalesce(TeacherProfile.photo_b64, "")) > 0):
+            _photo_ids.add(_pid)
+    except Exception:
+        _photo_ids = set()
+    # SAARE ranking tasks EK query me -> per-teacher group (pehle per-teacher alag query = N+1)
+    _by_tid = {}
+    for _t in (db.query(VideoTask)
+               .filter(VideoTask.proposal_ok != "pending", NOT_SPECIAL,
+                       VideoTask.cancelled.isnot(True)).all()):
+        _by_tid.setdefault(_t.teacher_id, []).append(_t)
     collab_seen = set()
     collab_all = []
     for tp in tps:
-        tasks = (db.query(VideoTask)
-                 .filter(VideoTask.teacher_id == tp.id,
-                         VideoTask.proposal_ok != "pending", NOT_SPECIAL,
-                         VideoTask.cancelled.isnot(True)).all())
+        tasks = _by_tid.get(tp.id, [])
         # collab tasks alag — Collab row me jaayenge (primary ko attribute nahi)
         solo = []
         for t in tasks:
@@ -3500,7 +3580,7 @@ def vt_task_rank_rows(db):
         rows.append({
             "teacher_id": tp.id,
             "name": _name.get(tp.id, "Teacher #%d" % tp.id),
-            "photo": bool(getattr(tp, "photo_b64", None)),
+            "photo": (tp.id in _photo_ids),
             "assigned": len(solo), "done": done, "pending": pending,
             "ontime": ontime, "delayed": delayed, "not_completed": not_completed, "rate": rate,
         })
@@ -3973,11 +4053,17 @@ def vt_admin_list(teacher_id: int = 0, status: str = "", channel_id: int = 0,
               .filter(VideoTask.kind == "urgent", NOT_YOUTUBER,
                       VideoTask.cancelled.isnot(True))
               .order_by(VideoTask.created_at.desc()).all())
-    _tnm = _all_teacher_names(db)   # ek query — per-task N+1 khatam (fast)
-    _ts = _thumb_id_set(db, [t.id for t in tasks] + [t.id for t in props] + [t.id for t in urgent])
-    return {"tasks": [_task_out(db, t, tname_map=_tnm, thumb_set=_ts) for t in tasks],
-            "proposals": [_task_out(db, t, tname_map=_tnm, thumb_set=_ts) for t in props],
-            "urgent": [_task_out(db, t, tname_map=_tnm, thumb_set=_ts) for t in urgent]}
+    _tnm = _all_teacher_names(db)   # ek query — per-task teacher-name N+1 khatam
+    _allids = [t.id for t in tasks] + [t.id for t in props] + [t.id for t in urgent]
+    _ts = _thumb_id_set(db, _allids)
+    # N+1 KILLER: comment-count, editor/graphics naam, graphics-task, aur status-history —
+    # sab ek-ek batched query me (pehle har task ke liye alag -> 30-45s; ab turant).
+    _cc, _sm, _gm, _em = _vt_batch_maps(db, _allids)
+    _mk = lambda t: _task_out(db, t, tname_map=_tnm, thumb_set=_ts,
+                              cc_map=_cc, staff_map=_sm, gt_map=_gm, ev_map=_em)
+    return {"tasks": [_mk(t) for t in tasks],
+            "proposals": [_mk(t) for t in props],
+            "urgent": [_mk(t) for t in urgent]}
 
 
 @router.get("/admin/video-tasks/badge", dependencies=[Depends(_admin_section_guard)])
@@ -4760,7 +4846,10 @@ def _special_payload(db, kind):
         for c in (db.query(VideoTaskChapter).filter(VideoTaskChapter.task_id.in_(_tids))
                   .order_by(VideoTaskChapter.sort.asc(), VideoTaskChapter.id.asc()).all()):
             _chm.setdefault(c.task_id, []).append(c)
-    outs = [_special_out(db, t, tname_map=_tnm, ch_map=_chm) for t in tasks]
+    # N+1 KILLER (special tasks bhi): comment/staff/graphics/history batched maps
+    _cc, _sm, _gm, _em = _vt_batch_maps(db, _tids)
+    outs = [_special_out(db, t, tname_map=_tnm, ch_map=_chm,
+                         cc_map=_cc, staff_map=_sm, gt_map=_gm, ev_map=_em) for t in tasks]
     # v115: read-side guarantee — same teacher + same (normalized) subject ke
     # duplicate cards UI me kabhi na dikhen. DB self-heal _dedupe_special karta
     # hai; ye sirf display merge hai (kuch write nahi hota).
