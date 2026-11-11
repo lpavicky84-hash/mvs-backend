@@ -89,6 +89,10 @@ def collect_teacher_metrics(db, tp_id, tp_name, period="month", ref=None, _cfg=N
                    TimetableEntry.entry_date <= today))
     if hasattr(TimetableEntry, "archive_gen_id"):
         cls = cls.filter(TimetableEntry.archive_gen_id.is_(None))
+    # SAME-TIME MULTI-BATCH: mirror (sister-batch) classes ko hours/count me mat gino -> ek
+    # physical class ek hi baar. Mirror entries har batch ke student-view me fir bhi complete dikhti.
+    if hasattr(TimetableEntry, "mirror_of_id"):
+        cls = cls.filter(TimetableEntry.mirror_of_id.is_(None))
     cls = cls.all()
     classes_taken = len(cls)
     teach_min = 0

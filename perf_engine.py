@@ -337,10 +337,16 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
         # hata diya. Purane mode (past months) me wahi OR-subject behavior — frozen/paid safe.
         if _subsL and not corrected:
             _condL.append(TimetableEntry.subject.in_(_subsL))
-        _rowsL = db.query(TimetableEntry).filter(
+        _qL = db.query(TimetableEntry).filter(
             TimetableEntry.entry_date >= dt0.date(),
             TimetableEntry.entry_date <= _cut,
-            _orS(*_condL)).all()
+            _orS(*_condL))
+        # SAME-TIME MULTI-BATCH: mirror (sister-batch) classes ko teaching count me mat gino ->
+        # ek physical class ek hi baar (double credit/payout nahi). Mirrors sirf aage ke data me
+        # banti hain -> past/frozen months bilkul safe (unme mirror_of_id NULL).
+        if hasattr(TimetableEntry, "mirror_of_id"):
+            _qL = _qL.filter(TimetableEntry.mirror_of_id.is_(None))
+        _rowsL = _qL.all()
         _due = 0
         _c_ot = _c_dl = 0
         for e in _rowsL:
@@ -1446,10 +1452,14 @@ def auto_targets_from_timetable(db, tp, month=""):
         conds = [TimetableEntry.teacher_id == tp.id]
         if subs:
             conds.append(TimetableEntry.subject.in_(subs))
-        rows = db.query(TimetableEntry).filter(
+        _q = db.query(TimetableEntry).filter(
             TimetableEntry.entry_date >= dt0.date(),
             TimetableEntry.entry_date < dt1.date(),
-            or_(*conds)).all()
+            or_(*conds))
+        # SAME-TIME MULTI-BATCH: mirror classes count me nahi (ek physical class ek baar)
+        if hasattr(TimetableEntry, "mirror_of_id"):
+            _q = _q.filter(TimetableEntry.mirror_of_id.is_(None))
+        rows = _q.all()
         for e in rows:
             txt = ((e.chapter or "") + " " + (e.part or "") + " " +
                    (getattr(e, "topic_covered", "") or "")).lower()

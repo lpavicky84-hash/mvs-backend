@@ -1575,6 +1575,79 @@ def _crash_propagate(db, e, fields):
             pass
 
 
+def _report_group_siblings(db, e):
+    """SAME physical class ke doosre BATCH-entries: same teacher + same date + same time +
+    same subject, par ALAG batch, live (archived nahi), chapter-type. Grouping SIRF tab jab
+    subject+date+time EXACTLY match karein — alag time/subject/date kabhi merge nahi hote.
+    Isi se "ek baar report -> saare same-time batches done" hota hai. Agar column/data missing
+    ho to khaali list (purana behaviour safe)."""
+    from models import TimetableEntry
+    try:
+        if not e or not e.entry_date:
+            return []
+        tm = (e.time_text or "").strip()
+        sub = (e.subject or "").strip()
+        if not tm or not sub:
+            return []
+        q = db.query(TimetableEntry).filter(
+            TimetableEntry.id != e.id,
+            TimetableEntry.teacher_id == e.teacher_id,
+            TimetableEntry.subject == e.subject,
+            TimetableEntry.entry_date == e.entry_date,
+            TimetableEntry.time_text == e.time_text,
+            TimetableEntry.entry_type == "chapter")
+        if hasattr(TimetableEntry, "archive_gen_id"):
+            q = q.filter(TimetableEntry.archive_gen_id.is_(None))
+        out = []
+        for s in q.all():
+            # DIFFERENT batch hona chahiye (same batch ko group nahi karte)
+            if e.batch_id and s.batch_id:
+                if s.batch_id == e.batch_id:
+                    continue
+            elif (s.class_name or "") == (e.class_name or ""):
+                continue
+            out.append(s)
+        return out
+    except Exception:
+        return []
+
+
+def _group_propagate_completion(db, primary, payload):
+    """Primary class ki report ko same-time sister batches me copy karo + unhe MIRROR mark karo.
+    Mirror entry har batch me 'completed' dikhegi (students ko notes milenge) par teacher ke
+    HOURS/CLASS-COUNT me count NAHI hogi -> ek physical class ek hi baar. Returns mirror ids."""
+    from models import TimetableEntry
+    if not hasattr(TimetableEntry, "mirror_of_id"):
+        return []
+    try:
+        sibs = _report_group_siblings(db, primary)
+        mids = []
+        for s in sibs:
+            if s.completed:          # kisi aur ne/pehle se complete -> chhedo mat
+                continue
+            s.completed = True
+            s.completed_at = primary.completed_at
+            # topic/homework/timing/remarks = jo physically padhaya (same class). chapter (scheduled
+            # syllabus position) ko NAHI chhedte -> har batch ka apna syllabus intact rehta hai.
+            s.topic_covered = primary.topic_covered
+            s.start_time = primary.start_time
+            s.end_time = primary.end_time
+            s.homework = primary.homework
+            s.dpp_given = primary.dpp_given
+            s.remarks = primary.remarks
+            s.mirror_of_id = primary.id
+            mids.append(s.id)
+        if mids:
+            db.commit()
+        return mids
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return []
+
+
 @router.patch("/timetable-entry/{entry_id}")
 def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
@@ -3488,12 +3561,16 @@ def teacher_complete_class(entry_id: int, payload: dict, background_tasks: Backg
     e.remarks = (payload.get("remarks") or "").strip() or None
     db.commit()
     _crash_propagate(db, e, ["chapter", "topic_covered", "completed", "completed_at"])   # shared crash completion
+    # SAME-TIME MULTI-BATCH: ek physical class jo kai batches me hai -> report EK baar, baaki
+    # batches apne-aap complete (mirror). Hours/count ek hi baar. (crash propagate se alag; wo
+    # Day-N wise hai, ye same date+time+subject wise.)
+    _mir = _group_propagate_completion(db, e, payload)
     _maybe_warn_late(db, tp, e)
     if background_tasks is not None:
         background_tasks.add_task(_notify_class_done, e.subject, e.chapter or "",
                                   e.part or "", current_user.name or "Your teacher",
                                   bool(e.dpp_given))
-    return {"message": "Class marked as completed."}
+    return {"message": "Class marked as completed.", "also_marked_batches": len(_mir or [])}
 
 
 @router.get("/crash-progress")
@@ -5878,6 +5955,21 @@ async def create_lecture(payload: dict = Body(...), background_tasks: Background
                     _seen_b.add(_bid); _extra_batch_ids.append(_bid)
     except Exception:
         _extra_batch_ids = []
+    # SAME-TIME MULTI-BATCH grouping: /complete ne is primary ke same-time sister entries ko
+    # mirror_of_id = primary set kar diya. Un sibling batches me bhi notes/material jaana chahiye
+    # (batch-wise — sirf grouped batches, global nahi). Unke batch_ids yahan add karo.
+    try:
+        from models import TimetableEntry as _TTEm
+        if _te2 is not None and hasattr(_TTEm, "mirror_of_id"):
+            _mirs = db.query(_TTEm).filter(_TTEm.mirror_of_id == _te2.id).all()
+            _seen2 = set([_mat_batch_id] + _extra_batch_ids)
+            for _ms in _mirs:
+                _bid = getattr(_ms, "batch_id", None)
+                if _bid is not None and _bid not in _seen2:
+                    _seen2.add(_bid)
+                    _extra_batch_ids.append(_bid)
+    except Exception:
+        pass
     def _mk(kind, b64, fname):
         if not b64:
             return
@@ -6028,6 +6120,9 @@ def _report_rows(db, subjects, teacher_map=None):
     from models import TimetableEntry
     q = db.query(TimetableEntry).filter(TimetableEntry.completed == True,
                                         TimetableEntry.entry_type == "chapter")
+    # SAME-TIME MULTI-BATCH: mirror (sister-batch) classes report-list/hours me double na aayein
+    if hasattr(TimetableEntry, "mirror_of_id"):
+        q = q.filter(TimetableEntry.mirror_of_id.is_(None))
     if subjects is not None:
         if not subjects:
             return []

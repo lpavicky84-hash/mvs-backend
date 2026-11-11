@@ -50,6 +50,8 @@ for _boot_try in range(3):
 # ===== LIGHTWEIGHT MIGRATIONS (add new columns to existing tables) =====
 def ensure_columns():
     stmts = [
+        # Same-time grouped report: sister batch-entries ko primary ka mirror mark karne ke liye
+        "ALTER TABLE timetable_entries ADD COLUMN mirror_of_id INTEGER NULL",
         # Batch Restart (archive generations): content ko hide/restore karne ke liye archive_gen_id
         "ALTER TABLE timetable_entries ADD COLUMN archive_gen_id INTEGER NULL",
         "ALTER TABLE dpp_packs ADD COLUMN archive_gen_id INTEGER NULL",

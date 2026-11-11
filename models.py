@@ -867,6 +867,11 @@ class TimetableEntry(Base):
     homework        = Column(Text, nullable=True)
     dpp_given       = Column(Boolean, default=False)
     remarks         = Column(Text, nullable=True)
+    # Same-time grouped report: jab teacher ek physical class (same subject+date+time) ki report
+    # submit karta hai jo kai batches me hai -> sister entries ko mirror maan lete hain. Mirror
+    # entry har tarah se complete dikhti hai (student notes + batch view), par teacher ke WORK
+    # metrics (hours + class count) me count NAHI hoti -> ek class ek hi baar gini jaati hai.
+    mirror_of_id    = Column(Integer, nullable=True, index=True)  # NULL = primary/standalone; set = is primary ka mirror
     resched_by      = Column(String(20), nullable=True)  # v86: kaun move kiya — teacher | admin | leave (NULL = kabhi move nahi)
     youtube_link    = Column(String(300), nullable=True)  # class on YouTube -> student gets a blinking "Watch" button
     created_at  = Column(DateTime, default=func.now())

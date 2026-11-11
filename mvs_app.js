@@ -3325,7 +3325,7 @@ async function _renderTodayClasses(targetId){
     // cards ab list ke SAME data se (pehle compliance.stats se alag count aata tha)
     const _tN=cls.length, _cN=cls.filter(c=>c.completed).length, _pN=cls.filter(c=>!c.completed).length;
     const _mN=all.filter(c=>!c.completed && c.date && c.date<todayStr).length;
-    const cards=`<div class="stats-grid">${statCard("Today's Classes",_tN,'calendar','indigo',"navTo('teacher-app','today')")}${statCard('Completed',_cN,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',_pN,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('Missed',_mN,'help','red',"ttSwitchTab('plan')",_mN>0)}</div>`;
+    const cards=`<div class="stats-grid">${statCard("Today's Classes",_tN,'calendar','indigo',"navTo('teacher-app','today')")}${statCard('Completed',_cN,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',_pN,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('Missed',_mN,'help','red',"openMissedClasses()",_mN>0)}</div>`;
     const rows=cls.length?cls.map(tClassRow).join(''):`<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No classes scheduled today.</td></tr>`;
     const doneAll=all.filter(c=>c.completed).reverse();
     const doneRows=doneAll.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>\u00b7 ${esc(c.date||'')}</span>${c.homework?'<span>\u00b7 HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>\u00b7 DPP</span>':''}</div></div></div>`).join('');
@@ -3344,6 +3344,46 @@ async function loadTCompletion(){
     el.innerHTML=`<div class="alert alert-info">Submit a class completion report. The class status becomes <strong>Completed</strong> and counts toward your compliance score.</div><div class="card"><div class="card-header"><h3>Pending Classes (${pending.length})</h3></div><div class="card-body">${pendList}</div></div><div class="card"><div class="card-header"><h3>Recently Completed</h3></div><div class="card-body">${doneList}</div></div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
+// ===== MISSED CLASSES — click "Missed" card -> saari missed classes + Submit Report =====
+function _ensureMissedCss(){
+  if(document.getElementById('missed-css')) return;
+  var s=document.createElement('style'); s.id='missed-css';
+  s.textContent=[
+    '.mc-item{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border);border-radius:12px;margin-bottom:9px}',
+    '.mc-when{min-width:88px;font-size:.72rem;font-weight:800;color:#b91c1c;display:flex;flex-direction:column;line-height:1.3}',
+    '.mc-when span{font-weight:600;opacity:.75;color:var(--text-muted)}',
+    '.mc-mid{flex:1;min-width:0}',
+    '.mc-sub{font-weight:700;font-size:.9rem}',
+    '.mc-cls{font-size:.66rem;font-weight:700;color:var(--text-muted);background:rgba(0,0,0,.05);padding:1px 7px;border-radius:99px;margin-left:5px}',
+    '.mc-ch{font-size:.77rem;color:var(--text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _missedCard(c){
+  var dnice; try{ dnice=fmtNice(c.date); }catch(_){ dnice=c.date||''; }
+  var over=0; try{ over=Math.max(0, Math.round((new Date(istDateKey())-new Date(c.date))/86400000)); }catch(_){}
+  return '<div class="mc-item"><div class="mc-when">'+esc(dnice)+(c.time?('<span>'+esc(c.time)+'</span>'):'')+(over>0?('<span>'+over+'d ago</span>'):'')+'</div>'
+    +'<div class="mc-mid"><div class="mc-sub">'+esc(c.subject||'')+(c.class_name?('<span class="mc-cls">'+esc(c.class_name)+'</span>'):'')+'</div>'
+    +(c.chapter?('<div class="mc-ch">'+esc(c.chapter)+(c.part?(' - '+esc(c.part)):'')+'</div>'):'')+'</div>'
+    +'<button class="btn btn-success btn-sm" onclick="_missedReport('+c.id+')">Submit Report</button></div>';
+}
+async function openMissedClasses(){
+  _ensureMissedCss();
+  showModal('Missed Classes','<div class="spinner" style="margin:34px auto"></div>','<button class="btn btn-ghost" onclick="_closeMissed()">Close</button>');
+  try{
+    var all=await api('/api/teacher/my-classes');
+    window._tClasses=all;
+    var todayStr=istDateKey();
+    var missed=all.filter(function(c){ return !c.completed && c.date && c.date<todayStr; });
+    missed.sort(function(a,b){ return a.date<b.date?1:(a.date>b.date?-1:0); });
+    var body=document.getElementById('modal-body'); if(!body) return;
+    if(!missed.length){ body.innerHTML='<div class="empty-state" style="padding:34px;text-align:center"><p>'+(ic('check')||'')+' Koi missed class nahi — sab reports submitted! 🎉</p></div>'; return; }
+    var head='<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px;line-height:1.5"><b style="color:#b91c1c">'+missed.length+'</b> missed class'+(missed.length>1?'es':'')+' — report abhi tak submit nahi hui. Neeche "Submit Report" se abhi submit kar sakte ho.</div>';
+    body.innerHTML=head+missed.map(_missedCard).join('');
+  }catch(e){ var b=document.getElementById('modal-body'); if(b) b.innerHTML=errHtml(e); }
+}
+function _missedReport(id){ window._fromMissed=true; openClassReport(id); }
+function _closeMissed(){ window._fromMissed=false; closeModal(); }
 function openClassReport(id){
   const c=((window._tClasses||[]).concat(typeof _ttEntries!=='undefined'?_ttEntries:[])).find(x=>x.id===id)||{};
   // One form = class report + lecture report (class notes only — v98: no DPP, no verification question).
@@ -3419,7 +3459,7 @@ async function submitClassReport(id){
     var _crPl={topic_covered:val('cr-topic'),start_time:val('cr-start'),end_time:val('cr-end'),homework:val('cr-hw'),dpp_given:false,remarks:val('cr-remarks')};
     var _selChaps=[];
     if(_isCrashEntry(c)){ _selChaps=[].slice.call(document.querySelectorAll('.cr-chdone-chk:checked')).map(function(x){return x.value;}); if(_selChaps.length) _crPl.chapters_done=_selChaps; }
-    await api('/api/teacher/class/'+id+'/complete','POST',_crPl);
+    var _compRes=await api('/api/teacher/class/'+id+'/complete','POST',_crPl);
     // 2) lecture report -> summary + class notes, auto-linked to this class
     // Notes ka naam/chapter: crash class me jo chapters TICK kiye SIRF wahi (untick kiye hue nahi).
     // Pehle c.chapter (dono original chapters) use hota tha, isliye untick karne ke baad bhi
@@ -3434,8 +3474,10 @@ async function submitClassReport(id){
       homework:val('cr-hw')||null,
       pdf_b64, pdf_filename:_lecFiles.pdf?_lecFiles.pdf.name:null,
       questions:[]},pc=>{ btn.textContent='Uploading… '+pc+'%'; });
-    toast('Class marked Done. Students can now see this report.');
+    var _ab=(_compRes&&_compRes.also_marked_batches)||0;
+    toast(_ab>0 ? ('Class marked Done — same-time ki '+_ab+' aur batch'+(_ab>1?'es':'')+' bhi auto-complete, notes sab me chale gaye.') : 'Class marked Done. Students can now see this report.');
     closeModal();
+    if(window._fromMissed){ window._fromMissed=false; setTimeout(openMissedClasses, 250); return; }
     const active=document.querySelector('#teacher-app .page.active');
     if(active&&active.id==='t-page-timetable') loadTTimetable();
     else loadTDashboard();
