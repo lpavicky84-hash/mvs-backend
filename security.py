@@ -100,15 +100,31 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     # DB hiccup (deadlock / lock-wait under load) ko kabhi 401 mat banao — warna valid user
     # galti se logout ho jaata tha. Ek baar retry, phir bhi fail ho to error bubble ho (500),
     # 401 nahi — taaki frontend token clear na kare.
-    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.exc import (OperationalError, ResourceClosedError,
+                                InvalidRequestError, StatementError, DBAPIError,
+                                PendingRollbackError)
+    _DB_TRANSIENT = (OperationalError, ResourceClosedError, InvalidRequestError,
+                     StatementError, DBAPIError, PendingRollbackError)
     try:
         user = db.query(User).filter(User.id == int(user_id)).first()
-    except OperationalError:
+    except _DB_TRANSIENT:
+        # Dead/stale connection (jaise lambe WhatsApp send ke dauraan MySQL ne idle conn maar di)
+        # ko kabhi 401/500 mat banao. Connection reset karke ek baar retry -> fresh pre-pinged conn.
         try:
             db.rollback()
         except Exception:
-            pass
-        user = db.query(User).filter(User.id == int(user_id)).first()
+            try:
+                db.close()
+            except Exception:
+                pass
+        try:
+            user = db.query(User).filter(User.id == int(user_id)).first()
+        except _DB_TRANSIENT:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            user = db.query(User).filter(User.id == int(user_id)).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User nahi mila ya inactive hai")
     # SINGLE SESSION (all roles): token ka sid user ke stored active sid se match karna chahiye.

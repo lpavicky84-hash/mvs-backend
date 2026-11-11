@@ -7525,6 +7525,16 @@ def whatsapp_send_login_reminder(payload: dict, db: Session = Depends(get_db), _
             msg = None
         jobs.append({"id": sp.id, "name": nm, "phone": sp.phone, "batch": bt, "msg": msg})
 
+    # BULLETPROOF: slow sends se PEHLE DB connection pool me wapas chhod do (idle connection
+    # ko MySQL maar deta tha -> ResourceClosedError). Update ke liye fresh connection milega.
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
     # WhatsApp sends ko PARALLEL bhejo (network I/O) taaki 50 messages bhi gateway
     # timeout se pehle nikal jaayein -> 502 khatam. DB write baad me main thread me.
     def _one(j):
@@ -7624,18 +7634,57 @@ def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depend
         students = (db.query(_SP).filter(_SP.phone.isnot(None), _SP.id.in_(ids))
                     .order_by(_SP.id).limit(limit).all())
 
-    sent, failed, last_id = 0, [], after_id
+    # Pehle plain data nikaal lo (threads me ORM/DB touch nahi — session thread-safe nahi).
+    last_id = after_id
+    jobs = []
     for sp in students:
         last_id = sp.id
-        # Admin ne jise chuna (ya jo pending hai) usko bhejo — source koi bhi ho.
         name = sp.user.name if sp.user else "Student"
-        msg = W.build_message(name, sp.batch_name or "", sp.phone, template)
-        ok, detail = W.send(sp.phone, text=msg, name=name, batch=sp.batch_name or "")
+        bt = sp.batch_name or ""
+        try:
+            msg = W.build_message(name, bt, sp.phone, template)
+        except Exception:
+            msg = None
+        jobs.append({"id": sp.id, "name": name, "phone": sp.phone, "batch": bt, "msg": msg})
+
+    # BULLETPROOF: slow WhatsApp sends se PEHLE DB connection pool me wapas chhod do.
+    # Warna 50 sequential/parallel slow sends ke dauraan MySQL idle connection maar deta tha
+    # -> baad me commit/agle request ke get_current_user par "ResourceClosedError". Ab send ke
+    # waqt koi DB connection held nahi; update ke liye fresh (pre-pinged) connection milega.
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # Sends PARALLEL (network I/O) -> 50 messages bhi gateway timeout se pehle (sum nahi, max).
+    def _one(j):
+        try:
+            if j["msg"] is None:
+                return (j["id"], False, "message build failed", j["name"], j["phone"])
+            ok, detail = W.send(j["phone"], text=j["msg"], name=j["name"], batch=j["batch"])
+            return (j["id"], bool(ok), str(detail), j["name"], j["phone"])
+        except Exception as e:
+            return (j["id"], False, str(e), j["name"], j["phone"])
+
+    results = []
+    if jobs:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(15, len(jobs))) as ex:
+            results = list(ex.map(_one, jobs))
+
+    sent, failed, ok_ids = 0, [], []
+    for (sid, ok, detail, nm, ph) in results:
         if ok:
-            sp.welcome_sent_at = _dt.now()
-            sent += 1
+            ok_ids.append(sid); sent += 1
         else:
-            failed.append({"name": name, "phone": sp.phone, "error": detail[:120]})
+            failed.append({"name": nm, "phone": ph, "error": str(detail)[:120]})
+    # Jo bhej chuke unhe SAVE karo (fresh connection par bulk update) — crash ho bhi to progress na khoye.
+    if ok_ids:
+        db.query(_SP).filter(_SP.id.in_(ok_ids)).update(
+            {_SP.welcome_sent_at: _dt.now()}, synchronize_session=False)
     db.commit()
     return {"sent": sent, "failed": len(failed), "errors": failed[:25],
             "last_id": last_id, "has_more": len(students) == limit, "total": total,
