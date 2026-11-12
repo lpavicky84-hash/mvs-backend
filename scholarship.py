@@ -626,7 +626,41 @@ def public_clicks_pdf(rows):
     pdf.cell(210, 6, _latin("Confidential - MVS Foundation"), 0, 0, "C")
 
     # ---------- TABLE ----------
-    cols = [("#", 10), ("Name", 42), ("Phone", 28), ("Class", 20), ("Batch Clicked", 58), ("Clicked At", 32)]
+    cols = [("#", 9), ("Name", 34), ("Phone", 26), ("Class", 16), ("Batch Clicked", 73), ("Clicked At", 32)]
+
+    def _wrap(text, w, max_lines=2):
+        """Text ko column width me fit 1-2 lines me todo (cut nahi, wrap). Zyada ho to '...'."""
+        text = _latin(text or "")
+        avail = w - 3
+        if not text:
+            return [""]
+        words = text.split(" ")
+        lines = []
+        cur = ""
+        i = 0
+        while i < len(words) and len(lines) < max_lines:
+            wd = words[i]
+            trial = (cur + " " + wd).strip()
+            if pdf.get_string_width(trial) <= avail:
+                cur = trial
+                i += 1
+            elif not cur:
+                while len(wd) > 1 and pdf.get_string_width(wd) > avail:
+                    wd = wd[:-1]
+                cur = wd
+                i += 1
+            else:
+                lines.append(cur)
+                cur = ""
+        if cur and len(lines) < max_lines:
+            lines.append(cur)
+            cur = ""
+        if (i < len(words) or cur) and lines:
+            last = lines[-1]
+            while last and pdf.get_string_width(last + "...") > avail:
+                last = last[:-1]
+            lines[-1] = last + "..."
+        return lines or [""]
 
     def header_band():
         pdf.set_fill_color(*_GOLD_D)
@@ -677,23 +711,51 @@ def public_clicks_pdf(rows):
     table_head()
     pdf.set_font("Helvetica", "", 8.5)
     fill = False
+    line_h = 4.7
+    total_w = sum(w for _, w in cols)
     for i, r in enumerate(rows, 1):
-        if pdf.get_y() > 272:
+        name_lines = _wrap(r.get("name", "") or "-", 34)
+        batch_lines = _wrap(r.get("batch", "") or "-", 73)
+        nlines = max(len(name_lines), len(batch_lines))
+        row_h = max(8.0, nlines * line_h + 2.2)
+        if pdf.get_y() + row_h > 278:
             footer()
             pdf.add_page()
             header_band()
             pdf.ln(1)
             table_head()
             pdf.set_font("Helvetica", "", 8.5)
-        pdf.set_fill_color(250, 248, 240) if fill else pdf.set_fill_color(255, 255, 255)
-        vals = [str(i), r.get("name", ""), r.get("phone", ""), r.get("class", ""), r.get("batch", ""), r.get("time", "")]
-        for (label, w), v in zip(cols, vals):
-            txt = _latin(v)
-            # truncate long text to column width
-            while txt and pdf.get_string_width(txt) > (w - 3):
-                txt = txt[:-1]
-            pdf.cell(w, 8, txt, "B", 0, "L", True)
-        pdf.ln(8)
+        x0 = pdf.get_x()
+        y0 = pdf.get_y()
+        # row background
+        if fill:
+            pdf.set_fill_color(250, 248, 240)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        pdf.rect(x0, y0, total_w, row_h, "F")
+        pdf.set_draw_color(*_LINE)
+        pdf.line(x0, y0 + row_h, x0 + total_w, y0 + row_h)
+        # cell text
+        single = {0: str(i), 2: (r.get("phone", "") or ""), 3: (r.get("class", "") or ""), 5: (r.get("time", "") or "")}
+        multi = {1: name_lines, 4: batch_lines}
+        x = x0
+        pdf.set_text_color(*_INK)
+        for idx, (label, w) in enumerate(cols):
+            if idx in multi:
+                lines = multi[idx]
+                ty = y0 + (row_h - len(lines) * line_h) / 2.0
+                for ln in lines:
+                    pdf.set_xy(x + 1.6, ty)
+                    pdf.cell(w - 3, line_h, _latin(ln), 0, 0, "L")
+                    ty += line_h
+            else:
+                txt = _latin(single.get(idx, ""))
+                while txt and pdf.get_string_width(txt) > (w - 3):
+                    txt = txt[:-1]
+                pdf.set_xy(x + 1.6, y0 + (row_h - line_h) / 2.0)
+                pdf.cell(w - 3, line_h, txt, 0, 0, "L")
+            x += w
+        pdf.set_xy(x0, y0 + row_h)
         fill = not fill
     footer()
 
