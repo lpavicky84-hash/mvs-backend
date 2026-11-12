@@ -11570,6 +11570,7 @@ def _sch_exam(db, exam_id):
 @router.get("/scholarship/{exam_id}")
 def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Full scholarship data (results with phone, checks log, declared, discount)."""
+    import json as _json
     import scholarship as SCH
     from models import ScholarshipResult, ScholarshipCheck
     ex = _sch_exam(db, exam_id)
@@ -11578,7 +11579,7 @@ def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends
     checks = (db.query(ScholarshipCheck).filter(ScholarshipCheck.exam_id == ex.id)
               .order_by(ScholarshipCheck.checked_at.desc()).limit(2000).all())
     try:
-        disc = json.loads(getattr(ex, "discount_batches", None) or "[]")
+        disc = _json.loads(getattr(ex, "discount_batches", None) or "[]")
     except Exception:
         disc = []
     return {
@@ -11595,6 +11596,7 @@ def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends
         "check_count": len(checks),
         "selected_checks": sum(1 for c in checks if c.matched),
         "discount_batches": disc if isinstance(disc, list) else [],
+        "discount_banner": getattr(ex, "discount_banner", None) or "",
     }
 
 
@@ -11700,18 +11702,57 @@ def admin_scholarship_mode(exam_id: int, payload: dict = Body(...),
 def admin_scholarship_discount(exam_id: int, payload: dict = Body(...),
                                db: Session = Depends(get_db), _=Depends(get_admin)):
     """Non-selected students ke liye discount course cards set karo."""
+    import json as _json
     ex = _sch_exam(db, exam_id)
     cards = payload.get("discount_batches") or []
     clean = []
     for c in cards[:12]:
         if not isinstance(c, dict):
             continue
-        clean.append({"title": (c.get("title") or "")[:120], "img": (c.get("img") or "")[:600],
+        clean.append({"title": (c.get("title") or "")[:140], "img": (c.get("img") or "")[:1200],
                       "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
-                      "url": (c.get("url") or "")[:600], "tag": (c.get("tag") or "")[:40]})
-    ex.discount_batches = json.dumps(clean)
+                      "url": (c.get("url") or "")[:800], "tag": (c.get("tag") or "")[:40],
+                      "desc": (c.get("desc") or "")[:300]})
+    ex.discount_batches = _json.dumps(clean)
     db.commit()
     return {"saved": len(clean)}
+
+
+@router.post("/scholarship/{exam_id}/fetch-batch")
+def admin_scholarship_fetch_batch(exam_id: int, payload: dict = Body(...),
+                                  db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ne paste kiya batch URL -> thumbnail + title + price auto-fetch (OG/JSON-LD)."""
+    import scholarship as SCH
+    url = (payload.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "URL required")
+    meta = SCH.fetch_batch_meta(url)
+    if not (meta.get("title") or meta.get("image")):
+        raise HTTPException(422, "Is link se details fetch nahi ho payi. URL check karein ya manually bhar dein.")
+    return meta
+
+
+@router.post("/scholarship/{exam_id}/banner")
+async def admin_scholarship_banner(exam_id: int, file: UploadFile = File(None),
+                                   remove: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Promo banner upload (ya remove=1 se hatao). Compress karke base64 me store."""
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    if remove or file is None:
+        ex.discount_banner = None
+        db.commit()
+        return {"banner": ""}
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12MB).")
+    data_url = SCH.compress_banner(raw)
+    if not data_url:
+        raise HTTPException(422, "Could not process image.")
+    ex.discount_banner = data_url
+    db.commit()
+    return {"banner": data_url}
 
 
 @router.get("/scholarship/{exam_id}/checks.xlsx")

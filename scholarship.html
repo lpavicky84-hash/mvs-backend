@@ -4,88 +4,135 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>MVS Foundation — Scholarship Result</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root{--navy:#14243f;--navy2:#1f3357;--gold:#b8941f;--gold2:#d9b64e;--ink:#1c2535;--mut:#6b7280;
-        --line:#e7e2d4;--bg:#f4f1ea;--card:#fffdf7;--green:#0f9d58;--greenbg:#e8f6ee;--red:#c0392b;--radius:18px}
+  :root{
+    --navy:#0c1c3a;--navy2:#17315d;--navy3:#0a1730;--ink:#15223d;--mut:#6a7489;
+    --gold:#c9a23b;--gold2:#ecc96c;--goldd:#95761f;--goldsoft:#faf2dc;
+    --bg:#f3efe5;--card:#fffdf8;--line:#ebe4d4;
+    --emer:#0f7a52;--emer2:#0a5d3e;--red:#b3371f;--radius:20px;
+    --shadow:0 18px 44px -24px rgba(12,28,58,.55);
+  }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);
-       -webkit-font-smoothing:antialiased;line-height:1.5;min-height:100vh}
-  .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:20px 18px 24px}
-  .hwrap{max-width:860px;margin:0 auto}
-  .brand{display:flex;align-items:center;gap:13px}
-  .brand .logo{width:52px;height:52px;border-radius:50%;overflow:hidden;flex:0 0 auto;background:#fff;box-shadow:0 3px 12px -3px rgba(0,0,0,.45)}
+  body{font-family:'Plus Jakarta Sans',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5;min-height:100vh}
+  .serif{font-family:'Fraunces','Plus Jakarta Sans',Georgia,serif;letter-spacing:.1px}
+  /* ---------- hero ---------- */
+  .hero{position:relative;overflow:hidden;color:#fff;
+        background:radial-gradient(130% 120% at 85% -10%,rgba(201,162,59,.30),transparent 55%),
+                   linear-gradient(135deg,var(--navy3),var(--navy2) 70%,#1d3a68)}
+  .hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;
+               background:linear-gradient(90deg,transparent,var(--gold2),var(--gold),transparent)}
+  .hwrap{max-width:900px;margin:0 auto;padding:22px 18px 30px;position:relative;z-index:1}
+  .brand{display:flex;align-items:center;gap:14px}
+  .brand .logo{width:60px;height:60px;border-radius:16px;overflow:hidden;flex:0 0 auto;background:#fff;
+               box-shadow:0 6px 20px -6px rgba(0,0,0,.55);border:2px solid rgba(236,201,108,.6)}
   .brand .logo img{width:100%;height:100%;object-fit:cover;display:block}
-  .brand .bt{font-weight:800;letter-spacing:.4px;font-size:1.15rem}
-  .brand .bs{font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.65);margin-top:1px}
-  .htitle{font-weight:800;font-size:1.5rem;margin-top:16px;letter-spacing:.2px}
-  .hsub{color:rgba(255,255,255,.72);font-size:.9rem;margin-top:3px}
-  .wrap{max-width:860px;margin:0 auto;padding:18px 16px 60px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 10px 30px -18px rgba(20,36,63,.35);overflow:hidden}
-  .card-pad{padding:22px 20px}
-  .section-t{font-weight:800;font-size:1.05rem;display:flex;align-items:center;gap:8px}
-  .section-s{color:var(--mut);font-size:.85rem;margin-top:3px}
+  .brand .bt{font-weight:800;letter-spacing:.3px;font-size:1.2rem}
+  .brand .bs{font-size:.6rem;letter-spacing:.26em;text-transform:uppercase;color:rgba(236,201,108,.9);margin-top:2px;font-weight:700}
+  .htitle{font-weight:700;font-size:2rem;margin-top:22px;line-height:1.15}
+  .hsub{color:rgba(255,255,255,.74);font-size:.95rem;margin-top:7px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .live{display:inline-flex;align-items:center;gap:7px;background:rgba(15,122,82,.22);border:1px solid rgba(70,200,150,.5);
+        color:#aef0cf;font-size:.72rem;font-weight:700;padding:4px 11px;border-radius:999px;text-transform:uppercase;letter-spacing:.08em}
+  .live .dot{width:7px;height:7px;border-radius:50%;background:#3ad98a;box-shadow:0 0 0 4px rgba(58,217,138,.25);animation:pulse 1.5s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 7px rgba(58,217,138,0)}}
+  /* ---------- layout ---------- */
+  .wrap{max-width:900px;margin:0 auto;padding:22px 16px 70px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;position:relative}
   .lead{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--gold2),var(--gold))}
+  .card-pad{padding:26px 24px}
+  .section-t{font-weight:800;font-size:1.1rem;display:flex;align-items:center;gap:11px}
+  .section-s{color:var(--mut);font-size:.88rem;margin-top:4px}
+  .ti{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--goldsoft),#f4e4b8);
+      display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border:1px solid rgba(201,162,59,.3)}
+  .ti svg{width:20px;height:20px}
   .mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}
-  /* form */
-  label{display:block;font-weight:700;font-size:.8rem;color:var(--ink);margin:14px 0 6px}
-  .inp,select{width:100%;padding:13px 14px;border:1.6px solid var(--line);border-radius:12px;font-size:1rem;background:#fff;color:var(--ink);font-family:inherit}
-  .inp:focus,select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,148,31,.14)}
+  /* ---------- form ---------- */
+  label{display:block;font-weight:700;font-size:.8rem;color:var(--ink);margin:16px 0 7px;letter-spacing:.01em}
+  .inp,select{width:100%;padding:14px 15px;border:1.6px solid var(--line);border-radius:13px;font-size:1rem;background:#fff;color:var(--ink);font-family:inherit;transition:border-color .15s,box-shadow .15s}
+  .inp:focus,select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3.5px rgba(201,162,59,.16)}
   .pwrap{position:relative}
-  .pwrap .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:8px;color:var(--mut);display:flex}
+  .pwrap .eye{position:absolute;right:9px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:8px;color:var(--mut);display:flex}
   .pwrap .eye svg{width:21px;height:21px}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 18px;border:none;border-radius:13px;
-       background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200;font-weight:800;font-size:1rem;cursor:pointer;
-       box-shadow:0 8px 20px -8px rgba(184,148,31,.6);transition:transform .08s}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:15px 18px;border:none;border-radius:14px;
+       background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200;font-weight:800;font-size:1.02rem;cursor:pointer;
+       box-shadow:0 12px 26px -10px rgba(201,162,59,.7);transition:transform .08s,box-shadow .2s;font-family:inherit}
+  .btn:hover{box-shadow:0 16px 32px -10px rgba(201,162,59,.8)}
   .btn:active{transform:translateY(1px)}
   .btn[disabled]{opacity:.6;cursor:not-allowed}
-  .btn.outline{background:#fff;color:var(--navy);border:1.6px solid var(--line);box-shadow:none}
-  .muted-note{font-size:.76rem;color:var(--mut);margin-top:10px;display:flex;align-items:center;gap:6px}
-  .err{color:var(--red);font-size:.85rem;margin-top:10px;font-weight:600;display:none}
-  /* states */
+  .muted-note{font-size:.78rem;color:var(--mut);margin-top:12px}
+  .locknote{display:inline-flex;align-items:center;gap:7px}
+  .err{color:var(--red);font-size:.86rem;margin-top:11px;font-weight:600;display:none}
+  .reset{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--mut);font-weight:700;font-size:.82rem;cursor:pointer;padding:6px 2px;font-family:inherit}
+  .reset:hover{color:var(--navy2)}
+  /* ---------- result states ---------- */
   .center{text-align:center}
-  .iconbox{width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
-  .iconbox svg{width:38px;height:38px}
-  .chip{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:999px;font-weight:700;font-size:.9rem}
-  /* result */
-  .congrats{background:linear-gradient(160deg,#0f9d58,#0b7a44);color:#fff}
-  .congrats .iconbox{background:rgba(255,255,255,.18)}
-  .notsel .iconbox{background:#eef1f6}
-  .batch-pill{margin-top:16px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);border-radius:14px;padding:14px 16px}
-  .batch-pill .bl{font-size:.7rem;text-transform:uppercase;letter-spacing:.14em;opacity:.8}
-  .batch-pill .bv{font-weight:800;font-size:1.05rem;margin-top:3px}
-  /* list table */
-  .tbl{width:100%;border-collapse:collapse;font-size:.9rem}
-  .tbl thead th{background:var(--navy);color:#fff;font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;padding:11px 12px;text-align:left}
-  .tbl tbody td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .iconbox{width:78px;height:78px;border-radius:22px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+  .iconbox svg{width:40px;height:40px}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:8px 17px;border-radius:999px;font-weight:700;font-size:.9rem}
+  .wmark{position:absolute;right:-24px;bottom:-24px;width:160px;height:160px;opacity:.07;pointer-events:none}
+  .wmark img{width:100%;height:100%;object-fit:contain}
+  /* congrats */
+  .congrats{background:radial-gradient(120% 120% at 100% 0%,rgba(236,201,108,.22),transparent 55%),linear-gradient(160deg,var(--emer),var(--emer2));color:#fff}
+  .congrats .iconbox{background:rgba(255,255,255,.17);border:1px solid rgba(255,255,255,.3)}
+  .sel-badge{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#2a2200;
+             font-weight:800;font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;padding:6px 15px;border-radius:999px;box-shadow:0 6px 16px -6px rgba(0,0,0,.4)}
+  .batch-hi{margin-top:20px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#231c05;border-radius:17px;
+            padding:18px 20px;box-shadow:0 14px 30px -12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.3);text-align:left;position:relative}
+  .batch-hi .bl{font-size:.68rem;text-transform:uppercase;letter-spacing:.17em;font-weight:800;opacity:.78;display:flex;align-items:center;gap:7px}
+  .batch-hi .bv{font-weight:800;font-size:1.3rem;margin-top:5px;line-height:1.25}
+  .batch-hi .bstar{position:absolute;right:16px;top:16px;opacity:.5}
+  /* not selected */
+  .notsel .iconbox{background:#f0f2f6;border:1px solid #e4e7ee}
+  .encore{margin-top:16px;background:var(--goldsoft);border:1px solid rgba(201,162,59,.3);border-radius:14px;padding:13px 16px;font-size:.9rem;color:#6b5718;font-weight:600}
+  /* ---------- list table ---------- */
+  .tbl{width:100%;border-collapse:collapse;font-size:.92rem}
+  .tbl thead th{background:var(--navy);color:#fff;font-weight:700;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;padding:12px 13px;text-align:left}
+  .tbl tbody td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:middle}
   .tbl tbody tr:nth-child(even){background:#fbf9f2}
-  .tbl tbody tr.top10{background:#fdf7e6}
-  .rk{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;border-radius:7px;font-weight:800;font-size:.78rem;background:#eef1f6;color:var(--navy)}
-  .rk.gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200}
-  .nm{font-weight:700}.bt{color:var(--mut);font-size:.84rem}
-  .tscroll{max-height:460px;overflow:auto;border-radius:14px;border:1px solid var(--line)}
-  /* discount */
-  .disc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px}
-  .dcard{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;cursor:pointer;transition:transform .1s,box-shadow .1s;text-decoration:none;color:inherit;display:flex;flex-direction:column}
-  .dcard:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(20,36,63,.4)}
-  .dcard .thumb{aspect-ratio:16/9;background:#1a2235 center/cover no-repeat;position:relative}
-  .dcard .thumb .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;letter-spacing:.1em;background:linear-gradient(135deg,var(--navy),var(--navy2))}
-  .dcard .dbody{padding:13px 14px}
-  .dcard .dtag{font-size:.6rem;font-weight:800;letter-spacing:.1em;color:var(--gold);text-transform:uppercase}
-  .dcard .dtitle{font-weight:800;font-size:.95rem;margin-top:4px;line-height:1.3}
-  .dcard .dprice{margin-top:10px;display:flex;align-items:center;gap:9px}
-  .dcard .dnew{font-weight:900;font-size:1.15rem;color:var(--ink)}
-  .dcard .dold{color:var(--mut);text-decoration:line-through;font-size:.9rem}
-  .dcard .darrow{margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center}
-  .spin{width:34px;height:34px;border:3px solid #e5e0d2;border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:30px auto}
+  .tbl tbody tr.top10{background:#fdf6e3}
+  .rk{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:25px;border-radius:8px;font-weight:800;font-size:.78rem;background:#eef1f6;color:var(--navy)}
+  .rk.gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200;box-shadow:0 3px 8px -3px rgba(201,162,59,.6)}
+  .nm{font-weight:700}.bt{color:var(--mut);font-size:.85rem}
+  .tscroll{max-height:480px;overflow:auto;border-radius:15px;border:1px solid var(--line)}
+  /* ---------- promo banner ---------- */
+  .promo{display:block;border-radius:18px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:18px;line-height:0;border:1px solid var(--line)}
+  .promo img{width:100%;height:auto;display:block}
+  a.promo{transition:transform .12s}
+  a.promo:hover{transform:translateY(-2px)}
+  /* ---------- premium batch cards ---------- */
+  .bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px;margin-top:18px}
+  .bcard{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;cursor:pointer;text-decoration:none;color:inherit;
+         display:flex;flex-direction:column;box-shadow:0 10px 26px -18px rgba(12,28,58,.4);transition:transform .14s,box-shadow .14s,border-color .14s}
+  .bcard:hover{transform:translateY(-4px);box-shadow:0 22px 40px -18px rgba(12,28,58,.5);border-color:var(--gold)}
+  .bcard .thumb{aspect-ratio:16/9;background:center/cover no-repeat #10203d;position:relative}
+  .bcard .thumb .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;
+                    color:#fff;font-weight:800;font-size:1.05rem;letter-spacing:.02em;
+                    background:radial-gradient(120% 120% at 80% 0%,rgba(201,162,59,.4),transparent 60%),linear-gradient(135deg,var(--navy),var(--navy2))}
+  .bcard .bbody{padding:15px 16px;display:flex;flex-direction:column;flex:1}
+  .btag{display:inline-block;align-self:flex-start;font-size:.6rem;font-weight:800;letter-spacing:.12em;color:var(--goldd);
+        text-transform:uppercase;background:var(--goldsoft);border:1px solid rgba(201,162,59,.3);padding:3px 9px;border-radius:7px}
+  .btitle{font-weight:800;font-size:1rem;margin-top:9px;line-height:1.32}
+  .bdesc{font-size:.8rem;color:var(--mut);margin-top:6px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .bfoot{margin-top:auto;padding-top:14px;display:flex;align-items:center;gap:10px}
+  .bnew{font-weight:900;font-size:1.3rem;color:var(--ink)}
+  .bold{color:var(--mut);text-decoration:line-through;font-size:.92rem}
+  .barrow{margin-left:auto;width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;display:flex;align-items:center;justify-content:center;transition:background .14s}
+  .bcard:hover .barrow{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200}
+  .enroll{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;width:100%;padding:11px;border-radius:11px;
+          background:var(--navy);color:#fff;font-weight:800;font-size:.85rem}
+  .bcard:hover .enroll{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200}
+  /* ---------- misc ---------- */
+  .spin{width:36px;height:36px;border:3px solid #e5e0d2;border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:40px auto}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .foot{text-align:center;color:var(--mut);font-size:.78rem;margin-top:26px}
+  .foot{text-align:center;color:var(--mut);font-size:.8rem;margin-top:30px;line-height:1.7}
+  .foot b{color:var(--navy2)}
   .hidden{display:none!important}
-  .reveal{animation:fadeUp .5s cubic-bezier(.2,.7,.2,1) both}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-  .ti{width:34px;height:34px;border-radius:10px;background:#fbf3df;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
-  .ti svg{width:19px;height:19px}
-  .locknote{display:inline-flex;align-items:center;gap:6px}
-  @media(max-width:520px){.htitle{font-size:1.28rem}.card-pad{padding:18px 15px}}
+  .reveal{animation:fadeUp .55s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @media(max-width:560px){.htitle{font-size:1.5rem}.card-pad{padding:20px 17px}.batch-hi .bv{font-size:1.12rem}}
 </style>
 </head>
 <body>
@@ -94,7 +141,7 @@
       <div class="logo"><img id="brandLogo" alt="MVS"></div>
       <div><div class="bt">MVS Foundation</div><div class="bs">Manish Verma Classes</div></div>
     </div>
-    <div class="htitle" id="heroTitle">Scholarship Test Result</div>
+    <div class="htitle serif" id="heroTitle">Scholarship Test Result</div>
     <div class="hsub" id="heroSub">Check your result below</div>
   </div></div>
 
@@ -108,20 +155,22 @@
   var token = location.pathname.split("/t/")[1] || "";
   var API = "";
   var root = document.getElementById("root");
+  var LOGO = "/api/student/logo";
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
   function el(id){ return document.getElementById(id); }
-  // logo
-  (function(){ var im=el("brandLogo"); im.onerror=function(){ im.parentNode.innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#14243f;color:#d9b64e;font-weight:900">MVS</div>'; }; im.src="/api/student/logo"; })();
+  // logo (hero + fallback text)
+  (function(){ var im=el("brandLogo"); im.onerror=function(){ im.parentNode.innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#0c1c3a;color:#ecc96c;font-weight:900;font-size:1rem">MVS</div>'; }; im.src=LOGO; })();
 
   var EYE_OPEN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   var EYE_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-  // premium line icons (emoji-free)
-  var GC='#b8941f';
+  var GC='#95761f';
   var ICO={
     search:'<span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="'+GC+'" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span>',
     trophy:'<span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="'+GC+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M6 4h12v5a6 6 0 0 1-12 0V4z"/><path d="M6 5H3v2a3 3 0 0 0 3 3M18 5h3v2a3 3 0 0 1-3 3"/></svg></span>',
     gift:'<span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="'+GC+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M5 12v9h14v-9M12 8S11 3 8 3a2.5 2.5 0 0 0 0 5zM12 8s1-5 4-5a2.5 2.5 0 0 1 0 5z"/></svg></span>',
-    lock:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
+    lock:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+    cap:'<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#231c05" stroke-width="2.2" style="flex:0 0 auto"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>',
+    arrow:'<svg viewBox="0 0 24 24" width="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17L17 7M7 7h10v10"/></svg>'
   };
 
   function api(path, opts){
@@ -138,37 +187,33 @@
 
   function renderWaiting(data){
     root.innerHTML =
-      '<div class="card"><div class="lead"></div><div class="card-pad center" style="padding:40px 22px">'
-      + '<div class="iconbox" style="background:#fdf3e0"><svg viewBox="0 0 24 24" fill="none" stroke="#b8941f" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>'
-      + '<div class="section-t center" style="justify-content:center;font-size:1.25rem">Result awaited</div>'
-      + '<p class="section-s" style="max-width:420px;margin:8px auto 0">Aapka test submit ho chuka hai. Result abhi declare nahi hua hai — jald hi yahin par available hoga. Thodi der baad dubara check karein.</p>'
-      + '<div class="chip" style="background:#fdf3e0;color:#8a6d16;margin-top:18px">Waiting for result declaration</div>'
+      '<div class="card"><div class="lead"></div><div class="card-pad center" style="padding:48px 24px">'
+      + '<div class="iconbox" style="background:var(--goldsoft);border:1px solid rgba(201,162,59,.3)"><svg viewBox="0 0 24 24" fill="none" stroke="#95761f" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>'
+      + '<div class="serif center" style="font-weight:700;font-size:1.5rem">Result Awaited</div>'
+      + '<p class="section-s" style="max-width:440px;margin:10px auto 0;font-size:.95rem">Your test has been submitted successfully. The scholarship result has not been declared yet — it will be available right here shortly. Please check back after some time.</p>'
+      + '<div class="chip" style="background:var(--goldsoft);color:#8a6d16;margin-top:20px">Result declaration pending</div>'
       + '</div></div>'
       + footHtml();
   }
 
   function renderPortal(data){
     var html = '';
-    // ---- Check result card ----
     html += '<div class="card" id="checkCard"><div class="lead"></div><div class="card-pad">'
       + '<div class="section-t">'+ICO.search+'Check Your Result</div>'
-      + '<div class="section-s">Apna phone number daalein jisse aapne test diya tha. Result phone number se verify hota hai.</div>'
-      + '<label>Full Name</label><input class="inp" id="fName" placeholder="Your name" autocomplete="name">'
+      + '<div class="section-s">Enter the phone number you used while taking the test. Your result is verified securely by phone number.</div>'
+      + '<label>Full Name</label><input class="inp" id="fName" placeholder="Your full name" autocomplete="name">'
       + '<label>Phone Number</label><div class="pwrap"><input class="inp" id="fPhone" type="password" inputmode="numeric" placeholder="10-digit phone number" autocomplete="off">'
       + '<button class="eye" id="eyeBtn" type="button" aria-label="show">'+EYE_OFF+'</button></div>'
       + '<label>Class</label><select id="fClass"><option value="">Select class</option><option>Class 10</option><option>Class 12</option><option>Other</option></select>'
       + '<div class="err" id="chkErr"></div>'
       + '<button class="btn mt20" id="chkBtn">Check My Result</button>'
-      + '<div class="muted-note"><span class="locknote">'+ICO.lock+' Aapka phone number safe hai, kisi doosre student ko dikhai nahi deta.</span></div>'
+      + '<div class="muted-note"><span class="locknote">'+ICO.lock+' Your phone number is kept private and is never shown to any other student.</span></div>'
       + '</div></div>';
-    // ---- result slot ----
     html += '<div id="resultSlot" class="mt20"></div>';
-    // ---- selected students list: HIDDEN until the student checks their result ----
     html += '<div id="listSlot" class="hidden">' + listHtml(data) + '</div>';
     html += footHtml();
     root.innerHTML = html;
 
-    // wire
     el("eyeBtn").onclick = function(){
       var p=el("fPhone"); if(p.type==="password"){ p.type="text"; this.innerHTML=EYE_OPEN; } else { p.type="password"; this.innerHTML=EYE_OFF; }
     };
@@ -185,10 +230,10 @@
       return '<tr class="'+(top?'top10':'')+'"><td><span class="rk '+(top?'gold':'')+'">#'+r.rank+'</span></td>'
         + '<td><span class="nm">'+esc(r.name)+'</span></td><td><span class="bt">'+esc(r.batch)+'</span></td></tr>';
     }).join('');
-    return '<div class="card mt20"><div class="card-pad" style="padding-bottom:12px">'
+    return '<div class="card mt20"><div class="card-pad" style="padding-bottom:14px">'
       + '<div class="section-t">'+ICO.trophy+'Selected Students</div>'
-      + '<div class="section-s">'+rows.length+' students selected is scholarship test me. (Top 10 highlighted.)</div></div>'
-      + '<div style="padding:0 16px 18px"><div class="tscroll"><table class="tbl"><thead><tr><th style="width:62px">Rank</th><th>Name</th><th>Allotted Batch</th></tr></thead><tbody>'
+      + '<div class="section-s">'+rows.length+' students have been selected in this scholarship test. (Top 10 highlighted.)</div></div>'
+      + '<div style="padding:0 18px 20px"><div class="tscroll"><table class="tbl"><thead><tr><th style="width:64px">Rank</th><th>Name</th><th>Allotted Batch</th></tr></thead><tbody>'
       + body + '</tbody></table></div></div></div>';
   }
 
@@ -201,55 +246,74 @@
     api("/api/public/scholarship/"+token+"/check",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({name:name,phone:phone,"class":cls})})
     .then(function(res){ showResult(res, data); })
-    .catch(function(e){ errEl.textContent=(e&&e.message)||"Something went wrong. Try again."; errEl.style.display="block"; })
+    .catch(function(e){ errEl.textContent=(e&&e.message)||"Something went wrong. Please try again."; errEl.style.display="block"; })
     .finally(function(){ btn.disabled=false; btn.textContent="Check My Result"; });
   }
 
   function showResult(res, data){
+    // form hat jaaye — sirf result dikhe
+    var cc=el("checkCard"); if(cc) cc.classList.add("hidden");
     var slot=el("resultSlot"), html='';
     if(res.selected){
-      html = '<div class="card congrats"><div class="card-pad center" style="padding:30px 22px">'
-        + '<div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>'
-        + '<div style="font-weight:900;font-size:1.5rem">Congratulations'+(res.name?(", "+esc(res.name)):"")+'!</div>'
-        + '<p style="opacity:.92;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto">Aap MVS Scholarship me <b>SELECTED</b> ho gaye hain. Neeche aapka allotted batch diya gaya hai.</p>'
-        + '<div class="batch-pill"><div class="bl">Allotted Batch</div><div class="bv">'+esc(res.batch||"-")+'</div></div>'
+      html = '<div class="card congrats reveal"><div class="card-pad center" style="padding:36px 24px">'
+        + (data.logo!==false?('<div class="wmark"><img src="'+LOGO+'" alt="" onerror="this.style.display=\'none\'"></div>'):'')
+        + '<div class="sel-badge">'+ICO.cap+' Selected</div>'
+        + '<div class="iconbox" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></div>'
+        + '<div class="serif" style="font-weight:700;font-size:1.75rem">Congratulations'+(res.name?(", "+esc(res.name)):"")+'!</div>'
+        + '<p style="opacity:.94;margin-top:10px;max-width:460px;margin-left:auto;margin-right:auto;font-size:.98rem">You have been <b>selected</b> in the MVS Foundation Scholarship Test. Your allotted batch is highlighted below.</p>'
+        + '<div class="batch-hi"><span class="bstar"><svg viewBox="0 0 24 24" width="26" fill="#231c05" opacity=".6"><path d="M12 2l2.9 6.3L22 9.2l-5 4.9 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.9 7.1-.9z"/></svg></span>'
+        + '<div class="bl">'+ICO.cap+' Allotted Batch</div><div class="bv">'+esc(res.batch||"—")+'</div></div>'
+        + '<p style="opacity:.82;margin-top:16px;font-size:.84rem">Our team will reach out to you with the next steps. Welcome to MVS Foundation!</p>'
         + '</div></div>';
     } else {
-      html = '<div class="card notsel"><div class="lead"></div><div class="card-pad center" style="padding:28px 22px">'
-        + '<div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg></div>'
-        + '<div class="section-t center" style="justify-content:center;font-size:1.22rem">Is baar aap select nahi ho paaye</div>'
-        + '<p class="section-s" style="max-width:460px;margin:8px auto 0">'+(res.name?esc(res.name)+", ":"")+'is scholarship test me aapka naam selected list me nahi hai. Koi baat nahi — ye aapki journey ka end nahi hai! Aapke liye humne kuch <b>special discount offers</b> rakhe hain neeche.</p>'
+      html = '<div class="card notsel reveal"><div class="lead"></div><div class="card-pad center" style="padding:32px 24px">'
+        + '<div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="#6b7489" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg></div>'
+        + '<div class="serif center" style="font-weight:700;font-size:1.4rem">Not Selected This Time</div>'
+        + '<p class="section-s" style="max-width:470px;margin:10px auto 0;font-size:.95rem">'+(res.name?esc(res.name)+", ":"")+'thank you for appearing in the MVS Scholarship Test. Your name is not in the selected list on this occasion — but this is only the beginning of your journey, not the end.</p>'
+        + '<div class="encore">We believe in your potential. To help you move forward, we have arranged <b>exclusive enrollment offers</b> on our batches for you below.</div>'
         + '</div></div>';
       html += discountHtml(data);
     }
     slot.innerHTML = html;
-    slot.classList.add("reveal");
     // result check hone ke baad hi Selected Students list dikhti hai
     var ls=el("listSlot");
     if(ls){ ls.classList.remove("hidden"); ls.classList.add("reveal"); }
-    slot.scrollIntoView({behavior:"smooth", block:"start"});
+    // top par scroll (hero ke neeche result)
+    try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){ window.scrollTo(0,0); }
   }
 
   function discountHtml(data){
+    var banner = (data.discount_banner||"");
     var cards=(data.discount_batches||[]);
-    if(!cards.length) return '';
+    if(!banner && !cards.length) return '';
+    var bLink = (cards.length && cards[0] && cards[0].url) ? cards[0].url : "";
+    var bannerHtml = banner
+      ? (bLink
+          ? '<a class="promo" href="'+esc(bLink)+'" target="_blank" rel="noopener"><img src="'+esc(banner)+'" alt="Offer"></a>'
+          : '<div class="promo"><img src="'+esc(banner)+'" alt="Offer"></div>')
+      : '';
     var body=cards.map(function(c){
       var thumb = c.img ? ('<div class="thumb" style="background-image:url('+JSON.stringify(c.img)+')"></div>')
-                        : ('<div class="thumb"><div class="ph">'+esc((c.title||"MVS").slice(0,18))+'</div></div>');
-      var price = c.price ? ('<div class="dprice"><span class="dnew">'+esc(c.price)+'</span>'+(c.old?('<span class="dold">'+esc(c.old)+'</span>'):'')+'<span class="darrow"><svg viewBox="0 0 24 24" width="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17L17 7M7 7h10v10"/></svg></span></div>') : '';
+                        : ('<div class="thumb"><div class="ph">'+esc((c.title||"MVS Batch").slice(0,40))+'</div></div>');
+      var price = c.price ? ('<div class="bfoot"><span class="bnew">'+esc(c.price)+'</span>'+(c.old?('<span class="bold">'+esc(c.old)+'</span>'):'')+'<span class="barrow">'+ICO.arrow+'</span></div>')
+                          : ('<div class="enroll">Enroll Now '+ICO.arrow+'</div>');
       var href = c.url ? esc(c.url) : "#";
-      return '<a class="dcard" href="'+href+'" target="_blank" rel="noopener">'+thumb
-        + '<div class="dbody">'+(c.tag?('<div class="dtag">'+esc(c.tag)+'</div>'):'<div class="dtag">LIMITED OFFER</div>')
-        + '<div class="dtitle">'+esc(c.title||"")+'</div>'+price+'</div></a>';
+      return '<a class="bcard" href="'+href+'" target="_blank" rel="noopener">'+thumb
+        + '<div class="bbody"><span class="btag">'+esc(c.tag||"Limited Offer")+'</span>'
+        + '<div class="btitle">'+esc(c.title||"MVS Batch")+'</div>'
+        + (c.desc?('<div class="bdesc">'+esc(c.desc)+'</div>'):'')
+        + price + '</div></a>';
     }).join('');
-    return '<div class="card mt20"><div class="card-pad" style="padding-bottom:6px">'
-      + '<div class="section-t">'+ICO.gift+'Special Discount — Join Our Batches</div>'
-      + '<div class="section-s">Aapke liye best batches par abhi discount chal raha hai. Kisi bhi card par click karke enroll karein.</div>'
-      + '<div class="disc-grid">'+body+'</div></div></div>';
+    var gridHtml = cards.length ? ('<div class="bgrid">'+body+'</div>') : '';
+    return '<div class="card mt20"><div class="card-pad">'
+      + bannerHtml
+      + '<div class="section-t"'+(bannerHtml?' style="margin-top:18px"':'')+'>'+ICO.gift+'Special Enrollment Offers</div>'
+      + '<div class="section-s">Exclusive discounts on our premium batches — tap any card to enroll.</div>'
+      + gridHtml + '</div></div>';
   }
 
   function footHtml(){
-    return '<div class="foot">MVS Foundation · Manish Verma Classes</div>';
+    return '<div class="foot"><b>MVS Foundation</b> · Manish Verma Classes<br>Empowering NIOS students to achieve more.</div>';
   }
 
   // ---- boot ----
@@ -257,13 +321,14 @@
   api("/api/public/scholarship/"+token)
     .then(function(data){
       if(data.title){ el("heroTitle").textContent = data.title; }
-      el("heroSub").textContent = data.declared ? "Result is now LIVE — check below" : "Result declaration pending";
+      if(data.declared){ el("heroSub").innerHTML = '<span class="live"><span class="dot"></span>Result Live</span><span>Check your result below</span>'; }
+      else { el("heroSub").textContent = "Result declaration pending"; }
       render(data);
     })
     .catch(function(e){
-      root.innerHTML='<div class="card"><div class="lead"></div><div class="card-pad center" style="padding:36px 22px">'
-        +'<div class="section-t center" style="justify-content:center">Unable to load</div>'
-        +'<p class="section-s" style="margin-top:8px">'+esc((e&&e.message)||"Please try again later.")+'</p></div></div>';
+      root.innerHTML='<div class="card"><div class="lead"></div><div class="card-pad center" style="padding:40px 24px">'
+        +'<div class="serif center" style="font-weight:700;font-size:1.3rem">Unable to Load</div>'
+        +'<p class="section-s" style="margin-top:10px">'+esc((e&&e.message)||"Please try again later.")+'</p></div></div>';
     });
 })();
 </script>

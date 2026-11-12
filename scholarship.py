@@ -329,3 +329,156 @@ def result_pdf(db, exam):
         pdf.cell(112, 8, _latin((r["batch"] or "")[:70]), 1, 1, "L", True)
     footer()
     return bytes(pdf.output())
+
+
+# ========================= PROMO BANNER (upload) + BATCH AUTO-FETCH =========================
+def compress_banner(raw, max_w=1600):
+    """Uploaded promo banner ko compress karke base64 data-URL me store karne layak banao.
+    PIL se resize + JPEG q82. Fail ho to original ko hi base64 me daal do (best-effort)."""
+    import base64
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(raw))
+        # transparency (PNG) ko white background par flatten karo
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGBA")
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            bg.paste(im, mask=im.split()[-1] if im.mode in ("RGBA", "LA") else None)
+            im = bg
+        else:
+            im = im.convert("RGB")
+        if im.width > max_w:
+            h = int(im.height * (max_w / float(im.width)))
+            im = im.resize((max_w, h), Image.LANCZOS)
+        out = io.BytesIO()
+        im.save(out, format="JPEG", quality=82, optimize=True)
+        b = out.getvalue()
+        return "data:image/jpeg;base64," + base64.b64encode(b).decode("ascii")
+    except Exception:
+        try:
+            # unknown/animated — keep original bytes, guess mime
+            mime = "image/png" if raw[:4] == b"\x89PNG" else ("image/gif" if raw[:3] == b"GIF" else "image/jpeg")
+            return "data:%s;base64,%s" % (mime, base64.b64encode(raw).decode("ascii"))
+        except Exception:
+            return ""
+
+
+def _meta_pick(html, keys):
+    """HTML se meta tag content nikalo. keys = property/name values ki list (priority order)."""
+    import re
+    for k in keys:
+        # property="og:image" content="..."  OR  content="..." property="og:image"  (dono order)
+        for pat in (
+            r'<meta[^>]+(?:property|name)\s*=\s*["\']%s["\'][^>]*content\s*=\s*["\']([^"\']+)["\']' % re.escape(k),
+            r'<meta[^>]+content\s*=\s*["\']([^"\']+)["\'][^>]*(?:property|name)\s*=\s*["\']%s["\']' % re.escape(k),
+        ):
+            m = re.search(pat, html, re.I)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+    return ""
+
+
+def _abs_url(base, u):
+    try:
+        from urllib.parse import urljoin
+        return urljoin(base, u)
+    except Exception:
+        return u
+
+
+def fetch_batch_meta(url):
+    """Admin ke paste kiye batch URL se thumbnail + title + price auto-fetch.
+    Sirf http/https. Best-effort: OG/twitter meta + JSON-LD offers.price + ₹ regex fallback.
+    Returns {title,image,price,old,desc,url}. Network/parse fail par jitna mila wahi."""
+    import re
+    import json as _json
+    from urllib.parse import urlparse
+    out = {"title": "", "image": "", "price": "", "old": "", "desc": "", "url": url or ""}
+    u = (url or "").strip()
+    if not u:
+        return out
+    if not re.match(r'^https?://', u, re.I):
+        u = "https://" + u
+        out["url"] = u
+    pr = urlparse(u)
+    if pr.scheme not in ("http", "https") or not pr.netloc:
+        return out
+    try:
+        import urllib.request
+        req = urllib.request.Request(u, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+        })
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read(1500000)  # cap ~1.5MB
+            final_url = resp.geturl() or u
+        enc = "utf-8"
+        html = raw.decode(enc, "ignore")
+    except Exception:
+        return out
+    # title
+    out["title"] = (_meta_pick(html, ["og:title", "twitter:title"]) or "")
+    if not out["title"]:
+        m = re.search(r'<title[^>]*>([^<]{1,160})</title>', html, re.I)
+        if m:
+            out["title"] = m.group(1).strip()
+    # description
+    out["desc"] = (_meta_pick(html, ["og:description", "twitter:description", "description"]) or "")[:300]
+    # image (thumbnail/banner)
+    img = _meta_pick(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"])
+    if not img:
+        m = re.search(r'<link[^>]+rel\s*=\s*["\']image_src["\'][^>]*href\s*=\s*["\']([^"\']+)["\']', html, re.I)
+        if m:
+            img = m.group(1).strip()
+    if img:
+        out["image"] = _abs_url(final_url, img)
+    # price via JSON-LD offers
+    prices = []
+    try:
+        for blk in re.findall(r'<script[^>]+type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.I | re.S):
+            try:
+                data = _json.loads(blk.strip())
+            except Exception:
+                continue
+            stack = [data]
+            while stack:
+                node = stack.pop()
+                if isinstance(node, dict):
+                    off = node.get("offers")
+                    if isinstance(off, dict):
+                        stack.append(off)
+                    elif isinstance(off, list):
+                        stack.extend(off)
+                    for pk in ("price", "lowPrice", "highPrice"):
+                        if node.get(pk):
+                            prices.append(str(node.get(pk)))
+                    stack.extend([v for v in node.values() if isinstance(v, (dict, list))])
+                elif isinstance(node, list):
+                    stack.extend(node)
+    except Exception:
+        pass
+    # meta price
+    mp = _meta_pick(html, ["product:price:amount", "og:price:amount"])
+    if mp:
+        prices.insert(0, mp)
+    # ₹ regex fallback (first two distinct amounts -> price, old)
+    rupees = re.findall(r'(?:₹|&#8377;|&#x20b9;|Rs\.?\s?)\s*([0-9][0-9,]{2,})', html)
+    def _num(s):
+        try:
+            return int(re.sub(r'[^0-9]', '', str(s)))
+        except Exception:
+            return 0
+    cand = []
+    for p in prices + rupees:
+        n = _num(p)
+        if 99 <= n <= 500000 and n not in [_num(x) for x in cand]:
+            cand.append(p if str(p).strip().startswith(("₹",)) else ("₹" + "{:,}".format(n)))
+    if cand:
+        nums = sorted({_num(c) for c in cand})
+        lo = nums[0]
+        out["price"] = "₹" + "{:,}".format(lo)
+        if len(nums) > 1 and nums[-1] > lo:
+            out["old"] = "₹" + "{:,}".format(nums[-1])
+    out["title"] = (out["title"] or "")[:140]
+    return out

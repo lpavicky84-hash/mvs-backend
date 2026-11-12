@@ -611,7 +611,8 @@ def public_scholarship(token: str, db: Session = Depends(get_db)):
     return {"title": ex.title, "teacher_name": ex.teacher_name,
             "is_scholarship": (getattr(ex, "result_type", "") == "scholarship"),
             "declared": declared, "list": lst, "selected_count": len(lst),
-            "discount_batches": disc if isinstance(disc, list) else []}
+            "discount_batches": disc if isinstance(disc, list) else [],
+            "discount_banner": getattr(ex, "discount_banner", None) or ""}
 
 
 @router.post("/scholarship/{token}/check")

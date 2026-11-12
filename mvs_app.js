@@ -11731,22 +11731,65 @@ function _schRender(d){
     +'<div class="sch-acts"><button class="btn btn-ghost btn-sm" onclick="_schDownload(\'checks.xlsx\',\'scholarship_checks.xlsx\')">'+ic('download')+' Download Excel</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="_schDownloadPdf()">'+ic('download')+' Result PDF</button></div>'
     +'<div class="sch-chk-wrap"><table class="sch-chk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Result</th><th>At</th></tr></thead><tbody>'+checksRows+'</tbody></table></div></div>'
+    // promo banner
+    +'<div class="sch-sec"><h4>Promotional Banner (optional)</h4><div class="sch-sub">Diwali/offer banner upload karo — ye non-selected students ko offers section ke upar dikhega. (Pehle offer ka link ho to banner click us batch par le jaayega.)</div>'
+    +'<div id="sch-banner-wrap">'+_schBannerHtml(d.discount_banner)+'</div></div>'
     // discount
-    +'<div class="sch-sec"><h4>Discount Offers (non-selected students)</h4><div class="sch-sub">Jo select nahi hue unhe ye course cards dikhenge (click → batch URL). Khaali chhodo to kuch nahi dikhega.</div>'
+    +'<div class="sch-sec"><h4>Discount Offers (non-selected students)</h4><div class="sch-sub">Bas batch ka <b>link paste karo aur "Fetch"</b> dabao — thumbnail, title &amp; price auto aa jaayega. Zarurat ho to edit kar sakte ho. Khaali chhodo to kuch nahi dikhega.</div>'
     +'<div id="sch-disc">'+_schDiscHtml(disc)+'</div>'
     +'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="document.getElementById(\'sch-disc\').insertAdjacentHTML(\'beforeend\',_schDiscRow({}))">+ Add offer</button>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="_schSaveDisc()">Save discount offers</button></div>';
 }
+function _schThumbTag(img){
+  return img?('<img class="sd-thumb" src="'+esc(img)+'" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;border:1px solid var(--border);display:block">'):'';
+}
 function _schDiscRow(c){
   c=c||{};
-  return '<div class="sch-disc-row" style="border:1px solid var(--border);border-radius:10px;padding:9px;margin-bottom:8px;display:grid;gap:6px">'
-    +'<input class="sd-t" value="'+esc(c.title||'')+'" placeholder="Title (e.g. Lakshya Science – Oct 2027)">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><input class="sd-p" value="'+esc(c.price||'')+'" placeholder="Price (₹3,999)"><input class="sd-o" value="'+esc(c.old||'')+'" placeholder="Old price (₹4,999)"></div>'
-    +'<input class="sd-u" value="'+esc(c.url||'')+'" placeholder="Batch URL (https://...)">'
-    +'<input class="sd-i" value="'+esc(c.img||'')+'" placeholder="Image URL (optional)">'
+  return '<div class="sch-disc-row" style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:grid;gap:6px">'
+    +'<div class="sd-thumb-wrap">'+_schThumbTag(c.img)+'</div>'
+    +'<div style="display:flex;gap:6px"><input class="sd-u" style="flex:1" value="'+esc(c.url||'')+'" placeholder="Batch ka link paste karo (https://...)">'
+    +'<button class="btn btn-secondary btn-sm" type="button" style="white-space:nowrap" onclick="_schFetchBatch(this)">'+ic('download')+' Fetch</button></div>'
+    +'<input class="sd-t" value="'+esc(c.title||'')+'" placeholder="Title (auto-fetch)">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><input class="sd-p" value="'+esc(c.price||'')+'" placeholder="Price (₹3,999)"><input class="sd-o" value="'+esc(c.old||'')+'" placeholder="Old (₹4,999)"><input class="sd-g" value="'+esc(c.tag||'')+'" placeholder="Tag"></div>'
+    +'<input class="sd-d" value="'+esc(c.desc||'')+'" placeholder="Short description (auto-fetch)">'
+    +'<input class="sd-i" value="'+esc(c.img||'')+'" placeholder="Image URL (auto-fetch)">'
     +'<button class="sch-del" style="justify-self:end" onclick="this.parentNode.remove()">× remove</button></div>';
 }
 function _schDiscHtml(cards){ cards=cards||[]; if(!cards.length) cards=[{}]; return cards.map(_schDiscRow).join(''); }
+function _schBannerHtml(banner){
+  if(banner){
+    return '<img src="'+esc(banner)+'" style="width:100%;border-radius:10px;border:1px solid var(--border);display:block">'
+      +'<div style="display:flex;gap:6px;margin-top:8px"><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Replace<input type="file" accept="image/*" hidden onchange="_schBannerUpload(this)"></label>'
+      +'<button class="btn btn-danger btn-sm" onclick="_schBannerRemove()">Remove banner</button></div>';
+  }
+  return '<label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Upload banner image<input type="file" accept="image/*" hidden onchange="_schBannerUpload(this)"></label>';
+}
+async function _schFetchBatch(btn){
+  var row=btn.closest('.sch-disc-row'); if(!row) return;
+  var u=(row.querySelector('.sd-u')||{}).value||''; if(!u.trim()){ toast('Pehle batch ka link daalo',true); return; }
+  var old=btn.innerHTML; btn.disabled=true; btn.textContent='Fetching…';
+  try{
+    var m=await api('/api/admin/scholarship/'+window._schExam+'/fetch-batch','POST',{url:u});
+    function set(cl,v){ var e=row.querySelector(cl); if(e&&v) e.value=v; }
+    set('.sd-t',m.title); set('.sd-p',m.price); set('.sd-o',m.old); set('.sd-d',m.desc); set('.sd-i',m.image); set('.sd-u',m.url);
+    if(m.image){ var tw=row.querySelector('.sd-thumb-wrap'); if(tw) tw.innerHTML=_schThumbTag(m.image); }
+    toast('Details fetched!');
+  }catch(e){ toast((e&&e.message)||'Fetch failed',true); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
+}
+async function _schBannerUpload(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var fd=new FormData(); fd.append('file',f);
+  try{ toast('Uploading banner…'); var r=await fetch(API+'/api/admin/scholarship/'+window._schExam+'/banner',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    var j=await r.json(); if(!r.ok) throw new Error(j.detail||'Upload failed');
+    var w=document.getElementById('sch-banner-wrap'); if(w) w.innerHTML=_schBannerHtml(j.banner); toast('Banner uploaded.');
+  }catch(e){ toast((e&&e.message)||'Upload failed',true); } input.value='';
+}
+async function _schBannerRemove(){
+  try{ var r=await fetch(API+'/api/admin/scholarship/'+window._schExam+'/banner?remove=1',{method:'POST',headers:{Authorization:'Bearer '+TOKEN}});
+    await r.json(); var w=document.getElementById('sch-banner-wrap'); if(w) w.innerHTML=_schBannerHtml(''); toast('Banner removed.');
+  }catch(e){ toast((e&&e.message)||'Failed',true); }
+}
 function _schCollectRows(){
   return [].slice.call(document.querySelectorAll('#sch-rows .sch-row')).map(function(r){
     return {name:(r.querySelector('.sch-n')||{}).value||'', batch:(r.querySelector('.sch-b')||{}).value||'', phone:(r.querySelector('.sch-p')||{}).value||''};
@@ -11770,7 +11813,7 @@ async function _schDeclare(on){
 }
 async function _schSaveDisc(){
   var cards=[].slice.call(document.querySelectorAll('#sch-disc .sch-disc-row')).map(function(r){
-    return {title:(r.querySelector('.sd-t')||{}).value||'', price:(r.querySelector('.sd-p')||{}).value||'', old:(r.querySelector('.sd-o')||{}).value||'', url:(r.querySelector('.sd-u')||{}).value||'', img:(r.querySelector('.sd-i')||{}).value||''};
+    return {title:(r.querySelector('.sd-t')||{}).value||'', price:(r.querySelector('.sd-p')||{}).value||'', old:(r.querySelector('.sd-o')||{}).value||'', url:(r.querySelector('.sd-u')||{}).value||'', img:(r.querySelector('.sd-i')||{}).value||'', tag:(r.querySelector('.sd-g')||{}).value||'', desc:(r.querySelector('.sd-d')||{}).value||''};
   }).filter(function(x){ return x.title||x.url; });
   try{ var r=await api('/api/admin/scholarship/'+window._schExam+'/discount','POST',{discount_batches:cards}); toast(r.saved+' offers saved.'); }
   catch(e){ toast((e&&e.message)||'Failed',true); }
