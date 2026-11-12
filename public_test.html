@@ -731,8 +731,8 @@
   }
   function _clsKey(c){ c=(c||"").toLowerCase(); if(c.indexOf("12")>=0) return "12"; if(c.indexOf("10")>=0) return "10"; return ""; }
   window.mkClick=function(a){
-    try{ fetch("/api/public/exam/"+encodeURIComponent(token)+"/batch-click",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,
-      body:JSON.stringify({title:a.getAttribute("data-title")||"",phone:(window._reg&&window._reg.phone)||""})}); }catch(e){}
+    try{ var rg=window._reg||{}; fetch("/api/public/exam/"+encodeURIComponent(token)+"/batch-click",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,
+      body:JSON.stringify({title:a.getAttribute("data-title")||"",phone:rg.phone||"",name:rg.name||"","class":rg["class"]||""})}); }catch(e){}
     return true;
   };
   function _marketingHtml(){

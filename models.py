@@ -1071,14 +1071,18 @@ class PublicMarketing(Base):
 
 
 class PublicTestClick(Base):
-    """Universal public-test marketing: batch card click log (admin tracker ke liye)."""
+    """Universal public-test marketing: batch card click log (admin tracker ke liye).
+    Non-joined ("No") student jab kisi offer batch par click karta hai — uski details yahan."""
     __tablename__ = "public_test_clicks"
-    id          = Column(Integer, primary_key=True)
-    exam_id     = Column(Integer, index=True)
-    batch_title = Column(String(220), default="")
-    phone       = Column(String(20), default="", index=True)
-    clicked_at  = Column(DateTime, default=func.now())
-    ip          = Column(String(60), default="")
+    id            = Column(Integer, primary_key=True)
+    exam_id       = Column(Integer, index=True)
+    test_title    = Column(String(220), default="")
+    batch_title   = Column(String(220), default="")
+    name          = Column(String(160), default="")
+    phone         = Column(String(20), default="", index=True)
+    student_class = Column(String(60), default="")
+    clicked_at    = Column(DateTime, default=func.now())
+    ip            = Column(String(60), default="")
 
 
 class PublicExamAttempt(Base):

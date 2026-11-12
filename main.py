@@ -350,6 +350,10 @@ def ensure_columns():
         "ALTER TABLE exams ADD COLUMN discount_banner MEDIUMTEXT",
         # base64 thumbnails fit karne ke liye discount_batches ko MEDIUMTEXT (TEXT=64KB chhota hai)
         "ALTER TABLE exams MODIFY COLUMN discount_batches MEDIUMTEXT",
+        # public_test_clicks: student details columns (agar table pehle bina inke bana ho)
+        "ALTER TABLE public_test_clicks ADD COLUMN name VARCHAR(160)",
+        "ALTER TABLE public_test_clicks ADD COLUMN student_class VARCHAR(60)",
+        "ALTER TABLE public_test_clicks ADD COLUMN test_title VARCHAR(220)",
         "ALTER TABLE public_exam_attempts ADD COLUMN violations INTEGER DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN flagged BOOLEAN DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN integrity_log JSON",

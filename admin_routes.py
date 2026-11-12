@@ -11861,6 +11861,25 @@ def _pub_click_stats(db):
             "per_batch": items, "top_batch": (items[0]["title"] if items else "")}
 
 
+def _pub_click_rows(db, limit=2000):
+    """Har click ki detail row — name, phone, class, batch, test, time (newest first)."""
+    from models import PublicTestClick
+    rows = (db.query(PublicTestClick)
+            .order_by(PublicTestClick.clicked_at.desc(), PublicTestClick.id.desc())
+            .limit(limit).all())
+    out = []
+    for r in rows:
+        out.append({
+            "name": r.name or "",
+            "phone": r.phone or "",
+            "class": r.student_class or "",
+            "batch": r.batch_title or "",
+            "test": r.test_title or "",
+            "time": (r.clicked_at.strftime("%d %b %Y, %I:%M %p") if getattr(r, "clicked_at", None) else ""),
+        })
+    return out
+
+
 @router.get("/public-marketing")
 def admin_public_marketing_get(db: Session = Depends(get_db), _=Depends(get_admin)):
     import json as _json
@@ -11880,6 +11899,7 @@ def admin_public_marketing_get(db: Session = Depends(get_db), _=Depends(get_admi
         "join_batches": join_b if isinstance(join_b, list) else [],
         "live_batches": _pub_live_batches(db),
         "clicks": _pub_click_stats(db),
+        "click_rows": _pub_click_rows(db),
     }
 
 
@@ -11948,3 +11968,22 @@ async def admin_public_marketing_banner(file: UploadFile = File(None), remove: i
         raise HTTPException(422, "Could not process image.")
     row.banner = data_url; db.commit()
     return {"banner": data_url}
+
+
+@router.get("/public-marketing/clicks.xlsx")
+def admin_public_marketing_clicks_xlsx(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    data = SCH.public_clicks_xlsx(_pub_click_rows(db, limit=100000))
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="batch_interest_students.xlsx"'})
+
+
+@router.get("/public-marketing/clicks.pdf")
+def admin_public_marketing_clicks_pdf(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    data = SCH.public_clicks_pdf(_pub_click_rows(db, limit=100000))
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="MVS_Batch_Interest_Report.pdf"'})

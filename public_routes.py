@@ -171,13 +171,16 @@ def public_test_batch_click(token: str, payload: dict = Body(...), request: Requ
     ex = _exam_by_token(db, token)
     title = (payload.get("title") or "")[:200]
     phone = _re.sub(r"[^0-9]", "", str(payload.get("phone") or ""))[-10:]
+    name = (payload.get("name") or "")[:160]
+    scls = (payload.get("class") or "")[:60]
     ip = ""
     try:
         ip = (request.client.host if request and request.client else "")
     except Exception:
         ip = ""
     try:
-        db.add(PublicTestClick(exam_id=ex.id, batch_title=title, phone=phone, ip=ip))
+        db.add(PublicTestClick(exam_id=ex.id, test_title=(ex.title or "")[:200], batch_title=title,
+                               name=name, phone=phone, student_class=scls, ip=ip))
         db.commit()
     except Exception:
         db.rollback()

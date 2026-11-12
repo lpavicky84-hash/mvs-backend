@@ -543,3 +543,159 @@ def fetch_batch_meta(url):
         out["old"] = "₹" + "{:,}".format(old_n)
     out["title"] = (out["title"] or "")[:140]
     return out
+
+
+# ================= UNIVERSAL PUBLIC-TEST MARKETING: student-click exports =================
+def public_clicks_xlsx(rows):
+    """Non-joined students jinhone offer batch par click kiya — full details Excel."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Batch Clicks"
+    heads = ["#", "Name", "Phone", "Class", "Batch Clicked", "From Test", "Clicked At"]
+    fill = PatternFill("solid", fgColor="0F1B33")
+    for c, h in enumerate(heads, 1):
+        cell = ws.cell(1, c, h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = fill
+        cell.alignment = Alignment(horizontal="center")
+    for i, w in enumerate([6, 24, 16, 14, 40, 34, 22], 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+    for i, r in enumerate(rows or [], 1):
+        ws.append([i, r.get("name", ""), r.get("phone", ""), r.get("class", ""),
+                   r.get("batch", ""), r.get("test", ""), r.get("time", "")])
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
+
+
+def public_clicks_pdf(rows):
+    """Premium PDF — non-joined students ki batch-click details (cover + header/footer + table)."""
+    from fpdf import FPDF
+    from datetime import datetime
+    rows = rows or []
+    logo = _logo_path()
+    pdf = FPDF(unit="mm", format="A4")
+    pdf.set_auto_page_break(True, margin=16)
+    pdf.set_title("MVS Foundation - Batch Interest Report")
+    try:
+        from teacher_routes import _ist_now
+        now = _ist_now()
+    except Exception:
+        now = datetime.now()
+
+    # ---------- COVER ----------
+    pdf.add_page()
+    pdf.set_fill_color(*_NAVY)
+    pdf.rect(0, 0, 210, 297, "F")
+    pdf.set_draw_color(*_GOLD)
+    pdf.set_line_width(0.8)
+    pdf.rect(10, 10, 190, 277)
+    pdf.set_line_width(0.2)
+    if logo:
+        try:
+            pdf.image(logo, x=80, y=50, w=50, h=50)
+        except Exception:
+            pass
+    pdf.set_xy(0, 108)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 25)
+    pdf.cell(210, 12, _latin("MVS FOUNDATION"), 0, 2, "C")
+    pdf.set_text_color(*_GOLD)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(210, 7, _latin("MANISH VERMA CLASSES"), 0, 2, "C")
+    pdf.set_fill_color(*_GOLD)
+    pdf.rect(80, 138, 50, 0.8, "F")
+    pdf.set_xy(0, 148)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 21)
+    pdf.cell(210, 12, _latin("Batch Interest Report"), 0, 2, "C")
+    pdf.set_text_color(210, 215, 230)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.cell(210, 8, _latin("Students interested in our batches (public tests)"), 0, 2, "C")
+    pdf.ln(4)
+    pdf.set_text_color(*_GOLD)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.cell(210, 9, _latin("%d Interested Clicks" % len(rows)), 0, 2, "C")
+    pdf.set_xy(0, 262)
+    pdf.set_text_color(170, 178, 200)
+    pdf.set_font("Helvetica", "", 9.5)
+    pdf.cell(210, 6, _latin("Generated on " + now.strftime("%d %b %Y, %I:%M %p")), 0, 2, "C")
+    pdf.cell(210, 6, _latin("Confidential - MVS Foundation"), 0, 0, "C")
+
+    # ---------- TABLE ----------
+    cols = [("#", 10), ("Name", 42), ("Phone", 28), ("Class", 20), ("Batch Clicked", 58), ("Clicked At", 32)]
+
+    def header_band():
+        pdf.set_fill_color(*_GOLD_D)
+        pdf.rect(0, 0, 210, 24, "F")
+        pdf.set_fill_color(*_GOLD)
+        pdf.rect(0, 22, 210, 2, "F")
+        tx = 12
+        if logo:
+            try:
+                pdf.image(logo, x=10, y=3.5, w=17, h=17)
+                tx = 31
+            except Exception:
+                tx = 12
+        pdf.set_xy(tx, 5)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(150, 7, _latin("MVS Foundation"), 0, 2, "L")
+        pdf.set_x(tx)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(150, 5, _latin("Batch Interest - Students who clicked our offers"), 0, 0, "L")
+        pdf.set_text_color(*_INK)
+        pdf.set_y(30)
+
+    def table_head():
+        pdf.set_fill_color(*_NAVY)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 9)
+        for label, w in cols:
+            pdf.cell(w, 9, _latin(label), 0, 0, "L", True)
+        pdf.ln(9)
+        pdf.set_text_color(*_INK)
+
+    def footer():
+        pdf.set_y(-13)
+        pdf.set_draw_color(*_LINE)
+        pdf.line(12, pdf.get_y(), 198, pdf.get_y())
+        pdf.set_y(-11)
+        pdf.set_text_color(*_MUT)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.cell(0, 6, _latin("MVS Foundation - Manish Verma Classes"), 0, 0, "C")
+
+    pdf.add_page()
+    header_band()
+    pdf.ln(1)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, _latin("Interested Students"), 0, 1, "L")
+    pdf.ln(1)
+    table_head()
+    pdf.set_font("Helvetica", "", 8.5)
+    fill = False
+    for i, r in enumerate(rows, 1):
+        if pdf.get_y() > 272:
+            footer()
+            pdf.add_page()
+            header_band()
+            pdf.ln(1)
+            table_head()
+            pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_fill_color(250, 248, 240) if fill else pdf.set_fill_color(255, 255, 255)
+        vals = [str(i), r.get("name", ""), r.get("phone", ""), r.get("class", ""), r.get("batch", ""), r.get("time", "")]
+        for (label, w), v in zip(cols, vals):
+            txt = _latin(v)
+            # truncate long text to column width
+            while txt and pdf.get_string_width(txt) > (w - 3):
+                txt = txt[:-1]
+            pdf.cell(w, 8, txt, "B", 0, "L", True)
+        pdf.ln(8)
+        fill = not fill
+    footer()
+
+    out = pdf.output(dest="S")
+    return out.encode("latin-1") if isinstance(out, str) else bytes(out)

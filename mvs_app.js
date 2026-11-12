@@ -11689,6 +11689,11 @@ function _ensureSchCss(){
     '.sch-trk-bar .bar{flex:1;height:14px;border-radius:7px;background:rgba(0,0,0,.06);overflow:hidden}',
     '.sch-trk-bar .fill{height:100%;background:linear-gradient(90deg,#d9b64e,#b8941f);border-radius:7px}',
     '.sch-trk-bar .ct{font-size:.74rem;color:var(--text-muted);min-width:92px;text-align:right;flex:0 0 auto}',
+    '.pm-ctbl{width:100%;border-collapse:collapse;font-size:.8rem}',
+    '.pm-ctbl thead th{position:sticky;top:0;background:#14243f;color:#fff;font-weight:700;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;padding:9px 10px;text-align:left;white-space:nowrap}',
+    '.pm-ctbl tbody td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}',
+    '.pm-ctbl tbody tr:nth-child(even){background:rgba(184,148,31,.045)}',
+    '.pm-ctbl tbody td:nth-child(2){font-weight:700}',
     '.sch-disc-row .btn{flex:0 0 auto}',
     '.sch-disc-row .sd-thumb{max-width:100%;box-sizing:border-box}',
     '.sch-rows-wrap{max-height:300px;overflow:auto;padding-right:4px}',
@@ -11845,7 +11850,7 @@ function _pmRender(d){
   window._pmLive=(d.live_batches||[]);
   var body=''
     +'<div class="sch-sub" style="margin-bottom:12px">Ye config <b>sabhi public tests</b> par chalti hai. Jo students <b>"No"</b> karte hain (batch join nahi kiya), unhe test submit ke baad ye offers dikhte hain — class-wise (Class 12 → Lakshya, Class 10 → Udaan).</div>'
-    +_schTrackerHtml(d.clicks)
+    +_pmTrackerHtml(d.clicks, d.click_rows)
     +'<div class="sch-sec"><h4>Promotional Banner (optional)</h4><div class="sch-sub">Diwali/offer banner — offers ke upar dikhega.</div><div id="pm-banner-wrap">'+_pmBannerHtml(d.banner)+'</div></div>'
     +'<div class="sch-sec"><h4>Offer Batches (for non-joined students)</h4><div class="sch-sub">Batch ka <b>link paste karo + "Fetch"</b> — thumbnail, title & price auto. Class choose karo taaki sahi students ko dikhe.</div>'
       +'<div id="pm-disc">'+(d.batches&&d.batches.length?d.batches.map(_pmDiscRow).join(''):_pmDiscRow({}))+'</div>'
@@ -11882,6 +11887,47 @@ async function _pmFetchBatch(btn){
   }catch(e){ toast((e&&e.message)||'Fetch failed',true); }
   finally{ btn.disabled=false; btn.innerHTML=old; }
 }
+function _pmTrackerHtml(cl, rows){
+  cl=cl||{}; rows=rows||[];
+  var per=(cl.per_batch||[]);
+  var max=per.reduce(function(m,x){ return Math.max(m,x.clicks||0); },0)||1;
+  var bars=per.length?per.map(function(x){
+    var w=Math.round((x.clicks/max)*100);
+    return '<div class="sch-trk-bar"><span class="nm" title="'+esc(x.title)+'">'+esc(x.title)+'</span>'
+      +'<span class="bar"><span class="fill" style="width:'+w+'%"></span></span>'
+      +'<span class="ct"><b>'+x.clicks+'</b> clicks · '+x.students+' students</span></div>';
+  }).join(''):'<div class="sch-sub">No batch clicks yet — jab non-joined students offer batch par click karenge, yahan live dikhega.</div>';
+  // collapsible student details table
+  var tbl='';
+  if(rows.length){
+    var body=rows.map(function(r,i){
+      return '<tr><td>'+(i+1)+'</td><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td>'
+        +'<td>'+esc(r.batch||'—')+'</td><td style="color:var(--text-muted)">'+esc(r.test||'')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
+    }).join('');
+    tbl='<div style="margin-top:12px">'
+      +'<button type="button" class="btn btn-ghost btn-sm" onclick="_pmToggleClicks(this)" aria-expanded="false">'+ic('eye')+' View all student details ('+rows.length+') ▾</button>'
+      +'<div id="pm-clicks-list" style="display:none;margin-top:10px">'
+      +'<div class="sch-acts" style="margin-bottom:8px"><button class="btn btn-ghost btn-sm" onclick="_pmDlXlsx()">'+ic('download')+' Download Excel</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="_pmDlPdf()">'+ic('download')+' Premium PDF</button></div>'
+      +'<div style="overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr>'
+      +'<th>#</th><th>Name</th><th>Phone</th><th>Class</th><th>Batch Clicked</th><th>From Test</th><th>Time</th></tr></thead><tbody>'
+      +body+'</tbody></table></div></div></div>';
+  }
+  return '<div class="sch-sec"><h4>Batch Click Tracker (live)</h4><div class="sch-sub">Non-joined students kis batch par click kar rahe hain — live.</div>'
+    +'<div class="sch-trk"><div class="t"><b>'+(cl.total_clicks||0)+'</b><span>Total Clicks</span></div>'
+    +'<div class="t"><b>'+(cl.distinct_students||0)+'</b><span>Students</span></div>'
+    +'<div class="t"><b style="font-size:.9rem;line-height:1.3;padding-top:6px">'+(esc(cl.top_batch||'—'))+'</b><span>Top Batch</span></div></div>'
+    +bars+tbl+'</div>';
+}
+function _pmToggleClicks(btn){
+  var el=document.getElementById('pm-clicks-list'); if(!el) return;
+  var open=el.style.display!=='none';
+  el.style.display=open?'none':'block';
+  btn.setAttribute('aria-expanded', open?'false':'true');
+  btn.innerHTML=btn.innerHTML.replace(open?'▴':'▾', open?'▾':'▴');
+}
+function _pmDlXlsx(){ _dlPdf('/api/admin/public-marketing/clicks.xlsx','batch_interest_students.xlsx'); }
+function _pmDlPdf(){ _dlPdf('/api/admin/public-marketing/clicks.pdf','MVS_Batch_Interest_Report.pdf'); }
 function _pmJoinLabel(b){ var s=(b.session||'').trim(); return b.name+(s?(' '+s):''); }
 function _pmJoinHtml(live, selected){
   if(!live.length) return '<div class="sch-sub">Koi active batch nahi mila. Batches section me live batches add karein (completed/archived auto-hidden hain).</div>';
