@@ -42735,6 +42735,26 @@ window._repDownloadPDF=function(){
   function drawCircleImg(ctx,img,cx,cy,r){ ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.closePath(); ctx.clip();
     if(img){ var s=Math.max((2*r)/img.width,(2*r)/img.height); var w=img.width*s,h=img.height*s; ctx.drawImage(img,cx-w/2,cy-h/2,w,h); } ctx.restore(); }
   function ell(ctx,txt,maxW){ txt=String(txt==null?'':txt); if(ctx.measureText(txt).width<=maxW) return txt; var t=txt; while(t.length>1 && ctx.measureText(t+'…').width>maxW) t=t.slice(0,-1); return t+'…'; }
+  // Word-wrap text into up to maxLines lines (default 2). Agar fir bhi na aaye to AAKHRI line
+  // par ellipsis. Isse chapter+part poora dikhta hai (truncate nahi hota).
+  function wrap(ctx,txt,maxW,maxLines){
+    maxLines=maxLines||2;
+    txt=String(txt==null?'':txt).replace(/\s+/g,' ').trim(); if(!txt) return [''];
+    function clip(s){ s=String(s); while(s.length>1 && ctx.measureText(s+'…').width>maxW) s=s.slice(0,-1); return s+'…'; }
+    var words=txt.split(' '), lines=[], cur='';
+    for(var i=0;i<words.length;i++){
+      var w=words[i], test=cur?(cur+' '+w):w;
+      if(ctx.measureText(test).width<=maxW){ cur=test; continue; }
+      if(cur){ lines.push(cur); cur=''; }
+      if(lines.length>=maxLines){ lines[maxLines-1]=clip(lines[maxLines-1]); return lines; }
+      if(ctx.measureText(w).width>maxW){
+        if(lines.length===maxLines-1){ lines.push(clip(w)); return lines; }
+        lines.push(clip(w));
+      } else { cur=w; }
+    }
+    if(cur){ if(lines.length<maxLines) lines.push(cur); else lines[maxLines-1]=clip(lines[maxLines-1]); }
+    return lines.length?lines:[''];
+  }
 
   /* ---------- teacher avatar (logo-style circle) ---------- */
   function drawTeacher(ctx,img,cx,cy,r,name){
@@ -42831,7 +42851,7 @@ window._repDownloadPDF=function(){
   }
 
   /* ---------- COMPACT ROW (2-column) ---------- */
-  var ROWH=62, ROWGAP=9, COLGAP=18;
+  var ROWH=74, ROWGAP=9, COLGAP=18;
   function drawRow(ctx,x,y,w,row,theme){
     theme=theme||THEMES[0];
     var isT=!!row.test, stp=pillStyle(row.st);
@@ -42850,15 +42870,31 @@ window._repDownloadPDF=function(){
     ctx.fillStyle=isT?'#fff4d6':GOLD; ctx.font='700 8.5px '+SANS; _ls(ctx,1.4); ctx.fillText((row.mo||'').toUpperCase(),bx+bw/2,by+bh*0.5+14); _ls(ctx,0); ctx.textAlign='left';
     // right pill: TEST tag for tests, else status
     var mx=bx+bw+13;
-    if(isT){ var tt='★ TEST'; ctx.font='800 10.5px '+SANS; var tw=ctx.measureText(tt).width+20, tx=x+w-12-tw, ty=y+ROWH/2-12;
+    if(isT){ var tt='★ TEST'; ctx.font='800 10.5px '+SANS; var tw=ctx.measureText(tt).width+20, tx=x+w-12-tw, ty=y+11;
       var tg=ctx.createLinearGradient(tx,ty,tx,ty+24); tg.addColorStop(0,GOLD); tg.addColorStop(1,GOLD2); ctx.fillStyle=tg; RR(ctx,tx,ty,tw,24,12); ctx.fill();
       ctx.fillStyle='#3a2a00'; ctx.textAlign='center'; ctx.fillText(tt,tx+tw/2,ty+16); ctx.textAlign='left'; var rightX=tx; }
-    else { ctx.font='800 10px '+SANS; var sw=ctx.measureText(stp.txt).width+18, sx=x+w-12-sw, sy=y+ROWH/2-11;
+    else { ctx.font='800 10px '+SANS; var sw=ctx.measureText(stp.txt).width+18, sx=x+w-12-sw, sy=y+11;
       ctx.fillStyle=stp.bg; RR(ctx,sx,sy,sw,22,11); ctx.fill(); ctx.fillStyle=stp.fg; ctx.textAlign='center'; ctx.fillText(stp.txt,sx+sw/2,sy+15); ctx.textAlign='left'; var rightX=sx; }
-    // title + meta
-    var mw=rightX-mx-10;
-    ctx.fillStyle=isT?'#5a4312':INK; ctx.font='700 13.5px '+SANS; ctx.fillText(ell(ctx,row.title,mw),mx,y+26);
-    ctx.fillStyle=isT?'#9a7b36':MUT; ctx.font='500 10.5px '+SANS; ctx.fillText(ell(ctx,row.meta||'',mw),mx,y+43);
+    // title (chapter + part) — 2 line tak WRAP (truncate nahi) taaki poora naam + part dikhe.
+    // Line 1 pill ke BAGAL me (mw tak), line 2 POORI chaudai (pill ke neeche) use karti hai.
+    var mw=rightX-mx-10, fullW=(x+w-12)-mx;
+    ctx.font='700 13.5px '+SANS;
+    function _clip(s,maxW){ s=String(s); while(s.length>1 && ctx.measureText(s+'…').width>maxW) s=s.slice(0,-1); return s+'…'; }
+    var words=String(row.title==null?'':row.title).replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+    var l1='', wi=0;
+    for(; wi<words.length; wi++){ var t1=l1?(l1+' '+words[wi]):words[wi]; if(ctx.measureText(t1).width<=mw) l1=t1; else break; }
+    if(!l1 && words.length){ l1=_clip(words[0], mw); wi=1; }
+    var l2='';
+    if(wi<words.length){
+      for(; wi<words.length; wi++){ var t2=l2?(l2+' '+words[wi]):words[wi]; if(ctx.measureText(t2).width<=fullW) l2=t2; else break; }
+      if(wi<words.length){ l2=_clip(l2||words[wi], fullW); }   // abhi bhi bacha -> line-2 par ellipsis
+    }
+    ctx.fillStyle=isT?'#5a4312':INK;
+    if(l2){ ctx.fillText(l1,mx,y+26); ctx.fillText(l2,mx,y+46); }   // l2 pill ke neeche (fullW)
+    else { ctx.fillText(l1,mx,y+29); }
+    // meta (day · lecture · time) — title ke neeche
+    ctx.fillStyle=isT?'#9a7b36':MUT; ctx.font='500 10.5px '+SANS;
+    ctx.fillText(ell(ctx,row.meta||'',fullW), mx, l2? y+63 : y+48);
   }
   function pillStyle(st){ if(st==='done') return {txt:'Completed',bg:'#e7f6ec',fg:'#15803d'}; if(st==='current') return {txt:'Today',bg:'#fde8e8',fg:'#c0392b'}; return {txt:'Upcoming',bg:'#fef3e2',fg:'#b45309'}; }
 
