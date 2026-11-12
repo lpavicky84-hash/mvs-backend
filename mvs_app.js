@@ -423,7 +423,7 @@ function _premiumLogin(portal){
     if(isStudent){ scr.classList.add('auth-light'); }
     else { scr.classList.add('auth-console'); scr.classList.add(portal==='admin'?'role-admin':'role-teacher'); }
     var rc=roleUI[portal];
-    var title=isStudent?'Student Portal':(rc?rc.title:'Console');
+    var title=isStudent?'Class Manager':(rc?rc.title:'Console');
     // brand: ASLI MVS logo + title (+ teacher/admin role badge)
     var brand=document.getElementById('mvs-auth2-brand');
     if(!brand){ brand=document.createElement('div'); brand.id='mvs-auth2-brand'; brand.className='a2-brand'; box.insertBefore(brand, box.firstChild); }
