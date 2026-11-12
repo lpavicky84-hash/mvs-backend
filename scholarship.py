@@ -386,6 +386,30 @@ def _abs_url(base, u):
         return u
 
 
+def _download_image(url, referer=None):
+    """Thumbnail image download karke compressed base64 data-URL banao (hotlink-proof).
+    Fail/non-image/too-big par "" (caller remote URL fallback use karega)."""
+    import re
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Referer": referer or url,
+            "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+        })
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            ct = (resp.headers.get("Content-Type") or "").lower()
+            data = resp.read(6 * 1024 * 1024)  # cap 6MB
+    except Exception:
+        return ""
+    if not data:
+        return ""
+    if "image" not in ct and not re.search(r'\.(jpe?g|png|webp|gif|avif)(\?|$)', url, re.I):
+        return ""
+    return compress_banner(data, max_w=760)
+
+
 def fetch_batch_meta(url):
     """Admin ke paste kiye batch URL se thumbnail + title + price auto-fetch.
     Sirf http/https. Best-effort: OG/twitter meta + JSON-LD offers.price + ₹ regex fallback.
@@ -393,7 +417,7 @@ def fetch_batch_meta(url):
     import re
     import json as _json
     from urllib.parse import urlparse
-    out = {"title": "", "image": "", "price": "", "old": "", "desc": "", "url": url or ""}
+    out = {"title": "", "image": "", "image_url": "", "price": "", "old": "", "desc": "", "url": url or ""}
     u = (url or "").strip()
     if not u:
         return out
@@ -432,9 +456,21 @@ def fetch_batch_meta(url):
         if m:
             img = m.group(1).strip()
     if img:
-        out["image"] = _abs_url(final_url, img)
-    # price via JSON-LD offers
-    prices = []
+        abs_img = _abs_url(final_url, img)
+        out["image_url"] = abs_img
+        # thumbnail ko DOWNLOAD karke base64 me store -> hotlink/CORS/referer block se bach jaao,
+        # aur student page par pakka dikhe (image 3 jaisa). Fail ho to remote URL fallback.
+        data_url = _download_image(abs_img, referer=final_url)
+        out["image"] = data_url or abs_img
+
+    def _num(s):
+        try:
+            return int(re.sub(r'[^0-9]', '', str(s)))
+        except Exception:
+            return 0
+
+    # ---- PRICE (smart): JSON-LD/meta pehle, warna ₹ regex with promo-filter + discount-pair ----
+    ld_prices = []
     try:
         for blk in re.findall(r'<script[^>]+type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.I | re.S):
             try:
@@ -451,34 +487,59 @@ def fetch_batch_meta(url):
                     elif isinstance(off, list):
                         stack.extend(off)
                     for pk in ("price", "lowPrice", "highPrice"):
-                        if node.get(pk):
-                            prices.append(str(node.get(pk)))
+                        if node.get(pk) and _num(node.get(pk)) >= 1:
+                            ld_prices.append(_num(node.get(pk)))
                     stack.extend([v for v in node.values() if isinstance(v, (dict, list))])
                 elif isinstance(node, list):
                     stack.extend(node)
     except Exception:
         pass
-    # meta price
     mp = _meta_pick(html, ["product:price:amount", "og:price:amount"])
-    if mp:
-        prices.insert(0, mp)
-    # ₹ regex fallback (first two distinct amounts -> price, old)
-    rupees = re.findall(r'(?:₹|&#8377;|&#x20b9;|Rs\.?\s?)\s*([0-9][0-9,]{2,})', html)
-    def _num(s):
-        try:
-            return int(re.sub(r'[^0-9]', '', str(s)))
-        except Exception:
-            return 0
-    cand = []
-    for p in prices + rupees:
-        n = _num(p)
-        if 99 <= n <= 500000 and n not in [_num(x) for x in cand]:
-            cand.append(p if str(p).strip().startswith(("₹",)) else ("₹" + "{:,}".format(n)))
-    if cand:
-        nums = sorted({_num(c) for c in cand})
-        lo = nums[0]
-        out["price"] = "₹" + "{:,}".format(lo)
-        if len(nums) > 1 and nums[-1] > lo:
-            out["old"] = "₹" + "{:,}".format(nums[-1])
+    mp_n = _num(mp) if mp else 0
+
+    # ₹ amounts with nearby context — "off/discount/save/coupon/flat/cashback" wale promo drop
+    reup = re.compile(r'(?:₹|&#8377;|&#x20b9;|Rs\.?\s?)\s*([0-9][0-9,]{1,8})', re.I)
+    promo_re = re.compile(r'off|discount|save|saving|coupon|flat|cash\s?back|extra|upto|up\s*to|%', re.I)
+    reg_nums = []
+    for m in reup.finditer(html):
+        n = _num(m.group(1))
+        if n < 400 or n > 500000:
+            continue
+        a = max(0, m.start() - 22); b = min(len(html), m.end() + 14)
+        if promo_re.search(html[a:b]):
+            continue  # promo/discount amount — real price nahi
+        reg_nums.append(n)
+
+    price_n = 0; old_n = 0
+    if ld_prices:
+        # JSON-LD sabse reliable: sabse chhota = current price
+        price_n = min(ld_prices)
+        bigger = [x for x in (reg_nums + ld_prices) if x > price_n]
+        if bigger:
+            old_n = max(bigger)
+    elif mp_n:
+        price_n = mp_n
+        bigger = [x for x in reg_nums if x > price_n]
+        if bigger:
+            old_n = max(bigger)
+    elif reg_nums:
+        uniq = sorted(set(reg_nums))
+        # discount-pair: do amounts jisme bada/chhota <= 2.6x (real MRP vs discounted), warna sirf price
+        best = None
+        for hi in reversed(uniq):
+            for lo in uniq:
+                if lo < hi and hi / float(lo) <= 2.6:
+                    best = (lo, hi); break
+            if best:
+                break
+        if best:
+            price_n, old_n = best
+        else:
+            price_n = min(uniq)
+
+    if price_n:
+        out["price"] = "₹" + "{:,}".format(price_n)
+    if old_n and old_n > price_n:
+        out["old"] = "₹" + "{:,}".format(old_n)
     out["title"] = (out["title"] or "")[:140]
     return out

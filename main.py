@@ -348,6 +348,8 @@ def ensure_columns():
         "ALTER TABLE exams ADD COLUMN scholarship_declared BOOLEAN DEFAULT 0",
         "ALTER TABLE exams ADD COLUMN discount_batches TEXT",
         "ALTER TABLE exams ADD COLUMN discount_banner MEDIUMTEXT",
+        # base64 thumbnails fit karne ke liye discount_batches ko MEDIUMTEXT (TEXT=64KB chhota hai)
+        "ALTER TABLE exams MODIFY COLUMN discount_batches MEDIUMTEXT",
         "ALTER TABLE public_exam_attempts ADD COLUMN violations INTEGER DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN flagged BOOLEAN DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN integrity_log JSON",

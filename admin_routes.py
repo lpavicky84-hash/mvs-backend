@@ -11709,7 +11709,10 @@ def admin_scholarship_discount(exam_id: int, payload: dict = Body(...),
     for c in cards[:12]:
         if not isinstance(c, dict):
             continue
-        clean.append({"title": (c.get("title") or "")[:140], "img": (c.get("img") or "")[:1200],
+        _img = (c.get("img") or "")
+        # base64 data-URL (downloaded thumbnail) bada hota hai — allow; plain URL chhota
+        _img = _img[:900000] if _img.startswith("data:") else _img[:1200]
+        clean.append({"title": (c.get("title") or "")[:140], "img": _img,
                       "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
                       "url": (c.get("url") or "")[:800], "tag": (c.get("tag") or "")[:40],
                       "desc": (c.get("desc") or "")[:300]})

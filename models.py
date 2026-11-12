@@ -1013,7 +1013,7 @@ class Exam(Base):
     #      professional message + discount offers. ----
     result_type         = Column(String(20), default="ranking")    # ranking | scholarship
     scholarship_declared = Column(Boolean, default=False)          # admin ne result declare kiya?
-    discount_batches    = Column(Text, nullable=True)              # JSON: non-selected ke liye discount course cards [{title,img,price,old,url,desc}]
+    discount_batches    = Column(_B64TEXT, nullable=True)          # JSON: non-selected ke liye discount course cards [{title,img(base64),price,old,url,desc}]
     discount_banner     = Column(_B64TEXT, nullable=True)          # uploaded promo banner (base64 data URL) — top of discount section
 
 

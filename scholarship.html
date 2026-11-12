@@ -80,7 +80,10 @@
   .sel-badge{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#2a2200;
              font-weight:800;font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;padding:6px 15px;border-radius:999px;box-shadow:0 6px 16px -6px rgba(0,0,0,.4)}
   .batch-hi{margin-top:20px;background:linear-gradient(135deg,var(--gold2),var(--gold));color:#231c05;border-radius:17px;
-            padding:18px 20px;box-shadow:0 14px 30px -12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.3);text-align:left;position:relative}
+            padding:18px 20px;box-shadow:0 14px 30px -12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.3);text-align:left;position:relative;overflow:hidden}
+  .batch-hi::after{content:"";position:absolute;top:0;left:-70%;width:45%;height:100%;
+                   background:linear-gradient(100deg,transparent,rgba(255,255,255,.6),transparent);transform:skewX(-20deg);animation:shine 3s ease-in-out .7s infinite}
+  @keyframes shine{0%{left:-70%}40%,100%{left:130%}}
   .batch-hi .bl{font-size:.68rem;text-transform:uppercase;letter-spacing:.17em;font-weight:800;opacity:.78;display:flex;align-items:center;gap:7px}
   .batch-hi .bv{font-weight:800;font-size:1.3rem;margin-top:5px;line-height:1.25}
   .batch-hi .bstar{position:absolute;right:16px;top:16px;opacity:.5}
@@ -107,7 +110,11 @@
   .bcard{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;cursor:pointer;text-decoration:none;color:inherit;
          display:flex;flex-direction:column;box-shadow:0 10px 26px -18px rgba(12,28,58,.4);transition:transform .14s,box-shadow .14s,border-color .14s}
   .bcard:hover{transform:translateY(-4px);box-shadow:0 22px 40px -18px rgba(12,28,58,.5);border-color:var(--gold)}
-  .bcard .thumb{aspect-ratio:16/9;background:center/cover no-repeat #10203d;position:relative}
+  .bgrid .bcard{animation:cardIn .5s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes cardIn{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+  .bcard .thumb{aspect-ratio:16/9;background:#10203d;position:relative;overflow:hidden}
+  .bcard .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;transition:transform .3s}
+  .bcard:hover .thumb img{transform:scale(1.05)}
   .bcard .thumb .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;
                     color:#fff;font-weight:800;font-size:1.05rem;letter-spacing:.02em;
                     background:radial-gradient(120% 120% at 80% 0%,rgba(201,162,59,.4),transparent 60%),linear-gradient(135deg,var(--navy),var(--navy2))}
@@ -132,6 +139,11 @@
   .hidden{display:none!important}
   .reveal{animation:fadeUp .55s cubic-bezier(.2,.7,.2,1) both}
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .pop{animation:popIn .55s cubic-bezier(.2,1.5,.4,1) both}
+  @keyframes popIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+  .confetti-pc{position:fixed;top:-14px;width:9px;height:14px;z-index:9999;pointer-events:none;border-radius:2px;will-change:transform,opacity}
+  @keyframes confFall{0%{transform:translateY(-14px) rotateZ(0);opacity:1}100%{transform:translateY(108vh) rotateZ(720deg);opacity:.85}}
+  @media (prefers-reduced-motion: reduce){.batch-hi::after,.bgrid .bcard,.reveal{animation:none}}
   @media(max-width:560px){.htitle{font-size:1.5rem}.card-pad{padding:20px 17px}.batch-hi .bv{font-size:1.12rem}}
 </style>
 </head>
@@ -258,7 +270,7 @@
       html = '<div class="card congrats reveal"><div class="card-pad center" style="padding:36px 24px">'
         + (data.logo!==false?('<div class="wmark"><img src="'+LOGO+'" alt="" onerror="this.style.display=\'none\'"></div>'):'')
         + '<div class="sel-badge">'+ICO.cap+' Selected</div>'
-        + '<div class="iconbox" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></div>'
+        + '<div class="iconbox pop" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></div>'
         + '<div class="serif" style="font-weight:700;font-size:1.75rem">Congratulations'+(res.name?(", "+esc(res.name)):"")+'!</div>'
         + '<p style="opacity:.94;margin-top:10px;max-width:460px;margin-left:auto;margin-right:auto;font-size:.98rem">You have been <b>selected</b> in the MVS Foundation Scholarship Test. Your allotted batch is highlighted below.</p>'
         + '<div class="batch-hi"><span class="bstar"><svg viewBox="0 0 24 24" width="26" fill="#231c05" opacity=".6"><path d="M12 2l2.9 6.3L22 9.2l-5 4.9 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.9 7.1-.9z"/></svg></span>'
@@ -280,6 +292,27 @@
     if(ls){ ls.classList.remove("hidden"); ls.classList.add("reveal"); }
     // top par scroll (hero ke neeche result)
     try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){ window.scrollTo(0,0); }
+    // selected -> premium celebration (bache khush ho jaayein)
+    if(res.selected){ setTimeout(confetti, 180); }
+  }
+
+  function confetti(){
+    try{
+      if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      var colors=['#c9a23b','#ecc96c','#0f7a52','#ffffff','#1d3a68','#e7c56a','#d9534f'];
+      for(var i=0;i<100;i++){(function(i){
+        var d=document.createElement("div"); d.className="confetti-pc";
+        d.style.left=(Math.random()*100)+"vw";
+        d.style.background=colors[i%colors.length];
+        d.style.width=(6+Math.random()*7)+"px";
+        d.style.height=(10+Math.random()*11)+"px";
+        if(Math.random()<0.32) d.style.borderRadius="50%";
+        var dur=2.4+Math.random()*2.4, delay=Math.random()*0.9;
+        d.style.animation="confFall "+dur+"s linear "+delay+"s forwards";
+        document.body.appendChild(d);
+        setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); }, (dur+delay)*1000+300);
+      })(i);}
+    }catch(e){}
   }
 
   function discountHtml(data){
@@ -292,13 +325,16 @@
           ? '<a class="promo" href="'+esc(bLink)+'" target="_blank" rel="noopener"><img src="'+esc(banner)+'" alt="Offer"></a>'
           : '<div class="promo"><img src="'+esc(banner)+'" alt="Offer"></div>')
       : '';
-    var body=cards.map(function(c){
-      var thumb = c.img ? ('<div class="thumb" style="background-image:url('+JSON.stringify(c.img)+')"></div>')
-                        : ('<div class="thumb"><div class="ph">'+esc((c.title||"MVS Batch").slice(0,40))+'</div></div>');
+    var body=cards.map(function(c,i){
+      var ph='<div class="ph">'+esc((c.title||"MVS Batch").slice(0,40))+'</div>';
+      // img placeholder ke UPAR; load fail hua to img hide -> peeche placeholder dikhe (quotes safe)
+      var thumb = '<div class="thumb">'
+        + (c.img ? ('<img src="'+esc(c.img)+'" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display=\'none\'">') : '')
+        + ph + '</div>';
       var price = c.price ? ('<div class="bfoot"><span class="bnew">'+esc(c.price)+'</span>'+(c.old?('<span class="bold">'+esc(c.old)+'</span>'):'')+'<span class="barrow">'+ICO.arrow+'</span></div>')
                           : ('<div class="enroll">Enroll Now '+ICO.arrow+'</div>');
       var href = c.url ? esc(c.url) : "#";
-      return '<a class="bcard" href="'+href+'" target="_blank" rel="noopener">'+thumb
+      return '<a class="bcard" style="animation-delay:'+(i*0.07)+'s" href="'+href+'" target="_blank" rel="noopener">'+thumb
         + '<div class="bbody"><span class="btag">'+esc(c.tag||"Limited Offer")+'</span>'
         + '<div class="btitle">'+esc(c.title||"MVS Batch")+'</div>'
         + (c.desc?('<div class="bdesc">'+esc(c.desc)+'</div>'):'')
