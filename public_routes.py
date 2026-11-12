@@ -588,3 +588,59 @@ def public_submit(token: str, payload: dict = Body(...), request: Request = None
         sess.updated_at = _ist_now()
         db.commit()
     return _build_result(db, ex, row)
+
+
+# ============================= SCHOLARSHIP RESULT PORTAL =============================
+@router.get("/scholarship/{token}")
+def public_scholarship(token: str, db: Session = Depends(get_db)):
+    """Public scholarship page ka data: declared status + selected list (name+batch, NO phone)
+    + discount offers. Phone/personal data kabhi public nahi."""
+    ex = _exam_by_token(db, token)
+    import scholarship as SCH
+    try:
+        ex.public_views = (int(getattr(ex, "public_views", 0) or 0)) + 1
+        db.commit()
+    except Exception:
+        db.rollback()
+    declared = bool(getattr(ex, "scholarship_declared", False))
+    try:
+        disc = _json.loads(getattr(ex, "discount_batches", None) or "[]")
+    except Exception:
+        disc = []
+    lst = SCH.public_list(db, ex.id) if declared else []
+    return {"title": ex.title, "teacher_name": ex.teacher_name,
+            "is_scholarship": (getattr(ex, "result_type", "") == "scholarship"),
+            "declared": declared, "list": lst, "selected_count": len(lst),
+            "discount_batches": disc if isinstance(disc, list) else []}
+
+
+@router.post("/scholarship/{token}/check")
+def public_scholarship_check(token: str, payload: dict = Body(...), request: Request = None,
+                             db: Session = Depends(get_db)):
+    """Student phone (+name/class) se result check. Match SIRF phone se. Har check log hota hai."""
+    ex = _exam_by_token(db, token)
+    import scholarship as SCH
+    from models import ScholarshipCheck
+    if not bool(getattr(ex, "scholarship_declared", False)):
+        raise HTTPException(409, "Result not declared yet.")
+    name = (payload.get("name") or "").strip()[:150]
+    phone = (payload.get("phone") or "").strip()
+    sclass = (payload.get("class") or payload.get("student_class") or "").strip()[:50]
+    if not SCH.norm_phone(phone):
+        raise HTTPException(400, "Please enter a valid phone number.")
+    m = SCH.match_phone(db, ex.id, phone)
+    ip = ""
+    try:
+        ip = (request.client.host if request and request.client else "")
+    except Exception:
+        ip = ""
+    try:
+        db.add(ScholarshipCheck(exam_id=ex.id, name=name, phone=SCH.norm_phone(phone),
+                                student_class=sclass, matched=bool(m),
+                                matched_batch=(m.batch if m else ""), ip=ip))
+        db.commit()
+    except Exception:
+        db.rollback()
+    if m:
+        return {"selected": True, "name": m.name or name, "batch": m.batch or ""}
+    return {"selected": False, "name": name}

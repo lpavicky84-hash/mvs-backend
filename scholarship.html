@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>MVS Foundation — Scholarship Result</title>
+<style>
+  :root{--navy:#14243f;--navy2:#1f3357;--gold:#b8941f;--gold2:#d9b64e;--ink:#1c2535;--mut:#6b7280;
+        --line:#e7e2d4;--bg:#f4f1ea;--card:#fffdf7;--green:#0f9d58;--greenbg:#e8f6ee;--red:#c0392b;--radius:18px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);
+       -webkit-font-smoothing:antialiased;line-height:1.5;min-height:100vh}
+  .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:20px 18px 24px}
+  .hwrap{max-width:860px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:13px}
+  .brand .logo{width:52px;height:52px;border-radius:50%;overflow:hidden;flex:0 0 auto;background:#fff;box-shadow:0 3px 12px -3px rgba(0,0,0,.45)}
+  .brand .logo img{width:100%;height:100%;object-fit:cover;display:block}
+  .brand .bt{font-weight:800;letter-spacing:.4px;font-size:1.15rem}
+  .brand .bs{font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.65);margin-top:1px}
+  .htitle{font-weight:800;font-size:1.5rem;margin-top:16px;letter-spacing:.2px}
+  .hsub{color:rgba(255,255,255,.72);font-size:.9rem;margin-top:3px}
+  .wrap{max-width:860px;margin:0 auto;padding:18px 16px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 10px 30px -18px rgba(20,36,63,.35);overflow:hidden}
+  .card-pad{padding:22px 20px}
+  .section-t{font-weight:800;font-size:1.05rem;display:flex;align-items:center;gap:8px}
+  .section-s{color:var(--mut);font-size:.85rem;margin-top:3px}
+  .lead{position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--gold2),var(--gold))}
+  .mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}
+  /* form */
+  label{display:block;font-weight:700;font-size:.8rem;color:var(--ink);margin:14px 0 6px}
+  .inp,select{width:100%;padding:13px 14px;border:1.6px solid var(--line);border-radius:12px;font-size:1rem;background:#fff;color:var(--ink);font-family:inherit}
+  .inp:focus,select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,148,31,.14)}
+  .pwrap{position:relative}
+  .pwrap .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:8px;color:var(--mut);display:flex}
+  .pwrap .eye svg{width:21px;height:21px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 18px;border:none;border-radius:13px;
+       background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200;font-weight:800;font-size:1rem;cursor:pointer;
+       box-shadow:0 8px 20px -8px rgba(184,148,31,.6);transition:transform .08s}
+  .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.6;cursor:not-allowed}
+  .btn.outline{background:#fff;color:var(--navy);border:1.6px solid var(--line);box-shadow:none}
+  .muted-note{font-size:.76rem;color:var(--mut);margin-top:10px;display:flex;align-items:center;gap:6px}
+  .err{color:var(--red);font-size:.85rem;margin-top:10px;font-weight:600;display:none}
+  /* states */
+  .center{text-align:center}
+  .iconbox{width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+  .iconbox svg{width:38px;height:38px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:999px;font-weight:700;font-size:.9rem}
+  /* result */
+  .congrats{background:linear-gradient(160deg,#0f9d58,#0b7a44);color:#fff}
+  .congrats .iconbox{background:rgba(255,255,255,.18)}
+  .notsel .iconbox{background:#eef1f6}
+  .batch-pill{margin-top:16px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);border-radius:14px;padding:14px 16px}
+  .batch-pill .bl{font-size:.7rem;text-transform:uppercase;letter-spacing:.14em;opacity:.8}
+  .batch-pill .bv{font-weight:800;font-size:1.05rem;margin-top:3px}
+  /* list table */
+  .tbl{width:100%;border-collapse:collapse;font-size:.9rem}
+  .tbl thead th{background:var(--navy);color:#fff;font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;padding:11px 12px;text-align:left}
+  .tbl tbody td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .tbl tbody tr:nth-child(even){background:#fbf9f2}
+  .tbl tbody tr.top10{background:#fdf7e6}
+  .rk{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;border-radius:7px;font-weight:800;font-size:.78rem;background:#eef1f6;color:var(--navy)}
+  .rk.gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#2a2200}
+  .nm{font-weight:700}.bt{color:var(--mut);font-size:.84rem}
+  .tscroll{max-height:460px;overflow:auto;border-radius:14px;border:1px solid var(--line)}
+  /* discount */
+  .disc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px}
+  .dcard{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;cursor:pointer;transition:transform .1s,box-shadow .1s;text-decoration:none;color:inherit;display:flex;flex-direction:column}
+  .dcard:hover{transform:translateY(-3px);box-shadow:0 14px 30px -16px rgba(20,36,63,.4)}
+  .dcard .thumb{aspect-ratio:16/9;background:#1a2235 center/cover no-repeat;position:relative}
+  .dcard .thumb .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;letter-spacing:.1em;background:linear-gradient(135deg,var(--navy),var(--navy2))}
+  .dcard .dbody{padding:13px 14px}
+  .dcard .dtag{font-size:.6rem;font-weight:800;letter-spacing:.1em;color:var(--gold);text-transform:uppercase}
+  .dcard .dtitle{font-weight:800;font-size:.95rem;margin-top:4px;line-height:1.3}
+  .dcard .dprice{margin-top:10px;display:flex;align-items:center;gap:9px}
+  .dcard .dnew{font-weight:900;font-size:1.15rem;color:var(--ink)}
+  .dcard .dold{color:var(--mut);text-decoration:line-through;font-size:.9rem}
+  .dcard .darrow{margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center}
+  .spin{width:34px;height:34px;border:3px solid #e5e0d2;border-top-color:var(--gold);border-radius:50%;animation:sp 1s linear infinite;margin:30px auto}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .foot{text-align:center;color:var(--mut);font-size:.78rem;margin-top:26px}
+  .hidden{display:none!important}
+  @media(max-width:520px){.htitle{font-size:1.28rem}.card-pad{padding:18px 15px}}
+</style>
+</head>
+<body>
+  <div class="hero"><div class="hwrap">
+    <div class="brand">
+      <div class="logo"><img id="brandLogo" alt="MVS"></div>
+      <div><div class="bt">MVS Foundation</div><div class="bs">Manish Verma Classes</div></div>
+    </div>
+    <div class="htitle" id="heroTitle">Scholarship Test Result</div>
+    <div class="hsub" id="heroSub">Check your result below</div>
+  </div></div>
+
+  <div class="wrap" id="root">
+    <div class="spin"></div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  var token = location.pathname.split("/t/")[1] || "";
+  var API = "";
+  var root = document.getElementById("root");
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
+  function el(id){ return document.getElementById(id); }
+  // logo
+  (function(){ var im=el("brandLogo"); im.onerror=function(){ im.parentNode.innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#14243f;color:#d9b64e;font-weight:900">MVS</div>'; }; im.src="/api/student/logo"; })();
+
+  var EYE_OPEN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYE_OFF='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+  function api(path, opts){
+    return fetch(API+path, opts).then(function(r){
+      return r.json().catch(function(){return {};}).then(function(j){
+        if(!r.ok){ throw new Error(j.detail || ("Error "+r.status)); } return j; });
+    });
+  }
+
+  function render(data){
+    if(!data.declared){ return renderWaiting(data); }
+    return renderPortal(data);
+  }
+
+  function renderWaiting(data){
+    root.innerHTML =
+      '<div class="card"><div class="lead"></div><div class="card-pad center" style="padding:40px 22px">'
+      + '<div class="iconbox" style="background:#fdf3e0"><svg viewBox="0 0 24 24" fill="none" stroke="#b8941f" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>'
+      + '<div class="section-t center" style="justify-content:center;font-size:1.25rem">Result awaited</div>'
+      + '<p class="section-s" style="max-width:420px;margin:8px auto 0">Aapka test submit ho chuka hai. Result abhi declare nahi hua hai — jald hi yahin par available hoga. Thodi der baad dubara check karein.</p>'
+      + '<div class="chip" style="background:#fdf3e0;color:#8a6d16;margin-top:18px">⏳ Waiting for result declaration</div>'
+      + '</div></div>'
+      + footHtml();
+  }
+
+  function renderPortal(data){
+    var html = '';
+    // ---- Check result card ----
+    html += '<div class="card" id="checkCard"><div class="lead"></div><div class="card-pad">'
+      + '<div class="section-t">🔍 Check Your Result</div>'
+      + '<div class="section-s">Apna phone number daalein jisse aapne test diya tha. Result phone number se verify hota hai.</div>'
+      + '<label>Full Name</label><input class="inp" id="fName" placeholder="Your name" autocomplete="name">'
+      + '<label>Phone Number</label><div class="pwrap"><input class="inp" id="fPhone" type="password" inputmode="numeric" placeholder="10-digit phone number" autocomplete="off">'
+      + '<button class="eye" id="eyeBtn" type="button" aria-label="show">'+EYE_OFF+'</button></div>'
+      + '<label>Class</label><select id="fClass"><option value="">Select class</option><option>Class 10</option><option>Class 12</option><option>Other</option></select>'
+      + '<div class="err" id="chkErr"></div>'
+      + '<button class="btn mt20" id="chkBtn">Check My Result</button>'
+      + '<div class="muted-note">🔒 Aapka phone number safe hai, kisi doosre student ko dikhai nahi deta.</div>'
+      + '</div></div>';
+    // ---- result slot ----
+    html += '<div id="resultSlot" class="mt20"></div>';
+    // ---- selected students list ----
+    html += listHtml(data);
+    html += footHtml();
+    root.innerHTML = html;
+
+    // wire
+    el("eyeBtn").onclick = function(){
+      var p=el("fPhone"); if(p.type==="password"){ p.type="text"; this.innerHTML=EYE_OPEN; } else { p.type="password"; this.innerHTML=EYE_OFF; }
+    };
+    el("fPhone").addEventListener("input", function(){ this.value=this.value.replace(/[^0-9]/g,"").slice(0,15); });
+    el("chkBtn").onclick = function(){ doCheck(data); };
+    [el("fName"),el("fPhone"),el("fClass")].forEach(function(n){ n.addEventListener("keydown",function(e){ if(e.key==="Enter") doCheck(data); }); });
+  }
+
+  function listHtml(data){
+    var rows = (data.list||[]);
+    if(!rows.length) return '';
+    var body = rows.map(function(r){
+      var top = r.rank<=10;
+      return '<tr class="'+(top?'top10':'')+'"><td><span class="rk '+(top?'gold':'')+'">#'+r.rank+'</span></td>'
+        + '<td><span class="nm">'+esc(r.name)+'</span></td><td><span class="bt">'+esc(r.batch)+'</span></td></tr>';
+    }).join('');
+    return '<div class="card mt20"><div class="card-pad" style="padding-bottom:12px">'
+      + '<div class="section-t">🏆 Selected Students</div>'
+      + '<div class="section-s">'+rows.length+' students selected is scholarship test me. (Top 10 highlighted.)</div></div>'
+      + '<div style="padding:0 16px 18px"><div class="tscroll"><table class="tbl"><thead><tr><th style="width:62px">Rank</th><th>Name</th><th>Allotted Batch</th></tr></thead><tbody>'
+      + body + '</tbody></table></div></div></div>';
+  }
+
+  function doCheck(data){
+    var name=el("fName").value.trim(), phone=el("fPhone").value.trim(), cls=el("fClass").value;
+    var errEl=el("chkErr"); errEl.style.display="none";
+    var digits=phone.replace(/[^0-9]/g,"");
+    if(digits.length<10){ errEl.textContent="Please enter a valid 10-digit phone number."; errEl.style.display="block"; return; }
+    var btn=el("chkBtn"); btn.disabled=true; btn.textContent="Checking…";
+    api("/api/public/scholarship/"+token+"/check",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({name:name,phone:phone,"class":cls})})
+    .then(function(res){ showResult(res, data); })
+    .catch(function(e){ errEl.textContent=(e&&e.message)||"Something went wrong. Try again."; errEl.style.display="block"; })
+    .finally(function(){ btn.disabled=false; btn.textContent="Check My Result"; });
+  }
+
+  function showResult(res, data){
+    var slot=el("resultSlot"), html='';
+    if(res.selected){
+      html = '<div class="card congrats"><div class="card-pad center" style="padding:30px 22px">'
+        + '<div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>'
+        + '<div style="font-weight:900;font-size:1.5rem">🎉 Congratulations'+(res.name?(", "+esc(res.name)):"")+'!</div>'
+        + '<p style="opacity:.92;margin-top:8px;max-width:440px;margin-left:auto;margin-right:auto">Aap MVS Scholarship me <b>SELECTED</b> ho gaye hain. Neeche aapka allotted batch diya gaya hai.</p>'
+        + '<div class="batch-pill"><div class="bl">Allotted Batch</div><div class="bv">'+esc(res.batch||"-")+'</div></div>'
+        + '</div></div>';
+    } else {
+      html = '<div class="card notsel"><div class="lead"></div><div class="card-pad center" style="padding:28px 22px">'
+        + '<div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg></div>'
+        + '<div class="section-t center" style="justify-content:center;font-size:1.22rem">Is baar aap select nahi ho paaye</div>'
+        + '<p class="section-s" style="max-width:460px;margin:8px auto 0">'+(res.name?esc(res.name)+", ":"")+'is scholarship test me aapka naam selected list me nahi hai. Koi baat nahi — ye aapki journey ka end nahi hai! Aapke liye humne kuch <b>special discount offers</b> rakhe hain neeche. 👇</p>'
+        + '</div></div>';
+      html += discountHtml(data);
+    }
+    slot.innerHTML = html;
+    slot.scrollIntoView({behavior:"smooth", block:"start"});
+  }
+
+  function discountHtml(data){
+    var cards=(data.discount_batches||[]);
+    if(!cards.length) return '';
+    var body=cards.map(function(c){
+      var thumb = c.img ? ('<div class="thumb" style="background-image:url('+JSON.stringify(c.img)+')"></div>')
+                        : ('<div class="thumb"><div class="ph">'+esc((c.title||"MVS").slice(0,18))+'</div></div>');
+      var price = c.price ? ('<div class="dprice"><span class="dnew">'+esc(c.price)+'</span>'+(c.old?('<span class="dold">'+esc(c.old)+'</span>'):'')+'<span class="darrow"><svg viewBox="0 0 24 24" width="15" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17L17 7M7 7h10v10"/></svg></span></div>') : '';
+      var href = c.url ? esc(c.url) : "#";
+      return '<a class="dcard" href="'+href+'" target="_blank" rel="noopener">'+thumb
+        + '<div class="dbody">'+(c.tag?('<div class="dtag">'+esc(c.tag)+'</div>'):'<div class="dtag">LIMITED OFFER</div>')
+        + '<div class="dtitle">'+esc(c.title||"")+'</div>'+price+'</div></a>';
+    }).join('');
+    return '<div class="card mt20"><div class="card-pad" style="padding-bottom:6px">'
+      + '<div class="section-t">🎁 Special Discount — Join Our Batches</div>'
+      + '<div class="section-s">Aapke liye best batches par abhi discount chal raha hai. Kisi bhi card par click karke enroll karein.</div>'
+      + '<div class="disc-grid">'+body+'</div></div></div>';
+  }
+
+  function footHtml(){
+    return '<div class="foot">MVS Foundation · Manish Verma Classes</div>';
+  }
+
+  // ---- boot ----
+  if(!token){ root.innerHTML='<div class="card"><div class="card-pad center">Invalid link.</div></div>'; return; }
+  api("/api/public/scholarship/"+token)
+    .then(function(data){
+      if(data.title){ el("heroTitle").textContent = data.title; }
+      el("heroSub").textContent = data.declared ? "Result is now LIVE — check below" : "Result declaration pending";
+      render(data);
+    })
+    .catch(function(e){
+      root.innerHTML='<div class="card"><div class="lead"></div><div class="card-pad center" style="padding:36px 22px">'
+        +'<div class="section-t center" style="justify-content:center">Unable to load</div>'
+        +'<p class="section-s" style="margin-top:8px">'+esc((e&&e.message)||"Please try again later.")+'</p></div></div>';
+    });
+})();
+</script>
+</body>
+</html>

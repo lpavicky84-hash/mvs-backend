@@ -343,6 +343,10 @@ def ensure_columns():
         "ALTER TABLE exams ADD COLUMN max_violations INTEGER DEFAULT 3",
         "ALTER TABLE exams ADD COLUMN ranking_mode VARCHAR(16) DEFAULT 'auto'",
         "ALTER TABLE exams ADD COLUMN ranking_declared BOOLEAN DEFAULT 0",
+        # Scholarship result mode
+        "ALTER TABLE exams ADD COLUMN result_type VARCHAR(20) DEFAULT 'ranking'",
+        "ALTER TABLE exams ADD COLUMN scholarship_declared BOOLEAN DEFAULT 0",
+        "ALTER TABLE exams ADD COLUMN discount_batches TEXT",
         "ALTER TABLE public_exam_attempts ADD COLUMN violations INTEGER DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN flagged BOOLEAN DEFAULT 0",
         "ALTER TABLE public_exam_attempts ADD COLUMN integrity_log JSON",
@@ -968,11 +972,25 @@ def _serve_app_js(request: _Request):
 
 # ===== Public shareable test page (guest, no login) — /t/<token> =====
 _PUBLIC_TEST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public_test.html")
+_SCHOLARSHIP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scholarship.html")
 
 @app.get("/t/{token}")
 def _serve_public_test(token: str, request: _Request):
     """Standalone guest test page. The page itself reads the token from the URL and calls
-    /api/public/exam/<token>. No portal login required."""
+    /api/public/exam/<token>. No portal login required.
+    Scholarship test (result_type='scholarship') -> premium result portal page."""
+    try:
+        from database import SessionLocal
+        from models import Exam
+        _db = SessionLocal()
+        try:
+            _row = _db.query(Exam.result_type).filter(Exam.public_token == token).first()
+            if _row and (_row[0] or "") == "scholarship" and os.path.exists(_SCHOLARSHIP_FILE):
+                return _cached_file(request, _SCHOLARSHIP_FILE, "text/html; charset=utf-8")
+        finally:
+            _db.close()
+    except Exception:
+        pass
     if os.path.exists(_PUBLIC_TEST_FILE):
         return _cached_file(request, _PUBLIC_TEST_FILE, "text/html; charset=utf-8")
     from fastapi.responses import HTMLResponse as _H

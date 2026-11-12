@@ -11507,6 +11507,8 @@ function _renderShareModal(id,d){
     +'<label class="psh-chk"><input type="checkbox" id="psh-rnd-o" '+(window._pshRandomize.options?'checked':'')+'><span>Shuffle options</span></label></div></div>'
     +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Students see their marks &amp; answers as soon as they submit. This setting only controls the <b>ranking</b>.</div>'
     +'<div id="psh-ranking">'+_pshRankingHtml()+'</div></div>'
+    +'<div class="psh-sc" style="border:1.5px solid rgba(184,148,31,.35);background:rgba(184,148,31,.05);border-radius:12px;padding:12px"><b>🎓 Scholarship Result Mode</b><div class="psh-subtle">Normal ranking ki jagah: selected students + allotted batch. Students phone se result check karenge; select na hone par discount offers dikhte hain.</div>'
+    +'<button type="button" class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="openScholarshipMgr('+id+')">Open Scholarship Manager</button></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
     +_pshLbHtml(d)
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
@@ -11646,6 +11648,142 @@ function _pshLbHtml(d){
     +'<span class="psh-lb-note">Honest students rank above rule-breakers on a tie or small gap</span></div>'+rows+'</div>';
 }
 window._pshRkMode=function(m){ var R=window._pshRanking||(window._pshRanking={}); R.mode=(['manual','off'].indexOf(m)>=0?m:'auto'); if(m!=='manual') R.declared=false; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };
+
+// ============================= SCHOLARSHIP MANAGER (admin) =============================
+function _ensureSchCss(){
+  if(document.getElementById('sch-css')) return;
+  var s=document.createElement('style'); s.id='sch-css';
+  s.textContent=[
+    '.sch-sec{border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px}',
+    '.sch-sec h4{font-size:.95rem;margin:0 0 4px;display:flex;align-items:center;gap:7px}',
+    '.sch-sub{font-size:.76rem;color:var(--text-muted);margin-bottom:10px}',
+    '.sch-badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:800;padding:4px 11px;border-radius:99px}',
+    '.sch-on{background:rgba(5,150,105,.14);color:#059669}.sch-off{background:rgba(0,0,0,.07);color:var(--text-muted)}',
+    '.sch-link{display:flex;gap:8px;align-items:center;background:var(--bg-soft,rgba(0,0,0,.04));border-radius:10px;padding:8px 10px;font-size:.78rem;margin-top:8px}',
+    '.sch-link input{flex:1;border:none;background:transparent;font-size:.78rem;color:var(--text)}',
+    '.sch-acts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}',
+    '.sch-rowh,.sch-row{display:grid;grid-template-columns:28px 1.1fr 1.6fr 0.9fr 26px;gap:7px;align-items:center}',
+    '.sch-rowh{font-size:.64rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;padding:0 2px}',
+    '.sch-row{margin-bottom:6px}',
+    '.sch-row input{width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:8px;font-size:.82rem}',
+    '.sch-rk{font-weight:800;font-size:.75rem;color:var(--text-muted);text-align:center}',
+    '.sch-del{border:none;background:none;color:#c0392b;cursor:pointer;font-size:1rem}',
+    '.sch-rows-wrap{max-height:300px;overflow:auto;padding-right:4px}',
+    '.sch-chk-tbl{width:100%;border-collapse:collapse;font-size:.8rem}',
+    '.sch-chk-tbl th{text-align:left;color:var(--text-muted);font-size:.66rem;text-transform:uppercase;border-bottom:1px solid var(--border);padding:6px}',
+    '.sch-chk-tbl td{padding:6px;border-bottom:1px solid var(--border-soft,rgba(0,0,0,.05))}',
+    '.sch-chk-wrap{max-height:230px;overflow:auto}',
+    '.sch-yes{color:#059669;font-weight:800}.sch-no{color:var(--text-muted)}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function openScholarshipMgr(examId){
+  _ensureSchCss();
+  window._schExam=examId;
+  showModal('🎓 Scholarship Manager','<div class="spinner" style="margin:34px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var d=await api('/api/admin/scholarship/'+examId);
+    window._schData=d;
+    _schRender(d);
+  }catch(e){ var b=document.getElementById('modal-body'); if(b) b.innerHTML=errHtml(e); }
+}
+function _schRowsHtml(rows){
+  rows=rows||[];
+  if(!rows.length) rows=[{name:'',batch:'',phone:''}];
+  return rows.map(function(r,i){
+    return '<div class="sch-row"><div class="sch-rk">'+(i+1)+'</div>'
+      +'<input class="sch-n" value="'+esc(r.name||'')+'" placeholder="Name">'
+      +'<input class="sch-b" value="'+esc(r.batch||'')+'" placeholder="Allotted batch">'
+      +'<input class="sch-p" value="'+esc(r.phone||'')+'" placeholder="Phone" inputmode="numeric">'
+      +'<button class="sch-del" onclick="this.parentNode.remove()">×</button></div>';
+  }).join('');
+}
+function _schRender(d){
+  var body=document.getElementById('modal-body'); if(!body) return;
+  var isSch=(d.result_type==='scholarship');
+  var link=d.public_token?(location.origin+'/t/'+d.public_token):'(enable public link first)';
+  var checksRows=(d.checks||[]).slice(0,200).map(function(c){
+    return '<tr><td>'+esc(c.name||'-')+'</td><td>'+esc(c.phone||'')+'</td><td>'+esc(c['class']||'')+'</td><td class="'+(c.selected?'sch-yes':'sch-no')+'">'+(c.selected?'SELECTED':'No')+'</td><td>'+esc(c.at||'')+'</td></tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:14px">Abhi kisi ne result check nahi kiya.</td></tr>';
+  var disc=(d.discount_batches||[]);
+  body.innerHTML=
+    // status
+    '<div class="sch-sec"><h4>Status</h4>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+    +'<span class="sch-badge '+(isSch?'sch-on':'sch-off')+'">Mode: '+(isSch?'Scholarship ON':'Not scholarship')+'</span>'
+    +'<span class="sch-badge '+(d.declared?'sch-on':'sch-off')+'">'+(d.declared?'Result DECLARED':'Not declared')+'</span></div>'
+    +(!isSch?'<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="_schSetMode()">Turn ON Scholarship mode</button>':'')
+    +'<div class="sch-link"><span>🔗</span><input readonly value="'+esc(link)+'"><button class="btn btn-ghost btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousSibling.value);toast(\'Link copied\')">Copy</button></div></div>'
+    // results editor
+    +'<div class="sch-sec"><h4>Selected Students &amp; Batch</h4><div class="sch-sub">image wali list auto-fill karo, phir har student ka phone daalo. Ya Excel se bulk upload.</div>'
+    +'<div class="sch-acts"><button class="btn btn-secondary btn-sm" onclick="_schSeed()">Auto-fill 20 students</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="_schDownload(\'template.xlsx\',\'scholarship_template.xlsx\')">'+ic('download')+' Excel template</button>'
+    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Upload Excel<input type="file" accept=".xlsx,.xls,.csv" hidden onchange="_schBulk(this)"></label></div>'
+    +'<div class="sch-rowh"><div>#</div><div>Name</div><div>Allotted Batch</div><div>Phone</div><div></div></div>'
+    +'<div class="sch-rows-wrap" id="sch-rows">'+_schRowsHtml(d.results)+'</div>'
+    +'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="document.getElementById(\'sch-rows\').insertAdjacentHTML(\'beforeend\',_schRowsHtml([{}]).replace(/>1</,\'>+<\'))">+ Add row</button>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="_schSaveResults()">Save results</button></div>'
+    // declare
+    +'<div class="sch-sec"><h4>Declare Result</h4><div class="sch-sub">Declare karte hi students link par apna phone daalke result dekh sakenge.</div>'
+    +'<button class="btn '+(d.declared?'btn-danger':'btn-primary')+'" style="width:100%" onclick="_schDeclare('+(d.declared?'false':'true')+')">'+(d.declared?'Un-declare (hide result)':'Declare result NOW')+'</button></div>'
+    // checks
+    +'<div class="sch-sec"><h4>Who Checked ('+(d.check_count||0)+') · Selected: '+(d.selected_checks||0)+'</h4>'
+    +'<div class="sch-acts"><button class="btn btn-ghost btn-sm" onclick="_schDownload(\'checks.xlsx\',\'scholarship_checks.xlsx\')">'+ic('download')+' Download Excel</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="_schDownloadPdf()">'+ic('download')+' Result PDF</button></div>'
+    +'<div class="sch-chk-wrap"><table class="sch-chk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Result</th><th>At</th></tr></thead><tbody>'+checksRows+'</tbody></table></div></div>'
+    // discount
+    +'<div class="sch-sec"><h4>Discount Offers (non-selected students)</h4><div class="sch-sub">Jo select nahi hue unhe ye course cards dikhenge (click → batch URL). Khaali chhodo to kuch nahi dikhega.</div>'
+    +'<div id="sch-disc">'+_schDiscHtml(disc)+'</div>'
+    +'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="document.getElementById(\'sch-disc\').insertAdjacentHTML(\'beforeend\',_schDiscRow({}))">+ Add offer</button>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="_schSaveDisc()">Save discount offers</button></div>';
+}
+function _schDiscRow(c){
+  c=c||{};
+  return '<div class="sch-disc-row" style="border:1px solid var(--border);border-radius:10px;padding:9px;margin-bottom:8px;display:grid;gap:6px">'
+    +'<input class="sd-t" value="'+esc(c.title||'')+'" placeholder="Title (e.g. Lakshya Science – Oct 2027)">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><input class="sd-p" value="'+esc(c.price||'')+'" placeholder="Price (₹3,999)"><input class="sd-o" value="'+esc(c.old||'')+'" placeholder="Old price (₹4,999)"></div>'
+    +'<input class="sd-u" value="'+esc(c.url||'')+'" placeholder="Batch URL (https://...)">'
+    +'<input class="sd-i" value="'+esc(c.img||'')+'" placeholder="Image URL (optional)">'
+    +'<button class="sch-del" style="justify-self:end" onclick="this.parentNode.remove()">× remove</button></div>';
+}
+function _schDiscHtml(cards){ cards=cards||[]; if(!cards.length) cards=[{}]; return cards.map(_schDiscRow).join(''); }
+function _schCollectRows(){
+  return [].slice.call(document.querySelectorAll('#sch-rows .sch-row')).map(function(r){
+    return {name:(r.querySelector('.sch-n')||{}).value||'', batch:(r.querySelector('.sch-b')||{}).value||'', phone:(r.querySelector('.sch-p')||{}).value||''};
+  }).filter(function(x){ return x.name||x.batch||x.phone; });
+}
+async function _schSaveResults(){
+  try{ var rows=_schCollectRows(); var r=await api('/api/admin/scholarship/'+window._schExam+'/results','POST',{results:rows}); toast(r.saved+' students saved.'); openScholarshipMgr(window._schExam); }
+  catch(e){ toast((e&&e.message)||'Save failed',true); }
+}
+async function _schSeed(){
+  try{ var r=await api('/api/admin/scholarship/'+window._schExam+'/seed','POST',{}); toast(r.message||'Auto-filled'); openScholarshipMgr(window._schExam); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+async function _schSetMode(){
+  try{ await api('/api/admin/scholarship/'+window._schExam+'/mode','POST',{result_type:'scholarship'}); openScholarshipMgr(window._schExam); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+async function _schDeclare(on){
+  try{ await api('/api/admin/scholarship/'+window._schExam+'/declare','POST',{declared:on}); toast(on?'Result declared — students ab check kar sakte hain.':'Result hidden.'); openScholarshipMgr(window._schExam); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+async function _schSaveDisc(){
+  var cards=[].slice.call(document.querySelectorAll('#sch-disc .sch-disc-row')).map(function(r){
+    return {title:(r.querySelector('.sd-t')||{}).value||'', price:(r.querySelector('.sd-p')||{}).value||'', old:(r.querySelector('.sd-o')||{}).value||'', url:(r.querySelector('.sd-u')||{}).value||'', img:(r.querySelector('.sd-i')||{}).value||''};
+  }).filter(function(x){ return x.title||x.url; });
+  try{ var r=await api('/api/admin/scholarship/'+window._schExam+'/discount','POST',{discount_batches:cards}); toast(r.saved+' offers saved.'); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+async function _schBulk(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var fd=new FormData(); fd.append('file',f);
+  try{ toast('Uploading…'); var r=await fetch(API+'/api/admin/scholarship/'+window._schExam+'/bulk',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    var j=await r.json(); if(!r.ok) throw new Error(j.detail||'Upload failed'); toast(j.saved+' students uploaded.'); openScholarshipMgr(window._schExam);
+  }catch(e){ toast((e&&e.message)||'Upload failed',true); } input.value='';
+}
+function _schDownload(path, fname){ _dlPdf('/api/admin/scholarship/'+window._schExam+'/'+path, fname); }
+function _schDownloadPdf(){ _dlPdf('/api/admin/scholarship/'+window._schExam+'/result.pdf', 'MVS_Scholarship_Result.pdf'); }
 window._pshRkDeclareToggle=function(on){ var R=window._pshRanking||(window._pshRanking={}); R.declared=!!on; var box=document.getElementById('psh-ranking'); if(box) box.innerHTML=_pshRankingHtml(); };
 window._pshJEE=function(){ var s=_pshScCollect(); s.mode='COMPETITIVE'; s.correct=4; s.wrong=-1; s.unanswered=0; _pshScRender(); };
 function _pshIntegrityHtml(){

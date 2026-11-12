@@ -11554,3 +11554,180 @@ def admin_editor_statement_payment(statement_id: int, payload: dict = Body(...),
         raise HTTPException(404, "Statement not found")
     db.commit()
     return _ef.statement_detail(db, statement_id)
+
+
+# ============================= SCHOLARSHIP (admin manage) =============================
+def _sch_exam(db, exam_id):
+    from models import Exam
+    ex = db.query(Exam).filter(Exam.id == int(exam_id)).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    return ex
+
+
+@router.get("/scholarship/{exam_id}")
+def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Full scholarship data (results with phone, checks log, declared, discount)."""
+    import scholarship as SCH
+    from models import ScholarshipResult, ScholarshipCheck
+    ex = _sch_exam(db, exam_id)
+    results = (db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == ex.id)
+               .order_by(ScholarshipResult.rank_no.asc(), ScholarshipResult.id.asc()).all())
+    checks = (db.query(ScholarshipCheck).filter(ScholarshipCheck.exam_id == ex.id)
+              .order_by(ScholarshipCheck.checked_at.desc()).limit(2000).all())
+    try:
+        disc = json.loads(getattr(ex, "discount_batches", None) or "[]")
+    except Exception:
+        disc = []
+    return {
+        "exam_id": ex.id, "title": ex.title,
+        "result_type": getattr(ex, "result_type", "ranking"),
+        "declared": bool(getattr(ex, "scholarship_declared", False)),
+        "public_token": ex.public_token,
+        "results": [{"id": r.id, "rank": i + 1, "name": r.name, "batch": r.batch, "phone": r.phone}
+                    for i, r in enumerate(results)],
+        "checks": [{"id": c.id, "name": c.name, "phone": c.phone, "class": c.student_class,
+                    "selected": bool(c.matched), "batch": c.matched_batch,
+                    "at": c.checked_at.strftime("%d %b %Y, %I:%M %p") if c.checked_at else ""}
+                   for c in checks],
+        "check_count": len(checks),
+        "selected_checks": sum(1 for c in checks if c.matched),
+        "discount_batches": disc if isinstance(disc, list) else [],
+    }
+
+
+def _sch_save_results(db, exam_id, rows):
+    """rows -> ScholarshipResult replace (phone normalize)."""
+    import scholarship as SCH
+    from models import ScholarshipResult
+    db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == exam_id).delete(synchronize_session=False)
+    n = 0
+    for i, r in enumerate(rows):
+        nm = (r.get("name") or "").strip()
+        bt = (r.get("batch") or "").strip()
+        ph = SCH.norm_phone(r.get("phone") or "")
+        if not (nm or bt or ph):
+            continue
+        db.add(ScholarshipResult(exam_id=exam_id, rank_no=i, name=nm[:160], batch=bt[:220], phone=ph))
+        n += 1
+    db.commit()
+    return n
+
+
+@router.post("/scholarship/{exam_id}/results")
+def admin_scholarship_set_results(exam_id: int, payload: dict = Body(...),
+                                  db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Results replace karo (name, batch, phone)."""
+    ex = _sch_exam(db, exam_id)
+    rows = payload.get("results") or []
+    n = _sch_save_results(db, ex.id, rows)
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+        db.commit()
+    return {"saved": n}
+
+
+@router.post("/scholarship/{exam_id}/seed")
+def admin_scholarship_seed(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """image-1 ke 20 students (name+batch) auto-fill. Maujooda phones NAAM se preserve."""
+    import scholarship as SCH
+    from models import ScholarshipResult
+    ex = _sch_exam(db, exam_id)
+    prev = {r.name.strip().lower(): r.phone for r in
+            db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == ex.id).all() if r.name}
+    rows = [{"name": nm, "batch": bt, "phone": prev.get(nm.strip().lower(), "")}
+            for nm, bt in SCH.SEED_RESULTS]
+    n = _sch_save_results(db, ex.id, rows)
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+        db.commit()
+    return {"saved": n, "message": "20 students auto-filled. Ab phone numbers daalo."}
+
+
+@router.post("/scholarship/{exam_id}/bulk")
+async def admin_scholarship_bulk(exam_id: int, file: UploadFile = File(...),
+                                 db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Excel/CSV bulk upload -> results replace."""
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    data = await file.read()
+    rows = SCH.parse_results_xlsx(data)
+    if not rows:
+        raise HTTPException(400, "No rows found. Template use karo (Name, Batch, Phone).")
+    n = _sch_save_results(db, ex.id, rows)
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+        db.commit()
+    return {"saved": n}
+
+
+@router.get("/scholarship/{exam_id}/template.xlsx")
+def admin_scholarship_template(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    _sch_exam(db, exam_id)
+    data = SCH.results_template_xlsx()
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="scholarship_template.xlsx"'})
+
+
+@router.post("/scholarship/{exam_id}/declare")
+def admin_scholarship_declare(exam_id: int, payload: dict = Body(...),
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    ex = _sch_exam(db, exam_id)
+    ex.scholarship_declared = bool(payload.get("declared", True))
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+    db.commit()
+    return {"declared": bool(ex.scholarship_declared)}
+
+
+@router.post("/scholarship/{exam_id}/mode")
+def admin_scholarship_mode(exam_id: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    """result_type set: 'scholarship' ya 'ranking'."""
+    ex = _sch_exam(db, exam_id)
+    rt = (payload.get("result_type") or "").strip().lower()
+    ex.result_type = "scholarship" if rt == "scholarship" else "ranking"
+    db.commit()
+    return {"result_type": ex.result_type}
+
+
+@router.post("/scholarship/{exam_id}/discount")
+def admin_scholarship_discount(exam_id: int, payload: dict = Body(...),
+                               db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Non-selected students ke liye discount course cards set karo."""
+    ex = _sch_exam(db, exam_id)
+    cards = payload.get("discount_batches") or []
+    clean = []
+    for c in cards[:12]:
+        if not isinstance(c, dict):
+            continue
+        clean.append({"title": (c.get("title") or "")[:120], "img": (c.get("img") or "")[:600],
+                      "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
+                      "url": (c.get("url") or "")[:600], "tag": (c.get("tag") or "")[:40]})
+    ex.discount_batches = json.dumps(clean)
+    db.commit()
+    return {"saved": len(clean)}
+
+
+@router.get("/scholarship/{exam_id}/checks.xlsx")
+def admin_scholarship_checks_xlsx(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    data = SCH.checks_xlsx(db, ex)
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="scholarship_checks.xlsx"'})
+
+
+@router.get("/scholarship/{exam_id}/result.pdf")
+def admin_scholarship_result_pdf(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    data = SCH.result_pdf(db, ex)
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="MVS_Scholarship_Result.pdf"'})

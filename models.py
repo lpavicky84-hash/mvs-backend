@@ -1008,6 +1008,40 @@ class Exam(Base):
     #      "off"    = ranking kabhi nahi, sirf marks
     ranking_mode     = Column(String(16), default="auto")          # auto | manual | off
     ranking_declared = Column(Boolean, default=False)              # manual mode: declare hone par True
+    # ---- Scholarship result mode: normal ranking ke bajaye "selected students + allotted batch"
+    #      flow. Student phone se result check karta hai; select hua to batch + congrats, warna
+    #      professional message + discount offers. ----
+    result_type         = Column(String(20), default="ranking")    # ranking | scholarship
+    scholarship_declared = Column(Boolean, default=False)          # admin ne result declare kiya?
+    discount_batches    = Column(Text, nullable=True)              # JSON: non-selected ke liye discount course cards [{title,img,price,old,url}]
+
+
+class ScholarshipResult(Base):
+    """Scholarship test ki SELECTED students list (answer key). Admin bharta hai (name+batch
+    auto, phone manual) ya Excel bulk-upload. Student ke phone se match hota hai."""
+    __tablename__ = "scholarship_results"
+    id          = Column(Integer, primary_key=True)
+    exam_id     = Column(Integer, index=True)
+    rank_no     = Column(Integer, default=0)            # list order (top 10 upar)
+    name        = Column(String(160), default="")
+    batch       = Column(String(220), default="")      # allotted batch (public dikhega)
+    phone       = Column(String(20), default="", index=True)  # ONLY backend/match — public kabhi nahi
+    created_at  = Column(DateTime, default=func.now())
+
+
+class ScholarshipCheck(Base):
+    """Har student jo result check karta hai uska log (admin ke liye). name+class sirf backend
+    data; match SIRF phone se hota hai."""
+    __tablename__ = "scholarship_checks"
+    id            = Column(Integer, primary_key=True)
+    exam_id       = Column(Integer, index=True)
+    name          = Column(String(160), default="")
+    phone         = Column(String(20), default="", index=True)
+    student_class = Column(String(60), default="")
+    matched       = Column(Boolean, default=False)     # selected mila?
+    matched_batch = Column(String(220), default="")    # select hua to kaunsa batch
+    checked_at    = Column(DateTime, default=func.now())
+    ip            = Column(String(60), default="")
 
 
 class PublicExamAttempt(Base):
