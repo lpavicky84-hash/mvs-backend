@@ -11008,6 +11008,8 @@ def admin_public_tests(db: Session = Depends(get_db), _=Depends(get_admin)):
             "views": int(getattr(ex, "public_views", 0) or 0),
             "attempts": int(cmap.get(ex.id, 0) or 0),
             "total_marks": ex.total_marks or 0,
+            "scholarship": (getattr(ex, "result_type", "ranking") == "scholarship"),
+            "declared": bool(getattr(ex, "scholarship_declared", False)),
             "created_at": ex.created_at.isoformat() if getattr(ex, "created_at", None) else None,
         })
     return {"tests": out, "count": len(out)}
