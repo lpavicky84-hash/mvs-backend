@@ -254,6 +254,7 @@
     var errEl=el("chkErr"); errEl.style.display="none";
     var digits=phone.replace(/[^0-9]/g,"");
     if(digits.length<10){ errEl.textContent="Please enter a valid 10-digit phone number."; errEl.style.display="block"; return; }
+    window.__schPhone=digits.slice(-10); window.__schClass=cls;
     var btn=el("chkBtn"); btn.disabled=true; btn.textContent="Checking…";
     api("/api/public/scholarship/"+token+"/check",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({name:name,phone:phone,"class":cls})})
@@ -315,9 +316,18 @@
     }catch(e){}
   }
 
+  function clsKey(c){ c=(c||"").toLowerCase(); if(c.indexOf("12")>=0) return "12"; if(c.indexOf("10")>=0) return "10"; return ""; }
+  window.schClick=function(a){
+    try{ fetch(API+"/api/public/scholarship/"+token+"/click",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,
+      body:JSON.stringify({title:a.getAttribute("data-title")||"",url:a.href||"",phone:window.__schPhone||""})}); }catch(e){}
+    return true;
+  };
   function discountHtml(data){
     var banner = (data.discount_banner||"");
     var cards=(data.discount_batches||[]);
+    // class-wise: student ne jo class select ki, sirf wahi (ya "All") batches dikhaao
+    var sk=clsKey(window.__schClass);
+    cards=cards.filter(function(c){ return (!c.cls) || (!sk) || (c.cls===sk); });
     if(!banner && !cards.length) return '';
     var bLink = (cards.length && cards[0] && cards[0].url) ? cards[0].url : "";
     var bannerHtml = banner
@@ -334,7 +344,7 @@
       var price = c.price ? ('<div class="bfoot"><span class="bnew">'+esc(c.price)+'</span>'+(c.old?('<span class="bold">'+esc(c.old)+'</span>'):'')+'<span class="barrow">'+ICO.arrow+'</span></div>')
                           : ('<div class="enroll">Enroll Now '+ICO.arrow+'</div>');
       var href = c.url ? esc(c.url) : "#";
-      return '<a class="bcard" style="animation-delay:'+(i*0.07)+'s" href="'+href+'" target="_blank" rel="noopener">'+thumb
+      return '<a class="bcard" style="animation-delay:'+(i*0.07)+'s" href="'+href+'" target="_blank" rel="noopener" data-title="'+esc(c.title||"MVS Batch")+'" onclick="schClick(this)">'+thumb
         + '<div class="bbody"><span class="btag">'+esc(c.tag||"Limited Offer")+'</span>'
         + '<div class="btitle">'+esc(c.title||"MVS Batch")+'</div>'
         + (c.desc?('<div class="bdesc">'+esc(c.desc)+'</div>'):'')

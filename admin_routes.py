@@ -11572,7 +11572,7 @@ def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends
     """Full scholarship data (results with phone, checks log, declared, discount)."""
     import json as _json
     import scholarship as SCH
-    from models import ScholarshipResult, ScholarshipCheck
+    from models import ScholarshipResult, ScholarshipCheck, ScholarshipBatchClick
     ex = _sch_exam(db, exam_id)
     results = (db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == ex.id)
                .order_by(ScholarshipResult.rank_no.asc(), ScholarshipResult.id.asc()).all())
@@ -11597,6 +11597,32 @@ def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends
         "selected_checks": sum(1 for c in checks if c.matched),
         "discount_batches": disc if isinstance(disc, list) else [],
         "discount_banner": getattr(ex, "discount_banner", None) or "",
+        "clicks": _sch_click_stats(db, ex.id),
+    }
+
+
+def _sch_click_stats(db, exam_id):
+    """Batch-click live tracker: per-batch clicks, total, distinct students, top batch."""
+    from models import ScholarshipBatchClick
+    rows = db.query(ScholarshipBatchClick).filter(ScholarshipBatchClick.exam_id == exam_id).all()
+    per = {}
+    phones = set()
+    for r in rows:
+        t = r.batch_title or "(untitled)"
+        if t not in per:
+            per[t] = {"title": t, "clicks": 0, "students": set()}
+        per[t]["clicks"] += 1
+        if r.phone:
+            per[t]["students"].add(r.phone)
+            phones.add(r.phone)
+    items = sorted(
+        [{"title": v["title"], "clicks": v["clicks"], "students": len(v["students"])} for v in per.values()],
+        key=lambda x: x["clicks"], reverse=True)
+    return {
+        "total_clicks": len(rows),
+        "distinct_students": len(phones),
+        "per_batch": items,
+        "top_batch": (items[0]["title"] if items else ""),
     }
 
 
@@ -11712,10 +11738,12 @@ def admin_scholarship_discount(exam_id: int, payload: dict = Body(...),
         _img = (c.get("img") or "")
         # base64 data-URL (downloaded thumbnail) bada hota hai — allow; plain URL chhota
         _img = _img[:900000] if _img.startswith("data:") else _img[:1200]
+        _cls = str(c.get("cls") or "").strip()
+        _cls = _cls if _cls in ("10", "12") else ""
         clean.append({"title": (c.get("title") or "")[:140], "img": _img,
                       "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
                       "url": (c.get("url") or "")[:800], "tag": (c.get("tag") or "")[:40],
-                      "desc": (c.get("desc") or "")[:300]})
+                      "desc": (c.get("desc") or "")[:300], "cls": _cls})
     ex.discount_batches = _json.dumps(clean)
     db.commit()
     return {"saved": len(clean)}
@@ -11777,3 +11805,139 @@ def admin_scholarship_result_pdf(exam_id: int, db: Session = Depends(get_db), _=
     data = SCH.result_pdf(db, ex)
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="MVS_Scholarship_Result.pdf"'})
+
+
+# ========================= UNIVERSAL PUBLIC-TEST MARKETING =========================
+def _pub_marketing(db):
+    """Singleton PublicMarketing row (id=1) get/create."""
+    from models import PublicMarketing
+    row = db.query(PublicMarketing).filter(PublicMarketing.id == 1).first()
+    if not row:
+        row = PublicMarketing(id=1, enabled=True)
+        db.add(row); db.commit(); db.refresh(row)
+    return row
+
+
+def _pub_live_batches(db):
+    """Non-completed / non-archived active batches — joinable dropdown ke liye candidate list."""
+    from models import Batch
+    rows = (db.query(Batch)
+            .filter(Batch.active == True,  # noqa: E712
+                    Batch.archived_at.is_(None),
+                    ~Batch.status.in_(["completed", "archived"]))
+            .all())
+    out = []
+    seen = set()
+    for b in rows:
+        nm = (b.name or "").strip()
+        if not nm or nm.lower() in seen:
+            continue
+        seen.add(nm.lower())
+        out.append({"name": nm, "session": (b.session or ""), "type": (b.type or ""), "status": (b.status or "")})
+    out.sort(key=lambda x: x["name"].lower())
+    return out
+
+
+def _pub_click_stats(db):
+    from models import PublicTestClick
+    rows = db.query(PublicTestClick).all()
+    per = {}; phones = set()
+    for r in rows:
+        t = r.batch_title or "(untitled)"
+        per.setdefault(t, {"title": t, "clicks": 0, "students": set()})
+        per[t]["clicks"] += 1
+        if r.phone:
+            per[t]["students"].add(r.phone); phones.add(r.phone)
+    items = sorted([{"title": v["title"], "clicks": v["clicks"], "students": len(v["students"])}
+                    for v in per.values()], key=lambda x: x["clicks"], reverse=True)
+    return {"total_clicks": len(rows), "distinct_students": len(phones),
+            "per_batch": items, "top_batch": (items[0]["title"] if items else "")}
+
+
+@router.get("/public-marketing")
+def admin_public_marketing_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import json as _json
+    row = _pub_marketing(db)
+    try:
+        batches = _json.loads(row.batches or "[]")
+    except Exception:
+        batches = []
+    try:
+        join_b = _json.loads(row.join_batches or "[]")
+    except Exception:
+        join_b = []
+    return {
+        "enabled": bool(row.enabled),
+        "banner": row.banner or "",
+        "batches": batches if isinstance(batches, list) else [],
+        "join_batches": join_b if isinstance(join_b, list) else [],
+        "live_batches": _pub_live_batches(db),
+        "clicks": _pub_click_stats(db),
+    }
+
+
+@router.post("/public-marketing")
+def admin_public_marketing_save(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import json as _json
+    row = _pub_marketing(db)
+    if "enabled" in payload:
+        row.enabled = bool(payload.get("enabled"))
+    cards = payload.get("batches")
+    if isinstance(cards, list):
+        clean = []
+        for c in cards:
+            if not isinstance(c, dict):
+                continue
+            if not (c.get("title") or c.get("url")):
+                continue
+            _img = (c.get("img") or "")
+            _img = _img[:900000] if _img.startswith("data:") else _img[:1200]
+            _cls = str(c.get("cls") or "").strip()
+            _cls = _cls if _cls in ("10", "12") else ""
+            clean.append({"title": (c.get("title") or "")[:140], "img": _img,
+                          "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
+                          "url": (c.get("url") or "")[:800], "tag": (c.get("tag") or "")[:40],
+                          "desc": (c.get("desc") or "")[:300], "cls": _cls})
+        row.batches = _json.dumps(clean)
+    jb = payload.get("join_batches")
+    if isinstance(jb, list):
+        names = []
+        for n in jb:
+            n = str(n or "").strip()[:160]
+            if n and n not in names:
+                names.append(n)
+        row.join_batches = _json.dumps(names[:60])
+    db.commit()
+    return {"saved": True}
+
+
+@router.post("/public-marketing/fetch-batch")
+def admin_public_marketing_fetch(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import scholarship as SCH
+    url = (payload.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "URL required")
+    meta = SCH.fetch_batch_meta(url)
+    if not (meta.get("title") or meta.get("image")):
+        raise HTTPException(422, "Is link se details fetch nahi ho payi. URL check karein ya manually bhar dein.")
+    return meta
+
+
+@router.post("/public-marketing/banner")
+async def admin_public_marketing_banner(file: UploadFile = File(None), remove: int = 0,
+                                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    import scholarship as SCH
+    row = _pub_marketing(db)
+    if remove or file is None:
+        row.banner = None; db.commit()
+        return {"banner": ""}
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12MB).")
+    data_url = SCH.compress_banner(raw)
+    if not data_url:
+        raise HTTPException(422, "Could not process image.")
+    row.banner = data_url; db.commit()
+    return {"banner": data_url}

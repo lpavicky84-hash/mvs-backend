@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>MVS Foundation — Test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
 <style>
   :root{
     --navy:#14243f; --navy2:#1f3357; --gold:#b8941f; --gold2:#d9b64e;
@@ -15,8 +18,39 @@
   body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
   .wrap{max-width:1140px;margin:0 auto;padding:0 16px 70px}
   .narrow{max-width:640px;margin:0 auto}
-  .hero{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:0 0 22px 22px;padding:22px 20px 26px;box-shadow:0 10px 30px -12px rgba(20,36,63,.5)}
-  .hero-in{max-width:1140px;margin:0 auto}
+  .hero{position:relative;overflow:hidden;color:#fff;border-radius:0 0 22px 22px;padding:24px 20px 30px;box-shadow:0 10px 30px -12px rgba(20,36,63,.5);
+        background:radial-gradient(130% 120% at 88% -12%,rgba(217,182,78,.28),transparent 55%),linear-gradient(135deg,#0f2038,var(--navy2) 72%,#1d3a68)}
+  .hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,transparent,var(--gold2),var(--gold),transparent)}
+  .hero-in{max-width:1140px;margin:0 auto;position:relative;z-index:1}
+  .hero h1{font-family:'Fraunces',Georgia,serif;font-weight:700}
+  /* ---- marketing (join our batches) ---- */
+  .mk-wrap{background:radial-gradient(120% 120% at 100% 0%,rgba(201,162,59,.1),transparent 55%),#fffdf7;border:1px solid #ecdcae}
+  .mk-head{display:flex;align-items:flex-start;gap:12px}
+  .mk-gift{font-size:1.5rem;flex:0 0 auto;filter:grayscale(.1)}
+  .mk-h{font-weight:800;font-size:1.05rem;color:#14213d;font-family:'Fraunces',Georgia,serif}
+  .mk-sub{font-size:.84rem;color:#6b6450;margin-top:3px;line-height:1.5}
+  .mk-promo{display:block;border-radius:15px;overflow:hidden;margin-top:14px;line-height:0;border:1px solid #ecdcae;box-shadow:0 10px 26px -18px rgba(40,30,10,.5)}
+  .mk-promo img{width:100%;height:auto;display:block}
+  a.mk-promo{transition:transform .12s}a.mk-promo:hover{transform:translateY(-2px)}
+  .mk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:15px;margin-top:15px}
+  .mk-card{border:1px solid #ece4d0;border-radius:16px;overflow:hidden;background:#fff;text-decoration:none;color:inherit;display:flex;flex-direction:column;box-shadow:0 10px 24px -18px rgba(20,33,61,.4);transition:transform .14s,box-shadow .14s,border-color .14s;animation:mkIn .5s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes mkIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .mk-card:hover{transform:translateY(-4px);box-shadow:0 20px 38px -18px rgba(20,33,61,.5);border-color:#d9b64e}
+  .mk-thumb{aspect-ratio:16/9;background:#10203d;position:relative;overflow:hidden}
+  .mk-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;transition:transform .3s}
+  .mk-card:hover .mk-thumb img{transform:scale(1.05)}
+  .mk-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;color:#fff;font-weight:800;font-size:.98rem;background:radial-gradient(120% 120% at 80% 0%,rgba(201,162,59,.4),transparent 60%),linear-gradient(135deg,#14213d,#1d3a68)}
+  .mk-body{padding:13px 14px;display:flex;flex-direction:column;flex:1}
+  .mk-tag{align-self:flex-start;font-size:.58rem;font-weight:800;letter-spacing:.1em;color:#95761f;text-transform:uppercase;background:#faf2dc;border:1px solid rgba(201,162,59,.3);padding:3px 8px;border-radius:6px}
+  .mk-title{font-weight:800;font-size:.96rem;margin-top:8px;line-height:1.3;color:#14213d}
+  .mk-desc{font-size:.78rem;color:#7a7360;margin-top:5px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .mk-foot{margin-top:auto;padding-top:12px;display:flex;align-items:center;gap:9px}
+  .mk-new{font-weight:900;font-size:1.2rem;color:#14213d}
+  .mk-old{color:#9a8c66;text-decoration:line-through;font-size:.88rem}
+  .mk-arr{margin-left:auto;width:33px;height:33px;border-radius:50%;background:#14213d;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;transition:background .14s}
+  .mk-card:hover .mk-arr{background:linear-gradient(135deg,#b8941f,#d9b64e);color:#2a2200}
+  .mk-enroll{margin-top:12px;padding:10px;border-radius:10px;background:#14213d;color:#fff;font-weight:800;font-size:.84rem;text-align:center}
+  .mk-card:hover .mk-enroll{background:linear-gradient(135deg,#b8941f,#d9b64e);color:#2a2200}
   .brand{display:flex;align-items:center;gap:13px}
   .brand .logo{width:54px;height:54px;border-radius:50%;flex:0 0 auto;overflow:hidden;box-shadow:0 3px 12px -3px rgba(0,0,0,.45)}
   .brand .logo svg,.brand .logo img{width:100%;height:100%;display:block}
@@ -286,6 +320,17 @@
         +((_mw<0)?'<div style="font-size:.78rem;color:#b45309;margin-top:5px;font-weight:600">⚠ Negative marking applies — marks will be deducted for a wrong answer. If unsure, it is better to skip.</div>':'')
         +'</div>';
     }
+    // "Are you joined our online batch?" — tabhi jab admin ne joinable batches configure kiye hon
+    var JB=(EX.join_batches||[]);
+    var joinBlock="";
+    if(JB.length){
+      joinBlock='<label class="fl">Are you already joined our online batch? <span class="req">*</span></label>'
+        +'<select class="inp" id="f-joined"><option value="">Select…</option><option value="yes">Yes, I have joined</option><option value="no">No, not yet</option></select>'
+        +'<div id="f-jb-wrap" style="display:none"><label class="fl">Which batch have you joined? <span class="req">*</span></label>'
+        +'<select class="inp" id="f-joined-batch"><option value="">Select your batch…</option>'
+        +JB.map(function(b){return '<option value="'+esc(b)+'">'+esc(b)+'</option>';}).join("")
+        +'</select></div>';
+    }
     APP.innerHTML=
       '<div class="narrow"><div class="card">'
       +negNote
@@ -294,16 +339,24 @@
       +'<label class="fl">Full Name <span class="req">*</span></label><input class="inp" id="f-name" autocomplete="name">'
       +'<label class="fl">Phone Number <span class="req">*</span></label><input class="inp" id="f-phone" inputmode="numeric" autocomplete="tel" placeholder="10-digit mobile number">'
       +extra
+      +joinBlock
       +'<div class="err" id="reg-err"></div>'
       +'<button class="btn" id="reg-go" style="margin-top:18px">Continue →</button>'
       +'<div class="note">Your details are shared only with MVS Foundation.</div>'
       +'</div></div>';
+    var _js=document.getElementById("f-joined");
+    if(_js){ _js.onchange=function(){ var w=document.getElementById("f-jb-wrap"); if(w) w.style.display=(_js.value==="yes")?"block":"none"; }; }
     document.getElementById("reg-go").onclick=function(){
       var name=(val("f-name")).trim(), phone=(val("f-phone")).replace(/[^0-9]/g,"");
       if(!name) return regErr("Please enter your name.");
       if(phone.length<10) return regErr("Please enter a valid 10-digit phone number.");
       for(var i=0;i<(EX.fields||[]).length;i++){ var f=EX.fields[i]; if(f.required!==false && !val("f-"+f.key).trim()) return regErr((f.type==="select"?"Please select: ":"Please fill: ")+f.label); }
+      if(JB.length){
+        if(!val("f-joined")) return regErr("Please tell us if you have joined our batch.");
+        if(val("f-joined")==="yes" && !val("f-joined-batch")) return regErr("Please select which batch you have joined.");
+      }
       window._reg={name:name,phone:phone}; (EX.fields||[]).forEach(function(f){ window._reg[f.key]=val("f-"+f.key).trim(); });
+      if(JB.length){ window._reg.joined=val("f-joined"); if(val("f-joined")==="yes") window._reg.joined_batch=val("f-joined-batch"); }
       if(HASHI) screenMedium(); else { MED="en"; _enterTest(); }
     };
   }
@@ -564,15 +617,44 @@
 
   // ---------- submit ----------
   function subBtns(){ return Array.prototype.slice.call(document.querySelectorAll(".js-sub")); }
+  function _showSubmitConfirm(answered, unans, total){
+    var ov=document.getElementById("sub-conf-ov");
+    if(ov) ov.remove();
+    ov=document.createElement("div");
+    ov.id="sub-conf-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:999;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(2px)";
+    ov.innerHTML=
+      '<div style="background:#fffdf7;border-radius:20px;max-width:430px;width:100%;box-shadow:0 24px 60px -20px rgba(20,36,63,.6);overflow:hidden">'
+      +'<div style="height:4px;background:linear-gradient(90deg,#d9b64e,#b8941f)"></div>'
+      +'<div style="padding:24px 22px">'
+      +'<div style="width:62px;height:62px;border-radius:17px;margin:0 auto 14px;background:rgba(245,158,11,.12);display:flex;align-items:center;justify-content:center">'
+      +'<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#d97706" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>'
+      +'<div style="font-weight:800;font-size:1.2rem;text-align:center;color:#14213d">Submit the test?</div>'
+      +'<div style="display:flex;gap:10px;margin:16px 0 4px">'
+      +'<div style="flex:1;background:rgba(46,158,107,.1);border-radius:12px;padding:12px 8px;text-align:center"><div style="font-size:1.5rem;font-weight:900;color:#1f7a52;line-height:1">'+answered+'</div><div style="font-size:.66rem;font-weight:800;color:#1f7a52;text-transform:uppercase;letter-spacing:.04em;margin-top:3px">Attempted</div></div>'
+      +'<div style="flex:1;background:rgba(209,68,58,.09);border-radius:12px;padding:12px 8px;text-align:center"><div style="font-size:1.5rem;font-weight:900;color:#c0392b;line-height:1">'+unans+'</div><div style="font-size:.66rem;font-weight:800;color:#c0392b;text-transform:uppercase;letter-spacing:.04em;margin-top:3px">Unanswered</div></div>'
+      +'</div>'
+      +'<div style="font-size:.86rem;color:#6b5a28;text-align:center;line-height:1.55;margin-top:10px">You have <b>'+unans+'</b> unanswered question'+(unans>1?'s':'')+' out of <b>'+total+'</b>. Skipped questions will be marked <b>zero</b>. Are you sure you want to submit?</div>'
+      +'<div style="display:flex;gap:10px;margin-top:20px">'
+      +'<button type="button" id="sub-conf-rev" style="flex:1;padding:13px;border-radius:12px;border:1.5px solid #e7e2d4;background:#fff;color:#14243f;font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit">Review Questions</button>'
+      +'<button type="button" id="sub-conf-go" style="flex:1;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,#b8941f,#d9b64e);color:#2a2200;font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit">Submit Anyway</button>'
+      +'</div></div></div>';
+    document.body.appendChild(ov);
+    document.getElementById("sub-conf-rev").onclick=function(){ ov.remove(); };
+    ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
+    document.getElementById("sub-conf-go").onclick=function(){ ov.remove(); window._subConfirmed=true; doSubmit(false); };
+  }
   function doSubmit(auto){
     if(SUBMITTED) return;
-    var answered=Object.keys(ANS).length, total=(EX.questions||[]).length;
-    if(!auto && answered<total){
+    var answered=Object.keys(ANS).length, total=(EX.questions||[]).length, unans=total-answered;
+    // Questions optional hain — skip allowed. Submit par agar kuch skipped hain to premium confirm
+    // dikhaao (attempted/unanswered); confirm ke baad hi submit (skipped = 0 marks).
+    if(!auto && unans>0 && !window._subConfirmed){
       sheet(false);
-      var e=document.getElementById("t-err");
-      if(e){ e.textContent="Please answer all "+total+" questions ("+answered+" done). Tap a number in the palette to jump to a skipped question."; e.style.display="block"; e.scrollIntoView({behavior:"smooth",block:"center"}); }
+      _showSubmitConfirm(answered, unans, total);
       return;
     }
+    window._subConfirmed=false;
     SUBMITTED=true; sheet(false);
     if(TIMER){ clearInterval(TIMER); TIMER=null; }
     if(HB){ clearInterval(HB); HB=null; } if(SAVE_T){ clearTimeout(SAVE_T); SAVE_T=null; }
@@ -641,10 +723,47 @@
       +breakdown
       +'<div class="card" style="margin-top:14px"><b>Thank you, '+esc((window._reg&&window._reg.name)||'Student')+'!</b><div class="lead" style="margin:4px 0 0">Your test has been submitted to MVS Foundation. Review your answers below.</div></div>'
       +'<div id="lb-box">'+_lbHtml(r)+'</div>'
+      +_marketingHtml()
       +rev
       +'<div class="note" style="margin-top:20px">MVS Foundation · Manish Verma Classes</div></div>';
     H1.textContent="Your Result"; HM.innerHTML="";
     _startLbPoll();   // live ranking (non-scheduled) + scheduled test ka auto-reveal
+  }
+  function _clsKey(c){ c=(c||"").toLowerCase(); if(c.indexOf("12")>=0) return "12"; if(c.indexOf("10")>=0) return "10"; return ""; }
+  window.mkClick=function(a){
+    try{ fetch("/api/public/exam/"+encodeURIComponent(token)+"/batch-click",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,
+      body:JSON.stringify({title:a.getAttribute("data-title")||"",phone:(window._reg&&window._reg.phone)||""})}); }catch(e){}
+    return true;
+  };
+  function _marketingHtml(){
+    var mk=(EX.marketing||{});
+    if(!mk.enabled) return "";
+    // already-joined students ko promo nahi
+    if(window._reg && String(window._reg.joined||"").toLowerCase()==="yes") return "";
+    var banner=mk.banner||"", cards=(mk.batches||[]);
+    // class-wise: Class 12 -> Lakshya, Class 10 -> Udaan (All -> sabko)
+    var sk=_clsKey((window._reg&&window._reg["class"])||"");
+    cards=cards.filter(function(c){ return (!c.cls)||(!sk)||(c.cls===sk); });
+    if(!banner && !cards.length) return "";
+    var bHref=(cards.length&&cards[0]&&cards[0].url)?esc(cards[0].url):"";
+    var bannerHtml=banner?(bHref
+      ?'<a class="mk-promo" href="'+bHref+'" target="_blank" rel="noopener" data-title="Banner" onclick="mkClick(this)"><img src="'+esc(banner)+'" alt="Offer"></a>'
+      :'<div class="mk-promo"><img src="'+esc(banner)+'" alt="Offer"></div>'):"";
+    var cardsHtml=cards.map(function(c,i){
+      var ph='<div class="mk-ph">'+esc((c.title||"MVS Batch").slice(0,40))+'</div>';
+      var thumb='<div class="mk-thumb">'+(c.img?'<img src="'+esc(c.img)+'" alt="" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display=\'none\'">':'')+ph+'</div>';
+      var price=c.price?'<div class="mk-foot"><span class="mk-new">'+esc(c.price)+'</span>'+(c.old?'<span class="mk-old">'+esc(c.old)+'</span>':'')+'<span class="mk-arr">→</span></div>':'<div class="mk-enroll">Enroll Now →</div>';
+      var href=c.url?esc(c.url):"#";
+      return '<a class="mk-card" style="animation-delay:'+(i*0.06)+'s" href="'+href+'" target="_blank" rel="noopener" data-title="'+esc(c.title||"MVS Batch")+'" onclick="mkClick(this)">'+thumb
+        +'<div class="mk-body"><span class="mk-tag">'+esc(c.tag||"Limited Offer")+'</span><div class="mk-title">'+esc(c.title||"MVS Batch")+'</div>'
+        +(c.desc?'<div class="mk-desc">'+esc(c.desc)+'</div>':'')+price+'</div></a>';
+    }).join("");
+    return '<div class="card mk-wrap" style="margin-top:16px;padding:18px 16px">'
+      +'<div class="mk-head"><span class="mk-gift">🎁</span><div><div class="mk-h">Make Your Preparation Even Stronger</div>'
+      +'<div class="mk-sub">Join our premium live batches and learn directly from MVS Foundation. Exclusive offers for you:</div></div></div>'
+      +bannerHtml
+      +(cardsHtml?'<div class="mk-grid">'+cardsHtml+'</div>':'')
+      +'</div>';
   }
   // leaderboard / ranking card — visible ya "ranking abhi band" dono handle karta hai
   function _lbHtml(r){

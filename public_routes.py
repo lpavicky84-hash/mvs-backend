@@ -141,6 +141,49 @@ def _exam_by_token(db, token):
     return ex
 
 
+def _public_marketing_payload(db):
+    """Universal marketing config (banner + batches + joinable list). Fail-safe empty."""
+    from models import PublicMarketing
+    try:
+        row = db.query(PublicMarketing).filter(PublicMarketing.id == 1).first()
+        if not row or not row.enabled:
+            return {"enabled": False, "banner": "", "batches": [], "join_batches": []}
+        try:
+            batches = _json.loads(row.batches or "[]")
+        except Exception:
+            batches = []
+        try:
+            jb = _json.loads(row.join_batches or "[]")
+        except Exception:
+            jb = []
+        return {"enabled": True, "banner": row.banner or "",
+                "batches": batches if isinstance(batches, list) else [],
+                "join_batches": jb if isinstance(jb, list) else []}
+    except Exception:
+        return {"enabled": False, "banner": "", "batches": [], "join_batches": []}
+
+
+@router.post("/exam/{token}/batch-click")
+def public_test_batch_click(token: str, payload: dict = Body(...), request: Request = None,
+                            db: Session = Depends(get_db)):
+    """Non-joined student ne marketing batch card par click kiya — admin tracker ke liye log."""
+    from models import PublicTestClick
+    ex = _exam_by_token(db, token)
+    title = (payload.get("title") or "")[:200]
+    phone = _re.sub(r"[^0-9]", "", str(payload.get("phone") or ""))[-10:]
+    ip = ""
+    try:
+        ip = (request.client.host if request and request.client else "")
+    except Exception:
+        ip = ""
+    try:
+        db.add(PublicTestClick(exam_id=ex.id, batch_title=title, phone=phone, ip=ip))
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True}
+
+
 @router.get("/exam/{token}")
 def public_get_exam(token: str, db: Session = Depends(get_db)):
     """Guest view of the test — questions + options ONLY (no correct answers).
@@ -164,6 +207,10 @@ def public_get_exam(token: str, db: Session = Depends(get_db)):
             "mark_wrong": float(getattr(ex, "mark_wrong", 0.0) or 0),
             "mark_unanswered": float(getattr(ex, "mark_unanswered", 0.0) or 0),
             "integrity": _integrity_cfg(ex)}
+    # universal marketing (banner + batch offers) + joinable batch list — sabhi public tests par
+    mk = _public_marketing_payload(db)
+    meta["join_batches"] = mk["join_batches"]
+    meta["marketing"] = {"enabled": mk["enabled"], "banner": mk["banner"], "batches": mk["batches"]}
     # SCHEDULED TEST: before the start time, show only the countdown + details — never the
     # questions (so the paper can't be read early). Opens automatically at the scheduled time.
     if sched is not None:
@@ -236,6 +283,14 @@ def _create_attempt(db, ex, name, phone, details, ans, ip=None,
         v = str(details.get(f["key"]) or "").strip()
         if f["key"] not in _KNOWN_KEYS and v:
             extra[f["key"]] = {"label": f["label"], "value": v}
+    # "Are you joined our online batch?" (fixed marketing field) -> extra me store
+    _joined = str(details.get("joined") or "").strip().lower()
+    if _joined in ("yes", "no"):
+        extra["_joined"] = {"label": "Joined our batch?", "value": ("Yes" if _joined == "yes" else "No")}
+        if _joined == "yes":
+            _jb = str(details.get("joined_batch") or "").strip()
+            if _jb:
+                extra["_joined_batch"] = {"label": "Joined batch", "value": _jb[:160]}
     qs = (db.query(ExamQuestion)
           .filter(ExamQuestion.exam_id == ex.id)
           .order_by(ExamQuestion.q_no).all())
@@ -645,3 +700,26 @@ def public_scholarship_check(token: str, payload: dict = Body(...), request: Req
     if m:
         return {"selected": True, "name": m.name or name, "batch": m.batch or ""}
     return {"selected": False, "name": name}
+
+
+@router.post("/scholarship/{token}/click")
+def public_scholarship_click(token: str, payload: dict = Body(...), request: Request = None,
+                             db: Session = Depends(get_db)):
+    """Non-selected student ne discount batch card par click kiya — admin tracker ke liye log."""
+    import scholarship as SCH
+    from models import ScholarshipBatchClick
+    ex = _exam_by_token(db, token)
+    title = (payload.get("title") or "")[:200]
+    url = (payload.get("url") or "")[:800]
+    phone = SCH.norm_phone(payload.get("phone") or "")
+    ip = ""
+    try:
+        ip = (request.client.host if request and request.client else "")
+    except Exception:
+        ip = ""
+    try:
+        db.add(ScholarshipBatchClick(exam_id=ex.id, batch_title=title, batch_url=url, phone=phone, ip=ip))
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True}

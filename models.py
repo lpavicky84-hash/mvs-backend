@@ -1045,6 +1045,42 @@ class ScholarshipCheck(Base):
     ip            = Column(String(60), default="")
 
 
+class ScholarshipBatchClick(Base):
+    """Non-selected student jab discount batch card par click karta hai uska log — admin ke
+    live tracker ke liye (kis batch par kitne clicks, kitne distinct students, top batch)."""
+    __tablename__ = "scholarship_batch_clicks"
+    id          = Column(Integer, primary_key=True)
+    exam_id     = Column(Integer, index=True)
+    batch_title = Column(String(220), default="")
+    batch_url   = Column(String(800), default="")
+    phone       = Column(String(20), default="", index=True)  # ONLY backend; distinct-student count ke liye
+    clicked_at  = Column(DateTime, default=func.now())
+    ip          = Column(String(60), default="")
+
+
+class PublicMarketing(Base):
+    """Universal marketing config — SABHI public tests par chalti hai (singleton row id=1).
+    Non-joined students ko submit ke baad banner + batch offers (class-wise) dikhte hain.
+    join_batches = 'Are you joined our batch?' Yes dropdown me dikhne wale batch names."""
+    __tablename__ = "public_marketing"
+    id           = Column(Integer, primary_key=True)   # hamesha 1
+    enabled      = Column(Boolean, default=True)
+    banner       = Column(_B64TEXT, nullable=True)      # base64 promo banner
+    batches      = Column(_B64TEXT, nullable=True)      # JSON: [{title,img(base64),price,old,url,desc,tag,cls}]
+    join_batches = Column(Text, nullable=True)          # JSON: ["Lakshya Science", ...] (Yes dropdown)
+
+
+class PublicTestClick(Base):
+    """Universal public-test marketing: batch card click log (admin tracker ke liye)."""
+    __tablename__ = "public_test_clicks"
+    id          = Column(Integer, primary_key=True)
+    exam_id     = Column(Integer, index=True)
+    batch_title = Column(String(220), default="")
+    phone       = Column(String(20), default="", index=True)
+    clicked_at  = Column(DateTime, default=func.now())
+    ip          = Column(String(60), default="")
+
+
 class PublicExamAttempt(Base):
     """Guest (non-portal) student ka attempt jo shareable public link se aaya. Portal ke asli
     StudentProfile se bilkul alag — ye sirf lead/exam data capture karta hai, export ke liye."""

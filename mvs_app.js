@@ -9225,6 +9225,10 @@ async function loadATests(){
 }
 // ===== Admin PUBLIC TEST tracker (full personal details — teacher sees only name+score) =====
 function _aptCss(){ if(document.getElementById('apt-css')) return; var s=document.createElement('style'); s.id='apt-css'; s.textContent=[
+  '.apt-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:16px 0 4px}',
+  '.apt-sumt{background:linear-gradient(135deg,#fffdf7,#fbf4e2);border:1px solid #ecd9a3;border-radius:16px;padding:18px 16px;box-shadow:0 8px 22px -16px rgba(40,30,10,.4)}',
+  '.apt-sumt b{display:block;font-size:2rem;font-weight:800;line-height:1;color:#14243f}',
+  '.apt-sumt span{display:block;margin-top:7px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}',
   '.apt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}',
   '.apt-card{border:1px solid var(--border);border-radius:16px;padding:16px;background:var(--card,#fff);box-shadow:0 4px 18px -14px rgba(40,30,10,.3);transition:transform .12s,box-shadow .12s}',
   '.apt-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px -14px rgba(40,30,10,.4);border-color:#d9b64e}',
@@ -9254,9 +9258,15 @@ async function loadAPublicTests(){
       <div class="apt-meta">${esc(t.subject||'')}${t.teacher_name?' · By '+esc(t.teacher_name):''} · ${t.total_marks||0} marks</div>
       <span class="apt-badge ${t.enabled?'apt-on':'apt-off'}">${t.enabled?'Link ON':'Link OFF'}</span>
       <div class="apt-stats"><div class="apt-stat"><b>${t.views||0}</b><span>Opened</span></div><div class="apt-stat"><b>${t.attempts||0}</b><span>Attempted</span></div></div>
-      <div class="apt-acts"><button class="btn btn-primary btn-sm" onclick="openAPublicTest(${t.exam_id})">${ic('eye')} View responses</button><button class="btn btn-gold btn-sm" title="Scholarship result mode — selected students, allotted batches, phone-based result check, discount offers" onclick="openScholarshipMgr(${t.exam_id})">\u{1F393} Scholarship${t.scholarship?' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#1f7a44;margin-left:3px;vertical-align:middle"></span>':''}</button>${(t.attempts||0)?`<button class="btn btn-ghost btn-sm" onclick="exportAPublicTest(${t.exam_id})">${ic('download')} Export</button>`:''}${t.enabled&&t.link?`<button class="btn btn-ghost btn-sm" onclick="(function(){try{navigator.clipboard.writeText('${esc(link)}');toast('Link copied!');}catch(e){}})()">${ic('copy')} Link</button>`:''}</div></div>`;
+      <div class="apt-acts"><button class="btn btn-primary btn-sm" onclick="openAPublicTest(${t.exam_id})">${ic('eye')} View responses</button><button class="btn btn-gold btn-sm" title="Scholarship result mode — selected students, allotted batches, phone-based result check, discount offers" onclick="openScholarshipMgr(${t.exam_id})">Scholarship${t.scholarship?' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#1f7a44;margin-left:3px;vertical-align:middle"></span>':''}</button>${(t.attempts||0)?`<button class="btn btn-ghost btn-sm" onclick="exportAPublicTest(${t.exam_id})">${ic('download')} Export</button>`:''}${t.enabled&&t.link?`<button class="btn btn-ghost btn-sm" onclick="(function(){try{navigator.clipboard.writeText('${esc(link)}');toast('Link copied!');}catch(e){}})()">${ic('copy')} Link</button>`:''}</div></div>`;
   }).join(''):'';
-  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Public Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Shareable (no-login) tests · opens, attempts &amp; all collected details</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('back')} Back to Tests</button><button class="btn btn-ghost btn-sm" onclick="loadAPublicTests()">${ic('refresh')} Refresh</button></div></div>`
+  const totTests=tests.length;
+  const totLive=tests.filter(t=>t.enabled).length;
+  const totOpens=tests.reduce((s,t)=>s+(+t.views||0),0);
+  const totAttempts=tests.reduce((s,t)=>s+(+t.attempts||0),0);
+  const statTiles=`<div class="apt-sum"><div class="apt-sumt"><b>${totTests}</b><span>Public Tests</span></div><div class="apt-sumt"><b style="color:#059669">${totLive}</b><span>Links Live</span></div><div class="apt-sumt"><b style="color:#b45309">${totOpens.toLocaleString('en-IN')}</b><span>Total Opened</span></div><div class="apt-sumt"><b style="color:#9a7d1a">${totAttempts.toLocaleString('en-IN')}</b><span>Total Attempts</span></div></div>`;
+  el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Public Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Shareable (no-login) tests · opens, attempts &amp; all collected details</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('back')} Back to Tests</button><button class="btn btn-gold btn-sm" onclick="openPublicMarketing()">${ic('gift')||''} Marketing &amp; Offers</button><button class="btn btn-ghost btn-sm" onclick="loadAPublicTests()">${ic('refresh')} Refresh</button></div></div>`
+    +statTiles
     +(cards?`<div class="apt-grid">${cards}</div>`:`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('link')}</div><p><b>No public tests yet</b></p><small>When a teacher turns ON a shareable link for an objective test, it appears here with full tracking.</small></div></div></div>`);
 }
 // IST-safe time format: public attempt times DB me UTC (naive) store hote hain — yaha IST me dikhao
@@ -11507,8 +11517,8 @@ function _renderShareModal(id,d){
     +'<label class="psh-chk"><input type="checkbox" id="psh-rnd-o" '+(window._pshRandomize.options?'checked':'')+'><span>Shuffle options</span></label></div></div>'
     +'<div class="psh-sc"><b>Result &amp; Ranking</b><div class="psh-subtle">Students see their marks &amp; answers as soon as they submit. This setting only controls the <b>ranking</b>.</div>'
     +'<div id="psh-ranking">'+_pshRankingHtml()+'</div></div>'
-    +'<div class="psh-sc" style="border:1.5px solid rgba(184,148,31,.35);background:rgba(184,148,31,.05);border-radius:12px;padding:12px"><b>🎓 Scholarship Result Mode</b><div class="psh-subtle">Normal ranking ki jagah: selected students + allotted batch. Students phone se result check karenge; select na hone par discount offers dikhte hain.</div>'
-    +'<div class="psh-subtle" style="margin-top:8px;background:rgba(20,36,63,.05);border-radius:9px;padding:9px 11px;line-height:1.55">Results, phone numbers aur declare — sab <b>Admin panel</b> se manage hota hai (privacy ke liye admin-only).<br><b>Admin → Tests Tracker → Public Tests → \u{1F393} Scholarship</b></div></div>'
+    +'<div class="psh-sc" style="border:1.5px solid rgba(184,148,31,.35);background:rgba(184,148,31,.05);border-radius:12px;padding:12px"><b>Scholarship Result Mode</b><div class="psh-subtle">Normal ranking ki jagah: selected students + allotted batch. Students phone se result check karenge; select na hone par discount offers dikhte hain.</div>'
+    +'<div class="psh-subtle" style="margin-top:8px;background:rgba(20,36,63,.05);border-radius:9px;padding:9px 11px;line-height:1.55">Results, phone numbers aur declare — sab <b>Admin panel</b> se manage hota hai (privacy ke liye admin-only).<br><b>Admin → Tests Tracker → Public Tests → Scholarship</b></div></div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_examShareSave('+id+')">Save settings</button>'
     +_pshLbHtml(d)
     +'<div class="psh-resp"><div class="psh-resp-h"><b>Responses ('+(d.count||0)+')</b>'+((d.count||0)?('<button class="btn btn-ghost btn-sm" onclick="examExportResponses('+id+')">'+ic('download')+' Export scores</button>'):'')+'</div>'
@@ -11670,7 +11680,15 @@ function _ensureSchCss(){
     '.sch-del{border:none;background:none;color:#c0392b;cursor:pointer;font-size:1rem}',
     '.sch-disc-row{box-sizing:border-box;max-width:100%;overflow:hidden}',
     '.sch-disc-row>div{min-width:0;max-width:100%}',
-    '.sch-disc-row input{width:100%;box-sizing:border-box;min-width:0;padding:8px 9px;border:1px solid var(--border);border-radius:8px;font-size:.82rem}',
+    '.sch-disc-row input,.sch-disc-row select{width:100%;box-sizing:border-box;min-width:0;padding:8px 9px;border:1px solid var(--border);border-radius:8px;font-size:.82rem;background:#fff}',
+    '.sch-trk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}',
+    '.sch-trk .t{background:var(--bg-soft,rgba(184,148,31,.06));border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center}',
+    '.sch-trk .t b{display:block;font-size:1.3rem;color:#9a7d1a}.sch-trk .t span{font-size:.64rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}',
+    '.sch-trk-bar{display:flex;align-items:center;gap:8px;margin:5px 0}',
+    '.sch-trk-bar .nm{font-size:.8rem;font-weight:700;min-width:120px;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.sch-trk-bar .bar{flex:1;height:14px;border-radius:7px;background:rgba(0,0,0,.06);overflow:hidden}',
+    '.sch-trk-bar .fill{height:100%;background:linear-gradient(90deg,#d9b64e,#b8941f);border-radius:7px}',
+    '.sch-trk-bar .ct{font-size:.74rem;color:var(--text-muted);min-width:92px;text-align:right;flex:0 0 auto}',
     '.sch-disc-row .btn{flex:0 0 auto}',
     '.sch-disc-row .sd-thumb{max-width:100%;box-sizing:border-box}',
     '.sch-rows-wrap{max-height:300px;overflow:auto;padding-right:4px}',
@@ -11685,7 +11703,7 @@ function _ensureSchCss(){
 async function openScholarshipMgr(examId){
   _ensureSchCss();
   window._schExam=examId;
-  showModal('🎓 Scholarship Manager','<div class="spinner" style="margin:34px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  showModal('Scholarship Manager','<div class="spinner" style="margin:34px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
     var d=await api('/api/admin/scholarship/'+examId);
     window._schData=d;
@@ -11718,7 +11736,7 @@ function _schRender(d){
     +'<span class="sch-badge '+(isSch?'sch-on':'sch-off')+'">Mode: '+(isSch?'Scholarship ON':'Not scholarship')+'</span>'
     +'<span class="sch-badge '+(d.declared?'sch-on':'sch-off')+'">'+(d.declared?'Result DECLARED':'Not declared')+'</span></div>'
     +(!isSch?'<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="_schSetMode()">Turn ON Scholarship mode</button>':'')
-    +'<div class="sch-link"><span>🔗</span><input readonly value="'+esc(link)+'"><button class="btn btn-ghost btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousSibling.value);toast(\'Link copied\')">Copy</button></div></div>'
+    +'<div class="sch-link"><input readonly value="'+esc(link)+'"><button class="btn btn-ghost btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousSibling.value);toast(\'Link copied\')">Copy</button></div></div>'
     // results editor
     +'<div class="sch-sec"><h4>Selected Students &amp; Batch</h4><div class="sch-sub">image wali list auto-fill karo, phir har student ka phone daalo. Ya Excel se bulk upload.</div>'
     +'<div class="sch-acts"><button class="btn btn-secondary btn-sm" onclick="_schSeed()">Auto-fill 20 students</button>'
@@ -11736,6 +11754,8 @@ function _schRender(d){
     +'<div class="sch-acts"><button class="btn btn-ghost btn-sm" onclick="_schDownload(\'checks.xlsx\',\'scholarship_checks.xlsx\')">'+ic('download')+' Download Excel</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="_schDownloadPdf()">'+ic('download')+' Result PDF</button></div>'
     +'<div class="sch-chk-wrap"><table class="sch-chk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Result</th><th>At</th></tr></thead><tbody>'+checksRows+'</tbody></table></div></div>'
+    // live batch-click tracker
+    +_schTrackerHtml(d.clicks)
     // promo banner
     +'<div class="sch-sec"><h4>Promotional Banner (optional)</h4><div class="sch-sub">Diwali/offer banner upload karo — ye non-selected students ko offers section ke upar dikhega. (Pehle offer ka link ho to banner click us batch par le jaayega.)</div>'
     +'<div id="sch-banner-wrap">'+_schBannerHtml(d.discount_banner)+'</div></div>'
@@ -11755,12 +11775,30 @@ function _schDiscRow(c){
     +'<div style="display:flex;gap:6px"><input class="sd-u" style="flex:1" value="'+esc(c.url||'')+'" placeholder="Batch ka link paste karo (https://...)">'
     +'<button class="btn btn-secondary btn-sm" type="button" style="white-space:nowrap" onclick="_schFetchBatch(this)">'+ic('download')+' Fetch</button></div>'
     +'<input class="sd-t" value="'+esc(c.title||'')+'" placeholder="Title (auto-fetch)">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><input class="sd-p" value="'+esc(c.price||'')+'" placeholder="Price (₹3,999)"><input class="sd-o" value="'+esc(c.old||'')+'" placeholder="Old (₹4,999)"><input class="sd-g" value="'+esc(c.tag||'')+'" placeholder="Tag"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><input class="sd-p" value="'+esc(c.price||'')+'" placeholder="Price (₹3,999)"><input class="sd-o" value="'+esc(c.old||'')+'" placeholder="Old (₹4,999)"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><input class="sd-g" value="'+esc(c.tag||'')+'" placeholder="Tag (e.g. Lakshya 2027)">'
+      +'<select class="sd-c" title="Which class should see this batch"><option value=""'+(!c.cls?' selected':'')+'>All classes</option><option value="12"'+(c.cls==="12"?' selected':'')+'>Class 12 only</option><option value="10"'+(c.cls==="10"?' selected':'')+'>Class 10 only</option></select></div>'
     +'<input class="sd-d" value="'+esc(c.desc||'')+'" placeholder="Short description (auto-fetch)">'
     +'<input class="sd-i" value="'+esc(c.img||'')+'" placeholder="Image URL (auto-fetch)">'
     +'<button class="sch-del" style="justify-self:end" onclick="this.parentNode.remove()">× remove</button></div>';
 }
 function _schDiscHtml(cards){ cards=cards||[]; if(!cards.length) cards=[{}]; return cards.map(_schDiscRow).join(''); }
+function _schTrackerHtml(cl){
+  cl=cl||{};
+  var per=(cl.per_batch||[]);
+  var max=per.reduce(function(m,x){ return Math.max(m,x.clicks||0); },0)||1;
+  var bars=per.length?per.map(function(x){
+    var w=Math.round((x.clicks/max)*100);
+    return '<div class="sch-trk-bar"><span class="nm" title="'+esc(x.title)+'">'+esc(x.title)+'</span>'
+      +'<span class="bar"><span class="fill" style="width:'+w+'%"></span></span>'
+      +'<span class="ct"><b>'+x.clicks+'</b> clicks · '+x.students+' students</span></div>';
+  }).join(''):'<div class="sch-sub">No batch clicks yet — jab non-selected students batch cards par click karenge, yahan live dikhega.</div>';
+  return '<div class="sch-sec"><h4>Batch Click Tracker (live)</h4><div class="sch-sub">Non-selected students kis batch par click kar rahe hain — live.</div>'
+    +'<div class="sch-trk"><div class="t"><b>'+(cl.total_clicks||0)+'</b><span>Total Clicks</span></div>'
+    +'<div class="t"><b>'+(cl.distinct_students||0)+'</b><span>Students</span></div>'
+    +'<div class="t"><b style="font-size:.9rem;line-height:1.3;padding-top:6px">'+(esc(cl.top_batch||'—'))+'</b><span>Top Batch</span></div></div>'
+    +bars+'</div>';
+}
 function _schBannerHtml(banner){
   if(banner){
     return '<img src="'+esc(banner)+'" style="width:100%;border-radius:10px;border:1px solid var(--border);display:block">'
@@ -11795,6 +11833,95 @@ async function _schBannerRemove(){
     await r.json(); var w=document.getElementById('sch-banner-wrap'); if(w) w.innerHTML=_schBannerHtml(''); toast('Banner removed.');
   }catch(e){ toast((e&&e.message)||'Failed',true); }
 }
+
+// ======================= UNIVERSAL PUBLIC-TEST MARKETING =======================
+async function openPublicMarketing(){
+  _ensureSchCss();
+  showModal('Marketing & Offers — all public tests','<div class="spinner" style="margin:34px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{ var d=await api('/api/admin/public-marketing'); _pmRender(d); }
+  catch(e){ var b=document.getElementById('modal-body'); if(b) b.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Load failed')+'</div>'; }
+}
+function _pmRender(d){
+  window._pmLive=(d.live_batches||[]);
+  var body=''
+    +'<div class="sch-sub" style="margin-bottom:12px">Ye config <b>sabhi public tests</b> par chalti hai. Jo students <b>"No"</b> karte hain (batch join nahi kiya), unhe test submit ke baad ye offers dikhte hain — class-wise (Class 12 → Lakshya, Class 10 → Udaan).</div>'
+    +_schTrackerHtml(d.clicks)
+    +'<div class="sch-sec"><h4>Promotional Banner (optional)</h4><div class="sch-sub">Diwali/offer banner — offers ke upar dikhega.</div><div id="pm-banner-wrap">'+_pmBannerHtml(d.banner)+'</div></div>'
+    +'<div class="sch-sec"><h4>Offer Batches (for non-joined students)</h4><div class="sch-sub">Batch ka <b>link paste karo + "Fetch"</b> — thumbnail, title & price auto. Class choose karo taaki sahi students ko dikhe.</div>'
+      +'<div id="pm-disc">'+(d.batches&&d.batches.length?d.batches.map(_pmDiscRow).join(''):_pmDiscRow({}))+'</div>'
+      +'<button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="document.getElementById(\'pm-disc\').insertAdjacentHTML(\'beforeend\',_pmDiscRow({}))">+ Add batch</button></div>'
+    +'<div class="sch-sec"><h4>Joinable Batches (for the "Are you joined our batch?" dropdown)</h4><div class="sch-sub">Jo batches yahan tick karoge, wahi student ke form me "Yes" par dropdown me dikhenge. (Completed batches apne-aap hidden hain.)</div>'
+      +'<div id="pm-join">'+_pmJoinHtml(d.live_batches||[], d.join_batches||[])+'</div></div>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="_pmSave()">Save marketing settings</button>';
+  var mb=document.getElementById('modal-body'); if(mb) mb.innerHTML=body;
+}
+function _pmDiscRow(c){
+  c=c||{};
+  return '<div class="sch-disc-row pm-row" style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:grid;gap:6px">'
+    +'<div class="sd-thumb-wrap">'+_schThumbTag(c.img)+'</div>'
+    +'<div style="display:flex;gap:6px"><input class="sd-u" style="flex:1" value="'+esc(c.url||'')+'" placeholder="Batch ka link paste karo (https://...)">'
+    +'<button class="btn btn-secondary btn-sm" type="button" style="white-space:nowrap" onclick="_pmFetchBatch(this)">'+ic('download')+' Fetch</button></div>'
+    +'<input class="sd-t" value="'+esc(c.title||'')+'" placeholder="Title (auto-fetch)">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><input class="sd-p" value="'+esc(c.price||'')+'" placeholder="Price (₹3,999)"><input class="sd-o" value="'+esc(c.old||'')+'" placeholder="Old (₹4,999)"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><input class="sd-g" value="'+esc(c.tag||'')+'" placeholder="Tag (e.g. Lakshya 2027)">'
+      +'<select class="sd-c"><option value=""'+(!c.cls?' selected':'')+'>All classes</option><option value="12"'+(c.cls==="12"?' selected':'')+'>Class 12 only</option><option value="10"'+(c.cls==="10"?' selected':'')+'>Class 10 only</option></select></div>'
+    +'<input class="sd-d" value="'+esc(c.desc||'')+'" placeholder="Short description (auto-fetch)">'
+    +'<input class="sd-i" value="'+esc(c.img||'')+'" placeholder="Image (auto-fetch)">'
+    +'<button class="sch-del" style="justify-self:end" onclick="this.parentNode.remove()">× remove</button></div>';
+}
+async function _pmFetchBatch(btn){
+  var row=btn.closest('.sch-disc-row'); if(!row) return;
+  var u=(row.querySelector('.sd-u')||{}).value||''; if(!u.trim()){ toast('Pehle batch ka link daalo',true); return; }
+  var old=btn.innerHTML; btn.disabled=true; btn.textContent='Fetching…';
+  try{
+    var m=await api('/api/admin/public-marketing/fetch-batch','POST',{url:u});
+    function set(cl,v){ var e=row.querySelector(cl); if(e&&v) e.value=v; }
+    set('.sd-t',m.title); set('.sd-p',m.price); set('.sd-o',m.old); set('.sd-d',m.desc); set('.sd-i',m.image); set('.sd-u',m.url);
+    if(m.image){ var tw=row.querySelector('.sd-thumb-wrap'); if(tw) tw.innerHTML=_schThumbTag(m.image); }
+    toast('Details fetched!');
+  }catch(e){ toast((e&&e.message)||'Fetch failed',true); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
+}
+function _pmJoinHtml(live, selected){
+  if(!live.length) return '<div class="sch-sub">Koi active batch nahi mila. Batches section me live batches add karein.</div>';
+  var sel={}; (selected||[]).forEach(function(n){ sel[n]=1; });
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:7px">'+live.map(function(b){
+    var ck=sel[b.name]?' checked':'';
+    return '<label style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:.82rem;cursor:pointer">'
+      +'<input type="checkbox" class="pm-jb" value="'+esc(b.name)+'"'+ck+' style="width:16px;height:16px;flex:0 0 auto">'
+      +'<span style="min-width:0"><b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</b>'
+      +'<span style="color:var(--text-muted);font-size:.72rem">'+esc(b.session||'')+(b.type?(' · '+esc(b.type)):'')+'</span></span></label>';
+  }).join('')+'</div>';
+}
+function _pmBannerHtml(banner){
+  if(banner){
+    return '<img src="'+esc(banner)+'" style="width:100%;border-radius:10px;border:1px solid var(--border);display:block">'
+      +'<div style="display:flex;gap:6px;margin-top:8px"><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Replace<input type="file" accept="image/*" hidden onchange="_pmBannerUpload(this)"></label>'
+      +'<button class="btn btn-danger btn-sm" onclick="_pmBannerRemove()">Remove banner</button></div>';
+  }
+  return '<label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Upload banner image<input type="file" accept="image/*" hidden onchange="_pmBannerUpload(this)"></label>';
+}
+async function _pmBannerUpload(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var fd=new FormData(); fd.append('file',f);
+  try{ toast('Uploading banner…'); var r=await fetch(API+'/api/admin/public-marketing/banner',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    var j=await r.json(); if(!r.ok) throw new Error(j.detail||'Upload failed');
+    var w=document.getElementById('pm-banner-wrap'); if(w) w.innerHTML=_pmBannerHtml(j.banner); toast('Banner uploaded.');
+  }catch(e){ toast((e&&e.message)||'Upload failed',true); } input.value='';
+}
+async function _pmBannerRemove(){
+  try{ var r=await fetch(API+'/api/admin/public-marketing/banner?remove=1',{method:'POST',headers:{Authorization:'Bearer '+TOKEN}});
+    await r.json(); var w=document.getElementById('pm-banner-wrap'); if(w) w.innerHTML=_pmBannerHtml(''); toast('Banner removed.');
+  }catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+async function _pmSave(){
+  var cards=[].slice.call(document.querySelectorAll('#pm-disc .sch-disc-row')).map(function(r){
+    return {title:(r.querySelector('.sd-t')||{}).value||'',price:(r.querySelector('.sd-p')||{}).value||'',old:(r.querySelector('.sd-o')||{}).value||'',url:(r.querySelector('.sd-u')||{}).value||'',img:(r.querySelector('.sd-i')||{}).value||'',tag:(r.querySelector('.sd-g')||{}).value||'',desc:(r.querySelector('.sd-d')||{}).value||'',cls:(r.querySelector('.sd-c')||{}).value||''};
+  }).filter(function(x){ return x.title||x.url; });
+  var join=[].slice.call(document.querySelectorAll('.pm-jb:checked')).map(function(c){ return c.value; });
+  try{ await api('/api/admin/public-marketing','POST',{enabled:true,batches:cards,join_batches:join}); toast('Marketing settings saved!'); }
+  catch(e){ toast((e&&e.message)||'Save failed',true); }
+}
 function _schCollectRows(){
   return [].slice.call(document.querySelectorAll('#sch-rows .sch-row')).map(function(r){
     return {name:(r.querySelector('.sch-n')||{}).value||'', batch:(r.querySelector('.sch-b')||{}).value||'', phone:(r.querySelector('.sch-p')||{}).value||''};
@@ -11818,7 +11945,7 @@ async function _schDeclare(on){
 }
 async function _schSaveDisc(){
   var cards=[].slice.call(document.querySelectorAll('#sch-disc .sch-disc-row')).map(function(r){
-    return {title:(r.querySelector('.sd-t')||{}).value||'', price:(r.querySelector('.sd-p')||{}).value||'', old:(r.querySelector('.sd-o')||{}).value||'', url:(r.querySelector('.sd-u')||{}).value||'', img:(r.querySelector('.sd-i')||{}).value||'', tag:(r.querySelector('.sd-g')||{}).value||'', desc:(r.querySelector('.sd-d')||{}).value||''};
+    return {title:(r.querySelector('.sd-t')||{}).value||'', price:(r.querySelector('.sd-p')||{}).value||'', old:(r.querySelector('.sd-o')||{}).value||'', url:(r.querySelector('.sd-u')||{}).value||'', img:(r.querySelector('.sd-i')||{}).value||'', tag:(r.querySelector('.sd-g')||{}).value||'', desc:(r.querySelector('.sd-d')||{}).value||'', cls:(r.querySelector('.sd-c')||{}).value||''};
   }).filter(function(x){ return x.title||x.url; });
   try{ var r=await api('/api/admin/scholarship/'+window._schExam+'/discount','POST',{discount_batches:cards}); toast(r.saved+' offers saved.'); }
   catch(e){ toast((e&&e.message)||'Failed',true); }
