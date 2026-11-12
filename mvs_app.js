@@ -11882,13 +11882,14 @@ async function _pmFetchBatch(btn){
   }catch(e){ toast((e&&e.message)||'Fetch failed',true); }
   finally{ btn.disabled=false; btn.innerHTML=old; }
 }
+function _pmJoinLabel(b){ var s=(b.session||'').trim(); return b.name+(s?(' '+s):''); }
 function _pmJoinHtml(live, selected){
-  if(!live.length) return '<div class="sch-sub">Koi active batch nahi mila. Batches section me live batches add karein.</div>';
+  if(!live.length) return '<div class="sch-sub">Koi active batch nahi mila. Batches section me live batches add karein (completed/archived auto-hidden hain).</div>';
   var sel={}; (selected||[]).forEach(function(n){ sel[n]=1; });
   return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:7px">'+live.map(function(b){
-    var ck=sel[b.name]?' checked':'';
+    var lbl=_pmJoinLabel(b); var ck=sel[lbl]?' checked':'';
     return '<label style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:.82rem;cursor:pointer">'
-      +'<input type="checkbox" class="pm-jb" value="'+esc(b.name)+'"'+ck+' style="width:16px;height:16px;flex:0 0 auto">'
+      +'<input type="checkbox" class="pm-jb" value="'+esc(lbl)+'"'+ck+' style="width:16px;height:16px;flex:0 0 auto">'
       +'<span style="min-width:0"><b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</b>'
       +'<span style="color:var(--text-muted);font-size:.72rem">'+esc(b.session||'')+(b.type?(' · '+esc(b.type)):'')+'</span></span></label>';
   }).join('')+'</div>';

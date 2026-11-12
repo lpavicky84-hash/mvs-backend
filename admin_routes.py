@@ -11819,22 +11819,29 @@ def _pub_marketing(db):
 
 
 def _pub_live_batches(db):
-    """Non-completed / non-archived active batches — joinable dropdown ke liye candidate list."""
+    """Active batches — joinable dropdown ke candidate. App ke SAME convention se:
+    active != False AND status != 'completed'/'archived' (case-insensitive) AND not archived.
+    IMPORTANT: har SESSION alag entry (e.g. Lakshya Science April 2027 AUR October 2027 dono),
+    isliye dedup sirf (name + session) par — name par nahi (warna October hide ho jaata)."""
     from models import Batch
-    rows = (db.query(Batch)
-            .filter(Batch.active == True,  # noqa: E712
-                    Batch.archived_at.is_(None),
-                    ~Batch.status.in_(["completed", "archived"]))
-            .all())
+    rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
     out = []
     seen = set()
     for b in rows:
         nm = (b.name or "").strip()
-        if not nm or nm.lower() in seen:
+        if not nm:
             continue
-        seen.add(nm.lower())
-        out.append({"name": nm, "session": (b.session or ""), "type": (b.type or ""), "status": (b.status or "")})
-    out.sort(key=lambda x: x["name"].lower())
+        st = (b.status or "").strip().lower()
+        # app convention: inactive / completed / archived batches chhod do
+        if b.active is False or st in ("completed", "archived") or b.archived_at is not None:
+            continue
+        sess = (b.session or "").strip()
+        key = (nm.lower(), sess.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": nm, "session": sess, "type": (b.type or ""), "status": (b.status or "")})
+    out.sort(key=lambda x: (x["name"].lower(), x["session"].lower()))
     return out
 
 
