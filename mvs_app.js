@@ -11929,7 +11929,7 @@ function _admSvcCard(s){
     +'<div style="flex:0 0 120px">'+thumb+'</div>'
     +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1rem">'+esc(s.title||'(untitled)')+'</b>'+classBadge
     +'<label class="sw" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer"><input type="checkbox" '+(s.active?'checked':'')+' onchange="_admSvcToggle('+s.id+',this.checked)"> '+(s.active?'<span style="color:#1f7a52">LIVE</span>':'<span style="color:var(--text-muted)">OFF</span>')+'</label></div>'
-    +(s.price?'<div style="font-weight:800;margin-top:2px">'+esc(s.price)+(s.old_price?' <span style="color:var(--text-muted);text-decoration:line-through;font-weight:500;font-size:.82rem">'+esc(s.old_price)+'</span>':'')+'</div>':'')
+    +((s.kind!=='practical' && s.price)?'<div style="font-weight:800;margin-top:2px">'+esc(s.price)+(s.old_price?' <span style="color:var(--text-muted);text-decoration:line-through;font-weight:500;font-size:.82rem">'+esc(s.old_price)+'</span>':'')+'</div>':(s.kind==='practical'?'<div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">No price · Explore only</div>':''))
     +'<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">'+tgtHtml+'</div>'
     +'<div style="display:flex;gap:12px;margin-top:9px;font-size:.74rem;color:var(--text-muted)"><span><b style="color:var(--text)">'+(st.clicks||0)+'</b> clicks</span><span><b style="color:#1f7a52">'+(st.yes||0)+'</b> bought</span><span><b style="color:#c0392b">'+(st.no||0)+'</b> no</span><span><b style="color:#b8941f">₹'+(st.revenue||0)+'</b></span></div>'
     +'</div></div>'
@@ -11961,7 +11961,8 @@ function openServiceEditor(id){
     +'<label class="sch-lbl">Title</label><input class="sch-in" id="svc-title" value="'+esc(s.title||'')+'" oninput="_svcPosterRefresh()" placeholder="e.g. NIOS Class 10 Ready Made TMA">'
     +'<label class="sch-lbl">Description</label><input class="sch-in" id="svc-desc" value="'+esc(s.description||'')+'" placeholder="Short description">'
     +'<label class="sch-lbl">Redirect link (where student buys)</label><input class="sch-in" id="svc-link" value="'+esc(s.link||'')+'" placeholder="https://...">'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div><label class="sch-lbl">Price</label><input class="sch-in" id="svc-price" value="'+esc(s.price||'')+'" placeholder="₹500"></div><div><label class="sch-lbl">Old price</label><input class="sch-in" id="svc-old" value="'+esc(s.old_price||'')+'" placeholder="₹1000"></div><div><label class="sch-lbl">Tag</label><input class="sch-in" id="svc-tag" value="'+esc(s.tag||'')+'" placeholder="Limited Offer"></div></div>'
+    +'<div id="svc-price-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div><label class="sch-lbl">Price</label><input class="sch-in" id="svc-price" value="'+esc(s.price||'')+'" placeholder="₹500"></div><div><label class="sch-lbl">Old price</label><input class="sch-in" id="svc-old" value="'+esc(s.old_price||'')+'" placeholder="₹1000"></div><div><label class="sch-lbl">Tag</label><input class="sch-in" id="svc-tag" value="'+esc(s.tag||'')+'" placeholder="Limited Offer"></div></div>'
+    +'<div id="svc-noprice-note" class="sch-sub" style="display:none;margin:2px 0 0">Practical Files mein price nahi — student sirf <b>Explore</b> dabake seedha link pe jaata hai.</div>'
     +'<label class="sch-lbl">Product image (auto-banata hai title se)</label>'
     +'<div class="sch-sub" style="margin:0 0 7px">Sirf title likho — premium image apne-aap ban jaati hai. Har product ka alag premium colour. (Chahein to apni image bhi laga sakte ho.)</div>'
     +'<div id="svc-poster-prev" style="max-width:360px"></div>'
@@ -12018,8 +12019,11 @@ function _svcThumbPick(input){
 }
 function _svcKindChange(){
   var k=(document.getElementById('svc-kind')||{}).value;
+  var prac=(k==='practical');
   var w=document.getElementById('svc-reqprac-wrap');
-  if(w) w.style.display=(k==='practical')?'none':'flex';   // practical kind => auto require
+  if(w) w.style.display=prac?'none':'flex';   // practical kind => auto require
+  var pr=document.getElementById('svc-price-row'); if(pr) pr.style.display=prac?'none':'grid';
+  var nn=document.getElementById('svc-noprice-note'); if(nn) nn.style.display=prac?'block':'none';
 }
 async function _svcSave(){
   var payload={
@@ -12038,6 +12042,7 @@ async function _svcSave(){
     active:!!(document.getElementById('svc-active')||{}).checked,
     thumbnail:window._svcThumb||''
   };
+  if(payload.kind==='practical'){ payload.price=''; payload.old_price=''; }  // practical: no price
   if(!payload.title.trim()){ toast('Please enter a title',true); return; }
   try{ await api('/api/admin/services','POST',payload); closeModal(); toast('Service saved!'); loadAServices(); }
   catch(e){ toast((e&&e.message)||'Save failed',true); }
@@ -22162,7 +22167,7 @@ async function loadSServices(){
     }
     var cards=svcs.map(function(s){
       var thumb='<div class="svc-thumb">'+_svcPoster(s.title,s.id,false)+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">':'')+'</div>';
-      var price=s.price?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
+      var price=(s.kind!=='practical' && s.price)?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
       var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()">'+ic('book')+' Know your practical subjects</button>'):'';
       var done=(s.my_response==='yes')?'<div class="svc-done">✓ You marked this as purchased</div>':'';
       return '<div class="svc-card">'+thumb+'<div class="svc-body">'
