@@ -11711,7 +11711,10 @@ function _ensureSchCss(){
     '.sch-lbl{display:block;font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin:11px 0 4px}',
     '.sch-in{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:.86rem;background:#fff;color:var(--text)}',
     '.sch-in:focus{outline:none;border-color:#b8941f;box-shadow:0 0 0 3px rgba(184,148,31,.14)}',
-    '.sw input{accent-color:#1f7a52}'
+    '.sw input{accent-color:#1f7a52}',
+    '.svc-trk-del{border:none;background:transparent;color:#c0392b;cursor:pointer;padding:4px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s}',
+    '.svc-trk-del:hover{background:rgba(192,57,43,.1)}',
+    '.svc-trk-del svg{width:16px;height:16px}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -12063,12 +12066,13 @@ async function _svcTrkLoad(){
     var box=document.getElementById('svc-trk'); if(!box) return;
     var rg=d.range||{}, at=d.all_time||{};
     function chip(k,lbl){ return '<button class="btn btn-sm '+(window._svcTrkRange===k?'btn-primary':'btn-ghost')+'" onclick="window._svcTrkRange=\''+k+'\';_svcTrkLoad()">'+lbl+'</button>'; }
+    function delBtn(iid){ return '<button class="svc-trk-del" title="Delete this record" onclick="_svcTrkDelRow('+id+','+iid+')">'+ic('trash')+'</button>'; }
     var yesRows=(d.yes_rows||[]).map(function(r){
-      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td>'+(r.amount?('₹'+r.amount):'—')+'</td><td>'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
-    }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:12px">No purchases in this range.</td></tr>';
+      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td>'+(r.amount?('₹'+r.amount):'—')+'</td><td>'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td style="text-align:center">'+delBtn(r.id)+'</td></tr>';
+    }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:12px">No purchases in this range.</td></tr>';
     var noRows=(d.no_rows||[]).map(function(r){
-      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
-    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px">No "No" responses in this range.</td></tr>';
+      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td style="text-align:center">'+delBtn(r.id)+'</td></tr>';
+    }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:12px">No "No" responses in this range.</td></tr>';
     box.innerHTML='<div class="sch-sub" style="margin-bottom:10px"><b>'+esc(d.title||'')+'</b> · all-time: '+(at.clicks||0)+' clicks · '+(at.yes||0)+' bought · ₹'+(at.revenue||0)+' revenue</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+chip('today','Today')+chip('week','Weekly')+chip('month','Monthly')+chip('','All')+chip('custom','Custom')+'</div>'
       +(window._svcTrkRange==='custom'?'<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;flex-wrap:wrap"><input type="date" class="sch-in" id="svc-trk-from" style="margin:0;flex:1 1 130px;min-width:0;width:auto"><span style="flex:0 0 auto;color:var(--text-muted)">to</span><input type="date" class="sch-in" id="svc-trk-to" style="margin:0;flex:1 1 130px;min-width:0;width:auto"><button class="btn btn-secondary btn-sm" style="flex:0 0 auto;white-space:nowrap" onclick="_svcTrkLoad()">Apply</button></div>':'')
@@ -12079,9 +12083,9 @@ async function _svcTrkLoad(){
       +'<div><div style="font-size:.7rem;font-weight:800;color:var(--text-muted);text-transform:uppercase">Sales (this range)</div><div style="font-size:1.5rem;font-weight:900;color:#14243f">₹'+(rg.revenue||0)+'</div></div>'
       +'<div class="sch-acts" style="margin:0"><button class="btn btn-ghost btn-sm" onclick="_svcTrkDl(\'yes\')">'+ic('download')+' Export Yes</button><button class="btn btn-ghost btn-sm" onclick="_svcTrkDl(\'no\')">'+ic('download')+' Export No</button></div></div>'
       +'<h4 style="margin:14px 0 6px">Purchased — Yes ('+(d.yes_rows||[]).length+')</h4>'
-      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Amount</th><th>Screenshot</th><th>Time</th></tr></thead><tbody>'+yesRows+'</tbody></table></div>'
+      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Amount</th><th>Screenshot</th><th>Time</th><th></th></tr></thead><tbody>'+yesRows+'</tbody></table></div>'
       +'<h4 style="margin:14px 0 6px">Not yet — No ('+(d.no_rows||[]).length+')</h4>'
-      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Time</th></tr></thead><tbody>'+noRows+'</tbody></table></div>';
+      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Time</th><th></th></tr></thead><tbody>'+noRows+'</tbody></table></div>';
   }catch(e){ var b=document.getElementById('svc-trk'); if(b) b.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Failed')+'</div>'; }
 }
 function _svcTrkDl(type){
@@ -12089,6 +12093,11 @@ function _svcTrkDl(type){
   var frm=(document.getElementById('svc-trk-from')||{}).value||'';
   var to=(document.getElementById('svc-trk-to')||{}).value||'';
   _dlPdf('/api/admin/services/'+id+'/export.xlsx?type='+type+'&range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to),'service_'+id+'_'+type+'.xlsx');
+}
+async function _svcTrkDelRow(sid, iid){
+  if(!confirm('Delete this record? This cannot be undone.')) return;
+  try{ await api('/api/admin/services/'+sid+'/interaction/'+iid,'DELETE'); toast('Record deleted.'); _svcTrkLoad(); loadAServices(); }
+  catch(e){ toast((e&&e.message)||'Delete failed',true); }
 }
 function _svcViewShot(sid, iid){
   var url=API+'/api/admin/services/'+sid+'/screenshot/'+iid;
@@ -22145,7 +22154,11 @@ function _svcCss(){
     '.svc-prac-tx b{font-size:.85rem;font-weight:800}',
     '.svc-prac-tx small{font-size:.67rem;color:var(--text-muted);margin-top:2px;font-weight:600}',
     '.svc-prac-ar{flex:0 0 auto;color:#14213d;font-weight:900;font-size:1.1rem;opacity:.75}',
-    '.svc-done{font-size:.72rem;font-weight:800;color:#1f7a52;text-align:center;padding-top:2px}',
+    '.svc-done{font-size:.74rem;font-weight:800;color:#1f7a52;text-align:center;padding-top:4px;display:flex;align-items:center;justify-content:center;gap:6px}',
+    '.svc-done svg{width:15px;height:15px;flex:0 0 auto}',
+    '.svc-confetti{position:fixed;inset:0;pointer-events:none;z-index:6000;overflow:hidden}',
+    '.svc-petal{position:absolute;top:-24px;border-radius:50% 0 50% 0;opacity:.95;animation-name:svcFall;animation-timing-function:ease-in;animation-fill-mode:forwards}',
+    '@keyframes svcFall{0%{top:-24px;opacity:0}8%{opacity:1}100%{top:106vh;opacity:.5;transform:translateX(50px) rotate(560deg)}}',
     '.svc-ov{position:fixed;inset:0;z-index:4000;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(2px)}',
     '.svc-modal{background:var(--card,#fffdf7);border-radius:20px;max-width:440px;width:100%;box-shadow:0 24px 60px -20px rgba(20,36,63,.6);overflow:hidden}',
     '.svc-modal .bar{height:4px;background:linear-gradient(90deg,#d9b64e,#b8941f)}',
@@ -22175,8 +22188,8 @@ async function loadSServices(){
     var cards=svcs.map(function(s){
       var thumb='<div class="svc-thumb">'+_svcPoster(s.title,s.id,false)+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">':'')+'</div>';
       var price=(s.kind!=='practical' && s.price)?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
-      var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()"><span class="svc-prac-ic">'+ic('book')+'</span><span class="svc-prac-tx"><b>Know your practical subjects</b><small>Apne subjects &amp; marks dekho</small></span><span class="svc-prac-ar">&rarr;</span></button>'):'';
-      var done=(s.my_response==='yes')?'<div class="svc-done">✓ You marked this as purchased</div>':'';
+      var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()"><span class="svc-prac-ic">'+ic('book')+'</span><span class="svc-prac-tx"><b>Know your practical subjects</b><small>See your subjects &amp; marks</small></span><span class="svc-prac-ar">&rarr;</span></button>'):'';
+      var done=(s.my_response==='yes')?'<div class="svc-done">'+ic('check')+' Thank you! Your purchase has been recorded.</div>':'';
       return '<div class="svc-card">'+thumb+'<div class="svc-body">'
         +'<span class="svc-tag">'+esc(s.tag||'MVS Service')+'</span>'
         +'<div class="svc-title">'+esc(s.title||'MVS Service')+'</div>'
@@ -22263,10 +22276,33 @@ async function _svcSubmitYes(sid){
   try{
     await api('/api/student/services/'+sid+'/purchase','POST',{response:'yes',amount:amt,screenshot:shot});
     window._svcSsData='';
-    var ov=document.getElementById('svc-ov'); if(ov) ov.remove();
+    var inb=document.getElementById('svc-modal-in');
+    if(inb){
+      inb.innerHTML='<div style="text-align:center;padding:8px 4px">'
+        +'<div style="width:66px;height:66px;border-radius:50%;margin:0 auto 14px;background:linear-gradient(135deg,#1f7a52,#2fae77);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 22px -10px rgba(31,122,82,.6)">'
+        +'<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>'
+        +'<div style="font-weight:900;font-size:1.4rem;color:#14213d">Thank you!</div>'
+        +'<div style="color:var(--text-muted);font-size:.9rem;margin-top:7px;line-height:1.5">Your purchase has been recorded successfully.<br>Our team will verify it shortly.</div>'
+        +'<button class="btn btn-primary" style="width:100%;margin-top:20px" onclick="var o=document.getElementById(\'svc-ov\');if(o)o.remove()">Done</button></div>';
+    } else { var ov=document.getElementById('svc-ov'); if(ov) ov.remove(); }
+    _svcConfetti();
     toast('Thank you! Your purchase is recorded.');
     loadSServices();
   }catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.textContent='Submit'; } }
+}
+function _svcConfetti(){
+  _svcCss();
+  var layer=document.createElement('div'); layer.className='svc-confetti';
+  var colors=['#e8c15a','#d9b64e','#f2b8e6','#7fe6c0','#b7bdf0','#f0b24a','#ff8fab','#c6b0f5','#ffd36e'];
+  for(var i=0;i<46;i++){
+    var p=document.createElement('span'); p.className='svc-petal';
+    var size=8+Math.random()*11;
+    p.style.cssText='left:'+(Math.random()*100)+'vw;width:'+size+'px;height:'+size+'px;background:'+colors[i%colors.length]
+      +';animation-duration:'+(2.6+Math.random()*2.2)+'s;animation-delay:'+(Math.random()*0.9)+'s';
+    layer.appendChild(p);
+  }
+  document.body.appendChild(layer);
+  setTimeout(function(){ try{ layer.remove(); }catch(e){} }, 5200);
 }
 async function openPracticalSubjects(){
   _svcCss();

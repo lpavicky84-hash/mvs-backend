@@ -12153,6 +12153,18 @@ def admin_services_tracker(sid: int, range: str = "", frm: str = "", to: str = "
     }
 
 
+@router.delete("/services/{sid}/interaction/{iid}")
+def admin_services_delete_interaction(sid: int, iid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek tracker row (ek student ka click/purchase record) delete karo — demo/test cleanup ke liye."""
+    from models import MVSServiceInteraction as MI
+    r = db.query(MI).filter(MI.id == iid, MI.service_id == sid).first()
+    if not r:
+        raise HTTPException(404, "Record not found")
+    db.delete(r)
+    db.commit()
+    return {"deleted": True}
+
+
 @router.get("/services/{sid}/screenshot/{iid}")
 def admin_services_screenshot(sid: int, iid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     import base64 as _b64
