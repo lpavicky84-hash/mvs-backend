@@ -11848,6 +11848,52 @@ async function _schBannerRemove(){
   }catch(e){ toast((e&&e.message)||'Failed',true); }
 }
 
+// ============================= MVS SERVICES — auto poster (text -> premium image) =============================
+var _SVC_PAL=[
+  {bg:'linear-gradient(135deg,#0f2447 0%,#1d3a68 100%)',glow:'rgba(232,193,90,.30)',acc:'#e8c15a'},
+  {bg:'linear-gradient(135deg,#3a1142 0%,#6b2178 100%)',glow:'rgba(242,184,230,.28)',acc:'#f2b8e6'},
+  {bg:'linear-gradient(135deg,#06352a 0%,#0f6b52 100%)',glow:'rgba(127,230,192,.28)',acc:'#7fe6c0'},
+  {bg:'linear-gradient(135deg,#4a1020 0%,#8a1f3a 100%)',glow:'rgba(240,198,116,.28)',acc:'#f0c674'},
+  {bg:'linear-gradient(135deg,#1a1b4b 0%,#3a3f8a 100%)',glow:'rgba(183,189,240,.28)',acc:'#b7bdf0'},
+  {bg:'linear-gradient(135deg,#06303a 0%,#0f6b7a 100%)',glow:'rgba(127,224,230,.28)',acc:'#7fe0e6'},
+  {bg:'linear-gradient(135deg,#231f16 0%,#4a3d22 100%)',glow:'rgba(240,178,74,.32)',acc:'#f0b24a'},
+  {bg:'linear-gradient(135deg,#4a2410 0%,#8a4a1f 100%)',glow:'rgba(240,192,136,.28)',acc:'#f0c088'},
+  {bg:'linear-gradient(135deg,#11263f 0%,#14504f 100%)',glow:'rgba(120,224,196,.28)',acc:'#86e3c4'},
+  {bg:'linear-gradient(135deg,#2a1540 0%,#4a2a86 100%)',glow:'rgba(198,176,245,.28)',acc:'#c6b0f5'}
+];
+function _svcHash(s){ var h=0; s=String(s||''); for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; } return h; }
+function _svcPosterCss(){
+  if(document.getElementById('svc-poster-css')) return;
+  var s=document.createElement('style'); s.id='svc-poster-css';
+  s.textContent=[
+    '.svc-poster{position:absolute;inset:0;overflow:hidden;display:flex;align-items:center;font-family:inherit}',
+    '.svc-poster-glow{position:absolute;inset:0}',
+    '.svc-poster-mark{position:absolute;right:-8px;bottom:-18px;font-size:5.4rem;font-weight:900;letter-spacing:-.05em;line-height:1;pointer-events:none}',
+    '.svc-poster-in{position:relative;z-index:2;width:100%;box-sizing:border-box}',
+    '.svc-poster-kick{font-size:.56rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px}',
+    '.svc-poster-title{font-weight:900;color:#fff;line-height:1.16;letter-spacing:-.01em;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 2px 16px rgba(0,0,0,.35)}',
+    '.svc-poster-rule{width:46px;height:4px;border-radius:3px;margin-top:11px}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _svcPoster(title, seed, compact){
+  _svcPosterCss();
+  var p=_SVC_PAL[_svcHash(seed||title)%_SVC_PAL.length];
+  title=String(title||'MVS Service'); var len=title.length;
+  var fs = compact ? (len>30?'.82rem':len>18?'.95rem':'1.08rem')
+                   : (len>44?'1.02rem':len>30?'1.2rem':len>18?'1.42rem':'1.66rem');
+  var pad = compact?'10px 12px':'15px 17px';
+  var clamp = compact?2:3;
+  return '<div class="svc-poster" style="background:'+p.bg+'">'
+    +'<div class="svc-poster-glow" style="background:radial-gradient(circle at 80% 15%,'+p.glow+',transparent 62%)"></div>'
+    +'<div class="svc-poster-mark" style="color:rgba(255,255,255,.08)">MVS</div>'
+    +'<div class="svc-poster-in" style="padding:'+pad+'">'
+    +(compact?'':'<div class="svc-poster-kick" style="color:'+p.acc+'">MVS FOUNDATION</div>')
+    +'<div class="svc-poster-title" style="font-size:'+fs+';-webkit-line-clamp:'+clamp+'">'+esc(title)+'</div>'
+    +'<div class="svc-poster-rule" style="background:'+p.acc+'"></div>'
+    +'</div></div>';
+}
+
 // ============================= MVS SERVICES (admin) =============================
 async function loadAServices(){
   _ensureSchCss();
@@ -11866,7 +11912,7 @@ async function loadAServices(){
 function _admSvcCard(s){
   var st=s.stats||{};
   var thumb=s.thumbnail?('<div style="aspect-ratio:16/9;background:center/cover no-repeat url('+JSON.stringify(s.thumbnail)+');border-radius:12px"></div>')
-    :('<div style="aspect-ratio:16/9;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;text-align:center;padding:10px;background:linear-gradient(135deg,#14213d,#1d3a68)">'+esc((s.title||'Service').slice(0,36))+'</div>');
+    :('<div style="aspect-ratio:16/9;border-radius:12px;overflow:hidden;position:relative">'+_svcPoster(s.title,s.id,true)+'</div>');
   var tgt=[];
   if(s.kind==='practical') tgt.push('Practical only');
   if(s.target_class) tgt.push('Class '+s.target_class);
@@ -11907,11 +11953,15 @@ function openServiceEditor(id){
   var batChecks=batches.length?batches.map(function(b){ var lbl=b.name+(b.session?(' '+b.session):''); var ck=sel.indexOf(b.name)>=0||sel.indexOf(lbl)>=0; return '<label style="display:flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:9px;padding:7px 9px;font-size:.8rem;cursor:pointer"><input type="checkbox" class="svc-bchk" value="'+esc(b.name)+'"'+(ck?' checked':'')+'> '+esc(b.name)+' <span style="color:var(--text-muted);font-size:.72rem">'+esc(b.session||'')+'</span></label>';}).join(''):'<span class="sch-sub">No active batches</span>';
   var body='<div class="sch-sec" style="border:none;padding-top:0">'
     +'<label class="sch-lbl">Product type</label><select class="sch-in" id="svc-kind" onchange="_svcKindChange()"><option value="link"'+(s.kind!=='practical'?' selected':'')+'>Normal product (redirect link)</option><option value="practical"'+(s.kind==='practical'?' selected':'')+'>Handwritten Practical Files (only students with practical subjects)</option></select>'
-    +'<label class="sch-lbl">Title</label><input class="sch-in" id="svc-title" value="'+esc(s.title||'')+'" placeholder="e.g. NIOS Class 10 Ready Made TMA">'
+    +'<label class="sch-lbl">Title</label><input class="sch-in" id="svc-title" value="'+esc(s.title||'')+'" oninput="_svcPosterRefresh()" placeholder="e.g. NIOS Class 10 Ready Made TMA">'
     +'<label class="sch-lbl">Description</label><input class="sch-in" id="svc-desc" value="'+esc(s.description||'')+'" placeholder="Short description">'
     +'<label class="sch-lbl">Redirect link (where student buys)</label><input class="sch-in" id="svc-link" value="'+esc(s.link||'')+'" placeholder="https://...">'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div><label class="sch-lbl">Price</label><input class="sch-in" id="svc-price" value="'+esc(s.price||'')+'" placeholder="₹500"></div><div><label class="sch-lbl">Old price</label><input class="sch-in" id="svc-old" value="'+esc(s.old_price||'')+'" placeholder="₹1000"></div><div><label class="sch-lbl">Tag</label><input class="sch-in" id="svc-tag" value="'+esc(s.tag||'')+'" placeholder="Limited Offer"></div></div>'
-    +'<label class="sch-lbl">Thumbnail</label><div id="svc-thumb-wrap">'+_svcThumbHtml(s.thumbnail||'')+'</div>'
+    +'<label class="sch-lbl">Product image (auto-banata hai title se)</label>'
+    +'<div class="sch-sub" style="margin:0 0 7px">Sirf title likho — premium image apne-aap ban jaati hai. Har product ka alag premium colour. (Chahein to apni image bhi laga sakte ho.)</div>'
+    +'<div id="svc-poster-prev" style="max-width:360px"></div>'
+    +'<div style="margin-top:8px"><button type="button" class="btn btn-ghost btn-sm" id="svc-thumb-toggle" onclick="_svcThumbToggle()">'+ic('upload')+' Apni image lagao (optional)</button></div>'
+    +'<div id="svc-thumb-wrap" style="margin-top:8px;display:'+(s.thumbnail?'block':'none')+'">'+_svcThumbHtml(s.thumbnail||'')+'</div>'
     +'</div>'
     +'<div class="sch-sec"><h4>Who should see this?</h4><div class="sch-sub">Khaali chhodo to sabko (jaisa filter lagao vaisa dikhega).</div>'
     +'<label class="sch-lbl">Class</label><select class="sch-in" id="svc-class"><option value=""'+(!s.target_class?' selected':'')+'>All classes</option><option value="10"'+(s.target_class==='10'?' selected':'')+'>Class 10 only</option><option value="12"'+(s.target_class==='12'?' selected':'')+'>Class 12 only</option></select>'
@@ -11923,10 +11973,22 @@ function openServiceEditor(id){
   showModal(id?'Edit Service':'Add Service','<div id="svc-ed">'+body+'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_svcSave()">Save</button>');
   _svcKindChange();
+  _svcPosterRefresh();
+}
+function _svcPosterRefresh(){
+  var box=document.getElementById('svc-poster-prev'); if(!box) return;
+  if(window._svcThumb){ box.style.display='none'; return; }
+  box.style.display='';
+  var t=(document.getElementById('svc-title')||{}).value||'MVS Service';
+  box.innerHTML='<div style="aspect-ratio:16/9;border-radius:13px;overflow:hidden;position:relative;border:1px solid var(--border);box-shadow:0 10px 24px -16px rgba(20,33,61,.5)">'+_svcPoster(t, window._svcEditId||t, false)+'</div>';
+}
+function _svcThumbToggle(){
+  var w=document.getElementById('svc-thumb-wrap'); if(!w) return;
+  w.style.display=(w.style.display==='none')?'block':'none';
 }
 function _svcThumbHtml(th){
-  if(th) return '<img src="'+esc(th)+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block"><div style="display:flex;gap:6px;margin-top:6px"><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Replace<input type="file" accept="image/*" hidden onchange="_svcThumbPick(this)"></label><button class="btn btn-danger btn-sm" onclick="window._svcThumb=\'\';document.getElementById(\'svc-thumb-wrap\').innerHTML=_svcThumbHtml(\'\')">Remove</button></div>';
-  return '<label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Upload thumbnail<input type="file" accept="image/*" hidden onchange="_svcThumbPick(this)"></label>';
+  if(th) return '<img src="'+esc(th)+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block"><div style="display:flex;gap:6px;margin-top:6px"><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Replace<input type="file" accept="image/*" hidden onchange="_svcThumbPick(this)"></label><button class="btn btn-danger btn-sm" onclick="window._svcThumb=\'\';document.getElementById(\'svc-thumb-wrap\').innerHTML=_svcThumbHtml(\'\');_svcPosterRefresh()">Remove &amp; use auto image</button></div>';
+  return '<label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Choose image<input type="file" accept="image/*" hidden onchange="_svcThumbPick(this)"></label>';
 }
 function _svcThumbPick(input){
   var f=input.files&&input.files[0]; if(!f) return;
@@ -11942,9 +12004,9 @@ function _svcThumbPick(input){
         var out=cv.toDataURL('image/jpeg',0.82);
         window._svcThumb=(out&&out.length<rd.result.length)?out:rd.result;
       }catch(e){ window._svcThumb=rd.result; }
-      var w=document.getElementById('svc-thumb-wrap'); if(w) w.innerHTML=_svcThumbHtml(window._svcThumb);
+      var w=document.getElementById('svc-thumb-wrap'); if(w){ w.style.display='block'; w.innerHTML=_svcThumbHtml(window._svcThumb); } _svcPosterRefresh();
     };
-    img.onerror=function(){ window._svcThumb=rd.result; var w=document.getElementById('svc-thumb-wrap'); if(w) w.innerHTML=_svcThumbHtml(rd.result); };
+    img.onerror=function(){ window._svcThumb=rd.result; var w=document.getElementById('svc-thumb-wrap'); if(w){ w.style.display='block'; w.innerHTML=_svcThumbHtml(rd.result); } _svcPosterRefresh(); };
     img.src=rd.result;
   };
   rd.readAsDataURL(f);
@@ -22094,8 +22156,7 @@ async function loadSServices(){
       return;
     }
     var cards=svcs.map(function(s){
-      var ph='<div class="svc-ph">'+esc((s.title||'MVS Service').slice(0,40))+'</div>';
-      var thumb='<div class="svc-thumb">'+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">':'')+ph+'</div>';
+      var thumb='<div class="svc-thumb">'+_svcPoster(s.title,s.id,false)+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">':'')+'</div>';
       var price=s.price?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
       var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()">'+ic('book')+' Know your practical subjects</button>'):'';
       var done=(s.my_response==='yes')?'<div class="svc-done">✓ You marked this as purchased</div>':'';
