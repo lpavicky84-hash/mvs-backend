@@ -1142,6 +1142,19 @@ class LiveEvent(Base):
     created_at   = Column(DateTime, default=func.now())
 
 
+class LiveEventClick(Base):
+    """Event banner ke 'Join Now' pe click — admin tracker (kitne students ne click kiya + list).
+    Ek student + ek event ki ek hi row (repeat click par time update)."""
+    __tablename__ = "live_event_clicks"
+    id            = Column(Integer, primary_key=True)
+    event_id      = Column(Integer, index=True)
+    student_id    = Column(Integer, index=True)
+    student_name  = Column(String(160), default="")
+    student_phone = Column(String(20), default="")
+    student_class = Column(String(20), default="")
+    clicked_at    = Column(DateTime, default=func.now())
+
+
 class PublicExamAttempt(Base):
     """Guest (non-portal) student ka attempt jo shareable public link se aaya. Portal ke asli
     StudentProfile se bilkul alag — ye sirf lead/exam data capture karta hai, export ke liye."""

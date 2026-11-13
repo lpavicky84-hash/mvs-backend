@@ -4793,3 +4793,28 @@ def student_events_active(db: Session = Depends(get_db), current_user=Depends(ge
     # soonest start_at first (empty start_at last)
     out.sort(key=lambda x: (x["start_at"] == "", x["start_at"]))
     return {"events": out}
+
+
+@router.post("/events/{eid}/click")
+def student_event_click(eid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student ne event ka 'Join Now' dabaya — admin tracker ke liye record (ek student = ek row)."""
+    from datetime import datetime as _dt
+    from models import LiveEvent, LiveEventClick
+    ev = db.query(LiveEvent).get(eid)
+    if not ev:
+        return {"ok": True}
+    prof = get_student_profile(current_user, db)
+    try:
+        r = db.query(LiveEventClick).filter(LiveEventClick.event_id == eid,
+                                            LiveEventClick.student_id == prof.id).first()
+        if not r:
+            r = LiveEventClick(event_id=eid, student_id=prof.id,
+                               student_name=getattr(current_user, "name", "") or "",
+                               student_phone=(getattr(prof, "phone", "") or ""),
+                               student_class=str(getattr(prof, "class_level", "") or ""))
+            db.add(r)
+        r.clicked_at = _dt.utcnow()
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True}

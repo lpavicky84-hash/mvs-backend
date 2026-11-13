@@ -12244,9 +12244,32 @@ def _event_out(e):
 
 @router.get("/events")
 def admin_events_list(db: Session = Depends(get_db), _=Depends(get_admin)):
-    from models import LiveEvent
+    from models import LiveEvent, LiveEventClick
     evs = db.query(LiveEvent).order_by(LiveEvent.id.desc()).all()
-    return {"events": [_event_out(e) for e in evs]}
+    out = []
+    for e in evs:
+        d = _event_out(e)
+        try:
+            d["clicks"] = db.query(LiveEventClick).filter(LiveEventClick.event_id == e.id).count()
+        except Exception:
+            d["clicks"] = 0
+        out.append(d)
+    return {"events": out}
+
+
+@router.get("/events/{eid}/tracker")
+def admin_events_tracker(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Event ke Join-Now clicks — count + students ki list (name/phone/class/time)."""
+    from models import LiveEvent, LiveEventClick
+    ev = db.query(LiveEvent).get(eid)
+    rows = db.query(LiveEventClick).filter(LiveEventClick.event_id == eid)\
+             .order_by(LiveEventClick.id.desc()).all()
+    out = []
+    for r in rows:
+        out.append({"id": r.id, "name": r.student_name or "", "phone": r.student_phone or "",
+                    "class": r.student_class or "",
+                    "time": (r.clicked_at.strftime("%d %b %Y, %I:%M %p") if r.clicked_at else "")})
+    return {"title": (ev.title if ev else ""), "clicks": len(out), "rows": out}
 
 
 @router.post("/events")

@@ -11955,9 +11955,26 @@ function _admEventCard(e){
     +'<label class="sw" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer"><input type="checkbox" '+(e.active?'checked':'')+' onchange="_admEventToggle('+e.id+',this.checked)"> '+(e.active?'<span style="color:#1f7a52">LIVE</span>':'<span style="color:var(--text-muted)">OFF</span>')+'</label></div>'
     +(e.subtitle?'<div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">'+esc(e.subtitle)+'</div>':'')
     +'<div style="font-size:.76rem;margin-top:7px;font-weight:700;color:#14213d;display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>'+esc(when)+'</span></div>'
+    +'<div style="font-size:.74rem;margin-top:6px;color:var(--text-muted)"><b style="color:var(--text)">'+(e.clicks||0)+'</b> student'+((e.clicks===1)?'':'s')+' clicked Join</div>'
     +'</div></div>'
-    +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="openEventEditor('+e.id+')">'+ic('edit')+' Edit</button>'
+    +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEventTracker('+e.id+')">'+ic('chart')+' Tracker</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="openEventEditor('+e.id+')">'+ic('edit')+' Edit</button>'
     +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="_admEventDelete('+e.id+')">'+ic('trash')+' Delete</button></div></div>';
+}
+async function openEventTracker(eid){
+  _ensureSchCss();
+  showModal('Event Tracker','<div id="ev-trk"><div class="spinner" style="margin:30px auto"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    var d=await api('/api/admin/events/'+eid+'/tracker');
+    var box=document.getElementById('ev-trk'); if(!box) return;
+    var rows=(d.rows||[]).map(function(r){
+      return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px">No clicks yet.</td></tr>';
+    box.innerHTML='<div class="sch-sub" style="margin-bottom:10px"><b>'+esc(d.title||'Event')+'</b></div>'
+      +'<div class="sch-trk"><div class="t"><b>'+(d.clicks||0)+'</b><span>Students Clicked Join</span></div></div>'
+      +'<h4 style="margin:14px 0 6px">Who clicked ('+(d.rows||[]).length+')</h4>'
+      +'<div class="svc-trk-scroll" style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl svc-trk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Time</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }catch(e){ var b=document.getElementById('ev-trk'); if(b) b.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Failed')+'</div>'; }
 }
 function _ytId(u){
   u=String(u||''); if(!u) return '';
@@ -21950,8 +21967,8 @@ function _evBannerCss(){
   if(document.getElementById('sev-banner-css')) return;
   var s=document.createElement('style'); s.id='sev-banner-css';
   s.textContent=[
-    '.sev-banner{display:flex;gap:16px;align-items:stretch;background:linear-gradient(135deg,#0f2447,#1d3a68);border-radius:18px;padding:14px;margin:0 0 16px;position:relative;overflow:hidden;box-shadow:0 16px 36px -22px rgba(15,36,71,.9)}',
-    '.sev-banner::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 92% 10%,rgba(232,193,90,.22),transparent 55%);pointer-events:none}',
+    '.sev-banner{display:flex;gap:16px;align-items:stretch;background:linear-gradient(135deg,#2a1e06 0%,#43320b 48%,#5a4712 100%);border-radius:18px;padding:14px;margin:0 0 16px;position:relative;overflow:hidden;box-shadow:0 16px 38px -22px rgba(67,50,11,.9);border:1px solid rgba(240,207,122,.22)}',
+    '.sev-banner::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 90% 8%,rgba(240,207,122,.3),transparent 55%);pointer-events:none}',
     '.sev-thumb{flex:0 0 40%;max-width:280px;position:relative;border-radius:13px;overflow:hidden;min-height:120px;background:#000 center/cover no-repeat}',
     '.sev-thumb .sev-poster{position:absolute;inset:0}',
     '.sev-badge{position:absolute;top:9px;left:9px;z-index:3;background:#c0392b;color:#fff;font-size:.6rem;font-weight:800;letter-spacing:.1em;border-radius:6px;padding:3px 8px;display:flex;align-items:center;gap:5px}',
@@ -21962,17 +21979,17 @@ function _evBannerCss(){
     '.sev-play span{width:46px;height:46px;border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85)}',
     '.sev-play svg{width:18px;height:18px;margin-left:3px;fill:#fff}',
     '.sev-body{flex:1;min-width:0;color:#fff;display:flex;flex-direction:column;justify-content:center;z-index:2;padding:4px 2px}',
-    '.sev-kick{font-size:.62rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#e8c15a;margin-bottom:5px}',
-    '.sev-title{font-size:1.18rem;font-weight:900;line-height:1.2;letter-spacing:-.01em}',
-    '.sev-sub{font-size:.82rem;color:rgba(255,255,255,.72);margin-top:3px;line-height:1.35}',
+    '.sev-kick{font-size:.62rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#f3d589;margin-bottom:5px}',
+    '.sev-title{font-size:1.18rem;font-weight:900;line-height:1.2;letter-spacing:-.01em;color:#fffaf0}',
+    '.sev-sub{font-size:.82rem;color:rgba(255,248,231,.78);margin-top:3px;line-height:1.35}',
     '.sev-count{display:flex;gap:7px;margin:12px 0}',
-    '.sev-cbox{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:6px 0;min-width:48px;text-align:center}',
-    '.sev-cnum{font-size:1.25rem;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}',
-    '.sev-clbl{font-size:.54rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-top:3px}',
-    '.sev-live-now{display:inline-flex;align-items:center;gap:8px;font-size:1.05rem;font-weight:900;color:#7fe6b0;margin:12px 0}',
+    '.sev-cbox{background:rgba(243,213,137,.14);border:1px solid rgba(243,213,137,.24);border-radius:10px;padding:6px 0;min-width:48px;text-align:center}',
+    '.sev-cnum{font-size:1.25rem;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;color:#fffaf0}',
+    '.sev-clbl{font-size:.54rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(243,213,137,.72);margin-top:3px}',
+    '.sev-live-now{display:inline-flex;align-items:center;gap:8px;font-size:1.05rem;font-weight:900;color:#ffe9a8;margin:12px 0}',
     '.sev-live-now .pulse{width:11px;height:11px;border-radius:50%;background:#2fae77;box-shadow:0 0 0 0 rgba(47,174,119,.7);animation:sevRing 1.4s infinite}',
     '@keyframes sevRing{0%{box-shadow:0 0 0 0 rgba(47,174,119,.6)}70%{box-shadow:0 0 0 12px rgba(47,174,119,0)}100%{box-shadow:0 0 0 0 rgba(47,174,119,0)}}',
-    '.sev-join{align-self:flex-start;background:linear-gradient(135deg,#e8c15a,#d4a93f);color:#2a2200;font-weight:800;border:none;border-radius:11px;padding:10px 20px;cursor:pointer;font-size:.9rem;box-shadow:0 8px 18px -8px rgba(212,169,63,.8);transition:transform .14s}',
+    '.sev-join{align-self:flex-start;background:linear-gradient(135deg,#fff3d4,#f3d589);color:#3a2c0b;font-weight:800;border:none;border-radius:11px;padding:10px 20px;cursor:pointer;font-size:.9rem;box-shadow:0 8px 18px -8px rgba(243,213,137,.9);transition:transform .14s}',
     '.sev-join:hover{transform:translateY(-2px)}',
     '@media(max-width:620px){.sev-banner{flex-direction:column}.sev-thumb{flex:none;max-width:none;width:100%;aspect-ratio:16/9;min-height:0}.sev-title{font-size:1.05rem}.sev-count{flex-wrap:wrap}}'
   ].join('');
@@ -21986,12 +22003,14 @@ async function loadStudentEventBanner(){
     var evs=(d.events||[]); if(!evs.length){ el.innerHTML=''; return; }
     _evBannerCss();
     var e=evs[0];
+    window._sEvJoinUrl=e.url||''; window._sEvJoinId=e.id;
     var yt=_ytId(e.video_url);
-    var thumb=yt
-      ? '<div class="sev-thumb" style="background-image:url(https://img.youtube.com/vi/'+yt+'/hqdefault.jpg)"><div class="sev-play"><span>'+_svcSvgPlay()+'</span></div><span class="sev-badge" id="sev-badge"><span class="pdot"></span>LIVE EVENT</span></div>'
-      : '<div class="sev-thumb">'+_svcPoster(e.title||'Live Event',e.id,true)+'<span class="sev-badge" id="sev-badge">LIVE EVENT</span></div>';
     var urlOk=/^https?:\/\//i.test(e.url||'');
-    var joinBtn=urlOk?'<button class="sev-join" onclick="window.open('+JSON.stringify(e.url)+',\'_blank\',\'noopener\')">Join Now &rarr;</button>':'';
+    var thumbClick=urlOk?' style="cursor:pointer" onclick="_sEvJoin()"':'';
+    var thumb=yt
+      ? '<div class="sev-thumb" style="background-image:url(https://img.youtube.com/vi/'+yt+'/hqdefault.jpg)"'+(urlOk?' onclick="_sEvJoin()"':'')+'><div class="sev-play"><span>'+_svcSvgPlay()+'</span></div><span class="sev-badge" id="sev-badge"><span class="pdot"></span>LIVE EVENT</span></div>'
+      : '<div class="sev-thumb"'+(urlOk?' style="cursor:pointer" onclick="_sEvJoin()"':'')+'>'+_svcPoster(e.title||'Live Event',e.id,true)+'<span class="sev-badge" id="sev-badge">LIVE EVENT</span></div>';
+    var joinBtn=urlOk?'<button class="sev-join" onclick="_sEvJoin()">Join Now &rarr;</button>':'';
     el.innerHTML='<div class="sev-banner">'+thumb
       +'<div class="sev-body"><div class="sev-kick" id="sev-kick">Starting soon</div>'
       +'<div class="sev-title">'+esc(e.title||'Live Event')+'</div>'
@@ -22019,6 +22038,11 @@ async function loadStudentEventBanner(){
   }catch(e){ el.innerHTML=''; }
 }
 function _svcSvgPlay(){ return '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'; }
+function _sEvJoin(){
+  var u=window._sEvJoinUrl||''; var id=window._sEvJoinId;
+  if(id){ try{ api('/api/student/events/'+id+'/click','POST').catch(function(){}); }catch(e){} }
+  if(/^https?:\/\//i.test(u)) window.open(u,'_blank','noopener');
+}
 async function showSubjectScreen(p){
   p=p||{};
   var scr=document.getElementById('subject-screen'); if(!scr) return;
