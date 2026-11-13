@@ -107,29 +107,114 @@ def service_visible_to(svc, profile, db, ignore_active=False):
     return True
 
 
+def _practical_name_set(class_level):
+    """Class ke practical-subject naam (lowercase) ka set — ek baar nikaal ke reuse."""
+    try:
+        import syllabus_data as SD
+    except Exception:
+        return set()
+    cl = str(class_level or "").strip()
+    cands = list(SD.SUBJECTS.get(cl, []))
+    if not cands:
+        cands = list(SD.SUBJECTS.get("10", [])) + list(SD.SUBJECTS.get("12", []))
+    out = set()
+    for s in cands:
+        m = s.get("marks", {}) or {}
+        if m.get("has_practical"):
+            out.add(str(s.get("name", "")).strip().lower())
+    return out
+
+
+def _profile_has_practical_fast(p, prac_names):
+    subs = getattr(p, "subjects", None) or []
+    if not isinstance(subs, list):
+        return False
+    for nm in subs:
+        if str(nm).strip().lower() in prac_names:
+            return True
+    return False
+
+
 def targeted_student_users(svc, db):
     """Is service ke target students (User, StudentProfile) ki list — active check ignore karke.
+    BULK queries (N+1 nahi): class SQL-filter, session/practical Python-filter, batch ek-do query me.
     Notify-all isi se sabhi matching students ko notification bhejta hai."""
     from models import User, StudentProfile
-    out = []
+    import json as _json
+    # 1) class filter -> SQL level
+    q = db.query(StudentProfile)
+    tcl = (getattr(svc, "target_class", "") or "").strip()
+    if tcl:
+        q = q.filter(StudentProfile.class_level == tcl)
     try:
-        profs = db.query(StudentProfile).all()
+        profs = q.all()
     except Exception:
         profs = []
-    uid_seen = set()
-    for p in profs:
+
+    # 2) session filter (column already loaded — no extra query)
+    ts = (getattr(svc, "target_session", "") or "").strip().lower()
+    if ts:
+        profs = [p for p in profs if str(getattr(p, "exam_session", "") or "").strip().lower() == ts]
+
+    # 3) batch filter — bulk (2 queries max, batches are few)
+    try:
+        tb = _json.loads(getattr(svc, "target_batches", "") or "[]")
+    except Exception:
+        tb = []
+    if tb:
+        tb_l = set(str(b).strip().lower() for b in tb)
+        tbids = set()
         try:
-            if not service_visible_to(svc, p, db, ignore_active=True):
-                continue
+            from models import Batch
+            for (bid, bname) in db.query(Batch.id, Batch.name).all():
+                if str(bname or "").strip().lower() in tb_l:
+                    tbids.add(bid)
         except Exception:
-            continue
+            pass
+        sb_students = set()
+        if tbids:
+            try:
+                from models import StudentBatch
+                for (psid,) in db.query(StudentBatch.student_id).filter(StudentBatch.batch_id.in_(tbids)).all():
+                    sb_students.add(psid)
+            except Exception:
+                pass
+
+        def _bmatch(p):
+            bn = str(getattr(p, "batch_name", "") or "").strip().lower()
+            if bn and bn in tb_l:
+                return True
+            for a in ("batch_id", "active_batch_id"):
+                v = getattr(p, a, None)
+                if v and v in tbids:
+                    return True
+            return p.id in sb_students
+        profs = [p for p in profs if _bmatch(p)]
+
+    # 4) practical filter — CPU only (no DB), compute name-set once
+    if getattr(svc, "require_practical", False) or getattr(svc, "kind", "") == "practical":
+        prac_names = _practical_name_set(tcl)
+        profs = [p for p in profs if _profile_has_practical_fast(p, prac_names)]
+
+    # 5) map to users in ONE query
+    uids = []
+    seen_uid = set()
+    for p in profs:
         uid = getattr(p, "user_id", None)
-        if not uid or uid in uid_seen:
-            continue
-        u = db.query(User).filter(User.id == uid).first()
+        if uid and uid not in seen_uid:
+            seen_uid.add(uid)
+            uids.append(uid)
+    if not uids:
+        return []
+    users = db.query(User).filter(User.id.in_(uids)).all()
+    umap = {u.id: u for u in users}
+    out = []
+    for p in profs:
+        uid = getattr(p, "user_id", None)
+        u = umap.get(uid)
         if u:
-            uid_seen.add(uid)
             out.append((u, p))
+            umap.pop(uid, None)   # ek user ek baar
     return out
 
 
