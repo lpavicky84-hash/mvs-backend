@@ -9,6 +9,7 @@ const ICONS={
   home:_S+'<path d="M3 9.5 12 3l9 6.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"/><polyline points="9 21 9 12 15 12 15 21"/></svg>',
   clock:_S+'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
   wallet:_S+'<rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.4"/></svg>',
+  bag:_S+'<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
   finger:_S+'<path d="M12 11v4"/><path d="M8 11a4 4 0 0 1 8 0v3a8 8 0 0 1-1 4"/><path d="M5 12.5V11a7 7 0 0 1 12.3-4.6"/><path d="M8.5 20a9.9 9.9 0 0 1-1.4-3"/></svg>',
   grid:_S+'<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
   calendar:_S+'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
@@ -216,7 +217,7 @@ async function _smartPdfPick(f,dzId,onDone){
     toast('Could not process this PDF. Please try another file.',true);
   }
 }
-const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check'};
+const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check','mvs services':'bag'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -11913,16 +11914,20 @@ function _admSvcCard(s){
   var st=s.stats||{};
   var thumb=s.thumbnail?('<div style="aspect-ratio:16/9;background:center/cover no-repeat url('+JSON.stringify(s.thumbnail)+');border-radius:12px"></div>')
     :('<div style="aspect-ratio:16/9;border-radius:12px;overflow:hidden;position:relative">'+_svcPoster(s.title,s.id,true)+'</div>');
+  // Prominent CLASS badge (admin-only identifier) — students ko class nahi dikhti, ye sirf admin ke liye.
+  var cb = s.target_class==='12' ? {t:'Class 12th',bg:'#14213d',fg:'#e8c15a'}
+         : s.target_class==='10' ? {t:'Class 10th',bg:'#0f5132',fg:'#8fe6c0'}
+         : {t:'All classes',bg:'rgba(0,0,0,.07)',fg:'#555'};
+  var classBadge='<span style="font-size:.66rem;font-weight:800;letter-spacing:.03em;border-radius:7px;padding:3px 10px;white-space:nowrap;background:'+cb.bg+';color:'+cb.fg+'">'+cb.t+'</span>';
   var tgt=[];
   if(s.kind==='practical') tgt.push('Practical only');
-  if(s.target_class) tgt.push('Class '+s.target_class);
   if(s.target_session) tgt.push(esc(s.target_session));
   if((s.target_batches||[]).length) tgt.push((s.target_batches.length)+' batch'+(s.target_batches.length>1?'es':''));
   if(s.require_practical && s.kind!=='practical') tgt.push('Practical req.');
   var tgtHtml=tgt.length?tgt.map(function(t){return '<span style="font-size:.64rem;font-weight:700;background:rgba(184,148,31,.12);color:#8a6d16;border-radius:6px;padding:2px 7px">'+t+'</span>';}).join(' '):'<span style="font-size:.66rem;color:var(--text-muted)">All students</span>';
   return '<div class="card" style="padding:14px"><div style="display:flex;gap:12px">'
     +'<div style="flex:0 0 120px">'+thumb+'</div>'
-    +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:1rem">'+esc(s.title||'(untitled)')+'</b>'
+    +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1rem">'+esc(s.title||'(untitled)')+'</b>'+classBadge
     +'<label class="sw" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer"><input type="checkbox" '+(s.active?'checked':'')+' onchange="_admSvcToggle('+s.id+',this.checked)"> '+(s.active?'<span style="color:#1f7a52">LIVE</span>':'<span style="color:var(--text-muted)">OFF</span>')+'</label></div>'
     +(s.price?'<div style="font-weight:800;margin-top:2px">'+esc(s.price)+(s.old_price?' <span style="color:var(--text-muted);text-decoration:line-through;font-weight:500;font-size:.82rem">'+esc(s.old_price)+'</span>':'')+'</div>':'')
     +'<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">'+tgtHtml+'</div>'

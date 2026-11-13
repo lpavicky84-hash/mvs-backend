@@ -159,11 +159,9 @@ def interaction_rows(db, service_id=None, response=None, start=None, end=None):
         q = q.filter(tcol >= start)
     if end:
         q = q.filter(tcol < end)
-    q = q.order_by(MI.responded_at.desc().nullslast() if hasattr(MI.responded_at, "desc") else MI.id.desc())
-    try:
-        return q.all()
-    except Exception:
-        return q.order_by(MI.id.desc()).all()
+    # NOTE: MySQL "NULLS LAST" syntax nahi support karta (SQLite karta hai), isliye
+    # recency ke liye id DESC use karte hain — MySQL + SQLite dono pe safe.
+    return q.order_by(MI.id.desc()).all()
 
 
 def export_interactions_xlsx(db, rows, title="MVS Service"):
