@@ -11680,6 +11680,10 @@ function _ensureSchCss(){
     '.sch-link{display:flex;gap:8px;align-items:center;background:var(--bg-soft,rgba(0,0,0,.04));border-radius:10px;padding:8px 10px;font-size:.78rem;margin-top:8px}',
     '.sch-link input{flex:1;border:none;background:transparent;font-size:.78rem;color:var(--text)}',
     '.sch-acts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}',
+    '.sch-acts .btn svg{width:15px;height:15px;flex:0 0 auto}',
+    '.svc-icon-btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;flex:0 0 auto}',
+    '.svc-icon-btn svg{width:16px;height:16px;margin:0}',
+    '@media(max-width:560px){.sch-acts{gap:7px}.sch-acts>.btn{flex:1 1 calc(50% - 4px);justify-content:center}.sch-acts>.svc-icon-btn{flex:0 0 auto}}',
     '.sch-rowh,.sch-row{display:grid;grid-template-columns:28px 1.1fr 1.6fr 0.9fr 26px;gap:7px;align-items:center}',
     '.sch-rowh{font-size:.64rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;padding:0 2px}',
     '.sch-row{margin-bottom:6px}',
@@ -11959,7 +11963,7 @@ function _admEventCard(e){
     +'</div></div>'
     +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openEventTracker('+e.id+')">'+ic('chart')+' Tracker</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="openEventEditor('+e.id+')">'+ic('edit')+' Edit</button>'
-    +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="_admEventDelete('+e.id+')">'+ic('trash')+' Delete</button></div></div>';
+    +'<button class="btn btn-ghost btn-sm svc-icon-btn" title="Delete" style="color:#c0392b" onclick="_admEventDelete('+e.id+')">'+ic('trash')+'</button></div></div>';
 }
 async function openEventTracker(eid){
   _ensureSchCss();
@@ -12068,7 +12072,7 @@ function _admSvcCard(s){
     +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openServiceTracker('+s.id+')">'+ic('chart')+' Live Tracker</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="_admSvcNotify('+s.id+')">'+ic('bell')+' Notify all</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="openServiceEditor('+s.id+')">'+ic('edit')+' Edit</button>'
-    +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="_admSvcDelete('+s.id+')">'+ic('trash')+' Delete</button></div></div>';
+    +'<button class="btn btn-ghost btn-sm svc-icon-btn" title="Delete" style="color:#c0392b" onclick="_admSvcDelete('+s.id+')">'+ic('trash')+'</button></div></div>';
 }
 async function _admSvcNotify(id){
   if(!confirm('Send a notification about this product to all its target students?\n\nTapping the notification will take them to Materials › MVS Services.')) return;
