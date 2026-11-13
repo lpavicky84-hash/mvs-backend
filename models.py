@@ -1085,6 +1085,46 @@ class PublicTestClick(Base):
     ip            = Column(String(60), default="")
 
 
+class MVSService(Base):
+    """MVS Services — admin-managed products (TMA service, Handwritten Practical Files, etc.)
+    jo students ke portal (Materials > MVS Services) me premium cards ke roop me dikhte hain.
+    Targeting: class-wise, session-wise, batch-wise (multiple) + practical-subject condition."""
+    __tablename__ = "mvs_services"
+    id            = Column(Integer, primary_key=True)
+    kind          = Column(String(20), default="link")   # "link" (redirect product) | "practical" (handwritten practical files — needs practical subjects)
+    title         = Column(String(220), default="")
+    description   = Column(String(600), default="")
+    thumbnail     = Column(_B64TEXT, nullable=True)       # base64 card image
+    link          = Column(String(800), default="")      # external buy/redirect URL
+    price         = Column(String(40), default="")
+    old_price     = Column(String(40), default="")
+    tag           = Column(String(60), default="")        # e.g. "Limited Offer"
+    active        = Column(Boolean, default=False)        # admin toggle -> students ko dikhe
+    target_class   = Column(String(10), default="")       # "" (all) | "10" | "12"
+    target_session = Column(String(60), default="")       # "" (all) | specific exam session
+    target_batches = Column(Text, nullable=True)          # JSON list of batch names; empty = all batches
+    require_practical = Column(Boolean, default=False)     # sirf un students ko jinke paas practical subjects hain
+    sort          = Column(Integer, default=0)
+    created_at    = Column(DateTime, default=func.now())
+
+
+class MVSServiceInteraction(Base):
+    """Ek student + ek service ki interaction — click + purchase response (yes/no) + amount +
+    payment screenshot. Admin live tracker/sales/export isi se bante hain."""
+    __tablename__ = "mvs_service_interactions"
+    id            = Column(Integer, primary_key=True)
+    service_id    = Column(Integer, index=True)
+    student_id    = Column(Integer, index=True)
+    student_name  = Column(String(160), default="")
+    student_phone = Column(String(20), default="", index=True)
+    student_class = Column(String(20), default="")
+    clicked_at    = Column(DateTime, nullable=True)        # pehli Explore click
+    response      = Column(String(8), default="")           # "" (pending) | "yes" | "no"
+    amount        = Column(Float, nullable=True)
+    screenshot    = Column(_B64TEXT, nullable=True)         # base64 payment screenshot (yes par)
+    responded_at  = Column(DateTime, nullable=True)
+
+
 class PublicExamAttempt(Base):
     """Guest (non-portal) student ka attempt jo shareable public link se aaya. Portal ke asli
     StudentProfile se bilkul alag — ye sirf lead/exam data capture karta hai, export ke liye."""

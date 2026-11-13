@@ -11000,13 +11000,19 @@ def admin_public_tests(db: Session = Depends(get_db), _=Depends(get_admin)):
                 .group_by(PublicExamAttempt.exam_id).all())
     out = []
     for ex in rows:
+        _enabled = bool(ex.public_enabled)
+        _attempts = int(cmap.get(ex.id, 0) or 0)
+        # Link OFF + zero submissions => tracker se hata do (sirf tabhi dikhao jab link ON ho
+        # ya koi attempt aa chuka ho). Scholarship tests hamesha rakho (admin wahan se manage karta).
+        if (not _enabled) and _attempts == 0 and (getattr(ex, "result_type", "ranking") != "scholarship"):
+            continue
         out.append({
             "exam_id": ex.id, "title": ex.title or "", "subject": ex.subject or "",
             "teacher_name": ex.teacher_name or "",
-            "enabled": bool(ex.public_enabled), "token": ex.public_token or "",
+            "enabled": _enabled, "token": ex.public_token or "",
             "link": (("/t/" + ex.public_token) if ex.public_token else ""),
             "views": int(getattr(ex, "public_views", 0) or 0),
-            "attempts": int(cmap.get(ex.id, 0) or 0),
+            "attempts": _attempts,
             "total_marks": ex.total_marks or 0,
             "scholarship": (getattr(ex, "result_type", "ranking") == "scholarship"),
             "declared": bool(getattr(ex, "scholarship_declared", False)),
@@ -11987,3 +11993,199 @@ def admin_public_marketing_clicks_pdf(db: Session = Depends(get_db), _=Depends(g
     data = SCH.public_clicks_pdf(_pub_click_rows(db, limit=100000))
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="MVS_Batch_Interest_Report.pdf"'})
+
+
+# ============================= MVS SERVICES (admin) =============================
+def _svc_sessions(db):
+    from models import Batch
+    out = []
+    seen = set()
+    try:
+        for (s,) in db.query(Batch.session).distinct().all():
+            s = (s or "").strip()
+            if s and s.lower() not in seen:
+                seen.add(s.lower()); out.append(s)
+    except Exception:
+        pass
+    out.sort()
+    return out
+
+
+def _svc_stats(db, sid):
+    from models import MVSServiceInteraction as MI
+    rows = db.query(MI).filter(MI.service_id == sid).all()
+    clicks = sum(1 for r in rows if r.clicked_at is not None)
+    yes = sum(1 for r in rows if r.response == "yes")
+    no = sum(1 for r in rows if r.response == "no")
+    revenue = sum((r.amount or 0) for r in rows if r.response == "yes")
+    return {"clicks": clicks, "yes": yes, "no": no, "revenue": round(revenue, 2),
+            "total_students": len(set((r.student_id for r in rows if r.student_id)))}
+
+
+def _svc_out(s):
+    import json as _json
+    try:
+        tb = _json.loads(s.target_batches or "[]")
+    except Exception:
+        tb = []
+    return {
+        "id": s.id, "kind": s.kind or "link", "title": s.title or "", "description": s.description or "",
+        "thumbnail": s.thumbnail or "", "link": s.link or "", "price": s.price or "", "old_price": s.old_price or "",
+        "tag": s.tag or "", "active": bool(s.active), "target_class": s.target_class or "",
+        "target_session": s.target_session or "", "target_batches": tb if isinstance(tb, list) else [],
+        "require_practical": bool(s.require_practical), "sort": s.sort or 0,
+    }
+
+
+@router.get("/services")
+def admin_services_list(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import MVSService
+    rows = db.query(MVSService).order_by(MVSService.sort.asc(), MVSService.id.desc()).all()
+    out = []
+    for s in rows:
+        d = _svc_out(s)
+        d["stats"] = _svc_stats(db, s.id)
+        out.append(d)
+    return {"services": out, "live_batches": _pub_live_batches(db), "sessions": _svc_sessions(db)}
+
+
+@router.post("/services")
+def admin_services_save(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import json as _json
+    from models import MVSService
+    sid = payload.get("id")
+    s = db.query(MVSService).filter(MVSService.id == sid).first() if sid else None
+    if not s:
+        s = MVSService(); db.add(s)
+    s.kind = "practical" if (payload.get("kind") == "practical") else "link"
+    s.title = (payload.get("title") or "")[:220]
+    s.description = (payload.get("description") or "")[:600]
+    s.link = (payload.get("link") or "")[:800]
+    s.price = (payload.get("price") or "")[:40]
+    s.old_price = (payload.get("old_price") or "")[:40]
+    s.tag = (payload.get("tag") or "")[:60]
+    tc = str(payload.get("target_class") or "").strip()
+    s.target_class = tc if tc in ("10", "12") else ""
+    s.target_session = (payload.get("target_session") or "")[:60]
+    tb = payload.get("target_batches")
+    if isinstance(tb, list):
+        s.target_batches = _json.dumps([str(x).strip()[:160] for x in tb if str(x).strip()][:40])
+    s.require_practical = bool(payload.get("require_practical")) or (s.kind == "practical")
+    if "active" in payload:
+        s.active = bool(payload.get("active"))
+    if payload.get("thumbnail") is not None:
+        th = payload.get("thumbnail") or ""
+        s.thumbnail = th if th else None
+    db.commit()
+    return {"saved": True, "id": s.id}
+
+
+@router.post("/services/{sid}/thumbnail")
+async def admin_services_thumbnail(sid: int, file: UploadFile = File(None), remove: int = 0,
+                                   db: Session = Depends(get_db), _=Depends(get_admin)):
+    import scholarship as SCH
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    if remove or file is None:
+        s.thumbnail = None; db.commit()
+        return {"thumbnail": ""}
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12MB).")
+    data_url = SCH.compress_banner(raw, max_w=900)
+    if not data_url:
+        raise HTTPException(422, "Could not process image.")
+    s.thumbnail = data_url; db.commit()
+    return {"thumbnail": data_url}
+
+
+@router.post("/services/{sid}/toggle")
+def admin_services_toggle(sid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    s.active = bool(payload.get("active"))
+    db.commit()
+    return {"active": s.active}
+
+
+@router.delete("/services/{sid}")
+def admin_services_delete(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import MVSService, MVSServiceInteraction as MI
+    db.query(MI).filter(MI.service_id == sid).delete()
+    db.query(MVSService).filter(MVSService.id == sid).delete()
+    db.commit()
+    return {"deleted": True}
+
+
+@router.get("/services/{sid}/tracker")
+def admin_services_tracker(sid: int, range: str = "", frm: str = "", to: str = "",
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    import mvs_services as MS
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    start, end = MS.utc_bounds(range, frm, to)
+    yes_rows = MS.interaction_rows(db, service_id=sid, response="yes", start=start, end=end)
+    no_rows = MS.interaction_rows(db, service_id=sid, response="no", start=start, end=end)
+    clk_start, clk_end = MS.utc_bounds(range, frm, to)
+    clk_rows = MS.interaction_rows(db, service_id=sid, response="clicked", start=clk_start, end=clk_end)
+
+    def row(r, withshot=False):
+        when = r.responded_at or r.clicked_at
+        d = {"id": r.id, "name": r.student_name or "", "phone": r.student_phone or "",
+             "class": r.student_class or "", "amount": (r.amount if r.amount else None),
+             "has_screenshot": bool(r.screenshot),
+             "time": (when.strftime("%d %b %Y, %I:%M %p") if when else "")}
+        return d
+    revenue = round(sum((r.amount or 0) for r in yes_rows), 2)
+    return {
+        "title": s.title or "", "all_time": _svc_stats(db, sid),
+        "range": {"clicks": len(clk_rows), "yes": len(yes_rows), "no": len(no_rows), "revenue": revenue},
+        "yes_rows": [row(r) for r in yes_rows],
+        "no_rows": [row(r) for r in no_rows],
+    }
+
+
+@router.get("/services/{sid}/screenshot/{iid}")
+def admin_services_screenshot(sid: int, iid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    import base64 as _b64
+    from fastapi import Response
+    from models import MVSServiceInteraction as MI
+    r = db.query(MI).filter(MI.id == iid, MI.service_id == sid).first()
+    if not r or not r.screenshot:
+        raise HTTPException(404, "No screenshot")
+    data = r.screenshot
+    try:
+        if data.startswith("data:"):
+            head, b64 = data.split(",", 1)
+            mime = head.split(";")[0].split(":")[1] if ":" in head else "image/jpeg"
+            return Response(content=_b64.b64decode(b64), media_type=mime)
+    except Exception:
+        pass
+    raise HTTPException(422, "Bad screenshot data")
+
+
+@router.get("/services/{sid}/export.xlsx")
+def admin_services_export(sid: int, type: str = "all", range: str = "", frm: str = "", to: str = "",
+                          db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import mvs_services as MS
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    start, end = MS.utc_bounds(range, frm, to)
+    resp = type if type in ("yes", "no") else None
+    rows = MS.interaction_rows(db, service_id=sid, response=resp, start=start, end=end)
+    data = MS.export_interactions_xlsx(db, rows, title=s.title or "MVS Service")
+    fname = "service_%s_%s.xlsx" % (sid, type)
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})

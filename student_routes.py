@@ -4653,3 +4653,120 @@ def _migrate_dpp_bigtext():
 
 
 _migrate_dpp_bigtext()
+
+
+# ============================= MVS SERVICES (student) =============================
+@router.get("/services")
+def student_services(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import mvs_services as MS
+    from models import MVSService, MVSServiceInteraction as MI
+    prof = get_student_profile(current_user, db)
+    if not prof:
+        return {"services": [], "has_practical": False}
+    svcs = db.query(MVSService).filter(MVSService.active == True).order_by(  # noqa: E712
+        MVSService.sort.asc(), MVSService.id.desc()).all()
+    visible = [s for s in svcs if MS.service_visible_to(s, prof, db)]
+    my = {}
+    try:
+        for r in db.query(MI).filter(MI.student_id == prof.id).all():
+            my[r.service_id] = r
+    except Exception:
+        my = {}
+    out = []
+    for s in visible:
+        r = my.get(s.id)
+        out.append({
+            "id": s.id, "kind": s.kind or "link", "title": s.title or "",
+            "description": s.description or "", "thumbnail": s.thumbnail or "",
+            "link": s.link or "", "price": s.price or "", "old_price": s.old_price or "",
+            "tag": s.tag or "",
+            "my_clicked": bool(r and r.clicked_at),
+            "my_response": (r.response if r else ""),
+        })
+    return {"services": out, "has_practical": MS.student_has_practical(prof)}
+
+
+@router.get("/services/practical-subjects")
+def student_practical_subjects(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    import mvs_services as MS
+    prof = get_student_profile(current_user, db)
+    subs = (getattr(prof, "subjects", None) or []) if prof else []
+    ps = MS.practical_subjects_for(getattr(prof, "class_level", "") if prof else "", subs)
+    return {"subjects": ps, "count": len(ps),
+            "total_marks": sum(p["practical_max"] for p in ps)}
+
+
+def _svc_interaction(db, prof, sid, user=None):
+    from models import MVSServiceInteraction as MI
+    nm = (getattr(user, "name", "") or getattr(prof, "name", "") or "")
+    ph = (getattr(prof, "phone", "") or "")
+    cls = (getattr(prof, "class_name", "") or getattr(prof, "class_level", "") or "")
+    r = db.query(MI).filter(MI.service_id == sid, MI.student_id == prof.id).first()
+    if not r:
+        r = MI(service_id=sid, student_id=prof.id, student_name=nm, student_phone=ph, student_class=cls)
+        db.add(r)
+    else:
+        if nm:
+            r.student_name = nm
+        if ph:
+            r.student_phone = ph
+        if cls:
+            r.student_class = cls
+    return r
+
+
+@router.post("/services/{sid}/click")
+def student_service_click(sid: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from datetime import datetime as _dt
+    from models import MVSService
+    prof = get_student_profile(current_user, db)
+    s = db.query(MVSService).filter(MVSService.id == sid, MVSService.active == True).first()  # noqa: E712
+    if not s or not prof:
+        raise HTTPException(404, "Service not found")
+    r = _svc_interaction(db, prof, sid, current_user)
+    if not r.clicked_at:
+        r.clicked_at = _dt.utcnow()
+    db.commit()
+    return {"ok": True, "link": s.link or ""}
+
+
+@router.post("/services/{sid}/purchase")
+def student_service_purchase(sid: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                             current_user=Depends(get_student)):
+    from datetime import datetime as _dt
+    import scholarship as SCH
+    from models import MVSService
+    prof = get_student_profile(current_user, db)
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s or not prof:
+        raise HTTPException(404, "Service not found")
+    resp = str(payload.get("response") or "").strip().lower()
+    if resp not in ("yes", "no"):
+        raise HTTPException(400, "response must be yes/no")
+    r = _svc_interaction(db, prof, sid, current_user)
+    r.response = resp
+    r.responded_at = _dt.utcnow()
+    if resp == "yes":
+        try:
+            amt = payload.get("amount")
+            r.amount = float(amt) if amt not in (None, "") else r.amount
+        except Exception:
+            pass
+        shot = payload.get("screenshot") or ""
+        if shot:
+            # data-URL (already base64 from client) ya raw base64 — compress agar possible
+            try:
+                if shot.startswith("data:"):
+                    import base64 as _b64
+                    head, b64 = shot.split(",", 1)
+                    raw = _b64.b64decode(b64)
+                    r.screenshot = SCH.compress_banner(raw, max_w=1100) or shot
+                else:
+                    r.screenshot = shot[:4000000]
+            except Exception:
+                r.screenshot = shot[:4000000]
+    else:
+        r.amount = None
+        r.screenshot = None
+    db.commit()
+    return {"ok": True}

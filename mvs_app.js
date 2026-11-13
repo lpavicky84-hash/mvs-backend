@@ -9229,6 +9229,10 @@ function _aptCss(){ if(document.getElementById('apt-css')) return; var s=documen
   '.apt-sumt{background:linear-gradient(135deg,#fffdf7,#fbf4e2);border:1px solid #ecd9a3;border-radius:16px;padding:18px 16px;box-shadow:0 8px 22px -16px rgba(40,30,10,.4)}',
   '.apt-sumt b{display:block;font-size:2rem;font-weight:800;line-height:1;color:#14243f}',
   '.apt-sumt span{display:block;margin-top:7px;font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}',
+  '.apt-click{cursor:pointer;transition:transform .12s,box-shadow .12s,border-color .12s;position:relative}',
+  '.apt-click:hover{transform:translateY(-3px);box-shadow:0 16px 30px -16px rgba(40,30,10,.5);border-color:#d9b64e}',
+  '.apt-go{display:block;margin-top:9px;font-size:.68rem;font-weight:800;color:#b8941f;font-style:normal;opacity:0;transition:opacity .12s}',
+  '.apt-click:hover .apt-go{opacity:1}',
   '.apt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}',
   '.apt-card{border:1px solid var(--border);border-radius:16px;padding:16px;background:var(--card,#fff);box-shadow:0 4px 18px -14px rgba(40,30,10,.3);transition:transform .12s,box-shadow .12s}',
   '.apt-card:hover{transform:translateY(-2px);box-shadow:0 10px 26px -14px rgba(40,30,10,.4);border-color:#d9b64e}',
@@ -9264,7 +9268,8 @@ async function loadAPublicTests(){
   const totLive=tests.filter(t=>t.enabled).length;
   const totOpens=tests.reduce((s,t)=>s+(+t.views||0),0);
   const totAttempts=tests.reduce((s,t)=>s+(+t.attempts||0),0);
-  const statTiles=`<div class="apt-sum"><div class="apt-sumt"><b>${totTests}</b><span>Public Tests</span></div><div class="apt-sumt"><b style="color:#059669">${totLive}</b><span>Links Live</span></div><div class="apt-sumt"><b style="color:#b45309">${totOpens.toLocaleString('en-IN')}</b><span>Total Opened</span></div><div class="apt-sumt"><b style="color:#9a7d1a">${totAttempts.toLocaleString('en-IN')}</b><span>Total Attempts</span></div></div>`;
+  window._aptTests=tests;
+  const statTiles=`<div class="apt-sum"><div class="apt-sumt apt-click" onclick="openPublicStat('tests')"><b>${totTests}</b><span>Public Tests</span><i class="apt-go">View ranking →</i></div><div class="apt-sumt apt-click" onclick="openPublicStat('live')"><b style="color:#059669">${totLive}</b><span>Links Live</span><i class="apt-go">View ranking →</i></div><div class="apt-sumt apt-click" onclick="openPublicStat('opened')"><b style="color:#b45309">${totOpens.toLocaleString('en-IN')}</b><span>Total Opened</span><i class="apt-go">View ranking →</i></div><div class="apt-sumt apt-click" onclick="openPublicStat('attempts')"><b style="color:#9a7d1a">${totAttempts.toLocaleString('en-IN')}</b><span>Total Attempts</span><i class="apt-go">View ranking →</i></div></div>`;
   el.innerHTML=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Public Tests Tracker</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Shareable (no-login) tests · opens, attempts &amp; all collected details</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadATests()">${ic('back')} Back to Tests</button><button class="btn btn-gold btn-sm" onclick="openPublicMarketing()">${ic('gift')||''} Marketing &amp; Offers</button><button class="btn btn-ghost btn-sm" onclick="loadAPublicTests()">${ic('refresh')} Refresh</button></div></div>`
     +statTiles
     +(cards?`<div class="apt-grid">${cards}</div>`:`<div class="card"><div class="card-body"><div class="ws-empty"><div class="big">${ic('link')}</div><p><b>No public tests yet</b></p><small>When a teacher turns ON a shareable link for an objective test, it appears here with full tracking.</small></div></div></div>`);
@@ -11701,7 +11706,11 @@ function _ensureSchCss(){
     '.sch-chk-tbl th{text-align:left;color:var(--text-muted);font-size:.66rem;text-transform:uppercase;border-bottom:1px solid var(--border);padding:6px}',
     '.sch-chk-tbl td{padding:6px;border-bottom:1px solid var(--border-soft,rgba(0,0,0,.05))}',
     '.sch-chk-wrap{max-height:230px;overflow:auto}',
-    '.sch-yes{color:#059669;font-weight:800}.sch-no{color:var(--text-muted)}'
+    '.sch-yes{color:#059669;font-weight:800}.sch-no{color:var(--text-muted)}',
+    '.sch-lbl{display:block;font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin:11px 0 4px}',
+    '.sch-in{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:.86rem;background:#fff;color:var(--text)}',
+    '.sch-in:focus{outline:none;border-color:#b8941f;box-shadow:0 0 0 3px rgba(184,148,31,.14)}',
+    '.sw input{accent-color:#1f7a52}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -11837,6 +11846,257 @@ async function _schBannerRemove(){
   try{ var r=await fetch(API+'/api/admin/scholarship/'+window._schExam+'/banner?remove=1',{method:'POST',headers:{Authorization:'Bearer '+TOKEN}});
     await r.json(); var w=document.getElementById('sch-banner-wrap'); if(w) w.innerHTML=_schBannerHtml(''); toast('Banner removed.');
   }catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+
+// ============================= MVS SERVICES (admin) =============================
+async function loadAServices(){
+  _ensureSchCss();
+  var el=document.getElementById('a-services-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    var d=await api('/api/admin/services');
+    window._admSvc=d;
+    var svcs=(d.services||[]);
+    var cards=svcs.map(_admSvcCard).join('')||'<div class="sch-sub" style="padding:20px;text-align:center">No services yet. Add your first product.</div>';
+    el.innerHTML='<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
+      +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div>'
+      +'<div class="apt-grid" style="margin-top:16px">'+cards+'</div>';
+  }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
+}
+function _admSvcCard(s){
+  var st=s.stats||{};
+  var thumb=s.thumbnail?('<div style="aspect-ratio:16/9;background:center/cover no-repeat url('+JSON.stringify(s.thumbnail)+');border-radius:12px"></div>')
+    :('<div style="aspect-ratio:16/9;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;text-align:center;padding:10px;background:linear-gradient(135deg,#14213d,#1d3a68)">'+esc((s.title||'Service').slice(0,36))+'</div>');
+  var tgt=[];
+  if(s.kind==='practical') tgt.push('Practical only');
+  if(s.target_class) tgt.push('Class '+s.target_class);
+  if(s.target_session) tgt.push(esc(s.target_session));
+  if((s.target_batches||[]).length) tgt.push((s.target_batches.length)+' batch'+(s.target_batches.length>1?'es':''));
+  if(s.require_practical && s.kind!=='practical') tgt.push('Practical req.');
+  var tgtHtml=tgt.length?tgt.map(function(t){return '<span style="font-size:.64rem;font-weight:700;background:rgba(184,148,31,.12);color:#8a6d16;border-radius:6px;padding:2px 7px">'+t+'</span>';}).join(' '):'<span style="font-size:.66rem;color:var(--text-muted)">All students</span>';
+  return '<div class="card" style="padding:14px"><div style="display:flex;gap:12px">'
+    +'<div style="flex:0 0 120px">'+thumb+'</div>'
+    +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:1rem">'+esc(s.title||'(untitled)')+'</b>'
+    +'<label class="sw" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer"><input type="checkbox" '+(s.active?'checked':'')+' onchange="_admSvcToggle('+s.id+',this.checked)"> '+(s.active?'<span style="color:#1f7a52">LIVE</span>':'<span style="color:var(--text-muted)">OFF</span>')+'</label></div>'
+    +(s.price?'<div style="font-weight:800;margin-top:2px">'+esc(s.price)+(s.old_price?' <span style="color:var(--text-muted);text-decoration:line-through;font-weight:500;font-size:.82rem">'+esc(s.old_price)+'</span>':'')+'</div>':'')
+    +'<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">'+tgtHtml+'</div>'
+    +'<div style="display:flex;gap:12px;margin-top:9px;font-size:.74rem;color:var(--text-muted)"><span><b style="color:var(--text)">'+(st.clicks||0)+'</b> clicks</span><span><b style="color:#1f7a52">'+(st.yes||0)+'</b> bought</span><span><b style="color:#c0392b">'+(st.no||0)+'</b> no</span><span><b style="color:#b8941f">₹'+(st.revenue||0)+'</b></span></div>'
+    +'</div></div>'
+    +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openServiceTracker('+s.id+')">'+ic('chart')+' Live Tracker</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="openServiceEditor('+s.id+')">'+ic('edit')+' Edit</button>'
+    +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="_admSvcDelete('+s.id+')">'+ic('trash')+' Delete</button></div></div>';
+}
+async function _admSvcToggle(id, on){
+  try{ await api('/api/admin/services/'+id+'/toggle','POST',{active:on}); toast(on?'Service is now LIVE':'Service turned off'); }
+  catch(e){ toast((e&&e.message)||'Failed',true); loadAServices(); }
+}
+async function _admSvcDelete(id){
+  if(!confirm('Delete this service and all its tracker data? This cannot be undone.')) return;
+  try{ await api('/api/admin/services/'+id,'DELETE'); toast('Service deleted.'); loadAServices(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+function openServiceEditor(id){
+  _ensureSchCss();
+  var d=window._admSvc||{}; var svcs=(d.services||[]);
+  var s=id?svcs.filter(function(x){return x.id===id;})[0]:{};
+  s=s||{};
+  window._svcEditId=s.id||null; window._svcThumb=s.thumbnail||'';
+  var sessions=(d.sessions||[]); var batches=(d.live_batches||[]);
+  var sessOpts='<option value="">All sessions</option>'+sessions.map(function(x){return '<option value="'+esc(x)+'"'+(s.target_session===x?' selected':'')+'>'+esc(x)+'</option>';}).join('');
+  var sel=(s.target_batches||[]);
+  var batChecks=batches.length?batches.map(function(b){ var lbl=b.name+(b.session?(' '+b.session):''); var ck=sel.indexOf(b.name)>=0||sel.indexOf(lbl)>=0; return '<label style="display:flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:9px;padding:7px 9px;font-size:.8rem;cursor:pointer"><input type="checkbox" class="svc-bchk" value="'+esc(b.name)+'"'+(ck?' checked':'')+'> '+esc(b.name)+' <span style="color:var(--text-muted);font-size:.72rem">'+esc(b.session||'')+'</span></label>';}).join(''):'<span class="sch-sub">No active batches</span>';
+  var body='<div class="sch-sec" style="border:none;padding-top:0">'
+    +'<label class="sch-lbl">Product type</label><select class="sch-in" id="svc-kind" onchange="_svcKindChange()"><option value="link"'+(s.kind!=='practical'?' selected':'')+'>Normal product (redirect link)</option><option value="practical"'+(s.kind==='practical'?' selected':'')+'>Handwritten Practical Files (only students with practical subjects)</option></select>'
+    +'<label class="sch-lbl">Title</label><input class="sch-in" id="svc-title" value="'+esc(s.title||'')+'" placeholder="e.g. NIOS Class 10 Ready Made TMA">'
+    +'<label class="sch-lbl">Description</label><input class="sch-in" id="svc-desc" value="'+esc(s.description||'')+'" placeholder="Short description">'
+    +'<label class="sch-lbl">Redirect link (where student buys)</label><input class="sch-in" id="svc-link" value="'+esc(s.link||'')+'" placeholder="https://...">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><div><label class="sch-lbl">Price</label><input class="sch-in" id="svc-price" value="'+esc(s.price||'')+'" placeholder="₹500"></div><div><label class="sch-lbl">Old price</label><input class="sch-in" id="svc-old" value="'+esc(s.old_price||'')+'" placeholder="₹1000"></div><div><label class="sch-lbl">Tag</label><input class="sch-in" id="svc-tag" value="'+esc(s.tag||'')+'" placeholder="Limited Offer"></div></div>'
+    +'<label class="sch-lbl">Thumbnail</label><div id="svc-thumb-wrap">'+_svcThumbHtml(s.thumbnail||'')+'</div>'
+    +'</div>'
+    +'<div class="sch-sec"><h4>Who should see this?</h4><div class="sch-sub">Khaali chhodo to sabko (jaisa filter lagao vaisa dikhega).</div>'
+    +'<label class="sch-lbl">Class</label><select class="sch-in" id="svc-class"><option value=""'+(!s.target_class?' selected':'')+'>All classes</option><option value="10"'+(s.target_class==='10'?' selected':'')+'>Class 10 only</option><option value="12"'+(s.target_class==='12'?' selected':'')+'>Class 12 only</option></select>'
+    +'<label class="sch-lbl">Exam session</label><select class="sch-in" id="svc-session">'+sessOpts+'</select>'
+    +'<label class="sch-lbl">Batches (optional — multiple)</label><div id="svc-batches" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">'+batChecks+'</div>'
+    +'<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:.84rem;cursor:pointer" id="svc-reqprac-wrap"><input type="checkbox" id="svc-reqprac" '+(s.require_practical?'checked':'')+'> Only show to students who have practical subjects</label>'
+    +'</div>'
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer;font-weight:700"><input type="checkbox" id="svc-active" '+(s.active?'checked':'')+'> Make this LIVE for students now</label>';
+  showModal(id?'Edit Service':'Add Service','<div id="svc-ed">'+body+'</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_svcSave()">Save</button>');
+  _svcKindChange();
+}
+function _svcThumbHtml(th){
+  if(th) return '<img src="'+esc(th)+'" style="width:100%;max-height:150px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block"><div style="display:flex;gap:6px;margin-top:6px"><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Replace<input type="file" accept="image/*" hidden onchange="_svcThumbPick(this)"></label><button class="btn btn-danger btn-sm" onclick="window._svcThumb=\'\';document.getElementById(\'svc-thumb-wrap\').innerHTML=_svcThumbHtml(\'\')">Remove</button></div>';
+  return '<label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0">'+ic('upload')+' Upload thumbnail<input type="file" accept="image/*" hidden onchange="_svcThumbPick(this)"></label>';
+}
+function _svcThumbPick(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var mw=900, sc=Math.min(1, mw/(img.width||mw));
+        var cw=Math.max(1,Math.round((img.width||mw)*sc)), ch=Math.max(1,Math.round((img.height||mw)*sc));
+        var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+        cv.getContext('2d').drawImage(img,0,0,cw,ch);
+        var out=cv.toDataURL('image/jpeg',0.82);
+        window._svcThumb=(out&&out.length<rd.result.length)?out:rd.result;
+      }catch(e){ window._svcThumb=rd.result; }
+      var w=document.getElementById('svc-thumb-wrap'); if(w) w.innerHTML=_svcThumbHtml(window._svcThumb);
+    };
+    img.onerror=function(){ window._svcThumb=rd.result; var w=document.getElementById('svc-thumb-wrap'); if(w) w.innerHTML=_svcThumbHtml(rd.result); };
+    img.src=rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+function _svcKindChange(){
+  var k=(document.getElementById('svc-kind')||{}).value;
+  var w=document.getElementById('svc-reqprac-wrap');
+  if(w) w.style.display=(k==='practical')?'none':'flex';   // practical kind => auto require
+}
+async function _svcSave(){
+  var payload={
+    id:window._svcEditId||undefined,
+    kind:(document.getElementById('svc-kind')||{}).value||'link',
+    title:(document.getElementById('svc-title')||{}).value||'',
+    description:(document.getElementById('svc-desc')||{}).value||'',
+    link:(document.getElementById('svc-link')||{}).value||'',
+    price:(document.getElementById('svc-price')||{}).value||'',
+    old_price:(document.getElementById('svc-old')||{}).value||'',
+    tag:(document.getElementById('svc-tag')||{}).value||'',
+    target_class:(document.getElementById('svc-class')||{}).value||'',
+    target_session:(document.getElementById('svc-session')||{}).value||'',
+    target_batches:[].slice.call(document.querySelectorAll('.svc-bchk:checked')).map(function(c){return c.value;}),
+    require_practical:!!(document.getElementById('svc-reqprac')||{}).checked,
+    active:!!(document.getElementById('svc-active')||{}).checked,
+    thumbnail:window._svcThumb||''
+  };
+  if(!payload.title.trim()){ toast('Please enter a title',true); return; }
+  try{ await api('/api/admin/services','POST',payload); closeModal(); toast('Service saved!'); loadAServices(); }
+  catch(e){ toast((e&&e.message)||'Save failed',true); }
+}
+async function openServiceTracker(id){
+  _ensureSchCss();
+  window._svcTrkId=id; window._svcTrkRange='';
+  showModal('Service Tracker','<div id="svc-trk"><div class="spinner" style="margin:30px auto"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  _svcTrkLoad();
+}
+async function _svcTrkLoad(){
+  var id=window._svcTrkId, rng=window._svcTrkRange||'';
+  var frm=(document.getElementById('svc-trk-from')||{}).value||'';
+  var to=(document.getElementById('svc-trk-to')||{}).value||'';
+  var qs='range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to);
+  try{
+    var d=await api('/api/admin/services/'+id+'/tracker?'+qs);
+    var box=document.getElementById('svc-trk'); if(!box) return;
+    var rg=d.range||{}, at=d.all_time||{};
+    function chip(k,lbl){ return '<button class="btn btn-sm '+(window._svcTrkRange===k?'btn-primary':'btn-ghost')+'" onclick="window._svcTrkRange=\''+k+'\';_svcTrkLoad()">'+lbl+'</button>'; }
+    var yesRows=(d.yes_rows||[]).map(function(r){
+      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td>'+(r.amount?('₹'+r.amount):'—')+'</td><td>'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
+    }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:12px">No purchases in this range.</td></tr>';
+    var noRows=(d.no_rows||[]).map(function(r){
+      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px">No "No" responses in this range.</td></tr>';
+    box.innerHTML='<div class="sch-sub" style="margin-bottom:10px"><b>'+esc(d.title||'')+'</b> · all-time: '+(at.clicks||0)+' clicks · '+(at.yes||0)+' bought · ₹'+(at.revenue||0)+' revenue</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+chip('today','Today')+chip('week','Weekly')+chip('month','Monthly')+chip('','All')+chip('custom','Custom')+'</div>'
+      +(window._svcTrkRange==='custom'?'<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center"><input type="date" class="sch-in" id="svc-trk-from" style="margin:0"><span>to</span><input type="date" class="sch-in" id="svc-trk-to" style="margin:0"><button class="btn btn-secondary btn-sm" onclick="_svcTrkLoad()">Apply</button></div>':'')
+      +'<div class="sch-trk"><div class="t" onclick="_svcTrkDl(\'all\')" style="cursor:pointer"><b>'+(rg.clicks||0)+'</b><span>Total Clicks</span></div>'
+      +'<div class="t"><b style="color:#1f7a52">'+(rg.yes||0)+'</b><span>Purchased (Yes)</span></div>'
+      +'<div class="t"><b style="color:#c0392b">'+(rg.no||0)+'</b><span>Not yet (No)</span></div></div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:linear-gradient(135deg,#fffdf7,#fbf4e2);border:1px solid #ecd9a3;border-radius:12px;padding:12px 15px;margin:10px 0">'
+      +'<div><div style="font-size:.7rem;font-weight:800;color:var(--text-muted);text-transform:uppercase">Sales (this range)</div><div style="font-size:1.5rem;font-weight:900;color:#14243f">₹'+(rg.revenue||0)+'</div></div>'
+      +'<div class="sch-acts" style="margin:0"><button class="btn btn-ghost btn-sm" onclick="_svcTrkDl(\'yes\')">'+ic('download')+' Export Yes</button><button class="btn btn-ghost btn-sm" onclick="_svcTrkDl(\'no\')">'+ic('download')+' Export No</button></div></div>'
+      +'<h4 style="margin:14px 0 6px">Purchased — Yes ('+(d.yes_rows||[]).length+')</h4>'
+      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Amount</th><th>Screenshot</th><th>Time</th></tr></thead><tbody>'+yesRows+'</tbody></table></div>'
+      +'<h4 style="margin:14px 0 6px">Not yet — No ('+(d.no_rows||[]).length+')</h4>'
+      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Time</th></tr></thead><tbody>'+noRows+'</tbody></table></div>';
+  }catch(e){ var b=document.getElementById('svc-trk'); if(b) b.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Failed')+'</div>'; }
+}
+function _svcTrkDl(type){
+  var id=window._svcTrkId, rng=window._svcTrkRange||'';
+  var frm=(document.getElementById('svc-trk-from')||{}).value||'';
+  var to=(document.getElementById('svc-trk-to')||{}).value||'';
+  _dlPdf('/api/admin/services/'+id+'/export.xlsx?type='+type+'&range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to),'service_'+id+'_'+type+'.xlsx');
+}
+function _svcViewShot(sid, iid){
+  var url=API+'/api/admin/services/'+sid+'/screenshot/'+iid;
+  fetch(url,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){return r.ok?r.blob():null;}).then(function(b){
+    if(!b){ toast('Could not load screenshot',true); return; }
+    var u=URL.createObjectURL(b);
+    var ov=document.createElement('div'); ov.className='svc-ov'; ov.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML='<img src="'+u+'" style="max-width:100%;max-height:92vh;border-radius:10px">';
+    ov.onclick=function(){ ov.remove(); try{URL.revokeObjectURL(u);}catch(e){} };
+    document.body.appendChild(ov);
+  }).catch(function(){ toast('Could not load screenshot',true); });
+}
+
+// ======================= PUBLIC TEST STAT DRILL-DOWN (ranking + graph) =======================
+function _ensurePsCss(){
+  if(document.getElementById('ps-css')) return;
+  var s=document.createElement('style'); s.id='ps-css';
+  s.textContent=[
+    '.ps-sum{font-size:.9rem;color:var(--text-muted);margin-bottom:14px}.ps-sum b{color:var(--text)}',
+    '.ps-podium{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}',
+    '.ps-pod{border-radius:14px;padding:14px 10px 13px;text-align:center;color:#2a2200;box-shadow:0 10px 24px -16px rgba(40,30,10,.5)}',
+    '.ps-gold{background:linear-gradient(135deg,#f6d365,#d9a93a)}.ps-silver{background:linear-gradient(135deg,#e6ebf2,#c3ccd8)}.ps-bronze{background:linear-gradient(135deg,#eabf92,#cf9b63)}',
+    '.ps-medal{width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.2);color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 7px;font-size:.78rem}',
+    '.ps-pv{font-size:1.55rem;font-weight:900;line-height:1}',
+    '.ps-plabel{font-size:.8rem;font-weight:800;margin-top:5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+    '.ps-psub{font-size:.7rem;opacity:.82;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ps-chart{display:flex;flex-direction:column;gap:8px}',
+    '.ps-bar{display:flex;align-items:center;gap:9px}',
+    '.ps-rk{min-width:22px;height:22px;border-radius:6px;background:#eef1f6;color:var(--text);font-weight:800;font-size:.72rem;display:flex;align-items:center;justify-content:center;flex:0 0 auto}',
+    '.ps-rk.top{background:linear-gradient(135deg,#d9b64e,#b8941f);color:#2a2200}',
+    '.ps-info{min-width:0;flex:0 0 38%;display:flex;flex-direction:column}',
+    '.ps-bl{font-size:.8rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ps-bsub{font-size:.68rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ps-track{flex:1;height:16px;background:rgba(0,0,0,.06);border-radius:8px;overflow:hidden;min-width:36px}',
+    '.ps-fill{display:block;height:100%;background:linear-gradient(90deg,#e0c56a,#b8941f);border-radius:8px}',
+    '.ps-bv{min-width:52px;text-align:right;font-weight:800;font-size:.82rem;flex:0 0 auto}',
+    '@media(max-width:520px){.ps-info{flex-basis:30%}.ps-plabel{font-size:.72rem}}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function openPublicStat(metric){
+  _ensurePsCss();
+  var tests=(window._aptTests||[]);
+  var cfg=({
+    tests:{title:'Public Tests — Ranking by Teacher', unit:'public tests', byTeacher:true},
+    live:{title:'Live Links — Ranking by Teacher', unit:'live tests', byTeacher:true, filter:function(t){return t.enabled;}},
+    opened:{title:'Most Opened Tests', unit:'opens', byTest:true, val:function(t){return +t.views||0;}},
+    attempts:{title:'Most Attempted Tests', unit:'attempts', byTest:true, val:function(t){return +t.attempts||0;}}
+  })[metric];
+  if(!cfg) return;
+  var items=[];
+  if(cfg.byTest){
+    items=tests.map(function(t){return {label:t.title||'(untitled)',sub:t.teacher_name||'—',value:cfg.val(t)};}).filter(function(x){return x.value>0;});
+  } else {
+    var m={};
+    tests.forEach(function(t){ if(cfg.filter && !cfg.filter(t)) return; var k=(t.teacher_name||'—'); m[k]=(m[k]||0)+1; });
+    items=Object.keys(m).map(function(k){return {label:k,sub:'',value:m[k]};});
+  }
+  items.sort(function(a,b){return b.value-a.value;});
+  var total=items.reduce(function(s,x){return s+x.value;},0);
+  var max=items.length?items[0].value:1;
+  var podC=['ps-gold','ps-silver','ps-bronze'];
+  var pod=items.slice(0,3).map(function(x,i){
+    return '<div class="ps-pod '+podC[i]+'"><div class="ps-medal">'+(i+1)+'</div><div class="ps-pv">'+x.value.toLocaleString('en-IN')+'</div>'
+      +'<div class="ps-plabel">'+esc(x.label)+'</div>'+(x.sub?'<div class="ps-psub">'+esc(x.sub)+'</div>':'')+'</div>';
+  }).join('');
+  var bars=items.slice(0,12).map(function(x,i){
+    var w=Math.max(4,Math.round(x.value/max*100));
+    return '<div class="ps-bar"><span class="ps-rk'+(i<3?' top':'')+'">'+(i+1)+'</span>'
+      +'<span class="ps-info"><span class="ps-bl" title="'+esc(x.label)+'">'+esc(x.label)+'</span>'+(x.sub?'<span class="ps-bsub">'+esc(x.sub)+'</span>':'')+'</span>'
+      +'<span class="ps-track"><span class="ps-fill" style="width:'+w+'%"></span></span>'
+      +'<span class="ps-bv">'+x.value.toLocaleString('en-IN')+'</span></div>';
+  }).join('');
+  var body='<div class="ps-wrap">'
+    +'<div class="ps-sum"><b>'+total.toLocaleString('en-IN')+'</b> '+esc(cfg.unit)+' across <b>'+items.length+'</b> '+(cfg.byTeacher?'teachers':'tests')+'</div>'
+    +(pod?'<div class="ps-podium">'+pod+'</div>':'')
+    +(bars?'<div class="ps-chart">'+bars+'</div>':'<div class="sch-sub">No data yet.</div>')
+    +(items.length>12?'<div class="sch-sub" style="margin-top:10px">Showing top 12 of '+items.length+'.</div>':'')
+    +'</div>';
+  showModal(cfg.title, body, '<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
 }
 
 // ======================= UNIVERSAL PUBLIC-TEST MARKETING =======================
@@ -13034,6 +13294,7 @@ function adminAllowed(page){
   if(page==='ytasks') return secs.includes('ytasks')||secs.includes('vtasks');
   if(page==='prodtrack') return secs.includes('prodtrack')||secs.includes('prodteam')||secs.includes('prodmon');
   if(page==='upsched') return secs.includes('upsched')||secs.includes('prodboard')||secs.includes('prodmon')||secs.includes('prodteam');
+  if(page==='services') return secs.includes('services')||secs.includes('students');
   return secs.includes(page);
 }
 function applyAdminAccess(){
@@ -13221,7 +13482,7 @@ async function openUserSessions(uid){
 // Master list of admin section titles (page key -> title). SINGLE SOURCE OF TRUTH:
 // koi bhi naya section yahan add karo -> nav title bhi milega AUR admin-user access
 // dropdown (ADMIN_SECTIONS) mein apne aap aa jaayega (neeche derive hota hai).
-const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice'};
+const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice',services:'MVS Services'};
 // Dynamic admin pages: inka page-div STATIC HTML me nahi hota — openAdmin() ke init me banta hai.
 // page-key -> uska init function (jo a-page-<key> div banata hai). aPage() navigate se PEHLE isse
 // ensure karta hai ki div zaroor exist kare. (Teacher/Student ke notification-target pages — timetable,
@@ -13294,6 +13555,7 @@ function _aLoadPage(page){
   else if(page==='qbank') loadAQBank();
   else if(page==='live') loadALive();
   else if(page==='students') loadAStudents();
+  else if(page==='services') loadAServices();
   else if(page==='admins') loadAAdmins();
   else if(page==='syllabus') loadASyllabus();
   else if(page==='subjects') loadASubjects();
@@ -21751,7 +22013,7 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check',community:'Community'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',services:'MVS Services',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check',community:'Community'};
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page]||page;
   stopCountdown();
@@ -21762,6 +22024,7 @@ function _sLoadPage(page){
   if(page==='dashboard') loadSDashboard();
   else if(page==='timetable') loadSTimetable();
   else if(page==='materials') loadSMaterials();
+  else if(page==='services') loadSServices();
   else if(page==='mybatches') loadSMyBatches();
   else if(page==='homework') loadSHomework();
   else if(page==='teachers') loadSTeachers();
@@ -21781,6 +22044,173 @@ function _sLoadPage(page){
   // isliye purane 180/600/1400ms wale jugaad ki zaroorat nahi — ek hi baar mount kaafi hai.
   var _cid={timetable:'s-timetable-content',materials:'s-materials-content',dpp:'s-dpp-content',tests:'s-tests-content',progress:'s-progress-content'}[page];
   if(_cid){ _pageBatchBar(_cid); }
+}
+
+// ============================ MVS SERVICES (student) ============================
+function _svcCss(){
+  if(document.getElementById('svc-css')) return;
+  var s=document.createElement('style'); s.id='svc-css';
+  s.textContent=[
+    '.svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;margin-top:6px}',
+    '.svc-card{border:1px solid var(--border);border-radius:18px;overflow:hidden;background:var(--card,#fff);display:flex;flex-direction:column;box-shadow:0 10px 26px -18px rgba(20,33,61,.4);transition:transform .14s,box-shadow .14s,border-color .14s}',
+    '.svc-card:hover{transform:translateY(-4px);box-shadow:0 22px 40px -18px rgba(20,33,61,.5);border-color:#d9b64e}',
+    '.svc-thumb{aspect-ratio:16/9;background:#10203d;position:relative;overflow:hidden}',
+    '.svc-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}',
+    '.svc-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;color:#fff;font-weight:800;font-size:1.02rem;background:radial-gradient(120% 120% at 80% 0%,rgba(201,162,59,.4),transparent 60%),linear-gradient(135deg,#14213d,#1d3a68)}',
+    '.svc-body{padding:15px 16px;display:flex;flex-direction:column;flex:1}',
+    '.svc-tag{align-self:flex-start;font-size:.6rem;font-weight:800;letter-spacing:.1em;color:#95761f;text-transform:uppercase;background:#faf2dc;border:1px solid rgba(201,162,59,.3);padding:3px 9px;border-radius:7px}',
+    '.svc-title{font-weight:800;font-size:1.02rem;margin-top:9px;line-height:1.3;color:var(--text)}',
+    '.svc-desc{font-size:.82rem;color:var(--text-muted);margin-top:6px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}',
+    '.svc-price{margin-top:12px;display:flex;align-items:center;gap:9px}',
+    '.svc-new{font-weight:900;font-size:1.3rem;color:var(--text)}.svc-old{color:var(--text-muted);text-decoration:line-through;font-size:.92rem}',
+    '.svc-acts{margin-top:auto;padding-top:13px;display:flex;flex-direction:column;gap:8px}',
+    '.svc-explore{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,#b8941f,#d9b64e);color:#2a2200;font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit}',
+    '.svc-prac{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:10px;border:1.5px solid #14213d;border-radius:11px;background:transparent;color:#14213d;font-weight:800;font-size:.84rem;cursor:pointer;font-family:inherit}',
+    '.svc-done{font-size:.72rem;font-weight:800;color:#1f7a52;text-align:center;padding-top:2px}',
+    '.svc-ov{position:fixed;inset:0;z-index:4000;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(2px)}',
+    '.svc-modal{background:var(--card,#fffdf7);border-radius:20px;max-width:440px;width:100%;box-shadow:0 24px 60px -20px rgba(20,36,63,.6);overflow:hidden}',
+    '.svc-modal .bar{height:4px;background:linear-gradient(90deg,#d9b64e,#b8941f)}',
+    '.svc-plist{display:flex;flex-direction:column;gap:8px;margin-top:4px}',
+    '.svc-prow{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);border-radius:11px;padding:11px 13px}',
+    '.svc-prow .pm{font-weight:800;color:#b8941f}',
+    '.svc-inp{width:100%;box-sizing:border-box;padding:12px 13px;border:1.6px solid var(--border);border-radius:11px;font-size:1rem;background:var(--card,#fff);color:var(--text);font-family:inherit;margin-top:8px}',
+    '.svc-up{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border:1.5px dashed #c9a23b;border-radius:11px;background:#faf5e6;color:#8a6d16;font-weight:700;font-size:.88rem;cursor:pointer;margin-top:8px}',
+    '.svc-ss-prev{width:100%;max-height:170px;object-fit:contain;border-radius:10px;border:1px solid var(--border);margin-top:8px;display:block}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function loadSServices(){
+  _svcCss();
+  var el=document.getElementById('s-services-content');
+  el.innerHTML='<div class="spinner"></div>';
+  try{
+    var d=await api('/api/student/services');
+    window._svcData=d;
+    var svcs=(d.services||[]);
+    if(!svcs.length){
+      el.innerHTML='<div class="card"><div class="card-body" style="text-align:center;padding:40px 20px;color:var(--text-muted)">'
+        +'<div style="font-weight:800;font-size:1.1rem;color:var(--text)">No services available right now</div>'
+        +'<p style="margin-top:8px">MVS Foundation ki services (TMA, Practical Files) yahan dikhengi jab available hongi.</p></div></div>';
+      return;
+    }
+    var cards=svcs.map(function(s){
+      var ph='<div class="svc-ph">'+esc((s.title||'MVS Service').slice(0,40))+'</div>';
+      var thumb='<div class="svc-thumb">'+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">':'')+ph+'</div>';
+      var price=s.price?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
+      var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()">'+ic('book')+' Know your practical subjects</button>'):'';
+      var done=(s.my_response==='yes')?'<div class="svc-done">✓ You marked this as purchased</div>':'';
+      return '<div class="svc-card">'+thumb+'<div class="svc-body">'
+        +'<span class="svc-tag">'+esc(s.tag||'MVS Service')+'</span>'
+        +'<div class="svc-title">'+esc(s.title||'MVS Service')+'</div>'
+        +(s.description?'<div class="svc-desc">'+esc(s.description)+'</div>':'')
+        +price
+        +'<div class="svc-acts">'+pracBtn
+        +'<button class="svc-explore" onclick="svcExplore('+s.id+')">Explore &rarr;</button>'
+        +done+'</div></div></div>';
+    }).join('');
+    el.innerHTML='<div class="card"><div class="card-body">'
+      +'<h3 style="margin:0 0 3px">MVS Services</h3>'
+      +'<p style="font-size:.84rem;color:var(--text-muted);margin:0 0 14px">Premium services from MVS Foundation — tap <b>Explore</b> to view & buy.</p>'
+      +'<div class="svc-grid">'+cards+'</div></div></div>';
+  }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
+}
+async function svcExplore(sid){
+  var svc=((window._svcData&&window._svcData.services)||[]).filter(function(x){return x.id===sid;})[0];
+  var link=svc?svc.link:'';
+  // pehle naya tab kholo (user gesture ke andar), fir click log
+  try{ if(link) window.open(link,'_blank','noopener'); }catch(e){}
+  try{ var r=await api('/api/student/services/'+sid+'/click','POST'); if(!link&&r&&r.link){ window.open(r.link,'_blank','noopener'); } }catch(e){}
+  // wapas aane par purchase popup
+  window._svcPendingId=sid;
+  if(!window._svcFocusBound){
+    window._svcFocusBound=true;
+    window.addEventListener('visibilitychange',function(){
+      if(document.visibilityState==='visible' && window._svcPendingId){
+        var id=window._svcPendingId; window._svcPendingId=null;
+        setTimeout(function(){ _svcPurchasePopup(id); }, 400);
+      }
+    });
+  }
+}
+function _svcPurchasePopup(sid){
+  var svc=((window._svcData&&window._svcData.services)||[]).filter(function(x){return x.id===sid;})[0];
+  if(!svc) return;
+  if(document.getElementById('svc-ov')) return;
+  _svcCss();
+  var ov=document.createElement('div'); ov.id='svc-ov'; ov.className='svc-ov';
+  ov.innerHTML='<div class="svc-modal"><div class="bar"></div><div style="padding:24px 22px" id="svc-modal-in">'
+    +'<div style="width:60px;height:60px;border-radius:16px;margin:0 auto 14px;background:rgba(201,162,59,.14);display:flex;align-items:center;justify-content:center">'
+    +'<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#b8941f" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>'
+    +'<div style="font-weight:800;font-size:1.2rem;text-align:center;color:var(--text)">Did you purchase this?</div>'
+    +'<div style="text-align:center;color:var(--text-muted);font-size:.9rem;margin-top:6px">'+esc(svc.title||'')+'</div>'
+    +'<div style="display:flex;gap:10px;margin-top:20px">'
+    +'<button class="btn btn-ghost" style="flex:1" onclick="_svcAnswer('+sid+',\'no\')">No</button>'
+    +'<button class="btn btn-primary" style="flex:1" onclick="_svcAnswer('+sid+',\'yes\')">Yes, I purchased</button>'
+    +'</div></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+}
+async function _svcAnswer(sid, ans){
+  if(ans==='no'){
+    try{ await api('/api/student/services/'+sid+'/purchase','POST',{response:'no'}); }catch(e){}
+    var ov=document.getElementById('svc-ov'); if(ov) ov.remove();
+    toast('Thanks for the feedback!');
+    return;
+  }
+  // yes -> amount + screenshot form
+  var box=document.getElementById('svc-modal-in'); if(!box) return;
+  box.innerHTML='<div style="font-weight:800;font-size:1.15rem;color:var(--text)">Confirm your purchase</div>'
+    +'<div style="color:var(--text-muted);font-size:.85rem;margin-top:4px">Enter the amount you paid and upload the payment screenshot.</div>'
+    +'<input class="svc-inp" id="svc-amt" inputmode="numeric" placeholder="Amount paid (e.g. 500)">'
+    +'<label class="svc-up"><span id="svc-up-label">'+ic('upload')+' Upload payment screenshot</span><input type="file" accept="image/*" hidden id="svc-ss" onchange="_svcSsPick(this)"></label>'
+    +'<div id="svc-ss-prevwrap"></div>'
+    +'<div style="display:flex;gap:10px;margin-top:18px">'
+    +'<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'svc-ov\').remove()">Cancel</button>'
+    +'<button class="btn btn-primary" style="flex:1" id="svc-submit" onclick="_svcSubmitYes('+sid+')">Submit</button></div>';
+}
+function _svcSsPick(input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){ window._svcSsData=rd.result;
+    var w=document.getElementById('svc-ss-prevwrap'); if(w) w.innerHTML='<img class="svc-ss-prev" src="'+rd.result+'">';
+    var l=document.getElementById('svc-up-label'); if(l) l.innerHTML=ic('check')+' Screenshot added (tap to change)';
+  };
+  rd.readAsDataURL(f);
+}
+async function _svcSubmitYes(sid){
+  var amt=(document.getElementById('svc-amt')||{}).value||'';
+  var shot=window._svcSsData||'';
+  if(!shot){ toast('Please upload the payment screenshot.',true); return; }
+  var btn=document.getElementById('svc-submit'); if(btn){ btn.disabled=true; btn.textContent='Submitting…'; }
+  try{
+    await api('/api/student/services/'+sid+'/purchase','POST',{response:'yes',amount:amt,screenshot:shot});
+    window._svcSsData='';
+    var ov=document.getElementById('svc-ov'); if(ov) ov.remove();
+    toast('Thank you! Your purchase is recorded.');
+    loadSServices();
+  }catch(e){ toast((e&&e.message)||'Failed',true); if(btn){ btn.disabled=false; btn.textContent='Submit'; } }
+}
+async function openPracticalSubjects(){
+  _svcCss();
+  if(document.getElementById('svc-ov')) return;
+  var ov=document.createElement('div'); ov.id='svc-ov'; ov.className='svc-ov';
+  ov.innerHTML='<div class="svc-modal"><div class="bar"></div><div style="padding:22px 20px"><div class="spinner"></div></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+  try{
+    var d=await api('/api/student/services/practical-subjects');
+    var subs=(d.subjects||[]);
+    var rows=subs.length?subs.map(function(p){
+      return '<div class="svc-prow"><span><b>'+esc(p.name)+'</b>'+(p.code?' <span style="color:var(--text-muted);font-size:.78rem">('+esc(p.code)+')</span>':'')+'</span><span class="pm">'+p.practical_max+' marks</span></div>';
+    }).join(''):'<div style="color:var(--text-muted);text-align:center;padding:10px">No practical subjects found in your profile.</div>';
+    var box=ov.querySelector('.svc-modal');
+    box.innerHTML='<div class="bar"></div><div style="padding:22px 20px">'
+      +'<div style="font-weight:800;font-size:1.2rem;color:var(--text)">Your Practical Subjects</div>'
+      +'<div style="color:var(--text-muted);font-size:.85rem;margin-top:3px;margin-bottom:12px">These subjects have a practical exam — handwritten practical files are available for them.</div>'
+      +'<div class="svc-plist">'+rows+'</div>'
+      +(subs.length?('<div style="text-align:center;margin-top:14px;font-weight:800;color:#b8941f">Total practical marks: '+d.total_marks+'</div>'):'')
+      +'<button class="btn btn-ghost" style="width:100%;margin-top:16px" onclick="document.getElementById(\'svc-ov\').remove()">Close</button></div>';
+  }catch(e){ var box=ov.querySelector('.svc-modal'); if(box) box.innerHTML='<div class="bar"></div><div style="padding:22px;color:var(--danger)">'+esc((e&&e.message)||'Failed')+'</div>'; }
 }
 
 async function loadSProfile(){
