@@ -78,9 +78,10 @@ def _student_batch_names(profile, db):
 
 
 # ----------------------------------------------------------------- visibility
-def service_visible_to(svc, profile, db):
-    """Kya ye service is student ko dikhni chahiye? (active + class + session + batch + practical)."""
-    if not getattr(svc, "active", False):
+def service_visible_to(svc, profile, db, ignore_active=False):
+    """Kya ye service is student ko dikhni chahiye? (active + class + session + batch + practical).
+    ignore_active=True -> notify targeting (active off hone par bhi target students nikaalo)."""
+    if not ignore_active and not getattr(svc, "active", False):
         return False
     cl = str(getattr(profile, "class_level", "") or "").strip()
     tcl = (svc.target_class or "").strip()
@@ -104,6 +105,32 @@ def service_visible_to(svc, profile, db):
         if not student_has_practical(profile):
             return False
     return True
+
+
+def targeted_student_users(svc, db):
+    """Is service ke target students (User, StudentProfile) ki list — active check ignore karke.
+    Notify-all isi se sabhi matching students ko notification bhejta hai."""
+    from models import User, StudentProfile
+    out = []
+    try:
+        profs = db.query(StudentProfile).all()
+    except Exception:
+        profs = []
+    uid_seen = set()
+    for p in profs:
+        try:
+            if not service_visible_to(svc, p, db, ignore_active=True):
+                continue
+        except Exception:
+            continue
+        uid = getattr(p, "user_id", None)
+        if not uid or uid in uid_seen:
+            continue
+        u = db.query(User).filter(User.id == uid).first()
+        if u:
+            uid_seen.add(uid)
+            out.append((u, p))
+    return out
 
 
 # ----------------------------------------------------------------- date range (IST)

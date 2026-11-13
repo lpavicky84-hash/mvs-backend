@@ -1396,6 +1396,7 @@ const NOTIF_GO={
     doubt_resolved:'doubts',new_doubt:'doubts',doubt:'doubts',timetable:'timetable',new_class:'timetable',class:'timetable',
     reschedule_approved:'timetable',reschedule_rejected:'timetable',class_rescheduled:'timetable',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',
     result:'resultcard',predicted:'resultcard',warning:'dashboard',
+    mvs_service:'services',mvs_services:'services',service:'services',
     community_group:'community',community_broadcast:'community',community_popup:'community'},
   teacher:{class_request:'timetable',class_approved:'timetable',class_rejected:'timetable',new_class:'timetable',timetable:'timetable',
     reschedule_approved:'timetable',reschedule_rejected:'timetable',reschedule_request:'timetable',leave:'attendance',
@@ -1423,7 +1424,8 @@ function _notifResolvePage(role,type,fbPage,hint){
   const t=((type||'')+' '+(hint||'')).toLowerCase();
   const has=w=>t.indexOf(w)>=0;
   let g='';
-  if(has('complaint')) g='complaints';
+  if(has('mvs service')||has('mvs services')) g='services';
+  else if(has('complaint')) g='complaints';
   else if(has('feedback')||has('rating')) g='feedback';
   // batch/subject change request -> Student Requests page (generic 'request' se PEHLE, warna approvals chala jaata)
   else if(role==='admin' && (has('batch')||has('student request')||(has('subject')&&has('request'))||(has('request')&&has('change')))) g='requests';
@@ -11714,7 +11716,19 @@ function _ensureSchCss(){
     '.sw input{accent-color:#1f7a52}',
     '.svc-trk-del{border:none;background:transparent;color:#c0392b;cursor:pointer;padding:4px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s}',
     '.svc-trk-del:hover{background:rgba(192,57,43,.1)}',
-    '.svc-trk-del svg{width:16px;height:16px}'
+    '.svc-trk-del svg{width:16px;height:16px}',
+    '@media(max-width:600px){'
+      +'.svc-trk-scroll{overflow:visible !important;border:none !important}'
+      +'.svc-trk-tbl{border:0}'
+      +'.svc-trk-tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}'
+      +'.svc-trk-tbl tbody tr{display:block;border:1px solid var(--border);border-radius:11px;padding:9px 12px;margin-bottom:10px;background:var(--card,#fff)}'
+      +'.svc-trk-tbl tbody td{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:5px 0;border:none;text-align:right;white-space:normal !important;font-size:.85rem}'
+      +'.svc-trk-tbl tbody td::before{content:attr(data-label);font-weight:700;color:var(--text-muted);text-align:left;flex:0 0 auto;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em}'
+      +'.svc-trk-tbl tbody td[data-label=""]{justify-content:flex-end;padding-top:6px}'
+      +'.svc-trk-tbl tbody td[data-label=""]::before{display:none}'
+      +'.svc-trk-tbl tbody td[colspan]{justify-content:center;text-align:center}'
+      +'.svc-trk-tbl tbody td[colspan]::before{display:none}'
+    +'}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -11908,10 +11922,108 @@ async function loadAServices(){
     window._admSvc=d;
     var svcs=(d.services||[]);
     var cards=svcs.map(_admSvcCard).join('')||'<div class="sch-sub" style="padding:20px;text-align:center">No services yet. Add your first product.</div>';
-    el.innerHTML='<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
+    el.innerHTML='<div id="a-events-wrap"></div>'
+      +'<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
       +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div>'
       +'<div class="apt-grid" style="margin-top:16px">'+cards+'</div>';
+    loadAEvents();
   }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
+}
+// ---------------- Live Events / Classes (admin) ----------------
+async function loadAEvents(){
+  var el=document.getElementById('a-events-wrap'); if(!el) return;
+  try{
+    var d=await api('/api/admin/events'); window._admEvents=d.events||[];
+    var cards=(d.events||[]).map(_admEventCard).join('')||'<div class="sch-sub" style="padding:14px;text-align:center;border:1px dashed var(--border);border-radius:12px">No events yet. Add a live class or event — students ko dashboard pe countdown banner dikhega.</div>';
+    el.innerHTML='<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Live Events &amp; Classes</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Student dashboard pe full-width countdown banner — link + time + YouTube thumbnail (auto)</div></div>'
+      +'<button class="btn btn-primary btn-sm" onclick="openEventEditor(null)">'+ic('plus')+' Add Event</button></div>'
+      +'<div class="apt-grid" style="margin-top:14px">'+cards+'</div>';
+  }catch(e){ el.innerHTML='<div class="sch-sub" style="color:var(--danger)">Could not load events</div>'; }
+}
+function _admEventCard(e){
+  var when=_evWhenText(e.start_at);
+  var cb = e.target_class==='12' ? {t:'Class 12th',bg:'#14213d',fg:'#e8c15a'}
+         : e.target_class==='10' ? {t:'Class 10th',bg:'#0f5132',fg:'#8fe6c0'}
+         : {t:'All classes',bg:'rgba(0,0,0,.07)',fg:'#555'};
+  var yt=_ytId(e.video_url);
+  var thumb=yt?('<div style="aspect-ratio:16/9;border-radius:12px;background:#000 center/cover no-repeat url(https://img.youtube.com/vi/'+yt+'/hqdefault.jpg)"></div>')
+    :('<div style="aspect-ratio:16/9;border-radius:12px;overflow:hidden;position:relative">'+_svcPoster(e.title||'Live Event',e.id,true)+'</div>');
+  return '<div class="card" style="padding:14px"><div style="display:flex;gap:12px">'
+    +'<div style="flex:0 0 120px">'+thumb+'</div>'
+    +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1rem">'+esc(e.title||'(untitled)')+'</b>'
+    +'<span style="font-size:.66rem;font-weight:800;border-radius:7px;padding:3px 10px;background:'+cb.bg+';color:'+cb.fg+'">'+cb.t+'</span>'
+    +'<label class="sw" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer"><input type="checkbox" '+(e.active?'checked':'')+' onchange="_admEventToggle('+e.id+',this.checked)"> '+(e.active?'<span style="color:#1f7a52">LIVE</span>':'<span style="color:var(--text-muted)">OFF</span>')+'</label></div>'
+    +(e.subtitle?'<div style="font-size:.8rem;color:var(--text-muted);margin-top:2px">'+esc(e.subtitle)+'</div>':'')
+    +'<div style="font-size:.76rem;margin-top:7px;font-weight:700;color:#14213d;display:inline-flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>'+esc(when)+'</span></div>'
+    +'</div></div>'
+    +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="openEventEditor('+e.id+')">'+ic('edit')+' Edit</button>'
+    +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="_admEventDelete('+e.id+')">'+ic('trash')+' Delete</button></div></div>';
+}
+function _ytId(u){
+  u=String(u||''); if(!u) return '';
+  var m=u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m?m[1]:'';
+}
+function _evWhenText(iso){
+  if(!iso) return 'No time set';
+  var d=new Date(iso); if(isNaN(d.getTime())) return 'No time set';
+  try{ return d.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}); }
+  catch(e){ return d.toLocaleString(); }
+}
+function _isoToLocalInput(iso){
+  if(!iso) return '';
+  var d=new Date(iso); if(isNaN(d.getTime())) return '';
+  var p=function(n){return (n<10?'0':'')+n;};
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function openEventEditor(id){
+  _ensureSchCss();
+  var e=(window._admEvents||[]).filter(function(x){return x.id===id;})[0]||{};
+  window._evEditId=e.id||null;
+  var body='<div class="sch-sec" style="border:none;padding-top:0">'
+    +'<label class="sch-lbl">Event / class title</label><input class="sch-in" id="ev-title" value="'+esc(e.title||'')+'" placeholder="e.g. Live Physics — Laws of Motion">'
+    +'<label class="sch-lbl">Subtitle (optional)</label><input class="sch-in" id="ev-sub" value="'+esc(e.subtitle||'')+'" placeholder="e.g. Special doubt session">'
+    +'<label class="sch-lbl">Join / redirect link</label><input class="sch-in" id="ev-url" value="'+esc(e.url||'')+'" placeholder="https://...">'
+    +'<label class="sch-lbl">YouTube video link (thumbnail auto)</label><input class="sch-in" id="ev-video" value="'+esc(e.video_url||'')+'" oninput="_evPrevRefresh()" placeholder="https://youtu.be/...">'
+    +'<div id="ev-prev" style="margin-top:8px;max-width:320px"></div>'
+    +'<label class="sch-lbl">Date &amp; time (kab hone wala hai)</label><input type="datetime-local" class="sch-in" id="ev-when" value="'+esc(_isoToLocalInput(e.start_at))+'">'
+    +'<label class="sch-lbl">Show to class</label><select class="sch-in" id="ev-class"><option value=""'+(!e.target_class?' selected':'')+'>All classes</option><option value="10"'+(e.target_class==='10'?' selected':'')+'>Class 10 only</option><option value="12"'+(e.target_class==='12'?' selected':'')+'>Class 12 only</option></select>'
+    +'<label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.9rem;font-weight:700;cursor:pointer"><input type="checkbox" id="ev-active" '+(e.active?'checked':'')+'> Make this LIVE on student dashboard now</label>'
+    +'</div>';
+  showModal(id?'Edit Event':'Add Event','<div id="ev-ed">'+body+'</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_evSave()">Save</button>');
+  _evPrevRefresh();
+}
+function _evPrevRefresh(){
+  var box=document.getElementById('ev-prev'); if(!box) return;
+  var yt=_ytId((document.getElementById('ev-video')||{}).value);
+  if(yt){ box.innerHTML='<div style="aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000 center/cover no-repeat url(https://img.youtube.com/vi/'+yt+'/hqdefault.jpg);border:1px solid var(--border)"></div><div class="sch-sub" style="margin-top:4px">Thumbnail auto-fetched from YouTube</div>'; }
+  else { box.innerHTML='<div class="sch-sub">YouTube link daalo to thumbnail apne-aap aa jaayega (optional).</div>'; }
+}
+async function _evSave(){
+  var whenLocal=(document.getElementById('ev-when')||{}).value||'';
+  var iso='';
+  if(whenLocal){ var d=new Date(whenLocal); if(!isNaN(d.getTime())) iso=d.toISOString(); }
+  var payload={ id:window._evEditId||undefined,
+    title:(document.getElementById('ev-title')||{}).value||'',
+    subtitle:(document.getElementById('ev-sub')||{}).value||'',
+    url:(document.getElementById('ev-url')||{}).value||'',
+    video_url:(document.getElementById('ev-video')||{}).value||'',
+    start_at:iso,
+    target_class:(document.getElementById('ev-class')||{}).value||'',
+    active:!!(document.getElementById('ev-active')||{}).checked };
+  if(!payload.title.trim()){ toast('Please enter a title',true); return; }
+  try{ await api('/api/admin/events','POST',payload); closeModal(); toast('Event saved!'); loadAEvents(); }
+  catch(e){ toast((e&&e.message)||'Save failed',true); }
+}
+async function _admEventToggle(id,on){
+  try{ await api('/api/admin/events/'+id+'/toggle','POST',{active:on}); toast(on?'Event is now LIVE on student dashboard':'Event turned off'); }
+  catch(e){ toast((e&&e.message)||'Failed',true); loadAEvents(); }
+}
+async function _admEventDelete(id){
+  if(!confirm('Delete this event? It will disappear from student dashboards.')) return;
+  try{ await api('/api/admin/events/'+id,'DELETE'); toast('Event deleted.'); loadAEvents(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
 }
 function _admSvcCard(s){
   var st=s.stats||{};
@@ -11937,8 +12049,17 @@ function _admSvcCard(s){
     +'<div style="display:flex;gap:12px;margin-top:9px;font-size:.74rem;color:var(--text-muted)"><span><b style="color:var(--text)">'+(st.clicks||0)+'</b> clicks</span><span><b style="color:#1f7a52">'+(st.yes||0)+'</b> bought</span><span><b style="color:#c0392b">'+(st.no||0)+'</b> no</span><span><b style="color:#b8941f">₹'+(st.revenue||0)+'</b></span></div>'
     +'</div></div>'
     +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openServiceTracker('+s.id+')">'+ic('chart')+' Live Tracker</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="_admSvcNotify('+s.id+')">'+ic('bell')+' Notify all</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="openServiceEditor('+s.id+')">'+ic('edit')+' Edit</button>'
     +'<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="_admSvcDelete('+s.id+')">'+ic('trash')+' Delete</button></div></div>';
+}
+async function _admSvcNotify(id){
+  if(!confirm('Send a notification about this product to all its target students?\n\nTapping the notification will take them to Materials › MVS Services.')) return;
+  try{
+    var r=await api('/api/admin/services/'+id+'/notify','POST',{});
+    var n=r.sent||0;
+    toast(n?('Notification sent to '+n+' student'+(n===1?'':'s')+'.'):'No matching students to notify.');
+  }catch(e){ toast((e&&e.message)||'Notify failed',true); }
 }
 async function _admSvcToggle(id, on){
   try{ await api('/api/admin/services/'+id+'/toggle','POST',{active:on}); toast(on?'Service is now LIVE':'Service turned off'); }
@@ -12068,10 +12189,10 @@ async function _svcTrkLoad(){
     function chip(k,lbl){ return '<button class="btn btn-sm '+(window._svcTrkRange===k?'btn-primary':'btn-ghost')+'" onclick="window._svcTrkRange=\''+k+'\';_svcTrkLoad()">'+lbl+'</button>'; }
     function delBtn(iid){ return '<button class="svc-trk-del" title="Delete this record" onclick="_svcTrkDelRow('+id+','+iid+')">'+ic('trash')+'</button>'; }
     var yesRows=(d.yes_rows||[]).map(function(r){
-      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td>'+(r.amount?('₹'+r.amount):'—')+'</td><td>'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td style="text-align:center">'+delBtn(r.id)+'</td></tr>';
+      return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Amount">'+(r.amount?('₹'+r.amount):'—')+'</td><td data-label="Screenshot">'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
     }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:12px">No purchases in this range.</td></tr>';
     var noRows=(d.no_rows||[]).map(function(r){
-      return '<tr><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td style="text-align:center">'+delBtn(r.id)+'</td></tr>';
+      return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
     }).join('')||'<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:12px">No "No" responses in this range.</td></tr>';
     box.innerHTML='<div class="sch-sub" style="margin-bottom:10px"><b>'+esc(d.title||'')+'</b> · all-time: '+(at.clicks||0)+' clicks · '+(at.yes||0)+' bought · ₹'+(at.revenue||0)+' revenue</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+chip('today','Today')+chip('week','Weekly')+chip('month','Monthly')+chip('','All')+chip('custom','Custom')+'</div>'
@@ -12079,13 +12200,13 @@ async function _svcTrkLoad(){
       +'<div class="sch-trk"><div class="t" onclick="_svcTrkDl(\'all\')" style="cursor:pointer"><b>'+(rg.clicks||0)+'</b><span>Total Clicks</span></div>'
       +'<div class="t"><b style="color:#1f7a52">'+(rg.yes||0)+'</b><span>Purchased (Yes)</span></div>'
       +'<div class="t"><b style="color:#c0392b">'+(rg.no||0)+'</b><span>Not yet (No)</span></div></div>'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:linear-gradient(135deg,#fffdf7,#fbf4e2);border:1px solid #ecd9a3;border-radius:12px;padding:12px 15px;margin:10px 0">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:linear-gradient(135deg,#fffdf7,#fbf4e2);border:1px solid #ecd9a3;border-radius:12px;padding:12px 15px;margin:10px 0">'
       +'<div><div style="font-size:.7rem;font-weight:800;color:var(--text-muted);text-transform:uppercase">Sales (this range)</div><div style="font-size:1.5rem;font-weight:900;color:#14243f">₹'+(rg.revenue||0)+'</div></div>'
       +'<div class="sch-acts" style="margin:0"><button class="btn btn-ghost btn-sm" onclick="_svcTrkDl(\'yes\')">'+ic('download')+' Export Yes</button><button class="btn btn-ghost btn-sm" onclick="_svcTrkDl(\'no\')">'+ic('download')+' Export No</button></div></div>'
       +'<h4 style="margin:14px 0 6px">Purchased — Yes ('+(d.yes_rows||[]).length+')</h4>'
-      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Amount</th><th>Screenshot</th><th>Time</th><th></th></tr></thead><tbody>'+yesRows+'</tbody></table></div>'
+      +'<div class="svc-trk-scroll" style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl svc-trk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Amount</th><th>Screenshot</th><th>Time</th><th></th></tr></thead><tbody>'+yesRows+'</tbody></table></div>'
       +'<h4 style="margin:14px 0 6px">Not yet — No ('+(d.no_rows||[]).length+')</h4>'
-      +'<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Time</th><th></th></tr></thead><tbody>'+noRows+'</tbody></table></div>';
+      +'<div class="svc-trk-scroll" style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl svc-trk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Time</th><th></th></tr></thead><tbody>'+noRows+'</tbody></table></div>';
   }catch(e){ var b=document.getElementById('svc-trk'); if(b) b.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Failed')+'</div>'; }
 }
 function _svcTrkDl(type){
@@ -21824,6 +21945,80 @@ function startStudentPreload(){
 async function loadStudentLiveBanner(){
   try{ if(sMode()==='live'){ const ents=await api('/api/student/timetable-plan'+_bq()); startLiveCountdown(ents); } }catch(e){}
 }
+// ---------------- Student dashboard: admin-set Event / Live-class countdown banner ----------------
+function _evBannerCss(){
+  if(document.getElementById('sev-banner-css')) return;
+  var s=document.createElement('style'); s.id='sev-banner-css';
+  s.textContent=[
+    '.sev-banner{display:flex;gap:16px;align-items:stretch;background:linear-gradient(135deg,#0f2447,#1d3a68);border-radius:18px;padding:14px;margin:0 0 16px;position:relative;overflow:hidden;box-shadow:0 16px 36px -22px rgba(15,36,71,.9)}',
+    '.sev-banner::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 92% 10%,rgba(232,193,90,.22),transparent 55%);pointer-events:none}',
+    '.sev-thumb{flex:0 0 40%;max-width:280px;position:relative;border-radius:13px;overflow:hidden;min-height:120px;background:#000 center/cover no-repeat}',
+    '.sev-thumb .sev-poster{position:absolute;inset:0}',
+    '.sev-badge{position:absolute;top:9px;left:9px;z-index:3;background:#c0392b;color:#fff;font-size:.6rem;font-weight:800;letter-spacing:.1em;border-radius:6px;padding:3px 8px;display:flex;align-items:center;gap:5px}',
+    '.sev-badge.live{background:#1f7a52}',
+    '.sev-badge .pdot{width:6px;height:6px;border-radius:50%;background:#fff;animation:sevPulse 1.1s infinite}',
+    '@keyframes sevPulse{0%,100%{opacity:1}50%{opacity:.25}}',
+    '.sev-play{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center}',
+    '.sev-play span{width:46px;height:46px;border-radius:50%;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85)}',
+    '.sev-play svg{width:18px;height:18px;margin-left:3px;fill:#fff}',
+    '.sev-body{flex:1;min-width:0;color:#fff;display:flex;flex-direction:column;justify-content:center;z-index:2;padding:4px 2px}',
+    '.sev-kick{font-size:.62rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#e8c15a;margin-bottom:5px}',
+    '.sev-title{font-size:1.18rem;font-weight:900;line-height:1.2;letter-spacing:-.01em}',
+    '.sev-sub{font-size:.82rem;color:rgba(255,255,255,.72);margin-top:3px;line-height:1.35}',
+    '.sev-count{display:flex;gap:7px;margin:12px 0}',
+    '.sev-cbox{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:6px 0;min-width:48px;text-align:center}',
+    '.sev-cnum{font-size:1.25rem;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}',
+    '.sev-clbl{font-size:.54rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-top:3px}',
+    '.sev-live-now{display:inline-flex;align-items:center;gap:8px;font-size:1.05rem;font-weight:900;color:#7fe6b0;margin:12px 0}',
+    '.sev-live-now .pulse{width:11px;height:11px;border-radius:50%;background:#2fae77;box-shadow:0 0 0 0 rgba(47,174,119,.7);animation:sevRing 1.4s infinite}',
+    '@keyframes sevRing{0%{box-shadow:0 0 0 0 rgba(47,174,119,.6)}70%{box-shadow:0 0 0 12px rgba(47,174,119,0)}100%{box-shadow:0 0 0 0 rgba(47,174,119,0)}}',
+    '.sev-join{align-self:flex-start;background:linear-gradient(135deg,#e8c15a,#d4a93f);color:#2a2200;font-weight:800;border:none;border-radius:11px;padding:10px 20px;cursor:pointer;font-size:.9rem;box-shadow:0 8px 18px -8px rgba(212,169,63,.8);transition:transform .14s}',
+    '.sev-join:hover{transform:translateY(-2px)}',
+    '@media(max-width:620px){.sev-banner{flex-direction:column}.sev-thumb{flex:none;max-width:none;width:100%;aspect-ratio:16/9;min-height:0}.sev-title{font-size:1.05rem}.sev-count{flex-wrap:wrap}}'
+  ].join('');
+  document.head.appendChild(s);
+}
+async function loadStudentEventBanner(){
+  var el=document.getElementById('s-event-banner'); if(!el) return;
+  if(window._sEvTimer){ try{ clearInterval(window._sEvTimer); }catch(e){} window._sEvTimer=null; }
+  try{
+    var d=await api('/api/student/events/active');
+    var evs=(d.events||[]); if(!evs.length){ el.innerHTML=''; return; }
+    _evBannerCss();
+    var e=evs[0];
+    var yt=_ytId(e.video_url);
+    var thumb=yt
+      ? '<div class="sev-thumb" style="background-image:url(https://img.youtube.com/vi/'+yt+'/hqdefault.jpg)"><div class="sev-play"><span>'+_svcSvgPlay()+'</span></div><span class="sev-badge" id="sev-badge"><span class="pdot"></span>LIVE EVENT</span></div>'
+      : '<div class="sev-thumb">'+_svcPoster(e.title||'Live Event',e.id,true)+'<span class="sev-badge" id="sev-badge">LIVE EVENT</span></div>';
+    var urlOk=/^https?:\/\//i.test(e.url||'');
+    var joinBtn=urlOk?'<button class="sev-join" onclick="window.open('+JSON.stringify(e.url)+',\'_blank\',\'noopener\')">Join Now &rarr;</button>':'';
+    el.innerHTML='<div class="sev-banner">'+thumb
+      +'<div class="sev-body"><div class="sev-kick" id="sev-kick">Starting soon</div>'
+      +'<div class="sev-title">'+esc(e.title||'Live Event')+'</div>'
+      +(e.subtitle?'<div class="sev-sub">'+esc(e.subtitle)+'</div>':'')
+      +'<div id="sev-count"></div>'+joinBtn+'</div></div>';
+    var startMs=e.start_at?new Date(e.start_at).getTime():0;
+    function tick(){
+      var cEl=document.getElementById('sev-count'); var kEl=document.getElementById('sev-kick'); var bEl=document.getElementById('sev-badge');
+      if(!cEl){ if(window._sEvTimer){clearInterval(window._sEvTimer);window._sEvTimer=null;} return; }
+      if(!startMs){ cEl.innerHTML=''; if(kEl) kEl.textContent='Live event'; return; }
+      var diff=startMs-Date.now();
+      if(diff<=0){
+        if(kEl) kEl.textContent='Happening now';
+        if(bEl){ bEl.classList.add('live'); bEl.innerHTML='<span class="pdot"></span>LIVE NOW'; }
+        cEl.innerHTML='<div class="sev-live-now"><span class="pulse"></span>LIVE NOW — join in</div>';
+        return;
+      }
+      if(kEl) kEl.textContent='Starts in';
+      var s=Math.floor(diff/1000), dd=Math.floor(s/86400), hh=Math.floor((s%86400)/3600), mm=Math.floor((s%3600)/60), ss=s%60;
+      function box(n,l){ return '<div class="sev-cbox"><div class="sev-cnum">'+(n<10?'0':'')+n+'</div><div class="sev-clbl">'+l+'</div></div>'; }
+      cEl.className='sev-count';
+      cEl.innerHTML=(dd>0?box(dd,'Days'):'')+box(hh,'Hrs')+box(mm,'Min')+box(ss,'Sec');
+    }
+    tick(); window._sEvTimer=setInterval(tick,1000);
+  }catch(e){ el.innerHTML=''; }
+}
+function _svcSvgPlay(){ return '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'; }
 async function showSubjectScreen(p){
   p=p||{};
   var scr=document.getElementById('subject-screen'); if(!scr) return;
@@ -22756,11 +22951,12 @@ async function loadSDashboard(){
     setTimeout(function(){ _mountBatchSelector(); }, 50);
     setTimeout(function(){ _checkBatchExpiry(); }, 500);
     setTimeout(function(){ _batchWelcomePopup(); }, 400);
-    setIf(el,`${greetingCard(NAME)}<div id="s-batch-sel"></div>${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
+    setIf(el,`${greetingCard(NAME)}<div id="s-event-banner"></div><div id="s-batch-sel"></div>${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
       ${prio}
       <div id="s-today-wrap"></div>
       ${statsHtml}
       ${qaHtml}`);
+    loadStudentEventBanner();
     loadStudentLiveBanner();
     _renderTodayClassesStudent();
     _sSchedBanner(el,_up);

@@ -12201,3 +12201,90 @@ def admin_services_export(sid: int, type: str = "all", range: str = "", frm: str
     return Response(content=data,
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+
+
+# ============================= MVS Services — Notify all =============================
+@router.post("/services/{sid}/notify")
+def admin_services_notify(sid: int, payload: dict = None, db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Is product ke sabhi target students ko notification bhejo — click karne par wo
+    Materials > MVS Services section pe redirect ho jaate hain (notif_type=mvs_service)."""
+    import mvs_services as MS
+    from models import MVSService
+    s = db.query(MVSService).get(sid)
+    if not s:
+        raise HTTPException(404, "Service not found")
+    payload = payload or {}
+    title = (payload.get("title") or s.title or "MVS Services").strip()
+    msg = (payload.get("message") or ("Check it out in MVS Services: " + (s.title or ""))).strip()
+    targets = MS.targeted_student_users(s, db)
+    import time as _t
+    bkey = "svc%s-%s" % (sid, int(_t.time()))
+    sent = 0
+    for (u, _p) in targets:
+        try:
+            notify(db, u.id, "\U0001f4e2 " + title, msg, "mvs_service",
+                   sender_id=getattr(me, "id", None), sender_role="admin",
+                   batch_key=bkey, batch_label="MVS Services")
+            sent += 1
+        except Exception:
+            pass
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"sent": sent}
+
+
+# ============================= Live Events / Classes =============================
+def _event_out(e):
+    return {"id": e.id, "title": e.title or "", "subtitle": e.subtitle or "",
+            "url": e.url or "", "video_url": e.video_url or "", "start_at": e.start_at or "",
+            "active": bool(e.active), "target_class": e.target_class or "", "sort": e.sort or 0}
+
+
+@router.get("/events")
+def admin_events_list(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    evs = db.query(LiveEvent).order_by(LiveEvent.id.desc()).all()
+    return {"events": [_event_out(e) for e in evs]}
+
+
+@router.post("/events")
+def admin_events_save(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    eid = payload.get("id")
+    e = db.query(LiveEvent).get(eid) if eid else None
+    if not e:
+        e = LiveEvent()
+        db.add(e)
+    for f in ("title", "subtitle", "url", "video_url", "start_at", "target_class"):
+        if f in payload:
+            setattr(e, f, (payload.get(f) or ""))
+    if "active" in payload:
+        e.active = bool(payload.get("active"))
+    db.commit()
+    db.refresh(e)
+    return _event_out(e)
+
+
+@router.post("/events/{eid}/toggle")
+def admin_events_toggle(eid: int, payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    e = db.query(LiveEvent).get(eid)
+    if not e:
+        raise HTTPException(404, "Event not found")
+    payload = payload or {}
+    e.active = bool(payload.get("active")) if ("active" in payload) else (not e.active)
+    db.commit()
+    return {"active": bool(e.active)}
+
+
+@router.delete("/events/{eid}")
+def admin_events_delete(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    e = db.query(LiveEvent).get(eid)
+    if not e:
+        raise HTTPException(404, "Event not found")
+    db.delete(e)
+    db.commit()
+    return {"deleted": True}

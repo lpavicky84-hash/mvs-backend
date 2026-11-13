@@ -4770,3 +4770,26 @@ def student_service_purchase(sid: int, payload: dict = Body(...), db: Session = 
         r.screenshot = None
     db.commit()
     return {"ok": True}
+
+
+@router.get("/events/active")
+def student_events_active(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Student dashboard ka full-width countdown banner — active events (class-filtered).
+    Soonest-upcoming pehle; countdown + thumbnail client-side."""
+    from models import LiveEvent
+    prof = get_student_profile(current_user, db)
+    cl = str(getattr(prof, "class_level", "") or "").strip()
+    out = []
+    try:
+        evs = db.query(LiveEvent).filter(LiveEvent.active == True).all()  # noqa: E712
+    except Exception:
+        evs = []
+    for e in evs:
+        tc = (e.target_class or "").strip()
+        if tc and tc != cl:
+            continue
+        out.append({"id": e.id, "title": e.title or "", "subtitle": e.subtitle or "",
+                    "url": e.url or "", "video_url": e.video_url or "", "start_at": e.start_at or ""})
+    # soonest start_at first (empty start_at last)
+    out.sort(key=lambda x: (x["start_at"] == "", x["start_at"]))
+    return {"events": out}
