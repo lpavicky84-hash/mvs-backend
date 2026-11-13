@@ -22137,7 +22137,14 @@ function _svcCss(){
     '.svc-new{font-weight:900;font-size:1.3rem;color:var(--text)}.svc-old{color:var(--text-muted);text-decoration:line-through;font-size:.92rem}',
     '.svc-acts{margin-top:auto;padding-top:13px;display:flex;flex-direction:column;gap:8px}',
     '.svc-explore{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border:none;border-radius:12px;background:linear-gradient(135deg,#b8941f,#d9b64e);color:#2a2200;font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit}',
-    '.svc-prac{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:10px;border:1.5px solid #14213d;border-radius:11px;background:transparent;color:#14213d;font-weight:800;font-size:.84rem;cursor:pointer;font-family:inherit}',
+    '.svc-prac{display:flex;align-items:center;gap:11px;width:100%;padding:10px 12px;border:1px solid rgba(20,33,61,.16);border-radius:14px;background:linear-gradient(135deg,#f4f7fc,#eceff7);color:#14213d;cursor:pointer;font-family:inherit;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s}',
+    '.svc-prac:hover{transform:translateY(-2px);box-shadow:0 12px 26px -16px rgba(20,33,61,.55);border-color:#14213d}',
+    '.svc-prac-ic{flex:0 0 auto;width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#14213d,#274a80);color:#e8c15a;box-shadow:0 5px 12px -6px rgba(20,33,61,.6)}',
+    '.svc-prac-ic svg{width:19px;height:19px}',
+    '.svc-prac-tx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.18}',
+    '.svc-prac-tx b{font-size:.85rem;font-weight:800}',
+    '.svc-prac-tx small{font-size:.67rem;color:var(--text-muted);margin-top:2px;font-weight:600}',
+    '.svc-prac-ar{flex:0 0 auto;color:#14213d;font-weight:900;font-size:1.1rem;opacity:.75}',
     '.svc-done{font-size:.72rem;font-weight:800;color:#1f7a52;text-align:center;padding-top:2px}',
     '.svc-ov{position:fixed;inset:0;z-index:4000;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(2px)}',
     '.svc-modal{background:var(--card,#fffdf7);border-radius:20px;max-width:440px;width:100%;box-shadow:0 24px 60px -20px rgba(20,36,63,.6);overflow:hidden}',
@@ -22168,7 +22175,7 @@ async function loadSServices(){
     var cards=svcs.map(function(s){
       var thumb='<div class="svc-thumb">'+_svcPoster(s.title,s.id,false)+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">':'')+'</div>';
       var price=(s.kind!=='practical' && s.price)?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
-      var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()">'+ic('book')+' Know your practical subjects</button>'):'';
+      var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()"><span class="svc-prac-ic">'+ic('book')+'</span><span class="svc-prac-tx"><b>Know your practical subjects</b><small>Apne subjects &amp; marks dekho</small></span><span class="svc-prac-ar">&rarr;</span></button>'):'';
       var done=(s.my_response==='yes')?'<div class="svc-done">✓ You marked this as purchased</div>':'';
       return '<div class="svc-card">'+thumb+'<div class="svc-body">'
         +'<span class="svc-tag">'+esc(s.tag||'MVS Service')+'</span>'
