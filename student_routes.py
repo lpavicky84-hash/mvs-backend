@@ -1684,6 +1684,17 @@ def get_progress(
 # ===== NOTIFICATIONS =====
 @router.get("/notifications")
 def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    # Best-effort: fire any due academic-calendar reminders (throttled + idempotent). This
+    # is the most-hit student endpoint, so tentative-date reminders go out reliably even if
+    # nobody opens the calendar page that day.
+    try:
+        import academic_calendar as _ac
+        _ac.run_calendar_reminders(db)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
     return db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).limit(50).all()

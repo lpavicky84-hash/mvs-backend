@@ -289,7 +289,12 @@ def _cal_public(cal, with_state=True):
 # Reminders — 2 days / 1 day before + on the start day of each dated milestone.
 # Idempotent via AcademicCalReminderLog. Runs at startup and (throttled) on hits.
 # ---------------------------------------------------------------------------
-_last_run_day = {"d": None}
+# Timestamp throttle (seconds). A per-day flag was wrong: if the calendar was created
+# AFTER the startup run (lazy creation on first view), the day's reminder never fired.
+# A short time throttle + the DB reminder-log (idempotent per rkey) means the reminder is
+# picked up within a few minutes of becoming due, and is still never sent twice.
+_last_run = {"at": 0.0}
+_RUN_EVERY_SEC = 600  # re-scan at most every 10 minutes
 
 
 def _students_for_session(db, canon):
@@ -303,10 +308,12 @@ def _students_for_session(db, canon):
 
 
 def run_calendar_reminders(db, force=False):
-    today = ist_today()
-    if not force and _last_run_day["d"] == today:
+    import time as _time
+    now_ts = _time.time()
+    if not force and _last_run["at"] and (now_ts - _last_run["at"]) < _RUN_EVERY_SEC:
         return 0
-    _last_run_day["d"] = today
+    _last_run["at"] = now_ts
+    today = ist_today()
     sent = 0
     try:
         cals = db.query(AcademicCalendar).all()
@@ -322,18 +329,24 @@ def run_calendar_reminders(db, force=False):
                 if (d - timedelta(days=offset)) != today:
                     continue
                 rkey = "%s|%s|%d|%s" % (cal.session, m.get("key"), offset, today.isoformat())
-                exists = db.query(AcademicCalReminderLog).filter(
-                    AcademicCalReminderLog.rkey == rkey).first()
+                try:
+                    exists = db.query(AcademicCalReminderLog).filter(
+                        AcademicCalReminderLog.rkey == rkey).first()
+                except Exception:
+                    exists = None
                 if exists:
                     continue
                 if cal.session not in session_uids:
                     session_uids[cal.session] = _students_for_session(db, cal.session)
                 uids = session_uids[cal.session]
                 title, msg = _reminder_text(m, offset, d)
-                for uid in uids:
-                    db.add(Notification(user_id=uid, title=title, message=msg,
-                                        notif_type="academic_calendar", link="acalendar"))
-                    sent += 1
+                # bulk insert — a session can have thousands of students; one commit each.
+                notifs = [Notification(user_id=uid, title=title, message=msg,
+                                       notif_type="academic_calendar", link="acalendar")
+                          for uid in uids]
+                if notifs:
+                    db.bulk_save_objects(notifs)
+                    sent += len(notifs)
                 db.add(AcademicCalReminderLog(rkey=rkey))
                 db.commit()
     return sent

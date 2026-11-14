@@ -48934,12 +48934,113 @@ function _acalMiRow(m){
   if(m.kind==='window' && m.range_display){ tag='<span class="ac-tag fee">'+esc(m.range_display)+'</span>'; }
   var last=m.last_date?('<div class="ac-lastdate">'+_AC_CLOCK_SVG+'Last date for submission: '+esc(m.last_date)+'</div>'):'';
   var sub=m.subtitle?('<div class="ac-c-sub">'+esc(m.subtitle)+'</div>'):'';
-  return '<div class="ac-mi '+cls+'"><div class="ac-node">'+node+'</div><div class="ac-card"><div class="ac-c-top"><div><div class="ac-c-name">'+esc(m.title)+'</div>'+sub+tag+'</div>'+dateHtml+'</div>'+last+'</div></div>';
+  var more='<div class="ac-more">'+_acalShortCountdown(m)+'<span class="ac-more-go">View details ›</span></div>';
+  return '<div class="ac-mi '+cls+'"><div class="ac-node">'+node+'</div><div class="ac-card ac-click" onclick="_acalCardPopup(\''+esc(m.key)+'\')"><div class="ac-c-top"><div><div class="ac-c-name">'+esc(m.title)+'</div>'+sub+tag+'</div>'+dateHtml+'</div>'+last+more+'</div></div>';
 }
 
 function _acalTimelineHtml(d){
+  _acalCss2();
+  try{ window._acalCur=d; }catch(e){}
   var mi=d.milestones||[];
   return '<div class="ac-tl">'+mi.map(_acalMiRow).join('')+'</div>';
+}
+function _acalCss2(){
+  if(document.getElementById('acal-css2')) return;
+  var s=document.createElement('style'); s.id='acal-css2';
+  s.textContent=[
+    '.ac-card.ac-click{cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s}',
+    '.ac-card.ac-click:hover{transform:translateY(-2px);box-shadow:0 14px 30px -18px rgba(60,45,10,.5);border-color:#e0cf98}',
+    '.ac-more{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--border,#e7ddc7)}',
+    '.ac-more-cd{font-size:.72rem;font-weight:800;color:#8a6d10}',
+    '.ac-more-cd.live{color:#1f7a52}.ac-more-cd.done{color:#9a8f78}.ac-more-cd.soon{color:#c0392b}',
+    '.ac-more-go{font-size:.68rem;font-weight:800;color:#8a6d10;opacity:.85}',
+    /* popup */
+    '.acp{text-align:center;padding:4px 2px}',
+    '.acp-ic{width:58px;height:58px;border-radius:16px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#c9a227,#8a6d10)}',
+    '.acp-ic svg{width:28px;height:28px;stroke:#fff}',
+    '.acp-ic.done{background:linear-gradient(135deg,#8a6d10,#6d560b)}',
+    '.acp-ic.live{background:linear-gradient(135deg,#1f7a52,#13543a)}',
+    '.acp-ic.soon{background:linear-gradient(135deg,#c0392b,#8f2a1f)}',
+    '.acp-badge{display:inline-block;font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:4px 12px;border-radius:999px;margin-bottom:12px;background:#efe7d4;color:#8a7a4e}',
+    '.acp-badge.live{background:#fff4d6;color:#8a6d10}.acp-badge.next{background:#dff0e6;color:#1f7a52}.acp-badge.done{background:#ece5d6;color:#8a7a4e}',
+    '.acp-big{font-size:1.55rem;font-weight:900;color:var(--text,#14213d);line-height:1.15}',
+    '.acp-sub{font-size:.86rem;color:var(--text-muted,#777);margin-top:6px;line-height:1.5}',
+    '.acp-meta{text-align:left;margin-top:16px;border:1px solid var(--border,#e7ddc7);border-radius:13px;overflow:hidden}',
+    '.acp-row{display:flex;justify-content:space-between;gap:12px;padding:11px 14px;font-size:.84rem;border-bottom:1px solid var(--border,#e7ddc7)}',
+    '.acp-row:last-child{border-bottom:none}',
+    '.acp-row .k{color:var(--text-muted,#777);font-weight:600}',
+    '.acp-row .v{font-weight:800;color:var(--text,#14213d);text-align:right}',
+    '.acp-row .v.red{color:#c0392b}',
+    '.acp-note{margin-top:14px;display:flex;gap:10px;background:linear-gradient(135deg,#fff8e8,#fdf0d2);border:1px solid #f0dca0;border-radius:12px;padding:11px 13px;text-align:left}',
+    'body.dark .acp-note{background:#231f10;border-color:#50451f}',
+    '.acp-note svg{width:16px;height:16px;flex:0 0 auto;stroke:#8a6d10;margin-top:2px}',
+    '.acp-note p{margin:0;font-size:.76rem;line-height:1.55;color:#6a5416}body.dark .acp-note p{color:#e4cf94}',
+    /* admin view header */
+    '.ac-view-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}',
+    '.ac-edit-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;border:none;font-weight:800;font-size:.85rem;padding:10px 18px;border-radius:11px;cursor:pointer}',
+    '.ac-edit-btn:hover{filter:brightness(1.07)}.ac-edit-btn svg{width:15px;height:15px;stroke:#fff}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _acalDiffDays(aIso,bIso){
+  try{ var a=new Date(aIso+'T00:00:00Z'), b=new Date(bIso+'T00:00:00Z'); return Math.round((a-b)/86400000); }catch(e){ return null; }
+}
+var _AC_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function _acalFmtLong(iso){ try{ var p=iso.split('-'); return parseInt(p[2],10)+' '+_AC_MONTHS[parseInt(p[1],10)-1]+' '+p[0]; }catch(e){ return iso||''; } }
+// short inline countdown shown on each card
+function _acalShortCountdown(m){
+  var today=(window._acalCur&&window._acalCur.today)||null;
+  if(m.status==='done') return '<span class="ac-more-cd done">Completed</span>';
+  if(!m.date){ return '<span class="ac-more-cd">'+esc(m.date_label||'Available now')+'</span>'; }
+  if(!today) return '<span class="ac-more-cd">'+esc(m.date_display||'')+'</span>';
+  if(m.kind==='window' && m.end_date){ var de=_acalDiffDays(m.end_date,today); var ds=_acalDiffDays(m.date,today); if(ds<=0 && de>=0) return '<span class="ac-more-cd live">Open · '+de+' day'+(de===1?'':'s')+' left</span>'; }
+  var n=_acalDiffDays(m.date,today);
+  if(n===null) return '<span class="ac-more-cd">'+esc(m.date_display||'')+'</span>';
+  if(n<0) return '<span class="ac-more-cd done">Date passed</span>';
+  if(n===0) return '<span class="ac-more-cd soon">Starts today</span>';
+  if(n===1) return '<span class="ac-more-cd soon">1 day to go</span>';
+  var cls=(n<=7)?'soon':'';
+  return '<span class="ac-more-cd '+cls+'">'+n+' days to go</span>';
+}
+// premium popup for a milestone card
+function _acalCountdown(m,today){
+  if(m.status==='done' || (m.date && today && _acalDiffDays(m.date,today)<0 && !(m.kind==='window'&&m.end_date&&_acalDiffDays(m.end_date,today)>=0))){
+    return {ic:'done',badge:'done',badgeLabel:'Completed',big:'Completed',sub:(m.date?('This stage’s tentative date was '+_acalFmtLong(m.date)+'.'):'This stage is already complete.')};
+  }
+  if(!m.date){ return {ic:'live',badge:'live',badgeLabel:'Available',big:esc(m.date_label||'Available now'),sub:'The assignment questions for your session are already available.'}; }
+  if(m.kind==='window' && m.end_date && today){
+    var ds=_acalDiffDays(m.date,today), de=_acalDiffDays(m.end_date,today);
+    if(ds<=0 && de>=0){ return {ic:'live',badge:'live',badgeLabel:'Ongoing now',big:(de===0?'Closes today':(de+' day'+(de===1?'':'s')+' left')),sub:'The fee window is open until '+_acalFmtLong(m.end_date)+'.'}; }
+  }
+  var n=today?_acalDiffDays(m.date,today):null;
+  if(n===null) return {ic:'',badge:'',badgeLabel:'Scheduled',big:(m.date_display||''),sub:'Tentatively scheduled for '+_acalFmtLong(m.date)+'.'};
+  if(n<=0) return {ic:'soon',badge:'live',badgeLabel:'Starting today',big:'Starts today',sub:'This stage tentatively begins today, '+_acalFmtLong(m.date)+'.'};
+  if(n===1) return {ic:'soon',badge:'next',badgeLabel:'Starting soon',big:'1 day to go',sub:'Tentatively begins tomorrow, '+_acalFmtLong(m.date)+'.'};
+  var badge=(n<=7)?'next':'';
+  return {ic:(n<=7?'soon':''),badge:badge,badgeLabel:(n<=7?'Coming up':'Upcoming'),big:n+' days to go',sub:'Tentatively begins on '+_acalFmtLong(m.date)+'.'};
+}
+function _acalCardPopup(key){
+  _acalCss2();
+  var d=window._acalCur; if(!d||!d.milestones) return;
+  var m=null; for(var i=0;i<d.milestones.length;i++){ if(d.milestones[i].key===key){ m=d.milestones[i]; break; } }
+  if(!m) return;
+  var cd=_acalCountdown(m,d.today);
+  var icCls=cd.ic||'';
+  var icon=(m.status==='done'||cd.badge==='done')?_AC_CHECK_SVG:_AC_CLOCK_SVG;
+  var rows='';
+  if(m.kind==='window' && m.range_display){ rows+='<div class="acp-row"><span class="k">Fee window</span><span class="v">'+esc(m.range_display)+'</span></div>'; }
+  else if(m.date){ rows+='<div class="acp-row"><span class="k">Tentative date</span><span class="v">'+esc(_acalFmtLong(m.date))+'</span></div>'; }
+  if(m.hall_ticket){ rows+='<div class="acp-row"><span class="k">Hall ticket by</span><span class="v">'+esc(_acalFmtLong(m.hall_ticket))+'</span></div>'; }
+  if(m.last_date){ rows+='<div class="acp-row"><span class="k">Last date to submit</span><span class="v red">'+esc(m.last_date)+'</span></div>'; }
+  if(m.subtitle){ rows+='<div class="acp-row"><span class="k">About</span><span class="v" style="font-weight:600;max-width:60%">'+esc(m.subtitle)+'</span></div>'; }
+  var body='<div class="acp"><div class="acp-ic '+icCls+'">'+icon+'</div>'+
+    (cd.badgeLabel?('<div class="acp-badge '+(cd.badge||'')+'">'+esc(cd.badgeLabel)+'</div>'):'')+
+    '<div class="acp-big">'+esc(cd.big)+'</div><div class="acp-sub">'+cd.sub+'</div>'+
+    (rows?('<div class="acp-meta">'+rows+'</div>'):'')+
+    '<div class="acp-note">'+_AC_INFO_SVG+'<p>These are <b>tentative</b> dates. Confirmed dates are announced on our official Manish Verma Official channel — stay connected and keep preparing.</p></div></div>';
+  var yt=(d.youtube_url||'').trim();
+  var foot=(yt?('<a class="ac-yt" href="'+esc(yt)+'" target="_blank" rel="noopener" style="margin:0">'+_AC_YT_SVG+'YouTube</a>'):'')+'<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+  showModal(esc(m.title),body,foot);
 }
 
 function _acalHeader(d,role){
@@ -49115,8 +49216,22 @@ function aAcalOpen(session,skipBtns){
   if(!skipBtns){ document.querySelectorAll('#a-acalendar-content .ac-ses-b').forEach(function(b){ b.classList.toggle('on', b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf("'"+session+"'")>=0); }); }
   var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML='<div class="spinner" style="margin:30px auto"></div>';
   api('/api/admin/academic-calendar/'+encodeURIComponent(session)).then(function(d){
-    if(box) box.innerHTML=_aAcalEditor(d);
+    window._aAcalData=d; if(box) box.innerHTML=_aAcalView(d);
   }).catch(function(){ if(box) box.innerHTML='<div class="ac-empty"><p>Could not load this session.</p></div>'; });
+}
+var _AC_PENCIL_SVG='<svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+function _aAcalView(d){
+  // Admin sees the calendar exactly as students do, with an Edit action on top.
+  return '<div class="ac-ed"><div class="ac-view-top"><div><h3>'+esc(d.session)+' — calendar</h3><div class="hint">This is exactly what students of this session see. Tap any stage for details.</div></div>'+
+    '<button class="ac-edit-btn" onclick="aAcalEdit(\''+esc(d.session)+'\')">'+_AC_PENCIL_SVG+'Edit calendar</button></div>'+
+    _acalNoteHtml(d)+_acalHeroHtml(d,'admin')+_acalTimelineHtml(d)+'</div>';
+}
+function aAcalEdit(session){
+  var box=document.getElementById('a-acal-detail'); if(!box) return;
+  var d=window._aAcalData;
+  if(d && d.session===session){ box.innerHTML=_aAcalEditor(d); return; }
+  box.innerHTML='<div class="spinner" style="margin:30px auto"></div>';
+  api('/api/admin/academic-calendar/'+encodeURIComponent(session)).then(function(dd){ window._aAcalData=dd; box.innerHTML=_aAcalEditor(dd); }).catch(function(){ box.innerHTML='<div class="ac-empty"><p>Could not load this session.</p></div>'; });
 }
 function _acDateInput(key,field,val){
   return '<input class="ac-inp" type="date" id="acf-'+key+'-'+field+'" value="'+(val||'')+'">';
@@ -49137,7 +49252,8 @@ function _aAcalEditor(d){
     }
     return '<div class="ac-fld"><label>'+esc(m.title)+'</label>'+fields+'</div>';
   }).join('');
-  return '<div class="ac-ed"><h3>'+esc(d.session)+' — milestones</h3><div class="hint">All dates are tentative. Changes apply instantly to students of this session.</div>'+
+  return '<div class="ac-ed"><div class="ac-view-top"><div><h3>'+esc(d.session)+' — edit milestones</h3><div class="hint">All dates are tentative. Changes apply instantly to students of this session.</div></div>'+
+    '<button class="btn btn-ghost btn-sm" onclick="aAcalOpen(\''+esc(d.session)+'\')">‹ Back</button></div>'+
     rows+
     '<div class="ac-divide"></div>'+
     '<div class="ac-fld"><label>Official YouTube channel link</label><input class="ac-inp full" type="text" id="acf-youtube" value="'+esc(d.youtube_url||'')+'" placeholder="https://www.youtube.com/@ManishVermaOfficial"></div>'+
@@ -49157,13 +49273,13 @@ function aAcalSave(session){
   var yt=(document.getElementById('acf-youtube')||{}).value||'';
   var note=(document.getElementById('acf-note')||{}).value||'';
   api('/api/admin/academic-calendar/'+encodeURIComponent(session),'PUT',{milestones:mi,youtube_url:yt,note:note}).then(function(d){
-    toast('Calendar saved.'); var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML=_aAcalEditor(d);
+    toast('Calendar saved.'); window._aAcalData=d; var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML=_aAcalView(d);
   }).catch(function(e){ toast((e&&e.message)||'Could not save',true); });
 }
 function aAcalReset(session){
   if(!confirm('Reset '+session+' to the default template dates? Your edits for this session will be replaced.')) return;
   api('/api/admin/academic-calendar/'+encodeURIComponent(session)+'/reset','POST').then(function(d){
-    toast('Reset to template.'); var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML=_aAcalEditor(d);
+    toast('Reset to template.'); window._aAcalData=d; var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML=_aAcalEditor(d);
   }).catch(function(e){ toast((e&&e.message)||'Could not reset',true); });
 }
 function aAcalDelete(session){
