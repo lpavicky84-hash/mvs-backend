@@ -401,6 +401,24 @@ def backfill_doubt_sla_snapshot():
             pass
 backfill_doubt_sla_snapshot()
 
+
+def run_academic_calendar_reminders_boot():
+    """Fire any due tentative-date reminders once at startup (idempotent)."""
+    try:
+        from database import SessionLocal
+        import academic_calendar as _ac
+        db = SessionLocal()
+        try:
+            _ac.run_calendar_reminders(db, force=True)
+        finally:
+            db.close()
+    except Exception as _ac_err:
+        try:
+            print("academic calendar reminders skipped:", str(_ac_err)[:200])
+        except Exception:
+            pass
+run_academic_calendar_reminders_boot()
+
 # ===== ONE-TIME LEGACY STATE REPAIR (makes GET /api/production/tasks read-only) =====
 # The Tasks list used to self-heal legacy admin state (approved/uploaded/youtuber) on EVERY
 # request. That healing now runs once here at startup so the read path writes nothing.
@@ -952,6 +970,8 @@ app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
 app.include_router(homework_routes.router)
 app.include_router(support_routes.router)
+import academic_calendar
+app.include_router(academic_calendar.router)
 try:
     import community_routes
     app.include_router(community_routes.router)

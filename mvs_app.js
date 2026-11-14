@@ -3129,6 +3129,7 @@ function enterTeacherApp(){
   try{ initTeacherMyBatches(); }catch(e){}
   try{ initTeacherChat(); }catch(e){}
   try{ initTeacherHomework(); }catch(e){}
+  try{ initTeacherCalendar(); }catch(e){}
   document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('#teacher-app .nav-item').classList.add('active');
   tPage('dashboard',null);
@@ -3318,7 +3319,7 @@ function tPage(page,el){
   document.querySelectorAll('#teacher-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('t-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#teacher-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker',tchatmgr:'Chat Manager'};
+  const titles={dashboard:'Dashboard',vtasks:'My Tasks',performance:'Performance',predicted:'Predicted Results',schedule:'Upload PDF',timetable:'Time Table',students:'My Students',dpp:'DPP',tests:'Tests',doubts:'Student Doubts',notifications:'Notifications',profile:'My Profile',material:'Classes Material',extmat:'Study Material',attendance:'Attendance',payout:'Payout',mysubjects:'My Subjects',subjectmaterials:'Subject Materials',matchecker:'Material Checker',mybatches:'My Batches',homework:'Homework Checker',tchatmgr:'Chat Manager',acalendar:'Academic Calendar'};
   _setPage(titles[page]||page);
   document.getElementById('t-title').textContent=titles[page]||page;
   stopCountdown();
@@ -3348,6 +3349,7 @@ function _tLoadPage(page){
   else if(page==='subjectmaterials') loadTSubjectMaterials();
   else if(page==='matchecker') loadTMatChecker();
   else if(page==='homework') loadTHomework();
+  else if(page==='acalendar') loadTCalendar();
 }
 
 // ===== TEACHER STUDY MATERIAL =====
@@ -13834,6 +13836,7 @@ function openAdmin(){
   try{ initAdminLiveTracker(); }catch(e){}
   try{ initAdminUploadSchedule(); }catch(e){}
   try{ initAdminTranslation(); }catch(e){}
+  try{ initAdminCalendar(); }catch(e){}
   try{ initNavCollapse(); }catch(e){}
   try{ initNavAccordion(); }catch(e){}   // ek fail ho to bhi accordion chale (sections band)
   [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll('.app .sidebar-nav').forEach(function(nav){ if(typeof _accGroupClose==='function') _accGroupClose(nav,false); }); }catch(e){} }, d); });
@@ -13975,14 +13978,14 @@ async function openUserSessions(uid){
 // Master list of admin section titles (page key -> title). SINGLE SOURCE OF TRUTH:
 // koi bhi naya section yahan add karo -> nav title bhi milega AUR admin-user access
 // dropdown (ADMIN_SECTIONS) mein apne aap aa jaayega (neeche derive hota hai).
-const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice',services:'MVS Services'};
+const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice',services:'MVS Services',acalendar:'Academic Calendar'};
 // Dynamic admin pages: inka page-div STATIC HTML me nahi hota — openAdmin() ke init me banta hai.
 // page-key -> uska init function (jo a-page-<key> div banata hai). aPage() navigate se PEHLE isse
 // ensure karta hai ki div zaroor exist kare. (Teacher/Student ke notification-target pages — timetable,
 // doubts, tests, notifications — sab STATIC hote hain, isiliye wahan ye issue kabhi aata hi nahi;
 // SIRF admin ke requests/complaints/feedback/matcheck jaise dynamic pages pe aata tha -> click
 // dashboard pe atak jaata tha.) Har init idempotent hai (pehle se bana div dobara nahi banta).
-const _A_DYN_INIT={dpptracker:'initAdminDppTracker',ytasks:'initAdminYtTasks',requests:'initAdminRequests',chatmgr:'initAdminChat',community:'initAdminCommunity',batches:'initAdminBatches',prodtrack:'initAdminLiveTracker',upsched:'initAdminUploadSchedule',prodteam:'initAdminProdTeam',prodmon:'initAdminProdMonitor',prodboard:'initAdminProdMonitor',translation:'initAdminTranslation',categories:'initAdminCategories',matcheck:'initAdminMatCheck',complaints:'initAdminSupport',feedback:'initAdminSupport'};
+const _A_DYN_INIT={dpptracker:'initAdminDppTracker',ytasks:'initAdminYtTasks',requests:'initAdminRequests',chatmgr:'initAdminChat',community:'initAdminCommunity',batches:'initAdminBatches',prodtrack:'initAdminLiveTracker',upsched:'initAdminUploadSchedule',prodteam:'initAdminProdTeam',prodmon:'initAdminProdMonitor',prodboard:'initAdminProdMonitor',translation:'initAdminTranslation',categories:'initAdminCategories',matcheck:'initAdminMatCheck',complaints:'initAdminSupport',feedback:'initAdminSupport',acalendar:'initAdminCalendar'};
 function _aEnsurePage(page){
   if(document.getElementById('a-page-'+page)) return true;
   var _ini=_A_DYN_INIT[page];
@@ -14056,6 +14059,7 @@ function _aLoadPage(page){
   else if(page==='timetable') loadATimetable();
   else if(page==='attendance') loadAAttendance();
   else if(page==='payouts') loadAPayouts();
+  else if(page==='acalendar') loadACalendars();
 }
 
 /* ================= VIDEO TASK MANAGER (teacher) ================= */
@@ -22413,6 +22417,7 @@ function enterStudentApp(){
   try{ initStudentMyBatches(); }catch(e){}
   try{ initStudentHomework(); }catch(e){}
   try{ initStudentCommunity(); }catch(e){}
+  try{ initStudentCalendar(); }catch(e){}
   sPage('dashboard',null);
   notifPopupOnOpen('student');
   try{ communityPopupOnOpen(); }catch(e){}
@@ -22802,7 +22807,7 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',services:'MVS Services',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check',community:'Community'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',services:'MVS Services',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check',community:'Community',acalendar:'Academic Calendar'};
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page]||page;
   stopCountdown();
@@ -22829,6 +22834,7 @@ function _sLoadPage(page){
   else if(page==='complaints') loadSComplaints();
   else if(page==='feedback') loadSFeedback();
   else if(page==='community') loadSCommunity();
+  else if(page==='acalendar') loadSCalendar();
   // Batch switcher content pages pe. Bar ab content ka SIBLING hai (loader se wipe nahi hoti),
   // isliye purane 180/600/1400ms wale jugaad ki zaroorat nahi — ek hi baar mount kaafi hai.
   var _cid={timetable:'s-timetable-content',materials:'s-materials-content',dpp:'s-dpp-content',tests:'s-tests-content',progress:'s-progress-content'}[page];
@@ -23466,6 +23472,7 @@ async function loadSDashboard(){
     setTimeout(function(){ _batchWelcomePopup(); }, 400);
     setIf(el,`${greetingCard(NAME)}<div id="s-event-banner"></div><div id="s-batch-sel"></div>${_nextActionHTML(window._naS,'You\u2019re all caught up on DPPs and tests.')}<div id="s-live-banner" style="display:none"></div>
       ${prio}
+      ${_sAcalCta()}
       <div id="s-today-wrap"></div>
       ${statsHtml}
       ${qaHtml}`);
@@ -48757,3 +48764,411 @@ function _supLightbox(url){
     (document.head||document.documentElement).appendChild(s);
   }catch(e){}
 })();
+
+/* ======================================================================
+   ACADEMIC CALENDAR  (student / teacher / admin)
+   Session-wise NIOS exam schedule. Shared premium renderer + per-portal
+   nav/page injection. Backend: /api/{student|teacher|admin}/academic-calendar(s)
+   ====================================================================== */
+function _acalCss(){
+  if(document.getElementById('acal-css')) return;
+  var s=document.createElement('style'); s.id='acal-css';
+  s.textContent=[
+    '.ac-wrap{max-width:720px;margin:0 auto}',
+    '.ac-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}',
+    '.ac-head h2{margin:0;font-size:1.22rem;font-weight:800;color:var(--text,#14213d)}',
+    '.ac-head .sub{font-size:.8rem;color:var(--text-muted,#777)}',
+    '.ac-sespill{margin-left:auto;background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;font-weight:800;font-size:.76rem;padding:7px 14px;border-radius:999px;box-shadow:0 6px 16px -6px rgba(201,162,39,.7);white-space:nowrap}',
+    /* tentative note */
+    '.ac-note{background:linear-gradient(135deg,#fff8e8,#fdf0d2);border:1px solid #f0dca0;border-radius:15px;padding:14px 15px;display:flex;gap:12px;margin-bottom:16px}',
+    'body.dark .ac-note{background:linear-gradient(135deg,#2a2512,#231f10);border-color:#50451f}',
+    '.ac-note-ic{width:30px;height:30px;flex:0 0 auto;border-radius:9px;background:#f3c23b;display:flex;align-items:center;justify-content:center}',
+    '.ac-note-ic svg{width:17px;height:17px;stroke:#5a4600}',
+    '.ac-note p{margin:0;font-size:.82rem;line-height:1.6;color:#6a5416}',
+    'body.dark .ac-note p{color:#e4cf94}',
+    '.ac-note b{color:#4a3a0d}body.dark .ac-note b{color:#f3dca0}',
+    '.ac-yt{margin-top:11px;display:inline-flex;align-items:center;gap:8px;background:#ff0000;color:#fff;font-weight:700;font-size:.8rem;padding:9px 14px;border-radius:10px;text-decoration:none;box-shadow:0 6px 16px -7px rgba(255,0,0,.6);border:none;cursor:pointer}',
+    '.ac-yt svg{width:17px;height:17px;fill:#fff}',
+    /* hero */
+    '.ac-hero{background:var(--card,#fff);border:1px solid var(--border,#e7ddc7);border-radius:18px;padding:18px;margin-bottom:16px;box-shadow:0 12px 30px -22px rgba(40,30,8,.5)}',
+    '.ac-hero-top{display:flex;gap:15px;align-items:center}',
+    '.ac-ava-wrap{position:relative;flex:0 0 auto}',
+    '.ac-ava{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#14213d,#2c4a7a);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.7rem;border:3px solid var(--card,#fff);box-shadow:0 0 0 3px #c9a227;background-size:cover;background-position:center;text-transform:uppercase}',
+    '.ac-ava-ic svg{width:26px;height:26px;stroke:#fff}',
+    '.ac-ava-pulse{position:absolute;inset:-6px;border-radius:50%;border:2px solid #c9a227;animation:acPulse 1.9s ease-out infinite;opacity:.6;pointer-events:none}',
+    '@keyframes acPulse{0%{transform:scale(.9);opacity:.7}100%{transform:scale(1.35);opacity:0}}',
+    '.ac-ava-cam{position:absolute;right:-2px;bottom:-2px;width:23px;height:23px;border-radius:50%;background:#8a6d10;border:2px solid var(--card,#fff);display:flex;align-items:center;justify-content:center;cursor:pointer}',
+    '.ac-ava-cam svg{width:12px;height:12px;stroke:#fff}',
+    '.ac-hero-txt{min-width:0;flex:1}',
+    '.ac-hero-now{font-size:.66rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#8a6d10}',
+    '.ac-hero-stage{font-size:1.12rem;font-weight:800;color:var(--text,#14213d);line-height:1.25;margin:2px 0 3px}',
+    '.ac-hero-cap{font-size:.74rem;color:var(--text-muted,#777)}',
+    '.ac-bar{margin-top:15px}',
+    '.ac-bar-row{display:flex;justify-content:space-between;font-size:.73rem;font-weight:700;color:var(--text-muted,#777);margin-bottom:6px}',
+    '.ac-bar-tr{height:9px;background:#efe7d4;border-radius:99px;overflow:hidden}body.dark .ac-bar-tr{background:#2a2512}',
+    '.ac-bar-fl{height:100%;background:linear-gradient(90deg,#c9a227,#8a6d10);border-radius:99px;transition:width .5s}',
+    '.ac-next{margin-top:14px;display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#eef6f0,#e2f0e7);border:1px solid #bfe0cc;border-radius:12px;padding:12px 14px}',
+    'body.dark .ac-next{background:linear-gradient(135deg,#13241a,#0f1e16);border-color:#265c3e}',
+    '.ac-next .d{width:46px;height:46px;flex:0 0 auto;border-radius:12px;background:#1f7a52;color:#fff;font-weight:800;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}',
+    '.ac-next .d b{font-size:1.15rem}.ac-next .d span{font-size:.5rem;letter-spacing:.06em;margin-top:2px}',
+    '.ac-next .t b{font-size:.88rem;color:var(--text,#14213d)}',
+    '.ac-next .t div{font-size:.76rem;color:var(--text-muted,#777);margin-top:2px}',
+    /* timeline */
+    '.ac-tl{position:relative;padding-left:40px;margin-top:4px}',
+    '.ac-tl::before{content:"";position:absolute;left:17px;top:10px;bottom:16px;width:3px;background:#e4dcc8;border-radius:3px}',
+    'body.dark .ac-tl::before{background:#2f2a1a}',
+    '.ac-mi{position:relative;margin-bottom:14px}',
+    '.ac-node{position:absolute;left:-31px;top:3px;width:26px;height:26px;border-radius:50%;background:var(--card,#fff);border:3px solid #e4dcc8;display:flex;align-items:center;justify-content:center;z-index:2}',
+    '.ac-node svg{width:13px;height:13px}',
+    '.ac-mi.done .ac-node{border-color:#8a6d10;background:#8a6d10}.ac-mi.done .ac-node svg{stroke:#fff}',
+    '.ac-mi.current .ac-node{border-color:#c9a227;background:#c9a227;box-shadow:0 0 0 6px rgba(201,162,39,.22);animation:acBlink 1.4s ease-in-out infinite}',
+    '@keyframes acBlink{0%,100%{box-shadow:0 0 0 6px rgba(201,162,39,.22)}50%{box-shadow:0 0 0 11px rgba(201,162,39,.06)}}',
+    '.ac-mi.next .ac-node{border-color:#2f9e66}',
+    '.ac-card{background:var(--card,#fff);border:1px solid var(--border,#e7ddc7);border-radius:14px;padding:12px 15px}',
+    '.ac-mi.done .ac-card{opacity:.72}',
+    '.ac-mi.current .ac-card{border:1.5px solid #c9a227;box-shadow:0 12px 26px -16px rgba(201,162,39,.7);background:linear-gradient(135deg,#fffdf6,#fbf4e2)}',
+    'body.dark .ac-mi.current .ac-card{background:linear-gradient(135deg,#241f10,#1c1809)}',
+    '.ac-mi.next .ac-card{border:1.5px solid #bfe0cc}',
+    '.ac-c-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}',
+    '.ac-c-name{font-size:.93rem;font-weight:800;color:var(--text,#14213d);line-height:1.3}',
+    '.ac-c-sub{font-size:.74rem;color:var(--text-muted,#777);margin-top:3px;line-height:1.5}',
+    '.ac-c-date{font-size:.84rem;font-weight:800;color:var(--text,#14213d);white-space:nowrap;text-align:right}',
+    '.ac-c-date small{display:block;font-size:.62rem;font-weight:700;color:#9a8f78;text-transform:uppercase;letter-spacing:.05em}',
+    '.ac-tag{display:inline-block;font-size:.6rem;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;margin-top:8px}',
+    '.ac-tag.live{background:#c9a227;color:#fff;animation:acTb 1.3s ease-in-out infinite}',
+    '@keyframes acTb{0%,100%{opacity:1}50%{opacity:.5}}',
+    '.ac-tag.nx{background:#dff0e6;color:#1f7a52}',
+    '.ac-tag.dn{background:#efe7d4;color:#8a7a4e}',
+    '.ac-tag.fee{background:#fdecec;color:#c0392b}',
+    '.ac-lastdate{margin-top:9px;font-size:.73rem;font-weight:700;color:#c0392b;background:#fdecec;border-radius:8px;padding:6px 10px;display:inline-flex;gap:6px;align-items:center}',
+    'body.dark .ac-lastdate{background:#2c1413}',
+    '.ac-lastdate svg{width:13px;height:13px;stroke:#c0392b}',
+    /* dashboard CTA */
+    '.ac-cta{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#14213d,#223a61);color:#fff;border-radius:16px;padding:15px 17px;margin:14px 0;cursor:pointer;box-shadow:0 14px 30px -18px rgba(20,33,61,.7);transition:transform .14s}',
+    '.ac-cta:hover{transform:translateY(-2px)}',
+    '.ac-cta-ic{width:44px;height:44px;flex:0 0 auto;border-radius:12px;background:linear-gradient(135deg,#c9a227,#8a6d10);display:flex;align-items:center;justify-content:center}',
+    '.ac-cta-ic svg{width:22px;height:22px;stroke:#fff}',
+    '.ac-cta-tx b{font-size:1rem;font-weight:800;display:block}',
+    '.ac-cta-tx span{font-size:.78rem;color:#c7d2e6}',
+    '.ac-cta-go{margin-left:auto;font-size:1.4rem;opacity:.8}',
+    /* sessions bar (teacher/admin) */
+    '.ac-ses{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}',
+    '.ac-ses-b{border:1px solid var(--border,#e7ddc7);background:var(--card,#fff);border-radius:10px;padding:8px 15px;font-weight:700;font-size:.84rem;color:var(--text,#14213d);cursor:pointer;transition:.14s}',
+    '.ac-ses-b:hover{border-color:#d9b64e}',
+    '.ac-ses-b.on{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;border-color:transparent}',
+    '.ac-ses-b.add{border-style:dashed;color:#8a6d10}',
+    '.ac-ses-b .ct{opacity:.7;font-weight:600;font-size:.74rem;margin-left:4px}',
+    /* admin editor */
+    '.ac-ed{background:var(--card,#fff);border:1px solid var(--border,#e7ddc7);border-radius:16px;padding:18px;margin-bottom:16px}',
+    '.ac-ed h3{margin:0 0 4px;font-size:1.05rem;font-weight:800;color:var(--text,#14213d)}',
+    '.ac-ed .hint{font-size:.76rem;color:var(--text-muted,#777);margin-bottom:14px}',
+    '.ac-fld{margin-bottom:13px}',
+    '.ac-fld label{display:block;font-size:.76rem;font-weight:800;color:var(--text,#14213d);margin-bottom:5px}',
+    '.ac-fld .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}',
+    '.ac-inp{border:1px solid var(--border,#e7ddc7);border-radius:9px;padding:9px 11px;font-size:.86rem;background:var(--bg,#fdfbf6);color:var(--text,#14213d);font-family:inherit}',
+    '.ac-inp[type=date]{max-width:175px}',
+    '.ac-inp.full{width:100%;box-sizing:border-box}',
+    '.ac-ed-act{display:flex;gap:9px;flex-wrap:wrap;margin-top:8px}',
+    '.ac-save{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;border:none;font-weight:800;font-size:.88rem;padding:11px 22px;border-radius:11px;cursor:pointer}',
+    '.ac-save:hover{filter:brightness(1.07)}',
+    '.ac-divide{height:1px;background:var(--border,#e7ddc7);margin:16px 0}',
+    '.ac-empty{text-align:center;padding:40px 16px;color:var(--text-muted,#777)}',
+    '.ac-empty .ei{width:56px;height:56px;border-radius:50%;background:rgba(201,162,39,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}',
+    '.ac-empty .ei svg{width:28px;height:28px;stroke:#8a6d10}'
+  ].join('');
+  document.head.appendChild(s);
+}
+
+var _AC_YT_SVG='<svg viewBox="0 0 24 24"><path d="M23 7.5a3 3 0 0 0-2.1-2.1C19 4.9 12 4.9 12 4.9s-7 0-8.9.5A3 3 0 0 0 1 7.5 31 31 0 0 0 .5 12 31 31 0 0 0 1 16.5a3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5A3 3 0 0 0 23 16.5 31 31 0 0 0 23.5 12 31 31 0 0 0 23 7.5zM9.75 15.5v-7l6 3.5z"/></svg>';
+var _AC_INFO_SVG='<svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+var _AC_CLOCK_SVG='<svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+var _AC_CHECK_SVG='<svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
+var _AC_RING_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="#2f9e66" stroke-width="2.6"><circle cx="12" cy="12" r="5"/></svg>';
+
+function _acalNoteHtml(d){
+  var note=d.note||'All dates shown are tentative. Confirmed dates are announced on our official Manish Verma Official channel — stay connected and keep preparing.';
+  var yt=(d.youtube_url||'').trim();
+  var ytBtn=yt?('<a class="ac-yt" href="'+esc(yt)+'" target="_blank" rel="noopener">'+_AC_YT_SVG+'Watch on YouTube</a>'):'';
+  return '<div class="ac-note"><div class="ac-note-ic">'+_AC_INFO_SVG+'</div><div><p>'+esc(note)+'</p>'+ytBtn+'</div></div>';
+}
+
+function _acalHeroHtml(d,role){
+  var hero=d.hero, nx=d.next, pr=d.progress||{done:0,total:0,pct:0};
+  var avatar;
+  if(role==='student'){
+    var letter=esc((initials(d.student_name||window.NAME||'')||'S'));
+    avatar='<div class="ac-ava-wrap"><div class="ac-ava-pulse"></div><div class="ac-ava" id="ac-ava" onclick="_acalPickPhoto()">'+letter+'</div><div class="ac-ava-cam" onclick="_acalPickPhoto()"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div></div>';
+  } else {
+    avatar='<div class="ac-ava-wrap"><div class="ac-ava ac-ava-ic">'+(ic('calendar')||_AC_CLOCK_SVG)+'</div></div>';
+  }
+  var nowStage=hero?esc(hero.title):'Session is about to begin';
+  var cap=role==='student'?'Tap your avatar to add a photo':('Session '+esc(d.session||''));
+  var nextChip='';
+  if(nx){
+    var dnum=(nx.days_left>0)?('<b>'+nx.days_left+'</b><span>'+(nx.days_left===1?'DAY':'DAYS')+'</span>'):('<b>•</b><span>NOW</span>');
+    nextChip='<div class="ac-next"><div class="d">'+dnum+'</div><div class="t"><b>'+esc(nx.label)+'</b><div>'+esc(nx.when)+'</div></div></div>';
+  }
+  return '<div class="ac-hero"><div class="ac-hero-top">'+avatar+
+    '<div class="ac-hero-txt"><div class="ac-hero-now">Where you are now</div><div class="ac-hero-stage">'+nowStage+'</div><div class="ac-hero-cap">'+cap+'</div></div></div>'+
+    '<div class="ac-bar"><div class="ac-bar-row"><span>Session progress</span><span>'+pr.done+' of '+pr.total+' stages completed</span></div><div class="ac-bar-tr"><div class="ac-bar-fl" style="width:'+(pr.pct||0)+'%"></div></div></div>'+
+    nextChip+'</div>';
+}
+
+function _acalMiRow(m){
+  var cls=m.status||'upcoming';
+  var node='';
+  if(cls==='done') node=_AC_CHECK_SVG;
+  else if(cls==='next') node=_AC_RING_SVG;
+  var dateMain='', dateSmall='';
+  var disp=m.date_display||'';
+  if(disp){
+    var parts=disp.split(' ');
+    if(parts.length>=3 && /^\d{4}$/.test(parts[parts.length-1])){ dateSmall=parts.pop(); dateMain=parts.join(' '); }
+    else { dateMain=disp; }
+  }
+  var dateHtml=dateMain?('<div class="ac-c-date">'+esc(dateMain)+(dateSmall?('<small>'+esc(dateSmall)+'</small>'):'')+'</div>'):'';
+  var tag='';
+  if(cls==='done') tag='<span class="ac-tag dn">Completed</span>';
+  else if(cls==='current') tag='<span class="ac-tag live">'+(m.kind==='window'?'Ongoing':'In focus now')+'</span>';
+  else if(cls==='next') tag='<span class="ac-tag nx">Up next</span>';
+  if(m.kind==='window' && m.range_display){ tag='<span class="ac-tag fee">'+esc(m.range_display)+'</span>'; }
+  var last=m.last_date?('<div class="ac-lastdate">'+_AC_CLOCK_SVG+'Last date for submission: '+esc(m.last_date)+'</div>'):'';
+  var sub=m.subtitle?('<div class="ac-c-sub">'+esc(m.subtitle)+'</div>'):'';
+  return '<div class="ac-mi '+cls+'"><div class="ac-node">'+node+'</div><div class="ac-card"><div class="ac-c-top"><div><div class="ac-c-name">'+esc(m.title)+'</div>'+sub+tag+'</div>'+dateHtml+'</div>'+last+'</div></div>';
+}
+
+function _acalTimelineHtml(d){
+  var mi=d.milestones||[];
+  return '<div class="ac-tl">'+mi.map(_acalMiRow).join('')+'</div>';
+}
+
+function _acalHeader(d,role){
+  var right=d.session?('<span class="ac-sespill">'+esc(d.session)+'</span>'):'';
+  var sub='NIOS '+esc(d.session||'')+' Examination';
+  return '<div class="ac-head">'+(ic('calendar')||'')+'<div><h2>Academic Calendar</h2><div class="sub">'+sub+'</div></div>'+right+'</div>';
+}
+
+function _acalRender(d,role){
+  return _acalHeader(d,role)+_acalNoteHtml(d)+_acalHeroHtml(d,role)+_acalTimelineHtml(d);
+}
+
+/* ---------------------------- STUDENT ---------------------------- */
+function _sAcalCta(){
+  return '<div class="ac-cta" onclick="navTo(\'student-app\',\'acalendar\')"><div class="ac-cta-ic">'+(ic('calendar')||_AC_CLOCK_SVG)+'</div><div class="ac-cta-tx"><b>Academic Calendar</b><span>Your exam schedule &amp; important dates</span></div><div class="ac-cta-go">›</div></div>';
+}
+function initStudentCalendar(){
+  var app=document.getElementById('student-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="acalendar"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'timetable'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"sPage('acalendar',this)");
+    d.innerHTML=(ic('calendar')||'')+'<span>Academic Calendar</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('s-page-acalendar')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='s-page-acalendar';
+    pg.innerHTML='<div id="s-acalendar-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+function loadSCalendar(){
+  var el=document.getElementById('s-acalendar-content'); if(!el) return;
+  _acalCss(); el.innerHTML='<div class="spinner" style="margin:40px auto"></div>';
+  api('/api/student/academic-calendar').then(function(d){
+    if(!d || !d.has_session){
+      el.innerHTML='<div class="ac-wrap"><div class="ac-empty"><div class="ei">'+(ic('calendar')||'')+'</div><p style="font-weight:700;color:var(--text,#14213d)">Academic Calendar</p><p>'+esc((d&&d.message)||'Your exam session has not been set yet. Please contact the MVS Foundation office.')+'</p></div></div>';
+      return;
+    }
+    el.innerHTML='<div class="ac-wrap">'+_acalRender(d,'student')+'</div>';
+    _acalLoadStudentPhoto(d.has_photo);
+  }).catch(function(e){ el.innerHTML='<div class="ac-wrap"><div class="ac-empty"><p>Could not load your academic calendar. Please try again.</p></div></div>'; });
+}
+function _acalLoadStudentPhoto(has){
+  if(!has) return;
+  try{
+    fetch(API+_selfPhoto('student'),{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){
+      if(!r.ok) return; return r.blob();
+    }).then(function(bl){ if(!bl) return; var u=URL.createObjectURL(bl); var a=document.getElementById('ac-ava'); if(a){ a.style.backgroundImage='url('+u+')'; a.textContent=''; } }).catch(function(){});
+  }catch(e){}
+}
+function _acalPickPhoto(){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.style.display='none';
+  document.body.appendChild(inp);
+  inp.addEventListener('change',function(){
+    var f=inp.files&&inp.files[0]; if(!f){ inp.remove(); return; }
+    (async function(){
+      var up=f;
+      try{ if(typeof smartCompress==='function' && (up.size>300000 || (up.type&&up.type.indexOf('image/')===0))){ var rc=await smartCompress(up,function(){}); if(rc&&rc.ok) up=rc.file; } }catch(e){}
+      try{
+        toast('Uploading photo…');
+        var fd=new FormData(); fd.append('file',up,up.name||'photo.jpg');
+        var r=await fetch(API+'/api/student/photo',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+        if(r.ok){ toast('Profile photo updated.'); try{ _freshSessionPhotos&&_freshSessionPhotos(); }catch(e){} try{ loadTopAvatar('student'); }catch(e){} _acalLoadStudentPhoto(true); }
+        else { toast('Could not upload photo. Please try again.',true); }
+      }catch(e){ toast('Could not upload photo. Please try again.',true); }
+      inp.remove();
+    })();
+  });
+  inp.click();
+}
+
+/* ---------------------------- TEACHER (read-only) ---------------------------- */
+function initTeacherCalendar(){
+  var app=document.getElementById('teacher-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="acalendar"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'timetable'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"tPage('acalendar',this)");
+    d.innerHTML=(ic('calendar')||'')+'<span>Academic Calendar</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('t-page-acalendar')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='t-page-acalendar';
+    pg.innerHTML='<div id="t-acalendar-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+var _tAcalSel='';
+function loadTCalendar(){
+  var el=document.getElementById('t-acalendar-content'); if(!el) return;
+  _acalCss(); el.innerHTML='<div class="spinner" style="margin:40px auto"></div>';
+  api('/api/teacher/academic-calendars').then(function(r){
+    var ss=(r&&r.sessions)||[];
+    if(!ss.length){ el.innerHTML='<div class="ac-wrap"><div class="ac-empty"><div class="ei">'+(ic('calendar')||'')+'</div><p>No academic calendars have been published yet.</p></div></div>'; return; }
+    if(!_tAcalSel || !ss.some(function(s){return s.session===_tAcalSel;})) _tAcalSel=ss[0].session;
+    var btns=ss.map(function(s){ return '<button class="ac-ses-b'+(s.session===_tAcalSel?' on':'')+'" onclick="tAcalOpen(\''+esc(s.session)+'\')">'+esc(s.session)+'</button>'; }).join('');
+    el.innerHTML='<div class="ac-wrap"><div class="ac-head">'+(ic('calendar')||'')+'<div><h2>Academic Calendar</h2><div class="sub">View the schedule for any exam session</div></div></div><div class="ac-ses">'+btns+'</div><div id="t-acal-detail"><div class="spinner" style="margin:30px auto"></div></div></div>';
+    tAcalOpen(_tAcalSel,true);
+  }).catch(function(){ el.innerHTML='<div class="ac-wrap"><div class="ac-empty"><p>Could not load calendars.</p></div></div>'; });
+}
+function tAcalOpen(session,skipBtns){
+  _tAcalSel=session;
+  if(!skipBtns){ document.querySelectorAll('#t-acalendar-content .ac-ses-b').forEach(function(b){ b.classList.toggle('on', b.textContent===session); }); }
+  var box=document.getElementById('t-acal-detail'); if(box) box.innerHTML='<div class="spinner" style="margin:30px auto"></div>';
+  api('/api/teacher/academic-calendar/'+encodeURIComponent(session)).then(function(d){
+    if(box) box.innerHTML=_acalNoteHtml(d)+_acalHeroHtml(d,'teacher')+_acalTimelineHtml(d);
+  }).catch(function(){ if(box) box.innerHTML='<div class="ac-empty"><p>Could not load this session.</p></div>'; });
+}
+
+/* ---------------------------- ADMIN (full control) ---------------------------- */
+function initAdminCalendar(){
+  var app=document.getElementById('admin-app'); if(!app) return;
+  var nav=app.querySelector('.sidebar-nav');
+  if(nav && !nav.querySelector('[onclick*="acalendar"]')){
+    var items=[].slice.call(nav.querySelectorAll('.nav-item'));
+    var anchor=items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'timetable'")>=0;})[0]
+             || items.filter(function(n){return (n.getAttribute('onclick')||'').indexOf("'dashboard'")>=0;})[0];
+    var d=document.createElement('div'); d.className='nav-item'; d.setAttribute('onclick',"aPage('acalendar',this)");
+    d.innerHTML=(ic('calendar')||'')+'<span>Academic Calendar</span>';
+    if(anchor){ anchor.parentNode.insertBefore(d, anchor.nextSibling); } else { nav.appendChild(d); }
+  }
+  var main=app.querySelector('.main');
+  if(main && !document.getElementById('a-page-acalendar')){
+    var pg=document.createElement('div'); pg.className='page'; pg.id='a-page-acalendar';
+    pg.innerHTML='<div id="a-acalendar-content"><div class="spinner"></div></div>';
+    main.appendChild(pg);
+  }
+}
+var _aAcalSel='', _aAcalNext=null;
+function loadACalendars(){
+  var el=document.getElementById('a-acalendar-content'); if(!el) return;
+  _acalCss(); el.innerHTML='<div class="spinner" style="margin:40px auto"></div>';
+  api('/api/admin/academic-calendars').then(function(r){
+    var ss=(r&&r.sessions)||[]; _aAcalNext=r&&r.next_suggestion;
+    if(ss.length && (!_aAcalSel || !ss.some(function(s){return s.session===_aAcalSel;}))) _aAcalSel=ss[0].session;
+    var btns=ss.map(function(s){ return '<button class="ac-ses-b'+(s.session===_aAcalSel?' on':'')+'" onclick="aAcalOpen(\''+esc(s.session)+'\')">'+esc(s.session)+'<span class="ct">'+(s.students||0)+' students</span></button>'; }).join('');
+    var addLbl=_aAcalNext?('+ Create '+esc(_aAcalNext.session)):'+ New session';
+    btns+='<button class="ac-ses-b add" onclick="aAcalCreateForm()">'+addLbl+'</button>';
+    el.innerHTML='<div class="ac-wrap"><div class="ac-head">'+(ic('calendar')||'')+'<div><h2>Academic Calendar Manager</h2><div class="sub">Set tentative dates per session. Students see only their own session automatically.</div></div></div>'+
+      '<div class="ac-ses">'+btns+'</div><div id="a-acal-detail">'+(ss.length?'<div class="spinner" style="margin:30px auto"></div>':'<div class="ac-empty"><div class="ei">'+(ic('calendar')||'')+'</div><p>No calendars yet. Create your first session above.</p></div>')+'</div></div>';
+    if(ss.length) aAcalOpen(_aAcalSel,true);
+  }).catch(function(){ el.innerHTML='<div class="ac-wrap"><div class="ac-empty"><p>Could not load calendars.</p></div></div>'; });
+}
+function aAcalCreateForm(){
+  var box=document.getElementById('a-acal-detail'); if(!box) return;
+  document.querySelectorAll('#a-acalendar-content .ac-ses-b').forEach(function(b){ b.classList.remove('on'); });
+  var yr=(_aAcalNext&&_aAcalNext.year)|| (new Date().getFullYear()+1);
+  var tp=(_aAcalNext&&_aAcalNext.session_type)||'April';
+  box.innerHTML='<div class="ac-ed"><h3>Create a new session</h3><div class="hint">Dates are auto-filled from the standard NIOS timeline for the chosen session, then you can edit them.</div>'+
+    '<div class="ac-fld"><label>Session type</label><div class="row">'+
+      '<select class="ac-inp" id="acnew-type"><option value="April"'+(tp==='April'?' selected':'')+'>April (April examination)</option><option value="October"'+(tp==='October'?' selected':'')+'>October (October examination)</option></select>'+
+      '<input class="ac-inp" type="number" id="acnew-year" value="'+yr+'" min="2024" max="2035" style="max-width:110px">'+
+    '</div></div>'+
+    '<div class="ac-ed-act"><button class="ac-save" onclick="aAcalCreate()">Create calendar</button></div></div>';
+}
+function aAcalCreate(){
+  var tp=(document.getElementById('acnew-type')||{}).value||'April';
+  var yr=parseInt((document.getElementById('acnew-year')||{}).value,10);
+  if(!yr){ toast('Please enter a valid year.',true); return; }
+  api('/api/admin/academic-calendar','POST',{session_type:tp,year:yr}).then(function(d){
+    toast('Calendar created: '+(d.session||'')); _aAcalSel=d.session; loadACalendars();
+  }).catch(function(e){ toast((e&&e.message)||'Could not create calendar',true); });
+}
+function aAcalOpen(session,skipBtns){
+  _aAcalSel=session;
+  if(!skipBtns){ document.querySelectorAll('#a-acalendar-content .ac-ses-b').forEach(function(b){ b.classList.toggle('on', b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf("'"+session+"'")>=0); }); }
+  var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML='<div class="spinner" style="margin:30px auto"></div>';
+  api('/api/admin/academic-calendar/'+encodeURIComponent(session)).then(function(d){
+    if(box) box.innerHTML=_aAcalEditor(d);
+  }).catch(function(){ if(box) box.innerHTML='<div class="ac-empty"><p>Could not load this session.</p></div>'; });
+}
+function _acDateInput(key,field,val){
+  return '<input class="ac-inp" type="date" id="acf-'+key+'-'+field+'" value="'+(val||'')+'">';
+}
+function _aAcalEditor(d){
+  var mi=d.milestones||[];
+  var rows=mi.map(function(m){
+    var fields='';
+    if(m.kind==='window'){
+      fields='<div class="row">'+_acDateInput(m.key,'date',m.date)+'<span style="font-weight:700">to</span>'+_acDateInput(m.key,'end_date',m.end_date)+'</div>';
+    } else if(m.kind==='exam'){
+      fields='<div class="row">'+_acDateInput(m.key,'date',m.date)+'<span style="color:var(--text-muted);font-size:.78rem">Hall ticket by</span>'+_acDateInput(m.key,'hall_ticket',m.hall_ticket)+'</div>';
+    } else {
+      fields='<div class="row">'+_acDateInput(m.key,'date',m.date)+'</div>';
+    }
+    if(m.key==='tma_questions'){
+      fields+='<div class="row" style="margin-top:7px"><input class="ac-inp full" type="text" id="acf-'+m.key+'-label" placeholder="Display label (optional, e.g. Available now)" value="'+esc(m.date_label||'')+'"></div>';
+    }
+    return '<div class="ac-fld"><label>'+esc(m.title)+'</label>'+fields+'</div>';
+  }).join('');
+  return '<div class="ac-ed"><h3>'+esc(d.session)+' — milestones</h3><div class="hint">All dates are tentative. Changes apply instantly to students of this session.</div>'+
+    rows+
+    '<div class="ac-divide"></div>'+
+    '<div class="ac-fld"><label>Official YouTube channel link</label><input class="ac-inp full" type="text" id="acf-youtube" value="'+esc(d.youtube_url||'')+'" placeholder="https://www.youtube.com/@ManishVermaOfficial"></div>'+
+    '<div class="ac-fld"><label>Student note (optional — leave blank for the default tentative-date message)</label><textarea class="ac-inp full" id="acf-note" rows="2" placeholder="Default message will be shown">'+esc(d.note||'')+'</textarea></div>'+
+    '<div class="ac-ed-act"><button class="ac-save" onclick="aAcalSave(\''+esc(d.session)+'\')">Save calendar</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick="aAcalReset(\''+esc(d.session)+'\')">Reset to template</button>'+
+      '<button class="btn btn-ghost btn-sm" style="color:#c0392b" onclick="aAcalDelete(\''+esc(d.session)+'\')">Delete</button></div>'+
+    '<div class="ac-divide"></div><div class="hint" style="margin-bottom:8px;font-weight:800;color:var(--text,#14213d);text-transform:uppercase;letter-spacing:.05em;font-size:.72rem">Student preview</div>'+
+    _acalHeroHtml(d,'admin')+_acalTimelineHtml(d)+'</div>';
+}
+function aAcalSave(session){
+  var mi=[], keys=['tma_questions','tma_submission','tma_last_date','exam_fee','pcp_classes','practical_exam','theory_exam','final_result','marksheet_digilocker','original_marksheet'];
+  keys.forEach(function(k){
+    var g=function(f){ var e=document.getElementById('acf-'+k+'-'+f); return e?(e.value||null):null; };
+    mi.push({key:k, date:g('date'), end_date:g('end_date'), hall_ticket:g('hall_ticket'), date_label:g('label')});
+  });
+  var yt=(document.getElementById('acf-youtube')||{}).value||'';
+  var note=(document.getElementById('acf-note')||{}).value||'';
+  api('/api/admin/academic-calendar/'+encodeURIComponent(session),'PUT',{milestones:mi,youtube_url:yt,note:note}).then(function(d){
+    toast('Calendar saved.'); var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML=_aAcalEditor(d);
+  }).catch(function(e){ toast((e&&e.message)||'Could not save',true); });
+}
+function aAcalReset(session){
+  if(!confirm('Reset '+session+' to the default template dates? Your edits for this session will be replaced.')) return;
+  api('/api/admin/academic-calendar/'+encodeURIComponent(session)+'/reset','POST').then(function(d){
+    toast('Reset to template.'); var box=document.getElementById('a-acal-detail'); if(box) box.innerHTML=_aAcalEditor(d);
+  }).catch(function(e){ toast((e&&e.message)||'Could not reset',true); });
+}
+function aAcalDelete(session){
+  if(!confirm('Delete the calendar for '+session+'? Students of this session will no longer see a calendar until it is re-created.')) return;
+  api('/api/admin/academic-calendar/'+encodeURIComponent(session),'DELETE').then(function(){
+    toast('Calendar deleted.'); _aAcalSel=''; loadACalendars();
+  }).catch(function(e){ toast((e&&e.message)||'Could not delete',true); });
+}

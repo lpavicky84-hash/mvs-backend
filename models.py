@@ -2457,3 +2457,31 @@ class CommunityRead(Base):
     seen_at    = Column(DateTime, nullable=True)
     clicked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
+
+
+# =============================================
+# ACADEMIC CALENDAR (session-wise NIOS exam schedule)
+# Admin sets tentative dates per exam session ("April 2027" / "October 2027").
+# Students see ONLY their own session (resolved from StudentProfile.exam_session),
+# auto-created from a template the first time it is needed and fully editable by admin.
+# =============================================
+class AcademicCalendar(Base):
+    __tablename__ = "academic_calendars"
+    id           = Column(Integer, primary_key=True)
+    session      = Column(String(40), unique=True, index=True)   # canonical label e.g. "April 2027"
+    session_type = Column(String(12), default="")                # "April" | "October"
+    year         = Column(Integer, default=0)                    # exam year (e.g. 2027)
+    data         = Column(JSON, nullable=True)                   # ordered list of milestone dicts
+    youtube_url  = Column(String(500), default="")               # official channel link
+    note         = Column(Text, default="")                      # optional custom tentative note (blank = default)
+    created_at   = Column(DateTime, default=func.now())
+    updated_at   = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class AcademicCalReminderLog(Base):
+    """Idempotency log so a tentative-date reminder for a (session, milestone, offset, day)
+    is broadcast to students only once, even across restarts / multiple workers."""
+    __tablename__ = "academic_cal_reminder_log"
+    id         = Column(Integer, primary_key=True)
+    rkey       = Column(String(160), unique=True, index=True)   # "April 2027|tma_submission|2|2026-11-13"
+    created_at = Column(DateTime, default=func.now())
