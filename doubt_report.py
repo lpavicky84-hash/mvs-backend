@@ -25,7 +25,17 @@ def report_data(db, start, end, label=""):
                 .filter(TeacherProfile.id.in_(tids)).all():
             tmap[tid] = nm or ""
     per = {}
+    persub = {}
     tot = {"resolved": 0, "on_time": 0, "late": 0, "office_sum": 0, "max_late": 0}
+
+    def _canon_sub(s):
+        s = (s or "").strip() or "General"
+        try:
+            import subject_registry as _SR
+            return _SR.canon_display(s) or s
+        except Exception:
+            return s
+
     for tid, subj, cat, rat, snap in rows:
         m = _dm.metrics_for(cat, rat, snap, sla_now, oh)
         if not m:
@@ -34,17 +44,23 @@ def report_data(db, start, end, label=""):
         t = per.setdefault(key, {"teacher": tmap.get(tid, "Unassigned") or "Unassigned",
                                  "resolved": 0, "on_time": 0, "late": 0,
                                  "office_sum": 0, "max_late": 0})
-        t["resolved"] += 1
+        sub = _canon_sub(subj)
+        sg = persub.setdefault(sub, {"subject": sub, "resolved": 0, "on_time": 0,
+                                     "late": 0, "office_sum": 0, "max_late": 0})
+        for bucket in (t, sg):
+            bucket["resolved"] += 1
+            if m["late"]:
+                bucket["late"] += 1
+                bucket["max_late"] = max(bucket["max_late"], m["late_minutes"])
+            else:
+                bucket["on_time"] += 1
+            bucket["office_sum"] += m["office_minutes"]
         tot["resolved"] += 1
         if m["late"]:
-            t["late"] += 1
             tot["late"] += 1
-            t["max_late"] = max(t["max_late"], m["late_minutes"])
             tot["max_late"] = max(tot["max_late"], m["late_minutes"])
         else:
-            t["on_time"] += 1
             tot["on_time"] += 1
-        t["office_sum"] += m["office_minutes"]
         tot["office_sum"] += m["office_minutes"]
     teachers = []
     for t in per.values():
@@ -57,10 +73,22 @@ def report_data(db, start, end, label=""):
             "on_time_pct": (round(t["on_time"] * 100 / t["resolved"]) if t["resolved"] else 0),
         })
     teachers.sort(key=lambda x: (-x["resolved"], x["teacher"]))
+    subjects = []
+    for sg in persub.values():
+        avg = round(sg["office_sum"] / sg["resolved"]) if sg["resolved"] else 0
+        subjects.append({
+            "subject": sg["subject"], "resolved": sg["resolved"],
+            "on_time": sg["on_time"], "late": sg["late"],
+            "avg_minutes": avg, "avg_label": _dm.fmt_dur(avg),
+            "max_late_label": (_dm.fmt_dur(sg["max_late"]) if sg["max_late"] else ""),
+            "on_time_pct": (round(sg["on_time"] * 100 / sg["resolved"]) if sg["resolved"] else 0),
+        })
+    subjects.sort(key=lambda x: (-x["late"], -x["resolved"], x["subject"]))
     avg_all = round(tot["office_sum"] / tot["resolved"]) if tot["resolved"] else 0
     return {
         "label": label,
         "teachers": teachers,
+        "subjects": subjects,
         "totals": {
             "resolved": tot["resolved"], "on_time": tot["on_time"], "late": tot["late"],
             "avg_minutes": avg_all, "avg_label": _dm.fmt_dur(avg_all),
@@ -181,6 +209,50 @@ def report_pdf(db, data, period_label=""):
         pdf.set_text_color(*(RED if tr["max_late_label"] else MUT))
         pdf.cell(24, 7, L(tr["max_late_label"] or "-"), border="B", align="C", fill=True)
         pdf.ln(7)
+
+    # ---- subject-wise table ----
+    subs = data.get("subjects", [])
+    if subs:
+        pdf.ln(8)
+        if pdf.get_y() > 250:
+            pdf.add_page()
+        pdf.set_text_color(*INK)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, L("Subject-wise performance"), ln=1)
+        sheads = [("Subject", 54), ("Resolved", 24), ("On time", 22), ("Late", 18),
+                  ("On-time %", 24), ("Avg time", 24), ("Max late", 24)]
+
+        def _shead():
+            pdf.set_fill_color(*NAVY)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Helvetica", "B", 8.5)
+            for h, w in sheads:
+                pdf.cell(w, 8, L(h), border=0, align=("L" if h == "Subject" else "C"), fill=True)
+            pdf.ln(8)
+
+        _shead()
+        pdf.set_font("Helvetica", "", 8.5)
+        alt2 = False
+        for sg in subs:
+            if pdf.get_y() > 270:
+                pdf.add_page()
+                _shead()
+                pdf.set_font("Helvetica", "", 8.5)
+            pdf.set_fill_color(248, 245, 236) if alt2 else pdf.set_fill_color(255, 255, 255)
+            alt2 = not alt2
+            pdf.set_text_color(*INK)
+            pdf.cell(54, 7, L((sg["subject"] or "")[:30]), border="B", fill=True)
+            pdf.cell(24, 7, str(sg["resolved"]), border="B", align="C", fill=True)
+            pdf.set_text_color(*GREEN)
+            pdf.cell(22, 7, str(sg["on_time"]), border="B", align="C", fill=True)
+            pdf.set_text_color(*(RED if sg["late"] else MUT))
+            pdf.cell(18, 7, str(sg["late"]), border="B", align="C", fill=True)
+            pdf.set_text_color(*INK)
+            pdf.cell(24, 7, "%d%%" % sg["on_time_pct"], border="B", align="C", fill=True)
+            pdf.cell(24, 7, L(sg["avg_label"] or "-"), border="B", align="C", fill=True)
+            pdf.set_text_color(*(RED if sg["max_late_label"] else MUT))
+            pdf.cell(24, 7, L(sg["max_late_label"] or "-"), border="B", align="C", fill=True)
+            pdf.ln(7)
 
     pdf.ln(6)
     pdf.set_text_color(*MUT)

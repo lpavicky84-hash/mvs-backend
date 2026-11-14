@@ -13357,9 +13357,19 @@ function _ensureDoubtSlaCss(){
     '.xm-rc{font-size:.64rem;font-weight:800;border-radius:6px;padding:2px 7px}',
     '.xm-rc.ok{background:rgba(31,122,82,.13);color:#1f7a52}',
     '.xm-rc.late{background:rgba(192,57,43,.12);color:#c0392b}',
-    '.xm-rc.maxl{background:#c0392b;color:#fff;cursor:pointer}'
+    '.xm-rc.maxl{background:#c0392b;color:#fff;cursor:pointer}',
+    '.t-late-rem{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,#fff7f6,#fdeeec);border:1px solid rgba(192,57,43,.25);border-radius:14px;padding:12px 14px;margin:2px 0 14px;color:#b5362b}',
+    '.t-late-rem svg{width:18px;height:18px;flex:0 0 auto;margin-top:1px}',
+    '.t-late-rem b{font-size:.9rem}',
+    '.t-late-sub{font-size:.76rem;color:#8a4a44;margin-top:3px;line-height:1.5;font-weight:500}'
   ].join('');
   document.head.appendChild(s);
+}
+function _tLateReminder(ds){
+  if(!ds||!(ds.late>0)) return '';
+  _ensureDoubtSlaCss();
+  const sla=ds.sla_hours?_fmtSlaH(ds.sla_hours):'the set limit';
+  return `<div class="t-late-rem">${ic('alert')}<div><b>${ds.late} doubt${ds.late>1?'s were':' was'} resolved late</b><div class="t-late-sub">Out of ${ds.resolved} resolved, ${ds.on_time} ${ds.on_time===1?'was':'were'} on time. Please try to reply within ${sla} — quick replies keep students calm. Open a subject and check the <b>Late Resolved</b> tab to see which ones.</div></div></div>`;
 }
 function _fmtSlaH(h){ h=Number(h)||15; return (h%1===0?String(h):h.toFixed(1))+'h'; }
 function _fmtDurJS(mins){ mins=Math.round(Number(mins)||0); if(mins<60) return mins+'m'; var h=Math.floor(mins/60),m=mins%60; if(h<24) return m?(h+'h '+m+'m'):(h+'h'); var d=Math.floor(h/24),hh=h%24; return hh?(d+'d '+hh+'h'):(d+'d'); }
@@ -13379,6 +13389,7 @@ function tRenderDoubts(){
   const avgTxt=ds.avg_response_minutes==null?'\u2014':(ds.avg_response_minutes>=60?(Math.floor(ds.avg_response_minutes/60)+'h '+(ds.avg_response_minutes%60)+'m'):ds.avg_response_minutes+' min');
   let html=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',ds.resolved,'check','green')}${statCard('Avg Response Time',avgTxt,'clipboard','indigo')}</div>`;
   if(_tdSub===null){
+    html+=_tLateReminder(ds);
     // ---- SUBJECT CARDS VIEW ----
     html+=toppersHTML(doubts,'ttop',false);
     const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0,ontime:0,late:0,maxLate:0}); bySub[k].total++; if((d.status!=='resolved'||d.needs_attention)&&!d.assigned_away) bySub[k].pending++; if(d.status==='resolved'&&!d.assigned_away&&!d.needs_attention){ const m=d.resolve_metrics; if(m&&m.late){ bySub[k].late++; if((m.late_minutes||0)>bySub[k].maxLate) bySub[k].maxLate=m.late_minutes; } else bySub[k].ontime++; } });
@@ -21073,7 +21084,9 @@ async function adRepLoad(){
     const d=await api('/api/admin/doubts-report?range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to));
     window._adRepData=d;
     const t=d.totals||{};
-    const rows=(d.teachers||[]).map(tr=>`<tr><td data-l="Teacher">${esc(tr.teacher)}</td><td data-l="Resolved">${tr.resolved}</td><td data-l="On time" style="color:#1f7a52;font-weight:700">${tr.on_time}</td><td data-l="Late" style="color:${tr.late?'#c0392b':'var(--text-muted)'};font-weight:700">${tr.late}</td><td data-l="On-time %">${tr.on_time_pct}%</td><td data-l="Avg time">${esc(tr.avg_label||'—')}</td><td data-l="Max late" style="color:${tr.max_late_label?'#c0392b':'var(--text-muted)'}">${esc(tr.max_late_label||'—')}</td></tr>`).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px">No resolved doubts in this range.</td></tr>`;
+    const _rrow=(x,lbl)=>`<tr><td data-l="${lbl}">${esc(x[lbl==='Subject'?'subject':'teacher'])}</td><td data-l="Resolved">${x.resolved}</td><td data-l="On time" style="color:#1f7a52;font-weight:700">${x.on_time}</td><td data-l="Late" style="color:${x.late?'#c0392b':'var(--text-muted)'};font-weight:700">${x.late}</td><td data-l="On-time %">${x.on_time_pct}%</td><td data-l="Avg time">${esc(x.avg_label||'—')}</td><td data-l="Max late" style="color:${x.max_late_label?'#c0392b':'var(--text-muted)'}">${esc(x.max_late_label||'—')}</td></tr>`;
+    const rows=(d.teachers||[]).map(tr=>_rrow(tr,'Teacher')).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px">No resolved doubts in this range.</td></tr>`;
+    const srows=(d.subjects||[]).map(sg=>_rrow(sg,'Subject')).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px">No data.</td></tr>`;
     box.innerHTML=`<div class="dcr-s" style="margin-bottom:6px">${esc(d.label||'')} · SLA ${esc(_fmtSlaH(d.sla_hours))} · office ${String(d.office_hours.start).padStart(2,'0')}:00–${String(d.office_hours.end).padStart(2,'0')}:00 ${d.office_hours.enabled?'':'(off)'}</div>
       <div class="dcr-tot">
         <div class="dcr-tc"><b style="color:#14213d">${t.resolved||0}</b><span>Resolved</span></div>
@@ -21083,7 +21096,10 @@ async function adRepLoad(){
         <div class="dcr-tc"><b style="color:#14213d">${esc(t.avg_label||'—')}</b><span>Avg time</span></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px"><button class="btn btn-secondary btn-sm" onclick="adRepDlPdf()">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="adRepDlPng()">${ic('image')||ic('download')} Download Image</button></div>
-      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Teacher</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th><th>Max late</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div style="font-weight:800;font-size:.9rem;margin:4px 0 6px">By teacher</div>
+      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Teacher</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th><th>Max late</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div style="font-weight:800;font-size:.9rem;margin:16px 0 6px">By subject</div>
+      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Subject</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th><th>Max late</th></tr></thead><tbody>${srows}</tbody></table></div>`;
   }catch(e){ box.innerHTML=`<div class="alert alert-danger">${esc(e.message||'Could not load report')}</div>`; }
 }
 function adRepDlPdf(){
