@@ -1536,25 +1536,64 @@ async function notifGo(role,nid,type,fbPage,hint){
   if(nid){ try{ api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH').catch(function(){}); }catch(e){} }
   try{ refreshNotifBadge(role); }catch(e){}
 }
+function _notifIconFor(n){
+  const t=(n.notif_type||'').toLowerCase();
+  const ttl=((n.title||'')+' '+(n.message||'')).toLowerCase();
+  const has=s=>t.indexOf(s)>=0||ttl.indexOf(s)>=0;
+  if(has('complaint')) return {ic:'alert',c:'#c0392b'};
+  if(has('feedback')||has('rating')) return {ic:'trophy',c:'#d4a017'};
+  if(has('brief')) return {ic:'clipboard',c:'#7c3aed'};
+  if(has('submit')||has('review')||has('checking')||has('video')||has('task')) return {ic:'play',c:'#2563eb'};
+  if(has('doubt')) return {ic:'help',c:'#0891b2'};
+  if(has('broadcast')||has('message')||has('announce')) return {ic:'bell',c:'#8a6d10'};
+  if(has('chat')||has('replied')||has('reply')||has('comment')) return {ic:'chat',c:'#059669'};
+  if(has('scholar')||has('reward')||has('approved')) return {ic:'shield',c:'#059669'};
+  return {ic:'bell',c:'#8a6d10'};
+}
+function _ensureNotifCss(){
+  if(document.getElementById('npnl-css')) return;
+  var s=document.createElement('style'); s.id='npnl-css';
+  s.textContent=[
+    '.npnl{display:flex;flex-direction:column;gap:9px}',
+    '.npnl-it{position:relative;display:flex;gap:12px;align-items:flex-start;background:var(--card,#fff);border:1px solid var(--border);border-radius:14px;padding:13px 14px 13px 15px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s;overflow:hidden}',
+    '.npnl-it:hover{transform:translateY(-2px);box-shadow:0 12px 26px -16px rgba(60,45,10,.5);border-color:#e0cf98}',
+    '.npnl-it.unread{background:linear-gradient(100deg,rgba(201,162,39,.09),transparent 72%)}',
+    '.npnl-it.unread::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(#c9a227,#8a6d10)}',
+    '.npnl-ic{width:40px;height:40px;flex:0 0 auto;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff}',
+    '.npnl-ic svg{width:19px;height:19px}',
+    '.npnl-bd{min-width:0;flex:1}',
+    '.npnl-tl{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}',
+    '.npnl-tl .t{font-weight:800;font-size:.88rem;color:var(--text);line-height:1.3}',
+    '.npnl-it:not(.unread) .npnl-tl .t{font-weight:700}',
+    '.npnl-open{font-size:.64rem;font-weight:800;letter-spacing:.03em;color:#8a6d10;background:rgba(201,162,39,.14);border-radius:999px;padding:2px 9px;white-space:nowrap}',
+    '.npnl-msg{font-size:.8rem;color:var(--text-muted);line-height:1.5;margin-top:3px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}',
+    '.npnl-tm{font-size:.68rem;color:var(--text-muted);margin-top:6px;font-weight:600;opacity:.85}',
+    '.npnl-dot{position:absolute;top:13px;right:13px;width:9px;height:9px;border-radius:50%;background:#c9a227;box-shadow:0 0 0 4px rgba(201,162,39,.18)}',
+    '.npnl-img{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:9px;display:none;background:var(--border)}',
+    '.npnl-empty{text-align:center;padding:40px 10px;color:var(--text-muted)}',
+    '.npnl-empty .ne-ic{width:54px;height:54px;border-radius:50%;background:var(--primary-50,rgba(201,162,39,.12));display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#8a6d10}',
+    '.npnl-empty .ne-ic svg{width:26px;height:26px}'
+  ].join('');
+  document.head.appendChild(s);
+}
 async function openNotifPanel(role){
   let list;
   try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
+  _ensureNotifCss();
   const fbPage=role==='admin'?'dashboard':'notifications';
-  const html=list.length?list.map(n=>{
+  const html=list.length?('<div class="npnl">'+list.map(n=>{
     const hasLink=!!n.link;
     const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
     const unread=!n.is_read;
-    const hint=hasLink?` <span style="font-size:.68rem;color:var(--primary);font-weight:800">Open Link &#8250;</span>`:' <span style="font-size:.68rem;color:var(--primary);font-weight:800">&#8250;</span>';
+    const ico=_notifIconFor(n);
     const isBroadcast=(n.notif_type==='admin_broadcast');
-    const av=(isBroadcast&&n.image_url)?'':_notifAvHtml(n,'MVS');
-    const imgPrev=(isBroadcast&&n.image_url)?`<img loading="lazy" data-nimg-full="${esc(n.image_url)}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:8px;display:none;background:var(--border)">`:'';
-    const dot=unread?`<span style="width:9px;height:9px;border-radius:50%;background:var(--primary);flex:0 0 9px;margin-top:6px;box-shadow:0 0 0 3px var(--primary-50)"></span>`:'';
-    const inner=`<div class="ni-title" style="font-weight:${unread?'800':'600'}">${esc(n.title)}${hint}</div><div class="ni-msg"${unread?' style="color:var(--text);font-weight:500"':''}>${_msgHtml(n.message)}</div>${imgPrev}<div class="ni-time"> ${fmtNice(n.created_at)}</div>`;
-    const itStyle=`cursor:pointer;${unread?'border-left:3px solid var(--primary);background:linear-gradient(90deg,var(--primary-50),transparent 70%)':''}`;
-    return `<div class="notif-item ${unread?'unread':''}" data-go="1" ${_da} style="${itStyle}" onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}"><div class="notif-row" style="display:flex;gap:10px;align-items:flex-start">${dot}${av}<div style="min-width:0;flex:1">${inner}</div></div></div>`;
-  }).join(''):'<div class="empty-state"><div class="empty-icon"></div><p>No notifications yet</p></div>';
-  var _verTop='<div style="text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.1em;color:var(--primary);background:var(--primary-50,rgba(184,148,31,.12));border-radius:8px;padding:5px;margin-bottom:10px">BUILD: notif-nav-v6</div>';
-  showModal(' Notifications',_verTop+html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    const avatar=(isBroadcast&&n.image_url)?`<div class="npnl-ic notif-av" data-nimg="${esc(n.image_url)}" style="background:var(--primary-50,rgba(201,162,39,.14))"></div>`:`<div class="npnl-ic" style="background:linear-gradient(135deg,${ico.c},${ico.c}cc)">${ic(ico.ic)||ic('bell')}</div>`;
+    const imgPrev=(isBroadcast&&n.image_url)?`<img loading="lazy" data-nimg-full="${esc(n.image_url)}" alt="" class="npnl-img">`:'';
+    const dot=unread?'<span class="npnl-dot"></span>':'';
+    const openPill=hasLink?'<span class="npnl-open">Open &#8250;</span>':'';
+    return `<div class="npnl-it ${unread?'unread':''}" data-go="1" ${_da} onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}">${avatar}<div class="npnl-bd"><div class="npnl-tl"><span class="t">${esc(n.title)}</span>${openPill}</div><div class="npnl-msg">${_msgHtml(n.message)}</div>${imgPrev}<div class="npnl-tm">${fmtNice(n.created_at)}</div></div>${dot}</div>`;
+  }).join('')+'</div>'):`<div class="npnl-empty"><div class="ne-ic">${ic('bell')}</div><p>No notifications yet</p></div>`;
+  showModal(' Notifications',html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
   // SMART: panel khulte hi sab read -> badge/count clear, bell blink band, dobara na dikhe
   // jab tak koi naya notification na aaye. (Items is view me highlighted rehte hain jisse
@@ -1674,21 +1713,56 @@ async function notifLinkOpen(role,id,encLink,ntype,fbPage,hint){
     try{ refreshNotifBadge(role); }catch(e){}
   } else { openNotifPanel(role); }
 }
-function _focusTaskCard(tid){
-  // find the task card by any known data-attribute and scroll+flash it
+function _findTaskCard(tid){
   let el=document.querySelector('[data-tid-card="'+tid+'"]')
       || document.querySelector('.vt-card [id="tvt-link-'+tid+'"]')
       || document.querySelector('[data-vt-cd="'+tid+'"]');
   if(el && !el.classList.contains('vt-card')){ const c=el.closest('.vt-card'); if(c) el=c; }
-  if(!el){
-    // retry once after lists finish loading
-    setTimeout(()=>{ let e2=document.querySelector('[data-tid-card="'+tid+'"]'); if(e2){ e2.scrollIntoView({behavior:'smooth',block:'center'}); _flashCard(e2); } },900);
-    return;
-  }
-  el.scrollIntoView({behavior:'smooth',block:'center'}); _flashCard(el);
+  return el;
+}
+// Robustly land on the task even when the list is still loading (first open can be slow,
+// repeat opens are cached/instant). Poll patiently instead of giving up after one retry,
+// so the FIRST click reliably reaches + highlights the task. Shows gentle "Opening…" feedback.
+function _focusTaskCard(tid){
+  var el=_findTaskCard(tid);
+  if(el){ _scrollFlash(el); return; }
+  if(window._focusTaskTid===tid && window._focusTaskPoll) return;  // already polling for this one
+  window._focusTaskTid=tid;
+  var waited=false;
+  var tries=0, MAX=80;  // ~80 * 400ms = up to 32s, covers a slow first load
+  if(window._focusTaskPoll){ clearInterval(window._focusTaskPoll); }
+  window._focusTaskPoll=setInterval(function(){
+    tries++;
+    var e2=_findTaskCard(tid);
+    if(e2){ clearInterval(window._focusTaskPoll); window._focusTaskPoll=null; window._focusTaskTid=null; if(waited){ try{ toast('Task opened'); }catch(e){} } _scrollFlash(e2); return; }
+    if(tries===5 && !waited){ waited=true; try{ toast('Opening the task…'); }catch(e){} }
+    if(tries>=MAX){ clearInterval(window._focusTaskPoll); window._focusTaskPoll=null; window._focusTaskTid=null; if(waited){ try{ toast('Could not find that task — it may have moved or been removed.',true); }catch(e){} } }
+  },400);
+}
+function _scrollFlash(el){
+  try{ el.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+  // small delay so the smooth-scroll settles before the pop animation plays
+  setTimeout(function(){ _flashCard(el); },320);
+}
+function _ensureTaskFocusCss(){
+  if(document.getElementById('taskfocus-css')) return;
+  var s=document.createElement('style'); s.id='taskfocus-css';
+  s.textContent=[
+    '@keyframes taskPop{0%{transform:scale(1)}22%{transform:scale(1.055)}45%{transform:scale(1.02)}100%{transform:scale(1)}}',
+    '.task-focus{animation:taskPop .95s cubic-bezier(.22,.9,.3,1);position:relative;z-index:6;border-color:#c9a227!important;box-shadow:0 0 0 3px #c9a227,0 20px 44px -16px rgba(201,162,39,.85)!important;transition:box-shadow .6s ease,border-color .6s ease}',
+    '.task-focus.task-focus-out{box-shadow:0 0 0 0 rgba(201,162,39,0),0 0 0 0 rgba(201,162,39,0)!important}'
+  ].join('');
+  document.head.appendChild(s);
 }
 function _flashCard(el){
-  try{ el.style.transition='box-shadow .3s'; const prev=el.style.boxShadow; el.style.boxShadow='0 0 0 3px var(--primary)'; setTimeout(()=>{ el.style.boxShadow=prev||''; },1600); }catch(e){}
+  try{
+    _ensureTaskFocusCss();
+    el.classList.remove('task-focus','task-focus-out');
+    void el.offsetWidth;                 // restart animation if re-triggered
+    el.classList.add('task-focus');
+    setTimeout(function(){ el.classList.add('task-focus-out'); },1700);
+    setTimeout(function(){ el.classList.remove('task-focus','task-focus-out'); },2500);
+  }catch(e){}
 }
 async function markAllRead(role){
   let list;
@@ -4111,8 +4185,14 @@ function pfBreakdown(tid){
       <div class="pfb-gap-col gap"><span>Gap</span><b>${Math.max(0,Math.round((ab.score-r.score)*10)/10)}</b><small>points</small></div>
     </div>`:'<div class="pfb-muted" style="margin-top:12px">Top of the board \u2014 hold your lead!</div>';
   const vi=r.video_initiative||{};
-  const viHtml=`<div class="pfb-vi"><b>Video Initiative</b>
-     <div class="pfb-vi-row"><span>${vi.proposed||0} Proposed</span><span>${vi.approved||0} Approved</span><span>${vi.published||0} Published</span><span>${vi.reward_points||0} Reward pts</span></div></div>`;
+  const canOpenVi=(_pfState.who==='a')||(_pfState.meId&&tid===_pfState.meId);
+  _ensureViCss();
+  const viTile=(n,lbl,stage,col)=>canOpenVi
+    ? `<button class="pfb-vi-t" onclick="viTaskList(${tid},'${stage}')"><b style="color:${col}">${n||0}</b><span>${lbl}</span></button>`
+    : `<div class="pfb-vi-t" style="cursor:default"><b style="color:${col}">${n||0}</b><span>${lbl}</span></div>`;
+  const viHtml=`<div class="pfb-vi">
+     <div class="pfb-vi-hd"><b>Video Initiative</b>${canOpenVi?'<span class="pfb-vi-hint">Tap a number to see the videos ›</span>':''}</div>
+     <div class="pfb-vi-grid">${viTile(vi.proposed,'Proposed','proposed','#2563eb')}${viTile(vi.approved,'Approved','approved','#059669')}${viTile(vi.published,'Published','published','#7c3aed')}${viTile(vi.reward_points,'Reward pts','rewarded','#d4a017')}</div></div>`;
   showModal(`Why am I ranked #${r.rank}? \u2014 ${esc(r.name)}`,
     `<div class="pfb">
       <div class="pfb-overall"><div><div class="pfb-o-lbl">Overall Score</div><div class="pfb-o-sc">${r.score}<small>/100</small></div></div>
@@ -4126,6 +4206,68 @@ function pfBreakdown(tid){
     </div>`,
     `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
   _pfLoadActivity(tid);
+}
+function _ensureViCss(){
+  if(document.getElementById('vi-css')) return;
+  var s=document.createElement('style'); s.id='vi-css';
+  s.textContent=[
+    '.pfb-vi{margin-top:16px;background:linear-gradient(135deg,#fffdf7,#f7f1e3);border:1px solid #ece2c8;border-radius:14px;padding:14px 15px}',
+    '.pfb-vi-hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}',
+    '.pfb-vi-hd b{font-size:.95rem;color:#14213d}',
+    '.pfb-vi-hint{font-size:.7rem;font-weight:700;color:#8a6d10}',
+    '.pfb-vi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}',
+    '@media(max-width:480px){.pfb-vi-grid{grid-template-columns:repeat(2,1fr)}}',
+    '.pfb-vi-t{text-align:center;background:#fff;border:1px solid #f0e8d4;border-radius:11px;padding:11px 6px;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s;font:inherit}',
+    'button.pfb-vi-t:hover{transform:translateY(-2px);box-shadow:0 10px 22px -14px rgba(90,70,15,.55);border-color:#e0cf98}',
+    '.pfb-vi-t b{display:block;font-size:1.4rem;font-weight:900;line-height:1}',
+    '.pfb-vi-t span{font-size:.64rem;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em}',
+    '.vitl{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto}',
+    '.vitl-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card,#fff);border:1px solid var(--border);border-radius:11px;padding:11px 13px;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s}',
+    '.vitl-row:hover{transform:translateY(-2px);box-shadow:0 10px 22px -14px rgba(90,70,15,.5);border-color:#e0cf98}',
+    '.vitl-l{min-width:0}',
+    '.vitl-t{font-weight:700;font-size:.88rem;color:var(--text);line-height:1.3}',
+    '.vitl-m{font-size:.72rem;color:var(--text-muted);margin-top:2px}',
+    '.vitl-r{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}',
+    '.vitl-pts{font-weight:800;color:#7c3aed;font-size:.82rem}',
+    '.vitl-open{font-size:.66rem;font-weight:800;color:#8a6d10}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function viOpenTask(tid){
+  try{ closeModal(); }catch(e){}
+  const who=_pfState.who;
+  const navFn=(who==='a')?aPage:tPage;
+  try{ navFn('vtasks',null); }catch(e){}
+  // mark the matching sidebar nav active (same pattern as notif navigation)
+  const appId=(who==='a')?'admin-app':'teacher-app';
+  document.querySelectorAll('#'+appId+' .nav-item').forEach(el=>{ el.classList.remove('active'); if((el.getAttribute('onclick')||'').includes("'vtasks'")) el.classList.add('active'); });
+  setTimeout(()=>{ try{ window.scrollTo({top:0,behavior:'auto'}); }catch(e){} _focusTaskCard(tid); },450);
+}
+function viTaskList(teacherId, stage){
+  _ensureViCss();
+  const who=_pfState.who;
+  const url=(who==='a')?('/api/admin/teacher-video-contribution/'+teacherId):'/api/teacher/video-contribution';
+  const LBL={proposed:'All Proposed Videos',approved:'Approved Videos',in_production:'In Production',published:'Published Videos',rewarded:'Reward-earning Videos'};
+  showModal('Video Initiative — '+(LBL[stage]||stage), '<div class="spinner" style="margin:34px auto"></div>', `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  api(url).then(d=>{
+    const all=d.proposals||[];
+    let rows;
+    if(stage==='proposed') rows=all;
+    else if(stage==='approved') rows=all.filter(p=>['approved','in_production','published'].indexOf(p.stage)>=0);
+    else if(stage==='published') rows=all.filter(p=>p.stage==='published');
+    else if(stage==='rewarded') rows=all.filter(p=>(p.reward||0)>0);
+    else rows=all.filter(p=>p.stage===stage);
+    const body=document.getElementById('modal-body'); if(!body) return;
+    if(!rows.length){ body.innerHTML='<div class="empty-state"><p>No videos in this stage yet.</p></div>'; return; }
+    const html=rows.map(p=>{
+      const meta=[p.subject,p.video_type,(p.date?_pfDate(p.date):'')].filter(Boolean).map(esc).join(' · ');
+      return `<div class="vitl-row" onclick="viOpenTask(${p.id})">
+        <div class="vitl-l"><div class="vitl-t">${esc(p.title)}</div><div class="vitl-m">${meta||''}</div></div>
+        <div class="vitl-r">${_vcStagePill(p.stage)}${p.reward?`<span class="vitl-pts">+${p.reward}</span>`:''}<span class="vitl-open">Open task ›</span></div>
+      </div>`;
+    }).join('');
+    body.innerHTML=`<div class="dcr-s" style="margin-bottom:10px">${rows.length} video${rows.length===1?'':'s'}${d.teacher_name?(' · '+esc(d.teacher_name)):''}. Tap any to open it in the Task Manager.</div><div class="vitl">${html}</div>`;
+  }).catch(e=>{ const body=document.getElementById('modal-body'); if(body) body.innerHTML=`<div class="alert alert-danger">${esc((e&&e.message)||'Could not load videos')}</div>`; });
 }
 function _ACT_LBL(k){ return ({timing_change:'Timing changes',class_edit:'Edits',class_delete:'Deletions',reschedule_request:'Reschedule requests'})[k]||k; }
 function _pfLoadActivity(tid){
@@ -13365,6 +13507,22 @@ function _ensureDoubtSlaCss(){
   ].join('');
   document.head.appendChild(s);
 }
+function _ensureSegCss(){
+  if(document.getElementById('seg-css')) return;
+  var s=document.createElement('style'); s.id='seg-css';
+  s.textContent=[
+    '.seg-wrap{display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-bottom:14px}',
+    '.seg-lbl{font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)}',
+    '.seg-ctrl{display:inline-flex;background:var(--surface-2,#f1ece0);border:1px solid var(--border);border-radius:999px;padding:4px;gap:2px;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}',
+    '.seg-ctrl::-webkit-scrollbar{display:none}',
+    '.seg-ctrl button{border:none;background:transparent;font:inherit;font-size:.78rem;font-weight:700;color:var(--text-muted);padding:7px 15px;border-radius:999px;cursor:pointer;transition:.18s;white-space:nowrap}',
+    '.seg-ctrl button:hover{color:var(--text)}',
+    '.seg-ctrl button.on{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;box-shadow:0 5px 14px -5px rgba(138,109,16,.65)}',
+    'body.dark .seg-ctrl{background:#16233c}',
+    '.seg-custom{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;justify-content:flex-end}'
+  ].join('');
+  document.head.appendChild(s);
+}
 function _tRangeBounds(r){
   const now=new Date();
   const mid=d=>{ d.setHours(0,0,0,0); return d; };
@@ -13390,11 +13548,12 @@ function _tRangeStats(r){
   return {resolved:res.length,on_time:on,late:late,avgMin:res.length?Math.round(off/res.length):null,list:res};
 }
 function _tRangeBar(r){
+  _ensureSegCss();
   const rlab={today:'Today',week:'Weekly',month:'Monthly','':'All Time',custom:'Custom'};
-  const opts=['today','week','month','','custom'].map(k=>`<option value="${k}"${r===k?' selected':''}>${rlab[k]}</option>`).join('');
-  let h=`<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:.78rem;color:var(--text-muted);font-weight:700">Period:</span><select class="form-control" style="max-width:160px;width:auto" onchange="tSetRange(this.value)">${opts}</select>`;
-  if(r==='custom') h+=`<input type="date" class="form-control" id="tdrep-from" value="${window._tdRepFrom||''}" style="max-width:150px"><span>to</span><input type="date" class="form-control" id="tdrep-to" value="${window._tdRepTo||''}" style="max-width:150px"><button class="btn btn-secondary btn-sm" onclick="tApplyCustom()">Apply</button>`;
-  return h+`</div>`;
+  const btns=['today','week','month','','custom'].map(k=>`<button class="${r===k?'on':''}" onclick="tSetRange('${k}')">${rlab[k]}</button>`).join('');
+  let h=`<div class="seg-wrap"><span class="seg-lbl">Period</span><div class="seg-ctrl">${btns}</div></div>`;
+  if(r==='custom') h+=`<div class="seg-custom"><input type="date" class="form-control" id="tdrep-from" value="${window._tdRepFrom||''}" style="max-width:150px"><span>to</span><input type="date" class="form-control" id="tdrep-to" value="${window._tdRepTo||''}" style="max-width:150px"><button class="btn btn-primary btn-sm" onclick="tApplyCustom()">Apply</button></div>`;
+  return h;
 }
 function _tRng(){ return (window._tdRange===undefined||window._tdRange===null)?'month':window._tdRange; }
 function tSetRange(r){ window._tdRange=r; tRenderDoubts(); }
@@ -16050,7 +16209,7 @@ async function loadAVTasks(fromCache){
     const _edIds=Object.keys(_edCount).sort((a,b)=>(_edName[a]||'').localeCompare(_edName[b]||''));
     const edOpt=`<option value="0">All Editors</option>`+_edIds.map(id=>`<option value="${id}" ${_vtF.editor_id==id?'selected':''}>${esc(_edName[id]||('#'+id))} · ${_edCount[id]} edited</option>`).join('');
     const propHtml=(list.proposals||[]).length?`<div class="card vt-approve-card" style="margin-bottom:16px;border:2px solid rgba(220,38,38,.5)"><div class="card-header"><h3>${ic('help')} Video Proposals — Approval Needed</h3><span class="xm-chip vt-approve-chip">${list.proposals.length} pending</span></div><div class="card-body"><div class="vt-grid">${list.proposals.map(t=>`
-      <div class="vt-card vt-prop-blink"><div class="vt-body">
+      <div class="vt-card vt-prop-blink" data-tid-card="${t.id}"><div class="vt-body">
         <div class="vt-chips"><span class="vt-pill proposal">Proposal</span>${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill assigned">${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         ${t.remarks?`<div class="vt-req">${esc(t.remarks)}</div>`:''}
@@ -21088,27 +21247,59 @@ function _ensureDcrCss(){
     '.dcr-tbl th{background:#14213d;color:#fff;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;padding:8px 6px;text-align:center}',
     '.dcr-tbl th:first-child,.dcr-tbl td:first-child{text-align:left;padding-left:10px}',
     '.dcr-tbl td{padding:7px 6px;text-align:center;border-bottom:1px solid var(--border)}',
-    '@media(max-width:600px){.dcr-tbl thead{display:none}.dcr-tbl tr{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;padding:6px 10px}.dcr-tbl td{border:none;text-align:right;display:flex;justify-content:space-between;padding:3px 0}.dcr-tbl td::before{content:attr(data-l);font-weight:700;color:var(--text-muted);text-transform:uppercase;font-size:.64rem}.dcr-tbl td:first-child{grid-column:1/-1;text-align:left;font-weight:800;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:3px}.dcr-tbl td:first-child::before{display:none}}'
+    '@media(max-width:600px){.dcr-tbl thead{display:none}.dcr-tbl tr{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;padding:6px 10px}.dcr-tbl td{border:none;text-align:right;display:flex;justify-content:space-between;padding:3px 0}.dcr-tbl td::before{content:attr(data-l);font-weight:700;color:var(--text-muted);text-transform:uppercase;font-size:.64rem}.dcr-tbl td:first-child{grid-column:1/-1;text-align:left;font-weight:800;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:3px}.dcr-tbl td:first-child::before{display:none}}',
+    /* premium config tiles */
+    '.dcr-cfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}',
+    '.dcr-cfgbox{position:relative;background:linear-gradient(150deg,#fffdf7,#f6f1e4);border:1px solid #ece2c8;border-radius:16px;padding:16px 17px;overflow:hidden}',
+    '.dcr-cfgbox::before{content:"";position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(#c9a227,#8a6d10)}',
+    '.dcr-cfg-hd{display:flex;align-items:center;gap:10px;margin-bottom:6px}',
+    '.dcr-cfg-ic{width:34px;height:34px;flex:0 0 auto;border-radius:10px;background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;display:flex;align-items:center;justify-content:center}',
+    '.dcr-cfg-ic svg{width:18px;height:18px}',
+    '.dcr-cfg-t{font-weight:800;font-size:.92rem;color:#14213d;line-height:1.2}',
+    '.dcr-cfg-s{font-size:.72rem;color:var(--text-muted);line-height:1.5;margin-bottom:12px}',
+    '.dcr-field{display:flex;gap:9px;align-items:center;flex-wrap:wrap}',
+    '.dcr-num{width:72px;text-align:center;font-weight:800;font-size:1rem;padding:9px 6px;border:1px solid var(--border);border-radius:10px;background:#fff;color:#14213d}',
+    '.dcr-num:focus{outline:none;border-color:#c9a227;box-shadow:0 0 0 3px rgba(201,162,39,.15)}',
+    '.dcr-unit{font-weight:800;color:#8a6d10;font-size:.85rem}',
+    '.dcr-sw{display:inline-flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;cursor:pointer;color:#14213d;background:#fff;border:1px solid var(--border);border-radius:10px;padding:7px 12px}',
+    '.dcr-sw input{width:16px;height:16px;accent-color:#8a6d10}',
+    '.dcr-to{font-weight:700;color:var(--text-muted);font-size:.82rem}',
+    '.dcr-save{background:linear-gradient(135deg,#c9a227,#8a6d10);color:#fff;border:none;font-weight:800;font-size:.8rem;padding:9px 18px;border-radius:10px;cursor:pointer;transition:.15s}',
+    '.dcr-save:hover{filter:brightness(1.07);box-shadow:0 6px 16px -6px rgba(138,109,16,.6)}',
+    '.dcr-rephd{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}',
+    '.dcr-rept{font-weight:800;font-size:1.05rem;color:#14213d}',
+    '.dcr-rept small{font-size:.72rem;color:var(--text-muted);font-weight:600}',
+    '.dcr-meta{font-size:.72rem;color:var(--text-muted);font-weight:600;margin:6px 0 10px;display:inline-flex;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:9px;padding:6px 12px}',
+    '.dcr-sec{font-weight:800;font-size:.92rem;color:#14213d;margin:18px 0 8px;display:flex;align-items:center;gap:7px}',
+    '.dcr-sec::before{content:"";width:3px;height:14px;border-radius:3px;background:linear-gradient(#c9a227,#8a6d10)}'
   ].join('');
   document.head.appendChild(s);
 }
 function _adDoubtControlCard(){
-  _ensureDcrCss();
+  _ensureDcrCss(); _ensureSegCss();
   const sla=window._aDoubtSla||15;
   const oh=window._aDoubtOffice||{enabled:true,start:9,end:20};
   const RNG=_adRng();
   const rlab={today:'Today',week:'Weekly',month:'Monthly','':'All',custom:'Custom'};
-  const rchips=['today','week','month','','custom'].map(r=>`<button class="btn btn-sm ${RNG===r?'btn-primary':'btn-ghost'}" onclick="adRepRange('${r}')">${rlab[r]}</button>`).join('');
+  const rbtns=['today','week','month','','custom'].map(r=>`<button class="${RNG===r?'on':''}" onclick="adRepRange('${r}')">${rlab[r]}</button>`).join('');
   return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adCtrlToggle()"><h3 style="display:flex;align-items:center;gap:10px">${ic('shield')} Doubt Control Room <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(SLA, office hours & reports — tap)</span></h3><span class="chev" id="adctrl-chev">▼</span></div>
    <div class="card-body" id="adctrl-body" style="display:none">
-     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px">
-       <div class="dcr-box"><div class="dcr-t">Max resolution time (SLA)</div><div class="dcr-s">Isse zyada time me resolve hua to doubt <b>late</b> count hoga. Change ke <b>baad</b> ke doubts par hi apply hota hai — purane resolved par koi asar nahi.</div><div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><input class="form-control" type="number" min="1" max="240" id="adsla-h" value="${sla}" style="max-width:110px"><span style="font-weight:700">hours</span><button class="btn btn-primary btn-sm" onclick="saveDoubtSla()">Save</button> <span id="adsla-note" style="font-size:.76rem"></span></div></div>
-       <div class="dcr-box"><div class="dcr-t">Office hours (for average time)</div><div class="dcr-s">Average response time me <b>sirf office hours</b> ka waqt counts — raat/chhutti ka waqt average nahi badhata. (Late-resolved isse bilkul alag hai.)</div><div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:6px;font-size:.82rem;font-weight:700;cursor:pointer"><input type="checkbox" id="adoff-en" ${oh.enabled?'checked':''}> On</label><input class="form-control" type="number" min="0" max="23" id="adoff-s" value="${oh.start}" style="max-width:72px"><span>:00 to</span><input class="form-control" type="number" min="1" max="24" id="adoff-e" value="${oh.end}" style="max-width:72px"><span>:00</span><button class="btn btn-primary btn-sm" onclick="saveDoubtOffice()">Save</button> <span id="adoff-note" style="font-size:.76rem"></span></div></div>
+     <div class="dcr-cfg">
+       <div class="dcr-cfgbox">
+         <div class="dcr-cfg-hd"><span class="dcr-cfg-ic">${ic('clock')||ic('clipboard')}</span><div class="dcr-cfg-t">Max resolution time (SLA)</div></div>
+         <div class="dcr-cfg-s">Isse zyada time me resolve hua to doubt <b>late</b> count hoga. Change ke <b>baad</b> ke doubts par hi apply hota hai — purane resolved par koi asar nahi.</div>
+         <div class="dcr-field"><input class="dcr-num" type="number" min="1" max="240" id="adsla-h" value="${sla}"><span class="dcr-unit">hours</span><button class="dcr-save" onclick="saveDoubtSla()">Save</button> <span id="adsla-note" style="font-size:.76rem;font-weight:700"></span></div>
+       </div>
+       <div class="dcr-cfgbox">
+         <div class="dcr-cfg-hd"><span class="dcr-cfg-ic">${ic('calendar')||ic('clock')}</span><div class="dcr-cfg-t">Office hours <span style="font-size:.7rem;font-weight:600;color:var(--text-muted)">(for average time)</span></div></div>
+         <div class="dcr-cfg-s">Average response time me <b>sirf office hours</b> ka waqt counts — raat/chhutti ka waqt average nahi badhata. (Late-resolved isse bilkul alag hai.)</div>
+         <div class="dcr-field"><label class="dcr-sw"><input type="checkbox" id="adoff-en" ${oh.enabled?'checked':''}> On</label><input class="dcr-num" type="number" min="0" max="23" id="adoff-s" value="${oh.start}"><span class="dcr-unit">:00</span><span class="dcr-to">to</span><input class="dcr-num" type="number" min="1" max="24" id="adoff-e" value="${oh.end}"><span class="dcr-unit">:00</span><button class="dcr-save" onclick="saveDoubtOffice()">Save</button> <span id="adoff-note" style="font-size:.76rem;font-weight:700"></span></div>
+       </div>
      </div>
-     <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
-       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:1.02rem">Resolution Report <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(share with the teachers' group)</span></b>
-         <div style="display:flex;gap:6px;flex-wrap:wrap">${rchips}</div></div>
-       ${RNG==='custom'?`<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap"><input type="date" class="form-control" id="adrep-from" style="max-width:170px"><span>to</span><input type="date" class="form-control" id="adrep-to" style="max-width:170px"><button class="btn btn-secondary btn-sm" onclick="adRepLoad()">Apply</button></div>`:''}
+     <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+       <div class="dcr-rephd"><div class="dcr-rept">Resolution Report <small>(share with the teachers' group)</small></div>
+         <div class="seg-ctrl">${rbtns}</div></div>
+       ${RNG==='custom'?`<div class="seg-custom" style="justify-content:flex-start;margin-top:10px"><input type="date" class="form-control" id="adrep-from" style="max-width:170px"><span>to</span><input type="date" class="form-control" id="adrep-to" style="max-width:170px"><button class="btn btn-primary btn-sm" onclick="adRepLoad()">Apply</button></div>`:''}
        <div id="adrep-body" style="margin-top:12px"><div class="spinner" style="margin:24px auto"></div></div>
      </div>
    </div></div>`;
@@ -21143,7 +21334,7 @@ async function adRepLoad(){
     const _rrow=(x,lbl)=>`<tr><td data-l="${lbl}">${esc(x[lbl==='Subject'?'subject':'teacher'])}</td><td data-l="Resolved">${x.resolved}</td><td data-l="On time" style="color:#1f7a52;font-weight:700">${x.on_time}</td><td data-l="Late" style="color:${x.late?'#c0392b':'var(--text-muted)'};font-weight:700">${x.late}</td><td data-l="On-time %">${x.on_time_pct}%</td><td data-l="Avg time">${esc(x.avg_label||'—')}</td></tr>`;
     const rows=(d.teachers||[]).map(tr=>_rrow(tr,'Teacher')).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:14px">No resolved doubts in this range.</td></tr>`;
     const srows=(d.subjects||[]).map(sg=>_rrow(sg,'Subject')).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:14px">No data.</td></tr>`;
-    box.innerHTML=`<div class="dcr-s" style="margin-bottom:6px">${esc(d.label||'')} · SLA ${esc(_fmtSlaH(d.sla_hours))} · office ${String(d.office_hours.start).padStart(2,'0')}:00–${String(d.office_hours.end).padStart(2,'0')}:00 ${d.office_hours.enabled?'':'(off)'}</div>
+    box.innerHTML=`<div class="dcr-meta">${esc(d.label||'')} <span style="opacity:.5">·</span> SLA ${esc(_fmtSlaH(d.sla_hours))} <span style="opacity:.5">·</span> office ${String(d.office_hours.start).padStart(2,'0')}:00–${String(d.office_hours.end).padStart(2,'0')}:00 ${d.office_hours.enabled?'':'(off)'}</div>
       ${_adRepTeacherChips()}
       <div class="dcr-tot">
         <div class="dcr-tc"><b style="color:#14213d">${t.resolved||0}</b><span>Resolved</span></div>
@@ -21152,10 +21343,10 @@ async function adRepLoad(){
         <div class="dcr-tc"><b style="color:#b8941f">${t.on_time_pct||0}%</b><span>On-time</span></div>
         <div class="dcr-tc"><b style="color:#14213d">${esc(t.avg_label||'—')}</b><span>Avg time</span></div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px"><button class="btn btn-secondary btn-sm" onclick="adRepDlPdf()">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="adRepDlPng()">${ic('image')||ic('download')} Download Image</button></div>
-      <div style="font-weight:800;font-size:.9rem;margin:4px 0 6px">By teacher</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px"><button class="btn btn-secondary btn-sm" onclick="adRepDlPdf()">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="adRepDlPng()">${ic('image')||ic('download')} Download Image</button></div>
+      <div class="dcr-sec">By teacher</div>
       <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Teacher</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div style="font-weight:800;font-size:.9rem;margin:16px 0 6px">By subject</div>
+      <div class="dcr-sec">By subject</div>
       <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Subject</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th></tr></thead><tbody>${srows}</tbody></table></div>`;
   }catch(e){ box.innerHTML=`<div class="alert alert-danger">${esc(e.message||'Could not load report')}</div>`; }
 }

@@ -7882,6 +7882,22 @@ def teacher_activity(tid: int, limit: int = 30, db: Session = Depends(get_db), _
     return _pe.teacher_activity_rows(db, tid, limit)
 
 
+@router.get("/teacher-video-contribution/{tid}")
+def teacher_video_contribution_admin(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin view of ONE teacher's video-initiative contributions (proposals + stages +
+    rewards) — same shape as the teacher's own endpoint, so the ranking breakdown can list
+    that teacher's proposed/approved/published videos and open each task."""
+    import perf_engine as _pe
+    from models import TeacherProfile, User
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found")
+    data = _pe.video_contribution(db, tp)
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    data["teacher_name"] = (u.name if u else "Teacher #%d" % tid)
+    return data
+
+
 @router.get("/teacher-perf-targets/{tid}")
 def teacher_perf_targets_get(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
     """Individual teacher ke saved targets + timetable-se AUTO suggestions (dono option)."""
