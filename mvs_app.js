@@ -7085,7 +7085,7 @@ async function loadTTests(){
       +`<div class="tx-stat"><b>${totAtt}</b><span>Submissions</span></div>`
       +`<div class="tx-stat"><b style="color:#b45309">${pend}</b><span>Copies to evaluate</span></div>`
       +`<div class="tx-stat"><b style="color:#047857">${totGrd}</b><span>Evaluated</span></div></div>`;
-    const header=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button><button class="btn btn-ghost btn-sm" onclick="openUploadMission75Pdf()">${ic('upload')} Upload Mission 75 PDF</button></div></div>`
+    const header=`<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Tests</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Objective auto-graded on submit · Mission 75 graded manually by you</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openCreateExam('mcq')">${ic('clipboard')} New Objective Test</button><button class="btn btn-primary btn-sm" onclick="openCreateExam('subjective')">${ic('edit')} New Mission 75 Test</button><button class="btn btn-ghost btn-sm" onclick="openUploadMission75Pdf()">${ic('upload')} Upload Mission 75 PDF</button><button class="btn btn-ghost btn-sm" onclick="tTestTrash()" title="Restore a test you deleted by mistake">${ic('trash')} Recently deleted</button></div></div>`
       +(window._ttBatchList&&window._ttBatchList.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px;align-items:center">${_tBatchDropdown(window._tTestBatch||'','tTestBatchPick')}</div>`:'')
       +statsHtml;
     if(!exams.length){
@@ -9237,7 +9237,7 @@ function examDelete(id){
   showModal('Delete Test?',
   `<div class="ws-empty"><div class="big" style="color:#dc2626">${ic('trash')}</div>
    <p><b>Delete "${esc(ex.title||'This test')}"?</b></p>
-   <small>The test disappears from the teacher, student and admin lists immediately.${subs?`<br><span style="color:#b45309"><b>${subs} submission${subs>1?'s':''}</b> ${subs>1?'have':'has'} already been received on this test — records stay safe on the server, but the test and its submissions will no longer be visible to anyone.</span>`:''}<br><br>This action cannot be undone.</small></div>`,
+   <small>The test disappears from the teacher, student and admin lists immediately.${subs?`<br><span style="color:#b45309"><b>${subs} submission${subs>1?'s':''}</b> ${subs>1?'have':'has'} already been received on this test — records stay safe on the server.</span>`:''}<br><br>Changed your mind? You can bring it back any time from <b>Recently deleted</b> at the top of the Tests page — all submissions and the public result link come back intact.</small></div>`,
   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" style="background:#dc2626;border-color:#dc2626" onclick="examDeleteGo(${id})">${ic('trash')} Yes, Delete</button>`);
 }
 async function examDeleteGo(id){
@@ -9255,6 +9255,43 @@ async function examDeleteGo(id){
       `<button class="btn btn-primary" onclick="closeModal()">OK</button>`);
     }
     else toast('Could not delete: '+e.message,true);
+  }
+}
+/* ---- Recently deleted tests -> restore (soft-delete recovery) ---- */
+async function tTestTrash(){
+  showModal('Recently Deleted Tests','<div class="spinner" style="margin:30px auto"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  let list;
+  try{ const r=await api('/api/teacher/tests/deleted'); list=(r&&r.deleted)||[]; }
+  catch(e){
+    const body=document.getElementById('modal-body');
+    if(/not found|404/i.test(e.message||'')){ if(body) body.innerHTML='<div class="ws-empty"><div class="big">'+ic('help')+'</div><p><b>Restore is not deployed yet</b></p><small>Once the updated <b>teacher_routes.py</b> is deployed, deleted tests will appear here to restore.</small></div>'; }
+    else if(body) body.innerHTML='<div class="ws-empty"><p>Could not load deleted tests: '+esc(e.message||'')+'</p></div>';
+    return;
+  }
+  const body=document.getElementById('modal-body'); if(!body) return;
+  if(!list.length){ body.innerHTML='<div class="ws-empty"><div class="big">'+ic('trash')+'</div><p><b>No deleted tests</b></p><small>Tests you delete appear here so you can restore them.</small></div>'; return; }
+  body.innerHTML='<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">These tests were deleted but all their submissions and public result links are safe. Tap <b>Restore</b> to bring one back everywhere.</div>'+
+    list.map(function(t){
+      var meta=[t.subject,t.class_name,(t.test_type==='mcq'?'Objective':'Mission 75'),(t.total_marks?(t.total_marks+' marks'):'')].filter(Boolean).map(esc).join(' · ');
+      var sub=(t.attempts?('<span style="color:#1f7a52;font-weight:700">'+t.attempts+' submission'+(t.attempts>1?'s':'')+'</span>'):'<span style="color:var(--text-muted)">No submissions</span>');
+      var linkbit=t.public_enabled&&t.public_link?(' · <span style="color:#8a6d10;font-weight:700">public link</span>'):'';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;flex-wrap:wrap">'+
+        '<div style="min-width:0"><div style="font-weight:800;color:var(--text)">'+esc(t.title)+'</div>'+
+        '<div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">'+meta+'</div>'+
+        '<div style="font-size:.74rem;margin-top:4px">'+sub+linkbit+'</div></div>'+
+        '<button class="btn btn-primary btn-sm" onclick="tRestoreExam('+t.id+',this)">'+ic('refresh')+' Restore</button></div>';
+    }).join('');
+}
+async function tRestoreExam(id,btn){
+  if(btn){ btn.disabled=true; btn.textContent='Restoring…'; }
+  try{
+    const r=await api('/api/teacher/exam/'+id+'/restore','POST');
+    toast('Test restored'+(r&&r.title?(': '+r.title):'')+'. It is live again everywhere.');
+    closeModal();
+    try{ loadTTests(); }catch(e){}
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.innerHTML=ic('refresh')+' Restore'; }
+    toast('Could not restore: '+(e.message||''),true);
   }
 }
 /* ---- edit fallback: backend PATCH missing -> friendly chooser + recreate ---- */
@@ -48934,7 +48971,8 @@ function _acalMiRow(m){
   if(m.kind==='window' && m.range_display){ tag='<span class="ac-tag fee">'+esc(m.range_display)+'</span>'; }
   var last=m.last_date?('<div class="ac-lastdate">'+_AC_CLOCK_SVG+'Last date for submission: '+esc(m.last_date)+'</div>'):'';
   var sub=m.subtitle?('<div class="ac-c-sub">'+esc(m.subtitle)+'</div>'):'';
-  var more='<div class="ac-more">'+_acalShortCountdown(m)+'<span class="ac-more-go">View details ›</span></div>';
+  var hasVid=!!(m.video_url && (''+m.video_url).trim());
+  var more='<div class="ac-more">'+_acalShortCountdown(m)+'<span class="ac-more-go'+(hasVid?' vid':'')+'">'+(hasVid?'▶ Watch &amp; details ›':'View details ›')+'</span></div>';
   return '<div class="ac-mi '+cls+'"><div class="ac-node">'+node+'</div><div class="ac-card ac-click" onclick="_acalCardPopup(\''+esc(m.key)+'\')"><div class="ac-c-top"><div><div class="ac-c-name">'+esc(m.title)+'</div>'+sub+tag+'</div>'+dateHtml+'</div>'+last+more+'</div></div>';
 }
 
@@ -48954,6 +48992,13 @@ function _acalCss2(){
     '.ac-more-cd{font-size:.72rem;font-weight:800;color:#8a6d10}',
     '.ac-more-cd.live{color:#1f7a52}.ac-more-cd.done{color:#9a8f78}.ac-more-cd.soon{color:#c0392b}',
     '.ac-more-go{font-size:.68rem;font-weight:800;color:#8a6d10;opacity:.85}',
+    '.ac-more-go.vid{color:#c0392b;opacity:1}',
+    '.acp-vid{display:flex;align-items:center;gap:11px;text-decoration:none;margin-top:14px;background:linear-gradient(135deg,#fff1f0,#ffe6e4);border:1px solid #f3c0bb;border-radius:13px;padding:12px 14px;text-align:left}',
+    'body.dark .acp-vid{background:#2a1513;border-color:#5a2a25}',
+    '.acp-vid svg{width:24px;height:24px;flex:0 0 auto;fill:#ff0000}',
+    '.acp-vid b{display:block;font-size:.88rem;color:var(--text,#14213d)}',
+    '.acp-vid span{font-size:.74rem;color:var(--text-muted,#777)}',
+    '.acp-vid-go{margin-left:auto;font-size:1.3rem;color:#c0392b;font-weight:800}',
     /* popup */
     '.acp{text-align:center;padding:4px 2px}',
     '.acp-ic{width:58px;height:58px;border-radius:16px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#c9a227,#8a6d10)}',
@@ -49033,13 +49078,19 @@ function _acalCardPopup(key){
   if(m.hall_ticket){ rows+='<div class="acp-row"><span class="k">Hall ticket by</span><span class="v">'+esc(_acalFmtLong(m.hall_ticket))+'</span></div>'; }
   if(m.last_date){ rows+='<div class="acp-row"><span class="k">Last date to submit</span><span class="v red">'+esc(m.last_date)+'</span></div>'; }
   if(m.subtitle){ rows+='<div class="acp-row"><span class="k">About</span><span class="v" style="font-weight:600;max-width:60%">'+esc(m.subtitle)+'</span></div>'; }
+  var ev=(m.video_url||'').trim();
+  var vidCallout=ev?('<a class="acp-vid" href="'+esc(ev)+'" target="_blank" rel="noopener">'+_AC_YT_SVG+'<div><b>Watch the guide video</b><span>See exactly what to do for this stage</span></div><span class="acp-vid-go">›</span></a>'):'';
   var body='<div class="acp"><div class="acp-ic '+icCls+'">'+icon+'</div>'+
     (cd.badgeLabel?('<div class="acp-badge '+(cd.badge||'')+'">'+esc(cd.badgeLabel)+'</div>'):'')+
     '<div class="acp-big">'+esc(cd.big)+'</div><div class="acp-sub">'+cd.sub+'</div>'+
     (rows?('<div class="acp-meta">'+rows+'</div>'):'')+
+    vidCallout+
     '<div class="acp-note">'+_AC_INFO_SVG+'<p>These are <b>tentative</b> dates. Confirmed dates are announced on our official Manish Verma Official channel — stay connected and keep preparing.</p></div></div>';
   var yt=(d.youtube_url||'').trim();
-  var foot=(yt?('<a class="ac-yt" href="'+esc(yt)+'" target="_blank" rel="noopener" style="margin:0">'+_AC_YT_SVG+'YouTube</a>'):'')+'<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
+  var foot='';
+  if(ev){ foot+='<a class="ac-yt" href="'+esc(ev)+'" target="_blank" rel="noopener" style="margin:0">'+_AC_YT_SVG+'Watch the video</a>'; }
+  else if(yt){ foot+='<a class="ac-yt" href="'+esc(yt)+'" target="_blank" rel="noopener" style="margin:0">'+_AC_YT_SVG+'YouTube</a>'; }
+  foot+='<button class="btn btn-ghost" onclick="closeModal()">Close</button>';
   showModal(esc(m.title),body,foot);
 }
 
@@ -49250,6 +49301,7 @@ function _aAcalEditor(d){
     if(m.key==='tma_questions'){
       fields+='<div class="row" style="margin-top:7px"><input class="ac-inp full" type="text" id="acf-'+m.key+'-label" placeholder="Display label (optional, e.g. Available now)" value="'+esc(m.date_label||'')+'"></div>';
     }
+    fields+='<div class="row" style="margin-top:7px"><input class="ac-inp full" type="text" id="acf-'+m.key+'-video" placeholder="Guide video link for this stage (optional) — students see a Watch button" value="'+esc(m.video_url||'')+'"></div>';
     return '<div class="ac-fld"><label>'+esc(m.title)+'</label>'+fields+'</div>';
   }).join('');
   return '<div class="ac-ed"><div class="ac-view-top"><div><h3>'+esc(d.session)+' — edit milestones</h3><div class="hint">All dates are tentative. Changes apply instantly to students of this session.</div></div>'+
@@ -49268,7 +49320,7 @@ function aAcalSave(session){
   var mi=[], keys=['tma_questions','tma_submission','tma_last_date','exam_fee','pcp_classes','practical_exam','theory_exam','final_result','marksheet_digilocker','original_marksheet'];
   keys.forEach(function(k){
     var g=function(f){ var e=document.getElementById('acf-'+k+'-'+f); return e?(e.value||null):null; };
-    mi.push({key:k, date:g('date'), end_date:g('end_date'), hall_ticket:g('hall_ticket'), date_label:g('label')});
+    mi.push({key:k, date:g('date'), end_date:g('end_date'), hall_ticket:g('hall_ticket'), date_label:g('label'), video_url:g('video')});
   });
   var yt=(document.getElementById('acf-youtube')||{}).value||'';
   var note=(document.getElementById('acf-note')||{}).value||'';

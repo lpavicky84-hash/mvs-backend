@@ -8933,6 +8933,51 @@ def delete_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depend
     return {"status": "deleted", "id": exam_id}
 
 
+@router.get("/tests/deleted")
+def list_deleted_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Teacher ke recently-deleted (soft-deleted) tests — restore ke liye list."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    rows = db.query(Exam).filter(
+        Exam.teacher_id == tp.id, Exam.is_active == False
+    ).order_by(Exam.created_at.desc()).all()
+    out = []
+    for ex in rows:
+        try:
+            subs = db.query(ExamAttempt).filter(ExamAttempt.exam_id == ex.id).count()
+        except Exception:
+            subs = 0
+        out.append({
+            "id": ex.id,
+            "title": ex.title or "Untitled test",
+            "subject": ex.subject or "",
+            "class_name": ex.class_name or "",
+            "chapter": ex.chapter or "",
+            "total_marks": ex.total_marks or 0,
+            "test_type": ex.test_type or "",
+            "attempts": subs,
+            "public_enabled": bool(getattr(ex, "public_enabled", False)),
+            "public_link": (("/t/" + ex.public_token) if getattr(ex, "public_token", None) else ""),
+            "created_at": ist_iso(ex.created_at) if getattr(ex, "created_at", None) else "",
+        })
+    return {"deleted": out}
+
+
+@router.post("/exam/{exam_id}/restore")
+def restore_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Restore a soft-deleted test. Brings it back everywhere — the teacher, student and
+    admin lists and the public result link (/t/<token>) — with every attempt and mark intact,
+    because delete only hid it (is_active=False)."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    ex.is_active = True
+    db.commit()
+    return {"status": "restored", "id": exam_id, "title": ex.title or ""}
+
+
 @router.post("/attempt/{attempt_id}/marking")
 def attempt_marking(attempt_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Flip an attempt from 'checking soon' to 'being checked by teacher'."""
