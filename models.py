@@ -454,6 +454,9 @@ class Doubt(Base):
     status      = Column(Enum(DoubtStatus), default=DoubtStatus.pending)
     created_at  = Column(DateTime, default=func.now())
     resolved_at = Column(DateTime, nullable=True)
+    # Forward-only on-time/late: resolve ke waqt ka SLA (ghante) yahan snapshot hota hai.
+    # Admin baad me SLA badle to purane resolved doubts ka on-time/late status nahi badlta.
+    sla_snapshot = Column(Float, nullable=True)
     # v93: doubt reassignment — teacher jisko answer nahi aata, woh doubt
     # kisi doosre teacher ya admin ko assign kar sakta hai. Assigner ki
     # taraf se doubt "resolved" maana jata hai; naya owner responsible.

@@ -5955,12 +5955,20 @@ def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depend
                 "attach_mime": getattr(r, "attach_mime", None),
                 "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
                 "created_at": ist_iso(r.created_at)})
+    import doubt_metrics as _dm
+    _sla_now = _dm.sla_hours(db)
+    _oh = _dm.office_cfg(db)
     out = []
     for d in _rows:
         sname, sphone, scls = smap.get(d.student_id, ("Unknown student", None, ""))
         tname = tmap2.get(d.teacher_id, "") if d.teacher_id else ""
+        _rm = None
+        if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at:
+            _rm = _dm.metrics_for(d.created_at, d.resolved_at, getattr(d, "sla_snapshot", None), _sla_now, _oh)
         out.append({
             "id": d.id,
+            "teacher_id": d.teacher_id,
+            "resolve_metrics": _rm,
             "student_name": sname or "Unknown student",
             "student_id": d.student_id,
             "student_phone": sphone,
@@ -6035,6 +6043,11 @@ def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
             d.answer = body
         d.status = DoubtStatus.resolved
         d.resolved_at = datetime.now()
+        try:
+            import doubt_metrics as _dm
+            d.sla_snapshot = _dm.sla_hours(db)   # forward-only SLA freeze
+        except Exception:
+            pass
     sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
     if sp and sp.user:
         notify(db, sp.user_id, "🏛️ MVS Foundation Replied to Your Doubt",
@@ -6675,11 +6688,43 @@ def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
                 mins = int((now - oldest).total_seconds() // 60)
                 if c["oldest_pending_min"] is None or mins > c["oldest_pending_min"]:
                     c["oldest_pending_min"] = mins
-    out = sorted(by.values(), key=lambda x: (-x["pending"], x["subject"]))
+    # ---- on-time vs late resolved per subject (scalar cols only -> cheap, no blobs) ----
+    import doubt_metrics as _dm
+    _sla_now = _dm.sla_hours(db)
+    _oh = _dm.office_cfg(db)
+    for c in by.values():
+        c["on_time"] = 0
+        c["late"] = 0
+        c["max_late_min"] = 0
+    resolved_rows = db.query(Doubt.subject, Doubt.created_at, Doubt.resolved_at, Doubt.sla_snapshot)\
+        .filter(Doubt.status == DoubtStatus.resolved, Doubt.resolved_at.isnot(None)).all()
+    tot_on = tot_late = 0
+    for subj, cat, rat, snap in resolved_rows:
+        m = _dm.metrics_for(cat, rat, snap, _sla_now, _oh)
+        if not m:
+            continue
+        sub = _cs(subj)
+        c = by.get(sub)
+        if not c:
+            continue
+        if m["late"]:
+            c["late"] += 1
+            tot_late += 1
+            if m["late_minutes"] > c["max_late_min"]:
+                c["max_late_min"] = m["late_minutes"]
+        else:
+            c["on_time"] += 1
+            tot_on += 1
+    for c in by.values():
+        c["max_late_label"] = _dm.fmt_dur(c["max_late_min"]) if c["max_late_min"] else ""
+    out = sorted(by.values(), key=lambda x: (-x["pending"], -x["late"], x["subject"]))
     return {"subjects": out,
             "totals": {"total": grand_total,
                        "pending": sum(c["pending"] for c in out),
-                       "resolved": sum(c["resolved"] for c in out)}}
+                       "resolved": sum(c["resolved"] for c in out),
+                       "on_time": tot_on, "late": tot_late},
+            "sla_hours": _sla_now,
+            "office_hours": {"enabled": _oh["enabled"], "start": _oh["start"], "end": _oh["end"]}}
 
 # ------------------------------------------------------------------
 #  ADMIN PASSWORD RESET (teacher/student) — purana password hashed
@@ -10002,6 +10047,58 @@ def doubt_sla_set(payload: dict = Body(...), db: Session = Depends(get_db), curr
                "Doubt SLA set to %s hours" % hrs)
     db.commit()
     return {"ok": True, "doubt_sla_hours": cfg.get("doubt_sla_hours", hrs)}
+
+
+# ---- Doubt office hours — average response time sirf office hours ka waqt counts ----
+@router.get("/doubt-office-hours")
+def doubt_office_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import doubt_metrics as _dm
+    return _dm.office_cfg(db)
+
+
+@router.post("/doubt-office-hours")
+def doubt_office_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    import doubt_metrics as _dm
+    try:
+        cfg = _dm.save_office_cfg(db, payload or {})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    _pay_audit(db, "policy", None, "doubt_office_hours_changed", current_user.id, "admin",
+               "Office hours set to %s:00-%s:00 (enabled=%s)" % (cfg["start"], cfg["end"], cfg["enabled"]))
+    db.commit()
+    return {"ok": True, **cfg}
+
+
+# ---- Admin control-room doubt report (today / week / month / custom) ----
+def _doubt_report_label(rng, frm, to):
+    rng = (rng or "").strip().lower()
+    if rng == "custom":
+        return "%s to %s" % (frm or "?", to or "?")
+    return {"today": "Today", "day": "Today", "week": "Last 7 days", "weekly": "Last 7 days",
+            "month": "Last 30 days", "monthly": "Last 30 days", "": "All time",
+            "all": "All time"}.get(rng, rng.title())
+
+
+@router.get("/doubts-report")
+def admin_doubts_report(range: str = "month", frm: str = "", to: str = "",
+                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    import mvs_services as MS
+    import doubt_report as DR
+    start, end = MS.utc_bounds(range, frm, to)
+    return DR.report_data(db, start, end, _doubt_report_label(range, frm, to))
+
+
+@router.get("/doubts-report.pdf")
+def admin_doubts_report_pdf(range: str = "month", frm: str = "", to: str = "",
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    import mvs_services as MS
+    import doubt_report as DR
+    start, end = MS.utc_bounds(range, frm, to)
+    label = _doubt_report_label(range, frm, to)
+    data = DR.report_data(db, start, end, label)
+    pdf = DR.report_pdf(db, data, label)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=doubt_report.pdf"})
 
 
 # =====================================================================

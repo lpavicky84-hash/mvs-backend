@@ -660,8 +660,14 @@ def get_doubts(
                       "created_at": ist_iso(r.created_at)})
         return o
 
+    import doubt_metrics as _dm
+    _sla_now = _dm.sla_hours(db)
+    _oh = _dm.office_cfg(db)
     for d in rows:
         sname = _sname_map.get(d.student_id, "Student")
+        _rm = None
+        if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at:
+            _rm = _dm.metrics_for(d.created_at, d.resolved_at, getattr(d, "sla_snapshot", None), _sla_now, _oh)
         is_away = (d.teacher_id != tp.id) or bool(getattr(d, "assigned_to_admin", False))
         _owner = None
         if is_away:
@@ -678,6 +684,7 @@ def get_doubts(
                     "assigned_away": is_away,
                     "assigned_to_name": _owner,
                     "needs_attention": False,
+                    "resolve_metrics": _rm,
                     "responses": _resp_json_for(d.id)})
     return out
 
@@ -887,6 +894,7 @@ def teacher_delete_doubt_answer(did: int, db: Session = Depends(get_db), current
     d.answer_attach_mime = None
     d.status = DoubtStatus.pending
     d.resolved_at = None
+    d.sla_snapshot = None   # re-resolve par fresh SLA snapshot lega
     db.commit()
     return {"message": "Response deleted — the doubt is pending again"}
 
@@ -913,6 +921,11 @@ def resolve_doubt(
         doubt.answer_attach_name = (req.answer_attach_name or "attachment")[:250]
     doubt.status = DoubtStatus.resolved
     doubt.resolved_at = datetime.now()
+    try:
+        import doubt_metrics as _dm
+        doubt.sla_snapshot = _dm.sla_hours(db)   # forward-only: freeze SLA at resolve time
+    except Exception:
+        pass
 
     # Notify student
     student_user = db.query(User).filter(User.id == doubt.student.user_id).first()
@@ -3771,22 +3784,38 @@ def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_t
 @router.get("/doubt-stats")
 def teacher_doubt_stats(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import Doubt
+    import doubt_metrics as _dm
     tp = get_teacher_profile(current_user, db)
     # sirf zaroori columns — blob (image/audio base64) load NAHI karte -> tez + kam RAM.
-    rows = (db.query(Doubt.status, Doubt.resolved_at, Doubt.created_at, Doubt.assigned_to_admin)
+    rows = (db.query(Doubt.status, Doubt.resolved_at, Doubt.created_at, Doubt.assigned_to_admin,
+                     Doubt.sla_snapshot)
             .filter(Doubt.teacher_id == tp.id).all())
     rows = [r for r in rows if not r[3]]   # admin ko assigned doubts meri responsibility se bahar
 
     def _st(v):
         return v.value if hasattr(v, "value") else v
     pending = sum(1 for r in rows if _st(r[0]) == "pending")
-    resolved_list = [r for r in rows if _st(r[0]) == "resolved" and r[1] and r[2]]
     resolved = sum(1 for r in rows if _st(r[0]) == "resolved")
-    avg_min = None
-    if resolved_list:
-        total = sum((r[1] - r[2]).total_seconds() for r in resolved_list)
-        avg_min = round(total / len(resolved_list) / 60)
-    return {"pending": pending, "resolved": resolved, "total": len(rows), "avg_response_minutes": avg_min}
+    resolved_list = [r for r in rows if _st(r[0]) == "resolved" and r[1] and r[2]]
+    sla_now = _dm.sla_hours(db)
+    oh = _dm.office_cfg(db)
+    on_time = late = 0
+    office_total = 0
+    for r in resolved_list:
+        m = _dm.metrics_for(r[2], r[1], r[4], sla_now, oh)
+        if not m:
+            continue
+        if m["late"]:
+            late += 1
+        else:
+            on_time += 1
+        office_total += m["office_minutes"]
+    # average = office-hours-adjusted (raat ka waqt count nahi hota)
+    avg_min = round(office_total / len(resolved_list)) if resolved_list else None
+    return {"pending": pending, "resolved": resolved, "total": len(rows),
+            "avg_response_minutes": avg_min, "on_time": on_time, "late": late,
+            "office_hours": {"enabled": oh["enabled"], "start": oh["start"], "end": oh["end"]},
+            "sla_hours": sla_now}
 
 # ===== TEACHER: PERFORMANCE (aggregates + recent activity + monthly) =====
 @router.get("/video-contribution")

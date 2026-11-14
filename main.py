@@ -364,6 +364,8 @@ def ensure_columns():
         "ALTER TABLE exams ADD COLUMN randomize_questions BOOLEAN DEFAULT 0",
         "ALTER TABLE exams ADD COLUMN randomize_options BOOLEAN DEFAULT 0",
         # (Phase 5 ab automatic hai — ranking visibility scheduling se tay hoti hai, koi column nahi.)
+        # Doubt on-time/late: forward-only SLA snapshot per doubt
+        "ALTER TABLE doubts ADD COLUMN sla_snapshot FLOAT",
     ]
     for s in stmts:
         try:
@@ -373,6 +375,31 @@ def ensure_columns():
         except Exception:
             pass  # column already exists — safe to ignore
 ensure_columns()
+
+
+# ===== DOUBT SLA SNAPSHOT BACKFILL (forward-only freeze) =====
+# Existing resolved doubts ko current SLA par freeze karo (sla_snapshot NULL -> current SLA)
+# taaki aage SLA badalne par purane doubts ka on-time/late status na badle. Idempotent.
+def backfill_doubt_sla_snapshot():
+    try:
+        from database import SessionLocal
+        import doubt_metrics as _dm
+        db = SessionLocal()
+        try:
+            sla = _dm.sla_hours(db)
+        finally:
+            db.close()
+        with engine.connect() as conn:
+            conn.execute(text("UPDATE doubts SET sla_snapshot = :s "
+                              "WHERE sla_snapshot IS NULL AND resolved_at IS NOT NULL"),
+                         {"s": sla})
+            conn.commit()
+    except Exception as _bf_err:
+        try:
+            print("doubt sla backfill skipped:", str(_bf_err)[:200])
+        except Exception:
+            pass
+backfill_doubt_sla_snapshot()
 
 # ===== ONE-TIME LEGACY STATE REPAIR (makes GET /api/production/tasks read-only) =====
 # The Tasks list used to self-heal legacy admin state (approved/uploaded/youtuber) on EVERY
