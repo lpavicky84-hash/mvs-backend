@@ -5,7 +5,7 @@ import io
 import doubt_metrics as _dm
 
 
-def report_data(db, start, end, label=""):
+def report_data(db, start, end, label="", only_teachers=None):
     from models import Doubt, DoubtStatus, TeacherProfile, User
     sla_now = _dm.sla_hours(db)
     oh = _dm.office_cfg(db)
@@ -24,6 +24,12 @@ def report_data(db, start, end, label=""):
                 .join(User, User.id == TeacherProfile.user_id)\
                 .filter(TeacherProfile.id.in_(tids)).all():
             tmap[tid] = nm or ""
+    # optional: sirf chune gaye teachers (name set, case-insensitive)
+    sel = None
+    if only_teachers:
+        sel = set(str(x).strip().lower() for x in only_teachers if str(x).strip())
+        if sel:
+            rows = [r for r in rows if (tmap.get(r[0], "Unassigned") or "Unassigned").strip().lower() in sel]
     per = {}
     persub = {}
     tot = {"resolved": 0, "on_time": 0, "late": 0, "office_sum": 0, "max_late": 0}
@@ -175,8 +181,8 @@ def report_pdf(db, data, period_label=""):
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 8, L("Teacher-wise performance"), ln=1)
 
-    heads = [("Teacher", 54), ("Resolved", 24), ("On time", 22), ("Late", 18),
-             ("On-time %", 24), ("Avg time", 24), ("Max late", 24)]
+    heads = [("Teacher", 78), ("Resolved", 24), ("On time", 22), ("Late", 18),
+             ("On-time %", 24), ("Avg time", 24)]
 
     def _row_head():
         pdf.set_fill_color(*NAVY)
@@ -197,7 +203,7 @@ def report_pdf(db, data, period_label=""):
         pdf.set_fill_color(248, 245, 236) if alt else pdf.set_fill_color(255, 255, 255)
         alt = not alt
         pdf.set_text_color(*INK)
-        pdf.cell(54, 7, L((tr["teacher"] or "")[:30]), border="B", fill=True)
+        pdf.cell(78, 7, L((tr["teacher"] or "")[:44]), border="B", fill=True)
         pdf.cell(24, 7, str(tr["resolved"]), border="B", align="C", fill=True)
         pdf.set_text_color(*GREEN)
         pdf.cell(22, 7, str(tr["on_time"]), border="B", align="C", fill=True)
@@ -206,8 +212,6 @@ def report_pdf(db, data, period_label=""):
         pdf.set_text_color(*INK)
         pdf.cell(24, 7, "%d%%" % tr["on_time_pct"], border="B", align="C", fill=True)
         pdf.cell(24, 7, L(tr["avg_label"] or "-"), border="B", align="C", fill=True)
-        pdf.set_text_color(*(RED if tr["max_late_label"] else MUT))
-        pdf.cell(24, 7, L(tr["max_late_label"] or "-"), border="B", align="C", fill=True)
         pdf.ln(7)
 
     # ---- subject-wise table ----
@@ -219,8 +223,8 @@ def report_pdf(db, data, period_label=""):
         pdf.set_text_color(*INK)
         pdf.set_font("Helvetica", "B", 11)
         pdf.cell(0, 8, L("Subject-wise performance"), ln=1)
-        sheads = [("Subject", 54), ("Resolved", 24), ("On time", 22), ("Late", 18),
-                  ("On-time %", 24), ("Avg time", 24), ("Max late", 24)]
+        sheads = [("Subject", 78), ("Resolved", 24), ("On time", 22), ("Late", 18),
+                  ("On-time %", 24), ("Avg time", 24)]
 
         def _shead():
             pdf.set_fill_color(*NAVY)
@@ -241,7 +245,7 @@ def report_pdf(db, data, period_label=""):
             pdf.set_fill_color(248, 245, 236) if alt2 else pdf.set_fill_color(255, 255, 255)
             alt2 = not alt2
             pdf.set_text_color(*INK)
-            pdf.cell(54, 7, L((sg["subject"] or "")[:30]), border="B", fill=True)
+            pdf.cell(78, 7, L((sg["subject"] or "")[:44]), border="B", fill=True)
             pdf.cell(24, 7, str(sg["resolved"]), border="B", align="C", fill=True)
             pdf.set_text_color(*GREEN)
             pdf.cell(22, 7, str(sg["on_time"]), border="B", align="C", fill=True)
@@ -250,8 +254,6 @@ def report_pdf(db, data, period_label=""):
             pdf.set_text_color(*INK)
             pdf.cell(24, 7, "%d%%" % sg["on_time_pct"], border="B", align="C", fill=True)
             pdf.cell(24, 7, L(sg["avg_label"] or "-"), border="B", align="C", fill=True)
-            pdf.set_text_color(*(RED if sg["max_late_label"] else MUT))
-            pdf.cell(24, 7, L(sg["max_late_label"] or "-"), border="B", align="C", fill=True)
             pdf.ln(7)
 
     pdf.ln(6)

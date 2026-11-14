@@ -681,6 +681,7 @@ def get_doubts(
                     "has_answer_file": (d.id in _ans_file_ids), "answer_attach_mime": d.answer_attach_mime,
                     "answer": d.answer, "status": d.status.value if hasattr(d.status, "value") else d.status,
                     "created_at": ist_iso(d.created_at),
+                    "resolved_at": ist_iso(d.resolved_at),
                     "assigned_away": is_away,
                     "assigned_to_name": _owner,
                     "needs_attention": False,

@@ -13365,11 +13365,60 @@ function _ensureDoubtSlaCss(){
   ].join('');
   document.head.appendChild(s);
 }
-function _tLateReminder(ds){
-  if(!ds||!(ds.late>0)) return '';
+function _tRangeBounds(r){
+  const now=new Date();
+  const mid=d=>{ d.setHours(0,0,0,0); return d; };
+  if(r==='today') return {start:mid(new Date(now)),end:null};
+  if(r==='week'){ const s=new Date(now); s.setDate(s.getDate()-6); return {start:mid(s),end:null}; }
+  if(r==='month'){ const s=new Date(now); s.setDate(s.getDate()-29); return {start:mid(s),end:null}; }
+  if(r==='custom'){ const f=window._tdRepFrom,t=window._tdRepTo; return {start:f?new Date(f+'T00:00:00'):null,end:t?new Date(t+'T23:59:59'):null}; }
+  return {start:null,end:null};
+}
+function _tResolvedInRange(r){
+  const b=_tRangeBounds(r);
+  return (window._tDoubts||[]).filter(d=>{
+    if(d.status!=='resolved'||d.assigned_away||d.needs_attention||!d.resolve_metrics||!d.resolved_at) return false;
+    const t=new Date(d.resolved_at).getTime(); if(isNaN(t)) return false;
+    if(b.start&&t<b.start.getTime()) return false;
+    if(b.end&&t>b.end.getTime()) return false;
+    return true;
+  });
+}
+function _tRangeStats(r){
+  const res=_tResolvedInRange(r); let on=0,late=0,off=0;
+  res.forEach(d=>{ const m=d.resolve_metrics; if(m.late) late++; else on++; off+=(m.office_minutes||0); });
+  return {resolved:res.length,on_time:on,late:late,avgMin:res.length?Math.round(off/res.length):null,list:res};
+}
+function _tRangeBar(r){
+  const rlab={today:'Today',week:'Weekly',month:'Monthly','':'All Time',custom:'Custom'};
+  const opts=['today','week','month','','custom'].map(k=>`<option value="${k}"${r===k?' selected':''}>${rlab[k]}</option>`).join('');
+  let h=`<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:.78rem;color:var(--text-muted);font-weight:700">Period:</span><select class="form-control" style="max-width:160px;width:auto" onchange="tSetRange(this.value)">${opts}</select>`;
+  if(r==='custom') h+=`<input type="date" class="form-control" id="tdrep-from" value="${window._tdRepFrom||''}" style="max-width:150px"><span>to</span><input type="date" class="form-control" id="tdrep-to" value="${window._tdRepTo||''}" style="max-width:150px"><button class="btn btn-secondary btn-sm" onclick="tApplyCustom()">Apply</button>`;
+  return h+`</div>`;
+}
+function _tRng(){ return (window._tdRange===undefined||window._tdRange===null)?'month':window._tdRange; }
+function tSetRange(r){ window._tdRange=r; tRenderDoubts(); }
+function tApplyCustom(){ window._tdRepFrom=(document.getElementById('tdrep-from')||{}).value||''; window._tdRepTo=(document.getElementById('tdrep-to')||{}).value||''; tRenderDoubts(); }
+function _tLateStatCard(n){
   _ensureDoubtSlaCss();
-  const sla=ds.sla_hours?_fmtSlaH(ds.sla_hours):'the set limit';
-  return `<div class="t-late-rem">${ic('alert')}<div><b>${ds.late} doubt${ds.late>1?'s were':' was'} resolved late</b><div class="t-late-sub">Out of ${ds.resolved} resolved, ${ds.on_time} ${ds.on_time===1?'was':'were'} on time. Please try to reply within ${sla} — quick replies keep students calm. Open a subject and check the <b>Late Resolved</b> tab to see which ones.</div></div></div>`;
+  return `<div class="stat-card" style="cursor:pointer;border:1px solid rgba(192,57,43,.25)" onclick="openTLatePopup()"><div class="sc-badge" style="background:rgba(192,57,43,.12);color:#c0392b">${ic('alert')}</div><div class="sc-label">Late Resolved</div><div class="sc-num" style="color:#c0392b">${n||0}</div></div>`;
+}
+function _tLateReminder(rst){
+  if(!rst||!(rst.late>0)) return '';
+  _ensureDoubtSlaCss();
+  const sla=(window._tDoubtStats&&window._tDoubtStats.sla_hours)?_fmtSlaH(window._tDoubtStats.sla_hours):'the set limit';
+  return `<div class="t-late-rem">${ic('alert')}<div><b>${rst.late} doubt${rst.late>1?'s were':' was'} resolved late</b><div class="t-late-sub">Out of ${rst.resolved} resolved in this period, ${rst.on_time} ${rst.on_time===1?'was':'were'} on time. Please try to reply within ${sla} — quick replies keep students calm. Tap the <b>Late Resolved</b> card above for the subject-wise breakdown.</div></div></div>`;
+}
+function openTLatePopup(){
+  const r=_tRng();
+  const late=_tResolvedInRange(r).filter(d=>d.resolve_metrics&&d.resolve_metrics.late);
+  const bySub={};
+  late.forEach(d=>{ const s=d.subject||'Other'; const o=(bySub[s]=bySub[s]||{late:0,maxLate:0}); o.late++; const lm=d.resolve_metrics.late_minutes||0; if(lm>o.maxLate) o.maxLate=lm; });
+  const rows=Object.keys(bySub).map(s=>({s,late:bySub[s].late,maxLate:bySub[s].maxLate})).sort((a,b)=>b.maxLate-a.maxLate);
+  _ensureDcrCss(); _ensureDoubtSlaCss();
+  const rlab={today:'today',week:'this week',month:'this month','':'all time',custom:'this range'}[r]||r;
+  const body=rows.length?`<div style="overflow:auto;max-height:52vh"><table class="dcr-tbl"><thead><tr><th>Subject</th><th>Late</th><th>Max late</th></tr></thead><tbody>${rows.map(x=>`<tr><td data-l="Subject">${esc(x.s)}</td><td data-l="Late" style="color:#c0392b;font-weight:800">${x.late}</td><td data-l="Max late" style="color:#c0392b">${esc(_fmtDurJS(x.maxLate))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-state"><p>No late-resolved doubts in this period.</p></div>';
+  showModal('Late Resolved — by subject ('+rlab+')', `<div class="dcr-s" style="margin-bottom:8px">${late.length} late-resolved doubt${late.length===1?'':'s'}. Subjects with the biggest delay are on top — open that subject and use the <b>Late Resolved</b> tab to review.</div>${body}`, `<button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 function _fmtSlaH(h){ h=Number(h)||15; return (h%1===0?String(h):h.toFixed(1))+'h'; }
 function _fmtDurJS(mins){ mins=Math.round(Number(mins)||0); if(mins<60) return mins+'m'; var h=Math.floor(mins/60),m=mins%60; if(h<24) return m?(h+'h '+m+'m'):(h+'h'); var d=Math.floor(h/24),hh=h%24; return hh?(d+'d '+hh+'h'):(d+'d'); }
@@ -13386,10 +13435,15 @@ function tOpenSubLate(sub){ _tdSub=sub; window._tdTab='late_resolved'; window._t
 function tRenderDoubts(){
   const el=document.getElementById('t-doubts-content');
   const doubts=window._tDoubts||[]; const ds=window._tDoubtStats||{pending:0,resolved:0,avg_response_minutes:null};
-  const avgTxt=ds.avg_response_minutes==null?'\u2014':(ds.avg_response_minutes>=60?(Math.floor(ds.avg_response_minutes/60)+'h '+(ds.avg_response_minutes%60)+'m'):ds.avg_response_minutes+' min');
-  let html=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',ds.resolved,'check','green')}${statCard('Avg Response Time',avgTxt,'clipboard','indigo')}</div>`;
+  const _avgFmt=(mn)=>mn==null?'\u2014':(mn>=60?(Math.floor(mn/60)+'h '+(mn%60)+'m'):mn+' min');
+  const avgTxt=_avgFmt(ds.avg_response_minutes);
+  let html='';
   if(_tdSub===null){
-    html+=_tLateReminder(ds);
+    const _rng=_tRng();
+    const rst=_tRangeStats(_rng);
+    html+=_tRangeBar(_rng);
+    html+=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',rst.resolved,'check','green')}${statCard('Avg Response Time',_avgFmt(rst.avgMin),'clipboard','indigo')}${_tLateStatCard(rst.late)}</div>`;
+    html+=_tLateReminder(rst);
     // ---- SUBJECT CARDS VIEW ----
     html+=toppersHTML(doubts,'ttop',false);
     const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0,ontime:0,late:0,maxLate:0}); bySub[k].total++; if((d.status!=='resolved'||d.needs_attention)&&!d.assigned_away) bySub[k].pending++; if(d.status==='resolved'&&!d.assigned_away&&!d.needs_attention){ const m=d.resolve_metrics; if(m&&m.late){ bySub[k].late++; if((m.late_minutes||0)>bySub[k].maxLate) bySub[k].maxLate=m.late_minutes; } else bySub[k].ontime++; } });
@@ -13398,7 +13452,7 @@ function tRenderDoubts(){
     else html+=`<div class="xm-grid">`+subs.map(sub=>{
       const g=bySub[sub];
       const sj=esc(sub).replace(/'/g,"\\'");
-      const resChips=(g.ontime||g.late)?`<div class="xm-res-chips">${g.ontime?`<span class="xm-rc ok">${g.ontime} on time</span>`:''}${g.late?`<span class="xm-rc late">${g.late} late</span>`:''}${g.maxLate?`<span class="xm-rc maxl" title="See the most-late doubts" onclick="event.stopPropagation();tOpenSubLate('${sj}')">max late ${esc(_fmtDurJS(g.maxLate))}</span>`:''}</div>`:'';
+      const resChips=(g.ontime||g.late)?`<div class="xm-res-chips">${g.ontime?`<span class="xm-rc ok">${g.ontime} on time</span>`:''}${g.late?`<span class="xm-rc late" style="cursor:pointer" title="See late-resolved doubts" onclick="event.stopPropagation();tOpenSubLate('${sj}')">${g.late} late</span>`:''}</div>`:'';
       return `<div class="xm-card" onclick="tPickDoubtSub('${sj}')"><div class="xm-ic">${ic('help')}</div><div class="xm-info"><div class="xm-title">${esc(sub)}</div><div class="xm-chips"><span class="xm-chip">${g.total} total</span>${g.pending?`<span class="xm-pend">${g.pending} pending</span>`:`<span class="xm-chip" style="background:rgba(5,150,105,.14);color:var(--success)">All clear</span>`}</div>${resChips}</div><div class="xm-arw">\u203a</div></div>`;
     }).join('')+`</div>`;
     el.innerHTML=html; return;
@@ -13412,6 +13466,7 @@ function tRenderDoubts(){
   const _tab=window._tdTab||'all';
   const _tabBtn=(id,label,n)=>`<button onclick="tDoubtTab('${id}')" style="border:1px solid ${_tab===id?'transparent':'var(--border)'};cursor:pointer;padding:9px 18px;border-radius:999px;font-weight:800;font-size:.82rem;transition:all .15s;${_tab===id?'background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(201,162,39,.35)':'background:var(--surface,#fff);color:var(--text-muted)'}">${label} <span style="font-weight:900">(${n})</span></button>`;
   const _tabBtnLate=(id,n)=>`<button onclick="tDoubtTab('${id}')" style="border:1px solid ${_tab===id?'transparent':'rgba(192,57,43,.4)'};cursor:pointer;padding:9px 18px;border-radius:999px;font-weight:800;font-size:.82rem;transition:all .15s;${_tab===id?'background:#c0392b;color:#fff;box-shadow:0 3px 10px rgba(192,57,43,.35)':'background:var(--surface,#fff);color:#c0392b'}">Late Resolved <span style="font-weight:900">(${n})</span></button>`;
+  html=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',ds.resolved,'check','green')}${statCard('Avg Response Time',avgTxt,'clipboard','indigo')}</div>`+html;
   html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;window._tdTab='all';tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)}</h3></div>`;
   html+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 14px">${_tabBtn('all','All',list.length)}${_tabBtn('pending','Pending',pend.length)}${_tabBtn('resolved','Resolved',onTimeDone.length)}${lateDone.length?_tabBtnLate('late_resolved',lateDone.length):''}${away.length?_tabBtn('away','Reassigned',away.length):''}</div>`;
   html+=`<div class="hide-scroll doubt-drill">`;
@@ -21041,7 +21096,7 @@ function _adDoubtControlCard(){
   _ensureDcrCss();
   const sla=window._aDoubtSla||15;
   const oh=window._aDoubtOffice||{enabled:true,start:9,end:20};
-  const RNG=window._adRepRange||'month';
+  const RNG=_adRng();
   const rlab={today:'Today',week:'Weekly',month:'Monthly','':'All',custom:'Custom'};
   const rchips=['today','week','month','','custom'].map(r=>`<button class="btn btn-sm ${RNG===r?'btn-primary':'btn-ghost'}" onclick="adRepRange('${r}')">${rlab[r]}</button>`).join('');
   return `<div class="card" style="margin-bottom:14px"><div class="card-header" style="cursor:pointer" onclick="_adCtrlToggle()"><h3 style="display:flex;align-items:center;gap:10px">${ic('shield')} Doubt Control Room <span style="font-size:.72rem;color:var(--text-muted);font-weight:600">(SLA, office hours & reports — tap)</span></h3><span class="chev" id="adctrl-chev">▼</span></div>
@@ -21074,20 +21129,22 @@ async function saveDoubtOffice(){
 function _adCtrlToggle(){ _adToggle('adctrl'); const b=document.getElementById('adctrl-body'); if(b&&b.style.display!=='none'){ adRepLoad(); } }
 function adRepRange(r){ window._adRepRange=r; aRenderDoubts(); setTimeout(()=>{ _adToggleOpen('adctrl'); if(r!=='custom') adRepLoad(); },0); }
 function _adToggleOpen(id){ const b=document.getElementById(id+'-body'),c=document.getElementById(id+'-chev'); if(b){ b.style.display='block'; if(c)c.classList.add('open'); } }
+function _adRng(){ return (window._adRepRange===undefined||window._adRepRange===null)?'month':window._adRepRange; }
 async function adRepLoad(){
   const box=document.getElementById('adrep-body'); if(!box) return;
-  const rng=window._adRepRange||'month';
+  const rng=_adRng();
   const frm=(document.getElementById('adrep-from')||{}).value||'';
   const to=(document.getElementById('adrep-to')||{}).value||'';
   box.innerHTML='<div class="spinner" style="margin:24px auto"></div>';
   try{
-    const d=await api('/api/admin/doubts-report?range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to));
+    const d=await api('/api/admin/doubts-report?range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to)+_adRepTeacherParam());
     window._adRepData=d;
     const t=d.totals||{};
-    const _rrow=(x,lbl)=>`<tr><td data-l="${lbl}">${esc(x[lbl==='Subject'?'subject':'teacher'])}</td><td data-l="Resolved">${x.resolved}</td><td data-l="On time" style="color:#1f7a52;font-weight:700">${x.on_time}</td><td data-l="Late" style="color:${x.late?'#c0392b':'var(--text-muted)'};font-weight:700">${x.late}</td><td data-l="On-time %">${x.on_time_pct}%</td><td data-l="Avg time">${esc(x.avg_label||'—')}</td><td data-l="Max late" style="color:${x.max_late_label?'#c0392b':'var(--text-muted)'}">${esc(x.max_late_label||'—')}</td></tr>`;
-    const rows=(d.teachers||[]).map(tr=>_rrow(tr,'Teacher')).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px">No resolved doubts in this range.</td></tr>`;
-    const srows=(d.subjects||[]).map(sg=>_rrow(sg,'Subject')).join('')||`<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px">No data.</td></tr>`;
+    const _rrow=(x,lbl)=>`<tr><td data-l="${lbl}">${esc(x[lbl==='Subject'?'subject':'teacher'])}</td><td data-l="Resolved">${x.resolved}</td><td data-l="On time" style="color:#1f7a52;font-weight:700">${x.on_time}</td><td data-l="Late" style="color:${x.late?'#c0392b':'var(--text-muted)'};font-weight:700">${x.late}</td><td data-l="On-time %">${x.on_time_pct}%</td><td data-l="Avg time">${esc(x.avg_label||'—')}</td></tr>`;
+    const rows=(d.teachers||[]).map(tr=>_rrow(tr,'Teacher')).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:14px">No resolved doubts in this range.</td></tr>`;
+    const srows=(d.subjects||[]).map(sg=>_rrow(sg,'Subject')).join('')||`<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:14px">No data.</td></tr>`;
     box.innerHTML=`<div class="dcr-s" style="margin-bottom:6px">${esc(d.label||'')} · SLA ${esc(_fmtSlaH(d.sla_hours))} · office ${String(d.office_hours.start).padStart(2,'0')}:00–${String(d.office_hours.end).padStart(2,'0')}:00 ${d.office_hours.enabled?'':'(off)'}</div>
+      ${_adRepTeacherChips()}
       <div class="dcr-tot">
         <div class="dcr-tc"><b style="color:#14213d">${t.resolved||0}</b><span>Resolved</span></div>
         <div class="dcr-tc"><b style="color:#1f7a52">${t.on_time||0}</b><span>On time</span></div>
@@ -21097,16 +21154,25 @@ async function adRepLoad(){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px"><button class="btn btn-secondary btn-sm" onclick="adRepDlPdf()">${ic('download')} Download PDF</button><button class="btn btn-ghost btn-sm" onclick="adRepDlPng()">${ic('image')||ic('download')} Download Image</button></div>
       <div style="font-weight:800;font-size:.9rem;margin:4px 0 6px">By teacher</div>
-      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Teacher</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th><th>Max late</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Teacher</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th></tr></thead><tbody>${rows}</tbody></table></div>
       <div style="font-weight:800;font-size:.9rem;margin:16px 0 6px">By subject</div>
-      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Subject</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th><th>Max late</th></tr></thead><tbody>${srows}</tbody></table></div>`;
+      <div style="overflow:auto"><table class="dcr-tbl"><thead><tr><th>Subject</th><th>Resolved</th><th>On time</th><th>Late</th><th>On-time %</th><th>Avg time</th></tr></thead><tbody>${srows}</tbody></table></div>`;
   }catch(e){ box.innerHTML=`<div class="alert alert-danger">${esc(e.message||'Could not load report')}</div>`; }
 }
+function _adRepTeacherParam(){ const s=window._adRepTeachers; return (s&&s.size)?('&teachers='+encodeURIComponent([...s].join('|'))):''; }
+function _adRepTeacherChips(){
+  const names=[...new Set((window._aDoubts||[]).map(d=>d.teacher_name).filter(n=>n&&n!=='Unassigned'))].sort();
+  if(!names.length) return '';
+  const sel=window._adRepTeachers||new Set();
+  const chips=names.map(n=>{ const on=sel.has(n); const nj=esc(n).replace(/'/g,"\\'"); return `<span onclick="adRepTeacherToggle('${nj}')" style="cursor:pointer;font-size:.72rem;font-weight:700;border-radius:999px;padding:4px 12px;border:1px solid ${on?'transparent':'var(--border)'};${on?'background:#14213d;color:#fff':'background:#fff;color:var(--text-muted)'}">${esc(n)}</span>`; }).join('');
+  return `<div style="margin:4px 0 12px"><div style="font-size:.72rem;color:var(--text-muted);font-weight:700;margin-bottom:6px">Filter teachers for the report & download ${sel.size?`(${sel.size} selected · <a href="#" onclick="window._adRepTeachers=new Set();adRepLoad();return false" style="color:#c0392b;font-weight:700">clear</a>)`:'(none selected = all shown)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div></div>`;
+}
+function adRepTeacherToggle(n){ if(!window._adRepTeachers) window._adRepTeachers=new Set(); const s=window._adRepTeachers; if(s.has(n)) s.delete(n); else s.add(n); adRepLoad(); }
 function adRepDlPdf(){
-  const rng=window._adRepRange||'month';
+  const rng=_adRng();
   const frm=(document.getElementById('adrep-from')||{}).value||'';
   const to=(document.getElementById('adrep-to')||{}).value||'';
-  _dlPdf('/api/admin/doubts-report.pdf?range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to),'doubt_report.pdf');
+  _dlPdf('/api/admin/doubts-report.pdf?range='+encodeURIComponent(rng)+'&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to)+_adRepTeacherParam(),'doubt_report.pdf');
 }
 function _dlCanvas(canvas,fname){ try{ canvas.toBlob(function(b){ if(!b){ toast('Could not create image',true); return;} const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); }); }catch(e){ toast('Could not create image',true); } }
 function adRepDlPng(){
@@ -21124,10 +21190,10 @@ function adRepDlPng(){
   cards.forEach(cd=>{ x.fillStyle='#fff'; x.strokeStyle='#e5e0d5'; _rr(x,cx,92,cw,56,10); x.fill(); x.stroke(); x.fillStyle=cd[2]; x.font='800 20px system-ui'; x.textAlign='center'; x.fillText(String(cd[1]),cx+cw/2,120); x.fillStyle='#888'; x.font='700 9px system-ui'; x.fillText(String(cd[0]).toUpperCase(),cx+cw/2,138); x.textAlign='left'; cx+=cw+8; });
   // table header
   let y=headH; x.fillStyle='#14213d'; x.fillRect(pad,y-24,W-pad*2,26); x.fillStyle='#fff'; x.font='700 12px system-ui';
-  const cols=[['Teacher',pad+8,'left'],['Resolved',pad+320,'center'],['On time',pad+420,'center'],['Late',pad+510,'center'],['On-time %',pad+600,'center'],['Avg',pad+700,'center'],['Max late',pad+800,'center']];
+  const cols=[['Teacher',pad+8,'left'],['Resolved',pad+380,'center'],['On time',pad+500,'center'],['Late',pad+600,'center'],['On-time %',pad+700,'center'],['Avg',pad+800,'center']];
   cols.forEach(cl=>{ x.textAlign=cl[2]; x.fillText(cl[0],cl[1],y-6); }); x.textAlign='left';
   x.font='500 12px system-ui';
-  teachers.forEach((tr,i)=>{ const ry=y+i*rowH; if(i%2){ x.fillStyle='#f3efe4'; x.fillRect(pad,ry,W-pad*2,rowH); } x.fillStyle='#1a1a1a'; x.fillText((tr.teacher||'').slice(0,30),pad+8,ry+20); x.textAlign='center'; x.fillText(String(tr.resolved),pad+320,ry+20); x.fillStyle='#1f7a52'; x.fillText(String(tr.on_time),pad+420,ry+20); x.fillStyle=tr.late?'#c0392b':'#999'; x.fillText(String(tr.late),pad+510,ry+20); x.fillStyle='#1a1a1a'; x.fillText(tr.on_time_pct+'%',pad+600,ry+20); x.fillText(tr.avg_label||'-',pad+700,ry+20); x.fillStyle=tr.max_late_label?'#c0392b':'#999'; x.fillText(tr.max_late_label||'-',pad+800,ry+20); x.textAlign='left'; });
+  teachers.forEach((tr,i)=>{ const ry=y+i*rowH; if(i%2){ x.fillStyle='#f3efe4'; x.fillRect(pad,ry,W-pad*2,rowH); } x.fillStyle='#1a1a1a'; x.fillText((tr.teacher||'').slice(0,34),pad+8,ry+20); x.textAlign='center'; x.fillText(String(tr.resolved),pad+380,ry+20); x.fillStyle='#1f7a52'; x.fillText(String(tr.on_time),pad+500,ry+20); x.fillStyle=tr.late?'#c0392b':'#999'; x.fillText(String(tr.late),pad+600,ry+20); x.fillStyle='#1a1a1a'; x.fillText(tr.on_time_pct+'%',pad+700,ry+20); x.fillText(tr.avg_label||'-',pad+800,ry+20); x.textAlign='left'; });
   _dlCanvas(c,'doubt_report.png');
 }
 function _rr(x,a,b,w,h,r){ x.beginPath(); x.moveTo(a+r,b); x.arcTo(a+w,b,a+w,b+h,r); x.arcTo(a+w,b+h,a,b+h,r); x.arcTo(a,b+h,a,b,r); x.arcTo(a,b,a+w,b,r); x.closePath(); }
@@ -21141,7 +21207,7 @@ function _adCards(){
   _ensureDoubtSlaCss();
   return `<div class="ad-grid">`+subs.map(sub=>{
     const sj=encodeURIComponent(sub.subject);
-    const resChips=((sub.on_time||0)||(sub.late||0))?`<div class="xm-res-chips">${sub.on_time?`<span class="xm-rc ok">${sub.on_time} on time</span>`:''}${sub.late?`<span class="xm-rc late">${sub.late} late</span>`:''}${sub.max_late_label?`<span class="xm-rc maxl" title="See the most-late doubts" onclick="event.stopPropagation();aOpenSubLate('${sj}')">max late ${esc(sub.max_late_label)}</span>`:''}</div>`:'';
+    const resChips=((sub.on_time||0)||(sub.late||0))?`<div class="xm-res-chips">${sub.on_time?`<span class="xm-rc ok">${sub.on_time} on time</span>`:''}${sub.late?`<span class="xm-rc late" style="cursor:pointer" title="See late-resolved doubts" onclick="event.stopPropagation();aOpenSubLate('${sj}')">${sub.late} late</span>`:''}</div>`:'';
     return `<div class="ad-card" onclick="adPickSub('${sj}')">
       <div class="ad-top"><div class="ad-sub">${esc(sub.subject)}</div>${sub.pending?`<span class="xm-pend">${sub.pending} pending</span>`:'<span class="ad-clear">All clear</span>'}</div>
       <div class="ad-teacher">${ic('user')} ${esc(sub.teacher||'\u2014')}</div>

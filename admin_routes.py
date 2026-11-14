@@ -10079,23 +10079,30 @@ def _doubt_report_label(rng, frm, to):
             "all": "All time"}.get(rng, rng.title())
 
 
+def _parse_teachers(teachers):
+    if not teachers:
+        return None
+    return [t for t in (teachers.split("|") if "|" in teachers else teachers.split(",")) if t.strip()]
+
+
 @router.get("/doubts-report")
-def admin_doubts_report(range: str = "month", frm: str = "", to: str = "",
+def admin_doubts_report(range: str = "month", frm: str = "", to: str = "", teachers: str = "",
                         db: Session = Depends(get_db), _=Depends(get_admin)):
     import mvs_services as MS
     import doubt_report as DR
     start, end = MS.utc_bounds(range, frm, to)
-    return DR.report_data(db, start, end, _doubt_report_label(range, frm, to))
+    return DR.report_data(db, start, end, _doubt_report_label(range, frm, to),
+                          only_teachers=_parse_teachers(teachers))
 
 
 @router.get("/doubts-report.pdf")
-def admin_doubts_report_pdf(range: str = "month", frm: str = "", to: str = "",
+def admin_doubts_report_pdf(range: str = "month", frm: str = "", to: str = "", teachers: str = "",
                             db: Session = Depends(get_db), _=Depends(get_admin)):
     import mvs_services as MS
     import doubt_report as DR
     start, end = MS.utc_bounds(range, frm, to)
     label = _doubt_report_label(range, frm, to)
-    data = DR.report_data(db, start, end, label)
+    data = DR.report_data(db, start, end, label, only_teachers=_parse_teachers(teachers))
     pdf = DR.report_pdf(db, data, label)
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename=doubt_report.pdf"})
