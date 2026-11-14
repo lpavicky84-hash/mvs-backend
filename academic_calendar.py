@@ -106,6 +106,7 @@ def default_milestones(session_type, year):
             "end_date": end_date,
             "hall_ticket": hall_ticket,
             "date_label": date_label,
+            "video_url": None,
         })
 
     if st == "april":
@@ -227,6 +228,7 @@ def compute_state(cal, today=None):
             "key": m["key"], "title": m["title"], "subtitle": sub, "kind": m.get("kind"),
             "date": m.get("date"), "end_date": m.get("end_date"), "hall_ticket": m.get("hall_ticket"),
             "date_display": date_disp, "range_display": extra, "status": st,
+            "video_url": m.get("video_url") or None,
             "last_date": None,
         })
 
@@ -236,6 +238,10 @@ def compute_state(cal, today=None):
         sub_m = next((m for m in out_mi if m["key"] == "tma_submission"), None)
         if sub_m:
             sub_m["last_date"] = _fmt_long(last_tma["date"])
+
+    # Order the timeline chronologically — whichever date comes first shows first.
+    # Dateless milestones (e.g. "Available now") lead the list.
+    out_mi.sort(key=lambda m: (0, "") if not m.get("date") else (1, m["date"]))
 
     total = len(mi)
     done_ct = len([m for m in out_mi if m["status"] == "done"])
@@ -550,6 +556,8 @@ def _sanitize_milestones(incoming, existing):
             "end_date": _clean_date(src.get("end_date")) if meta["kind"] == "window" else None,
             "hall_ticket": _clean_date(src.get("hall_ticket")) if meta["kind"] == "exam" else None,
             "date_label": (src.get("date_label") or ex_by_key.get(k, {}).get("date_label")),
+            "video_url": (((src.get("video_url") or "").strip() or None)
+                          if "video_url" in src else ex_by_key.get(k, {}).get("video_url")),
         })
     return out
 
