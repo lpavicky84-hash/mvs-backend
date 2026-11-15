@@ -1387,6 +1387,15 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
     student not yet linked, so the count stays correct during the transition."""
     from models import Batch, StudentProfile
     from sqlalchemy import func as _bf
+    # SELF-HEAL: Batches page khulte hi exact (name, session) duplicate cards ek me merge ho jaate
+    # hain (ab merge DPP/test/material sab move karta hai), aur fake duplicate enrollments saaf.
+    # Idempotent + safe — koi duplicate na ho to no-op. Isse purane duplicate records apne aap
+    # consolidate ho jaate hain, admin ko manually kuch karne ki zaroorat nahi.
+    try:
+        _consolidate_session_dupes(db)
+        _dedupe_student_enrollments(db)
+    except Exception:
+        pass
     rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
     by_id = {}          # batch_id -> DISTINCT student count (primary link + add-on enrollments)
     by_name = {}        # batch name -> student count (fallback, legacy fields, unlinked only)
@@ -1487,6 +1496,17 @@ def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Batch name is required")
+    session_v = (payload.get("session") or "").strip()
+    # DUPLICATE GUARD (bulletproof): bilkul same (name, session) ka ACTIVE batch pehle se ho to
+    # naya duplicate record mat banao — usi ka id laut do. Yahi root cause tha jisse ek hi batch
+    # ke 2-3 copies ban jaate the aur content/visibility bikhar jaati thi. (session non-empty ho
+    # tabhi — do alag sections intentionally alag naam/session se banenge.)
+    if session_v:
+        for ex in db.query(Batch).filter(Batch.active != False).all():
+            if (ex.name or "").strip().lower() == name.lower() \
+               and (getattr(ex, "session", "") or "").strip().lower() == session_v.lower():
+                return {"ok": True, "id": ex.id, "code": ex.code, "reused": True,
+                        "message": "A batch with this exact name & session already exists — using it."}
     base = _re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "batch"
     code = base
     n = 1
@@ -1620,6 +1640,50 @@ def _merge_batch_into(db, src_id, target_id):
         e.batch_id = target_id
         moved_tt += 1
 
+    # 4b) Batch-scoped CONTENT — DPP packs, tests/exams, class materials, legacy timetable.
+    #     Pehle ye MOVE nahi hota tha: duplicate batch merge hone ke baad bhi DPP/test source
+    #     (archived) batch pe reh jaata tha, isliye students ko content dikhta hi nahi tha.
+    #     Ab sab target pe move hota hai -> students ko turant sab dikhta hai. (Submissions/
+    #     attempts pack/exam id se judi hoti hain, isliye apne aap saath chali jaati hain.)
+    moved_content = 0
+    _content_models = []
+    try:
+        from models import DppPack as _Dpp; _content_models.append(_Dpp)
+    except Exception:
+        pass
+    try:
+        from models import Exam as _Exam; _content_models.append(_Exam)
+    except Exception:
+        pass
+    try:
+        from models import Material as _Mat; _content_models.append(_Mat)
+    except Exception:
+        pass
+    try:
+        from models import Timetable as _Tt; _content_models.append(_Tt)
+    except Exception:
+        pass
+    for _M in _content_models:
+        try:
+            moved_content += int(db.query(_M).filter(_M.batch_id == src_id)
+                                 .update({_M.batch_id: target_id}, synchronize_session=False) or 0)
+        except Exception:
+            pass
+    # 4c) Students ka chosen "active" batch pointer bhi target pe
+    try:
+        db.query(StudentProfile).filter(StudentProfile.active_batch_id == src_id)\
+          .update({StudentProfile.active_batch_id: target_id}, synchronize_session=False)
+    except Exception:
+        pass
+    # 4d) Community group ka batch pointer
+    try:
+        from models import CommunityGroup as _CG
+        db.query(_CG).filter(_CG.batch_id == src_id)\
+          .update({_CG.batch_id: target_id}, synchronize_session=False)
+    except Exception:
+        pass
+    db.flush()
+
     # 5) Subject mappings (dedup — skip subjects the target already has)
     have = {bs.subject for bs in
             db.query(BatchSubject).filter(BatchSubject.batch_id == target_id).all()}
@@ -1638,7 +1702,8 @@ def _merge_batch_into(db, src_id, target_id):
     src.archived_at = _dt.utcnow()
     db.flush()
     return {"moved_students": moved_students, "moved_timetable": moved_tt,
-            "moved_subjects": moved_subjects, "target": tgt.name, "source": src.name}
+            "moved_subjects": moved_subjects, "moved_content": moved_content,
+            "target": tgt.name, "source": src.name}
 
 
 def _consolidate_session_dupes(db):
@@ -1705,6 +1770,24 @@ def _dedupe_student_enrollments(db, limit=40000):
     return removed
 
 
+@router.post("/batches/consolidate-duplicates")
+def admin_consolidate_duplicates(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek click me saare exact (name, session) duplicate batch records ko ek canonical card me
+    merge karo — students, DPP, tests, materials, timetable, subjects sab target pe aa jaate hain,
+    duplicate archive ho jaata hai. Idempotent + safe. Returns kitne merge/clean hue."""
+    merged = 0
+    removed = 0
+    try:
+        merged = _consolidate_session_dupes(db)
+    except Exception:
+        merged = 0
+    try:
+        removed = _dedupe_student_enrollments(db)
+    except Exception:
+        removed = 0
+    return {"ok": True, "merged_batches": merged, "cleaned_enrollments": removed}
+
+
 @router.post("/batches/{src_id}/merge")
 def admin_merge_batch(src_id: int, payload: dict = Body(...),
                       db: Session = Depends(get_db), _=Depends(get_admin)):
@@ -1731,6 +1814,7 @@ def admin_merge_batch(src_id: int, payload: dict = Body(...),
     return {"ok": True, "moved_students": res.get("moved_students", 0),
             "moved_timetable": res.get("moved_timetable", 0),
             "moved_subjects": res.get("moved_subjects", 0),
+            "moved_content": res.get("moved_content", 0),
             "target": res.get("target"), "source": res.get("source")}
 
 
@@ -9567,6 +9651,13 @@ def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
     return out
 
 
+def _adm_blabel(bid, bmap):
+    """Batch id -> label (Name — Session); duplicate batch records with the same label collapse."""
+    nm, se = bmap.get(bid, ("", ""))
+    lab = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
+    return lab or "All students"
+
+
 def _adm_exam_group_exams(db, ids_csv):
     """All active Exams for the given comma-separated ids (the copies of one test). No owner filter."""
     try:
@@ -9598,7 +9689,8 @@ def admin_exam_group_ranking(ids: str = "", batch: int = 0,
         bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
         bmeta = []
     exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
-    use_ids = [e.id for e in exams if (not batch or getattr(e, "batch_id", None) == batch)]
+    sel_label = _adm_blabel(batch, bmap) if batch else None
+    use_ids = [e.id for e in exams if (not sel_label or _adm_blabel(getattr(e, "batch_id", None), bmap) == sel_label)]
     atts = (db.query(ExamAttempt)
             .filter(ExamAttempt.exam_id.in_(use_ids), ExamAttempt.status == "graded").all())
     sids = {a.student_id for a in atts}
@@ -9827,7 +9919,8 @@ def admin_dpp_group_ranking(ids: str = "", batch: int = 0,
         bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
         bmeta = []
     pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
-    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    sel_label = _adm_blabel(batch, bmap) if batch else None
+    use_ids = [p.id for p in packs if (not sel_label or _adm_blabel(getattr(p, "batch_id", None), bmap) == sel_label)]
     rows = (db.query(DppAnswer)
             .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
             .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
@@ -9879,7 +9972,8 @@ def admin_dpp_group_answers(ids: str = "", batch: int = 0,
         bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
         bmeta = []
     pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
-    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    sel_label = _adm_blabel(batch, bmap) if batch else None
+    use_ids = [p.id for p in packs if (not sel_label or _adm_blabel(getattr(p, "batch_id", None), bmap) == sel_label)]
     rows = (db.query(DppAnswer)
             .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
             .order_by(DppAnswer.submitted_at.desc()).all())

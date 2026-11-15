@@ -6023,12 +6023,14 @@ function _tDppGroupCardHTML(g){
   const pk=g.rep;
   const ini=(pk.subject||'D').trim()[0].toUpperCase();
   const srcChip=pk.source==='created'?`<span class="chip-sub" style="color:#b45309"> ${pk.questions_n||0} Questions</span>`:`<span class="chip-sub">Uploaded</span>`;
-  const multi=g.packs.length>1;
   const idsCsv=g.ids.join(',');
   const nnew=_dppNewG(g), nc=nnew.length;   // test jaisa NEW-blink: unseen submissions
+  // DISTINCT batches (label se) — ek hi batch ki duplicate copies/records ek hi ginein
+  const bdist=_batByLabel(g.packs, p=>_batLabel(p.batch_id), p=>p.submitted);
+  const nb=bdist.length; const multi=nb>1;
   const batchChip=multi
-    ? `<span class="xm-chip xm-chip-hl2" title="Shared in ${g.packs.length} batches — tap to see them" style="color:#9a7d1a;cursor:pointer" onclick="event.stopPropagation();openDppBatches('${idsCsv}')">${ic('folder')} ${g.packs.length} batches ›</span>`
-    : (pk.batch_id&&_batLabel(pk.batch_id)?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(_batLabel(pk.batch_id))}</span>`:'');
+    ? `<span class="xm-chip xm-chip-hl2" title="Shared in ${nb} batches — tap to see them" style="color:#9a7d1a;cursor:pointer" onclick="event.stopPropagation();openDppBatches('${idsCsv}')">${ic('folder')} ${nb} batches ›</span>`
+    : (bdist.length?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(bdist[0].label)}</span>`:'');
   return `<div class="dpp-card premium${nc>0?' tx-newblink':''}">
   <div style="display:flex;gap:13px;align-items:flex-start">
     ${window._myPhotoUrl?`<div class="dpp-ava" title="${esc(pk.subject)}" style="background-image:url('${window._myPhotoUrl}');background-size:cover;background-position:center"></div>`:`<div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>`}
@@ -6036,7 +6038,7 @@ function _tDppGroupCardHTML(g){
       <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${nc>0?`<span class="tx-newtag">${ic('bell')} ${nc} NEW</span>`:''}${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${batchChip}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
       <div class="dpp-title">${esc(pk.title)}</div>
       <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
-      <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${g.submitted} submission${g.submitted===1?'':'s'}${multi?` · ${g.packs.length} batches`:''}</div>
+      <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${g.submitted} submission${g.submitted===1?'':'s'}${multi?` · ${nb} batches`:''}</div>
       <div class="dpp-track">
         <button class="dpp-trk-btn" title="Students who opened this DPP" onclick="openDppTrack(${pk.id},'view')">${ic('eye')} <b>${pk.views||0}</b> views</button>
         <button class="dpp-trk-btn" title="Students who downloaded the PDF" onclick="openDppTrack(${pk.id},'download')">${ic('download')} <b>${pk.downloads||0}</b> downloads</button>
@@ -6048,27 +6050,40 @@ function _tDppGroupCardHTML(g){
         <button class="btn btn-ghost btn-sm" onclick="openDppResultsGroup('${idsCsv}')">${ic('users')} Submissions (${g.submitted})</button>
         ${pk.source==='created'?`<button class="btn btn-ghost btn-sm" onclick="openEditDpp(${pk.id})">${ic('edit')} Edit</button>`:`<button class="btn btn-ghost btn-sm" title="Change the batch / title for this DPP" onclick="openDppEditMeta(${pk.id})">${ic('edit')} Edit</button>`}
         <button class="btn btn-ghost btn-sm" title="Isi DPP ko doosre batch ke liye copy karo" onclick="openCopyToBatch('dpp',${pk.id})">${ic('copy')} Copy to batch</button>
-        <button class="btn btn-danger btn-sm" onclick="dppDeleteGroup('${idsCsv}','${esc(pk.title).replace(/'/g,'')}',${g.packs.length})">${ic('trash')} Delete</button>
+        <button class="btn btn-danger btn-sm" onclick="dppDeleteGroup('${idsCsv}','${esc(pk.title).replace(/'/g,'')}',${nb})">${ic('trash')} Delete</button>
       </div></div>
     </div>
   </div>
 </div>`;
 }
+// Ek set of items (jinke paas .batch_id + ek count field) ko batch-LABEL se group karo (duplicate
+// batch copies/records ek me). Returns [{label, batch_id(rep), count(sum), ids:[...]}].
+function _batByLabel(items, labelFn, countFn){
+  const m={}, order=[];
+  (items||[]).forEach(it=>{
+    const lab=(labelFn(it)||'All students (no specific batch)');
+    if(!m[lab]){ m[lab]={label:lab, batch_id:it.batch_id, count:0, ids:[]}; order.push(lab); }
+    m[lab].count+=(countFn?(countFn(it)||0):0); m[lab].ids.push(it.id);
+  });
+  return order.map(l=>m[l]);
+}
 function openDppBatches(idsCsv){
   const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
   const packs=(window._dppPacks||[]).filter(p=>ids.indexOf(p.id)>=0);
   const rep=packs[0]||{};
-  const rows=packs.map(p=>{
-    const lbl=_batLabel(p.batch_id)||'All students (no specific batch)';
+  const dist=_batByLabel(packs, p=>_batLabel(p.batch_id), p=>p.submitted);
+  const rows=dist.map(b=>{
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
-      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
-      <div style="display:flex;gap:8px;align-items:center"><span class="xm-chip">${p.submitted||0} submission${(p.submitted||0)===1?'':'s'}</span>
-      <button class="btn btn-ghost btn-sm" onclick="openDppResultsGroup('${p.id}')">${ic('users')} View</button></div></div>`;
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(b.label)}</div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="xm-chip">${b.count||0} submission${(b.count||0)===1?'':'s'}</span>
+      <button class="btn btn-ghost btn-sm" onclick="openDppResultsGroupB('${idsCsv}',${b.batch_id||0})">${ic('users')} View</button></div></div>`;
   }).join('');
-  showModal(`${esc(rep.title||'DPP')} — Batches (${packs.length})`,
-    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This DPP is shared in <b>${packs.length}</b> batch${packs.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+  showModal(`${esc(rep.title||'DPP')} — Batches (${dist.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This DPP is shared in <b>${dist.length}</b> batch${dist.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
+// batch popup se "View" -> poore group ke submissions, us batch pe pre-filtered
+function openDppResultsGroupB(idsCsv, batchId){ window._dppGA={ids:idsCsv,batch:batchId||0}; _renderDppGroupAnswers(); }
 function _dppGrpBatchDD(batches,cur,fn){
   if(!batches||batches.length<2) return '';
   return `<select class="form-control" style="max-width:280px;margin-bottom:12px" onchange="${fn}(parseInt(this.value,10)||0)"><option value="0"${!cur?' selected':''}>All batches (${batches.length})</option>${batches.map(b=>`<option value="${b.batch_id||0}"${cur===(b.batch_id||0)?' selected':''}>${esc(b.label)}</option>`).join('')}</select>`;
@@ -7208,13 +7223,16 @@ function _tExamCardHTML(e){
   const subBar=(e.attempts||0)>0?`<div style="flex:1;max-width:240px"><div style="display:flex;justify-content:space-between;font-size:.64rem;color:var(--text-muted)"><span>Evaluated</span><b style="color:var(--text)">${e.graded||0}/${e.attempts||0}</b></div><div class="tx-bar" style="margin-top:4px"><i style="width:${pct}%"></i></div></div>`:`<span class="tx-pill s">No submissions yet</span>`;
   const newNames=nc>0?`<div class="tx-newnames">${ic('users')} New ${isM?'attempt':'submission'}${nc>1?'s':''}: ${esc(nnew.slice(0,6).map(function(x){return x.name;}).join(', '))}${nc>6?(' +'+(nc-6)+' more'):''}${isM?' — open Results to clear.':' — view/download each sheet to clear.'}</div>`:'';
   // ---- dedup: ek test jo multiple batch me diya ho -> EK card, batch chip + group actions ----
-  const grp=(e._group&&(e._batchn||1)>1);
+  // DISTINCT batches (label se) — duplicate batch copies/records ek hi ginein
+  const _exBd=(e._group?_batByLabel((e._ids||[e.id]).map((id,i)=>({id:id,batch_id:(e._batches||[])[i]})), x=>_batLabel(x.batch_id), ()=>0):[]);
+  const _nb=_exBd.length;
+  const grp=(e._group&&_nb>1);
   const idsCsv=grp?(e._ids||[]).join(','):String(e.id);
   const resClick=grp?`openExamResultsGroup('${idsCsv}')`:`viewExamAttempts(${e.id})`;
   const rankClick=grp?`openExamRankingGroup('${idsCsv}')`:`openExamRanking(${e.id},'teacher')`;
-  const delClick=grp?`examDeleteGroup('${idsCsv}','${esc((e.title||'')).replace(/'/g,'')}',${e._batchn})`:`examDelete(${e.id})`;
+  const delClick=grp?`examDeleteGroup('${idsCsv}','${esc((e.title||'')).replace(/'/g,'')}',${_nb})`:`examDelete(${e.id})`;
   const batchPill=grp
-    ? `<span class="tx-pill s" title="Shared in ${e._batchn} batches — tap to see them" style="border-color:rgba(184,148,31,.5);color:#9a7d1a;cursor:pointer" onclick="openExamBatches('${idsCsv}')">${ic('folder')} ${e._batchn} batches ›</span>`
+    ? `<span class="tx-pill s" title="Shared in ${_nb} batches — tap to see them" style="border-color:rgba(184,148,31,.5);color:#9a7d1a;cursor:pointer" onclick="openExamBatches('${idsCsv}')">${ic('folder')} ${_nb} batches ›</span>`
     : (e.batch_id&&_batName(e.batch_id)?`<span class="tx-pill s" title="Batch" style="border-color:rgba(184,148,31,.5);color:#9a7d1a">${ic('folder')} ${esc(_batName(e.batch_id))}</span>`:'');
   return `<div class="tx-card ${isPend?'tx-live':''}${nc>0?' tx-newblink':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -7270,19 +7288,25 @@ function openExamBatches(idsCsv){
   const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
   const exams=(window._tExams||[]).filter(e=>ids.indexOf(e.id)>=0);
   const rep=exams[0]||{};
-  const rows=exams.map(e=>{
-    const lbl=(e.batch_id&&_batLabel&&_batLabel(e.batch_id))||'All students (no specific batch)';
-    const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
+  // DISTINCT batches (label se) — duplicate batch copies/records ek me (attempts/graded jodo)
+  const m={}, order=[];
+  exams.forEach(e=>{ const lab=(_batLabel(e.batch_id))||'All students (no specific batch)'; if(!m[lab]){ m[lab]={label:lab,batch_id:e.batch_id,att:0,grd:0}; order.push(lab); } m[lab].att+=(e.attempts||0); m[lab].grd+=(e.graded||0); });
+  const dist=order.map(l=>m[l]);
+  const rows=dist.map(b=>{
+    const pend=Math.max(0,(b.att||0)-(b.grd||0));
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
-      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="xm-chip">${e.attempts||0} submission${(e.attempts||0)===1?'':'s'}</span>${pend>0?`<span class="xm-chip" style="color:#b45309">${pend} to grade</span>`:''}
-      <button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button>
-      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(b.label)}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="xm-chip">${b.att||0} submission${(b.att||0)===1?'':'s'}</span>${pend>0?`<span class="xm-chip" style="color:#b45309">${pend} to grade</span>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="openExamResultsGroupB('${idsCsv}',${b.batch_id||0})">${ic('users')} Results</button>
+      ${(b.grd||0)>0?`<button class="btn btn-ghost btn-sm" onclick="openExamRankingGroupB('${idsCsv}',${b.batch_id||0})">${ic('chart')} Ranking</button>`:''}</div></div>`;
   }).join('');
-  showModal(`${esc(rep.title||'Test')} — Batches (${exams.length})`,
-    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This test is shared in <b>${exams.length}</b> batch${exams.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+  showModal(`${esc(rep.title||'Test')} — Batches (${dist.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This test is shared in <b>${dist.length}</b> batch${dist.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
+// batch popup se Results/Ranking -> poore group ke, us batch pe pre-filtered (backend label se filter karta hai)
+function openExamResultsGroupB(idsCsv, batchId){ window._examGrpR={ids:idsCsv,batch:batchId||0}; _renderExamGroupResults(); }
+function openExamRankingGroupB(idsCsv, batchId){ window._examGrpRk={ids:idsCsv,batch:batchId||0}; _renderExamGroupRanking(); }
 // Group Results (grading) — batchwise + all, batch dropdown. Grading per attempt ke apne exam_id pe.
 async function openExamResultsGroup(idsCsv){ window._examGrpR={ids:idsCsv,batch:0}; _renderExamGroupResults(); }
 function examGRbatch(b){ if(window._examGrpR){ window._examGrpR.batch=b; _renderExamGroupResults(); } }
@@ -7364,9 +7388,13 @@ async function loadTTests(){
       return;
     }
     // ----- subject grid (default) -----
+    // Subject + CLASS se group — Mathematics Class 10 (211) aur Class 12 (311) alag cards (DPP/Doubts jaisa).
+    const _tkey=e=>((e.subject||'General').trim()||'General')+'||'+((e.class_name||'').replace(/\D/g,''));
+    const _tkSubName=k=>{const p=String(k).split('||');return esc(p[0]);};
+    const _tkFullName=k=>{const p=String(k).split('||');return esc(p[0])+(p[1]?` <span style="font-weight:600;color:var(--text-muted)">· Class ${esc(p[1])}</span>`:'');};
     if(!window._tTestSub){
       const groups={};
-      gexams.forEach(e=>{ const k=(e.subject||'General').trim()||'General'; (groups[k]=groups[k]||[]).push(e); });
+      gexams.forEach(e=>{ const k=_tkey(e); (groups[k]=groups[k]||[]).push(e); });
       const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
       const cards=keys.map(k=>{
         const list=groups[k];
@@ -7375,7 +7403,7 @@ async function loadTTests(){
         const subNew=list.reduce((s,e)=>s+_texNew(e).length,0);
         return `<div class="tsub-card" onclick="tSubOpen('${encodeURIComponent(k).replace(/'/g,'%27')}')">
           ${subNew>0?`<span class="tsub-new">${subNew>99?'99+':subNew}</span>`:''}
-          <div class="tsub-top"><span class="tsub-ic">${esc(txInit(k))}</span><div style="min-width:0"><div class="tsub-name">${esc(k)}</div><div class="tsub-sub">${list.length} test${list.length>1?'s':''} · ${subAtt} submission${subAtt===1?'':'s'}</div></div></div>
+          <div class="tsub-top"><span class="tsub-ic">${esc(txInit(_tkSubName(k)))}</span><div style="min-width:0"><div class="tsub-name">${_tkFullName(k)}</div><div class="tsub-sub">${list.length} test${list.length>1?'s':''} · ${subAtt} submission${subAtt===1?'':'s'}</div></div></div>
           <div class="tsub-foot">${subNew>0?`<span class="tsub-chip pend">${subNew} new to check</span>`:''}${subPend>0?`<span class="tsub-chip pend">${subPend} pending</span>`:''}${subPend===0&&subAtt>0?`<span class="tsub-chip done">All evaluated</span>`:''}</div>
         </div>`;
       }).join('');
@@ -7386,7 +7414,7 @@ async function loadTTests(){
     }
     // ----- a single subject's tests -----
     const sub=window._tTestSub;
-    let list=gexams.filter(e=>((e.subject||'General').trim()||'General')===sub);
+    let list=gexams.filter(e=>_tkey(e)===sub);
     const F=window._tTestFilter||'all';
     const isPend=e=>(e.attempts||0)>(e.graded||0);
     const isDone=e=>(e.attempts||0)>0&&(e.attempts||0)===(e.graded||0);
@@ -7396,7 +7424,7 @@ async function loadTTests(){
     const flt=list.filter(e=> F==='all' ? true : F==='pending' ? isPend(e) : F==='done' ? isDone(e) : (F==='mcq') === (e.test_type==='mcq'));
     const body=flt.length? flt.map(_tExamCardHTML).join('') : `<div class="tx-empty"><div class="ic">${ic('clipboard')}</div><b>No tests in this filter</b><p>Try another tab above.</p></div>`;
     el.innerHTML=header
-      +`<div style="display:flex;align-items:center;gap:12px;margin:12px 2px 6px"><button class="btn btn-ghost btn-sm" onclick="tSubBack()">← Back to subjects</button><h2 style="margin:0;font-size:1.25rem">${esc(sub)}</h2><span class="tsub-chip">${list.length} test${list.length>1?'s':''}</span></div>`
+      +`<div style="display:flex;align-items:center;gap:12px;margin:12px 2px 6px"><button class="btn btn-ghost btn-sm" onclick="tSubBack()">← Back to subjects</button><h2 style="margin:0;font-size:1.25rem">${_tkFullName(sub)}</h2><span class="tsub-chip">${list.length} test${list.length>1?'s':''}</span></div>`
       +`<div class="tx-tabs">${tabs}</div>`+body;
     _ttCardLogo(el);
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -9859,6 +9887,8 @@ function _testTrFiltered(){
 }
 function aTestBatchPick(v){ window._aTestBatch=v; window._aTestSub=''; _renderATests(); }
 // ===== ADMIN TEST dedup — ek test jo multiple batch me diya ho -> EK row =====
+// admin batch label (fallback batch_id) — distinct batch ginne ke liye
+function _admBLab(bid){ return _admBatLabel(bid)||('#'+(bid||'—')); }
 function _examAdminGroup(rows){
   const m={}, order=[];
   (rows||[]).forEach(e=>{
@@ -9866,26 +9896,29 @@ function _examAdminGroup(rows){
     if(!m[k]){ m[k]=Object.assign({},e,{_ids:[e.id],_batches:[e.batch_id],attempts:(e.attempts||0),graded:(e.graded||0)}); order.push(k); }
     else { const g=m[k]; g._ids.push(e.id); g._batches.push(e.batch_id); g.attempts+=(e.attempts||0); g.graded+=(e.graded||0); }
   });
-  return order.map(k=>{ const g=m[k]; g._batchn=g._ids.length; return g; });
+  return order.map(k=>{ const g=m[k]; g._batchn=new Set((g._batches||[]).map(_admBLab)).size; return g; });
 }
-// Batch chip -> popup: sabhi batches with session + per-batch submitted/evaluated + drill + ranking.
+// Batch chip -> popup: DISTINCT batches with session + per-batch submitted/evaluated + drill + ranking.
 function openExamBatchesA(idsCsv){
   const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
   const exams=(window._aTestsRows||[]).filter(e=>ids.indexOf(e.id)>=0); const rep=exams[0]||{};
-  const rows=exams.map(e=>{
-    const lbl=_admBatLabel(e.batch_id)||('Batch #'+(e.batch_id||'—'));
-    const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
+  const m={}, order=[];
+  exams.forEach(e=>{ const lab=_admBLab(e.batch_id); if(!m[lab]){ m[lab]={label:lab,batch_id:e.batch_id,rep_id:e.id,att:0,grd:0}; order.push(lab); } m[lab].att+=(e.attempts||0); m[lab].grd+=(e.graded||0); });
+  const dist=order.map(l=>m[l]);
+  const rows=dist.map(b=>{
+    const pend=Math.max(0,(b.att||0)-(b.grd||0));
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
-      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="xm-chip">${e.attempts||0} submitted</span>${pend>0?`<span class="xm-chip" style="color:#b45309">${pend} pending</span>`:''}
-      <button class="btn btn-ghost btn-sm" onclick="openAExamStudents(${e.id},'submitted')">${ic('users')} Students</button>
-      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(b.label)}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="xm-chip">${b.att||0} submitted</span>${pend>0?`<span class="xm-chip" style="color:#b45309">${pend} pending</span>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="openAExamStudents(${b.rep_id},'submitted')">${ic('users')} Students</button>
+      ${(b.grd||0)>0?`<button class="btn btn-ghost btn-sm" onclick="openExamRankingGroupBA('${idsCsv}',${b.batch_id||0})">${ic('chart')} Ranking</button>`:''}</div></div>`;
   }).join('');
-  showModal(`${esc(rep.title||'Test')} — Batches (${exams.length})`,
-    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This test is shared in <b>${exams.length}</b> batch${exams.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+  showModal(`${esc(rep.title||'Test')} — Batches (${dist.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This test is shared in <b>${dist.length}</b> batch${dist.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
 async function openExamRankingGroupA(idsCsv){ window._aExamGRk={ids:idsCsv,batch:0}; _renderExamGroupRankingA(); }
+function openExamRankingGroupBA(idsCsv, batchId){ window._aExamGRk={ids:idsCsv,batch:batchId||0}; _renderExamGroupRankingA(); }
 function aExamRKbatch(b){ if(window._aExamGRk){ window._aExamGRk.batch=b; _renderExamGroupRankingA(); } }
 async function _renderExamGroupRankingA(){
   const G=window._aExamGRk||{ids:'',batch:0};
@@ -10084,7 +10117,7 @@ function _dppAdminGroup(rows){
     if(!m[k]){ m[k]=Object.assign({},e,{_ids:[e.id],_batches:[e.batch_id],submitted:(e.submitted||0),checked:(e.checked||0),pending:pend,views:(e.views||0),downloads:(e.downloads||0)}); order.push(k); }
     else { const g=m[k]; g._ids.push(e.id); g._batches.push(e.batch_id); g.submitted+=(e.submitted||0); g.checked+=(e.checked||0); g.pending+=pend; g.views+=(e.views||0); g.downloads+=(e.downloads||0); }
   });
-  return order.map(k=>{ const g=m[k]; g._batchn=g._ids.length; return g; });
+  return order.map(k=>{ const g=m[k]; g._batchn=new Set((g._batches||[]).map(_admBLab)).size; return g; });
 }
 // Admin ke paas jo bhi packs loaded hain (tracker ya rankings view) unka pool — id->row.
 function _aDppPool(){
@@ -10093,21 +10126,24 @@ function _aDppPool(){
   (window._aDppPacks||[]).forEach(e=>{ if(!pool[e.id]) pool[e.id]=e; });
   return pool;
 }
-// Admin: "N batches" chip pe click -> premium popup, sabhi batches with session + per-batch submissions.
+// Admin: "N batches" chip pe click -> premium popup, DISTINCT batches with session + per-batch submissions.
 function openDppBatchesA(idsCsv){
   const ids=String(idsCsv).split(',').map(x=>parseInt(x,10)); const pool=_aDppPool();
   const packs=ids.map(id=>pool[id]).filter(Boolean); const rep=packs[0]||{};
-  const rows=packs.map(p=>{
-    const lbl=(window._admBatches&&_admBatLabel(p.batch_id))||('Batch #'+(p.batch_id||'—'));
+  const m={}, order=[];
+  packs.forEach(p=>{ const lab=_admBLab(p.batch_id); if(!m[lab]){ m[lab]={label:lab,batch_id:p.batch_id,rep_id:p.id,sub:0}; order.push(lab); } m[lab].sub+=(p.submitted||0); });
+  const dist=order.map(l=>m[l]);
+  const rows=dist.map(b=>{
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
-      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
-      <div style="display:flex;gap:8px;align-items:center"><span class="xm-chip">${p.submitted||0} submission${(p.submitted||0)===1?'':'s'}</span>
-      <button class="btn btn-ghost btn-sm" onclick="openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></div></div>`;
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(b.label)}</div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="xm-chip">${b.sub||0} submission${(b.sub||0)===1?'':'s'}</span>
+      <button class="btn btn-ghost btn-sm" onclick="openDppRankingGroupBA('${idsCsv}',${b.batch_id||0})">${ic('chart')} Ranking</button></div></div>`;
   }).join('');
-  showModal(`${esc(rep.title||'DPP')} — Batches (${packs.length})`,
-    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This DPP is shared in <b>${packs.length}</b> batch${packs.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+  showModal(`${esc(rep.title||'DPP')} — Batches (${dist.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This DPP is shared in <b>${dist.length}</b> batch${dist.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
     `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
 }
+function openDppRankingGroupBA(idsCsv, batchId){ window._aDppGRk={ids:idsCsv,batch:batchId||0}; _renderDppGroupRankingA(); }
 // Batch label (session ke saath) admin batches list se.
 function _admBatLabel(bid){
   const b=(window._admBatches||[]).filter(x=>String(x.id)===String(bid))[0];

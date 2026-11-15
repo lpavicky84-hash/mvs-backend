@@ -2584,15 +2584,17 @@ def _exam_group_exams(db, tp, ids_csv):
 
 
 def _exam_batch_meta(db, exams):
-    """[{batch_id, label, exam_id}] for a test's copies — one per batch, session label."""
+    """Distinct batches (by LABEL) a test's copies cover — one entry per batch label, not per copy."""
     from models import Batch
     bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
-    out = []
+    out, seen = [], set()
     for e in exams:
         bid = getattr(e, "batch_id", None)
-        nm, se = bmap.get(bid, ("", ""))
-        label = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
-        out.append({"batch_id": bid, "exam_id": e.id, "label": (label or "All students")})
+        label = _blabel_from(bid, bmap)
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append({"batch_id": bid, "exam_id": e.id, "label": label})
     return out, bmap
 
 
@@ -2608,7 +2610,8 @@ def teacher_exam_group_ranking(ids: str = "", batch: int = 0,
         raise HTTPException(404, "Test not found")
     bmeta, bmap = _exam_batch_meta(db, exams)
     exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
-    use_ids = [e.id for e in exams if (not batch or getattr(e, "batch_id", None) == batch)]
+    sel_label = _blabel_from(batch, bmap) if batch else None
+    use_ids = [e.id for e in exams if (not sel_label or _blabel_from(getattr(e, "batch_id", None), bmap) == sel_label)]
     atts = (db.query(ExamAttempt)
             .filter(ExamAttempt.exam_id.in_(use_ids), ExamAttempt.status == "graded").all())
     sids = {a.student_id for a in atts}
@@ -2768,16 +2771,28 @@ def _dpp_group_packs(db, tp, ids_csv):
     return db.query(DppPack).filter(DppPack.id.in_(id_list), DppPack.teacher_id == tp.id).all()
 
 
+def _blabel_from(bid, bmap):
+    """Batch id -> display label (Name — Session). Duplicate batch records with the SAME
+    name+session resolve to the SAME label, so they collapse into one."""
+    nm, se = bmap.get(bid, ("", ""))
+    lab = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
+    return lab or "All students"
+
+
 def _dpp_batch_meta(db, packs):
-    """[{batch_id, label, pack_id}] for a DPP's copies — one per batch, with session label."""
+    """Distinct batches (by LABEL) a DPP's copies cover — one entry per batch label, not per copy.
+    Fixes duplicate rows when the same DPP is copied to a batch more than once, or when duplicate
+    batch records share a name+session."""
     from models import Batch
     bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
-    out = []
+    out, seen = [], set()
     for p in packs:
         bid = getattr(p, "batch_id", None)
-        nm, se = bmap.get(bid, ("", ""))
-        label = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
-        out.append({"batch_id": bid, "pack_id": p.id, "label": (label or "All students")})
+        label = _blabel_from(bid, bmap)
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append({"batch_id": bid, "pack_id": p.id, "label": label})
     return out, bmap
 
 
@@ -2794,7 +2809,8 @@ def teacher_dpp_group_ranking(ids: str = "", batch: int = 0,
         raise HTTPException(404, "DPP not found")
     bmeta, bmap = _dpp_batch_meta(db, packs)
     pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
-    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    sel_label = _blabel_from(batch, bmap) if batch else None
+    use_ids = [p.id for p in packs if (not sel_label or _blabel_from(getattr(p, "batch_id", None), bmap) == sel_label)]
     rows = (db.query(DppAnswer)
             .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
             .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
@@ -2838,7 +2854,8 @@ def teacher_dpp_group_answers(ids: str = "", batch: int = 0,
         raise HTTPException(404, "DPP not found")
     bmeta, bmap = _dpp_batch_meta(db, packs)
     pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
-    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    sel_label = _blabel_from(batch, bmap) if batch else None
+    use_ids = [p.id for p in packs if (not sel_label or _blabel_from(getattr(p, "batch_id", None), bmap) == sel_label)]
     rows = (db.query(DppAnswer)
             .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
             .order_by(DppAnswer.submitted_at.desc()).all())
@@ -5436,7 +5453,8 @@ def exam_group_attempts(ids: str = "", batch: int = 0,
         raise HTTPException(404, "Test not found")
     bmeta, bmap = _exam_batch_meta(db, exams)
     exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
-    use_ids = [e.id for e in exams if (not batch or getattr(e, "batch_id", None) == batch)]
+    sel_label = _blabel_from(batch, bmap) if batch else None
+    use_ids = [e.id for e in exams if (not sel_label or _blabel_from(getattr(e, "batch_id", None), bmap) == sel_label)]
     atts = (db.query(ExamAttempt).filter(ExamAttempt.exam_id.in_(use_ids))
             .order_by(ExamAttempt.submitted_at.desc()).all())
     out = []

@@ -410,6 +410,28 @@ def _student_batch_ids(db, sp, only_batch_id=None):
     return ([sp.batch_id] if getattr(sp, "batch_id", None) else [])
 
 
+def _sibling_batch_ids(db, bids):
+    """Duplicate batch records (bilkul same name + session) ko ek maano. Agar institute me
+    'Lakshya Commerce — April 2027' do baar ban gaya ho (alag id), to student jis bhi record me
+    enrolled hai, uske content ke saath dusre duplicate record ka content bhi dikhe — warna teacher
+    ne jis duplicate ko DPP/test diya, usme enrolled na hone wale students ko kuch nahi dikhta.
+    Koi duplicate na ho to ye no-op hai (vids == bids)."""
+    try:
+        if not bids:
+            return bids
+        from models import Batch
+        allb = db.query(Batch).all()
+        lbl = {b.id: ((b.name or "").strip().lower(), (getattr(b, "session", "") or "").strip().lower()) for b in allb}
+        want = set(lbl.get(x) for x in bids if lbl.get(x) is not None)
+        out = set(bids)
+        for b in allb:
+            if lbl.get(b.id) in want:
+                out.add(b.id)
+        return list(out)
+    except Exception:
+        return bids
+
+
 def _bids_standalone(db, bids):
     """True if the selected batch is self-contained — it shows ONLY its own timetable/material/
     DPP/exam and NEVER inherits the shared global one. `standalone` column: True = own only,
@@ -662,6 +684,8 @@ def _exam_batch_filter_base(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return Exam.batch_id.is_(None)
+    # membership duplicate batch records ko bhi cover kare (branch-faisle original bids pe hi)
+    vids = _sibling_batch_ids(db, bids)
     # STRICT per-batch test isolation (user: "mein jo batch select karun, only uske tests dikhein").
     # (1) Crash Course -> hamesha strict (standalone flag galti se False ho tab bhi). (2) Jis batch
     # ko teacher ne apne tests assign kiye hain, wo bhi strict -> us batch ke students ko SIRF us
@@ -669,18 +693,18 @@ def _exam_batch_filter_base(db, sp, only_batch_id=None):
     # ek crash/own-test batch me doosre batch ya global ke tests kabhi leak na ho. (Materials/DPP/
     # timetable apne alag filters se waise hi chalte hain — unpe koi asar nahi.)
     if _bids_crash(db, bids) or _has_own_exam(db, bids):
-        return Exam.batch_id.in_(bids)
+        return Exam.batch_id.in_(vids)
     if _bids_standalone(db, bids):
-        return Exam.batch_id.in_(bids)
+        return Exam.batch_id.in_(vids)
     if _bids_inherit_global(db, bids):
-        return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(bids))
-    has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
-               or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
-               or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None
-               or db.query(Exam.id).filter(Exam.batch_id.in_(bids)).first() is not None)
+        return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(vids))
+    has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(vids)).first() is not None
+               or db.query(Material.id).filter(Material.batch_id.in_(vids)).first() is not None
+               or db.query(DppPack.id).filter(DppPack.batch_id.in_(vids)).first() is not None
+               or db.query(Exam.id).filter(Exam.batch_id.in_(vids)).first() is not None)
     if has_own:
-        return Exam.batch_id.in_(bids)
-    return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(bids))
+        return Exam.batch_id.in_(vids)
+    return _or(Exam.batch_id.is_(None), Exam.batch_id.in_(vids))
 
 
 def _dpp_batch_filter_base(db, sp, only_batch_id=None):
@@ -694,16 +718,18 @@ def _dpp_batch_filter_base(db, sp, only_batch_id=None):
     bids = _student_batch_ids(db, sp, only_batch_id)
     if not bids:
         return DppPack.batch_id.is_(None)
+    # membership duplicate batch records ko bhi cover kare (branch-faisle original bids pe hi)
+    vids = _sibling_batch_ids(db, bids)
     if _bids_standalone(db, bids):
-        return DppPack.batch_id.in_(bids)
+        return DppPack.batch_id.in_(vids)
     if _bids_inherit_global(db, bids):
-        return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(bids))
-    has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(bids)).first() is not None
-               or db.query(Material.id).filter(Material.batch_id.in_(bids)).first() is not None
-               or db.query(DppPack.id).filter(DppPack.batch_id.in_(bids)).first() is not None)
+        return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(vids))
+    has_own = (db.query(TimetableEntry.id).filter(TimetableEntry.batch_id.in_(vids)).first() is not None
+               or db.query(Material.id).filter(Material.batch_id.in_(vids)).first() is not None
+               or db.query(DppPack.id).filter(DppPack.batch_id.in_(vids)).first() is not None)
     if has_own:
-        return DppPack.batch_id.in_(bids)
-    return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(bids))
+        return DppPack.batch_id.in_(vids)
+    return _or(DppPack.batch_id.is_(None), DppPack.batch_id.in_(vids))
 
 
 def _mat_batch_filter_base(db, sp, only_batch_id=None):
