@@ -2861,6 +2861,41 @@ def student_exams(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), c
     q = db.query(Exam).filter(Exam.is_active == True,
                               _exam_visible_filter(db, sp, batch))
     rows = q.order_by(Exam.created_at.desc()).all()
+    # DEDUP (student side): ek hi logical TEST ke multiple copies (batch copy + global twin, ya alag
+    # batch copies jinme se ek se zyada match karein) student ko EK hi dikhe. Signature = subject+
+    # class+title+chapter+type+marks. Prefer: jis copy pe student ne ATTEMPT kiya; warna uske OWN
+    # batch wali copy; warna pehli.
+    import re as _re_esig
+    def _esig_s(e):
+        _cl = _re_esig.sub(r"\D", "", str(getattr(e, "class_name", "") or ""))
+        return "|".join([_subj_norm(e.subject or ""), _cl, (e.title or "").strip().lower(),
+                         (e.chapter or "").strip().lower(), (e.test_type or "").strip().lower(),
+                         str(getattr(e, "total_marks", 0) or 0)])
+    _mine_bids_e = set(_mine_batch_ids_expanded(db, sp, batch))
+    _all_eids0 = [e.id for e in rows]
+    _att_any = set()
+    if _all_eids0:
+        for (_eid,) in db.query(ExamAttempt.exam_id).filter(
+                ExamAttempt.student_id == sp.id, ExamAttempt.exam_id.in_(_all_eids0)).distinct().all():
+            _att_any.add(_eid)
+    _eg, _eorder = {}, []
+    for e in rows:
+        _sg = _esig_s(e)
+        if _sg not in _eg:
+            _eg[_sg] = []; _eorder.append(_sg)
+        _eg[_sg].append(e)
+    _rows2 = []
+    for _sg in _eorder:
+        _lst = _eg[_sg]
+        if len(_lst) == 1:
+            _rows2.append(_lst[0]); continue
+        _attd = [e for e in _lst if e.id in _att_any]
+        if _attd:
+            _rows2.append(_attd[0])
+        else:
+            _own = [e for e in _lst if getattr(e, "batch_id", None) in _mine_bids_e]
+            _rows2.append(_own[0] if _own else _lst[0])
+    rows = _rows2
     # Har exam me kitni copies evaluate ho chuki — Ranking button isi se dikhta hai
     # (taaki jis student ne attempt nahi kiya usko bhi ranking/marks dekhne ko mile)
     from sqlalchemy import func as _func
@@ -3762,6 +3797,49 @@ def student_dpp_packs(batch: int = 0, gen: int = 0, db: Session = Depends(get_db
     # class filter first
     packs = [pk for pk in packs
              if not (my_cls and _class_digits(pk.class_name) and _class_digits(pk.class_name) != my_cls)]
+
+    # DEDUP (student side): ek hi logical DPP ke multiple copies student ko EK hi card dikhe.
+    # Copies aa sakti hain: (a) batch-scoped copy + uska GLOBAL twin (same title), (b) alag batch
+    # copies jinme se ek se zyada student ke scope me match karein. Signature = subject+class+title+
+    # chapter+part. Prefer: jis copy pe student ne SUBMIT kiya; warna uske OWN batch wali copy;
+    # warna pehli. Submissions count = group ki saari copies ka sum (total across copies).
+    import re as _re_sig
+    def _sig_s(pk):
+        _cl = _re_sig.sub(r"\D", "", str(getattr(pk, "class_name", "") or ""))
+        return "|".join([_subj_norm(pk.subject or ""), _cl, (pk.title or "").strip().lower(),
+                         (pk.chapter or "").strip().lower(), (pk.part or "").strip().lower()])
+    _mine_bids = set(_mine_batch_ids_expanded(db, sp, batch))
+    _orig_ids = [pk.id for pk in packs]
+    _ans_any = {}
+    if _orig_ids:
+        for _a in (db.query(DppAnswer).filter(DppAnswer.pack_id.in_(_orig_ids),
+                   DppAnswer.student_id == sp.id, DppAnswer.status != "staged")
+                   .order_by(DppAnswer.submitted_at.desc())):
+            if _a.pack_id not in _ans_any:
+                _ans_any[_a.pack_id] = _a
+    _grp, _order = {}, []
+    for pk in packs:
+        _sg = _sig_s(pk)
+        if _sg not in _grp:
+            _grp[_sg] = []; _order.append(_sg)
+        _grp[_sg].append(pk)
+    _sig_ids = {sg: [p.id for p in lst] for sg, lst in _grp.items()}
+    _sig_of, _deduped = {}, []
+    for _sg in _order:
+        _lst = _grp[_sg]
+        if len(_lst) == 1:
+            _chosen = _lst[0]
+        else:
+            _answered = [p for p in _lst if p.id in _ans_any]
+            if _answered:
+                _chosen = _answered[0]
+            else:
+                _own = [p for p in _lst if getattr(p, "batch_id", None) in _mine_bids]
+                _chosen = _own[0] if _own else _lst[0]
+        _sig_of[_chosen.id] = _sg
+        _deduped.append(_chosen)
+    packs = _deduped
+
     pack_ids = [pk.id for pk in packs]
     teacher_ids = list({pk.teacher_id for pk in packs if pk.teacher_id})
 
@@ -3779,21 +3857,14 @@ def student_dpp_packs(batch: int = 0, gen: int = 0, db: Session = Depends(get_db
         for tid in teacher_ids:
             tmap[tid] = (uname.get(uid_by_tid.get(tid), "") or "", photo_by_tid.get(tid, False))
 
-    # BATCH 2: my latest answer per pack (1 query — desc order, first seen = latest)
-    my_ans = {}
-    if pack_ids:
-        for a in (db.query(DppAnswer)
-                  .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.student_id == sp.id,
-                          DppAnswer.status != "staged")
-                  .order_by(DppAnswer.submitted_at.desc())):
-            if a.pack_id not in my_ans:
-                my_ans[a.pack_id] = a
+    # BATCH 2: my latest answer — already fetched across ALL copies (_ans_any) during dedup.
+    my_ans = _ans_any
 
-    # BATCH 3: submission counts per pack (1 GROUP BY)
+    # BATCH 3: submission counts across ALL copies (so a deduped card ka count = total across copies)
     subs_map = {}
-    if pack_ids:
+    if _orig_ids:
         for pid, cnt in (db.query(DppAnswer.pack_id, _func.count(DppAnswer.id))
-                         .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.status != "staged")
+                         .filter(DppAnswer.pack_id.in_(_orig_ids), DppAnswer.status != "staged")
                          .group_by(DppAnswer.pack_id)):
             subs_map[pid] = cnt
 
@@ -3818,8 +3889,9 @@ def student_dpp_packs(batch: int = 0, gen: int = 0, db: Session = Depends(get_db
             qn, has_qpdf, has_spdf = meta[pk.id]
         else:  # fallback (only if BATCH 4 failed) — lazy load this one pack
             qn = len(pk.questions or []); has_qpdf = bool(pk.q_pdf); has_spdf = bool(pk.s_pdf)
+        _grp_ids = _sig_ids.get(_sig_of.get(pk.id, ""), [pk.id])
         out.append({"id": pk.id, "subject": pk.subject, "chapter": pk.chapter, "part": pk.part,
-                    "submissions": subs_map.get(pk.id, 0),
+                    "submissions": sum(subs_map.get(i, 0) for i in _grp_ids),
                     "class_name": getattr(pk, "class_name", "") or "",
                     "title": pk.title, "medium": pk.medium, "source": pk.source,
                     "teacher": tname, "teacher_id": pk.teacher_id,
