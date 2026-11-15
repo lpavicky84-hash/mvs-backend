@@ -2493,7 +2493,13 @@ def timetable_all(archive_gen: int = 0, db: Session = Depends(get_db), _=Depends
             "day": e.day, "time": getattr(e,"time_text",None),
             "type": getattr(e,"entry_type",None) or "chapter",
             "teacher_name": tname, "teacher_id": tpid, "teacher_has_photo": tphoto,
-            "completed": bool(e.completed), "has_lecture": (e.id in lec_entry_ids),
+            "completed": bool(e.completed),
+            # A report is submitted ONCE per physical class; same-time sibling batches are
+            # marked as mirrors (mirror_of_id -> the reported entry) WITHOUT their own Lecture
+            # row. So a mirror counts as "reported" when its primary has the lecture — otherwise
+            # the admin wrongly showed those sibling batches as "Pending".
+            "has_lecture": ((e.id in lec_entry_ids)
+                            or (getattr(e, "mirror_of_id", None) in lec_entry_ids)),
             "topic_covered": e.topic_covered or "", "start_time": e.start_time or "",
             "end_time": e.end_time or "", "homework": e.homework or "",
             "youtube_link": getattr(e, "youtube_link", None) or "",
