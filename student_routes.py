@@ -629,30 +629,52 @@ def _tt_batch_filter_base(db, sp, only_batch_id=None):
 
 
 def _sel_batch_subjects(db, sp, batch=None):
-    """The subjects to show for the student's SELECTED batch: the batch's assigned subjects
-    (Assign Subjects / BatchSubject), intersected with the student's own subjects. Falls back
-    to all the student's subjects if the batch has no subject mapping (or none match). This is
-    what makes each batch show only its own subjects (e.g. a Crash Course that only teaches
-    Physics shows just Physics)."""
-    stu = list(sp.subjects or [])
+    """The subjects to show for a student = the student's OWN enrolled subjects (sp.subjects).
+
+    RULE (owner): "jo subjects student ke paas hain, bus wahi dikhein — na us se zyada, na kam."
+    Pehle ye batch ki BatchSubject-map se INTERSECT karta tha, jisse agar batch-map me student ka
+    koi subject listed nahi tha (e.g. Commerce batch-map me 'Mathematics' nahi, par student Maths
+    padhta hai) to uska Maths DPP/material CHHUP jaata tha — yahi Garv wala bug tha. Ab seedha
+    student ke apne subjects use hote hain (tests pehle se isi tarah chalte the).
+
+    Batch-wise restriction (e.g. Physics-only Crash Course sirf Physics dikhaye) batch-SCOPING se
+    automatically handle hota hai: us batch me sirf Physics ka content hota hai, aur baaki subjects
+    ka content us batch me hota hi nahi — isliye student ko sirf Physics dikhta hai. Isliye subject
+    ko student ke apne subjects tak rakhna safe + sahi hai."""
+    return list(sp.subjects or [])
+
+
+def _mine_batch_ids_expanded(db, sp, only_batch_id=None):
+    """Student ke apne batch ids — duplicate batch records (same name+session) ke siblings sahit."""
     try:
-        from models import BatchSubject
-        bids = _student_batch_ids(db, sp, batch)
-        if not bids:
-            return stu
-        mapped = {r[0] for r in db.query(BatchSubject.subject)
-                  .filter(BatchSubject.batch_id.in_(bids)).distinct().all() if r[0]}
-        if mapped:
-            # Match by NORMALISED subject name, not exact string. The batch mapping may store a
-            # code-suffixed variant ("Mathematics (311)") while the student stores the plain name
-            # ("Mathematics") — an exact-match intersection silently DROPPED such a subject (so its
-            # DPP / material / timetable disappeared for the student). Normalise both sides.
-            mapped_norm = {_subj_norm(m) for m in mapped if m}
-            inter = [s for s in stu if _subj_norm(s) in mapped_norm]
-            return inter if inter else stu
+        return list(_sibling_batch_ids(db, _student_batch_ids(db, sp, only_batch_id)) or [])
     except Exception:
-        pass
-    return stu
+        try:
+            return list(_student_batch_ids(db, sp, only_batch_id) or [])
+        except Exception:
+            return []
+
+
+def _dpp_visible_filter(db, sp, only_batch_id, subj_scope):
+    """DPP visibility = batch-scope AND subject ∈ student ke APNE subjects.
+
+    Rule: student ko sirf WAHI content dikhe jo (1) uske batch me hai (duplicate batch records ke
+    siblings sahit) AUR (2) uske apne padhne wale subject ka hai — na us se zyada, na kam. Subject
+    scope student ke apne subjects se aata hai (batch subject-map se NAHI), isliye Commerce batch ke
+    map me 'Mathematics' na hone par bhi, agar student Maths padhta hai to uska batch-assigned Maths
+    DPP dikhega; par jo subject student nahi padhta uska content us batch ko diya ho tab bhi NAHI
+    dikhega."""
+    from models import DppPack
+    from sqlalchemy import and_ as _and
+    return _and(_dpp_batch_filter(db, sp, only_batch_id),
+                DppPack.subject.in_(list(subj_scope or [])))
+
+
+def _exam_visible_filter(db, sp, only_batch_id=None):
+    """Test visibility = batch-scope AND subject ∈ student ke APNE subjects (DPP wali hi logic)."""
+    from models import Exam
+    from sqlalchemy import and_ as _and
+    return _and(_exam_batch_filter(db, sp, only_batch_id), _exam_subject_cond(db, sp))
 
 
 def _exam_subject_cond(db, sp):
@@ -925,8 +947,7 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
     try:
         # SAME rule as the Tests page: selected batch (strict) + student ke APNE subjects ka test.
         exams = db.query(Exam).filter(Exam.is_active == True,
-                                      _exam_batch_filter(db, sp, batch),
-                                      _exam_subject_cond(db, sp)).all()
+                                      _exam_visible_filter(db, sp, batch)).all()
         # N+1 fix: pehle har exam ke liye ExamAttempt alag-alag query hoti thi. Ab student ke saare
         # attempts ek hi IN() query me -> jin exam_ids me attempt hai woh set; baaki pending.
         # (Sirf exam_id column laate hain -> halka.) Output same: attempt nahi = pending.
@@ -2838,8 +2859,7 @@ def student_exams(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), c
     # (na zyada: Maths/Home Science jo woh nahi padhta -> nahi; na kam: Hindi jo padhta -> haan) AUR
     # (3) class match (neeche loop me). Ye teenon condition saath — single source of truth.
     q = db.query(Exam).filter(Exam.is_active == True,
-                              _exam_batch_filter(db, sp, batch),
-                              _exam_subject_cond(db, sp))
+                              _exam_visible_filter(db, sp, batch))
     rows = q.order_by(Exam.created_at.desc()).all()
     # Har exam me kitni copies evaluate ho chuki — Ranking button isi se dikhta hai
     # (taaki jis student ne attempt nahi kiya usko bhi ranking/marks dekhne ko mile)
@@ -3681,7 +3701,7 @@ def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db
     from datetime import datetime, timedelta
     sp = get_student_profile(current_user, db)
     ex = db.query(Exam).filter(Exam.id == exam_id).filter(
-        _exam_batch_filter(db, sp), _exam_subject_cond(db, sp)).first()
+        _exam_visible_filter(db, sp)).first()
     if not ex or not ex.q_pdf:
         raise HTTPException(status_code=404, detail="Not found")
     if kind == "a":
@@ -3737,8 +3757,7 @@ def student_dpp_packs(batch: int = 0, gen: int = 0, db: Session = Depends(get_db
     my_cls = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
     _dsubs = _sel_batch_subjects(db, sp, batch)
     packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf))
-             .filter(DppPack.subject.in_(list(_subj_scope_for(db, DppPack, _dsubs))),
-                     _dpp_batch_filter(db, sp, batch))
+             .filter(_dpp_visible_filter(db, sp, batch, _subj_scope_for(db, DppPack, _dsubs)))
              .order_by(DppPack.created_at.desc()).all())
     # class filter first
     packs = [pk for pk in packs
@@ -4124,8 +4143,10 @@ def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
     return {"ok": True, "status": "submitted"}
 
 
-def _dpp_visible(pk, sp):
-    """Pack is student ke liye visible? (subject canon-match + class match)"""
+def _dpp_visible(pk, sp, db=None):
+    """Pack is student ke liye visible? = subject student ke APNE subjects me ho AUR class match.
+    (Subject student ke apne subjects se — batch-map se nahi — taaki jo subject wo padhta hai uska
+    batch-assigned DPP khule, par jo nahi padhta uska na khule.)"""
     if _subj_norm(pk.subject) not in {_subj_norm(x) for x in (sp.subjects or [])}:
         return False
     my = _class_digits(getattr(sp, "class_level", "")) or _class_digits(sp.class_name)
@@ -4143,7 +4164,7 @@ def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
     from models import DppPack, DppAnswer
     sp = get_student_profile(current_user, db)
     pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
-    if not pk or not _dpp_visible(pk, sp):
+    if not pk or not _dpp_visible(pk, sp, db):
         raise HTTPException(status_code=404, detail="DPP not found")
     _ans = (db.query(DppAnswer)
             .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
@@ -4181,7 +4202,7 @@ def student_dpp_raise_doubt(pack_id: int, data: dict = Body(...), db: Session = 
     from models import DppPack
     sp = get_student_profile(current_user, db)
     pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
-    if not pk or not _dpp_visible(pk, sp):
+    if not pk or not _dpp_visible(pk, sp, db):
         raise HTTPException(status_code=404, detail="DPP not found")
     try:
         qno = int(data.get("qno") or 0)
@@ -4396,7 +4417,7 @@ def student_performance(batch: int = 0, db: Session = Depends(get_db), current_u
         counted_ids = set()
         if subs:
             for pk in db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(
-                    DppPack.subject.in_(list(_subj_scope_for(db, DppPack, subs))), _dpp_batch_filter(db, sp, batch)).all():
+                    _dpp_visible_filter(db, sp, batch, _subj_scope_for(db, DppPack, subs))).all():
                 pk_cls = _class_digits(pk.class_name)
                 if my_cls and pk_cls and pk_cls != my_cls:
                     continue
@@ -4411,8 +4432,7 @@ def student_performance(batch: int = 0, db: Session = Depends(get_db), current_u
     exam_attempts = db.query(ExamAttempt).filter(ExamAttempt.student_id == sp.id).all()
     graded = [a for a in exam_attempts if (a.status or "") == "graded"]
     exams_all = db.query(Exam).filter(Exam.is_active == True,
-                                      _exam_batch_filter(db, sp, batch),
-                                      _exam_subject_cond(db, sp)).all()
+                                      _exam_visible_filter(db, sp, batch)).all()
     exams_mine = exams_all
     test_total = len(exams_mine)
     test_done = len(exam_attempts)

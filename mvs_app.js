@@ -49545,6 +49545,10 @@ function _acalRender(d,role){
 
 /* ---------------------------- STUDENT ---------------------------- */
 function _sAcalCta(){
+  // CSS inject karo taaki dashboard pe shortcut hamesha premium dikhe — pehle ye CSS sirf
+  // Academic Calendar page khulne par aati thi, isliye fresh dashboard/refresh pe shortcut
+  // bina-style (title+subtitle chipke hue) dikhta tha. _acalCss idempotent hai.
+  try{ _acalCss(); }catch(e){}
   return '<div class="ac-cta" onclick="navTo(\'student-app\',\'acalendar\')"><div class="ac-cta-ic">'+(ic('calendar')||_AC_CLOCK_SVG)+'</div><div class="ac-cta-tx"><b>Academic Calendar</b><span>Your exam schedule &amp; important dates</span></div><div class="ac-cta-go">›</div></div>';
 }
 function initStudentCalendar(){
