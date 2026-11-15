@@ -5907,13 +5907,41 @@ async function loadTDpp(){
   try{
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
+    // Pehli baar: abhi ke saare submissions ko baseline "seen" -> sirf aage aane wale blink karein (test jaisa)
+    if(localStorage.getItem('mvs_dpp_seen')===null){
+      var _bl=[]; (window._dppPacks||[]).forEach(function(p){ (p.subs||[]).forEach(function(x){ if(x&&x.id!=null) _bl.push(x.id); }); });
+      _dppSeenSave(new Set(_bl));
+    }
+    window._dppSeenSet=_dppSeenLoad();
     if(!window._ttBatchList){ try{ var _bb=await api('/api/teacher/tt-batches'); window._ttBatchList=(_bb&&_bb.batches)||[]; }catch(e){ window._ttBatchList=[]; } }
     if(window._tDppBatch===undefined) window._tDppBatch='';
     if(window._tDppSub===undefined) window._tDppSub='';   // pehle sirf cards; koi auto-select nahi
     _renderTDpp();
   }catch(e){ el.innerHTML=errHtml(e); }
 }
-function tDppSubPick(s){ window._tDppSub=(window._tDppSub===s?'':s); _renderTDpp(); }
+function tDppSubPick(s){ try{ s=decodeURIComponent(s); }catch(e){} window._tDppSub=(window._tDppSub===s?'':s); _renderTDpp(); }
+// Edit an uploaded (PDF) DPP's batch / title / chapter / part (questions stay untouched).
+function openDppEditMeta(pid){
+  const pk=(window._dppPacks||[]).find(p=>p.id===pid); if(!pk){ toast('DPP not found. Please refresh.',true); return; }
+  const bl=window._ttBatchList||[];
+  const opts='<option value="">No specific batch (all students)</option>'+bl.map(b=>`<option value="${b.id}"${String(b.id)===String(pk.batch_id||'')?' selected':''}>${esc(b.name)}${b.session?(' — '+esc(b.session)):''}</option>`).join('');
+  showModal('Edit DPP',
+    `<div class="form-group"><label>Title</label><input class="form-control" id="dem-title" value="${esc(pk.title||'')}"></div>
+     <div class="form-group"><label>Batch</label><select class="form-control" id="dem-batch">${opts}</select></div>
+     <div class="form-group"><label>Chapter</label><input class="form-control" id="dem-chapter" value="${esc(pk.chapter||'')}"></div>
+     <div class="form-group"><label>Part</label><input class="form-control" id="dem-part" value="${esc(pk.part||'')}"></div>
+     <div class="alert alert-info" style="font-size:.8rem">Only the batch and details change — the DPP's questions/PDF stay exactly the same. If you move it to a new batch, that batch's students are notified.</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveDppEditMeta(${pid})">Save changes</button>`);
+}
+async function saveDppEditMeta(pid){
+  const body={batch_id:(val('dem-batch')||''),title:val('dem-title'),chapter:val('dem-chapter'),part:val('dem-part')};
+  try{
+    await api('/api/teacher/dpp-pack/'+pid+'/retarget','POST',body);
+    closeModal(); toast('DPP updated.');
+    try{ _apiForget('dpp-packs'); }catch(e){}
+    loadTDpp();
+  }catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
 function tDppSubPickIdx(i){
   const subs=[...new Set((window._dppPacks||[]).map(pk=>pk.subject||'General'))].sort();
   tDppSubPick(subs[i]||'all');
@@ -5925,7 +5953,7 @@ function _tDppCardHTML(pk){
   <div style="display:flex;gap:13px;align-items:flex-start">
     ${window._myPhotoUrl?`<div class="dpp-ava" title="${esc(pk.subject)}" style="background-image:url('${window._myPhotoUrl}');background-size:cover;background-position:center"></div>`:`<div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>`}
     <div style="flex:1;min-width:0">
-      <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.batch_id&&_batName(pk.batch_id)?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(_batName(pk.batch_id))}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+      <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${pk.batch_id&&_batLabel(pk.batch_id)?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(_batLabel(pk.batch_id))}</span>`:''}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
       <div class="dpp-title">${esc(pk.title)}</div>
       <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
       <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${pk.submitted||0} submission${(pk.submitted||0)===1?'':'s'}</div>
@@ -5938,7 +5966,7 @@ function _tDppCardHTML(pk){
         <button class="btn btn-ghost btn-sm" title="Ranking of students by earliest submission" onclick="openDppRanking(${pk.id},'teacher')">${ic('chart')} Ranking${(pk.submitted||0)>0?` (${pk.submitted})`:''}</button>
         <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
         <button class="btn btn-ghost btn-sm" onclick="openDppResults(${pk.id})">${ic('users')} Submissions (${pk.submitted||0})</button>
-        ${pk.source==='created'?`<button class="btn btn-ghost btn-sm" onclick="openEditDpp(${pk.id})">${ic('edit')} Edit</button>`:''}
+        ${pk.source==='created'?`<button class="btn btn-ghost btn-sm" onclick="openEditDpp(${pk.id})">${ic('edit')} Edit</button>`:`<button class="btn btn-ghost btn-sm" title="Change the batch / title for this DPP" onclick="openDppEditMeta(${pk.id})">${ic('edit')} Edit</button>`}
         <button class="btn btn-ghost btn-sm" title="Isi DPP ko doosre batch (e.g. Crash Course) ke liye copy karo" onclick="openCopyToBatch('dpp',${pk.id})">${ic('copy')} Copy to batch</button>
         <button class="btn btn-danger btn-sm" onclick="dppDelete(${pk.id},'${esc(pk.title).replace(/'/g,'')}')">${ic('trash')} Delete</button>
       </div></div>
@@ -5951,11 +5979,15 @@ function _renderTDpp(){
   const packs=_tBatchFilterRows(window._dppPacks||[], window._tDppBatch||'');
   const sel=window._tDppSub||'';
   const bySub={};
-  packs.forEach(pk=>{ const s=pk.subject||'General'; (bySub[s]=bySub[s]||[]).push(pk); });
+  // Group by subject AND class — Mathematics Class 10 (211) and Class 12 (311) must stay separate.
+  const _dgk=g=>((g.rep.subject||'General'))+'||'+((g.rep.class_name||'').replace(/\D/g,''));
+  // Collapse the per-batch COPIES of one DPP into a single logical card (grouped by group_key).
+  const allGroups=_dppGroup(packs);
+  allGroups.forEach(g=>{ const s=_dgk(g); (bySub[s]=bySub[s]||[]).push(g); });
   const subs=Object.keys(bySub).sort();
-  const list=sel===''?[]:(sel==='all'?packs:(bySub[sel]||[]));
-  const totSub=l=>l.reduce((a,pk)=>a+(pk.submitted||0),0);
-  const cards=list.map(_tDppCardHTML).join('');
+  const list=sel===''?[]:(sel==='all'?allGroups:(bySub[sel]||[]));
+  const totSub=l=>l.reduce((a,g)=>a+(g.submitted||0),0);
+  const cards=list.map(_tDppGroupCardHTML).join('');
   const header=`<div class="card" style="margin-bottom:16px;border:1.5px solid rgba(184,148,31,.3)"><div class="card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
     <div style="font-size:1.8rem">&#128221;</div>
     <div style="flex:1;min-width:220px"><h3 style="margin:0 0 3px">Daily Practice Problems</h3>
@@ -5969,13 +6001,141 @@ function _renderTDpp(){
     return;
   }
   const grid=`<div class="dps-grid" style="margin-bottom:16px">`
-    +`<div class="dps-card ${sel==='all'?'open':''}" onclick="tDppSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${packs.length} DPP${packs.length===1?'':'s'} \u00b7 ${totSub(packs)} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
-    +subs.map((s,i)=>{const l=bySub[s];return `<div class="dps-card ${sel===s?'open':''}" onclick="tDppSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${totSub(l)} submission${totSub(l)===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
+    +`<div class="dps-card ${sel==='all'?'open':''}" onclick="tDppSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${allGroups.length} DPP${allGroups.length===1?'':'s'} \u00b7 ${totSub(allGroups)} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
+    +subs.map(s=>{const l=bySub[s];const _p=String(s).split('||');const _nm=esc(_p[0])+(_p[1]?` <span style="font-weight:600;color:var(--text-muted)">\u00b7 Class ${esc(_p[1])}</span>`:'');const _sn=l.reduce((a,g)=>a+_dppNewG(g).length,0);return `<div class="dps-card ${sel===s?'open':''}" style="position:relative" onclick="tDppSubPick('${encodeURIComponent(s)}')">${_sn>0?`<span class="tsub-new">${_sn>99?'99+':_sn}</span>`:''}<div class="dps-name">${_nm}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${totSub(l)} submission${totSub(l)===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
     +`</div>`;
   const body=(sel==='')
     ? `<div class="card"><div class="card-body ws-empty"><p style="margin:0;color:var(--text-muted)">Select a subject above to see its DPPs.</p></div></div>`
-    : `<div style="font-size:.74rem;font-weight:800;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin:2px 0 10px">${sel==='all'?'All DPPs':esc(sel)+' \u00b7 '+list.length+' DPP'+(list.length===1?'':'s')}</div>`+(cards||'<div class="card"><div class="card-body ws-empty"><p>No DPP in this subject.</p></div></div>');
+    : `<div style="font-size:.74rem;font-weight:800;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin:2px 0 10px">${sel==='all'?'All DPPs':(function(){const _p=String(sel).split('||');return esc(_p[0])+(_p[1]?' \u00b7 Class '+esc(_p[1]):'')+' \u00b7 '+list.length+' DPP'+(list.length===1?'':'s');})()}</div>`+(cards||'<div class="card"><div class="card-body ws-empty"><p>No DPP in this subject.</p></div></div>');
   el.innerHTML=header+batchBar+grid+body;
+}
+/* ================= DPP DEDUP — one logical DPP across its batch copies ================= */
+function _dppGroup(arr){
+  const m={}, order=[];
+  (arr||[]).forEach(pk=>{
+    const k=pk.group_key||('id:'+pk.id);
+    if(!m[k]){ m[k]={rep:pk, packs:[], ids:[], submitted:0}; order.push(k); }
+    const g=m[k]; g.packs.push(pk); g.ids.push(pk.id); g.submitted+=(pk.submitted||0);
+  });
+  return order.map(k=>m[k]);
+}
+function _tDppGroupCardHTML(g){
+  const pk=g.rep;
+  const ini=(pk.subject||'D').trim()[0].toUpperCase();
+  const srcChip=pk.source==='created'?`<span class="chip-sub" style="color:#b45309"> ${pk.questions_n||0} Questions</span>`:`<span class="chip-sub">Uploaded</span>`;
+  const multi=g.packs.length>1;
+  const idsCsv=g.ids.join(',');
+  const nnew=_dppNewG(g), nc=nnew.length;   // test jaisa NEW-blink: unseen submissions
+  const batchChip=multi
+    ? `<span class="xm-chip xm-chip-hl2" title="Shared in ${g.packs.length} batches — tap to see them" style="color:#9a7d1a;cursor:pointer" onclick="event.stopPropagation();openDppBatches('${idsCsv}')">${ic('folder')} ${g.packs.length} batches ›</span>`
+    : (pk.batch_id&&_batLabel(pk.batch_id)?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(_batLabel(pk.batch_id))}</span>`:'');
+  return `<div class="dpp-card premium${nc>0?' tx-newblink':''}">
+  <div style="display:flex;gap:13px;align-items:flex-start">
+    ${window._myPhotoUrl?`<div class="dpp-ava" title="${esc(pk.subject)}" style="background-image:url('${window._myPhotoUrl}');background-size:cover;background-position:center"></div>`:`<div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>`}
+    <div style="flex:1;min-width:0">
+      <div class="dpp-top"><div class="tr-sub"> ${esc(pk.subject)}</div><div class="dpp-chips">${nc>0?`<span class="tx-newtag">${ic('bell')} ${nc} NEW</span>`:''}${pk.class_name?`<span class="xm-chip xm-chip-hl2">${ic('book')} ${esc(pk.class_name)}</span>`:''}${batchChip}${pk.medium?`<span class="xm-chip xm-chip-hl2">${esc(pk.medium)}</span>`:''}${srcChip}</div></div>
+      <div class="dpp-title">${esc(pk.title)}</div>
+      <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
+      <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${g.submitted} submission${g.submitted===1?'':'s'}${multi?` · ${g.packs.length} batches`:''}</div>
+      <div class="dpp-track">
+        <button class="dpp-trk-btn" title="Students who opened this DPP" onclick="openDppTrack(${pk.id},'view')">${ic('eye')} <b>${pk.views||0}</b> views</button>
+        <button class="dpp-trk-btn" title="Students who downloaded the PDF" onclick="openDppTrack(${pk.id},'download')">${ic('download')} <b>${pk.downloads||0}</b> downloads</button>
+      </div>
+      <div class="dpp-foot"><div></div><div class="dpp-btns">
+        <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
+        <button class="btn btn-ghost btn-sm" title="Ranking across all batches" onclick="openDppRankingGroup('${idsCsv}')">${ic('chart')} Ranking${g.submitted>0?` (${g.submitted})`:''}</button>
+        <button class="btn btn-ghost btn-sm" onclick="dppLangPick(${pk.id},'download')">${ic('download')} Download</button>
+        <button class="btn btn-ghost btn-sm" onclick="openDppResultsGroup('${idsCsv}')">${ic('users')} Submissions (${g.submitted})</button>
+        ${pk.source==='created'?`<button class="btn btn-ghost btn-sm" onclick="openEditDpp(${pk.id})">${ic('edit')} Edit</button>`:`<button class="btn btn-ghost btn-sm" title="Change the batch / title for this DPP" onclick="openDppEditMeta(${pk.id})">${ic('edit')} Edit</button>`}
+        <button class="btn btn-ghost btn-sm" title="Isi DPP ko doosre batch ke liye copy karo" onclick="openCopyToBatch('dpp',${pk.id})">${ic('copy')} Copy to batch</button>
+        <button class="btn btn-danger btn-sm" onclick="dppDeleteGroup('${idsCsv}','${esc(pk.title).replace(/'/g,'')}',${g.packs.length})">${ic('trash')} Delete</button>
+      </div></div>
+    </div>
+  </div>
+</div>`;
+}
+function openDppBatches(idsCsv){
+  const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
+  const packs=(window._dppPacks||[]).filter(p=>ids.indexOf(p.id)>=0);
+  const rep=packs[0]||{};
+  const rows=packs.map(p=>{
+    const lbl=_batLabel(p.batch_id)||'All students (no specific batch)';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="xm-chip">${p.submitted||0} submission${(p.submitted||0)===1?'':'s'}</span>
+      <button class="btn btn-ghost btn-sm" onclick="openDppResultsGroup('${p.id}')">${ic('users')} View</button></div></div>`;
+  }).join('');
+  showModal(`${esc(rep.title||'DPP')} — Batches (${packs.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This DPP is shared in <b>${packs.length}</b> batch${packs.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+function _dppGrpBatchDD(batches,cur,fn){
+  if(!batches||batches.length<2) return '';
+  return `<select class="form-control" style="max-width:280px;margin-bottom:12px" onchange="${fn}(parseInt(this.value,10)||0)"><option value="0"${!cur?' selected':''}>All batches (${batches.length})</option>${batches.map(b=>`<option value="${b.batch_id||0}"${cur===(b.batch_id||0)?' selected':''}>${esc(b.label)}</option>`).join('')}</select>`;
+}
+async function openDppResultsGroup(idsCsv){
+  window._dppGA={ids:idsCsv,batch:0};
+  // Submissions kholte hi is group ke submissions "seen" -> NEW-blink hat jaata (test jaisa)
+  try{ const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
+    const seenIds=[]; (window._dppPacks||[]).forEach(p=>{ if(ids.indexOf(p.id)>=0)(p.subs||[]).forEach(x=>{ if(x&&x.id!=null) seenIds.push(x.id); }); });
+    _dppSeeIds(seenIds); if(document.getElementById('t-dpp-content')) _renderTDpp();
+  }catch(e){}
+  _renderDppGroupAnswers();
+}
+function dppGAbatch(b){ if(window._dppGA){ window._dppGA.batch=b; _renderDppGroupAnswers(); } }
+async function _renderDppGroupAnswers(){
+  const G=window._dppGA||{ids:'',batch:0};
+  showModal('DPP Submissions','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api(`/api/teacher/dpp-group/answers?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
+    const batches=d.batches||[]; const showBatch=(batches.length>1 && !G.batch);
+    const rows=(d.answers||[]).map(a=>{ const chk=a.status==='checked';
+      return `<div class="slist-row" style="align-items:flex-start">
+        <div class="slist-av">${esc((a.student||'?').slice(0,1).toUpperCase())}</div>
+        <div class="slist-info" style="flex:1">
+          <div class="slist-name">${esc(a.student)} ${a.class_level?`<span class="chip" style="font-size:.6rem">Class ${esc(a.class_level)}</span>`:''}${showBatch&&a.batch?` <span class="xm-chip" style="font-size:.6rem;color:#9a7d1a">${ic('folder')} ${esc(a.batch)}</span>`:''}</div>
+          <div class="slist-meta">Submitted: ${a.submitted_at||'—'} · <b class="dpp-st ${chk?'ok':'wait'}">${chk?'Checked':'Checking…'}</b></div>
+          ${chk&&a.remarks?`<div style="font-size:.74rem;margin-top:5px;background:rgba(184,148,31,.08);border-radius:8px;padding:7px 10px"><b>Your remarks:</b> ${esc(a.remarks)}</div>`:''}
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="viewDppAns(${a.id},'dpp-answer.pdf')">${ic('eye')} View</button>
+            <button class="btn btn-ghost btn-sm" onclick="dppAnsDl(${a.id})">${ic('download')} Student PDF</button>
+            ${a.allow_resubmit?`<button class="btn btn-ghost btn-sm" style="color:#047857;border-color:rgba(4,120,87,.4)" onclick="dppAllowResubmitG(${a.pack_id},${a.id},false)">✓ Re-submit ON</button>`:`<button class="btn btn-ghost btn-sm" onclick="dppAllowResubmitG(${a.pack_id},${a.id},true)">↻ Allow Re-submit</button>`}
+            ${chk?'':`<input class="form-control" id="dpp-remark-${a.id}" placeholder="Write remarks for the student…" style="flex:1;min-width:180px;font-size:.78rem"><button class="btn btn-primary btn-sm" onclick="dppMarkCheckedG(${a.id},${a.pack_id})">Mark Checked</button>`}
+          </div></div></div>`; }).join('');
+    showModal(`Submissions (${d.count||0})`,
+      _dppGrpBatchDD(batches,G.batch||0,'dppGAbatch')+(rows||'<div class="ws-empty"><p><b>No submissions yet</b></p><small>Students submit karne ke baad yahan dikhenge.</small></div>'),
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('DPP Submissions',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+async function dppMarkCheckedG(aid,pid){ const remarks=(document.getElementById('dpp-remark-'+aid)||{}).value||''; try{ await api(`/api/teacher/dpp-answers/${aid}/check`,'POST',{remarks}); toast('Marked as checked — the student has been notified.'); _renderDppGroupAnswers(); }catch(e){ toast(e.message||'Failed',true); } }
+async function dppAllowResubmitG(pid,aid,allow){ try{ await api(`/api/teacher/dpp-packs/${pid}/answers/${aid}/allow-resubmit`,'POST',{allow}); toast(allow?'Re-submit ON — student ko dobara Submit ka option dikhega.':'Re-submit band kar diya.'); _renderDppGroupAnswers(); }catch(e){ toast(e.message||'Failed',true); } }
+async function openDppRankingGroup(idsCsv){ window._dppGRk={ids:idsCsv,batch:0}; _renderDppGroupRanking(); }
+function dppGRbatch(b){ if(window._dppGRk){ window._dppGRk.batch=b; _renderDppGroupRanking(); } }
+async function _renderDppGroupRanking(){
+  const G=window._dppGRk||{ids:'',batch:0};
+  showModal('DPP Ranking','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api(`/api/teacher/dpp-group/ranking?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
+    const rows=d.rows||[]; const pk=d.pack||{}; const batches=d.batches||[]; const showBatch=(batches.length>1 && !G.batch);
+    const dd=_dppGrpBatchDD(batches,G.batch||0,'dppGRbatch');
+    if(!rows.length){ showModal(`${esc(pk.title||'DPP')} — Ranking`, dd+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No submissions yet</b></p><small>Jaise hi pehla student submit karega, ranking yaha dikhegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); return; }
+    const medal=['#f59e0b','#a2946d','#b45309'];
+    const stChip=r=>r.status==='checked'?`<span class="dpp-rk-st ok">${ic('check')} Checked</span>`:`<span class="dpp-rk-st">${ic('clock')} Submitted</span>`;
+    const list=rows.map(r=>`<div class="sbb-row">
+      <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${showBatch&&r.batch?` <span class="xm-chip" style="font-size:.58rem;color:#9a7d1a">${ic('folder')} ${esc(r.batch)}</span>`:''}</div><div class="sbb-sub">${esc(r.submitted_at||'')}${r.class_name?' · Class '+esc(r.class_name):''}</div></div>
+      ${stChip(r)}</div>`).join('');
+    showModal(`${esc(pk.title||'DPP')} — Ranking (${rows.length})`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(pk.subject||'')}${pk.chapter?' · '+esc(pk.chapter):''}${pk.class_name?' · Class '+esc(pk.class_name):''} · sabse pehle submit = Rank 1</div>${dd}<div class="hide-scroll" style="max-height:60vh;overflow-y:auto;padding-right:4px">${list}</div>`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('DPP Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+async function dppDeleteGroup(idsCsv,title,n){
+  const ids=String(idsCsv).split(',').map(x=>parseInt(x,10)).filter(Boolean);
+  if(!confirm(`Delete "${title||'this DPP'}"${n>1?` from all ${n} batches`:''}?\n\nIski saari student submissions bhi delete ho jayengi. Ye undo nahi hoga.`)) return;
+  try{ for(const id of ids){ await api('/api/teacher/dpp-packs/'+id,'DELETE'); } toast('DPP deleted'+(n>1?` from ${n} batches`:'')+'.'); try{ _apiForget('dpp-packs'); }catch(e){} loadTDpp(); }
+  catch(e){ toast((e&&e.message)||'Delete failed',true); }
 }
 async function dppDl(pid,kind){
   try{
@@ -6849,6 +7009,16 @@ async function submitLecture(){
 }
 
 function _batName(bid){ if(!bid) return ''; var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0]; return b?b.name:''; }
+// Full batch label WITH session, e.g. "Lakshya Commerce — April 2027" (avoids repeating the
+// session if the name already contains it). Falls back to the plain name.
+function _batLabel(bid){
+  if(!bid) return '';
+  var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0];
+  if(!b) return '';
+  var n=(b.name||'').trim(), s=(b.session||'').trim();
+  if(s && n && n.toLowerCase().indexOf(s.toLowerCase())<0) return n+' — '+s;
+  return n;
+}
 function _tBatchStandalone(bid){
   var b=(window._ttBatchList||[]).filter(function(x){return String(x.id)===String(bid);})[0];
   if(!b) return false;
@@ -6934,6 +7104,15 @@ function _texNew(e){ var s=window._texSeenSet||(window._texSeenSet=_texSeenLoad(
 function _texSeeExamObjective(e){ if(!e) return; var ids=(e.subs||[]).map(function(x){return x.id;}); if(!ids.length) return; _texMarkSeen(ids); window._texSeenSet=_texSeenLoad(); _tTestsRefreshIfOpen(); }
 // subjective: ek student ka paper view/download hote hi uska submission seen
 function _texSeeAttempt(attId){ if(attId==null) return; _texMarkSeen([attId]); window._texSeenSet=_texSeenLoad(); _tTestsRefreshIfOpen(); }
+// ===== DPP NEW-blink (test jaisa) — nayi submissions highlight =====
+function _dppSeenLoad(){ try{ var v=JSON.parse(localStorage.getItem('mvs_dpp_seen')||'null'); return new Set((v&&Array.isArray(v.ids))?v.ids:[]); }catch(e){ return new Set(); } }
+function _dppSeenSave(set){ try{ localStorage.setItem('mvs_dpp_seen', JSON.stringify({ids:[...set].slice(-6000)})); }catch(e){} }
+function _dppMarkSeen(ids){ if(!ids||!ids.length) return; var s=_dppSeenLoad(); ids.forEach(function(x){ if(x!=null) s.add(x); }); _dppSeenSave(s); }
+// group (ek DPP ki saari batch-copies) ke unseen submissions
+function _dppNewG(g){ var s=window._dppSeenSet||(window._dppSeenSet=_dppSeenLoad()); var subs=[]; (g.packs||[]).forEach(function(pk){ (pk.subs||[]).forEach(function(x){ if(x) subs.push(x); }); }); return subs.filter(function(x){ return !s.has(x.id); }); }
+// group ka Submissions kholte hi uske saare submissions seen -> blink hat jaata
+function _dppSeeGroup(g){ if(!g) return; var ids=[]; (g.packs||[]).forEach(function(pk){ (pk.subs||[]).forEach(function(x){ if(x&&x.id!=null) ids.push(x.id); }); }); if(!ids.length) return; _dppMarkSeen(ids); window._dppSeenSet=_dppSeenLoad(); }
+function _dppSeeIds(ids){ if(!ids||!ids.length) return; _dppMarkSeen(ids); window._dppSeenSet=_dppSeenLoad(); }
 // Blinking NEW badge (results modal + public responses)
 function _newBlinkCss(){ if(document.getElementById('newblink-css'))return; var s=document.createElement('style'); s.id='newblink-css';
   s.textContent='.newblink{display:inline-block;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;margin-left:7px;vertical-align:middle;animation:nbBlink 1s ease-in-out infinite;box-shadow:0 0 0 3px rgba(220,38,38,.16)}'
@@ -7028,6 +7207,15 @@ function _tExamCardHTML(e){
   const _schT=spSchedOf(e),_schTF=_schT?spSchedFmt(_schT):'';
   const subBar=(e.attempts||0)>0?`<div style="flex:1;max-width:240px"><div style="display:flex;justify-content:space-between;font-size:.64rem;color:var(--text-muted)"><span>Evaluated</span><b style="color:var(--text)">${e.graded||0}/${e.attempts||0}</b></div><div class="tx-bar" style="margin-top:4px"><i style="width:${pct}%"></i></div></div>`:`<span class="tx-pill s">No submissions yet</span>`;
   const newNames=nc>0?`<div class="tx-newnames">${ic('users')} New ${isM?'attempt':'submission'}${nc>1?'s':''}: ${esc(nnew.slice(0,6).map(function(x){return x.name;}).join(', '))}${nc>6?(' +'+(nc-6)+' more'):''}${isM?' — open Results to clear.':' — view/download each sheet to clear.'}</div>`:'';
+  // ---- dedup: ek test jo multiple batch me diya ho -> EK card, batch chip + group actions ----
+  const grp=(e._group&&(e._batchn||1)>1);
+  const idsCsv=grp?(e._ids||[]).join(','):String(e.id);
+  const resClick=grp?`openExamResultsGroup('${idsCsv}')`:`viewExamAttempts(${e.id})`;
+  const rankClick=grp?`openExamRankingGroup('${idsCsv}')`:`openExamRanking(${e.id},'teacher')`;
+  const delClick=grp?`examDeleteGroup('${idsCsv}','${esc((e.title||'')).replace(/'/g,'')}',${e._batchn})`:`examDelete(${e.id})`;
+  const batchPill=grp
+    ? `<span class="tx-pill s" title="Shared in ${e._batchn} batches — tap to see them" style="border-color:rgba(184,148,31,.5);color:#9a7d1a;cursor:pointer" onclick="openExamBatches('${idsCsv}')">${ic('folder')} ${e._batchn} batches ›</span>`
+    : (e.batch_id&&_batName(e.batch_id)?`<span class="tx-pill s" title="Batch" style="border-color:rgba(184,148,31,.5);color:#9a7d1a">${ic('folder')} ${esc(_batName(e.batch_id))}</span>`:'');
   return `<div class="tx-card ${isPend?'tx-live':''}${nc>0?' tx-newblink':''}"><div class="top" style="background:${topCol}"></div><div class="tx-pad">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
       <span class="tx-tile ${isM?'o':'v'}">${esc(txInit(e.subject||'GEN'))}</span>
@@ -7036,7 +7224,7 @@ function _tExamCardHTML(e){
         <div class="tx-meta">
           ${e.subject?`<span class="tx-pill nv">${esc(e.subject)}</span>`:''}
           ${e.class_name?`<span class="tx-pill s" style="border-color:rgba(4,120,87,.4);color:#047857">${esc(e.class_name)}</span>`:`<span class="tx-pill s">All Classes</span>`}
-          ${e.batch_id&&_batName(e.batch_id)?`<span class="tx-pill s" title="Batch" style="border-color:rgba(184,148,31,.5);color:#9a7d1a">${ic('folder')} ${esc(_batName(e.batch_id))}</span>`:''}
+          ${batchPill}
           ${spCleanCh(e.chapter)?`<span class="tx-pill s">${esc(spCleanCh(e.chapter))}</span>`:''}
           <span class="tx-pill s inf">${ic('clipboard')} <b>${e.questions}</b> Qs</span><span class="tx-pill s inf">${ic('chart')} <b>${e.total_marks}</b> marks</span><span class="tx-pill s inf">${ic('clock')} ${e.duration_min?('<b>'+e.duration_min+'</b> min'):'No time limit'}</span>${_schT?`<span class="tx-pill s inf">${ic('calendar')} ${_schTF}</span>`:''}
         </div>
@@ -7049,16 +7237,98 @@ function _tExamCardHTML(e){
       <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
       <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
       <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
-      <button class="btn btn-ghost btn-sm tx-del" title="Delete this test" onclick="examDelete(${e.id})">${ic('trash')} Delete</button>
-      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}
+      <button class="btn btn-ghost btn-sm tx-del" title="${grp?'Delete this test from all its batches':'Delete this test'}" onclick="${delClick}">${ic('trash')} Delete</button>
+      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="${grp?'Ranking across all batches':'Class ranking of this test'}" onclick="${rankClick}">${ic('chart')} Ranking</button>`:''}
       ${isM?(e.public_enabled
         ? `<button class="btn btn-sm" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:800;box-shadow:0 5px 14px -5px rgba(5,150,105,.65)" title="Public link is LIVE — guests can attempt without login. Click to manage or copy the link." onclick="examShareModal(${e.id})">${ic('link')} Link ON <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.35);margin-left:5px;vertical-align:middle;animation:txBlink 1.4s ease-in-out infinite"></span></button>`
         : `<button class="btn btn-ghost btn-sm" title="Share this objective test as a public link — guests can attempt without login" onclick="examShareModal(${e.id})">${ic('link')} Share Link</button>`):''}
-      ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${isPend?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results${isPend?` (${e.attempts-e.graded} to grade)`:''}</button>
+      ${e.is_pdf?`<button class="btn btn-ghost btn-sm" onclick="_m75ViewMenu(${e.id})">${ic('eye')} View PDF</button><button class="btn btn-primary btn-sm" onclick="${resClick}">${ic('users')} Results${isPend?` (${e.attempts-e.graded} to grade)`:''}</button>`:`<button class="btn btn-primary btn-sm" onclick="${resClick}">${ic('users')} Results${isPend?` (${e.attempts-e.graded} to grade)`:''}</button>
       <button class="btn btn-ghost btn-sm" title="View the formatted test (no download)" onclick="examPdfHub(${e.id},1)">${ic('eye')} View</button>
       <button class="btn btn-primary btn-sm tst-pdfbtn" title="Download the formatted PDF" aria-label="Download PDF" onclick="examPdfHub(${e.id})">${ic('download')}</button>`}
     </div>
   </div></div>`;
+}
+// ===== TEST (EXAM) dedup — ek test multiple batch me diya ho -> EK card =====
+// group_key same wali copies ko milao; attempts/graded/views/downloads jodo; subs merge (NEW blink).
+function _examGroup(arr){
+  const m={}, order=[];
+  (arr||[]).forEach(e=>{
+    const k=e.group_key||('id:'+e.id);
+    if(!m[k]){ m[k]=Object.assign({},e,{_group:true,_ids:[e.id],_batches:[e.batch_id],
+      attempts:(e.attempts||0),graded:(e.graded||0),views:(e.views||0),downloads:(e.downloads||0),
+      subs:(e.subs||[]).slice()}); order.push(k); }
+    else { const g=m[k]; g._ids.push(e.id); g._batches.push(e.batch_id);
+      g.attempts+=(e.attempts||0); g.graded+=(e.graded||0); g.views+=(e.views||0); g.downloads+=(e.downloads||0);
+      g.subs=g.subs.concat(e.subs||[]);
+      // rep ka public/pdf/schedule original hi rahe; counts merge kiye
+    }
+  });
+  return order.map(k=>{ const g=m[k]; g._batchn=g._ids.length; return g; });
+}
+// Batch chip -> premium popup: sabhi batches with session + per-batch attempts + Results + Ranking.
+function openExamBatches(idsCsv){
+  const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
+  const exams=(window._tExams||[]).filter(e=>ids.indexOf(e.id)>=0);
+  const rep=exams[0]||{};
+  const rows=exams.map(e=>{
+    const lbl=(e.batch_id&&_batLabel&&_batLabel(e.batch_id))||'All students (no specific batch)';
+    const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="xm-chip">${e.attempts||0} submission${(e.attempts||0)===1?'':'s'}</span>${pend>0?`<span class="xm-chip" style="color:#b45309">${pend} to grade</span>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${e.id})">${ic('users')} Results</button>
+      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" onclick="openExamRanking(${e.id},'teacher')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+  }).join('');
+  showModal(`${esc(rep.title||'Test')} — Batches (${exams.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This test is shared in <b>${exams.length}</b> batch${exams.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+// Group Results (grading) — batchwise + all, batch dropdown. Grading per attempt ke apne exam_id pe.
+async function openExamResultsGroup(idsCsv){ window._examGrpR={ids:idsCsv,batch:0}; _renderExamGroupResults(); }
+function examGRbatch(b){ if(window._examGrpR){ window._examGrpR.batch=b; _renderExamGroupResults(); } }
+async function _renderExamGroupResults(){
+  const G=window._examGrpR||{ids:'',batch:0};
+  _examResCss(); _newBlinkCss();
+  showModal('Results','<div class="spinner"></div>','');
+  try{
+    const d=await api(`/api/teacher/exam-group/attempts?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
+    window._examAttData=d; window._examGroupCtx=G;   // group context ON (refresh group me rahe)
+    const batches=d.batches||[]; const showBatch=(batches.length>1 && !G.batch);
+    let newSnap; try{ const seen=window._texSeenSet||_texSeenLoad(); newSnap=new Set((d.attempts||[]).filter(a=>!seen.has(a.attempt_id)).map(a=>a.attempt_id)); }catch(e){ newSnap=new Set(); }
+    // objective test: group Results kholte hi un copies ka NEW blink clear
+    try{ if((d.exam&&d.exam.test_type)==='mcq'){ (d.attempts||[]).forEach(a=>{ const ex=(window._tExams||[]).find(x=>x.id===a.exam_id); if(ex) _texSeeExamObjective(ex); }); } }catch(e){}
+    const rows=(d.attempts||[]).length?(d.attempts.map(a=>_examAttRow(a,d,newSnap,showBatch)).join('')):'<div class="empty-state"><p>No submissions yet.</p></div>';
+    const dd=_dppGrpBatchDD(batches,G.batch||0,'examGRbatch');
+    showModal(`Results — ${esc((d.exam&&d.exam.title)||'Test')} (${(d.attempts||[]).length})`, dd+rows,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('Results',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+// Group Ranking across all batches (highest marks = rank 1), batch tag + dropdown.
+async function openExamRankingGroup(idsCsv){ window._examGrpRk={ids:idsCsv,batch:0}; _renderExamGroupRanking(); }
+function examRKbatch(b){ if(window._examGrpRk){ window._examGrpRk.batch=b; _renderExamGroupRanking(); } }
+async function _renderExamGroupRanking(){
+  const G=window._examGrpRk||{ids:'',batch:0};
+  showModal('Ranking','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api(`/api/teacher/exam-group/ranking?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
+    const rows=d.rows||[]; const ex=d.exam||{}; const batches=d.batches||[]; const showBatch=(batches.length>1 && !G.batch);
+    const dd=_dppGrpBatchDD(batches,G.batch||0,'examRKbatch');
+    if(!rows.length){ showModal(`${esc(ex.title||'Test')} — Ranking`, dd+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated submissions yet</b></p><small>Jaise hi copies evaluate hongi, ranking yaha dikhegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); return; }
+    const list=rows.map(r=>`<div class="sbb-row">
+      <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${showBatch&&r.batch?` <span class="xm-chip" style="font-size:.58rem;color:#9a7d1a">${ic('folder')} ${esc(r.batch)}</span>`:''}</div><div class="sbb-sub">${r.class_name?'Class '+esc(r.class_name):''}</div></div>
+      <b class="sbb-xp">${r.marks}<small style="font-weight:600;color:var(--text-muted)">/${ex.total_marks||0}</small></b></div>`).join('');
+    showModal(`${esc(ex.title||'Test')} — Ranking (${rows.length})`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(ex.subject||'')}${ex.chapter?' · '+esc(ex.chapter):''}${ex.class_name?' · '+esc(ex.class_name):''} · highest marks = Rank 1</div>${dd}<div class="hide-scroll" style="max-height:60vh;overflow-y:auto;padding-right:4px">${list}</div>`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
+async function examDeleteGroup(idsCsv,title,n){
+  const ids=String(idsCsv).split(',').map(x=>parseInt(x,10)).filter(Boolean);
+  if(!confirm(`Delete "${title||'this test'}"${n>1?` from all ${n} batches`:''}?\n\nIske saare student submissions bhi delete ho jayenge. Ye undo nahi hoga.`)) return;
+  try{ for(const id of ids){ await api('/api/teacher/exam/'+id,'DELETE'); } toast('Test deleted'+(n>1?` from ${n} batches`:'')+'.'); loadTTests(); }
+  catch(e){ toast((e&&e.message)||'Delete failed',true); }
 }
 async function loadTTests(){
   const el=document.getElementById('t-tests-content');
@@ -7076,12 +7346,13 @@ async function loadTTests(){
     if(window._tTestBatch===undefined) window._tTestBatch='';
     _tSubCss();
     const exams=_tBatchFilterRows(_allExams||[], window._tTestBatch||'');
+    const gexams=_examGroup(exams);   // dedup: ek test jo multiple batch me diya ho -> ek logical test
     const totAtt=exams.reduce((sum,e)=>sum+(e.attempts||0),0);
     const totGrd=exams.reduce((sum,e)=>sum+(e.graded||0),0);
     const pend=Math.max(0,totAtt-totGrd);
     const totNew=exams.reduce((s,e)=>s+_texNew(e).length,0);
     const statsHtml=`<div class="tx-stats">`
-      +`<div class="tx-stat"><b style="color:#c2410c">${exams.length}</b><span>Total tests</span></div>`
+      +`<div class="tx-stat"><b style="color:#c2410c">${gexams.length}</b><span>Total tests</span></div>`
       +`<div class="tx-stat"><b>${totAtt}</b><span>Submissions</span></div>`
       +`<div class="tx-stat"><b style="color:#b45309">${pend}</b><span>Copies to evaluate</span></div>`
       +`<div class="tx-stat"><b style="color:#047857">${totGrd}</b><span>Evaluated</span></div></div>`;
@@ -7095,7 +7366,7 @@ async function loadTTests(){
     // ----- subject grid (default) -----
     if(!window._tTestSub){
       const groups={};
-      exams.forEach(e=>{ const k=(e.subject||'General').trim()||'General'; (groups[k]=groups[k]||[]).push(e); });
+      gexams.forEach(e=>{ const k=(e.subject||'General').trim()||'General'; (groups[k]=groups[k]||[]).push(e); });
       const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
       const cards=keys.map(k=>{
         const list=groups[k];
@@ -7115,7 +7386,7 @@ async function loadTTests(){
     }
     // ----- a single subject's tests -----
     const sub=window._tTestSub;
-    let list=exams.filter(e=>((e.subject||'General').trim()||'General')===sub);
+    let list=gexams.filter(e=>((e.subject||'General').trim()||'General')===sub);
     const F=window._tTestFilter||'all';
     const isPend=e=>(e.attempts||0)>(e.graded||0);
     const isDone=e=>(e.attempts||0)>0&&(e.attempts||0)===(e.graded||0);
@@ -9587,11 +9858,58 @@ function _testTrFiltered(){
   return cls==='all'?all:all.filter(e=>{ const d=cd(e.class_name); return d===''||d===cls; });
 }
 function aTestBatchPick(v){ window._aTestBatch=v; window._aTestSub=''; _renderATests(); }
+// ===== ADMIN TEST dedup — ek test jo multiple batch me diya ho -> EK row =====
+function _examAdminGroup(rows){
+  const m={}, order=[];
+  (rows||[]).forEach(e=>{
+    const k=e.group_key||('id:'+e.id);
+    if(!m[k]){ m[k]=Object.assign({},e,{_ids:[e.id],_batches:[e.batch_id],attempts:(e.attempts||0),graded:(e.graded||0)}); order.push(k); }
+    else { const g=m[k]; g._ids.push(e.id); g._batches.push(e.batch_id); g.attempts+=(e.attempts||0); g.graded+=(e.graded||0); }
+  });
+  return order.map(k=>{ const g=m[k]; g._batchn=g._ids.length; return g; });
+}
+// Batch chip -> popup: sabhi batches with session + per-batch submitted/evaluated + drill + ranking.
+function openExamBatchesA(idsCsv){
+  const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
+  const exams=(window._aTestsRows||[]).filter(e=>ids.indexOf(e.id)>=0); const rep=exams[0]||{};
+  const rows=exams.map(e=>{
+    const lbl=_admBatLabel(e.batch_id)||('Batch #'+(e.batch_id||'—'));
+    const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="xm-chip">${e.attempts||0} submitted</span>${pend>0?`<span class="xm-chip" style="color:#b45309">${pend} pending</span>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="openAExamStudents(${e.id},'submitted')">${ic('users')} Students</button>
+      ${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+  }).join('');
+  showModal(`${esc(rep.title||'Test')} — Batches (${exams.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This test is shared in <b>${exams.length}</b> batch${exams.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+async function openExamRankingGroupA(idsCsv){ window._aExamGRk={ids:idsCsv,batch:0}; _renderExamGroupRankingA(); }
+function aExamRKbatch(b){ if(window._aExamGRk){ window._aExamGRk.batch=b; _renderExamGroupRankingA(); } }
+async function _renderExamGroupRankingA(){
+  const G=window._aExamGRk||{ids:'',batch:0};
+  showModal('Ranking','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api(`/api/admin/exam-group/ranking?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
+    const rows=d.rows||[]; const ex=d.exam||{}; const batches=d.batches||[]; const showBatch=(batches.length>1 && !G.batch);
+    const dd=_dppGrpBatchDD(batches,G.batch||0,'aExamRKbatch');
+    if(!rows.length){ showModal(`${esc(ex.title||'Test')} — Ranking`, dd+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated submissions yet</b></p></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); return; }
+    const list=rows.map(r=>`<div class="sbb-row">
+      <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${showBatch&&r.batch?` <span class="xm-chip" style="font-size:.58rem;color:#9a7d1a">${ic('folder')} ${esc(r.batch)}</span>`:''}</div><div class="sbb-sub">${r.class_name?'Class '+esc(r.class_name):''}</div></div>
+      <b class="sbb-xp">${r.marks}<small style="font-weight:600;color:var(--text-muted)">/${ex.total_marks||0}</small></b></div>`).join('');
+    showModal(`${esc(ex.title||'Test')} — Ranking (${rows.length})`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(ex.subject||'')}${ex.chapter?' · '+esc(ex.chapter):''}${ex.class_name?' · '+esc(ex.class_name):''} · highest marks = Rank 1</div>${dd}<div class="hide-scroll" style="max-height:60vh;overflow-y:auto;padding-right:4px">${list}</div>`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
 function _renderATests(){
   const el=document.getElementById('a-tests-content'); if(!el)return;
   const cls=window._aTestClass||'all';
   // class + batch dono filter yahin — aTestSubPickIdx bhi wahi list use karta hai (consistent)
-  const rows=_testTrFiltered();
+  const rows=_examAdminGroup(_testTrFiltered());
   const sel=window._aTestSub||'';
   const bySub={};
   rows.forEach(e=>{ const s=e.subject||'General'; (bySub[s]=bySub[s]||[]).push(e); });
@@ -9602,7 +9920,14 @@ function _renderATests(){
   const _testRow=e=>{
     const sch=spSchedOf(e);
     const pend=Math.max(0,(e.attempts||0)-(e.graded||0));
-    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min?e.duration_min+' min':'No time limit'}${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus tt-click" title="See which students submitted" onclick="openAExamStudents(${e.id},'submitted')">${e.attempts||0} submitted</span><span class="tstatus tt-click ${(e.graded||0)>0?'done':''}" title="See evaluated students" onclick="openAExamStudents(${e.id},'evaluated')">${e.graded||0} evaluated</span><span class="tstatus tt-click${pend>0?' tt-pendlink':''}" style="color:#b45309" title="See students still pending \u2014 follow up with the teacher" onclick="openAExamStudents(${e.id},'pending')">${pend} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="Class ranking of this test" onclick="openExamRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+    const grp=(e._batchn||1)>1; const idsCsv=(e._ids||[e.id]).join(',');
+    // multi-batch: student-drill chips batch popup kholte hain (drill per batch); single: seedha drill
+    const subClick=grp?`openExamBatchesA('${idsCsv}')`:`openAExamStudents(${e.id},'submitted')`;
+    const evClick=grp?`openExamBatchesA('${idsCsv}')`:`openAExamStudents(${e.id},'evaluated')`;
+    const pdClick=grp?`openExamBatchesA('${idsCsv}')`:`openAExamStudents(${e.id},'pending')`;
+    const rkClick=grp?`openExamRankingGroupA('${idsCsv}')`:`openExamRanking(${e.id},'admin')`;
+    const bchip=grp?` <span class="xm-chip" style="color:#9a7d1a;cursor:pointer" title="Shared in ${e._batchn} batches \u2014 tap to see them" onclick="openExamBatchesA('${idsCsv}')">${ic('folder')} ${e._batchn} batches \u203a</span>`:((()=>{const l=_admBatLabel(e.batch_id);return l?` <span class="xm-chip" style="color:#9a7d1a">${ic('folder')} ${esc(l)}</span>`:'';})());
+    return `<div class="today-row"><div><div class="tr-sub">${esc(e.title||'')}${bchip}</div><div class="tr-topic">${esc(e.teacher_name||'')}${spCleanCh(e.chapter)?' \u00b7 '+esc(spCleanCh(e.chapter)):''} \u00b7 ${e.questions||0} Qs \u00b7 ${e.total_marks||0} marks \u00b7 ${e.duration_min?e.duration_min+' min':'No time limit'}${sch?' \u00b7 '+spSchedFmt(sch):''}</div></div><div class="tmeta"><span class="tstatus tt-click" title="See which students submitted" onclick="${subClick}">${e.attempts||0} submitted</span><span class="tstatus tt-click ${(e.graded||0)>0?'done':''}" title="See evaluated students" onclick="${evClick}">${e.graded||0} evaluated</span><span class="tstatus tt-click${pend>0?' tt-pendlink':''}" style="color:#b45309" title="See students still pending \u2014 follow up with the teacher" onclick="${pdClick}">${pend} pending</span>${(e.graded||0)>0?`<button class="btn btn-ghost btn-sm" title="${grp?'Ranking across all batches':'Class ranking of this test'}" onclick="${rkClick}">${ic('chart')} Ranking</button>`:''}</div></div>`;
   };
   _aTtkCss();
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} test${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_testRow).join('')}</div></div>`;
@@ -9749,10 +10074,73 @@ function aDppTrBatchPick(v){ window._aDppTrBatch=v; window._aDppTrSub=''; _rende
 function aDppTrClassPick(c){ window._aDppTrClass=c; window._aDppTrSub=''; _renderADppTracker(); }
 function aDppTrSubPick(s){ window._aDppTrSub=(window._aDppTrSub===s?'':s); _renderADppTracker(); }
 function aDppTrSubPickIdx(i){ const subs=[...new Set(_dppTrFiltered().map(e=>e.subject||'General'))].sort(); aDppTrSubPick(subs[i]||'all'); }
+// ===== ADMIN DPP dedup — ek DPP jo multiple batch me diya gaya, uska EK hi row/card =====
+// Same group_key wali copies ko ek group me milao (submitted/checked/pending/views/downloads jodo).
+function _dppAdminGroup(rows){
+  const m={}, order=[];
+  (rows||[]).forEach(e=>{
+    const k=e.group_key||('id:'+e.id);
+    const pend=(e.pending!=null?e.pending:Math.max(0,(e.submitted||0)-(e.checked||0)));
+    if(!m[k]){ m[k]=Object.assign({},e,{_ids:[e.id],_batches:[e.batch_id],submitted:(e.submitted||0),checked:(e.checked||0),pending:pend,views:(e.views||0),downloads:(e.downloads||0)}); order.push(k); }
+    else { const g=m[k]; g._ids.push(e.id); g._batches.push(e.batch_id); g.submitted+=(e.submitted||0); g.checked+=(e.checked||0); g.pending+=pend; g.views+=(e.views||0); g.downloads+=(e.downloads||0); }
+  });
+  return order.map(k=>{ const g=m[k]; g._batchn=g._ids.length; return g; });
+}
+// Admin ke paas jo bhi packs loaded hain (tracker ya rankings view) unka pool — id->row.
+function _aDppPool(){
+  const pool={};
+  (window._aDppTrRows||[]).forEach(e=>{ pool[e.id]=e; });
+  (window._aDppPacks||[]).forEach(e=>{ if(!pool[e.id]) pool[e.id]=e; });
+  return pool;
+}
+// Admin: "N batches" chip pe click -> premium popup, sabhi batches with session + per-batch submissions.
+function openDppBatchesA(idsCsv){
+  const ids=String(idsCsv).split(',').map(x=>parseInt(x,10)); const pool=_aDppPool();
+  const packs=ids.map(id=>pool[id]).filter(Boolean); const rep=packs[0]||{};
+  const rows=packs.map(p=>{
+    const lbl=(window._admBatches&&_admBatLabel(p.batch_id))||('Batch #'+(p.batch_id||'—'));
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--border);border-radius:11px;padding:11px 13px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--text)">${ic('folder')} ${esc(lbl)}</div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="xm-chip">${p.submitted||0} submission${(p.submitted||0)===1?'':'s'}</span>
+      <button class="btn btn-ghost btn-sm" onclick="openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></div></div>`;
+  }).join('');
+  showModal(`${esc(rep.title||'DPP')} — Batches (${packs.length})`,
+    `<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">This DPP is shared in <b>${packs.length}</b> batch${packs.length===1?'':'es'}. Each batch keeps its own submissions.</div>${rows}`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+}
+// Batch label (session ke saath) admin batches list se.
+function _admBatLabel(bid){
+  const b=(window._admBatches||[]).filter(x=>String(x.id)===String(bid))[0];
+  if(!b) return '';
+  const nm=b.name||''; const se=b.session||'';
+  return (!se || (nm.toLowerCase().indexOf(se.toLowerCase())>=0))?nm:(nm+' — '+se);
+}
+// Admin group ranking (sabhi batches ke students, earliest submit = rank 1, batch tag + dropdown).
+async function openDppRankingGroupA(idsCsv){ window._aDppGRk={ids:idsCsv,batch:0}; _renderDppGroupRankingA(); }
+function aDppGRbatch(b){ if(window._aDppGRk){ window._aDppGRk.batch=b; _renderDppGroupRankingA(); } }
+async function _renderDppGroupRankingA(){
+  const G=window._aDppGRk||{ids:'',batch:0};
+  showModal('DPP Ranking','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{
+    const d=await api(`/api/admin/dpp-group/ranking?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
+    const rows=d.rows||[]; const pk=d.pack||{}; const batches=d.batches||[]; const showBatch=(batches.length>1 && !G.batch);
+    const dd=_dppGrpBatchDD(batches,G.batch||0,'aDppGRbatch');
+    if(!rows.length){ showModal(`${esc(pk.title||'DPP')} — Ranking`, dd+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No submissions yet</b></p></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); return; }
+    const stChip=r=>r.status==='checked'?`<span class="dpp-rk-st ok">${ic('check')} Checked</span>`:`<span class="dpp-rk-st">${ic('clock')} Submitted</span>`;
+    const list=rows.map(r=>`<div class="sbb-row">
+      <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
+      <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${showBatch&&r.batch?` <span class="xm-chip" style="font-size:.58rem;color:#9a7d1a">${ic('folder')} ${esc(r.batch)}</span>`:''}</div><div class="sbb-sub">${esc(r.submitted_at||'')}${r.class_name?' · Class '+esc(r.class_name):''}</div></div>
+      ${stChip(r)}</div>`).join('');
+    showModal(`${esc(pk.title||'DPP')} — Ranking (${rows.length})`,
+      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(pk.subject||'')}${pk.chapter?' · '+esc(pk.chapter):''}${pk.class_name?' · Class '+esc(pk.class_name):''} · sabse pehle submit = Rank 1</div>${dd}<div class="hide-scroll" style="max-height:60vh;overflow-y:auto;padding-right:4px">${list}</div>`,
+      `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+  }catch(e){ showModal('DPP Ranking',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
+}
 function _renderADppTracker(){
   const el=document.getElementById('a-dpptracker-content'); if(!el) return;
   const cls=window._aDppTrClass||'all';
-  const rows=_dppTrFiltered();
+  const rows=_dppAdminGroup(_dppTrFiltered());
   const sel=window._aDppTrSub||'';
   const bySub={}; rows.forEach(e=>{const s=e.subject||'General';(bySub[s]=bySub[s]||[]).push(e);});
   const subs=Object.keys(bySub).sort();
@@ -9760,7 +10148,12 @@ function _renderADppTracker(){
   const selList=sel===''?[]:(sel==='all'?rows:(bySub[sel]||[]));
   const st=_stat(sel===''?rows:selList);
   const _pend=e=>(e.pending!=null?e.pending:Math.max(0,(e.submitted||0)-(e.checked||0)));
-  const _row=e=>`<div class="today-row"><div><div class="tr-sub">${esc(e.title||'DPP')}</div><div class="tr-topic">${esc(e.teacher||'')}${e.chapter?' \u00b7 '+esc(e.chapter):''}${e.part?' \u00b7 Part: '+esc(e.part):''}${e.class_name?' \u00b7 '+esc(e.class_name):''}${e.created_at?' \u00b7 '+esc(e.created_at):''}</div></div><div class="tmeta"><span class="tstatus">${e.submitted||0} submitted</span><span class="tstatus ${(e.checked||0)>0?'done':''}">${e.checked||0} checked</span><span class="tstatus" style="color:#b45309">${_pend(e)} pending</span>${(e.submitted||0)>0?`<button class="btn btn-ghost btn-sm" title="DPP ranking" onclick="openDppRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`:''}</div></div>`;
+  const _bchip=e=>{
+    if((e._batchn||1)>1){ return `<span class="xm-chip" style="color:#9a7d1a;cursor:pointer" title="Shared in ${e._batchn} batches \u2014 tap to see them" onclick="openDppBatchesA('${(e._ids||[e.id]).join(',')}')">${ic('folder')} ${e._batchn} batches \u203a</span>`; }
+    const lbl=_admBatLabel(e.batch_id); return lbl?`<span class="xm-chip" style="color:#9a7d1a">${ic('folder')} ${esc(lbl)}</span>`:'';
+  };
+  const _rankBtn=e=>(e.submitted||0)>0?((e._batchn||1)>1?`<button class="btn btn-ghost btn-sm" title="Ranking across all batches" onclick="openDppRankingGroupA('${(e._ids||[e.id]).join(',')}')">${ic('chart')} Ranking</button>`:`<button class="btn btn-ghost btn-sm" title="DPP ranking" onclick="openDppRanking(${e.id},'admin')">${ic('chart')} Ranking</button>`):'';
+  const _row=e=>`<div class="today-row"><div><div class="tr-sub">${esc(e.title||'DPP')} ${_bchip(e)}</div><div class="tr-topic">${esc(e.teacher||'')}${e.chapter?' \u00b7 '+esc(e.chapter):''}${e.part?' \u00b7 Part: '+esc(e.part):''}${e.class_name?' \u00b7 '+esc(e.class_name):''}${e.created_at?' \u00b7 '+esc(e.created_at):''}</div></div><div class="tmeta"><span class="tstatus">${e.submitted||0} submitted</span><span class="tstatus ${(e.checked||0)>0?'done':''}">${e.checked||0} checked</span><span class="tstatus" style="color:#b45309">${_pend(e)} pending</span>${_rankBtn(e)}</div></div>`;
   const _sec=(sub,list)=>`<div class="card"><div class="card-header"><h3>${esc(sub)}</h3><span class="tx-pill nv">${list.length} DPP${list.length>1?'s':''}</span></div><div class="card-body">${list.map(_row).join('')}</div></div>`;
   const clsPill=(v,lbl)=>`<button class="btn ${cls===v?'btn-primary':'btn-ghost'} btn-sm" onclick="aDppTrClassPick('${v}')">${lbl}</button>`;
   const totS=_stat(rows);
@@ -11639,7 +12032,7 @@ async function _reupSubmit(attId, examId){
     await api('/api/teacher/attempt/'+attId+'/allow-reupload','POST',{remark:remark});
     _reupClose();
     toast('Re-upload allowed. The student has been notified.');
-    viewExamAttempts(examId);
+    _examResultsRefresh(examId);
   }catch(e){
     if(btn){ btn.disabled=false; btn.style.opacity=1; }
     toast(e.message||'Could not allow re-upload',true);
@@ -12805,8 +13198,11 @@ function _pshCss(){ if(document.getElementById('psh-css')) return; var s=documen
   '.psh-sc-hint{font-size:.76rem;color:var(--text-muted);flex:1;min-width:180px}',
   '.psh-rnd-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}'
 ].join(''); document.head.appendChild(s); }
+// Grading/reupload ke baad: group context active ho to group Results refresh, warna single.
+function _examResultsRefresh(examId){ if(window._examGroupCtx){ _renderExamGroupResults(); } else { viewExamAttempts(examId); } }
 async function viewExamAttempts(id){
   try{
+    window._examGroupCtx=null;   // single-exam Results — group context clear
     const d=await api('/api/teacher/exam/'+id+'/attempts');
     window._examAttData=d;
     // SNAPSHOT which attempts are NEW (not yet seen) BEFORE we mark them seen — so the NEW
@@ -12818,45 +13214,44 @@ async function viewExamAttempts(id){
     try{ if((d.exam&&d.exam.test_type)==='mcq'){ var _ex=(window._tExams||[]).find(function(x){return x.id===id;}); if(_ex) _texSeeExamObjective(_ex); } }catch(e){}
     _newBlinkCss();
     _examResCss();
-    const rows=d.attempts.length?d.attempts.map(a=>{
-      const graded=(a.status==='graded');
-      const info=(graded?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
-      const stTxt=graded?'Graded':(a.status==='marking'?'Marking':(a.status==='grading'?'Pending':'Awaiting'));
-      const nm=esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'));
-      const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${nm}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${nm}')">${ic('download')} Sheet</button>`:'';
-      const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${id})">${graded?'Edit Marks':'Grade Manually'}</button>`;
-      // subjective test: is single student ko dubara upload allow karo (remark ke saath)
-      const isSubj=(d.exam.test_type||'')!=='mcq';
-      const reBtn=isSubj?`<button class="btn btn-ghost btn-sm exr-rebtn${a.reupload_allowed?' on':''}" onclick="allowReupload(${a.attempt_id},${id})">${ic('refresh')} ${a.reupload_allowed?'Re-upload ON':'Allow Re-upload'}</button>`:'';
-      const reNote=(a.reupload_remark)?`<div class="exr-renote"><span class="exr-renote-h">${ic('refresh')} Re-upload ${a.reupload_allowed?'allowed':'note'}</span><span class="exr-renote-b">${esc(a.reupload_remark)}</span></div>`:'';
-      // naam pe click -> student ki poori detail usi row me khul jati hai
-      const det=[
-        ['Student ID', a.student_code],
-        ['Phone', a.phone],
-        ['Batch', a.batch],
-        ['Class', a.class_level?('Class '+a.class_level):null],
-        ['Medium', a.medium],
-        ['Email', a.email],
-        ['Subjects', (a.subjects||[]).join(', ')]
-      ].filter(x=>x[1]).map(x=>`<div class="sd-item"><span>${x[0]}</span><b>${esc(String(x[1]))}</b></div>`).join('');
-      const phone=(a.phone||'').replace(/[^0-9]/g,'');
-      const acts=phone?`<div class="sd-acts"><a class="btn btn-ghost btn-sm" href="tel:${esc(phone)}">Call</a><a class="btn btn-ghost btn-sm" href="https://wa.me/${phone.length===10?('91'+phone):esc(phone)}" target="_blank" rel="noopener">WhatsApp</a></div>`:'';
-      return `<div class="exr">
-          <div class="exr-head">
-            <div class="exr-id sd-toggle" title="Click to see the full student details" onclick="_toggleStuDet(${a.attempt_id})">
-              <div class="exr-name">${esc(a.student_name||('Student #'+a.student_id))}${_newSnap.has(a.attempt_id)?' <span class="newblink">NEW</span>':''}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
-              <div class="exr-info">${info}</div>
-            </div>
-            <span class="tag ${graded?'tag-done':'tag-pending'} exr-badge">${stTxt}</span>
-          </div>
-          ${reNote}
-          <div class="sd-box" id="sd-${a.attempt_id}" style="display:none">${det?`<div class="sd-grid">${det}</div>${acts}`:'<div class="sd-empty">No extra details are saved for this student yet.</div>'}</div>
-          <div class="exr-actions">${dl}${reBtn}${btns}</div>
-        </div>`;
-    }).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
+    const rows=d.attempts.length?d.attempts.map(a=>_examAttRow(a,d,_newSnap,false)).join(''):'<div class="empty-state"><p>No submissions yet.</p></div>';
     const resetBar=d.attempts.length?`<div class="exr-resetbar"><button class="btn btn-danger btn-sm" onclick="examResetAttempts(${id})">${ic('refresh')} Allow Re-take (clear attempts)</button></div>`:'';
     showModal('Results \u2014 '+esc(d.exam.title), resetBar+rows);
   }catch(e){ toast(e.message,true); }
+}
+// Ek attempt ka row (grading UI) \u2014 single + group Results dono isi ko use karte hain.
+// Grade/reupload hamesha attempt ke APNE exam_id pe chalte hain (group me har copy ka alag id).
+function _examAttRow(a,d,newSnap,showBatch){
+  const eid=a.exam_id||(d.exam&&d.exam.id);
+  const graded=(a.status==='graded');
+  const info=(graded?('Score: '+a.total_awarded+'/'+d.exam.total_marks+(a.verdict?' \u00b7 '+esc(a.verdict):'')):a.status==='marking'?'Marking in progress':a.status==='grading'?'Pending evaluation':'Awaiting submission')+(a.attempted_count!=null?' \u00b7 Answered '+a.attempted_count+'/'+(d.questions||[]).length:'');
+  const stTxt=graded?'Graded':(a.status==='marking'?'Marking':(a.status==='grading'?'Pending':'Awaiting'));
+  const nm=esc((a.student_name||'student').replace(/[^A-Za-z0-9]/g,'-'));
+  const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${nm}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${nm}')">${ic('download')} Sheet</button>`:'';
+  const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${eid})">${graded?'Edit Marks':'Grade Manually'}</button>`;
+  const isSubj=(d.exam.test_type||'')!=='mcq';
+  const reBtn=isSubj?`<button class="btn btn-ghost btn-sm exr-rebtn${a.reupload_allowed?' on':''}" onclick="allowReupload(${a.attempt_id},${eid})">${ic('refresh')} ${a.reupload_allowed?'Re-upload ON':'Allow Re-upload'}</button>`:'';
+  const reNote=(a.reupload_remark)?`<div class="exr-renote"><span class="exr-renote-h">${ic('refresh')} Re-upload ${a.reupload_allowed?'allowed':'note'}</span><span class="exr-renote-b">${esc(a.reupload_remark)}</span></div>`:'';
+  const bTag=(showBatch&&a.batch_label)?` <span class="xm-chip" style="font-size:.58rem;color:#9a7d1a">${ic('folder')} ${esc(a.batch_label)}</span>`:'';
+  const det=[
+    ['Student ID', a.student_code],['Phone', a.phone],['Batch', a.batch],
+    ['Class', a.class_level?('Class '+a.class_level):null],['Medium', a.medium],
+    ['Email', a.email],['Subjects', (a.subjects||[]).join(', ')]
+  ].filter(x=>x[1]).map(x=>`<div class="sd-item"><span>${x[0]}</span><b>${esc(String(x[1]))}</b></div>`).join('');
+  const phone=(a.phone||'').replace(/[^0-9]/g,'');
+  const acts=phone?`<div class="sd-acts"><a class="btn btn-ghost btn-sm" href="tel:${esc(phone)}">Call</a><a class="btn btn-ghost btn-sm" href="https://wa.me/${phone.length===10?('91'+phone):esc(phone)}" target="_blank" rel="noopener">WhatsApp</a></div>`:'';
+  return `<div class="exr">
+      <div class="exr-head">
+        <div class="exr-id sd-toggle" title="Click to see the full student details" onclick="_toggleStuDet(${a.attempt_id})">
+          <div class="exr-name">${esc(a.student_name||('Student #'+a.student_id))}${bTag}${newSnap&&newSnap.has(a.attempt_id)?' <span class="newblink">NEW</span>':''}<span class="sd-chev" id="sdc-${a.attempt_id}">\u203a</span></div>
+          <div class="exr-info">${info}</div>
+        </div>
+        <span class="tag ${graded?'tag-done':'tag-pending'} exr-badge">${stTxt}</span>
+      </div>
+      ${reNote}
+      <div class="sd-box" id="sd-${a.attempt_id}" style="display:none">${det?`<div class="sd-grid">${det}</div>${acts}`:'<div class="sd-empty">No extra details are saved for this student yet.</div>'}</div>
+      <div class="exr-actions">${dl}${reBtn}${btns}</div>
+    </div>`;
 }
 async function examResetAttempts(id){
   if(!confirm('Is test ke SAARE attempts clear kar dein?\n\nJin students ke marks purane bug ki wajah se 0 aaye the, wo dobara test de sakenge. Ye action undo nahi hoga (purane submissions hat jayenge).')) return;
@@ -13018,7 +13413,7 @@ function gradeManual(attId,examId){
   const vd=att.verdict||'Good';
   const vOpt=v=>`<option${vd===v?' selected':''}>${v}</option>`;
   showModal((hasSaved?'Edit Marks \u2014 ':'Grade Manually \u2014 ')+esc(att.student_name||'Student'),
-    `<button class="btn btn-ghost btn-sm" onclick="viewExamAttempts(${examId})" style="margin-bottom:12px">${ic('back')} Back to Results</button>`
+    `<button class="btn btn-ghost btn-sm" onclick="_examResultsRefresh(${examId})" style="margin-bottom:12px">${ic('back')} Back to Results</button>`
     +savedNote+ansBlock+langBar+`<div class="gm-list">${rows}</div>`
     +`<div class="form-group" style="margin-top:14px"><label>Overall feedback (shown to student)</label><textarea id="gm-fb" class="form-control" rows="2" placeholder="e.g. Good attempt. Work on diagrams.">${esc(att.feedback||'')}</textarea></div>`
     +`<div class="form-group"><label>Verdict</label><select id="gm-verdict" class="form-control">${vOpt('Excellent')}${vOpt('Good')}${vOpt('Needs Improvement')}</select></div>`
@@ -13038,7 +13433,7 @@ function _gmTotal(){
 async function submitManualGrade(attId,examId){
   const d=window._examAttData; const qs=(d&&d.questions)||[];
   const results=qs.map(q=>({q_no:q.q_no,marks:parseFloat(val('gm-m-'+q.q_no))||0,remark:val('gm-r-'+q.q_no)}));
-  try{ await api('/api/teacher/attempt/'+attId+'/grade-manual','POST',{results:results,feedback:val('gm-fb'),verdict:val('gm-verdict')}); toast('Marks saved. Student can see them now.'); viewExamAttempts(examId); }
+  try{ await api('/api/teacher/attempt/'+attId+'/grade-manual','POST',{results:results,feedback:val('gm-fb'),verdict:val('gm-verdict')}); toast('Marks saved. Student can see them now.'); _examResultsRefresh(examId); }
   catch(e){ toast(e.message,true); }
 }
 async function gradeAttemptNow(attId,examId){
@@ -13051,8 +13446,8 @@ async function gradeAttemptNow(attId,examId){
     clearInterval(timer);
     const f=document.getElementById('gp-fill'),p=document.getElementById('gp-pct'); if(f)f.style.width='100%'; if(p)p.textContent='100%';
     toast('Graded! Marks are now visible to the student.');
-    setTimeout(()=>viewExamAttempts(examId),550);
-  }catch(e){ clearInterval(timer); toast(e.message,true); viewExamAttempts(examId); }
+    setTimeout(()=>_examResultsRefresh(examId),550);
+  }catch(e){ clearInterval(timer); toast(e.message,true); _examResultsRefresh(examId); }
 }
 
 function monthName(ym){ const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; const mo=parseInt(ym.slice(5))-1; return (m[mo]||ym.slice(5))+" '"+ym.slice(2,4); }
@@ -13611,7 +14006,7 @@ function openTLatePopup(){
   const r=_tRng();
   const late=_tResolvedInRange(r).filter(d=>d.resolve_metrics&&d.resolve_metrics.late);
   const bySub={};
-  late.forEach(d=>{ const s=d.subject||'Other'; const o=(bySub[s]=bySub[s]||{late:0,maxLate:0}); o.late++; const lm=d.resolve_metrics.late_minutes||0; if(lm>o.maxLate) o.maxLate=lm; });
+  late.forEach(d=>{ const s=(d.subject||'Other')+(d.student_class?(' · Class '+d.student_class):''); const o=(bySub[s]=bySub[s]||{late:0,maxLate:0}); o.late++; const lm=d.resolve_metrics.late_minutes||0; if(lm>o.maxLate) o.maxLate=lm; });
   const rows=Object.keys(bySub).map(s=>({s,late:bySub[s].late,maxLate:bySub[s].maxLate})).sort((a,b)=>b.maxLate-a.maxLate);
   _ensureDcrCss(); _ensureDoubtSlaCss();
   const rlab={today:'today',week:'this week',month:'this month','':'all time',custom:'this range'}[r]||r;
@@ -13629,13 +14024,16 @@ function _doubtResMetric(d){
   }
   return '<div class="dbt-sla ok">'+ic('check')+' <span><b>On time</b> — resolved in '+esc(m.label)+'</span></div>';
 }
-function tOpenSubLate(sub){ _tdSub=sub; window._tdTab='late_resolved'; window._tdDoneN=8; tRenderDoubts(); try{window.scrollTo(0,0);}catch(e){} }
+function tOpenSubLate(sub){ try{ sub=decodeURIComponent(sub); }catch(e){} _tdSub=sub; window._tdTab='late_resolved'; window._tdDoneN=8; tRenderDoubts(); try{window.scrollTo(0,0);}catch(e){} }
 function tRenderDoubts(){
   const el=document.getElementById('t-doubts-content');
   const doubts=window._tDoubts||[]; const ds=window._tDoubtStats||{pending:0,resolved:0,avg_response_minutes:null};
   const _avgFmt=(mn)=>mn==null?'\u2014':(mn>=60?(Math.floor(mn/60)+'h '+(mn%60)+'m'):mn+' min');
   const avgTxt=_avgFmt(ds.avg_response_minutes);
   let html='';
+  // Doubts keyed by subject AND class — Maths Class 10 and Class 12 stay separate cards.
+  const _dKey=d=>((d.subject||'Other'))+'␟'+((d.student_class||''));
+  const _dLbl=k=>{const p=String(k).split('␟');return esc(p[0])+(p[1]?' <span style="font-weight:600;color:var(--text-muted)">· Class '+esc(p[1])+'</span>':'');};
   if(_tdSub===null){
     const _rng=_tRng();
     const rst=_tRangeStats(_rng);
@@ -13644,19 +14042,19 @@ function tRenderDoubts(){
     html+=_tLateReminder(rst);
     // ---- SUBJECT CARDS VIEW ----
     html+=toppersHTML(doubts,'ttop',false);
-    const bySub={}; doubts.forEach(d=>{ const k=d.subject||'Other'; (bySub[k]=bySub[k]||{total:0,pending:0,ontime:0,late:0,maxLate:0}); bySub[k].total++; if((d.status!=='resolved'||d.needs_attention)&&!d.assigned_away) bySub[k].pending++; if(d.status==='resolved'&&!d.assigned_away&&!d.needs_attention){ const m=d.resolve_metrics; if(m&&m.late){ bySub[k].late++; if((m.late_minutes||0)>bySub[k].maxLate) bySub[k].maxLate=m.late_minutes; } else bySub[k].ontime++; } });
+    const bySub={}; doubts.forEach(d=>{ const k=_dKey(d); (bySub[k]=bySub[k]||{total:0,pending:0,ontime:0,late:0,maxLate:0}); bySub[k].total++; if((d.status!=='resolved'||d.needs_attention)&&!d.assigned_away) bySub[k].pending++; if(d.status==='resolved'&&!d.assigned_away&&!d.needs_attention){ const m=d.resolve_metrics; if(m&&m.late){ bySub[k].late++; if((m.late_minutes||0)>bySub[k].maxLate) bySub[k].maxLate=m.late_minutes; } else bySub[k].ontime++; } });
     const subs=Object.keys(bySub).sort();
     if(!subs.length) html+=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No doubts yet.</p></div></div></div>`;
     else html+=`<div class="xm-grid">`+subs.map(sub=>{
       const g=bySub[sub];
-      const sj=esc(sub).replace(/'/g,"\\'");
-      const resChips=(g.ontime||g.late)?`<div class="xm-res-chips">${g.ontime?`<span class="xm-rc ok">${g.ontime} on time</span>`:''}${g.late?`<span class="xm-rc late" style="cursor:pointer" title="See late-resolved doubts" onclick="event.stopPropagation();tOpenSubLate('${sj}')">${g.late} late</span>`:''}</div>`:'';
-      return `<div class="xm-card" onclick="tPickDoubtSub('${sj}')"><div class="xm-ic">${ic('help')}</div><div class="xm-info"><div class="xm-title">${esc(sub)}</div><div class="xm-chips"><span class="xm-chip">${g.total} total</span>${g.pending?`<span class="xm-pend">${g.pending} pending</span>`:`<span class="xm-chip" style="background:rgba(5,150,105,.14);color:var(--success)">All clear</span>`}</div>${resChips}</div><div class="xm-arw">\u203a</div></div>`;
+      const kk=encodeURIComponent(sub);
+      const resChips=(g.ontime||g.late)?`<div class="xm-res-chips">${g.ontime?`<span class="xm-rc ok">${g.ontime} on time</span>`:''}${g.late?`<span class="xm-rc late" style="cursor:pointer" title="See late-resolved doubts" onclick="event.stopPropagation();tOpenSubLate('${kk}')">${g.late} late</span>`:''}</div>`:'';
+      return `<div class="xm-card" onclick="tPickDoubtSub('${kk}')"><div class="xm-ic">${ic('help')}</div><div class="xm-info"><div class="xm-title">${_dLbl(sub)}</div><div class="xm-chips"><span class="xm-chip">${g.total} total</span>${g.pending?`<span class="xm-pend">${g.pending} pending</span>`:`<span class="xm-chip" style="background:rgba(5,150,105,.14);color:var(--success)">All clear</span>`}</div>${resChips}</div><div class="xm-arw">\u203a</div></div>`;
     }).join('')+`</div>`;
     el.innerHTML=html; return;
   }
   // ---- SUBJECT DRILL VIEW (sectioned: Pending upar, Resolved neeche, Reassigned alag) ----
-  const list=doubts.filter(d=>(d.subject||'Other')===_tdSub);
+  const list=doubts.filter(d=>_dKey(d)===_tdSub);
   const away=list.filter(d=>d.assigned_away);
   const pend=list.filter(d=>(d.status!=='resolved'||d.needs_attention)&&!d.assigned_away), done=list.filter(d=>d.status==='resolved'&&!d.assigned_away&&!d.needs_attention);
   const lateDone=done.filter(d=>d.resolve_metrics&&d.resolve_metrics.late).sort((a,b)=>(b.resolve_metrics.late_minutes||0)-(a.resolve_metrics.late_minutes||0));
@@ -13665,7 +14063,7 @@ function tRenderDoubts(){
   const _tabBtn=(id,label,n)=>`<button onclick="tDoubtTab('${id}')" style="border:1px solid ${_tab===id?'transparent':'var(--border)'};cursor:pointer;padding:9px 18px;border-radius:999px;font-weight:800;font-size:.82rem;transition:all .15s;${_tab===id?'background:var(--primary);color:#fff;box-shadow:0 3px 10px rgba(201,162,39,.35)':'background:var(--surface,#fff);color:var(--text-muted)'}">${label} <span style="font-weight:900">(${n})</span></button>`;
   const _tabBtnLate=(id,n)=>`<button onclick="tDoubtTab('${id}')" style="border:1px solid ${_tab===id?'transparent':'rgba(192,57,43,.4)'};cursor:pointer;padding:9px 18px;border-radius:999px;font-weight:800;font-size:.82rem;transition:all .15s;${_tab===id?'background:#c0392b;color:#fff;box-shadow:0 3px 10px rgba(192,57,43,.35)':'background:var(--surface,#fff);color:#c0392b'}">Late Resolved <span style="font-weight:900">(${n})</span></button>`;
   html=`<div class="stats-grid">${statCard('Pending Doubts',ds.pending,'help','amber')}${statCard('Resolved Doubts',ds.resolved,'check','green')}${statCard('Avg Response Time',avgTxt,'clipboard','indigo')}</div>`+html;
-  html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;window._tdTab='all';tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${esc(_tdSub)}</h3></div>`;
+  html+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="_tdSub=null;window._tdTab='all';tRenderDoubts()">\u2190 All Subjects</button><h3 style="margin:0">${_dLbl(_tdSub)}</h3></div>`;
   html+=`<div style="display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 14px">${_tabBtn('all','All',list.length)}${_tabBtn('pending','Pending',pend.length)}${_tabBtn('resolved','Resolved',onTimeDone.length)}${lateDone.length?_tabBtnLate('late_resolved',lateDone.length):''}${away.length?_tabBtn('away','Reassigned',away.length):''}</div>`;
   html+=`<div class="hide-scroll doubt-drill">`;
   const _qOf=d=>{ const q=String(d.question||'').trim(); if(q==='(voice note)'&&!d.has_voice) return d.has_image?'(photo / attachment)':'(no text)'; return q; };
@@ -13721,7 +14119,7 @@ function tRenderDoubts(){
 function tMoreDone(){ window._tdDoneN=(window._tdDoneN||8)+10; tRenderDoubts(); }
 function tMoreLate(){ window._tdLateN=(window._tdLateN||8)+10; tRenderDoubts(); }
 function tMoreAway(){ window._tdAwayN=(window._tdAwayN||8)+10; tRenderDoubts(); }
-function tPickDoubtSub(sub){ _tdSub=sub; window._tdTab='all'; window._tdDoneN=8; window._tdAwayN=8; window._tdLateN=8; tRenderDoubts(); }
+function tPickDoubtSub(sub){ try{ sub=decodeURIComponent(sub); }catch(e){} _tdSub=sub; window._tdTab='all'; window._tdDoneN=8; window._tdAwayN=8; window._tdLateN=8; tRenderDoubts(); }
 function tDoubtTab(t){ window._tdTab=t; window._tdDoneN=8; window._tdAwayN=8; window._tdLateN=8; tRenderDoubts(); }
 async function tDelDoubtAnswer(id){
   if(!confirm('Delete your response?\n\nThe doubt will move back to Pending and the student will no longer see your answer.')) return;
@@ -19422,6 +19820,7 @@ async function loadATeacherRanks(days){
 async function loadADppRanks(){
   const el=document.getElementById('a-dpp-ranks'); if(!el) return;
   try{
+    try{ await _admLoadBatches(); }catch(e){}
     const d=await api('/api/admin/dpp-rankings');
     window._aDppPacks=d.packs||[];
     window._aDppSub=window._aDppSub||'all';
@@ -19435,29 +19834,33 @@ function aDppSubPickIdx(i){
 }
 function _renderADppRanks(){
   const el=document.getElementById('a-dpp-ranks'); if(!el) return;
-  const packs=window._aDppPacks||[];
+  const packs=_dppAdminGroup(window._aDppPacks||[]);
   const sel=window._aDppSub||'all';
   const bySub={};
   packs.forEach(p=>{ const s=p.subject||'General'; (bySub[s]=bySub[s]||[]).push(p); });
   const subs=Object.keys(bySub).sort();
   const list=sel==='all'?packs:(bySub[sel]||[]);
   const totSub=l=>l.reduce((a,p)=>a+(p.submitted||0),0);
-  const rows=list.map(p=>`<tr class="dpp-rk-row" onclick="openDppRanking(${p.id},'admin')">
+  const _multi=p=>(p._batchn||1)>1;
+  const _bcell=p=>_multi(p)?`<span class="xm-chip" style="color:#9a7d1a;cursor:pointer" title="Shared in ${p._batchn} batches — tap to see them" onclick="event.stopPropagation();openDppBatchesA('${(p._ids||[p.id]).join(',')}')">${ic('folder')} ${p._batchn} batches ›</span>`:(()=>{const l=_admBatLabel(p.batch_id);return l?`<span style="font-size:.7rem;color:var(--text-muted)">${esc(l)}</span>`:'—';})();
+  const _rkClick=p=>_multi(p)?`openDppRankingGroupA('${(p._ids||[p.id]).join(',')}')`:`openDppRanking(${p.id},'admin')`;
+  const rows=list.map(p=>`<tr class="dpp-rk-row" onclick="${_rkClick(p)}">
     <td><b>${esc(p.title||'DPP')}</b><div style="font-size:.68rem;color:var(--text-muted)">${esc(p.subject)}${p.chapter?' · '+esc(p.chapter):''} · ${p.part?esc(p.part):'Whole Chapter'}</div></td>
     <td>${esc(p.class_name||'—')}</td>
     <td>${esc(p.teacher||'—')}</td>
+    <td>${_bcell(p)}</td>
     <td style="text-align:center"><b>${p.submitted}</b></td>
     <td style="text-align:center"><span style="color:var(--success);font-weight:700">${p.checked}</span><span style="color:var(--text-muted)"> / </span><span style="color:var(--warning);font-weight:700">${p.pending}</span></td>
     <td style="text-align:center">${p.views||0}</td>
     <td style="text-align:center">${p.downloads||0}</td>
-    <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openDppRanking(${p.id},'admin')">${ic('chart')} Ranking</button></td></tr>`).join('');
+    <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();${_rkClick(p)}">${ic('chart')} Ranking</button></td></tr>`).join('');
   el.innerHTML=`<div class="card" style="margin-top:18px"><div class="card-header"><h3>${ic('clipboard')} DPP Rankings</h3><span class="xm-chip">${packs.length}</span></div>
     <div class="card-body"><p style="font-size:.78rem;color:var(--text-muted);margin-bottom:12px">Submissions for every DPP pack — the earliest submission earns Rank 1. Click a row for the podium and the full list (names are clickable).</p>
     ${packs.length?`<div class="dps-grid" style="margin-bottom:14px">`
       +`<div class="dps-card ${sel==='all'?'open':''}" onclick="aDppSubPick('all')"><div class="dps-name">All Subjects</div><div class="dps-count">${packs.length} DPP${packs.length===1?'':'s'} \u00b7 ${totSub(packs)} submissions</div><div class="dps-tick">${sel==='all'?'\u25b2':'\u25bc'}</div></div>`
       +subs.map((s,i)=>{const l=bySub[s];return `<div class="dps-card ${sel===s?'open':''}" onclick="aDppSubPickIdx(${i})"><div class="dps-name">${esc(s)}</div><div class="dps-count">${l.length} DPP${l.length>1?'s':''} \u00b7 ${totSub(l)} submission${totSub(l)===1?'':'s'}</div><div class="dps-tick">${sel===s?'\u25b2':'\u25bc'}</div></div>`;}).join('')
       +`</div>`
-      +`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th style="text-align:center">Views</th><th style="text-align:center">Downloads</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      +`<div class="mat-twrap"><table class="mat-table"><thead><tr><th>DPP</th><th>Class</th><th>Teacher</th><th>Batch</th><th style="text-align:center">Submitted</th><th style="text-align:center">Checked / Pending</th><th style="text-align:center">Views</th><th style="text-align:center">Downloads</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       :`<div class="ws-empty"><p>No DPP packs yet.</p></div>`}</div></div>`;
 }
 

@@ -9544,6 +9544,10 @@ def _ensure_exam_columns(db):
 def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
     """All tests across teachers with submission tracking (for the admin Tests Tracker)."""
     _ensure_exam_columns(db)
+    try:
+        from teacher_routes import _exam_sig as _esig
+    except Exception:
+        _esig = lambda e: str(getattr(e, "id", ""))
     rows = db.query(Exam).filter(Exam.is_active == True).order_by(Exam.created_at.desc()).all()
     out = []
     for e in rows:
@@ -9554,12 +9558,73 @@ def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
         out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "teacher_name": e.teacher_name, "test_type": e.test_type, "medium": e.medium,
                     "class_name": getattr(e, "class_name", "") or "",
+                    "group_key": _esig(e),
                     "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "questions": nq, "attempts": na, "graded": ng,
                     "batch_id": getattr(e, "batch_id", None),
                     "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
                     "created_at": e.created_at.isoformat() if e.created_at else None})
     return out
+
+
+def _adm_exam_group_exams(db, ids_csv):
+    """All active Exams for the given comma-separated ids (the copies of one test). No owner filter."""
+    try:
+        id_list = [int(x) for x in str(ids_csv or "").split(",") if str(x).strip()]
+    except Exception:
+        id_list = []
+    if not id_list:
+        return []
+    return db.query(Exam).filter(Exam.id.in_(id_list), Exam.is_active == True).all()
+
+
+@router.get("/exam-group/ranking")
+def admin_exam_group_ranking(ids: str = "", batch: int = 0,
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Aggregated ranking across ALL batch-copies of one test (highest marks = rank 1),
+    each row tagged with its batch. Optional ?batch= narrows to one batch."""
+    from models import StudentProfile
+    try:
+        from teacher_routes import _exam_batch_meta as _bmeta
+    except Exception:
+        _bmeta = None
+    exams = _adm_exam_group_exams(db, ids)
+    if not exams:
+        raise HTTPException(404, "Test not found")
+    if _bmeta:
+        bmeta, bmap = _bmeta(db, exams)
+    else:
+        from models import Batch
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        bmeta = []
+    exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
+    use_ids = [e.id for e in exams if (not batch or getattr(e, "batch_id", None) == batch)]
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id.in_(use_ids), ExamAttempt.status == "graded").all())
+    sids = {a.student_id for a in atts}
+    sp_map = {}
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
+            sp_map[sp.id] = sp
+    rows = []
+    for a in atts:
+        sp = sp_map.get(a.student_id)
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        bid = exam_batch.get(a.exam_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "class_name": ((sp.class_name if sp else "") or ""),
+                     "batch": (blab or "All students")})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    rep = exams[0]
+    return {"exam": {"title": rep.title or "Test", "subject": rep.subject or "",
+                     "chapter": rep.chapter or "", "class_name": getattr(rep, "class_name", "") or "",
+                     "total_marks": rep.total_marks, "test_type": rep.test_type},
+            "batches": bmeta, "graded": len(rows), "rows": rows}
 
 
 @router.get("/exam/{exam_id}/students")
@@ -9658,6 +9723,10 @@ def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
 @router.get("/dpp-rankings")
 def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
     from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
+    try:
+        from teacher_routes import _dpp_sig as _dsig
+    except Exception:
+        _dsig = lambda pk: str(getattr(pk, "id", ""))
     packs = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
     out = []
     for pk in packs:
@@ -9677,7 +9746,9 @@ def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
                     "class_name": getattr(pk, "class_name", "") or "",
                     "medium": pk.medium or "", "source": pk.source or "",
                     "teacher": tname,
+                    "teacher_id": pk.teacher_id,
                     "batch_id": getattr(pk, "batch_id", None),
+                    "group_key": _dsig(pk),
                     "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
                     "submitted": len(subs), "checked": checked,
                     "pending": len(subs) - checked,
@@ -9721,6 +9792,119 @@ def admin_dpp_ranking(pack_id: int, db: Session = Depends(get_db), _=Depends(get
                      "chapter": pk.chapter or "", "part": pk.part or "",
                      "class_name": getattr(pk, "class_name", "") or ""},
             "count": len(out), "rows": out}
+
+
+def _adm_dpp_group_packs(db, ids_csv):
+    """All DppPacks for the given comma-separated ids (the copies of one DPP). No owner filter
+    — admin sees every batch-copy."""
+    from models import DppPack
+    try:
+        id_list = [int(x) for x in str(ids_csv or "").split(",") if str(x).strip()]
+    except Exception:
+        id_list = []
+    if not id_list:
+        return []
+    return db.query(DppPack).filter(DppPack.id.in_(id_list)).all()
+
+
+@router.get("/dpp-group/ranking")
+def admin_dpp_group_ranking(ids: str = "", batch: int = 0,
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Aggregated ranking across ALL batch-copies of one DPP (earliest submit = rank 1),
+    each row tagged with the student's batch. Optional ?batch= narrows to one batch."""
+    from models import DppAnswer, StudentProfile, User as _U
+    try:
+        from teacher_routes import _dpp_batch_meta as _bmeta
+    except Exception:
+        _bmeta = None
+    packs = _adm_dpp_group_packs(db, ids)
+    if not packs:
+        raise HTTPException(404, "DPP not found")
+    if _bmeta:
+        bmeta, bmap = _bmeta(db, packs)
+    else:
+        from models import Batch
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        bmeta = []
+    pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
+    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
+    sids = {a.student_id for a in rows}
+    name_map, cls_map, ph_map = {}, {}, {}
+    if sids:
+        for sp, nm in (db.query(StudentProfile, _U.name)
+                       .join(_U, _U.id == StudentProfile.user_id)
+                       .filter(StudentProfile.id.in_(sids)).all()):
+            name_map[sp.id] = nm or ("Student #%d" % sp.id)
+            cls_map[sp.id] = (sp.class_name or "")
+            ph_map[sp.id] = (sp.phone or "")
+    out = []
+    for i, a in enumerate(rows):
+        bid = pack_batch.get(a.pack_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"rank": i + 1, "name": name_map.get(a.student_id, "Student #%d" % a.student_id),
+                    "student_id": a.student_id,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "class_name": cls_map.get(a.student_id, ""),
+                    "batch": (blab or "All students"),
+                    "phone": ph_map.get(a.student_id, "")})
+    rep = packs[0]
+    return {"pack": {"title": rep.title or "DPP", "subject": rep.subject or "",
+                     "chapter": rep.chapter or "", "part": rep.part or "",
+                     "class_name": getattr(rep, "class_name", "") or ""},
+            "batches": bmeta, "count": len(out), "rows": out}
+
+
+@router.get("/dpp-group/answers")
+def admin_dpp_group_answers(ids: str = "", batch: int = 0,
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Aggregated submissions across all batch-copies of one DPP, each tagged with its batch.
+    Optional ?batch= narrows to one batch."""
+    from models import DppAnswer, StudentProfile, User as _U
+    try:
+        from teacher_routes import _dpp_batch_meta as _bmeta
+    except Exception:
+        _bmeta = None
+    packs = _adm_dpp_group_packs(db, ids)
+    if not packs:
+        raise HTTPException(404, "DPP not found")
+    if _bmeta:
+        bmeta, bmap = _bmeta(db, packs)
+    else:
+        from models import Batch
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        bmeta = []
+    pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
+    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.desc()).all())
+    sids = {a.student_id for a in rows}
+    name_map, cls_map = {}, {}
+    if sids:
+        for sp, nm in (db.query(StudentProfile, _U.name)
+                       .join(_U, _U.id == StudentProfile.user_id)
+                       .filter(StudentProfile.id.in_(sids)).all()):
+            name_map[sp.id] = nm or ("Student #%d" % sp.id)
+            cls_map[sp.id] = (sp.class_level or "")
+    out = []
+    for a in rows:
+        bid = pack_batch.get(a.pack_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"id": a.id, "pack_id": a.pack_id,
+                    "student": name_map.get(a.student_id, "Student #%d" % a.student_id),
+                    "class_level": cls_map.get(a.student_id, ""),
+                    "batch": (blab or "All students"),
+                    "filename": a.filename, "status": a.status, "remarks": a.remarks,
+                    "allow_resubmit": bool(getattr(a, "allow_resubmit", False)),
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else None,
+                    "checked_at": a.checked_at.strftime("%d %b %Y") if a.checked_at else None})
+    return {"batches": bmeta, "count": len(out), "answers": out}
 
 
 @router.get("/dpp-packs/{pack_id}/track-list")

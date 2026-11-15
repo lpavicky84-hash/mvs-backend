@@ -621,7 +621,12 @@ def _sel_batch_subjects(db, sp, batch=None):
         mapped = {r[0] for r in db.query(BatchSubject.subject)
                   .filter(BatchSubject.batch_id.in_(bids)).distinct().all() if r[0]}
         if mapped:
-            inter = [s for s in stu if s in mapped]
+            # Match by NORMALISED subject name, not exact string. The batch mapping may store a
+            # code-suffixed variant ("Mathematics (311)") while the student stores the plain name
+            # ("Mathematics") — an exact-match intersection silently DROPPED such a subject (so its
+            # DPP / material / timetable disappeared for the student). Normalise both sides.
+            mapped_norm = {_subj_norm(m) for m in mapped if m}
+            inter = [s for s in stu if _subj_norm(s) in mapped_norm]
             return inter if inter else stu
     except Exception:
         pass
@@ -3844,6 +3849,7 @@ def student_dpp_track(pack_id: int, payload: dict = Body(...),
 
 @router.post("/dpp-packs/{pack_id}/submit")
 async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
+                             background_tasks: BackgroundTasks = None,
                              db: Session = Depends(get_db), current_user=Depends(get_student)):
     from models import DppPack, DppAnswer
     sp = get_student_profile(current_user, db)
@@ -3873,6 +3879,13 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
                   answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), data, "application/pdf"),
                   filename=file.filename or "dpp-answer.pdf", status="submitted")
     db.add(a); db.commit()
+    # Test jaisa: teacher ko DPP submission ki bell notification (NEW-blink ke alawa reliable signal)
+    if background_tasks is not None and getattr(pk, "teacher_id", None):
+        try:
+            background_tasks.add_task(_notify_submission, pk.teacher_id, pk.subject,
+                                      (pk.title or pk.subject or "DPP"), current_user.name)
+        except Exception:
+            pass
     return {"ok": True, "status": "submitted"}
 
 
@@ -4050,10 +4063,12 @@ def student_dpp_assemble(pack_id: int, data: dict = Body(...),
 
 @router.post("/dpp-packs/{pack_id}/submit-staged")
 def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
+                              background_tasks: BackgroundTasks = None,
                               db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Staged upload ko final submit karo — INSTANT (file server pe pahunch chuki hai)."""
     from models import DppPack, DppAnswer
     sp = get_student_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
     try:
         aid = int((data or {}).get("answer_id") or 0)
     except Exception:
@@ -4073,6 +4088,13 @@ def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
     a.status = "submitted"
     a.allow_resubmit = False   # ek baar ka allowance — use hote hi reset
     db.commit()
+    # Test jaisa: teacher ko DPP submission ki bell notification
+    if background_tasks is not None and pk is not None and getattr(pk, "teacher_id", None):
+        try:
+            background_tasks.add_task(_notify_submission, pk.teacher_id, pk.subject,
+                                      (pk.title or pk.subject or "DPP"), current_user.name)
+        except Exception:
+            pass
     return {"ok": True, "status": "submitted"}
 
 

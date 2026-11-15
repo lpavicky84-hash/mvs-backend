@@ -629,11 +629,22 @@ def get_doubts(
     from models import DoubtResponse, StudentProfile, User as _U
     _sids = {d.student_id for d in rows if d.student_id}
     _sname_map = {}
+    _sclass_map = {}
+    def _cls_digit(v):
+        import re as _r
+        d = _r.sub(r"\D", "", str(v or ""))
+        if "10" in d:
+            return "10"
+        if "12" in d:
+            return "12"
+        return d[:2] if d else ""
     if _sids:
-        for sid, nm in (db.query(StudentProfile.id, _U.name)
+        for sid, nm, _clv, _cnm in (db.query(StudentProfile.id, _U.name,
+                                             StudentProfile.class_level, StudentProfile.class_name)
                         .join(_U, _U.id == StudentProfile.user_id)
                         .filter(StudentProfile.id.in_(_sids)).all()):
             _sname_map[sid] = nm or "Student"
+            _sclass_map[sid] = _cls_digit(_clv or _cnm)
     _away_tids = {d.teacher_id for d in rows
                   if d.teacher_id and d.teacher_id != tp.id and not getattr(d, "assigned_to_admin", False)}
     _owner_map = {}
@@ -674,6 +685,7 @@ def get_doubts(
             _owner = "MVS Foundation" if getattr(d, "assigned_to_admin", False) \
                 else _owner_map.get(d.teacher_id, "Unassigned")
         out.append({"id": d.id, "student_name": sname, "student_id": d.student_id,
+                    "student_class": _sclass_map.get(d.student_id, ""),
                     "subject": _subj_canon(d.subject), "topic": d.topic,
                     "question": d.question, "has_image": (d.id in _img_ids),
                     "attach_mime": d.attach_mime, "attach_name": d.attach_name,
@@ -2546,12 +2558,104 @@ def teacher_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
     return data
 
 
+# ===================== TEST (EXAM) dedup — ek test jo multiple batch me diya gaya =====================
+def _exam_sig(e):
+    """Signature IDENTICAL across the copies of one test in different batches (copy preserves
+    subject/class/title/chapter/test_type/total_marks). One card per test instead of per batch."""
+    import re as _r
+    cl = _r.sub(r"\D", "", str(getattr(e, "class_name", "") or ""))
+    return "|".join([_subj_norm(e.subject or ""), cl,
+                     (e.title or "").strip().lower(),
+                     (e.chapter or "").strip().lower(),
+                     (e.test_type or "").strip().lower(),
+                     str(getattr(e, "total_marks", 0) or 0)])
+
+
+def _exam_group_exams(db, tp, ids_csv):
+    """Teacher-owned Exams for the given comma-separated ids (the copies of one test)."""
+    try:
+        id_list = [int(x) for x in str(ids_csv or "").split(",") if str(x).strip()]
+    except Exception:
+        id_list = []
+    if not id_list:
+        return []
+    return db.query(Exam).filter(Exam.id.in_(id_list), Exam.teacher_id == tp.id,
+                                 Exam.is_active == True).all()
+
+
+def _exam_batch_meta(db, exams):
+    """[{batch_id, label, exam_id}] for a test's copies — one per batch, session label."""
+    from models import Batch
+    bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+    out = []
+    for e in exams:
+        bid = getattr(e, "batch_id", None)
+        nm, se = bmap.get(bid, ("", ""))
+        label = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
+        out.append({"batch_id": bid, "exam_id": e.id, "label": (label or "All students")})
+    return out, bmap
+
+
+@router.get("/exam-group/ranking")
+def teacher_exam_group_ranking(ids: str = "", batch: int = 0,
+                               db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Aggregated ranking across ALL batch-copies of one test (highest marks = rank 1),
+    each row tagged with its batch. Optional ?batch= narrows to one batch."""
+    from models import ExamAttempt, StudentProfile
+    tp = get_teacher_profile(current_user, db)
+    exams = _exam_group_exams(db, tp, ids)
+    if not exams:
+        raise HTTPException(404, "Test not found")
+    bmeta, bmap = _exam_batch_meta(db, exams)
+    exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
+    use_ids = [e.id for e in exams if (not batch or getattr(e, "batch_id", None) == batch)]
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id.in_(use_ids), ExamAttempt.status == "graded").all())
+    sids = {a.student_id for a in atts}
+    sp_map = {}
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
+            sp_map[sp.id] = sp
+    rows = []
+    for a in atts:
+        sp = sp_map.get(a.student_id)
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        bid = exam_batch.get(a.exam_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "class_name": ((sp.class_name if sp else "") or ""),
+                     "batch": (blab or "All students")})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    rep = exams[0]
+    return {"exam": {"title": rep.title or "Test", "subject": rep.subject or "",
+                     "chapter": rep.chapter or "", "class_name": getattr(rep, "class_name", "") or "",
+                     "total_marks": rep.total_marks, "test_type": rep.test_type},
+            "batches": bmeta, "graded": len(rows), "rows": rows}
+
+
 # ================== DPP PACKS (Create / Upload / Results) ==================
+def _dpp_sig(pk):
+    """Signature that is IDENTICAL across the copies of one DPP in different batches
+    (copy preserves subject/class/title/chapter/part). Used to show ONE card per DPP with
+    all its batches, instead of a separate card per batch."""
+    import re as _r
+    cl = _r.sub(r"\D", "", str(getattr(pk, "class_name", "") or ""))
+    return "|".join([_subj_norm(pk.subject or ""), cl,
+                     (pk.title or "").strip().lower(),
+                     (pk.chapter or "").strip().lower(),
+                     (pk.part or "").strip().lower()])
+
+
 def _dpp_pack_out(db, pk, with_counts=True):
     out = {"id": pk.id, "subject": pk.subject, "class_name": pk.class_name,
            "chapter": pk.chapter, "part": pk.part, "title": pk.title,
            "medium": pk.medium, "source": pk.source,
            "batch_id": getattr(pk, "batch_id", None),
+           "group_key": _dpp_sig(pk),
            "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None}
     if with_counts:
         from models import DppAnswer, DppEvent
@@ -2559,6 +2663,8 @@ def _dpp_pack_out(db, pk, with_counts=True):
                                            DppAnswer.status != "staged").all())
         out["submitted"] = len(subs)
         out["checked"] = sum(1 for a in subs if a.status == "checked")
+        # NEW-blink (test jaisa): submission ids — frontend seen-set se naye submissions highlight karega
+        out["subs"] = [{"id": a.id, "checked": (a.status == "checked")} for a in subs]
         # tracker: kitne DISTINCT students ne view / download kiya
         out["views"] = (db.query(DppEvent.student_id)
                         .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
@@ -2648,6 +2754,116 @@ def teacher_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_use
                      "chapter": pk.chapter or "", "part": pk.part or "",
                      "class_name": getattr(pk, "class_name", "") or ""},
             "count": len(out), "rows": out}
+
+
+def _dpp_group_packs(db, tp, ids_csv):
+    """Teacher-owned DppPacks for the given comma-separated ids (the copies of one DPP)."""
+    from models import DppPack
+    try:
+        id_list = [int(x) for x in str(ids_csv or "").split(",") if str(x).strip()]
+    except Exception:
+        id_list = []
+    if not id_list:
+        return []
+    return db.query(DppPack).filter(DppPack.id.in_(id_list), DppPack.teacher_id == tp.id).all()
+
+
+def _dpp_batch_meta(db, packs):
+    """[{batch_id, label, pack_id}] for a DPP's copies — one per batch, with session label."""
+    from models import Batch
+    bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+    out = []
+    for p in packs:
+        bid = getattr(p, "batch_id", None)
+        nm, se = bmap.get(bid, ("", ""))
+        label = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
+        out.append({"batch_id": bid, "pack_id": p.id, "label": (label or "All students")})
+    return out, bmap
+
+
+@router.get("/dpp-group/ranking")
+def teacher_dpp_group_ranking(ids: str = "", batch: int = 0,
+                              db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Aggregated ranking across ALL batch-copies of one DPP (earliest submit = rank 1),
+    each row tagged with the student's batch. Optional ?batch= narrows to one batch."""
+    from models import DppAnswer, StudentProfile, User
+    tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
+    packs = _dpp_group_packs(db, tp, ids)
+    if not packs:
+        raise HTTPException(404, "DPP not found")
+    bmeta, bmap = _dpp_batch_meta(db, packs)
+    pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
+    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
+    sids = {a.student_id for a in rows}
+    name_map, cls_map, ph_map = {}, {}, {}
+    if sids:
+        for sp, nm in (db.query(StudentProfile, User.name)
+                       .join(User, User.id == StudentProfile.user_id)
+                       .filter(StudentProfile.id.in_(sids)).all()):
+            name_map[sp.id] = nm or ("Student #%d" % sp.id)
+            cls_map[sp.id] = (sp.class_name or "")
+            ph_map[sp.id] = (sp.phone or "")
+    out = []
+    for i, a in enumerate(rows):
+        bid = pack_batch.get(a.pack_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"rank": i + 1, "name": name_map.get(a.student_id, "Student #%d" % a.student_id),
+                    "student_id": a.student_id,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "class_name": cls_map.get(a.student_id, ""),
+                    "batch": (blab or "All students"),
+                    "phone": (ph_map.get(a.student_id, "") if _see else "")})
+    rep = packs[0]
+    return {"pack": {"title": rep.title or "DPP", "subject": rep.subject or "",
+                     "chapter": rep.chapter or "", "part": rep.part or "",
+                     "class_name": getattr(rep, "class_name", "") or ""},
+            "batches": bmeta, "count": len(out), "rows": out}
+
+
+@router.get("/dpp-group/answers")
+def teacher_dpp_group_answers(ids: str = "", batch: int = 0,
+                              db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Aggregated submissions across all batch-copies of one DPP, each tagged with its batch.
+    Optional ?batch= narrows to one batch."""
+    from models import DppAnswer, StudentProfile, User
+    tp = get_teacher_profile(current_user, db)
+    packs = _dpp_group_packs(db, tp, ids)
+    if not packs:
+        raise HTTPException(404, "DPP not found")
+    bmeta, bmap = _dpp_batch_meta(db, packs)
+    pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
+    use_ids = [p.id for p in packs if (not batch or getattr(p, "batch_id", None) == batch)]
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.desc()).all())
+    sids = {a.student_id for a in rows}
+    name_map, cls_map = {}, {}
+    if sids:
+        for sp, nm in (db.query(StudentProfile, User.name)
+                       .join(User, User.id == StudentProfile.user_id)
+                       .filter(StudentProfile.id.in_(sids)).all()):
+            name_map[sp.id] = nm or ("Student #%d" % sp.id)
+            cls_map[sp.id] = (sp.class_level or "")
+    out = []
+    for a in rows:
+        bid = pack_batch.get(a.pack_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"id": a.id, "pack_id": a.pack_id,
+                    "student": name_map.get(a.student_id, "Student #%d" % a.student_id),
+                    "class_level": cls_map.get(a.student_id, ""),
+                    "batch": (blab or "All students"),
+                    "filename": a.filename, "status": a.status, "remarks": a.remarks,
+                    "allow_resubmit": bool(getattr(a, "allow_resubmit", False)),
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else None,
+                    "checked_at": a.checked_at.strftime("%d %b %Y") if a.checked_at else None})
+    return {"batches": bmeta, "count": len(out), "answers": out}
 
 
 # ===== DPP TRACK-LIST — kis kis student ne view/download kiya (clickable chips ke liye) =====
@@ -2893,6 +3109,40 @@ def teacher_dpp_update(pack_id: int, data: dict = Body(...), db: Session = Depen
             except Exception:
                 pass
     db.add(pk); db.commit(); db.refresh(pk)
+    return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
+
+
+@router.post("/dpp-pack/{pack_id}/retarget")
+def dpp_retarget(pack_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Update a DPP's batch (and optionally title / chapter / part) WITHOUT touching its
+    questions or PDFs. Works for UPLOADED (PDF) DPPs too, so a teacher can fix the batch
+    after uploading. Notifies the (new) batch's students if the batch changed."""
+    from models import DppPack
+    tp = get_teacher_profile(current_user, db)
+    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
+    if not pk:
+        raise HTTPException(404, "DPP not found")
+    old_batch = getattr(pk, "batch_id", None)
+    if "batch_id" in payload:
+        _bv = payload.get("batch_id")
+        try:
+            pk.batch_id = int(_bv) if _bv not in (None, "", 0, "0") else None
+        except Exception:
+            pk.batch_id = None
+    if (payload.get("title") or "").strip():
+        pk.title = (payload.get("title") or "").strip()
+    if payload.get("chapter") is not None:
+        pk.chapter = (payload.get("chapter") or "").strip()
+    if payload.get("part") is not None:
+        pk.part = (payload.get("part") or "").strip() or None
+    db.add(pk); db.commit(); db.refresh(pk)
+    new_batch = getattr(pk, "batch_id", None)
+    if new_batch and new_batch != old_batch:
+        try:
+            _notify_new_content(db, new_batch, pk.subject, current_user.name, "dpp",
+                                class_name=getattr(pk, "class_name", ""), gender=tp.gender)
+        except Exception:
+            pass
     return {"ok": True, "pack": _dpp_pack_out(db, pk, False)}
 
 
@@ -5054,6 +5304,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
         out.append({"subs": _sl,
                     "id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
                     "class_name": getattr(e, "class_name", "") or "",
+                    "group_key": _exam_sig(e),
                     "test_type": e.test_type, "total_marks": e.total_marks, "duration_min": e.duration_min,
                     "is_pdf": bool(getattr(e, "q_pdf", None)),
                     "medium": e.medium, "questions": nq, "attempts": na, "graded": ng,
@@ -5169,6 +5420,70 @@ def exam_reset_attempts(exam_id: int, payload: dict = Body(default={}),
         removed += 1
     db.commit()
     return {"ok": True, "removed": removed}
+
+
+@router.get("/exam-group/attempts")
+def exam_group_attempts(ids: str = "", batch: int = 0,
+                        db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Aggregated attempts across all batch-copies of one test, each tagged with its exam_id + batch.
+    Grading still works per attempt (attempt carries its own exam_id). Optional ?batch= narrows."""
+    from models import StudentProfile
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    _see = _teacher_sees_students(tp, db)
+    exams = _exam_group_exams(db, tp, ids)
+    if not exams:
+        raise HTTPException(404, "Test not found")
+    bmeta, bmap = _exam_batch_meta(db, exams)
+    exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
+    use_ids = [e.id for e in exams if (not batch or getattr(e, "batch_id", None) == batch)]
+    atts = (db.query(ExamAttempt).filter(ExamAttempt.exam_id.in_(use_ids))
+            .order_by(ExamAttempt.submitted_at.desc()).all())
+    out = []
+    for a in atts:
+        _atl = getattr(a, "attempted", None)
+        _skl = getattr(a, "skipped", None)
+        _sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        _su = _sp.user if _sp else None
+        bid = exam_batch.get(a.exam_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"attempt_id": a.id, "exam_id": a.exam_id, "student_id": a.student_id,
+            "student_name": a.student_name, "batch_label": (blab or "All students"),
+            "status": a.status, "total_awarded": a.total_awarded, "verdict": a.verdict,
+            "has_answer": bool(a.answer_image_b64),
+            "reupload_allowed": bool(getattr(a, "reupload_allowed", False)),
+            "reupload_remark": (getattr(a, "reupload_remark", None) or ""),
+            "feedback": a.overall_feedback, "mcq_answers": (a.mcq_answers or {}),
+            "results": [{"q_no": rr.q_no, "marks": rr.marks_awarded,
+                         "max": rr.max_marks, "remark": rr.remark or ""}
+                        for rr in db.query(ExamResult).filter(ExamResult.attempt_id == a.id)
+                                    .order_by(ExamResult.q_no).all()],
+            "phone": ((_sp.phone if _sp else None) if _see else None),
+            "student_code": (_su.user_id if _su else None),
+            "batch": (_sp.batch_name if _sp else None),
+            "class_level": (_sp.class_level if _sp else None),
+            "medium": (_sp.medium if _sp else None), "email": (_sp.email if _sp else None),
+            "subjects": ((_sp.subjects or []) if _sp else []),
+            "attempted_count": (len(_atl) if isinstance(_atl, list) else None),
+            "skipped_count": (len(_skl) if isinstance(_skl, list) else None),
+            "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None})
+    rep = exams[0]
+    qrows = db.query(ExamQuestion).filter(ExamQuestion.exam_id == rep.id).order_by(ExamQuestion.q_no).all()
+    questions = [{"q_no": q.q_no, "question_text": q.question_text, "max_marks": q.max_marks,
+                  "model_answer": q.model_answer, "options": q.options,
+                  "correct_option": q.correct_option, "image_b64": q.image_b64,
+                  "question_text_hi": q.question_text_hi, "model_answer_hi": q.model_answer_hi,
+                  "options_hi": q.options_hi, "model_answer_image": q.model_answer_image,
+                  "alt_image_b64": getattr(q, "alt_image_b64", None),
+                  "explanation": q.explanation, "explanation_hi": q.explanation_hi} for q in qrows]
+    return {"exam": {"id": rep.id, "title": rep.title, "total_marks": rep.total_marks,
+                     "test_type": rep.test_type, "subject": rep.subject, "chapter": rep.chapter,
+                     "medium": rep.medium, "duration_min": rep.duration_min,
+                     "class_name": getattr(rep, "class_name", "") or "",
+                     "is_pdf": bool(getattr(rep, "q_pdf", None)),
+                     "q_count": int(getattr(rep, "q_count", 0) or 0)},
+            "batches": bmeta, "questions": questions, "attempts": out}
 
 
 @router.get("/exam/{exam_id}/attempts")
