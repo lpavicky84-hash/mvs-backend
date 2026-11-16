@@ -49898,7 +49898,8 @@ function _scChatCss(){
     '.sc-chat-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;border:none;background:linear-gradient(135deg,#128c7e,#075e54);color:#fff;border-radius:12px;padding:11px;font-weight:800;font-size:.88rem;cursor:pointer;position:relative}',
     '.sc-chat-btn:hover{filter:brightness(1.06)}',
     '.sc-chat-btn .b{position:absolute;top:-7px;right:-5px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)}',
-    '.sc-back{background:rgba(255,255,255,.18);border:none;color:#fff;cursor:pointer;font-weight:800;font-size:1.1rem;border-radius:9px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex:none;margin-right:2px}',
+    '.sc-back{background:rgba(255,255,255,.24);border:1px solid rgba(255,255,255,.35);color:#fff;cursor:pointer;font-weight:800;font-size:.82rem;border-radius:9px;height:32px;padding:0 13px 0 9px;display:inline-flex;align-items:center;gap:3px;justify-content:center;flex:none;margin-right:8px;letter-spacing:.02em}',
+    '.sc-back:hover{background:rgba(255,255,255,.4)}',
     '.sc-tgl{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer;color:#fff}',
     '.sc-disabled-tip{font-size:.7rem;color:#fee2e2;background:rgba(220,38,38,.3);padding:2px 8px;border-radius:999px;font-weight:700}'
   ].join('');
@@ -49909,7 +49910,7 @@ function _scChatCss(){
 function _scHostHtml(ctx){
   var ini=(String(ctx.headerName||'M').trim().charAt(0)||'M').toUpperCase();
   return '<div class="mc-chat-hdr">'
-    +(ctx.onBack?'<button class="sc-back" onclick="'+ctx.onBack+'">‹</button>':'')
+    +(ctx.onBack?'<button class="sc-back" onclick="'+ctx.onBack+'" title="Back to chat list">‹ Back</button>':'')
     +'<div class="mc-chat-av" id="sc-av">'+esc(ini)+'</div>'
     +'<div style="flex:1;min-width:0"><div class="mc-chat-nm" id="sc-nm">'+esc(ctx.headerName||'MVS Support')+'</div>'
     +'<div class="mc-chat-sub" id="sc-status"> </div></div>'
