@@ -1134,6 +1134,45 @@ def _serve_push_icon():
     return _R(content=d, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
+# ===== Per-portal premium app icons (name likha hua) — icons/<portal>.png + <portal>_mask.png
+_APP_ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+_APP_ICON_CACHE = {}
+
+
+@app.get("/app-icon/{fname}")
+def _serve_app_icon(fname: str):
+    """Har portal ka alag premium icon. fname = '<portal>.png' ya '<portal>_mask.png'
+    (maskable). File icons/ folder se aati hai; na mile to generic MVS push-icon fallback."""
+    from fastapi.responses import Response as _R
+    import re as _re
+    name = (fname or "").strip()
+    # sirf safe filename: letters, _ , aur .png
+    if not _re.match(r"^[a-z]+(_mask)?\.png$", name):
+        return JSONResponse(status_code=404, content={"detail": "bad icon name"})
+    base = name[:-4].replace("_mask", "")
+    if base not in {p[0] for p in _APP_PORTALS}:
+        return JSONResponse(status_code=404, content={"detail": "unknown portal icon"})
+    if name in _APP_ICON_CACHE:
+        data = _APP_ICON_CACHE[name]
+    else:
+        fpath = os.path.join(_APP_ICON_DIR, name)
+        data = None
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, "rb") as f:
+                    data = f.read()
+            except Exception:
+                data = None
+        if data is None:  # fallback: generic MVS icon so manifest kabhi toote na
+            if _PUSH_ICON_CACHE["data"] is None:
+                _PUSH_ICON_CACHE["data"] = _build_push_icon()
+            data = _PUSH_ICON_CACHE["data"]
+        _APP_ICON_CACHE[name] = data
+    if not data:
+        return JSONResponse(status_code=404, content={"detail": "icon not found"})
+    return _R(content=data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/manifest.webmanifest")
 def _serve_manifest(start: str = "/"):
     """Dynamic manifest — start_url us portal ka jahan se install hua (teacher/admin/student).
@@ -1146,45 +1185,170 @@ def _serve_manifest(start: str = "/"):
     names = {"/teacher": "MVS Teacher", "/admin": "MVS Admin", "/production": "MVS Production",
              "/editor": "MVS Editor", "/youtuber": "MVS Studio", "/graphics": "MVS Graphics"}
     nm = names.get(s, "MVS Foundation")
+    # Har portal ka apna premium app-icon (name likha hua) — icons/<key>.png
+    key = (s.strip("/") or "student")
+    if key not in {p[0] for p in _APP_PORTALS}:
+        key = "student"
+    icon_any = "/app-icon/%s.png" % key
+    icon_mask = "/app-icon/%s_mask.png" % key
     man = {
         "name": nm,
-        "short_name": ("MVS" if s in ("/", "/student") else nm.replace("MVS ", "MVS ")),
+        "short_name": ("MVS" if s in ("/", "/student") else nm),
         "description": "MVS Foundation — class updates, study material, tests and notices for NIOS students.",
         "id": (s if s != "/" else "/student"),
         "start_url": (s if s != "/" else "/"),
         "scope": "/",
         "display": "standalone",
         "orientation": "portrait",
-        "background_color": "#fdfbf6",
+        "background_color": "#101d3c",
         "theme_color": "#14213d",
         "icons": [
-            {"src": "/push-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": "/push-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": icon_any, "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": icon_any, "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": icon_mask, "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
     }
     return _R(content=_json.dumps(man), media_type="application/manifest+json",
               headers={"Cache-Control": "public, max-age=600"})
 
 
+# ===== Mobile Apps (APK) — har portal ka alag Android app =====
+# Portal list: (key, Display name, 1-line description, accent color)
+_APP_PORTALS = [
+    ("student",    "Student App",    "Time table, material, tests & doubts", "#c9962e"),
+    ("teacher",    "Teacher App",    "Classes, DPP, doubts & reports",       "#4f46e5"),
+    ("admin",      "Admin App",      "Approvals, students & teachers",        "#2563eb"),
+    ("production", "Production App", "Video pipeline, tasks & schedule",      "#059669"),
+    ("editor",     "Editor App",     "Editing tasks & submissions",           "#7c3aed"),
+    ("graphics",   "Graphics App",   "Thumbnail design tasks & delivery",     "#e11d48"),
+    ("youtuber",   "YouTuber App",   "Upload schedule & publishing",          "#dc2626"),
+]
+_APP_KEYS = {p[0] for p in _APP_PORTALS}
+_APK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "apks")
+
+
+@app.get("/api/apps")
+def _apps_list():
+    """Har portal ke Android app (APK) ki availability.
+    Source: repo ke 'apks/<portal>.apk' file, YA env APK_<PORTAL>_URL (external link).
+    Landing page ka 'Download Apps' section isi se banta hai."""
+    out = []
+    for key, label, desc, color in _APP_PORTALS:
+        env_url = (os.getenv("APK_%s_URL" % key.upper()) or "").strip()
+        fpath = os.path.join(_APK_DIR, key + ".apk")
+        url = ""
+        size = 0
+        available = False
+        if env_url:
+            url = env_url
+            available = True
+        elif os.path.exists(fpath):
+            url = "/apps/%s.apk" % key
+            available = True
+            try:
+                size = os.path.getsize(fpath)
+            except Exception:
+                size = 0
+        out.append({
+            "key": key, "label": label, "desc": desc, "color": color,
+            "available": available, "url": url,
+            "size_mb": (round(size / 1048576.0, 1) if size else 0),
+        })
+    return {"apps": out, "any": any(a["available"] for a in out)}
+
+
+@app.get("/apps/{portal}.apk")
+def _serve_apk(portal: str, request: _Request):
+    """APK file download (repo apks/<portal>.apk). Agar env APK_<PORTAL>_URL set hai to
+    seedha wahan redirect — bade files ke liye external hosting (R2/Drive) use kar sakte hain."""
+    from fastapi import HTTPException as _HX
+    portal = (portal or "").lower().strip()
+    if portal not in _APP_KEYS:
+        raise _HX(404, "App not found")
+    env_url = (os.getenv("APK_%s_URL" % portal.upper()) or "").strip()
+    if env_url:
+        from fastapi.responses import RedirectResponse as _RR
+        return _RR(env_url, status_code=302)
+    fpath = os.path.join(_APK_DIR, portal + ".apk")
+    if not os.path.exists(fpath):
+        raise _HX(404, "APK not uploaded yet")
+    from fastapi.responses import FileResponse as _FR
+    return _FR(
+        fpath,
+        media_type="application/vnd.android.package-archive",
+        filename="MVS-%s.apk" % portal,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @app.get("/.well-known/assetlinks.json")
 def _assetlinks():
-    """Android TWA/APP verification. Jab aap APK banayenge, uski signing SHA-256
-    fingerprint yahan env se aa jaayegi — tab Android app is domain se verify ho jaayega
-    (URL bar hat jaata hai, push native app me bhi chalta hai).
-    Env: ANDROID_ASSETLINKS (poora JSON) OR ANDROID_PACKAGE + ANDROID_CERT_SHA256 (comma-sep)."""
+    """Android TWA/APP verification — har portal ka alag app (alag package name).
+    Har app ka PWABuilder zip ek assetlinks.json deta hai; uska pura content us portal ke
+    env var me daal do, ye route sabko merge karke ek list serve karta hai.
+      Env (per-app, recommended): ANDROID_ASSETLINKS_STUDENT, _TEACHER, _ADMIN,
+        _PRODUCTION, _EDITOR, _GRAPHICS, _YOUTUBER  (har ek = us app ki assetlinks.json)
+      Env (override): ANDROID_ASSETLINKS (pura combined JSON list) — merge me jud jaata hai
+      Env (single fallback): ANDROID_PACKAGE + ANDROID_CERT_SHA256 (comma-sep)"""
     from fastapi.responses import Response as _R
     import json as _json
-    raw = (os.getenv("ANDROID_ASSETLINKS") or "").strip()
-    if raw:
-        return _R(content=raw, media_type="application/json")
-    fp = (os.getenv("ANDROID_CERT_SHA256") or "").strip()
-    pkg = (os.getenv("ANDROID_PACKAGE") or "in.mvsfoundation.app").strip()
-    if not fp:
+
+    combined = []
+
+    def _add(blob):
+        blob = (blob or "").strip()
+        if not blob:
+            return
+        try:
+            v = _json.loads(blob)
+        except Exception:
+            return
+        if isinstance(v, list):
+            combined.extend([x for x in v if isinstance(x, dict)])
+        elif isinstance(v, dict):
+            combined.append(v)
+
+    _add(os.getenv("ANDROID_ASSETLINKS"))
+    for key in _APP_KEYS:
+        _add(os.getenv("ANDROID_ASSETLINKS_%s" % key.upper()))
+
+    # Fallback: single package + fingerprint(s)
+    if not combined:
+        fp = (os.getenv("ANDROID_CERT_SHA256") or "").strip()
+        pkg = (os.getenv("ANDROID_PACKAGE") or "in.mvsfoundation.app").strip()
+        if fp:
+            prints = [x.strip() for x in fp.split(",") if x.strip()]
+            combined.append({"relation": ["delegate_permission/common.handle_all_urls"],
+                             "target": {"namespace": "android_app", "package_name": pkg,
+                                        "sha256_cert_fingerprints": prints}})
+
+    if not combined:
         return JSONResponse(status_code=404, content=[])
-    prints = [x.strip() for x in fp.split(",") if x.strip()]
-    data = [{"relation": ["delegate_permission/common.handle_all_urls"],
-             "target": {"namespace": "android_app", "package_name": pkg,
-                        "sha256_cert_fingerprints": prints}}]
+
+    # Dedupe by package_name (merge fingerprints of same package)
+    merged = {}
+    order = []
+    for item in combined:
+        try:
+            tgt = item.get("target", {})
+            pkg = tgt.get("package_name", "")
+            if not pkg:
+                continue
+            if pkg not in merged:
+                merged[pkg] = {
+                    "relation": item.get("relation", ["delegate_permission/common.handle_all_urls"]),
+                    "target": {"namespace": "android_app", "package_name": pkg,
+                               "sha256_cert_fingerprints": []},
+                }
+                order.append(pkg)
+            fps = merged[pkg]["target"]["sha256_cert_fingerprints"]
+            for f in (tgt.get("sha256_cert_fingerprints") or []):
+                if f and f not in fps:
+                    fps.append(f)
+        except Exception:
+            continue
+
+    data = [merged[p] for p in order]
     return _R(content=_json.dumps(data), media_type="application/json")
 
 
@@ -1220,7 +1384,16 @@ def _serve_public_test(token: str, request: _Request):
 # purana UI dikhta (admin pe purane KPI, youtuber refresh pe purana layout). Fix: portal HTML
 # ko serve karte waqt /mvs_app.js ko ?v=<js-version> ke saath stamp karo. Har deploy par JS ki
 # mtime/size badalti hai -> ?v= badalta hai -> browser GUARANTEED nayi JS fetch karta hai.
-_PORTAL_HTML_CACHE = {"ver": None, "html": None}
+# Per-portal page cache. 'base' = js-versioned HTML (shared), 'pages' = path -> head-injected HTML.
+_PORTAL_HTML_CACHE = {"ver": None, "base": None, "pages": {}}
+
+# Jin paths ka alag home-screen app ban sakta hai (PWABuilder/iOS). Har path ka apna
+# manifest start_url + apple title -> har portal ka APK apne hi portal par khulta hai.
+_PORTAL_PATHS = {"/", "/student", "/teacher", "/admin", "/production",
+                 "/editor", "/youtuber", "/graphics"}
+_PORTAL_APPLE_TITLES = {"/teacher": "MVS Teacher", "/admin": "MVS Admin",
+                        "/production": "MVS Production", "/editor": "MVS Editor",
+                        "/youtuber": "MVS Studio", "/graphics": "MVS Graphics"}
 
 def _js_version():
     try:
@@ -1229,44 +1402,64 @@ def _js_version():
     except Exception:
         return "0"
 
-def _portal_html_versioned():
+def _portal_html_versioned(start="/"):
+    """Portal HTML with cache-busted app-JS AND a PORTAL-SPECIFIC manifest link in the STATIC
+    head. PWABuilder/iOS crawler JS nahi chalata — isliye jis portal URL se app banta hai,
+    wahan served HTML me manifest ka start_url usi portal ka hona chahiye, warna har app
+    student portal khol deta hai. Runtime par mvs_app.js bhi isi ko sync rakhta hai."""
     ver = _js_version()
     c = _PORTAL_HTML_CACHE
-    if c["ver"] == ver and c["html"] is not None:
-        return c["html"], ver
-    try:
-        with open(_PORTAL_FILE, "r", encoding="utf-8") as f:
-            html = f.read()
-    except Exception:
-        return None, ver
-    html = html.replace('src="/mvs_app.js"', 'src="/mvs_app.js?v=' + ver + '"')
-    # PWA/TWA (PWABuilder + iOS) ke liye manifest + install meta STATIC head me — taaki
-    # crawler (jo JS nahi chalata) bhi isse PWA detect kare aur APK ban sake. Runtime par
-    # mvs_app.js isi manifest link ko portal-wise sahi start_url se update kar deta hai.
+    if c["ver"] != ver:
+        c["ver"] = ver
+        c["base"] = None
+        c["pages"] = {}
+    s = start if start in _PORTAL_PATHS else "/"
+    if s in c["pages"]:
+        return c["pages"][s], ver
+    base = c["base"]
+    if base is None:
+        try:
+            with open(_PORTAL_FILE, "r", encoding="utf-8") as f:
+                base = f.read()
+        except Exception:
+            return None, ver
+        base = base.replace('src="/mvs_app.js"', 'src="/mvs_app.js?v=' + ver + '"')
+        c["base"] = base
+    # root/student -> plain manifest (start_url "/"); baaki har portal -> ?start=<path>
+    man_href = "/manifest.webmanifest" if s in ("/", "/student") else ("/manifest.webmanifest?start=" + s)
+    apple_title = _PORTAL_APPLE_TITLES.get(s, "MVS")
+    _ikey = (s.strip("/") or "student")
+    apple_icon = "/app-icon/%s.png" % _ikey
+    html = base
     if "rel=\"manifest\"" not in html and "</head>" in html:
-        _inj = ('<link rel="manifest" href="/manifest.webmanifest">'
+        _inj = ('<link rel="manifest" href="' + man_href + '">'
                 '<meta name="theme-color" content="#14213d">'
                 '<meta name="apple-mobile-web-app-capable" content="yes">'
                 '<meta name="mobile-web-app-capable" content="yes">'
                 '<meta name="apple-mobile-web-app-status-bar-style" content="default">'
-                '<meta name="apple-mobile-web-app-title" content="MVS">'
-                '<link rel="apple-touch-icon" href="/push-icon.png">')
+                '<meta name="apple-mobile-web-app-title" content="' + apple_title + '">'
+                '<link rel="apple-touch-icon" href="' + apple_icon + '">')
         html = html.replace("</head>", _inj + "</head>", 1)
-    c["ver"] = ver
-    c["html"] = html
+    c["pages"][s] = html
     return html, ver
 
 def _cached_portal(request):
-    """Serve the portal HTML with a cache-busted app-JS URL. ETag combines the portal file and
-    the JS version, so any deploy (HTML or JS) forces a fresh load — no stale UI ever."""
-    html, ver = _portal_html_versioned()
+    """Serve the portal HTML with a cache-busted app-JS URL + portal-specific manifest. ETag
+    combines the portal file, JS version AND the path, so each portal gets its own cached head
+    and any deploy (HTML or JS) forces a fresh load — no stale UI, no wrong-portal manifest."""
+    try:
+        path = request.url.path or "/"
+    except Exception:
+        path = "/"
+    html, ver = _portal_html_versioned(path)
     if html is None:
         return None
+    pslug = path.replace("/", "_") or "root"
     try:
         pst = os.stat(_PORTAL_FILE)
-        et = 'W/"p%x-%x-%s"' % (int(pst.st_mtime), pst.st_size, ver)
+        et = 'W/"p%x-%x-%s-%s"' % (int(pst.st_mtime), pst.st_size, ver, pslug)
     except Exception:
-        et = 'W/"p-%s"' % ver
+        et = 'W/"p-%s-%s"' % (ver, pslug)
     cc = "public, max-age=0, must-revalidate"
     if request.headers.get("if-none-match") == et:
         return _Response(status_code=304, headers={"ETag": et, "Cache-Control": cc})
