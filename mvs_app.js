@@ -430,15 +430,15 @@ function _premiumLogin(portal){
     if(!brand){ brand=document.createElement('div'); brand.id='mvs-auth2-brand'; brand.className='a2-brand'; box.insertBefore(brand, box.firstChild); }
     brand.style.display='';
     var badgeHtml=(isStudent||!rc)?'':('<div class="a2-role-badge">'+(typeof ic==='function'?ic(rc.icon):'')+'<span>'+rc.badge+'</span></div>');
-    brand.innerHTML='<div class="a2-logo">'+_mvsLogoImg(62)+'</div><div class="a2-title">'+title+'</div>'+badgeHtml;
-    // switcher: STUDENT par nahi (clean); teacher/admin par baaki portals
-    var sw=document.getElementById('mvs-auth2-switch');
-    if(isStudent){ if(sw) sw.style.display='none'; return; }
-    if(!sw){ sw=document.createElement('div'); sw.id='mvs-auth2-switch'; sw.className='a2-switch'; box.appendChild(sw); }
-    sw.style.display='';
-    var others=['student','teacher','admin'].filter(function(x){return x!==portal;});
-    sw.innerHTML='<span>Switch portal</span><div class="a2-switch-row">'+
-      others.map(function(x){return '<button type="button" class="a2-pill" onclick="goLogin(\''+x+'\')">'+(_AUTH_META[x]?_AUTH_META[x].tag:x)+'</button>';}).join('')+'</div>';
+    // Har portal ka apna NAYA premium app-icon (jaisa phone app me laga hai). Na mile to MVS logo fallback.
+    var _icKey=(portal||'student');
+    var _iconHtml='<img src="/app-icon/'+_icKey+'.png" alt="MVS" '+
+      'style="width:100%;height:100%;object-fit:cover;display:block" '+
+      'onerror="this.onerror=null;this.src=\''+_logoSrc()+'\';this.style.objectFit=\'contain\';this.style.background=\'#0d1b2a\'">';
+    brand.innerHTML='<div class="a2-logo">'+_iconHtml+'</div><div class="a2-title">'+title+'</div>'+badgeHtml;
+    // Switch Portal REMOVED (user request) — login clean rahe, har portal apna hi.
+    var sw=document.getElementById('mvs-auth2-switch'); if(sw) sw.remove();
+    var oldSw2=document.getElementById('mvs-auth-switch'); if(oldSw2) oldSw2.remove();
   }catch(e){}
 }
 
