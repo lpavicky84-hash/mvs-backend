@@ -12341,18 +12341,22 @@ function _ensureSchCss(){
     '.svc-trk-del{border:none;background:transparent;color:#c0392b;cursor:pointer;padding:4px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s}',
     '.svc-trk-del:hover{background:rgba(192,57,43,.1)}',
     '.svc-trk-del svg{width:16px;height:16px}',
-    '@media(max-width:600px){'
-      +'.svc-trk-scroll{overflow:visible !important;border:none !important}'
-      +'.svc-trk-tbl{border:0}'
-      +'.svc-trk-tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}'
-      +'.svc-trk-tbl tbody tr{display:block;border:1px solid var(--border);border-radius:11px;padding:9px 12px;margin-bottom:10px;background:var(--card,#fff)}'
-      +'.svc-trk-tbl tbody td{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:5px 0;border:none;text-align:right;white-space:normal !important;font-size:.85rem}'
-      +'.svc-trk-tbl tbody td::before{content:attr(data-label);font-weight:700;color:var(--text-muted);text-align:left;flex:0 0 auto;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em}'
-      +'.svc-trk-tbl tbody td[data-label=""]{justify-content:flex-end;padding-top:6px}'
-      +'.svc-trk-tbl tbody td[data-label=""]::before{display:none}'
-      +'.svc-trk-tbl tbody td[colspan]{justify-content:center;text-align:center}'
-      +'.svc-trk-tbl tbody td[colspan]::before{display:none}'
-    +'}'
+    // Service Tracker + Data Control Room tables: ALWAYS render as clean card-rows (not a
+    // horizontal-scroll table). The modal is always narrow, so a 6-7 column table used to
+    // squish the Name column char-by-char and show a "SCROLL" hint. Card-rows never overflow.
+    '.svc-trk-scroll{overflow:visible !important;border:none !important}',
+    '.svc-trk-tbl{border:0;width:100%}',
+    '.svc-trk-tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+    '.svc-trk-tbl tbody tr{display:block;border:1px solid var(--border);border-radius:12px;padding:10px 13px;margin-bottom:10px;background:var(--card,#fff);box-shadow:0 1px 3px rgba(20,33,63,.04)}',
+    '.svc-trk-tbl tbody tr:nth-child(even){background:var(--card,#fff)}',
+    '.svc-trk-tbl tbody td{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:5px 0;border:none;text-align:right;white-space:normal !important;font-size:.86rem;word-break:break-word}',
+    '.svc-trk-tbl tbody td:nth-child(1){font-weight:800;font-size:.95rem;color:var(--text)}',
+    '.svc-trk-tbl tbody td::before{content:attr(data-label);font-weight:700;color:var(--text-muted);text-align:left;flex:0 0 auto;font-size:.72rem;text-transform:uppercase;letter-spacing:.03em}',
+    '.svc-trk-tbl tbody td:nth-child(1)::before{align-self:center}',
+    '.svc-trk-tbl tbody td[data-label=""]{justify-content:flex-end;padding-top:8px;margin-top:4px;border-top:1px dashed var(--border)}',
+    '.svc-trk-tbl tbody td[data-label=""]::before{display:none}',
+    '.svc-trk-tbl tbody td[colspan]{justify-content:center;text-align:center}',
+    '.svc-trk-tbl tbody td[colspan]::before{display:none}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -12549,9 +12553,10 @@ async function loadAServices(){
     var cards=svcs.map(_admSvcCard).join('')||'<div class="sch-sub" style="padding:20px;text-align:center">No services yet. Add your first product.</div>';
     el.innerHTML='<div id="a-events-wrap"></div>'
       +'<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" style="position:relative" onclick="openAServicesChat()">'+ic('chat')+' Services Chat<span id="a-svc-chat-badge" style="display:none;position:absolute;top:-7px;right:-6px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)"></span></button>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm dcr-open-btn" onclick="openDataControlRoom()">'+ic('chart')+' Data Control Room</button>'
+      +'<button class="btn btn-secondary btn-sm" style="position:relative" onclick="openAServicesChat()">'+ic('chat')+' Services Chat<span id="a-svc-chat-badge" style="display:none;position:absolute;top:-7px;right:-6px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)"></span></button>'
       +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div></div>'
-      +'<div class="apt-grid" style="margin-top:16px">'+cards+'</div>';
+      +'<div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">'+cards+'</div>';
     loadAEvents(); _scAdmBadge();
   }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
 }
@@ -50107,4 +50112,119 @@ function _scAdmToggle(tid, enabled){
     if(window._scCtx) window._scCtx.enabled=!!(r&&r.enabled);
     toast(enabled?'Chat enabled for the student':'Chat disabled for the student');
   }).catch(function(e){ toast((e&&e.message)||'Failed',true); var t=document.getElementById('sc-adm-tgl'); if(t) t.checked=!enabled; if(l) l.textContent=!enabled?'On':'Off'; });
+}
+
+/* ============================================================================
+   DATA CONTROL ROOM — merged export of ALL MVS Services (admin)
+   Name, phone, which service paid for, amount, class — date-wise + Today/Weekly/
+   Monthly/Custom + Yes/No/All, download as Excel / PDF / Image.
+   ========================================================================== */
+function _dcrCss(){
+  if(document.getElementById('dcr-css')) return;
+  var s=document.createElement('style'); s.id='dcr-css';
+  s.textContent=[
+    '.dcr-open-btn{background:linear-gradient(135deg,#14213d,#b8941f);color:#fff;border:none;font-weight:800}',
+    '.dcr-open-btn:hover{filter:brightness(1.08)}',
+    '.dcr-lbl{display:block;font-size:.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 7px}',
+    '.dcr-seg{display:inline-flex;flex-wrap:wrap;gap:6px}',
+    '.dcr-seg button{padding:7px 14px;border:1px solid var(--border);border-radius:999px;background:var(--card);color:var(--text);font-size:.8rem;font-weight:700;cursor:pointer;transition:all .12s}',
+    '.dcr-seg button.on{background:#14213d;color:#fff;border-color:#14213d}',
+    '.dcr-seg button:hover:not(.on){border-color:#b8941f}',
+    '.dcr-chips{display:flex;flex-wrap:wrap;gap:7px}',
+    '.dcr-chip{padding:6px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:.78rem;font-weight:700;cursor:pointer;color:var(--text-muted);display:inline-flex;align-items:center;gap:6px}',
+    '.dcr-chip.on{background:rgba(184,148,31,.13);border-color:#b8941f;color:#8a6d16}',
+    '.dcr-chip .k{font-size:.62rem;background:#14213d;color:#fff;border-radius:999px;padding:0 6px;font-weight:800}',
+    '.dcr-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}',
+    '.dcr-stat{border:1px solid var(--border);border-radius:13px;padding:12px;text-align:center;background:var(--card)}',
+    '.dcr-stat .n{font-size:1.5rem;font-weight:900;line-height:1}',
+    '.dcr-stat .l{font-size:.68rem;color:var(--text-muted);font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:.03em}',
+    '.dcr-dl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0 4px}',
+    '.dcr-dl-btn{border:none;border-radius:13px;padding:14px 10px;color:#fff;font-weight:800;font-size:.86rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .1s,filter .1s}',
+    '.dcr-dl-btn:hover{transform:translateY(-2px);filter:brightness(1.07)}',
+    '.dcr-dl-btn svg{width:22px;height:22px}',
+    '.dcr-dl-xl{background:linear-gradient(135deg,#1f7a52,#13543a)}',
+    '.dcr-dl-pdf{background:linear-gradient(135deg,#c0392b,#8e241a)}',
+    '.dcr-dl-img{background:linear-gradient(135deg,#2563eb,#14213d)}',
+    '.dcr-dl-btn small{font-weight:600;opacity:.85;font-size:.68rem}',
+    '.dcr-prevwrap{max-height:40vh;overflow:auto;margin-top:6px}',
+    '.dcr-trunc{text-align:center;font-size:.72rem;color:var(--text-muted);margin-top:8px}',
+    '@media(max-width:560px){.dcr-sum{grid-template-columns:repeat(2,1fr)}.dcr-dl{grid-template-columns:1fr}}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function openDataControlRoom(){
+  _dcrCss(); _ensureSchCss();
+  window._dcr={response:'all', range:'', frm:'', to:'', services:[]};
+  window._dcrSvcList=null;
+  showModal('Data Control Room','<div id="dcr-panel"><div class="spinner" style="margin:34px auto"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  _dcrLoad();
+}
+function _dcrQS(){
+  var s=window._dcr||{};
+  return 'response='+encodeURIComponent(s.response||'all')
+    +'&range='+encodeURIComponent(s.range||'')
+    +'&frm='+encodeURIComponent(s.frm||'')+'&to='+encodeURIComponent(s.to||'')
+    +'&services='+encodeURIComponent((s.services||[]).join(','));
+}
+async function _dcrLoad(){
+  var panel=document.getElementById('dcr-panel'); if(!panel) return;
+  var s=window._dcr;
+  try{
+    var d=await api('/api/admin/services/data-room?'+_dcrQS()+'&limit=400');
+    if(d.services) window._dcrSvcList=d.services;
+    panel.innerHTML=_dcrPanelHtml(d);
+  }catch(e){ panel.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load data')+'</div>'; }
+}
+function _segBtn(cur,val,lbl,fn){ return '<button class="'+(cur===val?'on':'')+'" onclick="'+fn+'(\''+val+'\')">'+lbl+'</button>'; }
+function _dcrPanelHtml(d){
+  var s=window._dcr, sum=d.summary||{};
+  var resp='<div class="dcr-seg">'+_segBtn(s.response,'all','All',' _dcrResp')+_segBtn(s.response,'yes','Purchased (Yes)','_dcrResp')+_segBtn(s.response,'no','Not yet (No)','_dcrResp')+'</div>';
+  var rng='<div class="dcr-seg">'+_segBtn(s.range,'today','Today','_dcrRange')+_segBtn(s.range,'week','Weekly','_dcrRange')+_segBtn(s.range,'month','Monthly','_dcrRange')+_segBtn(s.range,'','All time','_dcrRange')+_segBtn(s.range,'custom','Custom','_dcrRange')+'</div>';
+  var custom=(s.range==='custom')?('<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px"><input type="date" class="sch-in" id="dcr-frm" value="'+esc(s.frm||'')+'" style="margin:0;flex:1 1 130px;width:auto"><span style="color:var(--text-muted)">to</span><input type="date" class="sch-in" id="dcr-to" value="'+esc(s.to||'')+'" style="margin:0;flex:1 1 130px;width:auto"><button class="btn btn-secondary btn-sm" onclick="_dcrApplyCustom()">Apply</button></div>'):'';
+  // service chips
+  var list=window._dcrSvcList||[];
+  var allOn=!(s.services&&s.services.length);
+  var chips='<span class="dcr-chip'+(allOn?' on':'')+'" onclick="_dcrAllSvc()">'+(allOn?ic('check'):'')+' All services</span>'
+    +list.map(function(x){ var on=(s.services||[]).indexOf(x.id)>=0; return '<span class="dcr-chip'+(on?' on':'')+'" onclick="_dcrToggleSvc('+x.id+')">'+esc(x.title)+(x['class']?' <span class="k">'+esc(x['class'])+'</span>':'')+'</span>'; }).join('');
+  // summary
+  var summ='<div class="dcr-sum">'
+    +'<div class="dcr-stat"><div class="n">'+(sum.total||0)+'</div><div class="l">Records</div></div>'
+    +'<div class="dcr-stat"><div class="n" style="color:#1f7a52">'+(sum.yes||0)+'</div><div class="l">Purchased</div></div>'
+    +'<div class="dcr-stat"><div class="n" style="color:#c0392b">'+(sum.no||0)+'</div><div class="l">Not yet</div></div>'
+    +'<div class="dcr-stat"><div class="n" style="color:#b8941f">₹'+_dcrInr(sum.revenue||0)+'</div><div class="l">Revenue</div></div></div>';
+  // download
+  var dl='<div class="dcr-dl">'
+    +'<button class="dcr-dl-btn dcr-dl-xl" onclick="_dcrDl(\'xlsx\')">'+ic('download')+'<span>Excel</span><small>.xlsx sheet</small></button>'
+    +'<button class="dcr-dl-btn dcr-dl-pdf" onclick="_dcrDl(\'pdf\')">'+ic('download')+'<span>PDF</span><small>print-ready</small></button>'
+    +'<button class="dcr-dl-btn dcr-dl-img" onclick="_dcrDl(\'png\')">'+ic('download')+'<span>Image</span><small>.png</small></button></div>';
+  // preview table (reuses svc-trk-tbl card rows)
+  var rows=(d.rows||[]).map(function(r){
+    var rc=(r.response==='YES')?'#1f7a52':'#c0392b';
+    return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td>'
+      +'<td data-label="Phone">'+esc(r.phone||'—')+'</td>'
+      +'<td data-label="Class">'+esc(r['class']||'—')+'</td>'
+      +'<td data-label="Service">'+esc(r.service||'—')+'</td>'
+      +'<td data-label="Response"><b style="color:'+rc+'">'+esc(r.response||'')+'</b></td>'
+      +'<td data-label="Amount">'+(r.has_amount?('₹'+_dcrInr(r.amount)):'—')+'</td>'
+      +'<td data-label="Date" style="color:var(--text-muted)">'+esc(r.time||'')+'</td></tr>';
+  }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:14px">No records for this filter.</td></tr>';
+  var prev='<div class="svc-trk-scroll"><table class="pm-ctbl svc-trk-tbl"><thead><tr><th>Name</th><th>Phone</th><th>Class</th><th>Service</th><th>Response</th><th>Amount</th><th>Date</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  return '<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:4px">All paid &amp; pending responses across every service in one place. Pick a filter, then download in any format.</div>'
+    +'<span class="dcr-lbl">Response</span>'+resp
+    +'<span class="dcr-lbl">Period</span>'+rng+custom
+    +'<span class="dcr-lbl">Services</span><div class="dcr-chips">'+chips+'</div>'
+    +summ
+    +'<span class="dcr-lbl">Download as</span>'+dl
+    +'<span class="dcr-lbl">Preview ('+(d.rows||[]).length+(d.truncated?'+':'')+')</span><div class="dcr-prevwrap">'+prev+'</div>'
+    +(d.truncated?'<div class="dcr-trunc">Showing first '+(d.rows||[]).length+' — the download contains every record.</div>':'');
+}
+function _dcrInr(n){ try{ n=Number(n)||0; var x=(n===Math.floor(n))?String(n):n.toFixed(2); var parts=x.split('.'); var ip=parts[0]; var last3=ip.slice(-3); var rest=ip.slice(0,-3); if(rest) last3=','+last3; rest=rest.replace(/\B(?=(\d{2})+(?!\d))/g,','); return rest+last3+(parts[1]?('.'+parts[1]):''); }catch(e){ return String(n); } }
+function _dcrResp(r){ window._dcr.response=r; _dcrLoad(); }
+function _dcrRange(r){ window._dcr.range=r; _dcrLoad(); }
+function _dcrApplyCustom(){ window._dcr.frm=(document.getElementById('dcr-frm')||{}).value||''; window._dcr.to=(document.getElementById('dcr-to')||{}).value||''; _dcrLoad(); }
+function _dcrAllSvc(){ window._dcr.services=[]; _dcrLoad(); }
+function _dcrToggleSvc(id){ var a=window._dcr.services||[]; var i=a.indexOf(id); if(i>=0) a.splice(i,1); else a.push(id); window._dcr.services=a; _dcrLoad(); }
+function _dcrDl(fmt){
+  var ext={xlsx:'xlsx',pdf:'pdf',png:'png'}[fmt]||'xlsx';
+  _dlPdf('/api/admin/services/data-room/export?fmt='+fmt+'&'+_dcrQS(), 'MVS_Data_Control_Room.'+ext);
 }

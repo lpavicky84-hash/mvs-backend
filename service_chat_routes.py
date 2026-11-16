@@ -314,23 +314,33 @@ def student_att_dl(aid: int, db: Session = Depends(get_db), current_user=Depends
 def admin_service_chats(db: Session = Depends(get_db), _=Depends(get_admin)):
     """WhatsApp-style list: every thread with a last message, recent first."""
     from service_chat_models import ServiceChatThread, ServiceChatMsg
-    threads = db.query(ServiceChatThread).order_by(
-        ServiceChatThread.last_msg_at.desc().nullslast(),
-        ServiceChatThread.id.desc()).all()
     out = []
+    try:
+        # NOTE: no .nullslast() — MySQL doesn't support the NULLS LAST keyword (it 500s).
+        # On MySQL a DESC sort already places NULLs last, so plain desc() is correct + portable.
+        threads = db.query(ServiceChatThread).order_by(
+            ServiceChatThread.last_msg_at.desc(),
+            ServiceChatThread.id.desc()).all()
+    except Exception:
+        try: db.rollback()
+        except Exception: pass
+        threads = []
     for t in threads:
-        unread = db.query(ServiceChatMsg).filter(
-            ServiceChatMsg.thread_id == t.id,
-            ServiceChatMsg.sender_role == "student",
-            ServiceChatMsg.id > (t.admin_last_read_id or 0)).count()
-        online, _last = _student_online(db, t.student_user_id)
-        out.append({
-            "thread_id": t.id, "service_id": t.service_id,
-            "student_id": t.student_id, "student_name": t.student_name or "Student",
-            "student_phone": t.student_phone or "", "student_class": t.student_class or "",
-            "service_title": t.service_title or "", "enabled": bool(t.enabled),
-            "last_text": t.last_msg_text or "", "last_sender": t.last_sender or "",
-            "last_at": _ist(t.last_msg_at), "unread": unread, "online": online})
+        try:
+            unread = db.query(ServiceChatMsg).filter(
+                ServiceChatMsg.thread_id == t.id,
+                ServiceChatMsg.sender_role == "student",
+                ServiceChatMsg.id > (t.admin_last_read_id or 0)).count()
+            online, _last = _student_online(db, t.student_user_id)
+            out.append({
+                "thread_id": t.id, "service_id": t.service_id,
+                "student_id": t.student_id, "student_name": t.student_name or "Student",
+                "student_phone": t.student_phone or "", "student_class": t.student_class or "",
+                "service_title": t.service_title or "", "enabled": bool(t.enabled),
+                "last_text": t.last_msg_text or "", "last_sender": t.last_sender or "",
+                "last_at": _ist(t.last_msg_at), "unread": unread, "online": online})
+        except Exception:
+            continue
     total_unread = sum(x["unread"] for x in out)
     return {"chats": out, "total_unread": total_unread}
 

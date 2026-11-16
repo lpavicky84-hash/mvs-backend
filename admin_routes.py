@@ -12607,6 +12607,72 @@ def admin_services_export(sid: int, type: str = "all", range: str = "", frm: str
                     headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
 
 
+# ===================== MVS Services — DATA CONTROL ROOM (merged export) =====================
+def _dcr_ids(services):
+    out = []
+    for p in (services or "").split(","):
+        p = p.strip()
+        if p.isdigit():
+            out.append(int(p))
+    return out or None
+
+
+def _dcr_gather(db, response, range, frm, to, services):
+    import mvs_services as MS
+    import data_control_room as DCR
+    start, end = MS.utc_bounds(range, frm, to)
+    rows = DCR.merged_rows(db, response=response, start=start, end=end,
+                           service_ids=_dcr_ids(services))
+    summ = DCR.summarize(rows)
+    rlab = {"yes": "Purchased (Yes)", "no": "Not yet (No)"}.get((response or "all").lower(), "All responses")
+    meta = {"response_label": rlab, "range_label": DCR.range_label(range, frm, to),
+            "total": summ["total"], "yes": summ["yes"], "no": summ["no"], "revenue": summ["revenue"]}
+    return rows, meta
+
+
+@router.get("/services/data-room")
+def admin_data_room(response: str = "all", range: str = "", frm: str = "", to: str = "",
+                    services: str = "", limit: int = 400,
+                    db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Merged preview across all services + the service list for the filter UI."""
+    from models import MVSService
+    rows, meta = _dcr_gather(db, response, range, frm, to, services)
+    svc_list = [{"id": s.id, "title": s.title or ("Service #%s" % s.id),
+                 "class": s.target_class or ""}
+                for s in db.query(MVSService).order_by(MVSService.sort.asc(), MVSService.id.desc()).all()]
+    preview = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows[:max(1, limit)]]
+    return {"rows": preview, "truncated": len(rows) > len(preview),
+            "summary": {"total": meta["total"], "yes": meta["yes"], "no": meta["no"], "revenue": meta["revenue"]},
+            "range_label": meta["range_label"], "response_label": meta["response_label"],
+            "services": svc_list}
+
+
+@router.get("/services/data-room/export")
+def admin_data_room_export(fmt: str = "xlsx", response: str = "all", range: str = "", frm: str = "",
+                           to: str = "", services: str = "",
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import data_control_room as DCR
+    fmt = (fmt or "xlsx").lower()
+    rows, meta = _dcr_gather(db, response, range, frm, to, services)
+    stamp = (meta["range_label"] or "all").lower().replace(" ", "_").replace("…", "x")
+    base = "mvs_data_room_%s_%s" % ((response or "all").lower(), stamp)
+    if fmt in ("xlsx", "excel"):
+        data = DCR.build_xlsx(rows, meta)
+        return Response(content=data,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": 'attachment; filename="%s.xlsx"' % base})
+    if fmt == "pdf":
+        data = DCR.build_pdf(rows, meta)
+        return Response(content=data, media_type="application/pdf",
+                        headers={"Content-Disposition": 'attachment; filename="%s.pdf"' % base})
+    if fmt in ("png", "image", "img"):
+        data = DCR.build_png(rows, meta)
+        return Response(content=data, media_type="image/png",
+                        headers={"Content-Disposition": 'attachment; filename="%s.png"' % base})
+    raise HTTPException(400, "Unsupported format")
+
+
 # ============================= MVS Services — Notify all =============================
 @router.post("/services/{sid}/notify")
 def admin_services_notify(sid: int, payload: dict = None, db: Session = Depends(get_db), me=Depends(get_admin)):
