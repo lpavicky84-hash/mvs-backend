@@ -50472,10 +50472,10 @@ function _deviceKind(){
     return 'desktop';
   }catch(e){ return 'desktop'; }
 }
-function _stopDlBlink(){ try{ var b=document.getElementById('s-dlapp-btn'); if(b) b.classList.remove('blink'); }catch(e){} }
+function _stopDlBlink(){ try{ var b=document.getElementById('s-hdr-dlapp'); if(b) b.classList.remove('blink'); }catch(e){} }
 function _initDownloadAppBtn(){
   try{
-    var btn=document.getElementById('s-dlapp-btn'); if(!btn) return;
+    var btn=document.getElementById('s-hdr-dlapp'); if(!btn) return;
     var k=_deviceKind();
     // PC par ya already-installed app (standalone) me button chhupa do.
     if(k==='desktop' || _isStandalonePWA()){ btn.style.display='none'; return; }
@@ -50497,41 +50497,69 @@ function _doApkDownload(){
 }
 function openDownloadApp(){
   var k=_deviceKind();
-  if(k==='ios'){ try{ localStorage.setItem('mvs_app_ios_seen','1'); }catch(e){} _stopDlBlink(); }
-  _appSheet(k==='ios'?'ios':'android');
+  window._dlKind=(k==='ios'?'ios':'android');
+  if(k==='ios'){ try{ localStorage.setItem('mvs_app_ios_seen','1'); }catch(e){} }
+  _stopDlBlink();
+  _appSheet();
 }
-function _dlStep(n, en, hi){
-  return '<div class="dla-step"><div class="dla-num">'+n+'</div><div class="dla-tx"><div class="dla-en">'+en+'</div><div class="dla-hi">'+hi+'</div></div></div>';
+function _dlToggleLang(){ window._dlLang=(window._dlLang==='hi'?'en':'hi'); _appSheet(); }
+function _dlStep(n, html){
+  return '<div class="dla-step"><div class="dla-num">'+n+'</div><div class="dla-tx">'+html+'</div></div>';
 }
-function _appSheet(kind){
+function _dlContent(){
+  var kind=window._dlKind||'android', L=(window._dlLang==='hi'?'hi':'en'), C={};
+  if(kind==='ios'){
+    C.en={title:'Add MVS to your Home Screen',
+      steps:['Tap the <b>Share</b> button at the bottom of Safari.',
+             'Scroll down and tap <b>Add to Home Screen</b>.',
+             'Tap <b>Add</b> — the MVS app icon appears on your Home Screen.',
+             'Open it, log in, and turn on notifications.'],
+      safe:'<b>Completely safe.</b> Apple installs apps only through this one-time Home Screen step — there is nothing to download and nothing to worry about.',
+      action:'Got it', fn:''};
+    C.hi={title:'MVS को Home Screen पर जोड़ें',
+      steps:['Safari में सबसे नीचे <b>Share</b> बटन दबाएँ।',
+             'नीचे स्क्रॉल करके <b>Add to Home Screen</b> दबाएँ।',
+             '<b>Add</b> दबाएँ — MVS आइकॉन आपके Home Screen पर आ जाएगा।',
+             'इसे खोलें, लॉगिन करें और नोटिफिकेशन ऑन करें।'],
+      safe:'<b>बिलकुल सुरक्षित।</b> Apple सिर्फ़ इस एक-बार के Home Screen स्टेप से ऐप इंस्टॉल करता है — कुछ डाउनलोड नहीं करना।',
+      action:'समझ गया', fn:''};
+  } else {
+    C.en={title:'Install the MVS Class Manager App',
+      steps:['Tap <b>Download App</b> below — the app file will start downloading.',
+             'Open the downloaded file. Android may warn <i>&ldquo;This type of file can harm your device.&rdquo;</i> This is normal for apps installed outside the Play Store — tap <b>Download anyway</b> / <b>Open</b>.',
+             'If asked, allow <b>Install unknown apps</b> for your browser, then tap <b>Install</b>.',
+             'Open the app, log in, and turn on notifications.'],
+      safe:'<b>&#10003; 100% Safe.</b> This is the official MVS Foundation app. That warning appears only because we give it to you directly instead of through the Play Store — nothing is wrong, and you can install it with full confidence to make your studies even stronger.',
+      action:'Download App', fn:'_doApkDownload()'};
+    C.hi={title:'MVS Class Manager ऐप इंस्टॉल करें',
+      steps:['नीचे <b>Download App</b> दबाएँ — ऐप फ़ाइल डाउनलोड होने लगेगी।',
+             'डाउनलोड हुई फ़ाइल खोलें। Android चेतावनी दिखा सकता है <i>&ldquo;यह फ़ाइल आपके डिवाइस को नुकसान पहुँचा सकती है।&rdquo;</i> Play Store के बाहर की ऐप्स के लिए यह सामान्य है — <b>Download anyway</b> / <b>Open</b> दबाएँ।',
+             'पूछे जाने पर अपने ब्राउज़र के लिए <b>Install unknown apps</b> allow करें, फिर <b>Install</b> दबाएँ।',
+             'ऐप खोलें, लॉगिन करें और नोटिफिकेशन ऑन करें।'],
+      safe:'<b>&#10003; 100% सुरक्षित।</b> यह आधिकारिक MVS Foundation ऐप है। यह चेतावनी सिर्फ़ इसलिए आती है क्योंकि हम इसे आपको सीधे दे रहे हैं, Play Store से नहीं — कोई दिक्कत नहीं, पूरे भरोसे के साथ इंस्टॉल करके अपनी पढ़ाई और मज़बूत बनाएँ।',
+      action:'Download App', fn:'_doApkDownload()'};
+  }
+  return C[L];
+}
+function _appSheet(){
   var old=document.getElementById('dlapp-sheet'); if(old) old.remove();
   _dlAppCss();
-  var icon='<img src="/app-icon/student.png" alt="MVS" onerror="this.onerror=null;this.src=\''+_logoSrc()+'\'" style="width:54px;height:54px;border-radius:14px;object-fit:cover;flex:0 0 auto;box-shadow:0 8px 20px -8px rgba(0,0,0,.5)">';
-  var steps, action, safe, titleEn, titleHi;
-  if(kind==='ios'){
-    titleEn='Add MVS to your Home Screen'; titleHi='MVS ko Home Screen par add karein';
-    steps=_dlStep('1','Tap the <b>Share</b> button at the bottom of Safari.','Safari ke neeche <b>Share</b> button dabayein.')
-      +_dlStep('2','Scroll down and tap <b>Add to Home Screen</b>.','Neeche scroll karke <b>Add to Home Screen</b> dabayein.')
-      +_dlStep('3','Tap <b>Add</b> — the MVS app icon appears on your Home Screen.','<b>Add</b> dabayein — MVS app ka icon aapke Home Screen par aa jayega.')
-      +_dlStep('4','Open it, log in, and turn on notifications.','Ise kholein, login karein aur notifications on karein.');
-    safe='<b>Completely safe.</b> Apple installs apps only through this one-time Home Screen step — there is nothing to download and nothing to worry about.<div class="dla-hi">Apple sirf is ek-baar wale Home Screen step se app install karta hai — kuch download nahi karna, ghabrane ki koi baat nahi.</div>';
-    action='<button class="dla-go" onclick="(function(){var x=document.getElementById(\'dlapp-sheet\');if(x)x.remove();})()">Got it / Samajh gaya</button>';
-  } else {
-    titleEn='Install the MVS Class Manager App'; titleHi='MVS Class Manager app install karein';
-    steps=_dlStep('1','Tap <b>Download App</b> below — the app file will start downloading.','Neeche <b>Download App</b> dabayein — app file download hone lagegi.')
-      +_dlStep('2','Open the downloaded file. Android may warn <i>&ldquo;This type of file can harm your device.&rdquo;</i> This is normal for apps installed outside the Play Store — tap <b>Download anyway</b> / <b>Open</b>.','Download hui file kholein. Android <i>&ldquo;is tarah ki file aapke device ko nuksan pahuncha sakti hai&rdquo;</i> warning dikha sakta hai. Play Store ke bahar wale apps ke liye yeh bilkul normal hai — <b>Download anyway</b> / <b>Open</b> dabayein.')
-      +_dlStep('3','If asked, allow <b>Install unknown apps</b> for your browser, then tap <b>Install</b>.','Agar pooche to browser ke liye <b>Install unknown apps</b> allow karein, phir <b>Install</b> dabayein.')
-      +_dlStep('4','Open the app, log in, and turn on notifications.','App kholein, login karein aur notifications on karein.');
-    safe='<b>&#10003; 100% Safe.</b> This is the official MVS Foundation app. That warning appears only because we give it to you directly instead of through the Play Store — nothing is wrong, and you can install it with full confidence to make your studies even stronger.<div class="dla-hi">Yeh official MVS Foundation app hai. Warning sirf isliye aati hai kyunki hum ise aapko seedha de rahe hain, Play Store se nahi — koi dikkat nahi, aap poore bharose ke saath install karke apni padhai aur strong bana sakte ho.</div>';
-    action='<button class="dla-go" onclick="_doApkDownload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><line x1="5" y1="21" x2="19" y2="21"/></svg>Download App</button>'
-      +'<div id="dlapp-doneline" class="dla-done" style="display:none">&#10003; Download started! Check your notification bar, then open the file.<br>Download shuru ho gaya! Notification bar me dekhein, phir file kholein.</div>';
-  }
+  var L=(window._dlLang==='hi'?'hi':'en');
+  var d=_dlContent();
+  var icon='<img src="/app-icon/student.png" alt="MVS" onerror="this.onerror=null;this.src=\''+_logoSrc()+'\'" style="width:50px;height:50px;border-radius:13px;object-fit:cover;flex:0 0 auto;box-shadow:0 8px 20px -8px rgba(0,0,0,.5)">';
+  var toggle='<button class="dla-lang" onclick="_dlToggleLang()" title="Change language">'+(L==='en'?'हिंदी':'English')+'</button>';
+  var steps=d.steps.map(function(s,i){ return _dlStep(i+1, s); }).join('');
+  var hasDl=!!d.fn;
+  var action='<button class="dla-go" onclick="'+(d.fn||'(function(){var x=document.getElementById(\'dlapp-sheet\');if(x)x.remove();})()')+'">'
+    +(hasDl?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><line x1="5" y1="21" x2="19" y2="21"/></svg>':'')
+    +d.action+'</button>'
+    +(hasDl?'<div id="dlapp-doneline" class="dla-done" style="display:none">'+(L==='hi'?'&#10003; डाउनलोड शुरू! Notification bar में देखें, फिर फ़ाइल खोलें।':'&#10003; Download started! Check your notification bar, then open the file.')+'</div>':'');
   var ov=document.createElement('div'); ov.id='dlapp-sheet'; ov.className='dla-ov';
   ov.innerHTML='<div class="dla-sheet">'
     +'<div class="dla-grip"></div>'
-    +'<div class="dla-head">'+icon+'<div style="min-width:0"><div class="dla-title">'+titleEn+'</div><div class="dla-sub">'+titleHi+'</div></div><button class="dla-x" onclick="(function(){var x=document.getElementById(\'dlapp-sheet\');if(x)x.remove();})()">&times;</button></div>'
+    +'<div class="dla-head">'+icon+'<div class="dla-ttlwrap"><div class="dla-title">'+d.title+'</div></div>'+toggle+'<button class="dla-x" onclick="(function(){var x=document.getElementById(\'dlapp-sheet\');if(x)x.remove();})()">&times;</button></div>'
     +'<div class="dla-steps">'+steps+'</div>'
-    +'<div class="dla-safe">'+safe+'</div>'
+    +'<div class="dla-safe">'+d.safe+'</div>'
     +'<div class="dla-foot">'+action+'</div>'
     +'</div>';
   ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
@@ -50550,13 +50578,14 @@ function _dlAppCss(){
   +'.dla-head{display:flex;align-items:center;gap:13px;margin-bottom:16px}'
   +'.dla-title{font-weight:900;font-size:1.1rem;color:var(--text,#2a2416);line-height:1.2}'
   +'.dla-sub{font-size:.8rem;color:var(--text-muted,#8a8168);margin-top:2px}'
-  +'.dla-x{margin-left:auto;background:none;border:none;font-size:1.6rem;line-height:1;color:var(--text-muted,#8a8168);cursor:pointer;padding:0 4px;flex:0 0 auto}'
+  +'.dla-ttlwrap{flex:1 1 auto;min-width:0}'
+  +'.dla-lang{flex:0 0 auto;background:rgba(201,150,46,.14);border:1px solid rgba(201,150,46,.42);color:#9a7d1a;font-weight:800;font-size:.76rem;padding:6px 13px;border-radius:999px;cursor:pointer;white-space:nowrap}'
+  +'.dla-lang:hover{background:rgba(201,150,46,.22)}'
+  +'.dla-x{background:none;border:none;font-size:1.6rem;line-height:1;color:var(--text-muted,#8a8168);cursor:pointer;padding:0 2px;flex:0 0 auto}'
   +'.dla-steps{display:flex;flex-direction:column;gap:13px;margin-bottom:16px}'
   +'.dla-step{display:flex;align-items:flex-start;gap:12px}'
   +'.dla-num{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#e2b458,#c9972a);color:#3a2e07;font-weight:800;font-size:.86rem;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px -4px rgba(201,150,46,.8)}'
-  +'.dla-tx{min-width:0}'
-  +'.dla-en{font-size:.9rem;line-height:1.5;color:var(--text,#2a2416)}'
-  +'.dla-hi{font-size:.82rem;line-height:1.5;color:var(--text-muted,#8a8168);margin-top:2px}'
+  +'.dla-tx{min-width:0;font-size:.9rem;line-height:1.55;color:var(--text,#2a2416)}'
   +'.dla-safe{font-size:.82rem;line-height:1.55;color:var(--text,#2a2416);background:linear-gradient(135deg,rgba(22,163,74,.1),rgba(22,163,74,.04));border:1px solid rgba(22,163,74,.28);border-radius:13px;padding:12px 14px;margin-bottom:16px}'
   +'.dla-go{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:14px;border:none;border-radius:14px;font-weight:800;font-size:1rem;color:#3a2e07;background:linear-gradient(135deg,#f0d793,#e2b458);box-shadow:0 10px 24px -10px rgba(201,150,46,.9);cursor:pointer}'
   +'.dla-go svg{width:19px;height:19px}'
@@ -50599,8 +50628,8 @@ function _pushShowNudge(){
   _pushCss();
   var d=document.createElement('div'); d.id='push-nudge'; d.className='push-nudge';
   d.innerHTML='<div class="pn-ic">'+ic('bell')+'</div>'
-    +'<div class="pn-tx"><b>Turn on phone alerts</b><span>Get class updates &amp; notices on your phone.</span></div>'
-    +'<button class="pn-yes" id="push-nudge-yes">Enable</button>'
+    +'<div class="pn-tx"><b>Never miss an announcement</b><span>Turn on notifications for class alerts &amp; updates — even when the app is closed.</span></div>'
+    +'<button class="pn-yes" id="push-nudge-yes">Turn on</button>'
     +'<button class="pn-no" id="push-nudge-no">×</button>';
   document.body.appendChild(d);
   document.getElementById('push-nudge-yes').onclick=_pushEnable;
