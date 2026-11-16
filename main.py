@@ -1128,6 +1128,28 @@ def _serve_manifest(start: str = "/"):
               headers={"Cache-Control": "public, max-age=600"})
 
 
+@app.get("/.well-known/assetlinks.json")
+def _assetlinks():
+    """Android TWA/APP verification. Jab aap APK banayenge, uski signing SHA-256
+    fingerprint yahan env se aa jaayegi — tab Android app is domain se verify ho jaayega
+    (URL bar hat jaata hai, push native app me bhi chalta hai).
+    Env: ANDROID_ASSETLINKS (poora JSON) OR ANDROID_PACKAGE + ANDROID_CERT_SHA256 (comma-sep)."""
+    from fastapi.responses import Response as _R
+    import json as _json
+    raw = (os.getenv("ANDROID_ASSETLINKS") or "").strip()
+    if raw:
+        return _R(content=raw, media_type="application/json")
+    fp = (os.getenv("ANDROID_CERT_SHA256") or "").strip()
+    pkg = (os.getenv("ANDROID_PACKAGE") or "in.mvsfoundation.app").strip()
+    if not fp:
+        return JSONResponse(status_code=404, content=[])
+    prints = [x.strip() for x in fp.split(",") if x.strip()]
+    data = [{"relation": ["delegate_permission/common.handle_all_urls"],
+             "target": {"namespace": "android_app", "package_name": pkg,
+                        "sha256_cert_fingerprints": prints}}]
+    return _R(content=_json.dumps(data), media_type="application/json")
+
+
 # ===== Public shareable test page (guest, no login) — /t/<token> =====
 _PUBLIC_TEST_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public_test.html")
 _SCHOLARSHIP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scholarship.html")

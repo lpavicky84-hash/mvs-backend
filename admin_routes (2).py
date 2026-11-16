@@ -1,0 +1,12892 @@
+import re
+import secrets
+import string
+try:
+    import subjects_registry as _SR
+except Exception:
+    _SR = None
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session, defer
+from sqlalchemy import func
+from datetime import datetime, date, timedelta
+from typing import List, Optional
+
+from database import get_db
+from security import get_admin, get_current_user, hash_password, decode_token as _dec_tok
+from models import (
+    User, TeacherProfile, StudentProfile, ClassEntry, ClassStatus,
+    RescheduleRequest, RescheduleStatus, Doubt, DoubtStatus,
+    DPP, Test, TestSubmission, DPPSubmission, Notification, UserRole,
+    Exam, ExamQuestion, ExamAttempt, ist_iso, ist_now, ist_today
+)
+from schemas import (
+    RescheduleReview, RescheduleOut, UserOut, AdminDashboard,
+    RegisterRequest
+)
+from security import hash_password
+
+def _hsafe(_n):
+    """HTTP header (latin-1) safe filename — curly quotes/dashes ascii, baaki non-latin-1 drop."""
+    _n=(_n or "file")
+    for a,b in (("\u2019","'"),("\u2018","'"),("\u201c",'"'),("\u201d",'"'),("\u2013","-"),("\u2014","-")):
+        _n=_n.replace(a,b)
+    return _n.encode("latin-1","ignore").decode("latin-1") or "file"
+
+
+# ==================================================== v94: RESTRICTED SUB-ADMIN ACCESS
+# Super admin (allowed_sections = NULL) ko sab kuch milta hai.
+# Restricted admin ke liye sirf listed sections ke endpoints chalte hain.
+# Map: pehla path segment (/api/admin/<segment>/...) -> sidebar section key.
+ADMIN_SECTION_MAP = {
+    "community": "community",
+    "dashboard": "dashboard", "portal-overview": "dashboard", "activity": "dashboard", "my-ip": "dashboard",
+    "pending-classes": "approvals", "tt-reschedules": "approvals", "reschedules": "approvals",
+    "app-reviews": "approvals", "letter-remarks": "approvals", "class": "approvals",
+    "live-students": "live", "live-users": "live", "user": "live",
+    "timetable-entry": "timetable", "timetable-all": "timetable", "timetable-clear": "timetable",
+    "timetable-pdf": "timetable", "timetable-pdf-commit": "timetable", "timetable-subject": "timetable",
+    "timetable-copy": "timetable",
+    "studio-reports": "timetable",
+    "class-report-backfill": "timetable",
+    "batch-restart": "timetable", "batch-archives": "timetable",
+    "batch-archive-update": "timetable", "batch-archive-restore": "timetable",
+    "questionbank": "qbank",
+    "material": "material", "materials-tree": "material", "pending-materials": "material",
+    "dpp-pack-pdf": "material",
+    "doubt": "doubts", "doubts": "doubts", "doubts-overview": "doubts",
+    "exam": "tests", "exams": "tests", "dpp-packs": "tests",
+    "teacher": "teachers", "teachers": "teachers", "warn-teacher": "teachers", "credentials": "teachers",
+    "class-reports": "reports",
+    "dpp-rankings": "tranks",
+    "class-compliance": "compliance",
+    "attendance": "attendance", "leaves": "attendance", "office-location": "attendance", "session-deadlines": "attendance",
+    "ai-format-config": "subjects",
+    "student": "students", "students": "students", "students-list": "students",
+    "student-counts": "students", "reset-password": "students",
+    "subjects": "subjects",
+    "earnings": "payouts", "payout-task": "payouts", "payouts": "payouts", "payout-approvals": "payouts",
+    "payout-adjust": "payouts", "passcode-resets": "payouts",
+    "contracts-overview": "payouts", "contracts-bulk": "payouts",
+    "admins": "admins", "reset-data": "admins", "whatsapp": "admins", "orphan-data": "admins",
+    "notify": "notify", "notify-targets": "notify", "broadcast": "notify",
+    "video-channels": "vtasks", "video-types": "vtasks", "video-tasks": "vtasks",
+    # Category portal (Phase 17)
+    "categories": "categories", "category-subjects": "categories",
+    "category-materials": "categories", "work-types": "categories",
+    "material-submissions": "matcheck", "material-versions": "matcheck",
+    "material-attachments": "matcheck",
+    # Complaints & Feedback
+    "complaints": "complaints", "complaint-categories": "complaints",
+    "complaint-analytics": "complaints", "complaint-attachments": "complaints",
+    "complaint-resolvers": "complaints",
+    "feedback": "feedback", "feedback-analytics": "feedback",
+}
+
+# Kuch sections ke endpoints ek se zyada section-permission se khulte hain.
+# Urgent Videos page bhi wahi /api/admin/video-tasks endpoints use karta hai jo
+# Task Manager karta hai — isliye 'urgent' section wale admin ko bhi allow karo.
+ADMIN_SECTION_ALIASES = {"vtasks": {"vtasks", "urgent"}}
+
+
+def admin_allowed_sections(user):
+    """None = full access; otherwise set of allowed section keys."""
+    secs = getattr(user, "allowed_sections", None)
+    if secs is None:
+        return None
+    return set(secs or [])
+
+
+def _needs_payout_token(path: str) -> bool:
+    """Confidential SALARY endpoints that require an unlocked payout session (spec
+    PART 56). Kept explicit (not whole 'payouts' section) so shared endpoints like
+    passcode-resets / contracts stay reachable in the general approvals view."""
+    p = path or ""
+    return (p.startswith("/api/admin/earnings")
+            or p.startswith("/api/admin/payouts")
+            or p.startswith("/api/admin/payout-task")
+            or p.startswith("/api/admin/payout-approvals")
+            or p.startswith("/api/admin/payout-adjust")
+            or p.startswith("/api/admin/payout-deduction")
+            or p.startswith("/api/admin/payout-lifecycle")
+            or p.startswith("/api/admin/incentive")
+            or (p.startswith("/api/admin/teacher/") and "/payout" in p))
+
+
+def _require_payout_token(request: Request, current_user):
+    """428 unless a valid, unexpired payout-access token is present (from unlock)."""
+    tok = request.headers.get("X-Payout-Token") or request.query_params.get("ptoken") or ""
+    if not tok:
+        raise HTTPException(status_code=428, detail="Payout locked — unlock required")
+    try:
+        payload = _dec_tok(tok)
+    except Exception:
+        raise HTTPException(status_code=428, detail="Payout session expired — unlock again")
+    if payload.get("scope") != "payout" or str(payload.get("sub")) != str(current_user.id):
+        raise HTTPException(status_code=428, detail="Payout session invalid — unlock again")
+
+
+def admin_section_guard(request: Request, current_user=Depends(get_admin)):
+    """Router-level guard: restricted sub-admin sirf apne allowed sections ke
+    endpoints call kar sakta hai. Unmapped endpoints (e.g. notifications bell)
+    sabke liye open rehte hain — safe default. Plus: confidential salary endpoints
+    need an unlocked payout session (secure payout access)."""
+    path = request.url.path  # e.g. /api/admin/earnings/configs
+    allowed = admin_allowed_sections(current_user)
+    if allowed is not None and path.startswith("/api/admin/"):
+        parts = path.split("/")
+        first = parts[3] if len(parts) > 3 else ""
+        sec = ADMIN_SECTION_MAP.get(first)
+        if sec is not None:
+            acceptable = ADMIN_SECTION_ALIASES.get(sec, {sec})
+            if allowed.isdisjoint(acceptable):
+                raise HTTPException(status_code=403, detail="You do not have access to this section.")
+    # secure payout access — salary endpoints require an active unlocked session
+    if _needs_payout_token(path):
+        _require_payout_token(request, current_user)
+    return current_user
+
+
+router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(admin_section_guard)])
+
+
+def _ensure_batches_seed():
+    """Create the batches table (if missing) and seed it from the legacy BatchName enum.
+    Runs at import so the table always exists. Purely additive — safe."""
+    try:
+        from database import engine, SessionLocal
+        from models import Base, Batch, BatchName
+        try:
+            Base.metadata.create_all(bind=engine, tables=[Batch.__table__])
+        except Exception:
+            pass
+        # additive columns for existing batches tables
+        try:
+            from sqlalchemy import text as _bt
+            for _st in ["ALTER TABLE batches ADD COLUMN banner_b64 MEDIUMTEXT NULL",
+                        "ALTER TABLE batches ADD COLUMN welcome_message VARCHAR(1000) DEFAULT ''",
+                        "ALTER TABLE batches ADD COLUMN mode VARCHAR(16) DEFAULT 'live'",
+                        "ALTER TABLE batches ADD COLUMN session VARCHAR(40) DEFAULT ''"]:
+                try:
+                    with engine.connect() as conn:
+                        conn.execute(_bt(_st))
+                        conn.commit()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        db = SessionLocal()
+        try:
+            _all = db.query(Batch).all()
+            existing = {b.code for b in _all}
+            # name-aware guard: if a batch with this DISPLAY NAME already exists (e.g. as a
+            # session card like "Lakshya Arts · October 2026", or a renamed card), do NOT
+            # re-seed it — otherwise a duplicate you deleted would silently come back on the
+            # next restart. A core batch is only re-seeded when its name is truly gone.
+            existing_names = {(b.name or "").strip().lower() for b in _all}
+            added = 0
+            for i, bn in enumerate(BatchName):
+                code = bn.name
+                nm = bn.value
+                if code in existing:
+                    continue
+                if (nm or "").strip().lower() in existing_names:
+                    continue
+                low = nm.lower()
+                typ = ("Science" if "science" in low else
+                       "Commerce" if "commerce" in low else
+                       "Arts" if "arts" in low else
+                       "Class 10" if "10" in low else "")
+                db.add(Batch(code=code, name=nm, type=typ, status="live", active=True, sort=i))
+                existing_names.add((nm or "").strip().lower())
+                added += 1
+            if added:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_ensure_batches_seed()
+
+def _ensure_batch_link():
+    """Add student_profiles.batch_id (if missing) and backfill it from existing batch/batch_name.
+    Import-time, idempotent, bounded. Additive — the old fields stay authoritative for now."""
+    try:
+        from database import engine, SessionLocal
+        from sqlalchemy import text as _t
+        try:
+            with engine.connect() as conn:
+                conn.execute(_t("ALTER TABLE student_profiles ADD COLUMN batch_id INTEGER NULL"))
+                conn.commit()
+        except Exception:
+            pass  # column already exists
+        from models import Batch, StudentProfile
+        import re as _re
+        db = SessionLocal()
+        try:
+            by_name = {b.name: b.id for b in db.query(Batch).all()}
+            # Only backfill from students who are NOT already linked to a batch (batch_id IS
+            # NULL). A student who already has a batch_id is properly placed — their legacy
+            # batch_name is just history and must NOT resurrect a batch you deleted (e.g. a
+            # merged duplicate whose old name still sits in batch_name).
+            distinct_names = [r[0] for r in db.query(StudentProfile.batch_name)
+                              .filter(StudentProfile.batch_name != None, StudentProfile.batch_name != "",
+                                      StudentProfile.batch_id == None)
+                              .distinct().all()]
+            mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+            nxt = (mx.sort + 1) if mx else 0
+            created = 0
+            for nm in distinct_names:
+                nm = (nm or "").strip()
+                if not nm or nm in by_name:
+                    continue
+                base = _re.sub(r"[^a-z0-9]+", "_", nm.lower()).strip("_") or "batch"
+                code = base
+                k = 1
+                while db.query(Batch).filter(Batch.code == code).first():
+                    k += 1
+                    code = base + "_" + str(k)
+                nb = Batch(code=code, name=nm, type="", status="live", active=True, sort=nxt)
+                db.add(nb)
+                db.flush()
+                by_name[nm] = nb.id
+                nxt += 1
+                created += 1
+            if created:
+                db.commit()
+            unlinked = db.query(StudentProfile).filter(StudentProfile.batch_id == None).limit(8000).all()
+            changed = 0
+            for sp in unlinked:
+                name = None
+                if getattr(sp, "batch_name", None):
+                    name = (sp.batch_name or "").strip()
+                elif getattr(sp, "batch", None) is not None:
+                    name = getattr(sp.batch, "value", sp.batch)
+                if name and name in by_name:
+                    sp.batch_id = by_name[name]
+                    changed += 1
+            if changed:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_ensure_batch_link()
+
+
+def _ensure_tt_youtube_startup():
+    """Add timetable_entries.youtube_link at STARTUP (before any read), so ORM queries that
+    now include the column never fail on databases that don't have it yet."""
+    try:
+        from database import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            for _st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
+                        "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+            for _st in ("ALTER TABLE materials ADD COLUMN batch_id INTEGER NULL",
+                        "ALTER TABLE materials ADD COLUMN batch_id INTEGER"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+            for _st in ("ALTER TABLE dpp_packs ADD COLUMN batch_id INTEGER NULL",
+                        "ALTER TABLE dpp_packs ADD COLUMN batch_id INTEGER"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+            for _st in ("ALTER TABLE exams ADD COLUMN batch_id INTEGER NULL",
+                        "ALTER TABLE exams ADD COLUMN batch_id INTEGER"):
+                try:
+                    _db.execute(_t(_st)); _db.commit(); break
+                except Exception:
+                    _db.rollback()
+        finally:
+            _db.close()
+    except Exception:
+        pass
+
+
+_ensure_tt_youtube_startup()
+
+
+def _ensure_enrollments():
+    """Create student_batches (if missing) and backfill one enrollment per student's primary batch.
+    Import-time, idempotent, bounded, additive."""
+    try:
+        from database import engine, SessionLocal
+        from models import Base, StudentBatch, StudentProfile, BatchSubject
+        try:
+            Base.metadata.create_all(bind=engine, tables=[StudentBatch.__table__, BatchSubject.__table__])
+        except Exception:
+            pass
+        db = SessionLocal()
+        try:
+            have = {(e.student_id, e.batch_id) for e in db.query(StudentBatch).all()}
+            rows = (db.query(StudentProfile.id, StudentProfile.batch_id)
+                    .filter(StudentProfile.batch_id != None).limit(8000).all())
+            added = 0
+            for sid, bid in rows:
+                if (sid, bid) in have:
+                    continue
+                db.add(StudentBatch(student_id=sid, batch_id=bid, is_primary=True))
+                have.add((sid, bid))
+                added += 1
+            if added:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_ensure_enrollments()
+
+
+def _dedupe_student_batches():
+    """Remove ONLY true duplicate enrolment rows: the SAME student in the SAME batch
+    (same batch_id) more than once. A student enrolled in DIFFERENT batches — e.g.
+    "Lakshya Science October 2026" + "Lakshya Science Crash Course", or October + April —
+    is NOT a duplicate and is always kept (batch_id is different). Also drops rows that
+    point at a batch that no longer exists. Import-time, idempotent, safe.
+    NOTE: dedup is by batch_id, NEVER by name, so genuine multi-batch students never lose
+    an enrolment. This matches the DB unique constraint uq_student_batch(student_id,batch_id)."""
+    try:
+        from database import SessionLocal
+        from models import StudentBatch, Batch
+        db = SessionLocal()
+        try:
+            valid_batch = set(bid for (bid,) in db.query(Batch.id).all())
+            seen = {}       # (student_id, batch_id) -> keeper row
+            removed = 0
+            for e in db.query(StudentBatch).order_by(StudentBatch.id.asc()).all():
+                if e.batch_id not in valid_batch:        # enrolment to a deleted batch -> drop
+                    db.delete(e); removed += 1; continue
+                key = (e.student_id, e.batch_id)
+                if key in seen:
+                    if e.is_primary and not seen[key].is_primary:
+                        seen[key].is_primary = True      # preserve primary flag before dropping
+                    db.delete(e); removed += 1
+                else:
+                    seen[key] = e
+            if removed:
+                db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+
+_dedupe_student_batches()
+
+
+def _ensure_perf_indexes():
+    """Create indexes on hot-path columns that were added via raw ALTER (no auto-index).
+    Import-time, safe — skipped silently if the index already exists."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+        stmts = [
+            "CREATE INDEX ix_student_profiles_batch_id ON student_profiles (batch_id)",
+            "CREATE INDEX ix_video_tasks_video_type ON video_tasks (video_type)",
+        ]
+        for st in stmts:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(st))
+                    conn.commit()
+            except Exception:
+                pass  # already exists / not applicable
+    except Exception:
+        pass
+
+
+_ensure_perf_indexes()
+
+
+def _ensure_timetable_batch():
+    """Add timetable_entries.batch_id (if missing) + index. Import-time, safe, additive.
+    NULL batch_id = legacy/global entry (backward compatible)."""
+    try:
+        from database import engine
+        from sqlalchemy import text as _t
+        for st in [
+            "ALTER TABLE timetable_entries ADD COLUMN batch_id INTEGER NULL",
+            "CREATE INDEX ix_timetable_entries_batch_id ON timetable_entries (batch_id)",
+        ]:
+            try:
+                with engine.connect() as conn:
+                    conn.execute(_t(st))
+                    conn.commit()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+_ensure_timetable_batch()
+
+def _resolve_batch_id(db, name):
+    """Batch.id for a display name, creating the Batch if needed. None for empty. Used for dual-write."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    from models import Batch
+    import re as _re
+    b = db.query(Batch).filter(Batch.name == name).first()
+    if b:
+        return b.id
+    base = _re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "batch"
+    code = base
+    k = 1
+    while db.query(Batch).filter(Batch.code == code).first():
+        k += 1
+        code = base + "_" + str(k)
+    mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    nb = Batch(code=code, name=name, type="", status="live", active=True, sort=((mx.sort + 1) if mx else 0))
+    db.add(nb)
+    db.flush()
+    return nb.id
+
+
+# ==================================================================
+#  SESSION-AWARE BATCHES  (session split)
+#  A batch CARD = (base name, session). "Lakshya Science" can have an
+#  "October 2026" card and an "April 2027" card; future sessions
+#  ("October 2027" ...) create their own cards automatically on upload.
+#  A student's own exam_session field is NEVER changed for grouping —
+#  a Stream-2 student keeps exam_session='stream2' (so the Students
+#  section can still filter Stream-2 separately) but is shown inside the
+#  current October card.
+# ==================================================================
+
+# The live October session that Stream-1 / Stream-2 students group under.
+# Bump this when the running October session rolls over (e.g. "October 2027").
+_CURRENT_OCT_SESSION = "October 2026"
+
+_MONTH_FULL = {"jan": "January", "feb": "February", "mar": "March", "apr": "April",
+               "may": "May", "jun": "June", "jul": "July", "aug": "August",
+               "sep": "September", "oct": "October", "nov": "November", "dec": "December"}
+
+
+def _parse_batch_and_session(text):
+    """From a sheet batch string -> (base_name, session_label, exam_session_id).
+
+    'Lakshya Science Oct. 2026'   -> ('Lakshya Science', 'October 2026', 'oct2026')
+    'Lakshya Science April 2027'  -> ('Lakshya Science', 'April 2027', 'apr2027')
+    '... Stream 2'                -> (base, 'October 2026', 'stream2')  # grouped under Oct
+    """
+    base = _normalize_batch(text)
+    t = (text or "").strip().lower()
+    if not t:
+        return base, "", ""
+    import re as _re
+    m = _re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?\s*(20\d{2})", t)
+    if m:
+        mon = m.group(1)[:3]
+        yr = m.group(2)
+        return base, (_MONTH_FULL[mon] + " " + yr), (mon + yr)
+    if "stream" in t and "2" in t:
+        return base, _CURRENT_OCT_SESSION, "stream2"
+    if "stream" in t and "1" in t:
+        return base, _CURRENT_OCT_SESSION, ""   # exam_session set elsewhere from portal
+    return base, "", ""
+
+
+def _session_id_to_batch_label(db, sid):
+    """exam_session id -> the batch session label it groups under.
+    oct2026->'October 2026', apr2027->'April 2027', stream1/stream2->current October,
+    ondemand / unknown -> '' (not a Lakshya/Udaan session bucket)."""
+    sid = (sid or "").strip().lower()
+    if not sid:
+        return ""
+    import re as _re
+    m = _re.fullmatch(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(20\d{2})", sid)
+    if m:
+        return _MONTH_FULL[m.group(1)] + " " + m.group(2)
+    if sid in ("stream1", "stream2"):
+        return _CURRENT_OCT_SESSION
+    return ""
+
+
+def _session_friendly(sid):
+    """Session id -> human label for DISPLAY (never blank if sid present).
+    apr2027->'April 2027', oct2026->'October 2026', stream2->'Stream 2',
+    ondemand->'On Demand'. Unknown -> raw as-is."""
+    sid = (sid or "").strip()
+    if not sid:
+        return ""
+    import re as _re
+    m = _re.fullmatch(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)(20\d{2})", sid.lower())
+    if m:
+        return _MONTH_FULL[m.group(1)] + " " + m.group(2)
+    low = sid.lower()
+    if low == "stream2":
+        return "Stream 2"
+    if low == "stream1":
+        return "Stream 1"
+    if low == "ondemand":
+        return "On Demand"
+    return sid
+
+
+def _student_batch_fields(db, sp, bmap=None):
+    """Ek student ke liye batch ka DISPLAY naam + session nikaalta hai — hamesha
+    session ke saath. Pehle linked Batch (batch_id) se session leta hai; na mile to
+    exam_session se derive karta hai. Returns (name, session_label, full_label)."""
+    name = (getattr(sp, "batch_name", "") or "").strip()
+    ses = ""
+    bid = getattr(sp, "batch_id", None)
+    if bid:
+        b = (bmap.get(bid) if bmap is not None else None)
+        if b is None and bmap is None:
+            from models import Batch as _B
+            b = db.query(_B).filter(_B.id == bid).first()
+        if b:
+            if (getattr(b, "name", "") or "").strip():
+                name = b.name.strip()
+            ses = (getattr(b, "session", "") or "").strip()
+    if not ses:
+        ses = _session_id_to_batch_label(db, getattr(sp, "exam_session", "") or "")
+    if not name:
+        return "", ses, ""
+    label = name + (" — " + ses if ses else "")
+    return name, ses, label
+
+
+def _norm_session_label(db, s):
+    """Kisi bhi session value ko canonical batch-session label ('April 2027' / 'October 2026')
+    mein badlo. BULLETPROOF/tolerant: id ('apr2027'), label ('April 2027'), weird spacing
+    (non-breaking space, double space), separators ('Apr-2027', 'apr_2027', 'April/2027'),
+    ulta order ('2027 April'), ya suffix ('apr2027 (Stream 1)') — sab handle. Month na mile to
+    stream/id/free-text mapping. Kuch na mile (ondemand/blank) -> '' (month-bucket nahi).
+
+    NOTE: pehle ye bahut strict tha (sirf 'April 2027' exact) -> jin students ka exam_session
+    kisi aur format me tha unka target '' aa jaata tha aur scan unhe SKIP kar deta tha
+    (isiliye 'all good' dikhta tha par batch galat rehta tha). Ab aisa nahi hoga."""
+    s = (s or "").strip()
+    if not s:
+        return ""
+    import re as _re
+    # saare separators (space, nbsp, - _ / . ,) ko single space banao
+    t = _re.sub(r"[\s \-_/.,]+", " ", s.lower()).strip()
+    mon = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*"
+    m = _re.search(r"\b" + mon + r"\s*(20\d{2})\b", t)        # 'april 2027' / 'apr2027'
+    if m:
+        return _MONTH_FULL[m.group(1)[:3]] + " " + m.group(2)
+    m2 = _re.search(r"\b(20\d{2})\s*" + mon + r"\b", t)        # '2027 april'
+    if m2:
+        return _MONTH_FULL[m2.group(2)[:3]] + " " + m2.group(1)
+    lbl = _session_id_to_batch_label(db, t.replace(" ", ""))   # id -> label (stream1/2 etc.)
+    if lbl:
+        return lbl
+    sid = _map_session_text(db, s)                             # free text -> id -> label
+    if sid:
+        lbl2 = _session_id_to_batch_label(db, sid)
+        if lbl2:
+            return lbl2
+    # aakhri koshish: display-friendly se month-year nikaalo
+    fr = _session_friendly(s)
+    m3 = _re.fullmatch(r"([A-Z][a-z]+) (20\d{2})", fr or "")
+    return fr if m3 else ""
+
+
+def _realign_one(db, sp, bmap=None, flush=True, dry=False, sbmap=None):
+    """SINGLE SOURCE OF TRUTH: ek student ko uske exam_session ke hisaab se sahi session-batch
+    par le jaao — teeno pointer sync: profile.batch_id, primary StudentBatch link, aur
+    active_batch_id. DISPLAY (batch_id) aur ACCESS (StudentBatch/active) dono mein se kisi bhi
+    jagah galat session ho to pakad leta hai (isi liye bug chhoot raha tha: October sirf
+    access-layer mein tha).
+    SAFE + idempotent: crash-course PRIMARY kabhi nahi chhedta; sirf SAME-COURSE purane-session
+    links hatata hai, dusre course ke add-on (crash) ko sirf non-primary karta hai, delete nahi.
+    dry=True -> koi DB change / batch-create nahi, bas mismatch detect karke sample deta hai
+    (scan preview isi se chalta hai -> preview aur apply ek hi logic).
+    sbmap -> {student_id: [StudentBatch,...]} prefetch (bulk scan me N+1 se bachne ke liye).
+    Returns a sample dict agar kuch change hua/hoga, warna None."""
+    from models import Batch, StudentBatch
+
+    def _b(bid):
+        if not bid:
+            return None
+        return (bmap.get(bid) if bmap is not None else db.query(Batch).get(bid))
+
+    def _sb_rows():
+        if sbmap is not None:
+            return list(sbmap.get(sp.id, []))
+        return db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
+
+    target_label = _norm_session_label(db, getattr(sp, "exam_session", "") or "")
+    if not target_label:                            # exam_session month-bucket nahi -> chhodo
+        return None
+
+    pbid = getattr(sp, "batch_id", None)
+    abid = getattr(sp, "active_batch_id", None)
+    _all_rows = _sb_rows()
+    prim_row = next((r for r in _all_rows if r.is_primary), None)
+    prim_bid = prim_row.batch_id if prim_row else None
+
+    # Agar student ka CURRENT primary (batch_id ya primary-link) crash-course hai -> deliberate
+    # add-on, kabhi mat chhedo (purana guarantee barqaraar).
+    _prim_b = _b(pbid) or _b(prim_bid)
+    if _prim_b and "crash" in ((_prim_b.name or "").lower()):
+        return None
+
+    # base course naam: pehla non-crash pointer, warna sales-sheet ka batch_name
+    cur_name = ""
+    for cand in (pbid, prim_bid, abid):
+        b = _b(cand)
+        if b and b.name and "crash" not in (b.name or "").lower():
+            cur_name = b.name.strip()
+            break
+    if not cur_name:
+        cur_name = (getattr(sp, "batch_name", "") or "").strip()
+    if not cur_name or "crash" in cur_name.lower():
+        return None
+    base_name = _normalize_batch(cur_name) or cur_name
+    if not base_name:
+        return None
+
+    # ---- mismatch detect karo (koi side-effect nahi: na create, na write) ----
+    cur_sessions = set()
+    for bid in (pbid, prim_bid, abid):
+        b = _b(bid)
+        if not b or "crash" in ((b.name or "").lower()):
+            continue
+        if (_normalize_batch(b.name or "") or (b.name or "").strip()) != base_name:
+            continue                                # sirf isi course ke pointers dekho
+        cur_sessions.add((getattr(b, "session", "") or "").strip())
+    # mismatch agar koi same-course pointer galat session par hai, YA is course ka koi
+    # session-batch pointer hai hi nahi (student ko sahi session-batch par rakhna hai)
+    mismatch = any(s != target_label for s in cur_sessions) or (not cur_sessions)
+    if not mismatch:
+        # Session sab sahi hai. Par active_batch_id None / same-course stale par ho to use
+        # SILENTLY aligned primary par le aao (purana behaviour) — ye koi session-mismatch
+        # nahi, isliye scan count me nahi aata (return None).
+        if not dry:
+            aligned_bid = None
+            for cand in (pbid, prim_bid):
+                b = _b(cand)
+                if b and (getattr(b, "session", "") or "").strip() == target_label \
+                        and (_normalize_batch(b.name or "") or (b.name or "").strip()) == base_name:
+                    aligned_bid = cand
+                    break
+            if aligned_bid:
+                ab = _b(abid)
+                ab_stale = bool(ab and "crash" not in ((ab.name or "").lower())
+                                and (_normalize_batch(ab.name or "") or "") == base_name
+                                and (getattr(ab, "session", "") or "").strip() != target_label)
+                if (abid is None or abid in (pbid, prim_bid) or ab_stale) \
+                        and getattr(sp, "active_batch_id", None) != aligned_bid:
+                    sp.active_batch_id = aligned_bid
+                    if flush:
+                        db.flush()
+        return None
+
+    _cb = _b(pbid) or _b(prim_bid) or _b(abid)
+    _from = ((_cb.name or "") + (" — " + _cb.session if (_cb and _cb.session) else "")) \
+        if _cb else (cur_name + " — (no batch)")
+    sample = {"id": sp.id, "from": _from, "to": base_name + " — " + target_label}
+    if dry:
+        return sample
+
+    # ---- APPLY: sahi session-batch resolve/create karke teeno pointer set karo ----
+    correct_id = _resolve_session_batch_id(db, base_name, target_label)
+    if not correct_id:
+        return None
+    rows = _all_rows
+    correct_row = next((r for r in rows if r.batch_id == correct_id), None)
+    for r in rows:
+        if r is correct_row:
+            continue
+        rb = _b(r.batch_id)
+        rb_name = (_normalize_batch(rb.name or "") or (rb.name or "").strip()) if rb else ""
+        same_course = bool(rb and "crash" not in ((rb.name or "").lower()) and rb_name == base_name)
+        if same_course:
+            db.delete(r)                            # same course ka purana-session link -> hatao
+        elif r.is_primary:
+            r.is_primary = False                    # dusra add-on: rakho, par primary nahi
+    if correct_row:
+        correct_row.is_primary = True
+    else:
+        db.add(StudentBatch(student_id=sp.id, batch_id=correct_id, is_primary=True))
+
+    old_ptrs = {pbid, prim_bid}
+    sp.batch_id = correct_id
+    sp.batch_name = base_name
+    if abid in old_ptrs or abid is None:
+        sp.active_batch_id = correct_id
+    else:
+        ab = _b(abid)                               # active kisi same-course stale par tha? to le jaao
+        if ab and "crash" not in ((ab.name or "").lower()) \
+                and (_normalize_batch(ab.name or "") or "") == base_name:
+            sp.active_batch_id = correct_id
+    if flush:
+        db.flush()
+    return sample
+
+
+def _force_primary_batch(db, sp, requested_name):
+    """Student batch-change request APPROVE: student jo batch maangta hai usi par le jaao —
+    session-aware (exam_session ka session-batch), aur TEENO pointer update: profile.batch_id,
+    primary StudentBatch link, active_batch_id. Isi liye pehle 'approve karne par batch change
+    nahi hota tha' — sirf naam set hota tha, access-layer (StudentBatch/active) nahi badalta tha.
+    Crash-course request -> add-on ke roop me (primary ko chhede bina). Returns applied label."""
+    from models import StudentBatch, Batch
+    bn = (requested_name or "").strip()
+    if not bn:
+        return ""
+    base = _normalize_batch(bn) or bn
+    is_crash = "crash" in base.lower() or "crash" in bn.lower()
+    ses_label = _norm_session_label(db, getattr(sp, "exam_session", "") or "")
+    if is_crash:
+        new_bid = _resolve_crash_batch_id(db, base)
+        if new_bid:
+            _ensure_primary_enrollment(db, sp.id)
+            _add_extra_enrollment(db, sp.id, new_bid)
+        db.flush()
+        _cb = db.query(Batch).get(new_bid) if new_bid else None
+        return ((_cb.name if _cb else base) + " (crash add-on)")
+    new_bid = _resolve_session_batch_id(db, base, ses_label) if ses_label else _resolve_batch_id(db, bn)
+    sp.batch_name = base
+    if not new_bid:
+        db.flush()
+        return base
+    sp.batch_id = new_bid
+    rows = db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all()
+    correct = None
+    for r in rows:
+        if r.batch_id == new_bid:
+            if correct is None:
+                correct = r
+            else:
+                db.delete(r)                         # duplicate link hatao
+    for r in rows:
+        if r is correct:
+            continue
+        rb = db.query(Batch).get(r.batch_id)
+        if rb and "crash" in ((rb.name or "").lower()):
+            r.is_primary = False                     # crash add-on rakho (primary nahi)
+        else:
+            db.delete(r)                             # purana non-crash enrollment hatao (course/session change)
+    if correct:
+        correct.is_primary = True
+    else:
+        db.add(StudentBatch(student_id=sp.id, batch_id=new_bid, is_primary=True))
+    sp.active_batch_id = new_bid
+    db.flush()
+    bb = db.query(Batch).get(new_bid)
+    return (bb.name + (" — " + bb.session if (bb and bb.session) else "")) if bb else base
+
+
+_BATCHFIX_ENGINE = "batchfix-v4 (all-pointers + tolerant-session)"
+
+
+def _scan_realign_session_batch(db, apply=False):
+    """Har student jiska exam_session ek month-session hai (April 2027 / October 2026),
+    uska batch (DISPLAY + ACCESS dono) usi session ka hona chahiye. Legacy data mein session
+    April hai par batch/StudentBatch/active October par linked hai -> galat access + galat
+    counting. Ye us mismatch ko dhoondhta (apply=False, dry-run) ya theek karta (apply=True) hai.
+
+    AHEM: ab batch_id-null wale bhi scan hote hain (October sirf access-layer mein ho to bhi
+    pakdega) — isiliye pehle kuch students chhoot rahe the. Preview aur apply EK HI _realign_one
+    logic use karte hain (dry flag), to 'preview 0 par asli mismatch' kabhi nahi hoga.
+    SAFE: crash-course PRIMARY kabhi nahi chhedta, idempotent (dobara -> 0 change)."""
+    from models import StudentProfile, Batch, StudentBatch
+    bmap = {b.id: b for b in db.query(Batch).all()}
+    sbmap = {}
+    for r in db.query(StudentBatch).all():          # ek hi query -> N+1 se bachao
+        sbmap.setdefault(r.student_id, []).append(r)
+    changed = 0
+    skipped_crash = 0
+    scanned = 0
+    samples = []
+    audit = []        # DIAGNOSTIC: display-level mismatch jahan engine ne flag nahi kiya
+    q = (db.query(StudentProfile)
+         .filter(StudentProfile.exam_session.isnot(None),
+                 StudentProfile.exam_session != ""))
+    # .all() — NOT yield_per: loop ke andar queries (sessions/batch) streaming cursor ko tod
+    # deti thi -> iteration sirf pehle 500 pe ruk jaati thi (8156 me se). Isi wajah se baaki
+    # ~7600 students kabhi scan hi nahi hote the aur 'all good' aata tha. Ab poori list memory
+    # me le aao (batches/enrollments pehle se memory me hain), phir safe iterate.
+    for sp in q.all():
+        scanned += 1
+        cur = bmap.get(sp.batch_id) if sp.batch_id else None
+        if cur and "crash" in (cur.name or "").lower():
+            skipped_crash += 1
+            continue
+        s = _realign_one(db, sp, bmap=bmap, dry=not apply, sbmap=sbmap)
+        if s:
+            changed += 1
+            if len(samples) < 50:
+                try:
+                    s["name"] = sp.user.name if sp.user else ""
+                except Exception:
+                    pass
+                samples.append(s)
+        # DIAGNOSTIC (preview only): jo admin card pe DIKHTA hai (display batch-session) use
+        # exam_session se compare karo. Agar alag hai par engine ne flag NAHI kiya -> yehi woh
+        # hidden case hai, raw values ke saath capture karo taaki asli wajah dikh jaaye.
+        if not apply and len(audit) < 15:
+            try:
+                _dn, _dses, _dlbl = _student_batch_fields(db, sp, bmap)
+                _en = _norm_session_label(db, sp.exam_session or "")
+                if _en and _dses and _dses.strip() != _en:
+                    _bb = bmap.get(sp.batch_id) if sp.batch_id else None
+                    _ab = bmap.get(sp.active_batch_id) if sp.active_batch_id else None
+                    audit.append({
+                        "id": sp.id,
+                        "name": (sp.user.name if sp.user else ""),
+                        "exam_raw": sp.exam_session,
+                        "exam_norm": _en,
+                        "display_batch_session": _dses,
+                        "batch_id": sp.batch_id,
+                        "batch_id_name": (getattr(_bb, "name", None) if _bb else None),
+                        "batch_id_session": (getattr(_bb, "session", None) if _bb else None),
+                        "active_batch_id": sp.active_batch_id,
+                        "active_session": (getattr(_ab, "session", None) if _ab else None),
+                        "batch_name_text": sp.batch_name,
+                        "engine_flagged": bool(s),
+                    })
+            except Exception:
+                pass
+    if apply:
+        db.commit()
+    try:
+        total_students = db.query(StudentProfile).count()
+        with_session = (db.query(StudentProfile)
+                        .filter(StudentProfile.exam_session.isnot(None),
+                                StudentProfile.exam_session != "").count())
+    except Exception:
+        total_students = with_session = None
+    return {"changed": changed, "skipped_crash": skipped_crash, "scanned": scanned,
+            "total_students": total_students, "with_session": with_session,
+            "samples": samples, "applied": bool(apply), "engine": _BATCHFIX_ENGINE,
+            "audit": audit, "audit_count": len(audit)}
+
+
+def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
+    """Batch.id for (base_name, session_label), never creating a duplicate for the same
+    (name, session). Empty session_label -> legacy name-only resolve.
+
+    1) exact (name, session) among ACTIVE cards -> use it.
+    2) for the CURRENT primary (October) session, ADOPT a same-name card that still has no
+       session — stamp it — so the existing single card (with its students, type, dates)
+       BECOMES the October card instead of a bare duplicate being spawned.
+    3) otherwise create a fresh session card, copying `type` from a sibling so it isn't bare.
+    """
+    base_name = (base_name or "").strip()
+    if not base_name:
+        return None
+    if not session_label:
+        return _resolve_batch_id(db, base_name)
+    from models import Batch
+    import re as _re
+    # 1) exact (name, session), active only
+    b = (db.query(Batch)
+         .filter(Batch.name == base_name, Batch.session == session_label, Batch.active != False)
+         .order_by(Batch.id.asc()).first())
+    if b:
+        return b.id
+    # 2) adopt the legacy no-session card for the current October session
+    if session_label == _CURRENT_OCT_SESSION:
+        b0 = (db.query(Batch).filter(Batch.name == base_name, Batch.active != False)
+              .filter((Batch.session == None) | (Batch.session == ""))
+              .order_by(Batch.id.asc()).first())
+        if b0:
+            b0.session = session_label
+            db.flush()
+            return b0.id
+    # 3) create a fresh session card — inherit type from a sibling so it isn't bare
+    sib = db.query(Batch).filter(Batch.name == base_name).order_by(Batch.id.asc()).first()
+    typ = ((getattr(sib, "type", "") or "") if sib else "")
+    base = _re.sub(r"[^a-z0-9]+", "_", (base_name + " " + session_label).lower()).strip("_") or "batch"
+    code = base
+    k = 1
+    while db.query(Batch).filter(Batch.code == code).first():
+        k += 1
+        code = base + "_" + str(k)
+    mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    nb = Batch(code=code, name=base_name, session=session_label, type=typ, mode=mode,
+               status="live", active=True, sort=((mx.sort + 1) if mx else 0))
+    db.add(nb)
+    db.flush()
+    return nb.id
+
+
+def _resolve_crash_batch_id(db, base_name):
+    """A student's CRASH COURSE batch for the given stream. Matches an existing active
+    crash-course card by stream keyword (bulletproof against naming variations like
+    'Lakshya Science Crash Course' vs 'Lakshya (Science) Crash Course'); creates a canonical
+    '<base> Crash Course' card only if none exists. A crash course carries NO exam session."""
+    from models import Batch
+    low = (base_name or "").lower()
+    if "science" in low:
+        kw = "science"
+    elif "commerce" in low:
+        kw = "commerce"
+    elif "art" in low:
+        kw = "art"
+    elif "udaan" in low or "10" in low:
+        kw = "10"
+    else:
+        kw = None
+    for b in db.query(Batch).filter(Batch.active != False).order_by(Batch.id.asc()).all():
+        nm = (b.name or "").lower()
+        if "crash" not in nm:
+            continue
+        if kw is None:
+            return b.id
+        if kw == "10":
+            if "10" in nm or "udaan" in nm:
+                return b.id
+        elif kw in nm:
+            return b.id
+    return _resolve_batch_id(db, (base_name or "Batch").strip() + " Crash Course")
+
+
+def _ensure_primary_enrollment(db, sid):
+    """If the student has a primary batch_id but no StudentBatch rows yet, create the primary
+    row — so adding an extra batch (crash course) never hides their main batch."""
+    from models import StudentBatch, StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp or not sp.batch_id:
+        return
+    if db.query(StudentBatch).filter(StudentBatch.student_id == sid).first():
+        return
+    db.add(StudentBatch(student_id=sid, batch_id=sp.batch_id, is_primary=True))
+    db.flush()
+
+
+def _add_extra_enrollment(db, sid, bid):
+    """Add an ADDITIONAL batch enrolment (e.g. crash course) without disturbing the primary.
+    Dedup by (sid, bid). Becomes primary only if the student truly has no batch at all."""
+    from models import StudentBatch, StudentProfile
+    if not sid or not bid:
+        return
+    if db.query(StudentBatch).filter(StudentBatch.student_id == sid, StudentBatch.batch_id == bid).first():
+        return
+    has_any = db.query(StudentBatch).filter(StudentBatch.student_id == sid).first() is not None
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    prim = (not has_any) and not (sp and sp.batch_id)
+    db.add(StudentBatch(student_id=sid, batch_id=bid, is_primary=prim))
+    if prim and sp:
+        sp.batch_id = bid
+    db.flush()
+
+
+def _batch_label(db, sp):
+    """Resolved batch display name for a student — reads the linked Batch first (Phase 3),
+    falls back to the legacy batch_name / batch enum. Safe during the transition."""
+    try:
+        bid = getattr(sp, "batch_id", None)
+        if bid:
+            from models import Batch
+            b = db.query(Batch).filter(Batch.id == bid).first()
+            if b and b.name:
+                return b.name
+    except Exception:
+        pass
+    nm = getattr(sp, "batch_name", None)
+    if nm:
+        return nm
+    bt = getattr(sp, "batch", None)
+    return getattr(bt, "value", bt) if bt else ""
+
+def notify(db, user_id: int, title: str, message: str, notif_type: str, link=None, image_url=None,
+           batch_key=None, batch_label=None, sender_id=None, sender_role=None):
+    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
+                     link=link, image_url=image_url)
+    # view-tracking fields (batch) — admin "Sent by Me" views, same as teacher
+    for _a, _v in (("batch_key", batch_key), ("batch_label", batch_label),
+                   ("sender_id", sender_id), ("sender_role", sender_role)):
+        if _v is not None:
+            try:
+                setattr(n, _a, _v)
+            except Exception:
+                pass
+    db.add(n)
+    # Har notification ke saath phone push (best-effort, non-blocking). Broadcast loop me
+    # bhi safe — push_service queue me payload-wise coalesce kar deta hai.
+    try:
+        import push_service
+        push_service.enqueue([user_id], _push_title(title), message, url=(link or "/"))
+    except Exception:
+        pass
+
+
+def _push_title(t):
+    # emoji/leading symbol hata ke saaf title (push ke liye)
+    try:
+        import re
+        return re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(t or "")).strip() or "MVS Foundation"
+    except Exception:
+        return str(t or "MVS Foundation")
+
+
+def admins_for_section(db, section: str):
+    """Us section ke notifications kis-kis admin ko jaane chahiye:
+    - full-access admins (allowed_sections = None) — inhe sab kuch milta hai
+    - restricted sub-admins jinke allowed_sections me ye section hai
+    Aliases bhi honour hote hain (jaise 'urgent' == 'vtasks'). Isse jise jo section
+    diya hai usi ke notifications us tak pahunchte hain, doosron ko spam nahi."""
+    acceptable = ADMIN_SECTION_ALIASES.get(section, {section}) if section else set()
+    out = []
+    for u in db.query(User).filter(User.role == UserRole.admin, User.is_active == True).all():
+        secs = getattr(u, "allowed_sections", None)
+        if secs is None:
+            out.append(u)                       # full access -> sab kuch
+        elif section and not acceptable.isdisjoint(set(secs or [])):
+            out.append(u)                       # is section ka access hai
+    return out
+
+
+def notify_section_admins(db, section, title, message, notif_type, link=None):
+    """Section-specific admin notification: sirf un admins ko jinhe ye section allowed hai
+    (full admins + us section wale sub-admins). Sub-admin ko bhi uske section ka
+    notification pakka milega."""
+    try:
+        for u in admins_for_section(db, section):
+            notify(db, u.id, title, message, notif_type, link=link)
+    except Exception:
+        # notification best-effort hai — kabhi fail ho to asli action ko na rokein
+        pass
+
+# ===== DASHBOARD =====
+@router.get("/dashboard", response_model=AdminDashboard)
+def admin_dashboard(db: Session = Depends(get_db), _=Depends(get_admin)):
+    total_teachers  = db.query(User).filter(User.role == UserRole.teacher).count()
+    total_students  = db.query(User).filter(User.role == UserRole.student).count()
+    # Classes done = teachers dwara submit ki gayi LECTURES (ClassEntry purana system tha,
+    # ab teachers timetable se lecture report daalte hain). Pending = timetable ke chapter
+    # entries jinka din aa chuka par abhi tak lecture nahi aaya.
+    from models import Lecture, TimetableEntry, Doubt, DoubtStatus
+    from sqlalchemy import func as _func
+    total_done = db.query(Lecture).count()   # count() blobs load nahi karta
+    _today = ist_today()
+    # pending = chapter timetable entries jinki date aa chuki par koi lecture nahi.
+    # (Pehle SAARE lectures + SAARE entries Python memory me load hote the -> heavy.
+    #  Ab ek hi COUNT query, NOT IN subquery se — DB kaam karta hai, memory nahi bharti.)
+    _done_sub = db.query(Lecture.timetable_entry_id).filter(Lecture.timetable_entry_id.isnot(None))
+    total_pending = db.query(_func.count(TimetableEntry.id)).filter(
+        TimetableEntry.entry_type == "chapter",
+        TimetableEntry.entry_date.isnot(None),
+        TimetableEntry.entry_date <= _today,
+        TimetableEntry.id.notin_(_done_sub),
+    ).scalar() or 0
+    pending_rs      = db.query(RescheduleRequest).filter(RescheduleRequest.status == RescheduleStatus.pending).count()
+    # unresolved doubts: follow-up system hata diya (_doubt_needs_attention hamesha False),
+    # isliye ye sirf non-resolved doubts ka COUNT hai. Pehle har dashboard load par SAARE
+    # doubts (hazaaron) memory me load hote the -> RAM balloon + slow + QueuePool pressure.
+    unresolved = db.query(Doubt).filter(Doubt.status != DoubtStatus.resolved).count()
+
+    return AdminDashboard(
+        total_teachers=total_teachers, total_students=total_students,
+        total_classes_done=total_done, total_pending=total_pending,
+        pending_reschedules=pending_rs, unresolved_doubts=unresolved
+    )
+
+# ===== RESCHEDULE APPROVALS =====
+@router.get("/reschedules/pending", response_model=List[RescheduleOut])
+def get_pending_reschedules(db: Session = Depends(get_db), _=Depends(get_admin)):
+    return db.query(RescheduleRequest).filter(
+        RescheduleRequest.status == RescheduleStatus.pending
+    ).order_by(RescheduleRequest.created_at.desc()).all()
+
+@router.patch("/reschedules/{rs_id}/review")
+def review_reschedule(
+    rs_id: int,
+    req: RescheduleReview,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_admin)
+):
+    rs = db.query(RescheduleRequest).filter(RescheduleRequest.id == rs_id).first()
+    if not rs:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if rs.status != RescheduleStatus.pending:
+        raise HTTPException(status_code=400, detail="This request has already been processed")
+
+    rs.status = req.status
+    rs.admin_note = req.admin_note
+    rs.reviewed_at = datetime.now()
+
+    class_entry = rs.class_entry
+    teacher_user = db.query(User).filter(User.id == rs.teacher.user_id).first()
+
+    if req.status == RescheduleStatus.approved:
+        # Update class date/time
+        class_entry.scheduled_date = rs.new_date
+        class_entry.scheduled_time = rs.new_time
+        class_entry.status = ClassStatus.rescheduled
+
+        # Increment teacher's reschedule count
+        rs.teacher.reschedule_count_this_month += 1
+
+        # Notify teacher
+        if teacher_user:
+            notify(db, teacher_user.id,
+                   "✅ Reschedule Approved!",
+                   f"{class_entry.subject} ({class_entry.class_name}) reschedule approved ho gaya. Nayi date: {rs.new_date}, {rs.new_time}",
+                   "reschedule_approved")
+
+        # Notify all students of affected class (filter in Python — works on all DBs)
+        all_students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+        students = [sp for sp in all_students if sp.subjects and class_entry.subject in sp.subjects]
+        for sp in students:
+            if sp.user:
+                notify(db, sp.user_id,
+                       f"📅 Class Rescheduled — {class_entry.subject}",
+                       f"{teacher_user.name if teacher_user else 'Teacher'} ki {class_entry.subject} class {rs.original_date} se {rs.new_date}, {rs.new_time} pe ho gayi.",
+                       "class_rescheduled")
+    else:
+        # Rejected — revert class to pending
+        class_entry.status = ClassStatus.pending
+        if teacher_user:
+            notify(db, teacher_user.id,
+                   "❌ Reschedule Rejected",
+                   f"{class_entry.subject} ({class_entry.class_name}) ki reschedule request reject ho gayi. Note: {req.admin_note or 'No reason given'}",
+                   "reschedule_rejected")
+
+    db.commit()
+    return {"message": f"Reschedule {req.status}. The teacher has been notified."}
+
+# ===== TEACHER MANAGEMENT =====
+def _derive_subject_classes(profile, db):
+    """Purane teachers jinka subject_classes save nahi hua — flat subjects list se
+    subject+class pairs reconstruct karo (AvailableSubject table ki madad se).
+    Jaise ["Painting","History","Painting"] -> Painting/10, History/12, Painting/12"""
+    sc = profile.subject_classes or []
+    if sc:
+        return sc
+    flat = [x for x in (profile.subjects or []) if x]
+    if not flat:
+        return []
+    from models import AvailableSubject as _AS
+    rows = db.query(_AS).all()
+    by_name = {}
+    for r in rows:
+        by_name.setdefault((r.name or "").strip().lower(), []).append(str(r.class_level or ""))
+    # AHEM: guess mat karo. Agar subject ka naam sirf EK class me hai to hi class
+    # assign hoti hai. Economics/Hindi/Painting jaise naam dono classes me hote
+    # hain — unke liye class blank rehti hai (admin Edit se sahi set karega).
+    out, used = [], {}
+    for nm in flat:
+        key = (nm or "").strip().lower()
+        classes = sorted(set(by_name.get(key, [])))
+        if len(classes) == 1:
+            cls = classes[0]
+        elif len(classes) > 1 and flat.count(nm) >= len(classes):
+            # teacher ke paas subject utni hi baar hai jitni classes -> dono padhata hai
+            i = used.get(key, 0)
+            cls = classes[i] if i < len(classes) else ""
+            used[key] = i + 1
+        else:
+            cls = ""      # ambiguous -> koi guess nahi
+        out.append({"subject": nm, "class": cls})
+    return out
+
+
+@router.post("/teachers/{profile_id}/urgent")
+def admin_teacher_urgent(profile_id: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin toggle: show/hide the Urgent Video option for a specific teacher."""
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == int(profile_id)).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    tp.urgent_enabled = bool(payload.get("enabled"))
+    db.commit()
+    return {"ok": True, "urgent_enabled": tp.urgent_enabled}
+
+
+@router.get("/quick-search")
+def admin_quick_search(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Lightweight global search for the command palette: teachers + students by name/phone."""
+    from sqlalchemy import or_ as _or
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"results": []}
+    like = "%" + q + "%"
+    out = []
+    try:
+        trows = (db.query(User, TeacherProfile)
+                 .join(TeacherProfile, TeacherProfile.user_id == User.id)
+                 .filter(User.role == UserRole.teacher, User.name.like(like))
+                 .limit(8).all())
+        for u, tp in trows:
+            out.append({"type": "teacher", "id": tp.id, "name": u.name, "sub": "Teacher"})
+    except Exception:
+        pass
+    try:
+        srows = (db.query(User, StudentProfile)
+                 .join(StudentProfile, StudentProfile.user_id == User.id)
+                 .filter(User.role == UserRole.student,
+                         _or(User.name.like(like), StudentProfile.phone.like(like)))
+                 .limit(8).all())
+        for u, sp in srows:
+            out.append({"type": "student", "id": sp.id, "name": u.name, "sub": (sp.phone or "Student")})
+    except Exception:
+        pass
+    return {"results": out[:15]}
+
+
+@router.post("/crash-import")
+def crash_import(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Purchase CSV se crash-course buyers ko unke crash batch me ADD-ON enroll karo
+    (student_batches me row — main batch bilkul nahi badalta). Phone se match.
+    payload: {purchases:[{phone,name,item}], map:{item_lower->batch_name}(optional), commit:bool}.
+    commit=False -> sirf preview (kuch save nahi hota)."""
+    from models import Batch, StudentProfile, StudentBatch
+    import re as _re
+    purchases = payload.get("purchases") or []
+    commit = payload.get("commit", True)
+    default_map = {
+        "lakshya (science) crash course class 12th": "Lakshya Science Crash Course",
+        "udaan crash course class 10th": "UDAAN Class 10th Crash Course",
+        "lakshya (arts) crash course class 12th": "Lakshya Arts Crash Course",
+        "lakshya (commerce) crash course class 12th": "Lakshya Commerce Crash Course",
+    }
+    user_map = {}
+    for k, v in (payload.get("map") or {}).items():
+        user_map[str(k or "").strip().lower()] = str(v or "").strip()
+    # Agar admin ne map bheja hai -> STRICT: sirf usi ke hisaab se enroll, baaki items skip.
+    # Map na ho -> crash default_map + fuzzy fallback (purana crash-only shortcut).
+    strict = bool(user_map)
+
+    def _batch_for_item(item):
+        it = str(item or "").strip().lower()
+        if it in user_map:
+            return user_map[it] or None
+        if strict:
+            return None
+        if it in default_map:
+            return default_map[it]
+        if "crash" in it:
+            if "udaan" in it or "class 10" in it or "10th" in it:
+                return "UDAAN Class 10th Crash Course"
+            if "science" in it:
+                return "Lakshya Science Crash Course"
+            if "art" in it:
+                return "Lakshya Arts Crash Course"
+            if "commerce" in it:
+                return "Lakshya Commerce Crash Course"
+        return None
+
+    batches = {}
+    for b in db.query(Batch).all():
+        batches[str(b.name or "").strip().lower()] = b
+
+    def _ph(s):
+        d = _re.sub(r"\D", "", str(s or ""))
+        return d[-10:] if len(d) >= 10 else d
+
+    stu_by_phone = {}
+    for sid, sph, sbid in db.query(StudentProfile.id, StudentProfile.phone, StudentProfile.batch_id).all():
+        p = _ph(sph)
+        if p:
+            stu_by_phone[p] = (sid, sbid)
+
+    # jis student ka pehle se koi StudentBatch row hai — us set me primary auto-ensure ho chuka
+    _has_sb = set()
+    for (sid,) in db.query(StudentBatch.student_id).distinct().all():
+        _has_sb.add(sid)
+
+    matched = 0; already = 0; unmatched = 0; no_batch = 0; skipped = 0
+    per = {}
+    unmatched_list = []
+    seen = set()
+    for row in purchases:
+        phone = _ph(row.get("phone"))
+        item = str(row.get("item") or "").strip()
+        bname = _batch_for_item(item)
+        if not bname:
+            skipped += 1
+            continue
+        pkey = bname
+        per.setdefault(pkey, {"matched": 0, "already": 0, "unmatched": 0})
+        b = batches.get(str(bname).strip().lower())
+        if not b:
+            no_batch += 1
+            per[pkey]["unmatched"] += 1
+            continue
+        rec = stu_by_phone.get(phone)
+        if not rec:
+            unmatched += 1
+            per[pkey]["unmatched"] += 1
+            if phone:
+                unmatched_list.append({"phone": phone, "name": str(row.get("name") or ""), "batch": bname})
+            continue
+        sid, sbid = rec
+        k = (sid, b.id)
+        if k in seen:
+            continue
+        seen.add(k)
+        exists = db.query(StudentBatch.id).filter(
+            StudentBatch.student_id == sid, StudentBatch.batch_id == b.id).first()
+        if exists:
+            already += 1
+            per[pkey]["already"] += 1
+            continue
+        if commit:
+            # main batch content na chhoote: agar student ka abhi tak koi StudentBatch row nahi,
+            # to uska primary batch pehle enroll karo (is_primary=True), phir crash add-on.
+            if sid not in _has_sb and sbid:
+                if not db.query(StudentBatch.id).filter(
+                        StudentBatch.student_id == sid, StudentBatch.batch_id == sbid).first():
+                    db.add(StudentBatch(student_id=sid, batch_id=sbid, is_primary=True))
+                _has_sb.add(sid)
+            db.add(StudentBatch(student_id=sid, batch_id=b.id, is_primary=False))
+        matched += 1
+        per[pkey]["matched"] += 1
+    if commit:
+        db.commit()
+    return {"total": len(purchases), "matched": matched, "already": already,
+            "unmatched": unmatched, "no_batch": no_batch, "skipped": skipped,
+            "committed": bool(commit),
+            "per_batch": per, "unmatched_list": unmatched_list[:1000]}
+
+
+@router.get("/batch-addon-students")
+def batch_addon_students(batch_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Us batch ke ADD-ON students (jinke paas ye batch add-on hai par PRIMARY batch alag hai).
+    Primary-batch wale isme nahi aate. Har student ka naam, phone, aur primary batch bhi."""
+    from models import Batch, StudentProfile, StudentBatch, User
+    b = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    # is batch me enrolled student ids
+    enr_ids = [sid for (sid,) in db.query(StudentBatch.student_id)
+               .filter(StudentBatch.batch_id == batch_id).distinct().all()]
+    if not enr_ids:
+        return {"batch": b.name, "count": 0, "students": []}
+    # batch name lookup (primary batch name dikhane ke liye)
+    bname_by_id = {bb.id: bb.name for bb in db.query(Batch.id, Batch.name).all()} if False else {}
+    for bb in db.query(Batch).all():
+        bname_by_id[bb.id] = bb.name
+    # add-on students (primary alag) ki profiles
+    sps = [sp for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(enr_ids)).all()
+           if sp.batch_id != batch_id]
+    # names bulk (N+1 se bachne ke liye)
+    uids = [sp.user_id for sp in sps if sp.user_id]
+    name_by_uid = {}
+    if uids:
+        try:
+            for uid, nm in db.query(User.id, User.name).filter(User.id.in_(uids)).all():
+                name_by_uid[uid] = nm or ""
+        except Exception:
+            pass
+    out = []
+    for sp in sps:
+        prim_name = bname_by_id.get(sp.batch_id) or (sp.batch_name or "") or "\u2014"
+        out.append({
+            "id": sp.id, "name": name_by_uid.get(sp.user_id, "") or "", "phone": sp.phone or "",
+            "primary_batch": prim_name,
+            "class_level": sp.class_level or "",
+            "source": sp.source or "",
+        })
+    out.sort(key=lambda x: (x.get("primary_batch") or "", x.get("name") or ""))
+    return {"batch": b.name, "count": len(out), "students": out}
+
+
+@router.get("/batches")
+def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """List all batches (active + inactive). Usage count now reads the linked batch_id
+    (Phase 3 read-migration); falls back to the legacy batch/batch_name match for any
+    student not yet linked, so the count stays correct during the transition."""
+    from models import Batch, StudentProfile
+    from sqlalchemy import func as _bf
+    # SELF-HEAL: Batches page khulte hi exact (name, session) duplicate cards ek me merge ho jaate
+    # hain (ab merge DPP/test/material sab move karta hai), aur fake duplicate enrollments saaf.
+    # Idempotent + safe — koi duplicate na ho to no-op. Isse purane duplicate records apne aap
+    # consolidate ho jaate hain, admin ko manually kuch karne ki zaroorat nahi.
+    try:
+        _consolidate_session_dupes(db)
+        _dedupe_student_enrollments(db)
+    except Exception:
+        pass
+    rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
+    by_id = {}          # batch_id -> DISTINCT student count (primary link + add-on enrollments)
+    by_name = {}        # batch name -> student count (fallback, legacy fields, unlinked only)
+    addon_by_id = {}    # batch_id -> add-on count (enrolled but primary batch is different)
+    unlinked = 0
+    try:
+        from collections import defaultdict as _dd
+        _prim = _dd(set)   # batch_id -> set(student_id) : primary link
+        _enr  = _dd(set)   # batch_id -> set(student_id) : add-on (student_batches, e.g. crash-course)
+        _prim_of = {}      # student_id -> primary batch_id
+        for sid, bid in (db.query(StudentProfile.id, StudentProfile.batch_id)
+                         .filter(StudentProfile.batch_id != None).all()):
+            if bid is not None:
+                _prim[bid].add(sid)
+                _prim_of[sid] = bid
+        try:
+            from models import StudentBatch as _SB
+            for sid, bid in db.query(_SB.student_id, _SB.batch_id).all():
+                if bid is not None and sid is not None:
+                    _enr[bid].add(sid)
+        except Exception:
+            pass
+        for bid in set(list(_prim.keys()) + list(_enr.keys())):
+            by_id[bid] = len(_prim.get(bid, set()) | _enr.get(bid, set()))
+        # ADD-ON count: batch me enrolled hai par uska PRIMARY batch alag hai (ya primary hai hi nahi)
+        addon_by_id = {}
+        for bid, sids in _enr.items():
+            c = 0
+            for sid in sids:
+                if _prim_of.get(sid) != bid:
+                    c += 1
+            addon_by_id[bid] = c
+        # legacy fallback: only for students NOT yet linked (batch_id NULL)
+        for name, cnt in (db.query(StudentProfile.batch, _bf.count(StudentProfile.id))
+                          .filter(StudentProfile.batch_id == None)
+                          .group_by(StudentProfile.batch).all()):
+            key = getattr(name, "value", name)
+            if key:
+                by_name[str(key)] = by_name.get(str(key), 0) + int(cnt)
+        for name, cnt in (db.query(StudentProfile.batch_name, _bf.count(StudentProfile.id))
+                          .filter(StudentProfile.batch_id == None,
+                                  StudentProfile.batch_name != None, StudentProfile.batch_name != "")
+                          .group_by(StudentProfile.batch_name).all()):
+            if name:
+                by_name[str(name)] = by_name.get(str(name), 0) + int(cnt)
+        unlinked = int(db.query(_bf.count(StudentProfile.id)).filter(StudentProfile.batch_id == None).scalar() or 0)
+    except Exception:
+        pass
+    # legacy (batch_id NULL) name-matched students must be credited to ONE card only,
+    # otherwise every same-name session card (e.g. "Lakshya Science" Oct + April) gets the
+    # same legacy count added -> inflated / wrong counts. Credit the first active card per name.
+    _name_credit_card = {}
+    for b in rows:
+        nm = b.name or ""
+        if nm and nm not in _name_credit_card and (b.active is not False):
+            _name_credit_card[nm] = b.id
+    for b in rows:  # names with no active card -> credit the first card seen
+        nm = b.name or ""
+        if nm and nm not in _name_credit_card:
+            _name_credit_card[nm] = b.id
+    # Batch Restart: how many archived (not-restored) generations each batch has -> drives the
+    # "Restart / Sessions" button state on the Batches page.
+    _arch_ct = {}
+    try:
+        from models import BatchArchive as _BA
+        from sqlalchemy import func as _afunc
+        for _bid2, _c in (db.query(_BA.batch_id, _afunc.count(_BA.id))
+                          .filter(_BA.restored_at.is_(None))
+                          .group_by(_BA.batch_id).all()):
+            if _bid2 is not None:
+                _arch_ct[_bid2] = int(_c or 0)
+    except Exception:
+        _arch_ct = {}
+    return {"unlinked": unlinked, "batches": [{
+        "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
+        "mode": getattr(b, "mode", "live") or "live",
+        "session": getattr(b, "session", "") or "",
+        "start_date": (b.start_date.isoformat() if getattr(b, "start_date", None) else ""),
+        "end_date": (b.end_date.isoformat() if getattr(b, "end_date", None) else ""),
+        "description": b.description or "", "status": b.status or "live",
+        "active": bool(b.active), "is_new": bool(b.is_new), "sort": b.sort or 0,
+        "standalone": (None if getattr(b, "standalone", None) is None else bool(b.standalone)),
+        "report_mode": ((getattr(b, "report_mode", None) or "").strip().lower() or "regular"),
+        "has_banner": bool(getattr(b, "banner_b64", None)),
+        "banner": getattr(b, "banner_b64", "") or "",
+        "welcome_message": getattr(b, "welcome_message", "") or "",
+        "usage": int(by_id.get(b.id, 0) or 0) + (int(by_name.get(b.name, 0) or 0) if _name_credit_card.get(b.name) == b.id else 0),
+        "archive_count": int(_arch_ct.get(b.id, 0)),
+        "addon": int(addon_by_id.get(b.id, 0) or 0),
+    } for b in rows]}
+
+
+@router.post("/batches")
+def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Create a batch. Display name may repeat; a unique code is auto-derived."""
+    from models import Batch
+    import re as _re
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Batch name is required")
+    session_v = (payload.get("session") or "").strip()
+    # DUPLICATE GUARD (bulletproof): bilkul same (name, session) ka ACTIVE batch pehle se ho to
+    # naya duplicate record mat banao — usi ka id laut do. Yahi root cause tha jisse ek hi batch
+    # ke 2-3 copies ban jaate the aur content/visibility bikhar jaati thi. (session non-empty ho
+    # tabhi — do alag sections intentionally alag naam/session se banenge.)
+    if session_v:
+        for ex in db.query(Batch).filter(Batch.active != False).all():
+            if (ex.name or "").strip().lower() == name.lower() \
+               and (getattr(ex, "session", "") or "").strip().lower() == session_v.lower():
+                return {"ok": True, "id": ex.id, "code": ex.code, "reused": True,
+                        "message": "A batch with this exact name & session already exists — using it."}
+    base = _re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "batch"
+    code = base
+    n = 1
+    while db.query(Batch).filter(Batch.code == code).first():
+        n += 1
+        code = base + "_" + str(n)
+    mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    b = Batch(code=code, name=name, type=(payload.get("type") or "").strip(),
+              description=(payload.get("description") or "").strip(),
+              session=(payload.get("session") or "").strip(),
+              welcome_message=(payload.get("welcome_message") or (
+                  "Welcome to " + name + "! \U0001F389 Your learning journey with MVS Foundation "
+                  "starts now. Attend every class, solve your DPPs, and give your best in the tests \u2014 "
+                  "we're with you at every step. Let's make this session count!")),
+              status=(payload.get("status") or "live"),
+              is_new=bool(payload.get("is_new")),
+              active=True, sort=((mx.sort + 1) if mx else 0))
+    # New batches default to STANDALONE — apna hi timetable/material dikhega, purana global inherit
+    # nahi hoga (owner ka model: "batch banao, uska timetable upload/create karo"). Chahe to
+    # payload standalone=false bhej ke ya baad me toggle se global-inherit on kiya ja sakta hai.
+    try:
+        b.standalone = (True if payload.get("standalone") is None else bool(payload.get("standalone")))
+    except Exception:
+        b.standalone = True
+    try:
+        _rm = (payload.get("report_mode") or "").strip().lower()
+        b.report_mode = _rm if _rm in ("regular", "crash") else "regular"
+    except Exception:
+        b.report_mode = "regular"
+    db.add(b)
+    db.commit()
+    return {"ok": True, "id": b.id, "code": b.code}
+
+
+@router.post("/batches/{bid}")
+def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Batch
+    from datetime import datetime as _dt
+    b = db.query(Batch).filter(Batch.id == bid).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    if payload.get("name") is not None:
+        nm = (payload.get("name") or "").strip()
+        if nm:
+            b.name = nm
+    for fld in ("type", "description", "status", "mode", "session"):
+        if payload.get(fld) is not None:
+            setattr(b, fld, (payload.get(fld) or "").strip())
+    if payload.get("is_new") is not None:
+        b.is_new = bool(payload.get("is_new"))
+    if "standalone" in payload:
+        _sv = payload.get("standalone")
+        b.standalone = (None if _sv is None else bool(_sv))   # None=auto, True=own only, False=inherit global
+    if "report_mode" in payload:
+        _rm = (payload.get("report_mode") or "").strip().lower()
+        b.report_mode = (_rm if _rm in ("regular", "crash") else None)
+    for _df in ("start_date", "end_date"):
+        if payload.get(_df) is not None:
+            _dv = (payload.get(_df) or "").strip()
+            try:
+                from datetime import datetime as _dtp
+                setattr(b, _df, _dtp.strptime(_dv, "%Y-%m-%d").date() if _dv else None)
+            except Exception:
+                pass
+    if payload.get("welcome_message") is not None:
+        b.welcome_message = (payload.get("welcome_message") or "")[:990]
+    if payload.get("banner_b64") is not None:
+        _bb = payload.get("banner_b64") or ""
+        b.banner_b64 = _bb if _bb else None
+    if payload.get("active") is not None:
+        b.active = bool(payload.get("active"))
+        if not b.active and (b.status or "") != "archived":
+            b.status = "archived"
+            b.archived_at = _dt.utcnow()
+        elif b.active and (b.status or "") == "archived":
+            b.status = "live"
+            b.archived_at = None
+    if payload.get("sort") is not None:
+        try:
+            b.sort = int(payload.get("sort"))
+        except Exception:
+            pass
+    db.commit()
+    return {"ok": True}
+
+
+def _merge_batch_into(db, src_id, target_id):
+    """Core merge (no commit — caller commits): move every student, batch-scoped timetable
+    entry and subject mapping from src into target, then archive src. Returns counts.
+    Reused by the merge endpoint and by automatic session-duplicate consolidation."""
+    from models import Batch, StudentProfile, StudentBatch, BatchSubject, TimetableEntry
+    from datetime import datetime as _dt
+    if src_id == target_id:
+        return {"moved_students": 0, "moved_timetable": 0, "moved_subjects": 0}
+    src = db.query(Batch).filter(Batch.id == src_id).first()
+    tgt = db.query(Batch).filter(Batch.id == target_id).first()
+    if not src or not tgt:
+        return {"moved_students": 0, "moved_timetable": 0, "moved_subjects": 0}
+    moved_students = moved_tt = moved_subjects = 0
+
+    # 1) Primary link — students whose primary batch_id points at the source
+    for sp in db.query(StudentProfile).filter(StudentProfile.batch_id == src_id).all():
+        sp.batch_id = target_id
+        sp.batch_name = tgt.name        # keep legacy name in sync so it can't resurrect src
+        moved_students += 1
+    # 2) Legacy free-text link — unlinked students counted under the source by name
+    for sp in db.query(StudentProfile).filter(
+            StudentProfile.batch_id == None,
+            StudentProfile.batch_name == src.name).all():
+        sp.batch_id = target_id
+        sp.batch_name = tgt.name
+        moved_students += 1
+    db.flush()
+
+    # 3) Multi-batch enrolments — re-point source rows to target, dedup, keep a primary
+    tgt_rows = {sb.student_id: sb for sb in
+                db.query(StudentBatch).filter(StudentBatch.batch_id == target_id).all()}
+    for sb in db.query(StudentBatch).filter(StudentBatch.batch_id == src_id).all():
+        tr = tgt_rows.get(sb.student_id)
+        if tr:
+            if sb.is_primary:
+                tr.is_primary = True
+            db.delete(sb)
+        else:
+            sb.batch_id = target_id
+            tgt_rows[sb.student_id] = sb
+    db.flush()
+
+    # 4) Batch-scoped timetable entries
+    for e in db.query(TimetableEntry).filter(TimetableEntry.batch_id == src_id).all():
+        e.batch_id = target_id
+        moved_tt += 1
+
+    # 4b) Batch-scoped CONTENT — DPP packs, tests/exams, class materials, legacy timetable.
+    #     Pehle ye MOVE nahi hota tha: duplicate batch merge hone ke baad bhi DPP/test source
+    #     (archived) batch pe reh jaata tha, isliye students ko content dikhta hi nahi tha.
+    #     Ab sab target pe move hota hai -> students ko turant sab dikhta hai. (Submissions/
+    #     attempts pack/exam id se judi hoti hain, isliye apne aap saath chali jaati hain.)
+    moved_content = 0
+    _content_models = []
+    try:
+        from models import DppPack as _Dpp; _content_models.append(_Dpp)
+    except Exception:
+        pass
+    try:
+        from models import Exam as _Exam; _content_models.append(_Exam)
+    except Exception:
+        pass
+    try:
+        from models import Material as _Mat; _content_models.append(_Mat)
+    except Exception:
+        pass
+    try:
+        from models import Timetable as _Tt; _content_models.append(_Tt)
+    except Exception:
+        pass
+    for _M in _content_models:
+        try:
+            moved_content += int(db.query(_M).filter(_M.batch_id == src_id)
+                                 .update({_M.batch_id: target_id}, synchronize_session=False) or 0)
+        except Exception:
+            pass
+    # 4c) Students ka chosen "active" batch pointer bhi target pe
+    try:
+        db.query(StudentProfile).filter(StudentProfile.active_batch_id == src_id)\
+          .update({StudentProfile.active_batch_id: target_id}, synchronize_session=False)
+    except Exception:
+        pass
+    # 4d) Community group ka batch pointer
+    try:
+        from models import CommunityGroup as _CG
+        db.query(_CG).filter(_CG.batch_id == src_id)\
+          .update({_CG.batch_id: target_id}, synchronize_session=False)
+    except Exception:
+        pass
+    db.flush()
+
+    # 5) Subject mappings (dedup — skip subjects the target already has)
+    have = {bs.subject for bs in
+            db.query(BatchSubject).filter(BatchSubject.batch_id == target_id).all()}
+    for bs in db.query(BatchSubject).filter(BatchSubject.batch_id == src_id).all():
+        if bs.subject in have:
+            db.delete(bs)
+        else:
+            bs.batch_id = target_id
+            have.add(bs.subject)
+            moved_subjects += 1
+
+    # 6) Archive the emptied source (never hard-deleted — restorable)
+    src.active = False
+    if (src.status or "") != "archived":
+        src.status = "archived"
+    src.archived_at = _dt.utcnow()
+    db.flush()
+    return {"moved_students": moved_students, "moved_timetable": moved_tt,
+            "moved_subjects": moved_subjects, "moved_content": moved_content,
+            "target": tgt.name, "source": src.name}
+
+
+def _consolidate_session_dupes(db):
+    """Self-heal: merge ACTIVE batches that share the EXACT same (name, session) — with a
+    non-empty session — into one canonical card. Canonical = the one WITH a type set
+    (the configured/seed card), else the lowest id. Safe + idempotent: an identical
+    (name, session) pair is definitionally the same batch. Returns how many were merged."""
+    from models import Batch
+    try:
+        rows = db.query(Batch).filter(Batch.active != False).all()
+    except Exception:
+        return 0
+    groups = {}
+    for b in rows:
+        sess = (getattr(b, "session", "") or "").strip()
+        if not sess:
+            continue
+        groups.setdefault(((b.name or "").strip(), sess), []).append(b)
+    merged = 0
+    for _key, grp in groups.items():
+        if len(grp) < 2:
+            continue
+        grp.sort(key=lambda x: (0 if (getattr(x, "type", "") or "").strip() else 1, x.id))
+        keep = grp[0]
+        for extra in grp[1:]:
+            try:
+                _merge_batch_into(db, extra.id, keep.id)
+                merged += 1
+            except Exception:
+                pass
+    if merged:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    return merged
+
+
+def _dedupe_student_enrollments(db, limit=40000):
+    """Self-heal: remove ONLY true duplicate enrolment rows — the SAME student in the SAME
+    batch (same batch_id) more than once — plus rows pointing at a DELETED batch. A student
+    enrolled in DIFFERENT batches (October + April, or a course + its crash course) is NEVER
+    a duplicate and is always kept. Dedup is strictly by batch_id, NEVER by name, so genuine
+    multi-batch students never lose an enrolment. Keeps the primary flag. Idempotent + safe."""
+    from models import StudentBatch, Batch
+    valid_batch = set(bid for (bid,) in db.query(Batch.id).all())
+    seen = {}       # (student_id, batch_id) -> keeper row
+    removed = 0
+    for sb in db.query(StudentBatch).order_by(StudentBatch.id.asc()).limit(limit).all():
+        if sb.batch_id not in valid_batch:      # enrolment to a deleted batch -> drop junk
+            db.delete(sb); removed += 1; continue
+        key = (sb.student_id, sb.batch_id)
+        if key in seen:
+            if sb.is_primary and not seen[key].is_primary:
+                seen[key].is_primary = True
+            db.delete(sb); removed += 1
+        else:
+            seen[key] = sb
+    if removed:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    return removed
+
+
+@router.post("/batches/consolidate-duplicates")
+def admin_consolidate_duplicates(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek click me saare exact (name, session) duplicate batch records ko ek canonical card me
+    merge karo — students, DPP, tests, materials, timetable, subjects sab target pe aa jaate hain,
+    duplicate archive ho jaata hai. Idempotent + safe. Returns kitne merge/clean hue."""
+    merged = 0
+    removed = 0
+    try:
+        merged = _consolidate_session_dupes(db)
+    except Exception:
+        merged = 0
+    try:
+        removed = _dedupe_student_enrollments(db)
+    except Exception:
+        removed = 0
+    return {"ok": True, "merged_batches": merged, "cleaned_enrollments": removed}
+
+
+@router.post("/batches/{src_id}/merge")
+def admin_merge_batch(src_id: int, payload: dict = Body(...),
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Merge one batch into another (duplicate cleanup).
+
+    Moves EVERY student, batch-scoped timetable entry and subject mapping from the
+    source batch into the target, then archives the (now empty) source. Nothing is
+    hard-deleted — the source is only archived, so it can be restored if needed.
+    Idempotent and safe to re-run. Body: {"target_id": <int>}.
+    """
+    from models import Batch
+    try:
+        target_id = int(payload.get("target_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="target_id is required")
+    if src_id == target_id:
+        raise HTTPException(status_code=400, detail="Source and target must be different batches")
+    if not db.query(Batch).filter(Batch.id == src_id).first():
+        raise HTTPException(status_code=404, detail="Source batch not found")
+    if not db.query(Batch).filter(Batch.id == target_id).first():
+        raise HTTPException(status_code=404, detail="Target batch not found")
+    res = _merge_batch_into(db, src_id, target_id)
+    db.commit()
+    return {"ok": True, "moved_students": res.get("moved_students", 0),
+            "moved_timetable": res.get("moved_timetable", 0),
+            "moved_subjects": res.get("moved_subjects", 0),
+            "moved_content": res.get("moved_content", 0),
+            "target": res.get("target"), "source": res.get("source")}
+
+
+@router.delete("/batches/{bid}")
+def admin_delete_batch(bid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Permanently delete a batch (hard delete — NOT reversible).
+
+    Refused if the batch still has students or batch-specific timetable entries — move
+    those into another batch first via Merge. Pure link rows (student_batches,
+    batch_subjects) for this batch are cleaned up as part of the delete.
+    """
+    from models import Batch, StudentProfile, StudentBatch, BatchSubject, TimetableEntry
+    from sqlalchemy import func as _f
+    b = db.query(Batch).filter(Batch.id == bid).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    nm = b.name
+    # never orphan students
+    linked = int(db.query(_f.count(StudentProfile.id))
+                 .filter(StudentProfile.batch_id == bid).scalar() or 0)
+    by_name = int(db.query(_f.count(StudentProfile.id))
+                  .filter(StudentProfile.batch_id == None,
+                          StudentProfile.batch_name == nm).scalar() or 0)
+    students = linked + by_name
+    if students > 0:
+        raise HTTPException(status_code=400,
+            detail="This batch still has %d student%s. Use Merge to move them into "
+                   "another batch first, then delete." % (students, "" if students == 1 else "s"))
+    # never silently destroy timetable content
+    tt = int(db.query(_f.count(TimetableEntry.id))
+             .filter(TimetableEntry.batch_id == bid).scalar() or 0)
+    if tt > 0:
+        raise HTTPException(status_code=400,
+            detail="This batch still has %d batch-specific timetable entr%s. Use Merge "
+                   "to move them first, then delete." % (tt, "y" if tt == 1 else "ies"))
+    # clean up pure link rows, then delete the batch itself
+    db.query(StudentBatch).filter(StudentBatch.batch_id == bid).delete(synchronize_session=False)
+    db.query(BatchSubject).filter(BatchSubject.batch_id == bid).delete(synchronize_session=False)
+    db.delete(b)
+    db.commit()
+    return {"ok": True, "deleted": nm}
+
+
+@router.get("/students/{sid}/batches")
+def admin_student_batches(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """A student's batch enrollments (multi-batch)."""
+    from models import StudentBatch, Batch
+    enr = db.query(StudentBatch).filter(StudentBatch.student_id == sid).all()
+    bids = [e.batch_id for e in enr]
+    # ACTIVE batches only — archived/merged duplicates must not show as extra rows
+    bmap = {b.id: b for b in (db.query(Batch).filter(Batch.id.in_(bids), Batch.active != False).all() if bids else [])}
+    out = []
+    seen = set()                                  # collapse by NAME (a student shows one row per batch name)
+    # primary first so it survives the collapse
+    for e in sorted(enr, key=lambda e: 0 if e.is_primary else 1):
+        b = bmap.get(e.batch_id)
+        if not b:
+            continue
+        key = (b.name or "").strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": e.batch_id, "name": b.name, "is_primary": bool(e.is_primary)})
+    return {"batches": out}
+
+
+@router.post("/students/{sid}/batches")
+def admin_student_add_batch(sid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentBatch, StudentProfile, Batch
+    bid = payload.get("batch_id")
+    if not bid:
+        raise HTTPException(status_code=400, detail="batch_id is required")
+    bid = int(bid)
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if not db.query(Batch).filter(Batch.id == bid).first():
+        raise HTTPException(status_code=404, detail="Batch not found")
+    existing = db.query(StudentBatch).filter(StudentBatch.student_id == sid, StudentBatch.batch_id == bid).first()
+    if not existing:
+        is_first = db.query(StudentBatch).filter(StudentBatch.student_id == sid).count() == 0
+        db.add(StudentBatch(student_id=sid, batch_id=bid, is_primary=is_first))
+        if is_first:
+            sp.batch_id = bid   # keep legacy primary in sync
+        db.commit()
+    return {"ok": True}
+
+
+@router.delete("/students/{sid}/batches/{bid}")
+def admin_student_remove_batch(sid: int, bid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentBatch, StudentProfile
+    e = db.query(StudentBatch).filter(StudentBatch.student_id == sid, StudentBatch.batch_id == bid).first()
+    if e:
+        was_primary = bool(e.is_primary)
+        db.delete(e)
+        db.flush()
+        if was_primary:
+            nxt = db.query(StudentBatch).filter(StudentBatch.student_id == sid).first()
+            sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+            if nxt:
+                nxt.is_primary = True
+                if sp:
+                    sp.batch_id = nxt.batch_id
+            elif sp:
+                sp.batch_id = None
+        db.commit()
+    return {"ok": True}
+
+
+@router.get("/teachers")
+def get_all_teachers(db: Session = Depends(get_db), _=Depends(get_admin)):
+    teachers = db.query(User).filter(User.role == UserRole.teacher).all()
+    # --- non-NIOS category assignments for each teacher's card (additive) ---
+    cat_map = {}
+    nios_ids = set()
+    nios_known = False
+    try:
+        from category_models import (Category, TeacherCategory, CategorySubject,
+                                     TeacherCategorySubject)
+        nios_cat = db.query(Category).filter(Category.internal_key == "nios").first()
+        if nios_cat:
+            nios_known = True
+            nios_ids = {tc.teacher_id for tc in db.query(TeacherCategory).filter(
+                TeacherCategory.category_id == nios_cat.id,
+                TeacherCategory.status == "active").all()}
+        noncat = {c.id: c.display_name for c in db.query(Category).filter(
+            Category.internal_key != "nios").all()}
+        if noncat:
+            ids = list(noncat.keys())
+            subname = {s.id: s.name for s in db.query(CategorySubject).filter(
+                CategorySubject.category_id.in_(ids)).all()}
+            for tc in db.query(TeacherCategory).filter(
+                    TeacherCategory.category_id.in_(ids),
+                    TeacherCategory.status == "active").all():
+                cat_map.setdefault(tc.teacher_id, {}).setdefault(
+                    tc.category_id, {"category": noncat.get(tc.category_id, ""),
+                                     "subjects": []})
+            for x in db.query(TeacherCategorySubject).filter(
+                    TeacherCategorySubject.category_id.in_(ids)).all():
+                d = cat_map.setdefault(x.teacher_id, {}).setdefault(
+                    x.category_id, {"category": noncat.get(x.category_id, ""),
+                                    "subjects": []})
+                nm = subname.get(x.category_subject_id)
+                if nm:
+                    d["subjects"].append(nm)
+    except Exception:
+        cat_map = {}
+        nios_ids = set()
+    result = []
+    for t in teachers:
+        profile = t.teacher_profile
+        now = ist_now()
+        month_start = date(now.year, now.month, 1)
+        week_start = ist_today() - timedelta(days=ist_today().weekday())
+
+        if profile:
+            classes_done = db.query(ClassEntry).filter(
+                ClassEntry.teacher_id == profile.id,
+                ClassEntry.status == ClassStatus.done
+            ).count()
+            monthly_done = db.query(ClassEntry).filter(
+                ClassEntry.teacher_id == profile.id,
+                ClassEntry.status == ClassStatus.done,
+                ClassEntry.scheduled_date >= month_start
+            ).count()
+            # NIOS subjects: subject_classes se (Edit-modal + class ki sacchai) — isse
+            # English/12 (302) aur English/10 (202) ka class kabhi galat/mix nahi hota.
+            # College (non-NIOS) subjects + NIOS membership: Category Access se authoritative.
+            # Card NIOS ko in_nios par gate karta hai -> NIOS-off teacher ka stale NIOS nahi dikhta.
+            _sc = _derive_subject_classes(profile, db)
+            _cats = list(cat_map.get(profile.id, {}).values())
+            _in_nios = (profile.id in nios_ids) if nios_known else True
+            try:
+                from category_models import teacher_assigned_subjects as _tas
+                _info = _tas(db, profile.id)
+                if _info.get("has_any"):
+                    _in_nios = bool(_info.get("in_nios"))
+                    _cats = _info.get("cats", [])
+            except Exception:
+                pass
+            result.append({
+                "id": t.id,
+                "profile_id": profile.id,
+                "name": t.name,
+                "user_id": t.user_id,
+                "phone": profile.phone,
+                "has_photo": bool(profile.photo_b64),
+                "urgent_enabled": (getattr(profile, "urgent_enabled", True) is not False),
+                "is_active": t.is_active,
+                "subjects": profile.subjects,
+                "subject_classes": _sc,
+                "batch": profile.batch,
+                "total_classes_done": classes_done,
+                "monthly_classes_done": monthly_done,
+                "reschedule_this_month": profile.reschedule_count_this_month,
+                "reschedule_limit": 2,
+                "can_see_students": profile.id in _students_allowed_ids(db),
+                "categories": _cats,
+                "in_nios": _in_nios,
+            })
+    return result
+
+
+def _students_allowed_ids(db):
+    """teacher profile ids jinhe 'My Students' + phone dikhana allowed hai (app_settings)."""
+    from models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == "teacher_students_ids").first()
+    if not row or not row.value:
+        return set()
+    return {int(x) for x in str(row.value).replace(",", " ").split() if x.strip().isdigit()}
+
+
+@router.post("/teachers/{tid}/students-access")
+def set_teacher_students_access(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Per-teacher 'My Students' access on/off. tid = teacher PROFILE id."""
+    from models import AppSetting
+    allowed = bool((payload or {}).get("allowed"))
+    ids = _students_allowed_ids(db)
+    if allowed:
+        ids.add(int(tid))
+    else:
+        ids.discard(int(tid))
+    val = ",".join(str(i) for i in sorted(ids))
+    row = db.query(AppSetting).filter(AppSetting.key == "teacher_students_ids").first()
+    if row:
+        row.value = val
+    else:
+        db.add(AppSetting(key="teacher_students_ids", value=val))
+    db.commit()
+    return {"ok": True, "allowed": allowed, "ids": sorted(ids)}
+
+@router.post("/teachers/add")
+def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin adds a teacher — auto-generates a professional MVS user ID"""
+    # Generate professional teacher ID: MVS + initials + number  (e.g. MVSVV01)
+    parts = req.name.strip().split()
+    initials = "".join(p[0] for p in parts[:2]).upper() if parts else "TR"
+    i = 1
+    while True:
+        candidate = f"MVS{initials}{i:02d}"
+        if not db.query(User).filter(User.user_id == candidate).first():
+            break
+        i += 1
+    user = User(
+        name=req.name,
+        user_id=candidate,
+        password=hash_password(req.password),
+        role=UserRole.teacher,
+        is_active=True
+    )
+    db.add(user)
+    db.flush()
+
+    _board = (getattr(req, "board", "") or "").strip().lower()
+    # BOSSE = board-updates teacher, koi subject nahi -> marker se login subject-screen skip
+    _subj0 = req.subjects or []
+    _sc0 = []
+    if _board == "bosse":
+        _subj0 = ["Board Updates"]
+        _sc0 = [{"subject": "Board Updates", "class": "BOSSE"}]
+    profile = TeacherProfile(
+        user_id=user.id,
+        subjects=_subj0,
+        subject_classes=_sc0,
+        gender=(req.gender or "").strip().lower() or None,
+        phone=(req.phone or None),
+        batch=req.batch or "",
+        plain_password=req.password,
+    )
+    # per-teacher section (feature) overrides — admin ne create pe jo sections chune
+    if getattr(req, "features", None) is not None:
+        try:
+            import json as _jf
+            from category_models import FEATURE_KEYS as _FK
+            _sel = set(req.features or [])
+            profile.feature_overrides = _jf.dumps({k: (k in _sel) for k in _FK})
+        except Exception:
+            pass
+    db.add(profile)
+    db.flush()
+    # board -> workspace category assign (NIOS / BOSSE). UG-PG/college admin Category Access se.
+    try:
+        _assign_teacher_board(db, profile, _board)
+    except Exception:
+        pass
+    db.commit()
+    return {"message": f"Teacher {req.name} added successfully!", "user_id": candidate}
+
+
+def _assign_teacher_board(db, tp, board):
+    """Teacher ko uske board ki workspace category me daal do. nios/bosse handle;
+    baaki (ug-pg/college) admin Category Access se assign karta hai."""
+    board = (board or "").strip().lower().replace(" ", "").replace("/", "")
+    if board not in ("nios", "bosse", "ug-pg", "ugpg", "ug_pg"):
+        return
+    try:
+        import category_models as _CM
+        from category_models import (Category as _Cat, TeacherCategory as _TC,
+                                     DU_SOL_DEFAULT_FEATURES as _DEF)
+        if board == "bosse":
+            _ON = {"dashboard", "my_subjects", "my_tasks", "material_checker",
+                   "performance", "notifications", "profile"}
+            cat = _CM._ensure_category(db, "bosse", "BOSSE Board Updates", "BOSSE", 3, _ON)
+        elif board in ("ug-pg", "ugpg", "ug_pg"):
+            cat = _CM._ensure_category(db, "ug_pg", "UG / PG", "UG/PG", 4, _DEF)
+        else:
+            cat = db.query(_Cat).filter(_Cat.internal_key == "nios").first()
+        if not cat:
+            return
+        db.flush()
+        ex = db.query(_TC).filter(_TC.teacher_id == tp.id,
+                                  _TC.category_id == cat.id).first()
+        if ex:
+            ex.status = "active"
+        else:
+            db.add(_TC(teacher_id=tp.id, category_id=cat.id, status="active"))
+        # dusri categories deactivate -> yahi board uska workspace bane
+        for tc in db.query(_TC).filter(_TC.teacher_id == tp.id,
+                                       _TC.category_id != cat.id).all():
+            tc.status = "inactive"
+    except Exception:
+        pass
+
+@router.patch("/teachers/{user_id}/toggle")
+def toggle_teacher(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    user = db.query(User).filter(User.id == user_id, User.role == UserRole.teacher).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    user.is_active = not user.is_active
+    db.commit()
+    status = "active" if user.is_active else "inactive"
+    return {"message": f"Teacher {user.name} is now {status}"}
+
+# ===== STUDENT MANAGEMENT =====
+@router.get("/students")
+def get_all_students(q: str = "", page: int = 0, limit: int = 0,
+                     db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Students list. Backward compatible: with no limit it returns the full array as before.
+    With limit>0 it returns {students, total, page, limit} — server-side search + pagination,
+    and per-student counts scoped to just the page (cheap even with thousands of students)."""
+    from sqlalchemy.orm import defer, joinedload
+    from sqlalchemy import or_ as _or
+    base = (db.query(StudentProfile)
+            .join(User, StudentProfile.user_id == User.id)
+            .filter(User.role == UserRole.student))
+    q = (q or "").strip()
+    if q:
+        like = "%" + q + "%"
+        base = base.filter(_or(User.name.like(like), StudentProfile.phone.like(like), User.user_id.like(like)))
+    paginated = bool(limit and limit > 0)
+    total = base.count() if paginated else None
+    prof_q = base.options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
+    if paginated:
+        prof_q = prof_q.order_by(StudentProfile.id.desc()).offset(max(0, page) * limit).limit(limit)
+    profiles = prof_q.all()
+    sids = [sp.id for sp in profiles]
+    # photo presence + counts — scoped to the fetched page when paginated, else all (as before)
+    if paginated:
+        photo_ids = ({r[0] for r in db.query(StudentProfile.id)
+                      .filter(StudentProfile.id.in_(sids), StudentProfile.photo_b64.isnot(None)).all()}
+                     if sids else set())
+        dpp_counts = (dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
+                           .filter(DPPSubmission.student_id.in_(sids))
+                           .group_by(DPPSubmission.student_id).all()) if sids else {})
+        test_counts = (dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
+                            .filter(TestSubmission.student_id.in_(sids))
+                            .group_by(TestSubmission.student_id).all()) if sids else {})
+    else:
+        photo_ids = {r[0] for r in db.query(StudentProfile.id)
+                     .filter(StudentProfile.photo_b64.isnot(None)).all()}
+        dpp_counts = dict(db.query(DPPSubmission.student_id, func.count(DPPSubmission.id))
+                          .group_by(DPPSubmission.student_id).all())
+        test_counts = dict(db.query(TestSubmission.student_id, func.count(TestSubmission.id))
+                           .group_by(TestSubmission.student_id).all())
+    result = []
+    for sp in profiles:
+        s = sp.user
+        if not s or s.role != UserRole.student:
+            continue
+        result.append({
+            "id": s.id,
+            "profile_id": sp.id,
+            "name": s.name,
+            "user_id": s.user_id,
+            "phone": sp.phone,
+            "email": sp.email,
+            "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch,"value") else sp.batch),
+            "batch_name": sp.batch_name,
+            "class_level": sp.class_level,
+            "has_photo": sp.id in photo_ids,
+            "subjects": (_SR.canon_list(sp.subjects, sp.class_level) if _SR else sp.subjects),
+            "class_name": sp.class_name,
+            "is_verified": sp.is_verified,
+            "source": getattr(sp, "source", None) or "mvs_app",
+            "medium": getattr(sp, "medium", None),
+            "exam_session": getattr(sp, "exam_session", None),
+            "exam_stream": getattr(sp, "exam_stream", None),
+            "nios_ref": getattr(sp, "nios_ref", None),
+            "is_active": s.is_active,
+            "dpp_submitted": dpp_counts.get(sp.id, 0),
+            "tests_attempted": test_counts.get(sp.id, 0),
+        })
+    if paginated:
+        return {"students": result, "total": total, "page": page, "limit": limit,
+                "has_more": (max(0, page) * limit + len(result)) < (total or 0)}
+    return result
+
+@router.post("/students/add")
+def add_student(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
+    existing = db.query(User).filter(User.user_id == req.user_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="This User ID already exists")
+    if req.phone:
+        existing_phone = db.query(StudentProfile).filter(StudentProfile.phone == req.phone).first()
+        if existing_phone:
+            raise HTTPException(status_code=400, detail="Phone number already registered")
+
+    user = User(
+        name=req.name, user_id=req.user_id,
+        password=hash_password(req.password),
+        role=UserRole.student, is_active=True
+    )
+    db.add(user)
+    db.flush()
+
+    sp = StudentProfile(
+        user_id=user.id, phone=req.phone,
+        batch=req.batch, subjects=req.subjects or [],
+        class_name=req.class_name or "", is_verified=True,
+        plain_password=req.password
+    )
+    db.add(sp)
+    try:
+        _bn = getattr(sp.batch, "value", sp.batch) if sp.batch else (sp.batch_name or "")
+        sp.batch_id = _resolve_batch_id(db, _bn)
+    except Exception:
+        pass
+    db.commit()
+    return {"message": f"Student {req.name} added successfully!"}
+
+# ===== TEACHER ACTIVITY MONITOR =====
+@router.get("/activity")
+def teacher_activity(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Complete activity of all teachers"""
+    teachers = db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all()
+    now = ist_now()
+    month_start = date(now.year, now.month, 1)
+    result = []
+    for tp in teachers:
+        user = tp.user
+        for subject in (tp.subjects or []):
+            from models import Lecture as _Lec
+            done = db.query(_Lec).filter(
+                _Lec.teacher_id == tp.id, _Lec.subject == subject).count()
+            pending = db.query(ClassEntry).filter(
+                ClassEntry.teacher_id == tp.id,
+                ClassEntry.subject == subject,
+                ClassEntry.status == ClassStatus.pending
+            ).count()
+            dpps  = db.query(DPP).filter(DPP.teacher_id == tp.id, DPP.subject == subject).count()
+            tests = db.query(Test).filter(Test.teacher_id == tp.id, Test.subject == subject).count()
+            doubts_resolved = db.query(Doubt).filter(
+                Doubt.teacher_id == tp.id,
+                Doubt.subject == subject,
+                Doubt.status == DoubtStatus.resolved
+            ).count()
+            result.append({
+                "teacher_name": user.name if user else "Unknown",
+                "subject": subject,
+                "classes_done": done,
+                "classes_pending": pending,
+                "dpps_given": dpps,
+                "tests_conducted": tests,
+                "doubts_resolved": doubts_resolved,
+                "reschedules_this_month": tp.reschedule_count_this_month
+            })
+    return result
+
+# ===== ADMIN USER MANAGEMENT =====
+def _admin_json(u: User):
+    secs = getattr(u, "allowed_sections", None)
+    return {
+        "id": u.id, "name": u.name, "user_id": u.user_id,
+        "is_active": bool(u.is_active),
+        "full_access": secs is None,
+        "sections": (sorted(secs) if isinstance(secs, (list, tuple)) else None),
+        "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+    }
+
+
+class AdminCreateIn(BaseModel):
+    name: str
+    user_id: Optional[str] = None     # blank -> auto-generate
+    password: Optional[str] = None    # blank -> auto-generate
+    sections: Optional[List[str]] = None  # null/omitted -> full access
+
+
+class AdminSectionsIn(BaseModel):
+    sections: Optional[List[str]] = None  # null -> full access
+
+
+class AdminEditIn(BaseModel):
+    """v94.1: naam + access dono ek saath edit. sections null + full_access true = full access."""
+    name: Optional[str] = None
+    sections: Optional[List[str]] = None
+    full_access: Optional[bool] = None
+
+
+def _clean_sections(raw):
+    secs = sorted({s for s in (raw or []) if isinstance(s, str) and s.strip()})
+    if "dashboard" not in secs:
+        secs.insert(0, "dashboard")
+    return secs
+
+
+@router.get("/me")
+def admin_me(db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Logged-in admin ka access profile — frontend nav ko isi se filter karta hai."""
+    secs = getattr(me, "allowed_sections", None)
+    return {
+        "id": getattr(me, "id", None),
+        "name": getattr(me, "name", "Admin") or "Admin",
+        "user_id": getattr(me, "user_id", "") or "",
+        "full_access": secs is None,
+        "sections": (sorted(secs) if isinstance(secs, (list, tuple)) else ([] if secs is not None else None)),
+    }
+
+
+@router.get("/admins")
+def list_admins(db: Session = Depends(get_db), _=Depends(get_admin)):
+    rows = db.query(User).filter(User.role == UserRole.admin).order_by(User.created_at.asc()).all()
+    return {"admins": [_admin_json(u) for u in rows]}
+
+
+@router.post("/admins/add")
+def add_admin(req: AdminCreateIn, db: Session = Depends(get_db), _=Depends(get_admin)):
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    uid = (req.user_id or "").strip()
+    if uid:
+        if db.query(User).filter(User.user_id == uid).first():
+            raise HTTPException(status_code=400, detail="This User ID already exists")
+    else:
+        uid = None
+        for _ in range(25):
+            cand = "adm_" + "".join(secrets.choice(string.digits) for _ in range(4))
+            if not db.query(User).filter(User.user_id == cand).first():
+                uid = cand
+                break
+        if not uid:
+            raise HTTPException(status_code=500, detail="Could not generate a unique User ID. Please try again.")
+    pwd = (req.password or "").strip() or "".join(
+        secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    secs = _clean_sections(req.sections) if req.sections is not None else None
+    user = User(
+        name=name, user_id=uid,
+        password=hash_password(pwd),
+        role=UserRole.admin, is_active=True,
+        allowed_sections=secs,
+    )
+    db.add(user)
+    db.commit()
+    try:
+        from models import AppSetting
+        _pk = "adm_pw_%d" % user.id
+        _prow = db.query(AppSetting).filter(AppSetting.key == _pk).first()
+        if _prow:
+            _prow.value = pwd          # orphan/reused id -> update, insert nahi
+        else:
+            db.add(AppSetting(key=_pk, value=pwd))
+        db.commit()
+    except Exception:
+        db.rollback()
+    out = _admin_json(user)
+    out["message"] = f"Admin {name} added successfully!"
+    out["password"] = pwd  # shown once to the creator so they can share it
+    return out
+
+
+@router.post("/admins/{admin_id}/sections")
+def set_admin_sections(admin_id: int, req: AdminSectionsIn,
+                       db: Session = Depends(get_db), me=Depends(get_admin)):
+    if me is not None and getattr(me, "id", None) == admin_id:
+        raise HTTPException(status_code=400, detail="You cannot change your own access.")
+    u = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    u.allowed_sections = _clean_sections(req.sections) if req.sections is not None else None
+    db.commit()
+    out = _admin_json(u)
+    out["message"] = "Access updated."
+    return out
+
+
+@router.post("/admins/{admin_id}/edit")
+def edit_admin(admin_id: int, req: AdminEditIn,
+               db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Naam rename + access update — ek hi call me. Naam apna bhi badal sakte ho;
+    access (sections) sirf doosre admins ka badal sakte ho."""
+    u = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    if req.name is not None:
+        nm = req.name.strip()
+        if not nm:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        u.name = nm[:120]
+    is_self = me is not None and getattr(me, "id", None) == admin_id
+    if req.full_access or req.sections is not None:
+        if is_self:
+            raise HTTPException(status_code=400, detail="You cannot change your own access.")
+        u.allowed_sections = None if req.full_access else _clean_sections(req.sections)
+    db.commit()
+    out = _admin_json(u)
+    out["message"] = "Admin updated."
+    return out
+
+
+@router.post("/admins/{admin_id}/toggle")
+def toggle_admin(admin_id: int, db: Session = Depends(get_db), me=Depends(get_admin)):
+    if me is not None and getattr(me, "id", None) == admin_id:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account.")
+    u = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    u.is_active = not u.is_active
+    db.commit()
+    out = _admin_json(u)
+    out["message"] = f"{u.name} is now {'active' if u.is_active else 'deactivated'}."
+    return out
+
+# ===== NOTIFICATIONS TO ALL =====
+@router.post("/broadcast")
+def broadcast_notification(
+    title: str, message: str, target_role: Optional[str] = None,
+    db: Session = Depends(get_db), _=Depends(get_admin)
+):
+    q = db.query(User).filter(User.is_active == True)
+    if target_role:
+        q = q.filter(User.role == target_role)
+    users = q.all()
+    for u in users:
+        notify(db, u.id, title, message, "broadcast")
+    db.commit()
+    return {"message": f"Notification sent to {len(users)} users."}
+
+# ===== SUBJECT MANAGEMENT =====
+@router.get("/subjects")
+def get_subjects(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AvailableSubject
+    subs = db.query(AvailableSubject).filter(AvailableSubject.is_active == True).all()
+    result = {"10": [], "12": [], "UG-PG": []}
+    for s in subs:
+        result.setdefault(s.class_level, []).append({
+            "id": s.id, "name": s.name, "code": s.code,
+            "mode": (s.mode or "live")})
+    # UG-PG (college) subjects — Category Access ka authoritative source
+    # (non-NIOS categories ke saare CategorySubject). Isse admin Project ka
+    # class="UG-PG" chunne par sirf college subjects dikhein (NIOS ke nahi).
+    try:
+        from category_models import Category, CategorySubject
+        noncat_ids = [c.id for c in db.query(Category).filter(
+            Category.internal_key != "nios").all()]
+        seen = set()
+        ug = []
+        if noncat_ids:
+            for cs in db.query(CategorySubject).filter(
+                    CategorySubject.category_id.in_(noncat_ids)).all():
+                nm = (cs.name or "").strip()
+                if nm and nm.lower() not in seen:
+                    seen.add(nm.lower())
+                    ug.append({"id": cs.id, "name": nm,
+                               "code": getattr(cs, "code", "") or "",
+                               "mode": "recorded"})
+        result["UG-PG"] = sorted(ug, key=lambda x: x["name"].lower())
+    except Exception:
+        result["UG-PG"] = result.get("UG-PG", [])
+    return result
+
+
+@router.post("/subjects/{subject_id}/mode")
+def set_subject_mode(subject_id: int, payload: dict, db: Session = Depends(get_db),
+                     _=Depends(get_admin)):
+    """Mark a subject as LIVE (timetable-driven) or RECORDED (watched in the
+    Manish Verma Classes App). Recorded subjects have no timetable, so students
+    who pick them see a 'Recorded classes' card instead of an empty timetable."""
+    from models import AvailableSubject
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in ("live", "recorded"):
+        raise HTTPException(status_code=400, detail="mode must be 'live' or 'recorded'")
+    s = db.query(AvailableSubject).filter(AvailableSubject.id == subject_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    s.mode = mode
+    db.commit()
+    return {"message": "%s is now %s" % (s.name, mode), "mode": mode}
+
+@router.delete("/subjects/{subject_id}")
+def delete_subject(subject_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AvailableSubject
+    s = db.query(AvailableSubject).filter(AvailableSubject.id == subject_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    s.is_active = False   # soft delete
+    db.commit()
+    return {"message": f"{s.name} deleted"}
+
+@router.post("/subjects")
+def add_subject(class_level: str, name: str, code: str = "", mode: str = "live", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AvailableSubject
+    if class_level not in ("10", "12"):
+        raise HTTPException(status_code=400, detail="class_level must be 10 or 12")
+    s = AvailableSubject(class_level=class_level, name=name, code=code,
+                         mode=(mode if mode in ("live", "recorded") else "live"), is_active=True)
+    db.add(s)
+    db.commit()
+    return {"message": f"{name} added"}
+
+# ===== TIMETABLE (all teachers) =====
+@router.get("/timetable-all")
+def timetable_all(archive_gen: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile, Lecture
+    _q = db.query(TimetableEntry)
+    # Batch Restart Old/New view: 0 = NEW (active only), -1 = sab (old+new), >0 = us archived generation
+    if archive_gen == 0:
+        if hasattr(TimetableEntry, "archive_gen_id"):
+            _q = _q.filter(TimetableEntry.archive_gen_id.is_(None))
+    elif archive_gen and archive_gen > 0:
+        _q = _q.filter(TimetableEntry.archive_gen_id == archive_gen)
+    es = _q.order_by(
+        TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.entry_date
+    ).all()
+    # v99: kin entries ka class report (lecture) upload ho chuka hai — ek hi query me
+    lec_entry_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
+        Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())
+    from models import Batch, User
+    from sqlalchemy import func as _func
+    _bnames = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()}
+    # PERF: teacher name/photo/id ek hi baar prefetch karo (pehle har entry par alag query +
+    # lazy tp.user chal raha tha = N+1, isliye section 30-45s le raha tha). photo_b64 blob load
+    # nahi karte — sirf uski length se has_photo (bada blob avoid).
+    _tp_rows = db.query(TeacherProfile.id, TeacherProfile.user_id,
+                        _func.coalesce(_func.length(TeacherProfile.photo_b64), 0)).all()
+    _uids = [r[1] for r in _tp_rows if r[1]]
+    _unames = {}
+    if _uids:
+        for _uid, _nm in db.query(User.id, User.name).filter(User.id.in_(_uids)):
+            _unames[_uid] = _nm
+    _tmap = {r[0]: (_unames.get(r[1], "") or "", bool(r[2]), r[0]) for r in _tp_rows}
+    result = []
+    for e in es:
+        tname, tphoto, tpid = _tmap.get(e.teacher_id, ("", False, None))
+        result.append({
+            "id": e.id, "subject": e.subject, "class_name": e.class_name,
+            "batch_id": getattr(e, "batch_id", None),
+            "batch": _bnames.get(getattr(e, "batch_id", None), ""),
+            "chapter": e.chapter, "part": e.part,
+            "date": str(e.entry_date) if e.entry_date else None,
+            "day": e.day, "time": getattr(e,"time_text",None),
+            "type": getattr(e,"entry_type",None) or "chapter",
+            "teacher_name": tname, "teacher_id": tpid, "teacher_has_photo": tphoto,
+            "completed": bool(e.completed),
+            # A report is submitted ONCE per physical class; same-time sibling batches are
+            # marked as mirrors (mirror_of_id -> the reported entry) WITHOUT their own Lecture
+            # row. So a mirror counts as "reported" when its primary has the lecture — otherwise
+            # the admin wrongly showed those sibling batches as "Pending".
+            "has_lecture": ((e.id in lec_entry_ids)
+                            or (getattr(e, "mirror_of_id", None) in lec_entry_ids)),
+            "topic_covered": e.topic_covered or "", "start_time": e.start_time or "",
+            "end_time": e.end_time or "", "homework": e.homework or "",
+            "youtube_link": getattr(e, "youtube_link", None) or "",
+            "remarks": e.remarks or "",
+        })
+    return result
+
+
+# ============================================================ BATCH RESTART (archive generations)
+# Owner flow: ek batch (e.g. Lakshya Science · April 2027) jab DUBARA shuru ho (naya session),
+# admin "Restart" karta hai -> us batch ka SAARA active content (timetable/DPP/tests/material) ek
+# nayi archived generation me chala jaata hai (students ko dikhna band ho jaata hai). Batch fresh.
+# Fully reversible (restore). student_visible=True -> wo generation student portal pe "Old" card.
+_ARCH_MODELS = None
+def _arch_models():
+    global _ARCH_MODELS
+    if _ARCH_MODELS is None:
+        from models import TimetableEntry, DppPack, Material, Exam
+        _ARCH_MODELS = {"timetable": TimetableEntry, "dpp": DppPack,
+                        "material": Material, "test": Exam}
+    return _ARCH_MODELS
+
+
+def _arch_counts(db, bid, gen):
+    """gen=None -> ACTIVE (archive_gen_id IS NULL) counts; warna us generation ke counts."""
+    out = {}
+    for k, M in _arch_models().items():
+        if not hasattr(M, "archive_gen_id"):
+            out[k] = 0
+            continue
+        q = db.query(M).filter(M.batch_id == bid)
+        q = q.filter(M.archive_gen_id.is_(None)) if gen is None else q.filter(M.archive_gen_id == gen)
+        out[k] = q.count()
+    return out
+
+
+@router.post("/batch-restart")
+def admin_batch_restart(payload: dict, db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Is batch ka active content ek nayi archived generation me daal do (students se hide).
+    Transaction-safe + batch-scoped: SIRF is batch_id ka content touch hota hai (doosra session/
+    batch kabhi nahi). Fully reversible (batch-archive-restore)."""
+    from models import BatchArchive, Batch
+    import json as _json
+    try:
+        bid = int(payload.get("batch_id") or 0)
+    except Exception:
+        bid = 0
+    if not bid or not db.query(Batch.id).filter(Batch.id == bid).first():
+        raise HTTPException(status_code=400, detail="Valid batch_id required.")
+    label = (payload.get("label") or "").strip()[:80] or "Old session"
+    note = (payload.get("note") or "").strip()[:300]
+    student_visible = bool(payload.get("student_visible"))
+    _to = payload.get("tagged_old")
+    tagged_old = True if _to is None else bool(_to)
+    types = payload.get("content") or ["timetable", "dpp", "material", "test"]
+    types = [t for t in types if t in _arch_models()]
+    active = _arch_counts(db, bid, None)
+    _bt = db.query(Batch).filter(Batch.id == bid).first()
+    _prev_sa = getattr(_bt, "standalone", None) if _bt else None
+    _is_inherit = (_prev_sa is False)   # batch currently inherits shared/global content
+    # A restart must leave the student with a CLEAN batch. If the batch has no own content AND is
+    # not inheriting global, there is genuinely nothing to reset. Otherwise proceed — because even
+    # with 0 own rows, making the batch standalone stops the inherited/global content from showing.
+    if sum(active.get(t, 0) for t in types) == 0 and not _is_inherit:
+        raise HTTPException(status_code=400, detail="This batch has no active content to archive. It is already fresh — upload the new timetable, or open Sessions to manage earlier ones.")
+    _meta = {t: active.get(t, 0) for t in types}
+    _meta["_prev_standalone"] = _prev_sa   # remember so Restore can bring global inheritance back
+    gen = BatchArchive(batch_id=bid, label=label, note=note,
+                       student_visible=student_visible, tagged_old=tagged_old,
+                       counts_json=_json.dumps(_meta),
+                       created_by=getattr(me, "id", None))
+    db.add(gen)
+    db.flush()
+    stamped = {}
+    for t in types:
+        M = _arch_models()[t]
+        if not hasattr(M, "archive_gen_id"):
+            continue
+        n = (db.query(M).filter(M.batch_id == bid, M.archive_gen_id.is_(None))
+             .update({M.archive_gen_id: gen.id}, synchronize_session=False))
+        stamped[t] = int(n or 0)
+    # Make the batch SELF-CONTAINED so the new session starts truly fresh — it no longer inherits
+    # the shared/global timetable, material, DPP or tests. (Reversible: Restore puts it back.)
+    if _bt is not None:
+        _bt.standalone = True
+    db.commit()
+    return {"ok": True, "archive_id": gen.id, "label": gen.label,
+            "student_visible": gen.student_visible, "tagged_old": gen.tagged_old,
+            "archived": stamped, "made_standalone": True}
+
+
+@router.get("/batch-archives")
+def admin_batch_archives(batch: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Is batch ki saari archived generations + active/old counts (Admin Old/New panel ke liye)."""
+    from models import BatchArchive
+    if not batch:
+        raise HTTPException(status_code=400, detail="batch required")
+    rows = (db.query(BatchArchive).filter(BatchArchive.batch_id == batch)
+            .order_by(BatchArchive.created_at.desc()).all())
+    out = []
+    for a in rows:
+        out.append({"id": a.id, "label": a.label or "Old session", "note": a.note or "",
+                    "student_visible": bool(a.student_visible), "tagged_old": bool(a.tagged_old),
+                    "restored": bool(a.restored_at),
+                    "created_at": (a.created_at.strftime("%d %b %Y, %I:%M %p") if a.created_at else ""),
+                    "counts": _arch_counts(db, batch, a.id)})
+    return {"active": _arch_counts(db, batch, None), "archives": out}
+
+
+@router.post("/batch-archive-update")
+def admin_batch_archive_update(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Archive generation ki student-visibility / Old-tag / label toggle karo (hide<->show)."""
+    from models import BatchArchive
+    try:
+        gid = int(payload.get("archive_id") or 0)
+    except Exception:
+        gid = 0
+    a = db.query(BatchArchive).filter(BatchArchive.id == gid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Archive not found.")
+    if a.restored_at:
+        raise HTTPException(status_code=400, detail="This generation is already restored to active.")
+    if "student_visible" in payload:
+        a.student_visible = bool(payload.get("student_visible"))
+    if "tagged_old" in payload:
+        a.tagged_old = bool(payload.get("tagged_old"))
+    if payload.get("label") is not None:
+        a.label = (payload.get("label") or "").strip()[:80] or a.label
+    db.commit()
+    return {"ok": True, "id": a.id, "student_visible": a.student_visible,
+            "tagged_old": a.tagged_old, "label": a.label}
+
+
+@router.post("/batch-archive-restore")
+def admin_batch_archive_restore(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Archived generation ko wapas ACTIVE kar do (archive_gen_id -> NULL). Ye purana content
+    wapas current me aa jaayega — agar batch me abhi naya active content hai to mix ho sakta hai
+    (UI isse warn karti hai)."""
+    from models import BatchArchive, Batch
+    from datetime import datetime as _dt
+    import json as _json
+    try:
+        gid = int(payload.get("archive_id") or 0)
+    except Exception:
+        gid = 0
+    a = db.query(BatchArchive).filter(BatchArchive.id == gid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Archive not found.")
+    restored = {}
+    for t, M in _arch_models().items():
+        if not hasattr(M, "archive_gen_id"):
+            continue
+        n = (db.query(M).filter(M.batch_id == a.batch_id, M.archive_gen_id == a.id)
+             .update({M.archive_gen_id: None}, synchronize_session=False))
+        restored[t] = int(n or 0)
+    # Revert the batch's standalone flag to what it was before this restart (so global inheritance,
+    # if any, comes back exactly as before).
+    try:
+        _meta = _json.loads(a.counts_json or "{}")
+        if "_prev_standalone" in _meta:
+            _bt = db.query(Batch).filter(Batch.id == a.batch_id).first()
+            if _bt is not None:
+                _bt.standalone = _meta["_prev_standalone"]
+    except Exception:
+        pass
+    a.restored_at = _dt.utcnow()
+    a.student_visible = False
+    db.commit()
+    return {"ok": True, "restored": restored}
+
+
+# ===== v97: ADMIN STUDIO REPORTS (per timetable class) =====
+def _studio_report_json(r):
+    return {
+        "id": r.id, "entry_id": r.entry_id,
+        "entry_date": r.entry_date or "", "day": r.day or "", "time": r.time_str or "",
+        "subject": r.subject or "", "class_name": r.class_name or "",
+        "chapter": r.chapter or "", "part": r.part or "",
+        "status": r.status or "held", "notes": r.notes or "",
+        "reporter": r.reporter or "",
+        "start_time": getattr(r, "start_time", "") or "",
+        "end_time": getattr(r, "end_time", "") or "",
+        "has_notes_file": bool(getattr(r, "notes_file_b64", None)),
+        "notes_file_name": getattr(r, "notes_file_name", "") or "",
+        "updated_at": r.updated_at.strftime("%d %b %Y, %I:%M %p") if r.updated_at else "",
+    }
+
+@router.get("/studio-reports")
+def studio_reports_list(entry_ids: str = "", db: Session = Depends(get_db),
+                        _=Depends(get_admin)):
+    """Timetable page ke liye — saari (ya di gayi entry_ids ki) studio reports."""
+    from models import StudioReport
+    q = db.query(StudioReport)
+    ids = [int(x) for x in (entry_ids or "").split(",") if x.strip().isdigit()]
+    if ids:
+        q = q.filter(StudioReport.entry_id.in_(ids))
+    rows = q.order_by(StudioReport.updated_at.desc()).limit(1000).all()
+    return {"reports": [_studio_report_json(r) for r in rows]}
+
+@router.post("/studio-reports")
+def studio_report_upsert(payload: dict = Body(...), db: Session = Depends(get_db),
+                         admin=Depends(get_admin)):
+    """Ek class (entry) pe ek report — dobara submit karne pe update ho jati hai.
+    Studio manager / admin class ki recording, setup ya issue ka note rakhta hai."""
+    from models import StudioReport, TimetableEntry
+    try:
+        entry_id = int(payload.get("entry_id") or 0)
+    except Exception:
+        entry_id = 0
+    if not entry_id:
+        raise HTTPException(400, "entry_id is required")
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e:
+        raise HTTPException(404, "Timetable entry not found")
+    status = (payload.get("status") or "held").strip().lower()
+    if status not in ("held", "issues", "cancelled"):
+        raise HTTPException(400, "Status must be held, issues or cancelled")
+    notes = (payload.get("notes") or "").strip()[:4000]
+    r = db.query(StudioReport).filter(StudioReport.entry_id == entry_id).first()
+    if not r:
+        r = StudioReport(entry_id=entry_id, created_by=admin.id if admin else None)
+        db.add(r)
+    # reporter: payload > purani value > logged-in admin ka naam
+    reporter = ((payload.get("reporter") or "").strip()[:160]
+                or (r.reporter or "").strip()
+                or (admin.name if admin else ""))
+    # snapshot hamesha entry ki latest position ka rahe (reschedule ke baad bhi sahi)
+    r.entry_date = str(e.entry_date) if e.entry_date else ""
+    r.day = e.day or ""
+    r.time_str = getattr(e, "time_text", "") or ""
+    r.subject = e.subject or ""
+    r.class_name = e.class_name or ""
+    r.chapter = e.chapter or ""
+    r.part = e.part or ""
+    r.status = status
+    r.notes = notes
+    r.reporter = reporter
+    # v98: actual timing + class notes upload (PDF)
+    r.start_time = (payload.get("start_time") or "").strip()[:20]
+    r.end_time = (payload.get("end_time") or "").strip()[:20]
+    fb64 = (payload.get("notes_file_b64") or "").strip()
+    if fb64:
+        r.notes_file_b64 = __import__("r2_storage").normalize(fb64, "notes", (payload.get("notes_file_mime") or "application/pdf"))
+        r.notes_file_name = ((payload.get("notes_file_name") or "notes.pdf").strip()[:255])
+        r.notes_file_mime = ((payload.get("notes_file_mime") or "application/pdf").strip()[:100])
+    elif payload.get("remove_notes_file"):
+        r.notes_file_b64 = None
+        r.notes_file_name = ""
+        r.notes_file_mime = ""
+    db.commit()
+    db.refresh(r)
+    return {"ok": True, "report": _studio_report_json(r)}
+
+@router.get("/studio-reports/{rid}/file")
+def studio_report_file(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v98: studio report pe attached class notes (PDF) download."""
+    import base64 as _b64
+    from fastapi import Response
+    from models import StudioReport
+    r = db.query(StudioReport).filter(StudioReport.id == rid).first()
+    if not r or not r.notes_file_b64:
+        raise HTTPException(404, "File not available")
+    return __import__("r2_storage").file_response(
+        r.notes_file_b64, r.notes_file_mime or "application/pdf",
+        r.notes_file_name or "notes.pdf", True)
+
+@router.delete("/studio-reports/{rid}")
+def studio_report_delete(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudioReport
+    r = db.query(StudioReport).filter(StudioReport.id == rid).first()
+    if not r:
+        raise HTTPException(404, "Report not found")
+    db.delete(r)
+    db.commit()
+    return {"ok": True, "message": "Report removed"}
+
+# ===== v99: ADMIN CLASS-REPORT BACKFILL (past classes ka academic report + notes) =====
+def _lec_cls5(x):
+    """lectures.class_level is VARCHAR(5) (meant for '10' / '12'). Timetable
+    class_name can be 'Class 10' (8 chars) — inserting it raw makes MySQL strict
+    mode reject the whole class report (error 1406, "Data too long"). Normalize:
+    first digit run wins ('Class 10' -> '10'); no digits -> raw, truncated;
+    empty -> None. Result can never exceed 5 chars."""
+    import re as _re
+    raw = str(x or "").strip()
+    if not raw:
+        return None
+    m = _re.search(r"\d+", raw)
+    return (m.group(0) if m else raw)[:5]
+
+
+@router.post("/class-report-backfill")
+async def class_report_backfill(payload: dict = Body(...), db: Session = Depends(get_db),
+                          admin=Depends(get_admin)):
+    """Purani classes (batch start se aaj tak) ka class report studio manager /
+    admin upload karta hai — entry completed mark hoti hai aur summary + class
+    notes (PDF) students ke Lectures feed me chale jate hain. Current date se
+    aage ki daily classes ka report teacher khud karta hai (teacher flow alag).
+    Dobara submit karne pe SAME lecture update hota hai — duplicate nahi banta."""
+    from models import TimetableEntry, TeacherProfile, Lecture, Material
+    try:
+        entry_id = int(payload.get("entry_id") or 0)
+    except Exception:
+        entry_id = 0
+    if not entry_id:
+        raise HTTPException(400, "entry_id is required")
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
+    if not e:
+        raise HTTPException(404, "Timetable entry not found")
+    topic = (payload.get("topic_covered") or "").strip()[:300]
+    summary = (payload.get("summary") or "").strip()
+    homework = (payload.get("homework") or "").strip()
+    pdf_b64 = (payload.get("pdf_b64") or "").strip() or None
+    pdf_name = ((payload.get("pdf_filename") or "notes.pdf").strip()[:200])  # Lecture.pdf_filename / Material.filename are VARCHAR(200)
+    if not topic and not summary and not pdf_b64:
+        raise HTTPException(400, "Add a topic, summary or the class notes PDF")
+
+    # 1) class completed mark karo (teacher ke class report jaisa hi)
+    e.completed = True
+    e.completed_at = datetime.now()
+    e.topic_covered = topic or e.chapter or None
+    e.start_time = (payload.get("start_time") or "").strip()[:20] or None
+    e.end_time = (payload.get("end_time") or "").strip()[:20] or None
+    e.homework = homework or None
+    e.remarks = (payload.get("remarks") or "").strip() or None
+
+    # 2) student-facing lecture — pehle se ho to update, warna naya
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+    tname = (tp.user.name if tp and tp.user else "") or "Admin"
+    # v123: single-class subject (Social Science=10) pe official class force karo —
+    # entry pe galat class likhi ho to bhi material/lecture sahi class tag paaye
+    from teacher_routes import _subj_class_digits as _scd
+    _fx = _scd(db, e.subject)
+    eff_cls = ("Class " + _fx) if _fx else (e.class_name or "")
+    lec = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(Lecture.timetable_entry_id == entry_id,
+                                   Lecture.is_active == True).first()
+    created = False
+    if not lec:
+        lec = Lecture(teacher_id=e.teacher_id, teacher_name=tname,
+                      subject=e.subject or "", class_level=_lec_cls5(eff_cls),
+                      chapter=(e.chapter or None), part=(e.part or None),
+                      title=((e.chapter or "Lecture") + ((" – " + e.part) if e.part else ""))[:240],
+                      timetable_entry_id=entry_id, lecture_date=e.entry_date,
+                      is_active=True)
+        db.add(lec); db.flush()
+        created = True
+    if summary:
+        lec.summary = summary
+    if homework:
+        lec.homework = homework
+    if pdf_b64:
+        lec.pdf_b64 = __import__("r2_storage").normalize(pdf_b64, "lectures", "application/pdf")
+        lec.pdf_filename = pdf_name
+    # Main save — a DB failure here must come back as a readable JSON error,
+    # never a bare 500 (the global handler in main.py keeps CORS headers on).
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, "Could not save the class report right now — please try again. If it keeps failing, contact support.")
+    # Material mirror — best-effort. The lecture feed already works once the
+    # commit above succeeded, so a mirror problem must never fail the upload.
+    # tp.id (not e.teacher_id) keeps the FK valid even for old entries whose
+    # teacher profile no longer exists.
+    if pdf_b64:
+        try:
+            db.add(Material(teacher_id=(tp.id if tp else None), teacher_name=tname,
+                            subject=e.subject or "", class_name=(eff_cls or None),
+                            chapter=(e.chapter or None), part=(e.part or None),
+                            material_type="notes", title=(lec.title or e.subject or "Class Notes")[:200],
+                            filename=pdf_name, content_b64=__import__("r2_storage").normalize(pdf_b64, "materials", "application/pdf")))
+            db.commit()
+        except Exception:
+            db.rollback()
+    return {"ok": True, "lecture_id": lec.id, "created": created,
+            "message": ("Class report uploaded" if created else "Class report updated")}
+
+# ===== v125: BULLETPROOF FALLBACK TIMETABLE PARSER =====
+# tt_parser 0 rows de (ya module hi na ho) to bhi upload kabhi fail nahi hona
+# chahiye — ye generic parser kisi bhi Date/Day/Time/Chapter/Part table PDF ko
+# samajhta hai: bordered/borderless tables, wrapped cells, page-break continuations,
+# har common date format (11-Aug-2026, 11/08/2026, 2026-08-11, 5 Jan 2026...).
+_TT_MONTHS = {m.lower(): i + 1 for i, m in enumerate(
+    ["January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"])}
+_TT_MONTHS.update({m[:3]: v for m, v in list(_TT_MONTHS.items())})
+# Common informal abbreviations people actually type in Indian timetables.
+_TT_MONTHS.update({"sept": 9})
+_TT_DATE_RX = re.compile(r"(\d{1,2})\s*[/\-.]\s*([A-Za-z]{3,9}|\d{1,2})\s*[/\-.]\s*(\d{2,4})")
+_TT_DATE_SPC_RX = re.compile(r"(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?\s*,?\s*(\d{2,4})")
+_TT_ISO_RX = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
+
+def _tt_norm_year(y):
+    """2-digit year -> 20xx (Indian timetables); 4-digit stays as-is."""
+    y = int(y)
+    return y + 2000 if y < 100 else y
+
+def _tt_build_date(d, mon, y):
+    """(day, month-token, year) -> date | None. month-token digit ya naam dono chalte hain."""
+    try:
+        d = int(d)
+        if isinstance(mon, str) and not mon.isdigit():
+            mo = _TT_MONTHS.get(mon.strip().strip(".").lower())
+        else:
+            mo = int(mon)
+        if not mo:
+            return None
+        return date(_tt_norm_year(y), mo, d)
+    except Exception:
+        return None
+
+def _tt_flex_date(s):
+    """'11-Aug-2026' | '11/08/2026' | '2026-08-11' | '5 Jan 2026' | '11-Sept-26'
+    -> date | None. Cell me thoda extra text (jaise 'Date: 11-Aug-2026 (Tue)')
+    ho to bhi date nikal leta hai. Numeric format hamesha DD/MM/YYYY (Indian)."""
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        m = _TT_ISO_RX.search(s)
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        m = _TT_DATE_RX.search(s) or _TT_DATE_SPC_RX.search(s)
+        if not m:
+            return None
+        return _tt_build_date(m.group(1), m.group(2), m.group(3))
+    except Exception:
+        return None
+
+def _tt_clean_cell(s):
+    """Wrapped table cell -> single clean line. 'Cultural (1757-\\n1857)' -> '(1757-1857)'."""
+    s = (s or "").replace("\r", "\n")
+    s = re.sub(r"-\n", "-", s)           # hyphen pe toota hua word/number jodo
+    s = re.sub(r"\s*\n\s*", " ", s)      # wrapped lines -> space
+    return re.sub(r"\s{2,}", " ", s).strip()
+
+def _tt_col_map(header_cells):
+    """Header row se column indexes: date/day/time/chapter/part. None agar header nahi."""
+    m = {}
+    for idx, c in enumerate(header_cells or []):
+        k = re.sub(r"\s+", " ", (c or "").strip().lower())
+        k2 = k.replace(" ", "")
+        if not k:
+            continue
+        if k.startswith("date") or k2 == "dt":
+            m.setdefault("date", idx)
+        elif k.startswith("day"):
+            m.setdefault("day", idx)
+        elif k.startswith("time") or k2 == "slot":
+            m.setdefault("time", idx)
+        elif "chapter" in k or "topic" in k or "lesson" in k or "unit" in k:
+            m.setdefault("chapter", idx)
+        elif k.startswith("part"):
+            m.setdefault("part", idx)
+    return m if ("date" in m and "chapter" in m) else None
+
+def _detect_tt_subject(text):
+    """PDF ke text se subject dhundho (registry se verify karke). Mila to raw naam, warna None.
+    Poori line match karne ke saath-saath line ke andar ke word-groups bhi test karta hai —
+    taaki 'CLASS 12 ENGLISH - TEACHING TIMETABLE' / 'ENGLISH DEPARTMENT' jaisi header se bhi
+    subject (English) pakad me aaye."""
+    if _SR is None:
+        return None
+    def _ok(s):
+        try:
+            return bool(_SR.canon_subject(s, "10") or _SR.canon_subject(s, "12"))
+        except Exception:
+            return False
+    for ln in (text or "").split("\n")[:25]:
+        s = re.sub(r"^subject\s*[:\-]\s*", "", ln.strip(), flags=re.I).strip()
+        s = re.sub(r"\s*\(\d{3}\)\s*$", "", s).strip()   # "Social Science (213)" -> "Social Science"
+        if s and len(s) <= 60 and _ok(s):
+            return s
+        # line ke andar word-groups (1-4 words) test karo — header me extra words hote hain
+        words = re.findall(r"[A-Za-z][A-Za-z&]+", ln)
+        low_skip = {"class", "teaching", "timetable", "time", "table", "department",
+                    "mvs", "foundation", "date", "day", "chapter", "topic", "part",
+                    "schedule", "session", "the", "and", "for", "monday", "tuesday",
+                    "wednesday", "thursday", "friday", "saturday", "sunday", "pm", "am"}
+        n = len(words)
+        for i in range(n):
+            if words[i].lower() in low_skip:
+                continue
+            for j in range(i + 1, min(i + 4, n) + 1):
+                phrase = " ".join(words[i:j])
+                if 3 <= len(phrase) <= 40 and _ok(phrase):
+                    return phrase
+    return None
+
+_TT_WEEKDAYS = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+_TT_TIME_RX = re.compile(r"^\d{1,2}[:.]\d{2}$")
+
+def _tt_text_line_parse(text, force_subject=None, is_event=None):
+    """Har line se DATE [DAY] [TIME] TOPIC nikalo — table columns pe bilkul depend nahi.
+    Misaligned/column-shift tables (jaise English timetable, jahan aadhi rows skip ho rahi
+    thi) me bhi ye SAARI rows sahi nikaalta hai. Line jo date se shuru na ho -> skip
+    (header/footer/holiday-note apne aap chhoot jaate hain)."""
+    if is_event is None:
+        def is_event(_t):
+            return False
+    rows = []
+    for ln in (text or "").split("\n"):
+        ln = " ".join((ln or "").split())
+        if not ln:
+            continue
+        parts = ln.split(" ")
+        d = _tt_flex_date(parts[0]) if parts else None
+        if not d:
+            continue
+        rest = parts[1:]
+        day = ""
+        if rest and rest[0].strip(",.").lower() in _TT_WEEKDAYS:
+            day = rest.pop(0).strip(",.")
+        tm = ""
+        if rest and _TT_TIME_RX.match(rest[0].replace(".", ":")):
+            tm = rest.pop(0).replace(".", ":")
+            if rest and rest[0].upper().rstrip(".") in ("AM", "PM"):
+                tm += " " + rest.pop(0).upper().rstrip(".")
+        elif rest and re.match(r"^\d{1,2}[:.]\d{2}\s*(?:am|pm|AM|PM)$", rest[0]):
+            tm = rest.pop(0).upper().replace(".", ":")
+        topic = " ".join(rest).strip(" -|\t")
+        if not topic or len(topic) < 2 or _tt_flex_date(topic):
+            continue
+        rows.append({
+            "subject": force_subject or "",
+            "chapter": topic,
+            "part": None,
+            "date": d.isoformat(),
+            "day": (day.title() or None),
+            "time": (tm.upper() or None),
+            "type": ("event" if is_event(topic) else "chapter"),
+        })
+    return rows
+
+import re as _re_tt
+# Trailing "Part N" ko chapter se alag karta hai. Kuch PDF me Part column chapter me merge ho
+# jaata hai ("L-5 : Atomic Structure Part 2") -> har part alag 'chapter' ban jaata tha (40 chapters
+# jabki 19 lessons). Ye use chapter="L-5 : Atomic Structure" + part="Part 2" me todta hai.
+_TT_PART_RE = _re_tt.compile(r'^(.*\S)[\s\-–—]+part\s*([0-9]{1,3}|[ivxlcdm]{1,6})\s*$', _re_tt.IGNORECASE)
+def _tt_split_part(chapter, existing_part=None):
+    """(chapter, part) return karta hai. Agar part column pehle se bhara hai to chapter as-is."""
+    ch = (chapter or "").strip()
+    if existing_part and str(existing_part).strip():
+        return ch, str(existing_part).strip()
+    m = _TT_PART_RE.match(ch)
+    if m and m.group(1).strip():
+        tok = m.group(2)
+        return m.group(1).strip(), "Part " + (tok if tok.isdigit() else tok.upper())
+    return ch, (existing_part or None)
+
+
+def _fallback_parse_timetable_pdf(raw, force_subject=None, class_name="Class 12"):
+    """Generic timetable table parser — tt_parser ka safety net.
+    Row shape bilkul tt_parser jaisi: {subject, chapter, part, date, day, time, type}."""
+    import io as _io
+    import pdfplumber
+    # Event detector (tests, doubt classes, PYQ/revision slots) — taaki direct
+    # save (preview ke bina) pe bhi ye rows chapter na ban jayein aur progress
+    # counting me na aayein. Module na mile to sab "chapter" — kabhi crash nahi.
+    try:
+        from syllabus_routes import _looks_like_event as _tt_is_event
+    except Exception:
+        def _tt_is_event(_t):
+            return False
+    rows = []
+    colmap = None
+    subj_detected = None
+    _full_text = []
+    with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+        for page in pdf.pages:
+            # Ek kharab/tedhi page kabhi poore parse ko na girae — har page apne
+            # try/except me. Baaki pages ki rows tab bhi mil jayengi.
+            try:
+                tables = page.extract_tables() or []
+                if not tables:  # borderless table — text-position strategy
+                    try:
+                        tables = page.extract_tables(
+                            {"vertical_strategy": "text", "horizontal_strategy": "text"}) or []
+                    except Exception:
+                        tables = []
+            except Exception:
+                tables = []
+            for tbl in tables:
+                if not tbl:
+                    continue
+                start = 0
+                maybe = _tt_col_map(tbl[0])
+                if maybe:
+                    colmap = maybe
+                    start = 1
+                elif colmap is None:
+                    # headerless table: first data row se layout infer karo
+                    # (Date, Day, Time, Chapter, Part) — date col 0 me parse hona chahiye
+                    first = [_tt_clean_cell(c) for c in (tbl[0] or [])]
+                    if len(first) >= 4 and _tt_flex_date(first[0]):
+                        colmap = {"date": 0, "day": 1, "time": 2, "chapter": 3}
+                        if len(first) >= 5:
+                            colmap["part"] = 4
+                        start = 0
+                    else:
+                        continue
+                for r in tbl[start:]:
+                    cells = [_tt_clean_cell(c) for c in (r or [])]
+                    if not any(cells):
+                        continue
+                    def _g(key, _cells=cells):
+                        i = colmap.get(key)
+                        return _cells[i] if (i is not None and i < len(_cells)) else ""
+                    d = _tt_flex_date(_g("date"))
+                    ch = _g("chapter")
+                    if not d:
+                        # page-break pe toota hua wrapped chapter — pichli row me jodo
+                        if ch and rows and not _g("day") and not _g("time") and not _g("part"):
+                            rows[-1]["chapter"] = (rows[-1]["chapter"] + " " + ch).strip()
+                        continue
+                    if not ch:
+                        continue
+                    rows.append({
+                        "subject": force_subject or subj_detected or "",
+                        "chapter": ch,
+                        "part": _g("part") or None,
+                        "date": d.isoformat(),
+                        "day": (_g("day") or "").strip().title() or None,
+                        "time": ((_g("time") or "").upper()
+                                 .replace("A.M.", "AM").replace("P.M.", "PM")) or None,
+                        "type": ("event" if _tt_is_event(ch) else "chapter"),
+                    })
+            if not force_subject and not subj_detected:
+                try:
+                    subj_detected = _detect_tt_subject(page.extract_text() or "")
+                except Exception:
+                    pass
+            try:
+                _full_text.append(page.extract_text() or "")
+            except Exception:
+                pass
+    # Column-shift/misaligned table safety net: text-line parser se saari rows nikaalo.
+    # Jo tareeka ZYADA rows de wahi lo — isse aadhi rows skip hone wali dikkat khatam.
+    try:
+        _tl_rows = _tt_text_line_parse("\n".join(_full_text),
+                                       force_subject=force_subject, is_event=_tt_is_event)
+    except Exception:
+        _tl_rows = []
+    if len(_tl_rows) > len(rows):
+        rows = _tl_rows
+    final_subj = force_subject or subj_detected
+    if final_subj:
+        for r in rows:
+            r["subject"] = final_subj
+    return rows
+
+# ===== ADMIN: PDF TIMETABLE UPLOAD (all subjects) =====
+@router.post("/timetable-pdf")
+async def admin_upload_timetable_pdf(
+    file: UploadFile = File(...),
+    class_name: str = Form("Class 12"),
+    subject: str = Form(""),
+    replace: str = Form("false"),
+    preview: str = Form("false"),
+    from_date: str = Form(""),
+    batch_id: str = Form(""),
+    db: Session = Depends(get_db),
+    _=Depends(get_admin)
+):
+    from models import TimetableEntry
+    raw = await file.read()
+    # v125: pehle tt_parser; 0 rows ya koi bhi error pe apna generic fallback parser.
+    # Upload kabhi bhi parser-limitation ki wajah se fail nahi hona chahiye.
+    rows = []
+    _errs = []
+    try:
+        import tt_parser
+        rows = tt_parser.parse_pdf(raw, force_subject=(subject.strip() or None)) or []
+    except Exception as e:
+        _errs.append(str(e)[:120])
+    # Bulletproof: fallback HAMESHA chalao. tt_parser 0 ya PARTIAL (column-shift se aadhi
+    # rows) de sakta hai — isliye jo tareeka zyada rows de wahi lo.
+    try:
+        _fb = _fallback_parse_timetable_pdf(
+            raw, force_subject=(subject.strip() or None), class_name=class_name) or []
+        if len(_fb) > len(rows):
+            rows = _fb
+    except Exception as e:
+        _errs.append(str(e)[:120])
+    if not rows:
+        raise HTTPException(status_code=400,
+            detail="No valid row found in the PDF — it should have a Date / Day / Time / Chapter table."
+                   + (f" ({'; '.join(_errs)})" if _errs else ""))
+    if not any((r.get("subject") or "").strip() for r in rows):
+        raise HTTPException(status_code=400,
+            detail="Subject could not be detected from this PDF — please choose it in the Subject dropdown and upload again.")
+    # "Part N" ko chapter se alag karo (jab PDF me Part column chapter me merge ho gaya ho) —
+    # taaki ek lesson ke saare parts EK hi chapter counte hon (40 ki jagah 19), aur Part field bhare.
+    for r in rows:
+        if (r.get("type") or "chapter") != "event":
+            _ch, _pt = _tt_split_part(r.get("chapter"), r.get("part"))
+            r["chapter"] = _ch
+            if _pt:
+                r["part"] = _pt
+    # Subject naam canonical karo (PHYSICS/Physics/Data Entry Op (229) -> official NIOS naam)
+    if _SR is not None:
+        for r in rows:
+            r["subject"] = _SR.canon_display(r.get("subject"), class_name)
+    # v124: partial replace — from_date mila to sirf us date se AAGE ki rows lo;
+    # us se pahle ka timetable bilkul as-is rehta hai (na delete, na insert).
+    from_dt = None
+    if (from_date or "").strip():
+        try:
+            from_dt = datetime.strptime(from_date.strip(), "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=400, detail="from_date must be in YYYY-MM-DD format.")
+    skipped_before = 0
+    if from_dt:
+        _kept = []
+        for r in rows:
+            try:
+                _rd = datetime.strptime(r.get("date") or "", "%Y-%m-%d").date()
+            except Exception:
+                _rd = None
+            if _rd is not None and _rd >= from_dt:
+                _kept.append(r)
+            else:
+                skipped_before += 1
+        rows = _kept
+        if not rows:
+            raise HTTPException(status_code=400,
+                detail=f"No classes on or after {from_dt.isoformat()} were found in this PDF — nothing was changed.")
+    subjects_found = sorted(set(r["subject"] for r in rows))
+    # preview mode: sirf parsed rows dikhao, DB me kuch save mat karo
+    if preview.lower() == "true":
+        try:
+            import syllabus_routes
+            rows = syllabus_routes.annotate_timetable_rows(db, class_name, rows)
+        except Exception:
+            pass
+        return {"added": 0, "subjects": subjects_found, "preview": rows,
+                "from_date": (from_dt.isoformat() if from_dt else ""),
+                "skipped_before_date": skipped_before}
+    # replace sirf SAME CLASS ki entries hatao — dusri class ka same-name subject alag timetable hai
+    try:
+        _u_bid = int(batch_id) if batch_id else None
+    except Exception:
+        _u_bid = None
+    if replace.lower() == "true":
+        _delq = db.query(TimetableEntry).filter(
+            TimetableEntry.subject.in_(subjects_found),
+            TimetableEntry.class_name == class_name,
+            TimetableEntry.batch_id == _u_bid
+        )
+        if from_dt:
+            # entry_date NULL ya from_dt se pahle wali entries haath hi nahi lagti
+            _delq = _delq.filter(TimetableEntry.entry_date >= from_dt)
+        _delq.delete(synchronize_session=False)
+    added = 0
+    for r in rows:
+        edate = None
+        try: edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception: pass
+        db.add(TimetableEntry(
+            teacher_id=None, subject=r["subject"], class_name=class_name, batch_id=_u_bid,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]
+        ))
+        added += 1
+    db.commit()
+    return {"added": added, "subjects": subjects_found,
+            "from_date": (from_dt.isoformat() if from_dt else ""),
+            "skipped_before_date": skipped_before}
+
+# ===== ADMIN: TIMETABLE PDF COMMIT (preview me edit/delete/split ke baad final save) =====
+def _tt_canon_key(subject, class_name):
+    """Canonical subject identity (legacy aliases 'PHYSICS' / 'Physics (312)' -> same key)."""
+    if _SR is not None:
+        try:
+            return _SR.canon_key(subject, class_name)
+        except Exception:
+            pass
+    return (subject or "").strip().lower()
+
+
+def _tt_norm_time(t):
+    return " ".join((t or "").strip().lower().split())
+
+
+def _tt_logical_key(ck, date_str, time_str, chapter, part, etype):
+    """Ek timetable row ki logical identity (batch+class ke andar) — duplicate detection ke liye."""
+    return (ck, (date_str or "").strip(),
+            _tt_norm_time(time_str),
+            (chapter or "").strip().lower(),
+            (part or "").strip().lower(),
+            (etype or "chapter"))
+
+
+def _safe_timetable_publish(db, batch_id, class_name, clean_rows, mode, from_dt=None):
+    """SINGLE safe, batch-scoped, canonical, idempotent timetable publication path.
+
+    mode:
+      - 'replace_all'       : is batch+canonical-subject+class ke saare active rows hatao, naye daalo.
+      - 'replace_from_date' : sirf from_dt se aage ke active rows hatao (pehle ka as-is), naye daalo.
+      - 'add_extra'         : kuch delete nahi — sirf naye (non-duplicate) rows add karo.
+      - 'auto'              : agar is batch+subject+class me pehle se active rows hain -> replace_all,
+                              warna add_extra (duplicate inflation 18+22=40 rokta hai).
+
+    SAFETY: sirf SAME batch_id + SAME canonical subject + SAME class touch hota hai. Koi doosra
+    batch/session (e.g. October 2027) kabhi touch nahi hota. Subject match CANONICAL identity se
+    (legacy alias bhi match). Incoming rows dedup hote hain, aur jo active row bilkul same hai use
+    dobara insert nahi karte (double-click / retry = idempotent). Sab ek hi transaction me.
+    """
+    from models import TimetableEntry
+    new_keys = {_tt_canon_key(r["subject"], class_name) for r in clean_rows}
+    existing = db.query(TimetableEntry).filter(
+        TimetableEntry.class_name == class_name,
+        TimetableEntry.batch_id == batch_id,
+    ).all()
+    existing_same_subj = [e for e in existing if _tt_canon_key(e.subject, class_name) in new_keys]
+    old_count = len(existing_same_subj)
+    if mode == "auto":
+        mode = "replace_all" if existing_same_subj else "add_extra"
+    removed_ids = []
+    if mode in ("replace_all", "replace_from_date"):
+        for e in existing_same_subj:
+            if mode == "replace_from_date" and from_dt is not None:
+                if not (getattr(e, "entry_date", None) and e.entry_date >= from_dt):
+                    continue
+            removed_ids.append(e.id)
+        if removed_ids:
+            db.query(TimetableEntry).filter(
+                TimetableEntry.id.in_(removed_ids)).delete(synchronize_session=False)
+    _removed_set = set(removed_ids)
+    survivors = [e for e in existing_same_subj if e.id not in _removed_set]
+    survivor_keys = {_tt_logical_key(_tt_canon_key(e.subject, class_name),
+                                     (e.entry_date.isoformat() if getattr(e, "entry_date", None) else ""),
+                                     getattr(e, "time_text", ""), getattr(e, "chapter", ""),
+                                     getattr(e, "part", ""), getattr(e, "entry_type", "chapter"))
+                     for e in survivors}
+    seen = set()
+    deduped = []
+    for r in clean_rows:
+        k = _tt_logical_key(_tt_canon_key(r["subject"], class_name), r.get("date"),
+                            r.get("time"), r.get("chapter"), r.get("part"), r.get("type"))
+        if k in seen:
+            continue
+        seen.add(k)
+        deduped.append((k, r))
+    added = 0
+    skipped_existing = 0
+    for k, r in deduped:
+        if k in survivor_keys:          # bilkul same active row pehle se hai -> idempotent skip
+            skipped_existing += 1
+            continue
+        edate = None
+        try:
+            edate = datetime.strptime(r["date"], "%Y-%m-%d").date()
+        except Exception:
+            pass
+        db.add(TimetableEntry(
+            teacher_id=None, subject=r["subject"], class_name=class_name, batch_id=batch_id,
+            chapter=r["chapter"], part=r["part"], entry_date=edate,
+            day=r["day"] or None, time_text=r["time"] or None, entry_type=r["type"]))
+        added += 1
+    return {"mode": mode, "old_count": old_count, "removed": len(removed_ids),
+            "added": added, "skipped_existing": skipped_existing,
+            "new_active_count": len(survivors) + added}
+
+
+@router.post("/timetable-copy")
+def admin_timetable_copy(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Copy a subject's (or ALL subjects') ACTIVE timetable from one batch into one or more
+    other batches — no re-upload. Only the schedule content (chapter/part/date/day/time/type)
+    is copied; the teacher shown in each target batch comes from that batch's own subject
+    assignment. Uses the SAFE, batch-scoped, canonical, idempotent publish path, so nothing in
+    any other batch/session is touched and re-copying never inflates duplicates."""
+    from models import TimetableEntry, Batch
+    try:
+        src = int(payload.get("source_batch_id") or 0)
+    except Exception:
+        src = 0
+    raw_targets = payload.get("target_batch_ids")
+    if raw_targets is None:
+        raw_targets = [payload.get("target_batch_id")]
+    targets = []
+    for t in (raw_targets or []):
+        try:
+            ti = int(t)
+        except Exception:
+            continue
+        if ti and ti != src and ti not in targets:
+            targets.append(ti)
+    subj = (payload.get("subject") or "").strip()
+    all_subj = (not subj) or subj == "__all"
+    mode = (payload.get("mode") or "auto").strip()
+    if mode not in ("auto", "replace_all", "add_extra"):
+        mode = "auto"
+    if not src:
+        return {"ok": False, "error": "Choose a source batch to copy from."}
+    if not targets:
+        return {"ok": False, "error": "Choose at least one target batch different from the source."}
+    rows = db.query(TimetableEntry).filter(
+        TimetableEntry.batch_id == src,
+        TimetableEntry.archive_gen_id.is_(None),
+    ).all()
+    if not all_subj:
+        rows = [r for r in rows
+                if _tt_canon_key(r.subject, r.class_name) == _tt_canon_key(subj, r.class_name)]
+    if not rows:
+        return {"ok": False,
+                "error": ("No active timetable found in the source batch."
+                          if all_subj else "No timetable found for that subject in the source batch.")}
+    by_class = {}
+    for e in rows:
+        cls = e.class_name or "Class 12"
+        by_class.setdefault(cls, []).append({
+            "subject": e.subject, "chapter": e.chapter or "", "part": e.part or "",
+            "date": (e.entry_date.isoformat() if e.entry_date else ""),
+            "day": e.day or "", "time": e.time_text or "", "type": e.entry_type or "chapter",
+        })
+    results = []
+    total_added = 0
+    for tb in targets:
+        tadded = 0
+        tremoved = 0
+        for cls, crows in by_class.items():
+            res = _safe_timetable_publish(db, tb, cls, crows, mode)
+            tadded += res.get("added", 0)
+            tremoved += res.get("removed", 0)
+        try:
+            b = db.query(Batch).filter(Batch.id == tb).first()
+            bname = (b.name if b and b.name else None) or ("Batch %d" % tb)
+        except Exception:
+            bname = "Batch %d" % tb
+        results.append({"batch_id": tb, "batch": bname, "added": tadded, "removed": tremoved})
+        total_added += tadded
+    db.commit()
+    return {"ok": True, "copied_rows": len(rows),
+            "subject": ("All subjects" if all_subj else subj),
+            "classes": sorted(by_class.keys()),
+            "targets": results, "total_added": total_added}
+
+
+@router.post("/timetable-pdf-commit")
+def admin_timetable_pdf_commit(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry
+    rows = payload.get("rows") or []
+    class_name = (payload.get("class_name") or "Class 12").strip()
+    replace = str(payload.get("replace") or "false")
+    _tt_bid = payload.get("batch_id")
+    try:
+        _tt_bid = int(_tt_bid) if _tt_bid else None
+    except Exception:
+        _tt_bid = None
+    # v124: partial replace — from_date se pahle ki purani entries as-is rakho
+    from_dt = None
+    _fd = (payload.get("from_date") or "").strip()
+    if _fd:
+        try:
+            from_dt = datetime.strptime(_fd, "%Y-%m-%d").date()
+        except Exception:
+            raise HTTPException(status_code=400, detail="from_date must be in YYYY-MM-DD format.")
+    clean = []
+    for r in rows:
+        sub = (r.get("subject") or "").strip()
+        ch = (r.get("chapter") or "").strip()
+        if not sub or not ch:
+            continue
+        clean.append({"subject": sub, "chapter": ch, "part": (r.get("part") or "").strip() or None,
+                      "date": r.get("date") or "", "day": (r.get("day") or "").strip(),
+                      "time": (r.get("time") or "").strip(), "type": r.get("type") or "chapter"})
+    if from_dt:
+        # from_date se pahle ki rows commit hi mat karo — wo purani entries ke saath
+        # pahle se safe hain (double-safety, preview pehle hi filter kar chuka hota hai)
+        _kept = []
+        for r in clean:
+            try:
+                _rd = datetime.strptime(r["date"], "%Y-%m-%d").date()
+            except Exception:
+                _rd = None
+            if _rd is not None and _rd >= from_dt:
+                _kept.append(r)
+        clean = _kept
+    if not clean:
+        raise HTTPException(status_code=400, detail="No valid rows left — keep at least 1 chapter.")
+    if _SR is not None:
+        for r in clean:
+            r["subject"] = _SR.canon_display(r.get("subject"), class_name)
+    subjects_found = sorted(set(r["subject"] for r in clean))
+    # Publish mode: explicit 'mode' > legacy replace/from_date > SAFE AUTO.
+    # SAFE AUTO: agar is batch+subject+class me pehle se active rows hain to REPLACE kar do
+    # (purana cached client replace=false bheje tab bhi 18+22=40 inflation nahi hoga).
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in ("replace_all", "replace_from_date", "add_extra"):
+        if from_dt:
+            mode = "replace_from_date"
+        elif replace.lower() == "true":
+            mode = "replace_all"
+        else:
+            mode = "auto"
+    # MULTI-BATCH: ek hi timetable kai batches me publish karo. batch_ids diya ho to har batch me
+    # (same safe per-batch replace), warna single batch_id (legacy). Koi na ho to global (NULL).
+    _bid_list = []
+    _raw_ids = payload.get("batch_ids")
+    if isinstance(_raw_ids, list):
+        for x in _raw_ids:
+            try:
+                xi = int(x)
+            except Exception:
+                xi = 0
+            if xi and xi not in _bid_list:
+                _bid_list.append(xi)
+    if not _bid_list:
+        _bid_list = [_tt_bid]   # single (may be None -> global)
+    per_batch = []
+    total_added = 0
+    for _b in _bid_list:
+        diff = _safe_timetable_publish(db, _b, class_name, clean, mode, from_dt=from_dt)
+        total_added += diff["added"]
+        per_batch.append({"batch_id": _b, "added": diff["added"], "removed": diff["removed"],
+                          "mode": diff["mode"], "new_active_count": diff["new_active_count"],
+                          "skipped_existing": diff["skipped_existing"]})
+    db.commit()
+    return {"added": total_added, "subjects": subjects_found, "batches": len(_bid_list),
+            "from_date": (from_dt.isoformat() if from_dt else ""),
+            "removed": sum(p["removed"] for p in per_batch),
+            "skipped_existing": sum(p["skipped_existing"] for p in per_batch),
+            "per_batch": per_batch}
+
+# ===== ADMIN: SEND NOTIFICATION (target teachers/students/all) =====
+@router.get("/notify-targets")
+def admin_notify_targets(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v93: admin notify modal — har target pe kitne users jayenge (live counts).
+    v193: + subject / class-wise targeting ke liye subjects & classes list."""
+    from models import StudentProfile, AvailableSubject
+    q = db.query(User).filter(User.is_active == True, User.role != "admin")
+    teachers = q.filter(User.role == "teacher").count()
+    students = q.filter(User.role == "student").count()
+    _classes = sorted({(c or "").strip() for (c,) in db.query(StudentProfile.class_level).distinct()
+                       if c and (c or "").strip()})
+    _subs_by_class = {}
+    _all_subs = set()
+    try:
+        for s in db.query(AvailableSubject).all():
+            nm = (getattr(s, "name", "") or "").strip()
+            cl = (getattr(s, "class_level", "") or "").strip()
+            if not nm:
+                continue
+            _all_subs.add(nm)
+            _subs_by_class.setdefault(cl, [])
+            if nm not in _subs_by_class[cl]:
+                _subs_by_class[cl].append(nm)
+        for k in _subs_by_class:
+            _subs_by_class[k] = sorted(_subs_by_class[k])
+    except Exception:
+        _subs_by_class = {}
+    return {"teachers": teachers, "students": students, "all": teachers + students,
+            "classes": _classes, "subjects": sorted(_all_subs),
+            "subjects_by_class": _subs_by_class}
+
+
+@router.post("/notify")
+def admin_notify(payload: dict, db: Session = Depends(get_db), me=Depends(get_admin)):
+    from models import StudentProfile
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    target = (payload.get("target") or "all").strip()   # teachers | students | all
+    subject = (payload.get("subject") or "").strip()
+    cls = (payload.get("class_name") or "").strip()
+    link = (payload.get("link") or "").strip() or None
+    if link and not (link.startswith("http://") or link.startswith("https://")):
+        link = "https://" + link
+    if not title or not message:
+        raise HTTPException(status_code=400, detail="Title and message are required")
+    # optional image attachment -> R2 -> serve URL
+    image_url = None
+    img_b64 = payload.get("image_b64") or ""
+    if img_b64:
+        try:
+            import base64 as _b64
+            raw = _b64.b64decode(img_b64.split(",", 1)[-1])
+            if raw and len(raw) <= 8 * 1024 * 1024:
+                _ref = __import__("r2_storage").store_file_value(
+                    __import__("r2_storage").new_key("notif-img", "notif.jpg"), raw, "image/jpeg")
+                if _ref:
+                    import urllib.parse as _up
+                    image_url = "/api/notif-image?k=" + _up.quote(str(_ref), safe="")
+        except Exception:
+            image_url = None
+    batch_id = payload.get("batch_id")
+    try:
+        batch_id = int(batch_id) if batch_id not in (None, "", "0", 0) else None
+    except Exception:
+        batch_id = None
+
+    def _snorm(x):
+        try:
+            return _SR.canon_norm(x)
+        except Exception:
+            return (str(x or "")).strip().lower()
+
+    if target == "teachers":
+        users = db.query(User).filter(User.is_active == True, User.role == "teacher").all()
+    elif target == "students":
+        if not cls and not subject and not batch_id:
+            # koi filter nahi -> sabhi active students
+            users = db.query(User).filter(User.is_active == True, User.role == "student").all()
+        else:
+            base = (db.query(User, StudentProfile)
+                    .join(StudentProfile, StudentProfile.user_id == User.id)
+                    .filter(User.is_active == True, User.role == "student"))
+            if cls:
+                base = base.filter(StudentProfile.class_level == cls)
+            if batch_id:
+                from sqlalchemy import or_ as _or2
+                sib = _sibling_batch_ids(db, [batch_id]) if "_sibling_batch_ids" in globals() else [batch_id]
+                base = base.filter(_or2(StudentProfile.active_batch_id.in_(sib),
+                                        StudentProfile.batch_id.in_(sib)))
+            pairs = base.all()
+            if subject:
+                sn = _snorm(subject)
+                # subjects ek JSON list hai — SQL LIKE JSON par reliable nahi, isliye Python me
+                # exact (normalized) membership check: SIRF un students ko jinke paas ye subject hai.
+                pairs = [(u, sp) for (u, sp) in pairs
+                         if any(_snorm(x) == sn for x in (sp.subjects or []))]
+            users = [u for (u, sp) in pairs]
+    else:
+        users = db.query(User).filter(User.is_active == True, User.role != "admin").all()
+    # view-tracking batch + human label (admin "Sent by Me")
+    import uuid as _uuid
+    batch = _uuid.uuid4().hex[:24]
+    if target == "teachers":
+        label = "All Teachers"
+    elif target == "students":
+        if subject and cls:
+            label = "%s (Class %s) Students" % (subject, cls)
+        elif cls:
+            label = "Class %s Students" % cls
+        elif subject:
+            label = "%s Students" % subject
+        else:
+            label = "All Students"
+        if batch_id:
+            try:
+                from models import Batch as _B
+                _b = db.query(_B).filter(_B.id == batch_id).first()
+                if _b:
+                    label += " · %s%s" % (_b.name or ("Batch %s" % batch_id),
+                                          (" (" + _b.session + ")") if getattr(_b, "session", "") else "")
+            except Exception:
+                pass
+    else:
+        label = "Everyone (Teachers + Students)"
+    _sid = getattr(me, "id", None)
+    for u in users:
+        notify(db, u.id, "\U0001f4e2 " + title, message, "admin_broadcast",
+               link=link, image_url=image_url,
+               batch_key=batch, batch_label=label, sender_id=_sid, sender_role="admin")
+    db.commit()
+    # (Phone push har notify() se already queue ho jaata hai — payload-wise coalesced.)
+    _scope = target if target != "students" else (
+        "students" + (" · " + cls if cls else "") + (" · " + subject if subject else ""))
+    return {"message": "Notification sent to %d people!" % len(users), "count": len(users),
+            "scope": _scope}
+
+
+# ===== ADMIN: MATERIAL UPLOAD (direct PDF) + pending view =====
+@router.post("/material")
+async def admin_upload_material(
+    file: UploadFile = File(...),
+    subject: str = Form(...),
+    class_name: str = Form("Class 12"),
+    chapter: str = Form(""),
+    material_type: str = Form("notes"),
+    title: str = Form(""),
+    category: str = Form(""),
+    duration_min: int = Form(0),
+    db: Session = Depends(get_db),
+    _=Depends(get_admin)
+):
+    import base64
+    from models import Material, StudentProfile
+    raw = await file.read()
+    if len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File is larger than 20MB")
+    if _SR is not None:
+        subject = _SR.canon_display(subject.strip(), class_name)
+    # v123: single-class subject pe official class force (Social Science=10 etc.) —
+    # frontend se galat/hardcoded class aaye to bhi split nahi hoga
+    from teacher_routes import _subj_class_digits as _scd
+    _cls_fixed = _scd(db, subject.strip())
+    if _cls_fixed:
+        class_name = "Class " + _cls_fixed
+    elif not class_name.strip():
+        class_name = "Class 12"
+    m = Material(
+        teacher_id=None, teacher_name="Admin", subject=subject.strip(),
+        class_name=class_name.strip(), chapter=chapter.strip(),
+        material_type=material_type.strip(), title=(title.strip() or file.filename),
+        category=(category.strip() or None), filename=file.filename,
+        content_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("materials", file.filename), raw, file.content_type or "application/pdf"),
+        duration_min=(duration_min or None)
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    # notify students of subject
+    try:
+        label = {"notes": "Class Notes", "dpp": "DPP", "test": "Test"}.get(material_type.strip(), (category.strip() or "Material"))
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
+            if sp.subjects and subject.strip() in sp.subjects and sp.user:
+                n = Notification(user_id=sp.user_id, title=f"📚 New {label}: {subject.strip()}",
+                                 message=f"Admin uploaded {label} for {subject.strip()}.", notif_type="new_material")
+                db.add(n)
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"id": m.id, "message": "Uploaded successfully!"}
+
+@router.get("/material/{mid}/download")
+def admin_download(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    import base64
+    from fastapi import Response
+    from models import Material
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
+    if not m: raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), True, sniff=True)
+
+@router.get("/pending-materials")
+def admin_pending_materials(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Chapters (from timetable) jinki notes ya dpp abhi upload nahi hui."""
+    from models import TimetableEntry, Material
+    chapters = db.query(TimetableEntry.subject, TimetableEntry.chapter, TimetableEntry.teacher_id).filter(
+        TimetableEntry.entry_type == "chapter").distinct().all()
+    mats = db.query(Material).options(defer(Material.content_b64)).all()
+    out = []
+    for subj, ch, tid in chapters:
+        if not ch: continue
+        notes = any(m.subject == subj and m.chapter == ch and m.material_type == "notes" for m in mats)
+        dpp = any(m.subject == subj and m.chapter == ch and m.material_type == "dpp" for m in mats)
+        if not notes or not dpp:
+            tname = None
+            if tid:
+                tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+                tname = tp.user.name if tp and tp.user else None
+            out.append({"subject": subj, "chapter": ch, "teacher": tname,
+                        "notes": notes, "dpp": dpp})
+    return out
+
+# ===== ADMIN: EXTRA-CLASS APPROVAL =====
+@router.get("/pending-classes")
+def admin_pending_classes(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile
+    es = db.query(TimetableEntry).filter(TimetableEntry.status == "pending").order_by(TimetableEntry.entry_date).all()
+    out = []
+    for e in es:
+        tname = None
+        if e.teacher_id:
+            tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+            tname = tp.user.name if tp and tp.user else None
+        out.append({"id": e.id, "teacher": tname, "subject": e.subject, "class_name": e.class_name,
+                    "topic": e.chapter, "date": str(e.entry_date) if e.entry_date else None,
+                    "day": e.day, "time": e.time_text})
+    return out
+
+@router.post("/class/{eid}/approve")
+def approve_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile, StudentProfile, Notification
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Not found")
+    e.status = "approved"
+    # ---- AUTO-SHIFT: extra class ke saath jo plan bana tha, ab apply karo ----
+    shifted = 0
+    if getattr(e, "shift_plan", None):
+        try:
+            import json as _json
+            from datetime import datetime as _dtx
+            plan = _json.loads(e.shift_plan)
+            for row in plan:
+                tgt = db.query(TimetableEntry).filter(TimetableEntry.id == row.get("id")).first()
+                if not tgt or not row.get("to"):
+                    continue
+                nd = _dtx.strptime(row["to"], "%Y-%m-%d").date()
+                tgt.entry_date = nd
+                tgt.day = nd.strftime("%a")
+                shifted += 1
+            e.shift_plan = None
+        except Exception:
+            db.rollback()
+            e.status = "approved"
+    # notify teacher
+    if e.teacher_id:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first()
+        if tp and tp.user:
+            msg = f"Aapki {e.subject} extra class ({e.entry_date}) approve ho gayi."
+            if shifted:
+                msg += f" {shifted} later classes were shifted automatically."
+            db.add(Notification(user_id=tp.user_id, title="Extra Class Approved",
+                                message=msg, notif_type="class_approved"))
+    # notify students of that subject
+    _nk = (_SR.canon_norm(e.subject) if _SR else e.subject)
+    for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
+        if sp.subjects and _nk in {(_SR.canon_norm(x) if _SR else x) for x in sp.subjects} and sp.user:
+            db.add(Notification(user_id=sp.user_id, title=f"New Class: {e.subject}",
+                                message=f"An extra class was added for {e.subject} ({e.entry_date} {e.time_text or ''}). See the time table.",
+                                notif_type="new_class"))
+    db.commit()
+    return {"message": "Class approved!" + (f" {shifted} upcoming classes auto-shifted." if shifted else ""),
+            "shifted": shifted}
+
+@router.post("/class/{eid}/reject")
+def reject_class(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry, TeacherProfile, Notification
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Not found")
+    tid = e.teacher_id; subj = e.subject
+    db.delete(e)
+    if tid:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if tp and tp.user:
+            db.add(Notification(user_id=tp.user_id, title="Extra Class Rejected",
+                                message=f"Your {subj} extra class request was rejected.", notif_type="class_rejected"))
+    db.commit()
+    return {"message": "Rejected"}
+
+# ===== ADMIN: SUBJECT-WISE STUDENT COUNTS =====
+
+def _exam_ranking_rows(db, exam_id):
+    """Graded attempts -> ranked rows (top 3 podium + list). Shared by all roles."""
+    from models import Exam, ExamAttempt, StudentProfile
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return None
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id == exam_id, ExamAttempt.status == "graded")
+            .all())
+    rows = []
+    for a in atts:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        att_n = None
+        if a.attempted:
+            att_n = len(a.attempted)
+        elif a.mcq_answers:
+            att_n = len([v for v in (a.mcq_answers or {}).values() if v not in (None, "", [])])
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "attempted": att_n,
+                     "batch": (sp.batch_name if sp else None),
+                     "has_photo": bool(sp and sp.photo_b64)})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    return {"exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
+                     "chapter": exam.chapter, "total_marks": exam.total_marks,
+                     "test_type": exam.test_type},
+            "graded": len(rows), "rows": rows}
+
+@router.get("/exam/{exam_id}/ranking")
+def admin_exam_ranking(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Exam
+    data = _exam_ranking_rows(db, exam_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Test not found")
+    data["me_id"] = None
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if ex:
+        data["ranking_mode"] = (getattr(ex, "ranking_mode", "") or "auto")
+        data["ranking_declared"] = bool(getattr(ex, "ranking_declared", False))
+    return data
+
+
+@router.post("/exam/{exam_id}/ranking-mode")
+def admin_set_exam_ranking_mode(exam_id: int, payload: dict = Body(...),
+                                db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Per-test ranking visibility set karo (purane tests pe bhi chalta hai).
+    mode: auto | manual | off. 'manual' chunne par declared reset ho jaata hai (jab tak
+    teacher/admin declare na kare, students ko ranking nahi dikhegi)."""
+    from models import Exam
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in ("auto", "manual", "off"):
+        raise HTTPException(status_code=400, detail="mode must be auto, manual or off")
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Test not found")
+    ex.ranking_mode = mode
+    if mode != "manual":
+        ex.ranking_declared = False          # auto/off me declare flag ka matlab nahi
+    db.commit()
+    return {"ok": True, "ranking_mode": mode, "ranking_declared": bool(ex.ranking_declared)}
+
+
+@router.post("/exam/{exam_id}/declare-ranking")
+def admin_declare_exam_ranking(exam_id: int, payload: dict = Body(default={}),
+                               db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Manual mode me ranking ko ABHI declare karo (students ko dikhne lagegi). undo:true bhejo
+    to wapas chhupa do."""
+    from models import Exam
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Test not found")
+    undo = bool(payload.get("undo"))
+    if (getattr(ex, "ranking_mode", "") or "auto") != "manual":
+        ex.ranking_mode = "manual"           # declare dabaya to mode manual kar do
+    ex.ranking_declared = (not undo)
+    db.commit()
+    return {"ok": True, "ranking_mode": ex.ranking_mode, "ranking_declared": bool(ex.ranking_declared)}
+
+
+@router.get("/student-counts")
+def admin_student_counts(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Subject counts SPLIT BY CLASS LEVEL — same-name subjects (English 202 vs
+    English 302, Hindi, Data Entry Operations) alag alag cards me dikhte hain."""
+    import time as _time
+    _scc = globals().setdefault("_SCNT_CACHE", {})
+    _h = _scc.get("c")
+    if _h and (_time.time() - _h[0] < 30):
+        return _h[1]
+    from models import StudentProfile, AvailableSubject
+    import re as _re
+    def _sk(name):
+        t = str(name or "")
+        t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
+        t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
+        return " ".join(t.split()).strip()
+    from sqlalchemy.orm import load_only
+    # sirf 2 columns load karo (poori row nahi) — lakhs students pe memory bahut kam
+    students = db.query(StudentProfile).options(
+        load_only(StudentProfile.class_level, StudentProfile.subjects)).all()
+    code_map, class_map = {}, {}
+    for a in db.query(AvailableSubject).all():
+        code_map[(_sk(a.name), str(a.class_level or "").strip())] = a.code
+        class_map.setdefault(_sk(a.name), str(a.class_level or "").strip())
+    counts = {}
+    for sp in students:
+        cls = str(sp.class_level or "").strip() or "?"
+        seen = set()   # ek student ka same canonical subject 2 baar na gine
+        for s in (sp.subjects or []):
+            if _SR is not None:
+                key = (_SR.canon_key(s, cls), cls)
+                if key in seen:
+                    continue
+                seen.add(key)
+                disp = _SR.canon_display(s, cls)
+                can = _SR.canon_subject(s, cls)
+                code = (can or {}).get("code") or code_map.get((_sk(disp), cls))
+            else:
+                key = (s, cls)
+                if key in seen:
+                    continue
+                seen.add(key)
+                disp = s
+                code = code_map.get((_sk(s), cls))
+            k = (disp, cls, code)
+            counts[k] = counts.get(k, 0) + 1
+    out = [{"subject": k[0], "class": k[1], "code": k[2], "count": v}
+           for k, v in counts.items()]
+    out.sort(key=lambda x: (-x["count"], (x["subject"] or ""), x["class"]))
+    return {"total_students": len(students), "subjects": out}
+
+# ===== ADMIN: DELETE A TIMETABLE CLASS (admin-only) =====
+@router.delete("/timetable-entry/{eid}")
+def admin_delete_tt(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TimetableEntry
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    db.delete(e); db.commit()
+    return {"message": "Class deleted"}
+
+# ===== ADMIN: FULL EDIT OF ANY TIMETABLE ENTRY =====
+@router.patch("/timetable-entry/{eid}")
+def admin_edit_tt(eid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin kisi bhi teacher/subject ki entry ke saare fields edit kar sakta hai.
+    Day HAMESHA date se auto-calculate hota hai (galat day kabhi save nahi hoga)."""
+    from models import TimetableEntry
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    def _s(k):
+        return (payload.get(k) or "").strip()
+    if "subject" in payload and _s("subject"):
+        e.subject = _s("subject")
+    if "class_name" in payload and _s("class_name"):
+        e.class_name = _s("class_name")
+    if "chapter" in payload and _s("chapter"):
+        e.chapter = _s("chapter")
+    if "part" in payload:
+        e.part = _s("part") or None
+    if "time" in payload:
+        e.time_text = _s("time") or None
+    if "type" in payload and _s("type") in ("chapter", "event"):
+        e.entry_type = _s("type")
+    if "entry_date" in payload:
+        d = _s("entry_date")
+        if d:
+            try:
+                e.entry_date = datetime.strptime(d, "%Y-%m-%d").date()
+                e.day = e.entry_date.strftime("%A")
+            except Exception:
+                raise HTTPException(status_code=400, detail="Date must be in YYYY-MM-DD format")
+        else:
+            e.entry_date = None
+            e.day = _s("day") or None
+    db.commit()
+    return {"message": "Entry updated", "id": e.id}
+
+# ===== ADMIN: DIRECT RESCHEDULE (teacher ke count/salary pe koi asar NAHI) =====
+@router.post("/timetable-entry/{eid}/reschedule")
+def admin_reschedule_tt(eid: int, payload: dict = Body(...),
+                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher centre pe hai par class ka time/date badalna hai — admin directly move
+    kare. Ye ADMIN move hai: teacher ke reschedule count me NAHI jata, salary pe asar
+    NAHI. Teacher + students (photo ke saath) ko notification jaati hai."""
+    from models import TimetableEntry, TeacherProfile, Notification
+    from teacher_routes import _ensure_v86, _notify_class_moved
+    _ensure_v86(db)
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    try:
+        nd = datetime.strptime((payload.get("new_date") or "").strip(), "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid new date")
+    nt = (payload.get("new_time") or "").strip()
+    od, ot = e.entry_date, e.time_text
+    e.entry_date = nd
+    e.day = nd.strftime("%A")
+    if nt:
+        e.time_text = nt
+    e.resched_by = "admin"
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == e.teacher_id).first() if e.teacher_id else None
+    if tp:
+        _notify_class_moved(db, tp, [(e, od, ot)], "Class Rescheduled — ",
+                            "The schedule was updated by the admin.")
+        if tp.user_id:
+            db.add(Notification(
+                user_id=tp.user_id, title="Class Rescheduled by Admin",
+                message=(f"Admin ne aapki {e.subject} ({e.class_name or ''}) class "
+                         f"{od} {ot or ''} se {nd} {e.time_text or ''} pe move ki hai"
+                         + (f". Reason: {(payload.get('reason') or '').strip()}" if (payload.get('reason') or '').strip() else "")
+                         + ". Ye aapke reschedule count ya salary pe asar nahi daalegi."),
+                notif_type="timetable"))
+    db.commit()
+    return {"ok": True, "message": "Class moved. The teacher and students have been notified. This does not affect the teacher's reschedule count or salary."}
+
+# ===== ADMIN: TEACHER TT-RESCHEDULE REQUESTS (timetable entries) =====
+@router.get("/tt-reschedules/pending")
+def admin_tt_reschedules_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher ne timetable page se bheji reschedule requests (topic-edit modal)."""
+    from models import RescheduleRequest, RescheduleStatus, TimetableEntry, TeacherProfile
+    from teacher_routes import _ensure_v86
+    _ensure_v86(db)
+    rows = db.query(RescheduleRequest).filter(
+        RescheduleRequest.status == RescheduleStatus.pending,
+        RescheduleRequest.tt_entry_id != None).order_by(RescheduleRequest.created_at.desc()).all()
+    out = []
+    for r in rows:
+        e = db.query(TimetableEntry).filter(TimetableEntry.id == r.tt_entry_id).first()
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == r.teacher_id).first()
+        out.append({"id": r.id,
+                    "teacher": tp.user.name if tp and tp.user else "",
+                    "subject": e.subject if e else "", "class_name": (e.class_name if e else "") or "",
+                    "chapter": (e.chapter if e else "") or "",
+                    "original_date": str(e.entry_date) if e and e.entry_date else str(r.original_date or ""),
+                    "original_time": ((e.time_text if e else "") or ""),
+                    "new_date": str(r.new_date) if r.new_date else "",
+                    "new_time": r.new_time.strftime("%I:%M %p") if r.new_time else "",
+                    "reason": r.reason or "",
+                    "created_at": r.created_at.strftime("%d %b %Y, %I:%M %p") if r.created_at else ""})
+    return out
+
+@router.post("/tt-reschedules/{rid}/review")
+def admin_tt_reschedule_review(rid: int, payload: dict = Body(default={}),
+                               db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve => entry move + teacher ka monthly reschedule count +1 + notifications.
+    Reject => teacher ko note ke saath notification."""
+    from models import (RescheduleRequest, RescheduleStatus, TimetableEntry,
+                        TeacherProfile, Notification)
+    from teacher_routes import _ist_now, _ensure_v86, _notify_class_moved
+    _ensure_v86(db)
+    rs = db.query(RescheduleRequest).filter(RescheduleRequest.id == rid).first()
+    if not rs or rs.tt_entry_id is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if rs.status != RescheduleStatus.pending:
+        raise HTTPException(status_code=400, detail="This request has already been processed")
+    action = (payload.get("status") or payload.get("action") or "").strip().lower()
+    if action not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be approved or rejected")
+    note = (payload.get("admin_note") or payload.get("note") or "").strip()
+    rs.status = RescheduleStatus.approved if action == "approved" else RescheduleStatus.rejected
+    rs.admin_note = note or None
+    rs.reviewed_at = _ist_now()
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == rs.tt_entry_id).first()
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == rs.teacher_id).first()
+    if action == "approved":
+        if not e:
+            raise HTTPException(status_code=404, detail="The timetable entry no longer exists")
+        od, ot = e.entry_date, e.time_text
+        e.entry_date = rs.new_date
+        e.day = rs.new_date.strftime("%A")
+        if rs.new_time:
+            e.time_text = rs.new_time.strftime("%I:%M %p").lstrip("0")
+        e.resched_by = "teacher"          # TEACHER request — count me jayegi
+        if tp:
+            now = _ist_now()
+            if tp.reschedule_reset_month != now.month:
+                tp.reschedule_count_this_month = 0
+                tp.reschedule_reset_month = now.month
+            tp.reschedule_count_this_month = (tp.reschedule_count_this_month or 0) + 1
+            _notify_class_moved(db, tp, [(e, od, ot)], "Class Rescheduled — ",
+                                "The class was rescheduled by your teacher.")
+        if tp and tp.user_id:
+            db.add(Notification(
+                user_id=tp.user_id, title="✅ Reschedule Approved",
+                message=(f"Aapki {e.subject} ({e.class_name or ''}) class {od} {ot or ''} se "
+                         f"{e.entry_date} {e.time_text or ''} pe move ho gayi."
+                         + (f" Note: {note}" if note else "")),
+                notif_type="reschedule_approved"))
+    else:
+        if tp and tp.user_id:
+            db.add(Notification(
+                user_id=tp.user_id, title="❌ Reschedule Rejected",
+                message=(f"{e.subject if e else 'Class'} ki reschedule request reject ho gayi."
+                         + (f" Note: {note}" if note else "")),
+                notif_type="reschedule_rejected"))
+    db.commit()
+    return {"ok": True, "status": action}
+
+# ===== ADMIN: DELETE ENTIRE SUBJECT TIMETABLE (one click, bulletproof on frontend) =====
+@router.delete("/timetable-subject")
+def admin_delete_tt_subject(subject: str, class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek subject ka poora timetable delete. class_level ('10'/'12') optional filter hai
+    taaki same naam wale subjects (e.g. Economics 10 vs 12) alag-alag delete ho saken."""
+    from models import TimetableEntry
+    subject = (subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    q = db.query(TimetableEntry).filter(TimetableEntry.subject == subject)
+    cl = (class_level or "").strip()
+    if cl in ("10", "12"):
+        q = q.filter(TimetableEntry.class_name.like(f"%{cl}%"))
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} entries deleted for {subject}"}
+
+
+@router.delete("/timetable-batch")
+def admin_delete_tt_batch(batch_id: int, subject: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek BATCH ka poora timetable delete (crash course samet). subject diya ho to sirf us batch
+    ka wo subject delete hota hai; warna us batch ke saare entries. Sirf batch-scoped entries pe
+    asar — global/doosre batch ka timetable safe rehta hai."""
+    from models import TimetableEntry
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="Batch is required")
+    q = db.query(TimetableEntry).filter(TimetableEntry.batch_id == batch_id)
+    subject = (subject or "").strip()
+    if subject:
+        q = q.filter(TimetableEntry.subject == subject)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} entries deleted"}
+
+# ===== ADMIN: CLEAR TIMETABLE (whole class or everything) =====
+@router.get("/timetable-pending")
+def admin_timetable_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher-submitted timetables awaiting approval, grouped by teacher + subject + batch."""
+    from models import TimetableEntry, Batch, TeacherProfile, User
+    rows = db.query(TimetableEntry).filter(TimetableEntry.status == "pending").all()
+    if not rows:
+        return {"groups": []}
+    bmap = {b.id: b.name for b in db.query(Batch.id, Batch.name).all()}
+    tmap = {}
+    tids = list({r.teacher_id for r in rows if r.teacher_id})
+    if tids:
+        for tpid, uname in (db.query(TeacherProfile.id, User.name)
+                            .join(User, User.id == TeacherProfile.user_id)
+                            .filter(TeacherProfile.id.in_(tids)).all()):
+            tmap[tpid] = uname
+    groups = {}
+    for r in rows:
+        key = (r.teacher_id or 0, r.subject or "", r.class_name or "", r.batch_id or 0)
+        g = groups.setdefault(key, {"teacher_id": r.teacher_id, "teacher": tmap.get(r.teacher_id, "\u2014"),
+                                    "subject": r.subject, "class_name": r.class_name,
+                                    "batch_id": r.batch_id, "batch": bmap.get(r.batch_id, "Global"),
+                                    "count": 0, "sample": []})
+        g["count"] += 1
+        if len(g["sample"]) < 4:
+            g["sample"].append({"date": (r.entry_date.isoformat() if r.entry_date else ""),
+                                "time": r.time_text or "", "chapter": r.chapter or ""})
+    return {"groups": list(groups.values())}
+
+
+@router.post("/timetable-approve")
+def admin_timetable_approve(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve a pending group -> entries go live (status cleared) and become locked for the teacher."""
+    from models import TimetableEntry
+    subject = (payload.get("subject") or "").strip()
+    class_name = (payload.get("class_name") or "").strip()
+    try:
+        tid = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
+    except Exception:
+        tid = None
+    try:
+        bid = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        bid = None
+    q = db.query(TimetableEntry).filter(TimetableEntry.status == "pending",
+                                        TimetableEntry.subject == subject,
+                                        TimetableEntry.class_name == class_name)
+    if tid:
+        q = q.filter(TimetableEntry.teacher_id == tid)
+    q = q.filter(TimetableEntry.batch_id == bid) if bid else q.filter(TimetableEntry.batch_id == None)
+    n = q.update({TimetableEntry.status: "approved"}, synchronize_session=False)
+    db.commit()
+    return {"ok": True, "approved": n}
+
+
+@router.post("/timetable-reject")
+def admin_timetable_reject(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Reject (delete) a pending group."""
+    from models import TimetableEntry
+    subject = (payload.get("subject") or "").strip()
+    class_name = (payload.get("class_name") or "").strip()
+    try:
+        tid = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
+    except Exception:
+        tid = None
+    try:
+        bid = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        bid = None
+    q = db.query(TimetableEntry).filter(TimetableEntry.status == "pending",
+                                        TimetableEntry.subject == subject,
+                                        TimetableEntry.class_name == class_name)
+    if tid:
+        q = q.filter(TimetableEntry.teacher_id == tid)
+    q = q.filter(TimetableEntry.batch_id == bid) if bid else q.filter(TimetableEntry.batch_id == None)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "rejected": n}
+
+
+@router.get("/tt-subjects")
+def admin_tt_subjects(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Distinct subjects present in the timetable (for the batch-subject picker)."""
+    from models import TimetableEntry
+    rows = db.query(TimetableEntry.subject).filter(TimetableEntry.subject != None,
+                                                   TimetableEntry.subject != "").distinct().all()
+    return {"subjects": sorted({(r[0] or "").strip() for r in rows if (r[0] or "").strip()})}
+
+
+@router.get("/batch-subjects")
+def admin_get_batch_subjects(batch_id: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Subjects mapped to a batch (the LIVE subjects that batch offers)."""
+    from models import BatchSubject
+    if not batch_id:
+        return {"subjects": []}
+    rows = db.query(BatchSubject.subject).filter(BatchSubject.batch_id == batch_id).all()
+    return {"subjects": sorted({(r[0] or "").strip() for r in rows if (r[0] or "").strip()})}
+
+
+@router.post("/batch-subjects")
+def admin_set_batch_subjects(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Replace a batch's subject mapping. Global timetable of these subjects will show to this
+    batch's students; batch-specific entries always win."""
+    from models import BatchSubject
+    try:
+        batch_id = int(payload.get("batch_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="batch_id required")
+    subjects = payload.get("subjects") or []
+    subjects = sorted({(s or "").strip() for s in subjects if (s or "").strip()})
+    db.query(BatchSubject).filter(BatchSubject.batch_id == batch_id).delete(synchronize_session=False)
+    for s in subjects:
+        db.add(BatchSubject(batch_id=batch_id, subject=s))
+    db.commit()
+    return {"ok": True, "count": len(subjects)}
+
+
+@router.get("/timetable-chapters")
+def admin_timetable_chapters(subject: str = "", class_level: str = "", crash: int = 0,
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Chapter suggestions for the timetable builder — distinct chapters already used for this
+    subject (split on the ' + ' merge separator). Admin can also type a brand-new one.
+    crash=1 -> saaf list (tests hatao + duplicate merge) crash-course count ke liye."""
+    from models import TimetableEntry
+    subject = (subject or "").strip()
+    out, seen = [], set()
+    def _add(p):
+        p = (p or "").strip()
+        if p and p.lower() not in seen:
+            seen.add(p.lower()); out.append(p)
+    if crash:
+        syll = []
+        if subject:
+            try:
+                from video_tasks import _chapters_for, crash_clean_chapters
+                titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "pe", "")
+                for t in (titles or []):
+                    syll.append(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
+                return {"chapters": crash_clean_chapters(syll)[:500]}
+            except Exception:
+                return {"chapters": [x for x in syll if x][:500]}
+        return {"chapters": []}
+    if subject:
+        # 1) Syllabus Manager chapters (the full, authoritative list for this subject+class)
+        try:
+            from video_tasks import _chapters_for
+            titles, _src = _chapters_for(db, 0, subject, (class_level or ""), "", "")
+            for t in (titles or []):
+                _add(t if isinstance(t, str) else (t.get("title") if isinstance(t, dict) else str(t)))
+        except Exception:
+            pass
+        # 2) any custom chapters already used in the timetable (kept for continuity)
+        try:
+            rows = (db.query(TimetableEntry.chapter)
+                    .filter(TimetableEntry.subject == subject,
+                            TimetableEntry.chapter != None, TimetableEntry.chapter != "")
+                    .distinct().all())
+            for r in rows:
+                for part in (r[0] or "").split(" + "):
+                    _add(part)
+        except Exception:
+            pass
+    return {"chapters": out[:500]}
+
+
+_TT_YT_READY = False
+def _ensure_tt_youtube_column(db):
+    """Add timetable_entries.youtube_link on first use (existing DBs upgrade themselves)."""
+    global _TT_YT_READY
+    if _TT_YT_READY:
+        return
+    from sqlalchemy import text as _text
+    for st in ("ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300) NULL",
+               "ALTER TABLE timetable_entries ADD COLUMN youtube_link VARCHAR(300)"):
+        try:
+            db.execute(_text(st)); db.commit(); break
+        except Exception:
+            db.rollback()
+    _TT_YT_READY = True
+
+
+@router.post("/timetable-import-global")
+def admin_timetable_import_global(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Copy the GLOBAL/legacy timetable (batch_id NULL) of a batch's subjects INTO that batch,
+    so the batch gets its own timetable and nothing shows as 'global' anymore. Additive and
+    idempotent (skips subjects the batch already has). Optionally remove the global copies
+    afterwards (remove_global=true) once every relevant batch has imported them.
+    Body: {"batch_id": <int>, "remove_global": <bool optional>}."""
+    from models import TimetableEntry, BatchSubject, Batch
+    _ensure_tt_youtube_column(db)
+    try:
+        bid = int(payload.get("batch_id"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="batch_id is required")
+    b = db.query(Batch).filter(Batch.id == bid).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    subs = [r[0] for r in db.query(BatchSubject.subject).filter(BatchSubject.batch_id == bid).distinct().all()]
+    subs = [s for s in subs if s]
+    if not subs:
+        raise HTTPException(status_code=400, detail="This batch has no subjects assigned yet. Use 'Assign Subjects' first.")
+    own = {r[0] for r in db.query(TimetableEntry.subject)
+           .filter(TimetableEntry.batch_id == bid).distinct().all()}
+    todo = [s for s in subs if s not in own]
+    copied = 0
+    subj_done = []
+    for s in todo:
+        rows = db.query(TimetableEntry).filter(
+            TimetableEntry.batch_id.is_(None), TimetableEntry.subject == s).all()
+        if not rows:
+            continue
+        for e in rows:
+            db.add(TimetableEntry(
+                teacher_id=e.teacher_id, subject=e.subject, class_name=e.class_name,
+                batch_id=bid, chapter=e.chapter, part=e.part, entry_date=e.entry_date,
+                day=e.day, time_text=getattr(e, "time_text", None),
+                entry_type=getattr(e, "entry_type", None) or "chapter",
+                status=getattr(e, "status", None) or "approved",
+                completed=bool(getattr(e, "completed", False)),
+                completed_at=getattr(e, "completed_at", None),
+                topic_covered=getattr(e, "topic_covered", None),
+                start_time=getattr(e, "start_time", None), end_time=getattr(e, "end_time", None),
+                homework=getattr(e, "homework", None), remarks=getattr(e, "remarks", None),
+                youtube_link=getattr(e, "youtube_link", None)))
+            copied += 1
+        subj_done.append(s)
+    removed = 0
+    if payload.get("remove_global") and subj_done:
+        removed = db.query(TimetableEntry).filter(
+            TimetableEntry.batch_id.is_(None), TimetableEntry.subject.in_(subj_done)
+        ).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "copied": copied, "subjects": subj_done,
+            "already_had": sorted(own), "removed_global": removed}
+
+
+@router.post("/timetable-create")
+def admin_timetable_create(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Build a timetable from the smart builder — one row per class. Merged chapters are joined
+    with ' + '. Scoped to a batch (batch_id) so it never clashes with another batch."""
+    from models import TimetableEntry
+    _ensure_tt_youtube_column(db)
+    class_name = (payload.get("class_name") or "Class 12").strip()
+    subject = (payload.get("subject") or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    # multi-batch: batch_ids (list) -> har chune batch ke liye same timetable; khaali -> [None] (global)
+    _targets = []
+    _bids = payload.get("batch_ids")
+    if isinstance(_bids, list):
+        for x in _bids:
+            try:
+                v = int(x)
+            except Exception:
+                v = 0
+            if v and v not in _targets:
+                _targets.append(v)
+    if not _targets:
+        try:
+            _v = int(payload.get("batch_id")) if payload.get("batch_id") else 0
+        except Exception:
+            _v = 0
+        _targets = [_v] if _v else [None]
+    try:
+        teacher_id = int(payload.get("teacher_id")) if payload.get("teacher_id") else None
+    except Exception:
+        teacher_id = None
+    entries = payload.get("entries") or []
+    _clean = []
+    for e in entries:
+        edate = None
+        try:
+            edate = datetime.strptime((e.get("date") or "").strip(), "%Y-%m-%d").date()
+        except Exception:
+            pass
+        chapters = e.get("chapters")
+        if isinstance(chapters, str):
+            chapters = [chapters]
+        chapters = [c.strip() for c in (chapters or []) if c and c.strip()]
+        chapter = " + ".join(chapters) if chapters else (e.get("chapter") or "").strip()
+        if not chapter and not edate and not (e.get("time") or "").strip():
+            continue  # skip empty rows
+        _clean.append(dict(chapter=chapter, part=(e.get("part") or "").strip(), entry_date=edate,
+                           day=(e.get("day") or None), time_text=(e.get("time") or None),
+                           entry_type=(e.get("type") or "lecture"),
+                           youtube_link=((e.get("youtube") or "").strip() or None)))
+    added = 0
+    for _bid in _targets:
+        for c in _clean:
+            db.add(TimetableEntry(teacher_id=teacher_id, subject=subject, class_name=class_name,
+                                  batch_id=_bid, **c))
+            added += 1
+    db.commit()
+    return {"ok": True, "added": added, "batches": len(_targets)}
+
+
+@router.post("/extra-class")
+def admin_extra_class(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ek extra class add kare — ek ya MULTIPLE batches me (batch_ids list). Har batch me
+    apni entry banti hai. Direct approved (koi approval nahi)."""
+    from models import TimetableEntry
+    subject = (payload.get("subject") or "").strip()
+    class_level = (payload.get("class_level") or payload.get("class_name") or "").strip()
+    chapter = (payload.get("chapter") or "").strip()
+    part = (payload.get("part") or "").strip()
+    date = (payload.get("date") or "").strip()
+    time = (payload.get("time") or "").strip()
+    youtube = (payload.get("youtube_link") or "").strip()
+    batch_ids = payload.get("batch_ids") or []
+    if not isinstance(batch_ids, list):
+        batch_ids = [batch_ids]
+    batch_ids = [int(b) for b in batch_ids if str(b).strip().isdigit()]
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject zaroori hai.")
+    if not batch_ids:
+        raise HTTPException(status_code=400, detail="Kam se kam ek batch chuno.")
+    edate = None
+    try:
+        from datetime import datetime as _dt
+        edate = _dt.strptime(date, "%Y-%m-%d").date()
+    except Exception:
+        edate = None
+    added = 0
+    for bid in batch_ids:
+        db.add(TimetableEntry(subject=subject, class_name=class_level, batch_id=bid,
+                              chapter=(chapter or ""), part=(part or None), entry_date=edate,
+                              day=(edate.strftime("%A") if edate else None),
+                              time_text=(time or None), entry_type="lecture", status="approved",
+                              youtube_link=(youtube or None)))
+        added += 1
+    db.commit()
+    return {"ok": True, "added": added}
+
+
+# =====================================================================
+# CRASH COURSE — bulk timetable from a YouTube Crash Course PDF (isolated,
+# batch-scoped). Parser subject-wise Day-1..Day-N classes (date + time)
+# nikaalta hai; commit unhe crash batch ke TimetableEntry rows me daalta
+# hai (chapter khaali -> teacher baad me syllabus se bharega; youtube link
+# baad me lagta hai). Existing timetable system ko bilkul touch nahi karta.
+# =====================================================================
+_CC_MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+              "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12}
+_CC_STREAMS = [("science", "Science"), ("commerce", "Commerce"), ("arts", "Arts"),
+               ("class 10", "Class 10"), ("10th", "Class 10")]
+
+
+def _cc_pdate(s, year):
+    import re as _re
+    if not s:
+        return None
+    m = _re.match(r"\s*(\d{1,2})\s*(?:st|nd|rd|th)?\.?\s*([A-Za-z]+)", s.strip())
+    if not m:
+        return None
+    d = int(m.group(1))
+    mon = _CC_MONTHS.get(m.group(2).lower().rstrip(".")[:4]) or _CC_MONTHS.get(m.group(2).lower()[:3])
+    if not mon:
+        return None
+    try:
+        return datetime(year, mon, d).date()
+    except Exception:
+        return None
+
+
+def _cc_stream_of(header):
+    h = (header or "").lower()
+    for key, name in _CC_STREAMS:
+        if key in h:
+            return name
+    return None
+
+
+def _cc_subj_day(s):
+    import re as _re
+    if not s:
+        return None, 1
+    m = _re.search(r"\(\s*day[\s\-]*(\d+)\s*\)", s, _re.I)
+    day = int(m.group(1)) if m else 1
+    subj = _re.sub(r"\(\s*day[\s\-]*\d+\s*\)", "", s, flags=_re.I)
+    subj = _re.sub(r"[)\(]+", " ", subj)
+    subj = _re.sub(r"\s+", " ", subj).strip(" -")
+    return subj, day
+
+
+def _cc_parse_pdf(raw, year):
+    """Return (primary_stream, [ {subject, teacher, classes:[{day,date,time}]} ]).
+    Day-1 upar wale 'Youtube Crash Course Time Table' section me hota hai (har subject kisi
+    EK sub-section me). Class-12 batches (Science/Commerce/Arts) aapas me Day-1 share karte hain
+    (subject naam se match); Class-10 (UDAAN) alag. Day-2..N stream-specific detail section se."""
+    import io as _io
+    try:
+        import pdfplumber
+    except Exception:
+        raise HTTPException(status_code=500, detail="PDF parser (pdfplumber) not available on the server.")
+    CLASS12 = {"Science", "Commerce", "Arts"}
+    top = []      # Day-1 youtube classes (subject, day, date, time, teacher, stream=sub-section)
+    det = []      # stream-specific Day-2..N
+    cur_date = None
+    cur_stream = None
+    section = "top"
+    primary = None
+    with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+        for page in pdf.pages:
+            for t in (page.extract_tables() or []):
+                for r in t:
+                    r = [(c or "").strip() for c in r]
+                    if len(r) < 4:
+                        continue
+                    dcell, tcell, scell, teacher = r[0], r[1], r[2], r[3]
+                    if dcell and not tcell and not scell:
+                        low = dcell.lower()
+                        st = _cc_stream_of(dcell)
+                        if "time table" in low and "class 1" in low:
+                            section = "detail"
+                            if st:
+                                primary = st
+                            cur_stream = st
+                        elif st:
+                            cur_stream = st
+                        cur_date = None
+                        continue
+                    if scell == "Subject" or tcell == "Time Slot":
+                        continue
+                    d = _cc_pdate(dcell, year)
+                    if d:
+                        cur_date = d
+                    if not scell or not tcell:
+                        continue
+                    subj, day = _cc_subj_day(scell)
+                    if not subj:
+                        continue
+                    row = {"subject": subj, "day": day,
+                           "date": (cur_date.isoformat() if cur_date else None),
+                           "time": tcell, "teacher": teacher, "stream": cur_stream}
+                    (top if section == "top" else det).append(row)
+    if not primary:
+        from collections import Counter as _Ct
+        c = _Ct(x["stream"] for x in det if x["stream"])
+        primary = c.most_common(1)[0][0] if c else None
+    level12 = primary in CLASS12
+    detp = [r for r in det if r["stream"] == primary]
+    det_subs = {}
+    for r in detp:
+        det_subs.setdefault(r["subject"], []).append(r)
+    primary_top = {r["subject"] for r in top if r["stream"] == primary}
+    all_subs = set(det_subs.keys()) | primary_top
+
+    def _find_top1(sub):
+        cands = [r for r in top
+                 if ((r["stream"] in CLASS12) if level12 else (r["stream"] == "Class 10"))
+                 and r["subject"].strip().lower() == sub.strip().lower()]
+        if not cands:
+            return None
+        for r in cands:
+            if r["stream"] == primary:
+                return r
+        return cands[0]
+
+    out = []
+    for sub in sorted(all_subs):
+        classes = {}
+        for r in det_subs.get(sub, []):
+            classes[r["day"]] = {"day": r["day"], "date": r["date"], "time": r["time"]}
+        teacher = (det_subs.get(sub) or [{}])[0].get("teacher", "")
+        if 1 not in classes:
+            t1 = _find_top1(sub)
+            if t1:
+                classes[1] = {"day": 1, "date": t1["date"], "time": t1["time"]}
+                if not teacher:
+                    teacher = t1.get("teacher", "")
+        if not classes:
+            continue
+        out.append({"subject": sub, "teacher": teacher,
+                    "classes": [classes[k] for k in sorted(classes)]})
+    return primary, out
+
+
+def _cc_resolve_teacher(db, name):
+    """'Vicky Sir' / 'Pooja Ma'am' -> teacher_id (first-name match). None if unsure."""
+    import re as _re
+    from models import TeacherProfile, User as _U
+    nm = _re.sub(r"\b(sir|ma'?am|maam|mam)\b", "", (name or ""), flags=_re.I).strip()
+    if not nm:
+        return None
+    first = nm.split()[0].lower()
+    try:
+        rows = db.query(TeacherProfile.id, _U.name).join(_U, _U.id == TeacherProfile.user_id).all()
+    except Exception:
+        return None
+    cand = [tid for tid, un in rows if (un or "").strip().lower().split()[:1] == [first]]
+    if len(cand) == 1:
+        return cand[0]
+    # exact full-name fallback
+    for tid, un in rows:
+        if (un or "").strip().lower() == nm.lower():
+            return tid
+    return None
+
+
+_CC_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+@router.post("/crash-course/parse")
+async def crash_course_parse(file: UploadFile = File(...), year: int = Form(0),
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Upload the Crash Course PDF -> subject-wise Day 1..N classes (date/time) preview."""
+    from datetime import datetime as _dt
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    yr = int(year) if year else _dt.now().year
+    primary, subjects = _cc_parse_pdf(raw, yr)
+    cls = "Class 10" if (primary == "Class 10") else "Class 12"
+    return {"primary_stream": primary or "", "class_name": cls, "year": yr, "subjects": subjects}
+
+
+@router.post("/crash-course/commit")
+def crash_course_commit(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Create crash-course timetable entries for the selected subjects in a batch.
+    Har subject ke liye pehle iske purane crash entries (part LIKE 'Day %') hata ke naye daalta hai
+    (re-upload = clean replace). Chapter khaali (teacher bharega), youtube link khaali."""
+    from models import TimetableEntry
+    from datetime import datetime as _dt2
+    try:
+        _ensure_tt_youtube_column(db)
+    except Exception:
+        pass
+    try:
+        batch_id = int(payload.get("batch_id")) if payload.get("batch_id") else None
+    except Exception:
+        batch_id = None
+    if not batch_id:
+        raise HTTPException(status_code=400, detail="Select a batch.")
+    class_name = (payload.get("class_name") or "").strip()
+    subjects = payload.get("subjects") or []
+    added = 0
+    for s in subjects:
+        subj = (s.get("subject") or "").strip()
+        if not subj:
+            continue
+        tid = _cc_resolve_teacher(db, s.get("teacher") or "")
+        # clean previous crash entries for this batch+subject
+        try:
+            db.query(TimetableEntry).filter(
+                TimetableEntry.batch_id == batch_id, TimetableEntry.subject == subj,
+                TimetableEntry.part.like("Day %")).delete(synchronize_session=False)
+        except Exception:
+            db.rollback()
+        for c in (s.get("classes") or []):
+            edate = None
+            try:
+                edate = _dt2.strptime((c.get("date") or "").strip(), "%Y-%m-%d").date()
+            except Exception:
+                edate = None
+            db.add(TimetableEntry(
+                teacher_id=tid, subject=subj, class_name=class_name, batch_id=batch_id,
+                chapter="", part=("Day %s" % c.get("day", 1)),
+                entry_date=edate, day=(_CC_WEEK[edate.weekday()] if edate else None),
+                time_text=((c.get("time") or "").strip() or None),
+                entry_type="lecture", status="approved", youtube_link=None))
+            added += 1
+    db.commit()
+    return {"ok": True, "added": added, "subjects": len(subjects)}
+
+
+
+
+@router.delete("/timetable-clear")
+def admin_clear_tt(class_level: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Poora timetable ya ek class ka timetable delete. Frontend pe type-to-confirm hai."""
+    from models import TimetableEntry
+    q = db.query(TimetableEntry)
+    cl = (class_level or "").strip()
+    if cl in ("10", "12"):
+        q = q.filter(TimetableEntry.class_name.like(f"%{cl}%"))
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n, "message": f"{n} timetable entries deleted"}
+
+# ===== PHOTOS + STUDENT LIST + BULK-BY-PHONE =====
+def _img_response(b64):
+    import r2_storage as R2
+    return R2.photo_response(b64)
+
+@router.post("/teacher/{tid}/photo")
+async def admin_upload_teacher_photo(tid: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import base64
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Photo is larger than 5MB")
+    import r2_storage as R2
+    tp.photo_b64 = R2.store_photo_value("photos/teacher/%d.jpg" % tid, raw, file.content_type)
+    db.commit()
+    return {"message": "Photo uploaded!"}
+
+@router.delete("/teacher/{tid}/photo")
+def remove_teacher_photo(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    tp.photo_b64 = None
+    db.commit()
+    return {"message": "Photo removed"}
+
+
+@router.get("/teacher/{tid}/photo")
+def admin_teacher_photo(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    return _img_response(tp.photo_b64 if tp else None)
+
+@router.get("/student/{sid}/photo")
+def admin_student_photo(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    return _img_response(sp.photo_b64 if sp else None)
+
+@router.get("/students-list")
+def admin_students_list(q: str = "", subject: str = "", cls: str = "", session: str = "",
+                        medium: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    import re as _re
+    def _sk(name):
+        if _SR is not None:
+            return _SR.canon_norm(name)
+        t = str(name or "")
+        t = _re.sub(r"\((?:class\s*)?\d+(?:th)?\)", " ", t, flags=_re.I)
+        t = _re.sub(r"[^a-z0-9]+", " ", t.lower())
+        return " ".join(t.split()).strip()
+    rows = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
+    _photo_ids = {r[0] for r in db.query(StudentProfile.id).filter(StudentProfile.photo_b64.isnot(None)).all()}
+    # user_id (MVSS...) ek hi query me — warna har student par alag query (N+1) chalti thi (slow + RAM)
+    from models import User as _User
+    _uid_map = {}
+    _name_map = {}
+    try:
+        # user_id code AUR name dono ek hi query me -> `sp.user.name` wali N+1 (har student par
+        # alag User load) khatam. 3000+ students par yahi Students page ko slow kar rahi thi.
+        for _pid, _ucode, _uname in db.query(StudentProfile.id, _User.user_id, _User.name).join(_User, StudentProfile.user_id == _User.id):
+            _uid_map[_pid] = _ucode
+            _name_map[_pid] = _uname or ""
+    except Exception:
+        _uid_map = {}
+        _name_map = {}
+    # onboarding flags alag table se (raw SQL, bulk)
+    _flag_map = {}
+    try:
+        from sqlalchemy import text as _t
+        for _fid, _sd, _fp in db.execute(_t("SELECT student_id, setup_done, forgot_pw FROM student_flags")):
+            _flag_map[_fid] = (bool(_sd), bool(_fp))
+    except Exception:
+        _flag_map = {}
+    ql = q.strip().lower()
+    want = _sk(subject) if subject else ""
+    want_cls = (cls or "").strip()
+    want_sess = (session or "").strip()
+    want_med = (medium or "").strip().lower()
+    # batch session map (batch name + session har jagah)
+    _lbmap = {}
+    try:
+        from models import Batch as _B
+        _lbmap = {b.id: b for b in db.query(_B).all()}
+    except Exception:
+        _lbmap = {}
+    out = []
+    for sp in rows:
+        nm = _name_map.get(sp.id, "")
+        if ql and ql not in nm.lower() and ql not in (sp.phone or ""):
+            continue
+        ssubs = sp.subjects or []
+        if want and want not in {_sk(x) for x in ssubs}:
+            continue
+        if want_cls and str(sp.class_level or "").strip() != want_cls:
+            continue
+        if want_sess and (sp.exam_session or "") != want_sess:
+            continue
+        if want_med and (sp.medium or "").strip().lower() != want_med:
+            continue
+        disp_subs = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
+        _bnm, _bses, _blbl = _student_batch_fields(db, sp, _lbmap)
+        out.append({"id": sp.id, "name": nm, "phone": sp.phone, "class": sp.class_level,
+                    "subjects": disp_subs, "all_subjects": disp_subs, "has_photo": (sp.id in _photo_ids),
+                    "batch": sp.batch_name, "batch_session": _bses, "batch_label": _blbl,
+                    "medium": sp.medium, "email": sp.email,
+                    "class_name": sp.class_name, "nios_ref": sp.nios_ref,
+                    "exam_session": sp.exam_session,
+                    "exam_session_label": _session_friendly(sp.exam_session),
+                    "exam_stream": sp.exam_stream,
+                    "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
+                    "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
+                    "is_verified": bool(sp.is_verified),
+                    "password": (sp.plain_password or ""),
+                    "setup_done": _flag_map.get(sp.id, (False, False))[0],
+                    "forgot_pw": _flag_map.get(sp.id, (False, False))[1],
+                    "user_id": _uid_map.get(sp.id)})
+    out.sort(key=lambda x: x["name"].lower())
+    return {"total": len(out), "students": out}
+
+
+@router.get("/forgot-password-requests")
+def admin_forgot_requests(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Students who requested forgot-password — name + phone + password (copy to WhatsApp)."""
+    from models import StudentProfile
+    from sqlalchemy import text as _t
+    try:
+        ids = [r[0] for r in db.execute(_t("SELECT student_id FROM student_flags WHERE forgot_pw=1"))]
+    except Exception:
+        ids = []
+    out = []
+    if ids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(ids)).all():
+            out.append({"id": sp.id, "name": (sp.user.name if sp.user else ""), "phone": sp.phone or "",
+                        "batch": sp.batch_name or "", "class": sp.class_level or "",
+                        "password": (sp.plain_password or ""), "user_id": (sp.user.user_id if sp.user else "")})
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return {"total": len(out), "requests": out}
+
+
+@router.post("/forgot-password-requests/{sid}/clear")
+def admin_clear_forgot(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ne password bhej diya — request hata do."""
+    from sqlalchemy import text as _t
+    try:
+        db.execute(_t("UPDATE student_flags SET forgot_pw=0 WHERE student_id=:i"), {"i": sid})
+        db.commit()
+    except Exception:
+        try: db.rollback()
+        except Exception: pass
+    return {"ok": True}
+
+
+@router.post("/test-otp")
+def admin_test_otp(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """OTP WhatsApp send test — poora BSP response + config wapas (diagnose ke liye)."""
+    import os as _os
+    phone = "".join(ch for ch in str(payload.get("phone") or "") if ch.isdigit())[-10:]
+    if len(phone) != 10:
+        return {"ok": False, "detail": "Sahi 10-digit phone daalein."}
+    c = {}
+    tmpl = "otp1"
+    ok, detail = False, "not attempted"
+    try:
+        import whatsapp as W
+        tmpl = W.otp_template()
+        try:
+            c = W.cfg()
+        except Exception as e:
+            c = {"cfg_error": str(e)}
+        ok, detail = W.send(phone, template=tmpl, params=["123456"], name="Student", button_otp="123456")
+    except Exception as e:
+        ok, detail = False, str(e)
+    return {"ok": bool(ok), "detail": str(detail)[:900], "template": tmpl,
+            "format": c.get("format"), "api_url_set": bool(c.get("api_url")),
+            "api_key_set": bool(c.get("api_key")), "lang": c.get("lang"),
+            "sender": c.get("sender") or "", "welcome_template": c.get("campaign") or ""}
+
+
+@router.post("/student/{sid}/reset-password")
+def admin_student_reset_password(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin student ka password reset kare — naya random password set karke wapas deta hai
+    (admin copy karke student ko de sakta hai). Login (hashed) + admin-copy (plain) dono update."""
+    from models import StudentProfile
+    from security import hash_password
+    import random
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp or not sp.user:
+        raise HTTPException(status_code=404, detail="Student not found")
+    new_pw = "MVS" + "".join(random.choice("0123456789") for _ in range(5))
+    sp.user.password = hash_password(new_pw)
+    sp.plain_password = new_pw
+    db.commit()
+    return {"ok": True, "password": new_pw}
+
+
+@router.get("/students-paged")
+def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
+                         medium: str = "", source: str = "", batch: str = "",
+                         page: int = 1, page_size: int = 25,
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Scale-ready: sirf ek PAGE ke students laata hai (poora data kabhi load nahi hoga).
+    Filter/search/sort sab server par — 1 lakh+ students par bhi turant."""
+    from models import StudentProfile, User
+    from sqlalchemy import or_
+    import json as _json
+    page = max(1, int(page or 1)); page_size = min(200, max(5, int(page_size or 25)))
+    from sqlalchemy.orm import joinedload
+    qy = db.query(StudentProfile).options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
+    if source: qy = qy.filter(StudentProfile.source == source)
+    if cls: qy = qy.filter(StudentProfile.class_level == str(cls))
+    if session:
+        if session == "__none__":
+            qy = qy.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
+        else:
+            qy = qy.filter(StudentProfile.exam_session == session)
+    if medium: qy = qy.filter(StudentProfile.medium == medium)
+    if batch:
+        if batch == "__none__":
+            qy = qy.filter(or_(StudentProfile.batch_name.is_(None), StudentProfile.batch_name == ""),
+                           StudentProfile.batch_id.is_(None))
+        elif batch.startswith("id:"):
+            try:
+                _bid = int(batch[3:])
+            except Exception:
+                _bid = -1
+            qy = qy.filter(StudentProfile.batch_id == _bid)
+        elif batch.startswith("nm:"):
+            qy = qy.filter(StudentProfile.batch_name == batch[3:], StudentProfile.batch_id.is_(None))
+        else:
+            qy = qy.filter(StudentProfile.batch_name == batch)   # legacy name value
+    if q:
+        ql = "%" + q.strip() + "%"
+        qy = qy.join(User, StudentProfile.user_id == User.id).filter(
+            or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
+                User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
+                StudentProfile.nios_ref.ilike(ql)))
+    if subject:
+        sub = subject.split("|")[0].strip()
+        if sub:
+            try:
+                qy = qy.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
+            except Exception:
+                pass
+    total = qy.count()
+    rows = qy.order_by(StudentProfile.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    _pids = [sp.id for sp in rows]
+    _photo_set = set()
+    if _pids:
+        try:
+            _photo_set = {r[0] for r in db.query(StudentProfile.id).filter(
+                StudentProfile.id.in_(_pids), StudentProfile.photo_b64.isnot(None))}
+        except Exception:
+            _photo_set = set()
+    # batch map for this page (session labels) — ek hi query, per-row lookup nahi
+    _bids = [sp.batch_id for sp in rows if getattr(sp, "batch_id", None)]
+    _bmap = {}
+    if _bids:
+        try:
+            from models import Batch as _B
+            _bmap = {b.id: b for b in db.query(_B).filter(_B.id.in_(set(_bids))).all()}
+        except Exception:
+            _bmap = {}
+    students = []
+    for sp in rows:
+        try:
+            ssubs = sp.subjects or []
+            disp = _SR.canon_list(ssubs, sp.class_level) if _SR else ssubs
+            _bnm, _bses, _blbl = _student_batch_fields(db, sp, _bmap)
+            students.append({"id": sp.id, "profile_id": sp.id,
+                             "name": (sp.user.name if sp.user else "") or "", "phone": sp.phone,
+                             "class": sp.class_level, "class_level": sp.class_level,
+                             "subjects": disp, "all_subjects": disp, "has_photo": (sp.id in _photo_set),
+                             "batch": sp.batch_name, "batch_name": sp.batch_name,
+                             "batch_session": _bses, "batch_label": _blbl, "medium": sp.medium,
+                             "email": sp.email, "class_name": sp.class_name, "nios_ref": sp.nios_ref,
+                             "exam_session": sp.exam_session,
+                             "exam_session_label": _session_friendly(sp.exam_session),
+                             "exam_stream": sp.exam_stream,
+                             "source": sp.source or "mvs_app",
+                             "goal": (sp.goal_custom if sp.goal == "other" else sp.goal),
+                             "last_seen": sp.last_seen.strftime("%d %b %Y, %I:%M %p") if sp.last_seen else None,
+                             "is_verified": bool(sp.is_verified),
+                             "user_id": (sp.user.user_id if sp.user else None)})
+        except Exception:
+            continue
+    return {"students": students, "total": total, "page": page, "page_size": page_size}
+
+
+_SFC_CACHE = {}
+@router.get("/student-filter-counts")
+def student_filter_counts(source: str = "", session: str = "", medium: str = "", cls: str = "",
+                          db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Filter dropdowns ke counts (batch/subject/class/session) — aggregate queries, tab ke
+    hisaab se. 30s cache taaki baar-baar heavy scan na ho."""
+    import time as _time
+    ckey = "%s|%s|%s|%s" % (source, session, medium, cls)
+    hit = _SFC_CACHE.get(ckey)
+    if hit and (_time.time() - hit[0] < 30):
+        return hit[1]
+    from models import StudentProfile
+    base = db.query(StudentProfile)
+    if source: base = base.filter(StudentProfile.source == source)
+    if medium: base = base.filter(StudentProfile.medium == medium)
+    if cls: base = base.filter(StudentProfile.class_level == str(cls))
+    # SESSION facet ko session-filter se ALAG rakho: warna ek session chunne par baaki sessions
+    # dropdown se gayab ho jaate the (user ko 'All Sessions' pe jaana padta tha). base_nosess
+    # (source+medium+cls, par session nahi) se sessions list banao -> hamesha saare sessions.
+    base_nosess = base
+    if session:
+        if session == "__none__":
+            base = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
+        else:
+            base = base.filter(StudentProfile.exam_session == session)
+    total = base.count()
+    # ---- SESSION-SEPARATED batch counts (value = "id:<batch_id>"; label = "Name — Session") ----
+    # Purana bug: sirf batch_name par group hota tha, isliye October 2026 + April 2027 ke
+    # same-name batches MERGE ho jaate the (counting galat). Ab har batch_id (jo session-wise
+    # unique hai) alag option banta hai -> "Lakshya Science — April 2027 · N".
+    from models import Batch as _Batch
+    _bmap = {b.id: b for b in db.query(_Batch).all()}
+    _bagg = {}
+    for bid, bname, c in (base.with_entities(StudentProfile.batch_id, StudentProfile.batch_name,
+                                             func.count(StudentProfile.id))
+                          .group_by(StudentProfile.batch_id, StudentProfile.batch_name).all()):
+        c = int(c or 0)
+        if bid and bid in _bmap:
+            b = _bmap[bid]
+            nm = (b.name or bname or "Batch").strip()
+            ses = (b.session or "").strip()
+            key = "id:%d" % bid
+            label = nm + (" — " + ses if ses else "")
+        elif (bname or "").strip():
+            nm = bname.strip()
+            key = "nm:" + nm
+            label = nm + " (unlinked)"
+            ses = ""
+        else:
+            key = "__none__"; label = "No batch"; ses = ""
+        if key not in _bagg:
+            _bagg[key] = {"batch": key, "label": label, "count": 0, "session": ses}
+        _bagg[key]["count"] += c
+    batches = sorted(_bagg.values(), key=lambda x: (-x["count"], x["label"].lower()))
+    classes = sorted([c for (c,) in base.with_entities(StudentProfile.class_level).distinct().all() if c])
+    # sessions = base_nosess se (session-filter ignore) -> dropdown me hamesha saare sessions
+    sessions = sorted([s for (s,) in base_nosess.with_entities(StudentProfile.exam_session).distinct().all() if s])
+    none_session = base_nosess.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == "")).count()
+    # subject counts — ye HEAVY hai (har student ki subjects list Python me canon karni padti).
+    # Frontend subject-dropdown TABHI dikhata hai jab class chuni ho, isliye bina class ke ye
+    # bhaari loop skip -> default Students view bahut fast khulta hai.
+    subjects = []
+    if cls:
+        subj = {}
+        for ssubs, clv in base.with_entities(StudentProfile.subjects, StudentProfile.class_level):
+            clv = str(clv or "")
+            disp = _SR.canon_list(ssubs or [], clv) if _SR else (ssubs or [])
+            seen = set()
+            for x in disp:
+                k = str(x) + "|" + clv
+                if k in seen:
+                    continue
+                seen.add(k)
+                if k not in subj:
+                    subj[k] = {"subject": str(x), "class": clv, "count": 0}
+                subj[k]["count"] += 1
+        subjects = sorted(subj.values(), key=lambda a: (-a["count"], str(a["subject"]).lower()))
+    res = {"total": total, "batches": batches, "classes": classes, "sessions": sessions, "none_session": none_session, "subjects": subjects}
+    _SFC_CACHE[ckey] = (_time.time(), res)
+    return res
+
+
+@router.get("/students/session-batch-scan")
+def admin_session_batch_scan(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """PREVIEW only: kitne students ka primary batch unke exam session se mismatch hai.
+    Kuch change nahi karta — sirf report + sample deta hai."""
+    return _scan_realign_session_batch(db, apply=False)
+
+
+@router.post("/students/session-batch-realign")
+def admin_session_batch_realign(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """APPLY: har mismatched student ka primary batch uske exam session wale batch par le
+    jaata hai (add-on/crash course untouched, koi enrollment delete nahi). Idempotent."""
+    res = _scan_realign_session_batch(db, apply=True)
+    try:
+        _SFC_CACHE.clear()
+    except Exception:
+        pass
+    return res
+
+
+@router.get("/students/session-batch-debug")
+def admin_session_batch_debug(q: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """READ-ONLY diagnostic: har student ke RAW batch pointers dikhata hai jahan display/access
+    session uske exam_session se match nahi karta — batch_id + uska session, active_batch_id +
+    session, primary StudentBatch + session, exam_session, aur engine ne kya target socha.
+    Kuch change nahi karta. q = naam/phone se filter (optional). Jab preview '0' bole par koi
+    student galat dikh raha ho, isse asli data turant pata chal jaata hai (guess nahi)."""
+    from models import StudentProfile, Batch, StudentBatch, User
+    bmap = {b.id: b for b in db.query(Batch).all()}
+    sbmap = {}
+    for r in db.query(StudentBatch).all():
+        sbmap.setdefault(r.student_id, []).append(r)
+    ql = (q or "").strip().lower()
+
+    def _ses(bid):
+        b = bmap.get(bid) if bid else None
+        return (getattr(b, "session", "") or "") if b else None
+
+    def _nm(bid):
+        b = bmap.get(bid) if bid else None
+        return (getattr(b, "name", "") or "") if b else None
+
+    out = []
+    qy = (db.query(StudentProfile)
+          .filter(StudentProfile.exam_session.isnot(None), StudentProfile.exam_session != ""))
+    for sp in qy.all():          # .all() — yield_per loop-ke-andar-query se tut jaata tha
+        try:
+            nm = sp.user.name if sp.user else ""
+        except Exception:
+            nm = ""
+        name_match = bool(ql) and (ql in (nm or "").lower() or ql in (sp.phone or ""))
+        target = _norm_session_label(db, sp.exam_session or "")
+        rows = sbmap.get(sp.id, [])
+        prim = next((r for r in rows if r.is_primary), None)
+        prim_bid = prim.batch_id if prim else None
+        sessions = []
+        for bid in (sp.batch_id, prim_bid, sp.active_batch_id):
+            b = bmap.get(bid) if bid else None
+            if b and "crash" not in ((b.name or "").lower()):
+                sessions.append((getattr(b, "session", "") or ""))
+        if target:
+            mism = any(s != target for s in sessions) or (not sessions)
+        else:
+            # target '' = exam_session format normalize nahi hua. Agar batch ka koi
+            # month-session hai to bhi surface karo (raw value dikhane ke liye) -> format bug.
+            mism = any(s.strip() for s in sessions)
+        # q diya hai aur naam match hua -> hamesha dikhao (chahe aligned ho) taaki raw data mile
+        if name_match:
+            pass
+        elif ql:
+            continue
+        elif not mism:
+            continue
+        out.append({
+            "id": sp.id, "name": nm, "phone": sp.phone,
+            "exam_session_raw": sp.exam_session, "target_session": target,
+            "batch_id": sp.batch_id, "batch_id_name": _nm(sp.batch_id), "batch_id_session": _ses(sp.batch_id),
+            "active_batch_id": sp.active_batch_id, "active_name": _nm(sp.active_batch_id), "active_session": _ses(sp.active_batch_id),
+            "primary_sb_batch_id": prim_bid, "primary_sb_name": _nm(prim_bid), "primary_sb_session": _ses(prim_bid),
+            "batch_name_text": sp.batch_name,
+            "all_enrollments": [{"batch_id": r.batch_id, "name": _nm(r.batch_id),
+                                 "session": _ses(r.batch_id), "is_primary": bool(r.is_primary)} for r in rows],
+        })
+        if len(out) >= 60:
+            break
+    return {"count": len(out), "students": out}
+
+
+@router.post("/students/bulk-phone")
+def admin_bulk_phone(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Paste phone numbers (no Excel). Each line: 'phone' or 'phone,Name'."""
+    from sqlalchemy.exc import IntegrityError
+    import re as _re
+    text = payload.get("text", "") or ""
+    created, skipped = 0, 0
+    # next MVSS id -> max EK BAAR, phir counter (no per-row scan = no N+1)
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(func.length(User.user_id).desc(), User.user_id.desc()).first())
+    _ctr = [1]
+    if _mx and _mx[0]:
+        _m = _re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr[0] = int(_m.group(1)) + 1
+
+    def _next_uid():
+        c = "MVSS%04d" % _ctr[0]; _ctr[0] += 1; return c
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.replace("\t", ",").split(",")]
+        phone = parts[0]
+        name = parts[1] if len(parts) > 1 and parts[1] else None
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if len(digits) < 10:
+            skipped += 1; continue
+        phone = digits[-10:]
+        if db.query(StudentProfile).filter(StudentProfile.phone == phone).first():
+            skipped += 1; continue
+        if not name:
+            name = "Student " + phone[-4:]
+        # collision-safe insert: flush retry on a duplicate MVSS id + per-student commit,
+        # so two concurrent imports/adds can NEVER 500 on 'Duplicate entry ... user_id'.
+        u = None
+        for _try in range(8):
+            cand = _next_uid()
+            u = User(name=name, user_id=cand, password=hash_password(phone),
+                     role=UserRole.student, is_active=True)
+            db.add(u)
+            try:
+                db.flush()
+                break
+            except IntegrityError:
+                db.rollback(); u = None
+        if u is None:
+            skipped += 1; continue
+        db.add(StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
+                              is_verified=True, plain_password=phone))
+        try:
+            db.commit()          # durable now -> next flush sees it (concurrency-safe)
+            created += 1
+        except IntegrityError:
+            db.rollback(); skipped += 1
+    return {"created": created, "skipped": skipped,
+            "message": f"{created} students add hue, {skipped} skip (duplicate/galat)."}
+
+def _normalize_batch(text):
+    """Bullet-proof: lamba sales batch naam ko canonical short naam mein badlo.
+    Ye naam STUDENT_BATCHES (onboarding) ke keys se EXACTLY match karte hain, taaki
+    import aur student onboarding dono ek hi batch naam use karein."""
+    if not text:
+        return None
+    t = str(text).lower()
+    if "lakshya" in t and "science" in t:
+        return "Lakshya Science"
+    if "lakshya" in t and "commerce" in t:
+        return "Lakshya Commerce"
+    if "lakshya" in t and ("arts" in t or "art " in t):
+        return "Lakshya Arts"
+    if "science" in t:
+        return "Lakshya Science"
+    if "commerce" in t:
+        return "Lakshya Commerce"
+    if "arts" in t:
+        return "Lakshya Arts"
+    if "udaan" in t or "class 10" in t or "10th" in t:
+        return "Udaan Class 10"
+    s = str(text).strip()
+    return s[:60] if s else None
+
+# ===== ADMIN: BULK IMPORT FROM APP SALES SHEET (name + phone + batch) =====
+_PORTAL_MAP_CACHE = {"at": 0.0, "map": None}
+
+
+def _portal_phone_map():
+    """Sabhi unlocked MVS-Portal students ka phone->RAW item map. 120s cache.
+    unlocked-students list me hona hi = matched (import inline normalize karta hai:
+    subjects clean + class/medium + exam)."""
+    import time as _time
+    now = _time.time()
+    if _PORTAL_MAP_CACHE["map"] is not None and (now - _PORTAL_MAP_CACHE["at"]) < 120:
+        return _PORTAL_MAP_CACHE["map"]
+    m = {}
+    try:
+        from ext_materials import portal_unlocked_students
+        for st in (portal_unlocked_students() or []):
+            ph = "".join(c for c in str(st.get("phone", "")) if c.isdigit())[-10:]
+            if len(ph) == 10:
+                m[ph] = st
+    except Exception:
+        m = {}
+    _PORTAL_MAP_CACHE["map"] = m
+    _PORTAL_MAP_CACHE["at"] = now
+    return m
+
+
+@router.post("/students/bulk-import")
+def admin_bulk_import(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Frontend Appx sales sheet parse karke {students:[{name,phone,batch}]} bhejega.
+    FAST: portal students EK BAAR fetch, user_id max+counter se (i=1 scan nahi),
+    collision pe savepoint-retry (batch kabhi fail na ho)."""
+    from sqlalchemy.exc import IntegrityError
+    # Defensive: agar deployed ext_materials.py purani/out-of-sync ho (pick_medium na ho)
+    # to bhi bulk import crash na kare — fallback medium khaali chhodta hai (baad me
+    # "Fix Medium" se bhar sakte hain). Sahi ext_materials.py deploy karne par full kaam.
+    try:
+        from ext_materials import pick_medium
+    except Exception:
+        def pick_medium(st):
+            return ""
+    rows = payload.get("students", []) or []
+    created, updated, skipped = 0, 0, 0
+    duplicates = []
+
+    # 0) self-heal: merge any exact (name, session) duplicate cards into one before importing,
+    #    so a re-upload never leaves two identical session cards behind.
+    try:
+        _consolidate_session_dupes(db)
+        _dedupe_student_enrollments(db)
+    except Exception:
+        pass
+
+    # 1) sabhi unlocked MVS-Portal students (cached — poore import me 1 baar)
+    portal_map = _portal_phone_map()
+
+    # 2) next MVSS id -> max EK BAAR, phir sirf counter (no per-row scan)
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(func.length(User.user_id).desc(), User.user_id.desc()).first())
+    _ctr = [1]
+    if _mx and _mx[0]:
+        _m = re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr[0] = int(_m.group(1)) + 1
+
+    def _next_uid():
+        c = "MVSS%04d" % _ctr[0]
+        _ctr[0] += 1
+        return c
+
+    for r in rows:
+        phone = "".join(ch for ch in str(r.get("phone", "")) if ch.isdigit())
+        if len(phone) < 10:
+            skipped += 1; continue
+        phone = phone[-10:]
+        name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
+        batch, _sheet_sess_label, _sheet_sess_id = _parse_batch_and_session(r.get("batch"))
+        _is_crash = "crash" in str(r.get("batch") or "").lower()
+        email = (r.get("email") or "").strip() or None
+
+        existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+        if existing:
+            _pst = portal_map.get(phone)
+            if _pst:
+                # MVS Portal par match -> mvs_portal tag + subjects/class/medium/exam auto-fetch
+                existing.source = "mvs_portal"
+                _pc = str(_pst.get("class_level") or _pst.get("class") or "")
+                if _pc:
+                    existing.class_level = _pc
+                _pmed = pick_medium(_pst)
+                if _pmed:
+                    existing.medium = _pmed
+                _rw = _pst.get("subjects") or []
+                _es = []
+                for _x in _rw:
+                    _nm = (_x.get("name") if isinstance(_x, dict) else str(_x)) or ""
+                    _nm = _nm.split("(")[0].strip()
+                    if _nm:
+                        _es.append(_nm)
+                if _es:
+                    existing.subjects = (_SR.canon_list(_es, existing.class_level) if _SR else _es)
+                try:
+                    _apply_portal_exam_info(existing, _pst, db)
+                except Exception:
+                    pass
+                duplicates.append({"phone": phone, "sheet_name": name,
+                                   "existing_name": existing.user.name if existing.user else "",
+                                   "existing_user_id": existing.user.user_id if existing.user else "",
+                                   "existing_batch": existing.batch_name or "",
+                                   "source": "mvs_portal"})
+            if batch:
+                if _is_crash:
+                    # CRASH COURSE: add it as an EXTRA batch (never overwrite the primary
+                    # batch or the exam session — the student fills their session themselves).
+                    _ensure_primary_enrollment(db, existing.id)
+                    _add_extra_enrollment(db, existing.id, _resolve_crash_batch_id(db, batch))
+                else:
+                    existing.batch_name = batch
+                    # session: portal exam_session (set above) wins; else from the sheet.
+                    # Stream-2 stays 'stream2' (filterable) but still groups under October.
+                    if _sheet_sess_id and _sheet_sess_id != "stream2" and not (existing.exam_session or ""):
+                        existing.exam_session = _sheet_sess_id
+                    _bucket = _session_id_to_batch_label(db, existing.exam_session) or _sheet_sess_label
+                    existing.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+                    # BULLETPROOF: sales-sheet se bhi primary StudentBatch + active_batch_id
+                    # hamesha exam_session se match kare (same engine jaisa edit/onboarding).
+                    try:
+                        db.flush()
+                        _ensure_primary_enrollment(db, existing.id)
+                        _realign_one(db, existing)
+                    except Exception:
+                        pass
+            if email:
+                existing.email = email
+            if existing.user and name and existing.user.name == ("Student " + phone[-4:]):
+                existing.user.name = name
+            updated += 1
+            continue
+
+        # naya student — portal_map se check (koi external call nahi)
+        psrc, psubs, pmed, pcls = "mvs_app", [], None, None
+        _st_exam = None
+        st = portal_map.get(phone)
+        if st:  # unlocked-students endpoint -> ye sab MVS Portal ke UNLOCKED students hain
+            psrc = "mvs_portal"
+            pcls = str(st.get("class_level") or st.get("class") or "") or None
+            pmed = pick_medium(st) or None
+            _raw = st.get("subjects") or []
+            _subs = []
+            for _x in _raw:
+                _nm = (_x.get("name") if isinstance(_x, dict) else str(_x)) or ""
+                _nm = _nm.split("(")[0].strip()
+                if _nm:
+                    _subs.append(_nm)
+            psubs = (_SR.canon_list(_subs, pcls) if (_SR and _subs) else _subs)
+            if st.get("name"):
+                name = st["name"]
+            _st_exam = dict(st)
+
+        # collision-safe insert (savepoint retry) — koi bhi dup id/phone batch ko na todhe
+        u = None
+        for _try in range(6):
+            cand = _next_uid()
+            sp = db.begin_nested()
+            try:
+                u = User(name=name, user_id=cand, password=hash_password(phone),
+                         role=UserRole.student, is_active=True)
+                db.add(u)
+                db.flush()
+                sp.commit()
+                break
+            except IntegrityError:
+                sp.rollback()
+                u = None
+        if u is None:
+            skipped += 1
+            continue
+
+        _nsp = StudentProfile(user_id=u.id, phone=phone, subjects=psubs, class_name="",
+                              batch_name=batch, email=email, is_verified=True,
+                              plain_password=phone, source=psrc,
+                              medium=pmed, class_level=pcls)
+        db.add(_nsp)
+        # exam session FIRST (portal wins; else from the sheet) so the batch bucket
+        # can honour the Stream-2 -> October grouping rule.
+        if _st_exam:
+            try:
+                _apply_portal_exam_info(_nsp, _st_exam, db)
+            except Exception:
+                pass
+        if _sheet_sess_id and _sheet_sess_id != "stream2" and not (_nsp.exam_session or ""):
+            _nsp.exam_session = _sheet_sess_id
+        try:
+            if batch:
+                db.flush()
+                if _is_crash:
+                    from models import Batch as _Batch
+                    _cbid = _resolve_crash_batch_id(db, batch)
+                    _add_extra_enrollment(db, _nsp.id, _cbid)
+                    if _cbid:
+                        _cb = db.query(_Batch).filter(_Batch.id == _cbid).first()
+                        if _cb:
+                            _nsp.batch_name = _cb.name
+                else:
+                    _bucket = _session_id_to_batch_label(db, _nsp.exam_session) or _sheet_sess_label
+                    _nsp.batch_id = _resolve_session_batch_id(db, batch, _bucket)
+                    # BULLETPROOF: naya student bhi sales-sheet se sahi session-batch par link ho
+                    try:
+                        db.flush()
+                        _ensure_primary_enrollment(db, _nsp.id)
+                        _realign_one(db, _nsp)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        if psrc == "mvs_portal":
+            duplicates.append({"phone": phone, "sheet_name": name,
+                               "existing_name": name, "existing_user_id": u.user_id,
+                               "existing_batch": batch or "", "source": "mvs_portal",
+                               "note": "Sheet me tha, par MVS Portal par mila -> MVS Portal me add kiya"})
+        else:
+            created += 1
+
+    # record the last student-sheet upload time so the Students page can show it
+    try:
+        from models import AppSetting as _AS
+        _row = db.query(_AS).filter(_AS.key == "last_student_sheet_upload").first()
+        if _row:
+            _row.value = datetime.utcnow().isoformat()
+        else:
+            db.add(_AS(key="last_student_sheet_upload", value=datetime.utcnow().isoformat()))
+    except Exception:
+        pass
+    db.commit()
+    return {"created": created, "updated": updated, "skipped": skipped,
+            "duplicates": duplicates,
+            "message": f"{created} new students, {updated} updated, {skipped} skipped (invalid phone), {len(duplicates)} duplicate(s) already on MVS Portal."}
+
+
+@router.post("/students/bulk-import-basic")
+def admin_bulk_import_basic(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Google Form onboarding sheet import.
+
+    Sirf name / phone / class / exam_session / medium leta hai. Batch aur Subjects
+    JAAN-BOOJH KE khaali chhodta hai (subjects=[], batch_name="") taaki student pehle
+    login par khud choose kare (openStudent -> showSubjectScreen wahi flow). MVS Portal
+    cross-reference bilkul nahi hota — clean self-select onboarding. Login credentials
+    baaki students jaise hi (user_id = MVSS####, password = phone)."""
+    from sqlalchemy.exc import IntegrityError
+
+    def _norm_cls(v):
+        d = "".join(ch for ch in str(v or "") if ch.isdigit())
+        if "12" in d:
+            return "12"
+        if "10" in d:
+            return "10"
+        return ""
+
+    def _norm_med(v):
+        t = str(v or "").strip().lower()
+        if t.startswith("hin") or "\u0939\u093f\u0902" in t:
+            return "Hindi"
+        if t.startswith("eng") or "\u0905\u0902\u0917" in t:
+            return "English"
+        return ""
+
+    rows = payload.get("students", []) or []
+    created, skipped = 0, 0
+    duplicates = []
+
+    # next MVSS id -> max EK BAAR, phir sirf counter (per-row scan nahi)
+    _mx = (db.query(User.user_id).filter(User.user_id.like("MVSS%"))
+           .order_by(func.length(User.user_id).desc(), User.user_id.desc()).first())
+    _ctr = [1]
+    if _mx and _mx[0]:
+        _m = re.match(r"MVSS(\d+)", _mx[0])
+        if _m:
+            _ctr[0] = int(_m.group(1)) + 1
+
+    def _next_uid():
+        c = "MVSS%04d" % _ctr[0]
+        _ctr[0] += 1
+        return c
+
+    seen = set()
+    for r in rows:
+        phone = "".join(ch for ch in str(r.get("phone", "")) if ch.isdigit())
+        if len(phone) < 10:
+            skipped += 1
+            continue
+        phone = phone[-10:]
+        if phone in seen:
+            continue
+        seen.add(phone)
+        name = (r.get("name") or "").strip() or ("Student " + phone[-4:])
+        cls = _norm_cls(r.get("class"))
+        med = _norm_med(r.get("medium"))
+        sess = (r.get("session") or "").strip()
+
+        existing = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
+        if existing:
+            # already added — chhod do (unka profile/selection touch nahi karte)
+            duplicates.append({"phone": phone, "sheet_name": name,
+                               "existing_name": existing.user.name if existing.user else "",
+                               "existing_user_id": existing.user.user_id if existing.user else "",
+                               "existing_batch": existing.batch_name or ""})
+            continue
+
+        # collision-safe insert (savepoint retry) — koi dup id/phone batch ko na todhe
+        u = None
+        for _try in range(6):
+            cand = _next_uid()
+            sp = db.begin_nested()
+            try:
+                u = User(name=name, user_id=cand, password=hash_password(phone),
+                         role=UserRole.student, is_active=True)
+                db.add(u)
+                db.flush()
+                sp.commit()
+                break
+            except IntegrityError:
+                sp.rollback()
+                u = None
+        if u is None:
+            skipped += 1
+            continue
+
+        # subjects=[] aur batch_name="" -> pehle login par student choose karega
+        _nsp = StudentProfile(user_id=u.id, phone=phone, subjects=[], class_name="",
+                              batch_name="", email=None, is_verified=True,
+                              plain_password=phone, source="mvs_app",
+                              medium=(med or None), class_level=(cls or None))
+        if sess:
+            try:
+                _nsp.exam_session = sess
+            except Exception:
+                pass
+        db.add(_nsp)
+        created += 1
+
+    try:
+        from models import AppSetting as _AS
+        _row = db.query(_AS).filter(_AS.key == "last_student_sheet_upload").first()
+        if _row:
+            _row.value = datetime.utcnow().isoformat()
+        else:
+            db.add(_AS(key="last_student_sheet_upload", value=datetime.utcnow().isoformat()))
+    except Exception:
+        pass
+    db.commit()
+    return {"created": created, "skipped": skipped, "duplicates": duplicates,
+            "message": (f"{created} new students added, {len(duplicates)} already existed (skipped), "
+                        f"{skipped} invalid phone skipped. Each student picks their Batch and "
+                        f"Subjects on their first login.")}
+
+
+@router.post("/students/bulk-analyze")
+def admin_bulk_analyze(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Import se PEHLE ka breakdown (kuch add nahi hota):
+      total        = sheet me unique valid phones
+      already_cm   = jo pehle se Class Manager par hain (DUPLICATE — dubara add NAHI honge)
+      on_portal    = baaki me se jo MVS Portal par match hue (unlock/pending)
+      new_app      = baaki (naye MVS App students jo add honge)
+      will_import  = on_portal + new_app  (already_cm skip)"""
+    phones = set()
+    for r in (payload.get("students") or []):
+        ph = "".join(c for c in str(r.get("phone", "")) if c.isdigit())[-10:]
+        if len(ph) == 10:
+            phones.add(ph)
+    total = len(phones)
+    if not phones:
+        return {"total": 0, "already_cm": 0, "on_portal": 0, "new_app": 0, "will_import": 0}
+    plist = list(phones)
+    existing = set()
+    for i in range(0, len(plist), 500):
+        for (p,) in db.query(StudentProfile.phone).filter(
+                StudentProfile.phone.in_(plist[i:i + 500])).all():
+            if p:
+                existing.add(p)
+    already_cm = len(phones & existing)
+    remaining = phones - existing
+    pmap = _portal_phone_map()
+    on_portal = sum(1 for p in remaining if p in pmap)
+    new_app = len(remaining) - on_portal
+    return {"total": total, "already_cm": already_cm, "on_portal": on_portal,
+            "new_app": new_app, "will_import": on_portal + new_app}
+
+# ===== ADMIN: EDIT + DELETE TEACHER / STUDENT =====
+from sqlalchemy import text as _sqltext
+
+@router.patch("/teacher/{tid}")
+def edit_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    if "name" in payload and tp.user:
+        tp.user.name = (payload["name"] or "").strip() or tp.user.name
+    if "phone" in payload:
+        tp.phone = (payload.get("phone") or "").strip() or None
+    if "subject_classes" in payload and isinstance(payload["subject_classes"], list):
+        sc = []
+        for x in payload["subject_classes"]:
+            if not (isinstance(x, dict) and (x.get("subject") or "").strip()):
+                continue
+            x = dict(x)
+            if _SR is not None:
+                x["subject"] = _SR.canon_display(x["subject"].strip(), x.get("class") or x.get("class_name"))
+            sc.append(x)
+        tp.subject_classes = sc
+        seen = []
+        for x in sc:
+            if x["subject"] not in seen:
+                seen.append(x["subject"])
+        tp.subjects = seen
+    elif "subjects" in payload and isinstance(payload["subjects"], list):
+        _raw = [s.strip() for s in payload["subjects"] if s.strip()]
+        tp.subjects = _SR.canon_list(_raw) if _SR else _raw
+    if "is_active" in payload and tp.user:
+        tp.user.is_active = bool(payload["is_active"])
+    # section (feature) overrides — admin edit se sections badle
+    if "features" in payload and isinstance(payload["features"], list):
+        try:
+            import json as _jf
+            from category_models import FEATURE_KEYS as _FK
+            _sel = set(payload["features"] or [])
+            tp.feature_overrides = _jf.dumps({k: (k in _sel) for k in _FK})
+        except Exception:
+            pass
+    # board change -> workspace category reassign
+    if payload.get("board"):
+        try:
+            _assign_teacher_board(db, tp, str(payload.get("board")))
+        except Exception:
+            pass
+    db.commit()
+    return {"message": "Teacher updated"}
+
+@router.delete("/teacher/{tid}")
+def delete_teacher(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    uid = tp.user_id
+    stmts = [
+        ("UPDATE doubts SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
+        ("UPDATE timetable_entries SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
+        ("UPDATE materials SET teacher_id=NULL WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM reschedule_requests WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM class_entries WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM dpps WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM tests WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM exam_results WHERE attempt_id IN (SELECT id FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t))", {"t": tid}),
+        ("DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM exam_questions WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM exam_views WHERE exam_id IN (SELECT id FROM exams WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM exams WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM lecture_questions WHERE lecture_id IN (SELECT id FROM lectures WHERE teacher_id=:t)", {"t": tid}),
+        ("DELETE FROM lectures WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM timetables WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM teacher_attendance WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM teacher_contracts WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM payout_adjustments WHERE teacher_id=:t", {"t": tid}),
+        ("DELETE FROM dpp_submissions WHERE dpp_id NOT IN (SELECT id FROM dpps)", {}),
+        ("DELETE FROM test_submissions WHERE test_id NOT IN (SELECT id FROM tests)", {}),
+        ("DELETE FROM notifications WHERE user_id=:u", {"u": uid}),
+        ("DELETE FROM teacher_profiles WHERE id=:t", {"t": tid}),
+        ("DELETE FROM users WHERE id=:u", {"u": uid}),
+    ]
+    for sql, p in stmts:
+        db.execute(_sqltext(sql), p)
+    db.commit()
+    return {"message": "Teacher deleted"}
+
+@router.patch("/student/{sid}")
+def edit_student(sid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    sp = db.query(StudentProfile).filter(StudentProfile.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if "name" in payload and sp.user:
+        sp.user.name = (payload["name"] or "").strip() or sp.user.name
+    if "phone" in payload:
+        digits = "".join(ch for ch in str(payload.get("phone", "")) if ch.isdigit())
+        if digits:
+            sp.phone = digits[-10:]
+            sp.plain_password = sp.plain_password or sp.phone
+    if "email" in payload:
+        sp.email = (payload.get("email") or "").strip() or None
+    if "batch_name" in payload:
+        sp.batch_name = (payload.get("batch_name") or "").strip() or None
+    if "medium" in payload:
+        m = (payload.get("medium") or "").strip()
+        # Sirf valid value aane par set karo. Blank/unknown aaye to medium ko
+        # chhedo mat — warna edit-save galti se medium uda deta hai, aur bina
+        # medium ke student ko sahi language ka study material nahi milta.
+        if m in ("Hindi", "English", "Both"):
+            sp.medium = m
+    if "class_level" in payload:
+        sp.class_level = (payload.get("class_level") or "").strip() or None
+    if "subjects" in payload and isinstance(payload["subjects"], list):
+        _raw = [s.strip() for s in payload["subjects"] if s.strip()]
+        sp.subjects = _SR.canon_list(_raw, sp.class_level) if _SR else _raw
+    if payload.get("exam_session"):
+        sid = (payload.get("exam_session") or "").strip()[:30]
+        mapped = _map_session_text(db, sid)
+        if not mapped:
+            raise HTTPException(status_code=400, detail="Unknown exam session")
+        sp.exam_session = mapped
+        stv = _stream_for_session(db, mapped)
+        if stv:
+            sp.exam_stream = stv
+    # NOTE: empty exam_session / nios_ref form value se PURANA value kabhi
+    # erase nahi hota — sirf non-empty value hi update karti hai.
+    # Admin chahe to explicit nios_ref_clear=true bhej ke reference hata sakta
+    # hai (test/dummy refs) — har jagah (profile, result cards, admin views)
+    # live read hota hai, isliye sab jagah se apne aap update ho jaata hai.
+    if payload.get("nios_ref_clear"):
+        sp.nios_ref = None
+    elif payload.get("nios_ref"):
+        ref = (payload.get("nios_ref") or "").strip().upper()[:40]
+        sp.nios_ref = ref
+    # BULLETPROOF: session ya batch badla -> primary batch hamesha exam_session se match kare
+    try:
+        _realign_one(db, sp)
+    except Exception:
+        pass
+    db.commit()
+    return {"message": "Student updated"}
+
+@router.delete("/student/{sid}")
+def delete_student(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    # v: model-driven purge — bulk "delete all students" ki tarah HAR child table
+    # khud saaf karo. Pehle wali hardcoded list (doubts/dpp/test/materials/notif) me
+    # chapter_plans, student_batches, dpp_answers/events/chunks, app_reviews,
+    # complaints/feedback miss the -> MySQL FK error 1451 -> delete fail. Ab jo bhi
+    # table student_id / user_id se juda ho wo automatically purge hota hai, aur aage
+    # naya child table jude to bhi ye kabhi nahi phasega.
+    import models as M
+    from models import StudentProfile as _SP, User as _U
+
+    sp = db.query(_SP).filter(_SP.id == sid).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    uid = sp.user_id
+
+    errors = []
+
+    def wipe(fn, label):
+        # savepoint: ek table fail ho to sirf wahi rollback ho, baaki chalte rahein
+        try:
+            with db.begin_nested():
+                fn()
+        except Exception as e:
+            errors.append("%s: %s" % (label, type(e).__name__))
+
+    # 1) Complaint grandchildren (messages/attachments/events) — ye student_id se
+    #    nahi, complaints.id se jude hain, isliye complaints delete karne se pehle
+    #    inhe is student ke complaints ke against saaf karo.
+    for tbl in ("complaint_attachments", "complaint_messages", "complaint_events"):
+        wipe(lambda t=tbl: db.execute(_sqltext(
+            "DELETE FROM %s WHERE complaint_id IN "
+            "(SELECT id FROM complaints WHERE student_id=:s)" % t), {"s": sid}),
+            tbl)
+
+    # 2) Har mapped table jisme student_id ya user_id column hai — isi student ke rows.
+    for mp in list(M.Base.registry.mappers):
+        cls = mp.class_
+        name = cls.__name__
+        if name in ("StudentProfile", "User"):
+            continue   # inhe end me alag se delete karenge (sahi order ke liye)
+        cols = {c.key for c in mp.columns}
+        if "student_id" in cols:
+            wipe(lambda c=cls: db.query(c).filter(c.student_id == sid)
+                 .delete(synchronize_session=False), name)
+        elif "user_id" in cols:
+            # sirf is student ke user_id wale rows (teachers/dusre users touch nahi honge)
+            wipe(lambda c=cls: db.query(c).filter(c.user_id == uid)
+                 .delete(synchronize_session=False), name)
+
+    # 3) Ab parent rows.
+    wipe(lambda: db.query(_SP).filter(_SP.id == sid)
+         .delete(synchronize_session=False), "StudentProfile")
+    wipe(lambda: db.query(_U).filter(_U.id == uid)
+         .delete(synchronize_session=False), "User")
+    db.commit()
+
+    # Confirm: student row waqai gaya?
+    still = db.query(_SP).filter(_SP.id == sid).first()
+    if still:
+        raise HTTPException(
+            status_code=500,
+            detail="Delete incomplete — kuch juda hua data saaf nahi hua. Issues: "
+                   + (", ".join(sorted(set(errors))[:6]) or "unknown"))
+    return {"message": "Student deleted"}
+
+# ===== ADMIN: SEND NOTIFICATION TO A SINGLE TEACHER =====
+@router.post("/teacher/{tid}/notify")
+def notify_single_teacher(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp or not tp.user:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    title = (payload.get("title") or "").strip()
+    message = (payload.get("message") or "").strip()
+    if not title or not message:
+        raise HTTPException(status_code=400, detail="Title and message are required")
+    notify(db, tp.user_id, title, message, "admin_message")
+    db.commit()
+    return {"message": f"Notification sent to {tp.user.name}"}
+
+# ===== ADMIN: LIVE STUDENT PRESENCE =====
+@router.get("/live-students")
+def admin_live_students(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=2)
+    sps = db.query(StudentProfile).filter(
+        StudentProfile.last_seen != None,
+        StudentProfile.last_seen >= cutoff
+    ).all()
+    out = []
+    for sp in sps:
+        start = sp.session_start or sp.last_seen
+        out.append({
+            "name": sp.user.name if sp.user else "Student",
+            "phone": sp.phone,
+            "user_id": sp.user.user_id if sp.user else "",
+            "batch": sp.batch_name or "",
+            "duration_seconds": max(0, int((now - start).total_seconds())),
+            "last_seen_seconds": int((now - sp.last_seen).total_seconds()),
+        })
+    out.sort(key=lambda x: -x["duration_seconds"])
+    return {"count": len(out), "students": out}
+
+# ===== ADMIN: NOTIFICATIONS (bell) =====
+@router.get("/notifications")
+def admin_notifications(db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    notifs = db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).order_by(Notification.created_at.desc()).limit(50).all()
+    # notif_type + link ZAROORI hain: inke bina frontend ko pata nahi chalta notification kis
+    # section ka hai -> click karne par dashboard pe atak jaata tha (teacher/student endpoints raw
+    # ORM bhejte hain isliye unme ye fields aate the aur unka redirect chalta tha). Ab admin me bhi
+    # notif_type + link + image_url bhejo -> sahi section redirect + exact record deep-link.
+    return [{"id": n.id, "title": n.title, "message": n.message,
+             "is_read": n.is_read, "notif_type": n.notif_type,
+             "link": getattr(n, "link", None), "image_url": getattr(n, "image_url", None),
+             "created_at": n.created_at.isoformat() if n.created_at else None} for n in notifs]
+
+@router.patch("/notifications/read-all")
+def admin_notif_read_all(db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Panel/bell view karte hi sab notifications ek saath read — badge/blink clear."""
+    db.query(Notification).filter(Notification.user_id == current_user.id,
+                                  Notification.is_read == False).update(
+        {"is_read": True, "read_at": datetime.now()}, synchronize_session=False)
+    db.commit()
+    return {"ok": True}
+
+
+@router.patch("/notifications/{notif_id}/read")
+def admin_notif_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    n = db.query(Notification).filter(
+        Notification.id == notif_id, Notification.user_id == current_user.id
+    ).first()
+    if n:
+        n.is_read = True
+        if not n.read_at:
+            n.read_at = datetime.now()
+        db.commit()
+    return {"ok": True}
+
+# ===== ADMIN: DOUBTS OVERSIGHT (full thread of every doubt) =====
+@router.get("/doubts")
+def admin_all_doubts(status: str = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt, StudentProfile, TeacherProfile, User as _U, DoubtResponse as _DR
+    # blob columns list me load NAHI karte -> tez + kam RAM (admin saare doubts dekhta hai).
+    q = db.query(Doubt).options(
+        defer(Doubt.image_b64), defer(Doubt.audio_b64),
+        defer(Doubt.answer_audio_b64), defer(Doubt.answer_attach_b64)
+    ).order_by(Doubt.created_at.desc())
+    if status in ("pending", "resolved"):
+        q = q.filter(Doubt.status == status)
+    _rows = q.all()
+    _rids = [d.id for d in _rows]
+    _img_ids, _voice_ids, _ans_voice_ids, _ans_file_ids = set(), set(), set(), set()
+    if _rids:
+        _img_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.image_b64) > 0).all()}
+        _voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.audio_b64) > 0).all()}
+        _ans_voice_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_audio_b64) > 0).all()}
+        _ans_file_ids = {r[0] for r in db.query(Doubt.id).filter(Doubt.id.in_(_rids), func.length(Doubt.answer_attach_b64) > 0).all()}
+    # batch-load student/teacher names + responses (pehle 3 query PER doubt -> ab ~3 total).
+    _sids = list({d.student_id for d in _rows if d.student_id})
+    _tids = list({d.teacher_id for d in _rows if d.teacher_id})
+    smap = {}
+    for i in range(0, len(_sids), 500):
+        for sid, sname, sphone, scls in db.query(
+                StudentProfile.id, _U.name, StudentProfile.phone, StudentProfile.class_level).join(
+                _U, StudentProfile.user_id == _U.id).filter(StudentProfile.id.in_(_sids[i:i + 500])):
+            smap[sid] = ((sname or ""), sphone, (scls or ""))
+    tmap2 = {}
+    for i in range(0, len(_tids), 500):
+        for tid2, tname in db.query(TeacherProfile.id, _U.name).join(
+                _U, TeacherProfile.user_id == _U.id).filter(TeacherProfile.id.in_(_tids[i:i + 500])):
+            tmap2[tid2] = tname or ""
+    rmap = {}
+    for i in range(0, len(_rids), 500):
+        for r in (db.query(_DR).filter(_DR.doubt_id.in_(_rids[i:i + 500]))
+                  .order_by(_DR.created_at.asc(), _DR.id.asc())):
+            rmap.setdefault(r.doubt_id, []).append({
+                "id": r.id, "role": r.role, "author_name": r.author_name,
+                "body": r.body, "mine": (r.role == "admin"),
+                "has_attach": bool(getattr(r, "attach_key", None)),
+                "attach_mime": getattr(r, "attach_mime", None),
+                "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
+                "created_at": ist_iso(r.created_at)})
+    import doubt_metrics as _dm
+    _sla_now = _dm.sla_hours(db)
+    _oh = _dm.office_cfg(db)
+    out = []
+    for d in _rows:
+        sname, sphone, scls = smap.get(d.student_id, ("Unknown student", None, ""))
+        tname = tmap2.get(d.teacher_id, "") if d.teacher_id else ""
+        _rm = None
+        if (d.status.value if hasattr(d.status, "value") else d.status) == "resolved" and d.resolved_at:
+            _rm = _dm.metrics_for(d.created_at, d.resolved_at, getattr(d, "sla_snapshot", None), _sla_now, _oh)
+        out.append({
+            "id": d.id,
+            "teacher_id": d.teacher_id,
+            "resolve_metrics": _rm,
+            "student_name": sname or "Unknown student",
+            "student_id": d.student_id,
+            "student_phone": sphone,
+            "class_name": scls or "",
+            "teacher_name": tname or "Unassigned",
+            "subject": (_SR.canon_display(d.subject) if _SR else d.subject),
+            "topic": d.topic,
+            "question": d.question,
+            "has_image": (d.id in _img_ids),
+            "attach_mime": d.attach_mime, "attach_name": d.attach_name,
+            "has_voice": (d.id in _voice_ids), "has_answer_voice": (d.id in _ans_voice_ids),
+            "has_answer_file": (d.id in _ans_file_ids), "answer_attach_mime": d.answer_attach_mime,
+            "answer": d.answer,
+            "answer_image_link": d.answer_image_link,
+            "status": d.status.value if hasattr(d.status, "value") else d.status,
+            "created_at": ist_iso(d.created_at),
+            "resolved_at": ist_iso(d.resolved_at),
+            "assigned_to_admin": bool(getattr(d, "assigned_to_admin", False)),
+            "assigned_by_name": getattr(d, "assigned_by_name", None),
+            "owner_name": ("MVS Foundation" if getattr(d, "assigned_to_admin", False)
+                           else (tname or "Unassigned")),
+            "needs_attention": False,
+            "responses": rmap.get(d.id, []),
+        })
+    return out
+
+def _admin_doubt_resps(db, did):
+    """v93: doubt thread responses — admin view ke liye."""
+    from models import DoubtResponse
+    out = []
+    for r in (db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did)
+              .order_by(DoubtResponse.created_at.asc(), DoubtResponse.id.asc()).all()):
+        out.append({"id": r.id, "role": r.role, "author_name": r.author_name,
+                    "body": r.body, "mine": (r.role == "admin"),
+                    "has_attach": bool(getattr(r, "attach_key", None)),
+                    "attach_mime": getattr(r, "attach_mime", None),
+                    "author_tid": (r.author_teacher_id if r.role == "teacher" else None),
+                    "created_at": ist_iso(r.created_at)})
+    return out
+
+def _doubt_needs_attention(db, did):
+    """FOLLOW-UP SYSTEM HATA DIYA: resolved doubt ab kabhi reopen nahi hota (student
+    dobara poochhega to naya doubt banega)."""
+    return False
+
+@router.post("/doubts/{did}/respond")
+def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
+                        current_user=Depends(get_admin)):
+    """v93: admin doubt thread pe likhe — response MVS Foundation branding ke
+    saath jata hai. Pending doubt ho to admin ka jawab final maana jata hai
+    (status resolved)."""
+    from models import Doubt, DoubtResponse, DoubtStatus, StudentProfile, TeacherProfile
+    d = db.query(Doubt).get(did)
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    body = (payload.get("body") or "").strip()
+    _ak = _am = _an = None
+    if payload.get("attach_b64"):
+        _am = payload.get("attach_mime") or "image/jpeg"
+        try:
+            _ak = __import__("r2_storage").normalize(payload["attach_b64"], "doubt-resp", _am)
+            _an = (payload.get("attach_name") or "attachment")[:250]
+        except Exception:
+            _ak = _am = _an = None
+    if not body and not _ak:
+        raise HTTPException(status_code=400, detail="Response text is required")
+    db.add(DoubtResponse(doubt_id=d.id, role="admin", author_name="MVS Foundation", body=body,
+                         attach_key=_ak, attach_mime=_am, attach_name=_an))
+    was_pending = (d.status.value if hasattr(d.status, "value") else d.status) != "resolved"
+    if was_pending:
+        if not d.answer:
+            d.answer = body
+        d.status = DoubtStatus.resolved
+        d.resolved_at = datetime.now()
+        try:
+            import doubt_metrics as _dm
+            d.sla_snapshot = _dm.sla_hours(db)   # forward-only SLA freeze
+        except Exception:
+            pass
+    sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
+    if sp and sp.user:
+        notify(db, sp.user_id, "🏛️ MVS Foundation Replied to Your Doubt",
+               f"Your {d.subject or ''} doubt got an official response: {body[:120]}", "doubt_resolved")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
+    if tp and tp.user:
+        notify(db, tp.user_id, "🏛️ Admin Replied on a Doubt",
+               f"MVS Foundation posted an official reply on the {d.subject or ''} doubt by "
+               f"{sp.user.name if sp and sp.user else 'a student'}.", "doubt")
+    db.commit()
+    return {"message": "Official response posted",
+            "responses": _admin_doubt_resps(db, d.id),
+            "status": (d.status.value if hasattr(d.status, "value") else d.status)}
+
+@router.delete("/doubt/{did}")
+def admin_delete_doubt(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin kisi bhi doubt ko delete kar sakta hai (demo/test doubts) —
+    student aur teacher dono portals se turant hat jata hai."""
+    d = db.query(Doubt).get(did)
+    if not d:
+        raise HTTPException(status_code=404, detail="Doubt not found")
+    # pehle iske replies (DoubtResponse) hatao, warna foreign-key error
+    try:
+        from models import DoubtResponse
+        db.query(DoubtResponse).filter(DoubtResponse.doubt_id == did).delete(synchronize_session=False)
+    except Exception:
+        pass
+    db.delete(d)
+    db.commit()
+    return {"message": "Doubt deleted"}
+
+
+@router.get("/doubt/{did}/image")
+def admin_doubt_image(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.image_b64:
+        return _img_response(None)
+    return __import__("r2_storage").file_response(d.image_b64, d.attach_mime or "image/jpeg", (d.attach_name or "file").replace(chr(34), ""), False)
+
+@router.get("/doubt/{did}/voice")
+def admin_doubt_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.audio_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").proxy_response(d.audio_b64, "audio/webm", "voice.webm", False, sniff=True)
+
+@router.get("/doubt-response/{rid}/attach")
+def admin_doubt_resp_attach(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import DoubtResponse
+    r = db.query(DoubtResponse).get(rid)
+    if not r or not getattr(r, "attach_key", None):
+        raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").file_response(r.attach_key, r.attach_mime or "image/jpeg", (r.attach_name or "attachment").replace(chr(34), ""), False)
+
+@router.get("/doubt/{did}/answer-file")
+def admin_doubt_answer_file(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.answer_attach_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").file_response(d.answer_attach_b64, d.answer_attach_mime or "application/octet-stream")
+
+@router.get("/doubt/{did}/answer-voice")
+def admin_doubt_answer_voice(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Doubt
+    import base64
+    from fastapi import Response
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.answer_audio_b64:
+        raise HTTPException(status_code=404, detail="Not found")
+    return __import__("r2_storage").proxy_response(d.answer_audio_b64, "audio/webm", "answer.webm", False, sniff=True)
+
+@router.get("/doubt/{did}/student")
+def admin_doubt_student(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Doubts page — student ke naam par click karne par uski poori details.
+    Doubt-id se student nikalta hai (doubts-section access wala admin bhi dekh sake)."""
+    from models import Doubt, StudentProfile, User as _U, DPPSubmission as _DS, TestSubmission as _TS
+    d = db.query(Doubt).filter(Doubt.id == did).first()
+    if not d or not d.student_id:
+        raise HTTPException(status_code=404, detail="Student not found")
+    sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Student not found")
+    u = db.query(_U).filter(_U.id == sp.user_id).first()
+    dpp_n = db.query(func.count(_DS.id)).filter(_DS.student_id == sp.id).scalar() or 0
+    test_n = db.query(func.count(_TS.id)).filter(_TS.student_id == sp.id).scalar() or 0
+    has_photo = bool(db.query(StudentProfile.id).filter(
+        StudentProfile.id == sp.id, StudentProfile.photo_b64.isnot(None)).first())
+    return {
+        "profile_id": sp.id,
+        "name": (u.name if u else "") or "Unknown student",
+        "user_id": (u.user_id if u else None),
+        "phone": sp.phone,
+        "email": sp.email,
+        "batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch, "value") else sp.batch),
+        "class_level": sp.class_level,
+        "medium": getattr(sp, "medium", None),
+        "exam_session": getattr(sp, "exam_session", None),
+        "exam_stream": getattr(sp, "exam_stream", None),
+        "nios_ref": getattr(sp, "nios_ref", None),
+        "subjects": (_SR.canon_list(sp.subjects, sp.class_level) if _SR else sp.subjects) or [],
+        "is_active": (u.is_active if u else True),
+        "is_verified": sp.is_verified,
+        "dpp_submitted": int(dpp_n),
+        "tests_attempted": int(test_n),
+        "has_photo": has_photo,
+    }
+
+@router.get("/student-doubts")
+def admin_student_doubts(student_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin doubts page — student naam pe click karne par uski SAARI chatting ek saath
+    (WhatsApp-style). Full thread + media flags ke saath."""
+    from teacher_routes import _student_chat_payload
+    return _student_chat_payload(db, student_id)
+
+@router.get("/doubt-rate-config")
+def admin_doubt_rate_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Doubt anti-spam limits padho (admin config)."""
+    from student_routes import _doubt_rate_cfg
+    return _doubt_rate_cfg(db)
+
+@router.post("/doubt-rate-config")
+def admin_doubt_rate_set(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Doubt anti-spam limits set karo. Body: {enabled, cooldown_sec, per_hour, per_day}.
+    0 = us layer ko off kar do (jaise per_day=0 -> koi daily cap nahi)."""
+    from student_routes import _doubt_rate_cfg
+    from models import AppSetting
+    import json as _json
+    cfg = _doubt_rate_cfg(db)
+    if "enabled" in payload:
+        cfg["enabled"] = bool(payload.get("enabled"))
+    for k, lo, hi in [("cooldown_sec", 0, 3600), ("per_hour", 0, 200), ("per_day", 0, 1000)]:
+        if k in payload and payload.get(k) is not None:
+            try:
+                v = int(payload.get(k))
+            except Exception:
+                raise HTTPException(status_code=400, detail="%s must be a number" % k)
+            cfg[k] = max(lo, min(hi, v))
+    row = db.query(AppSetting).filter(AppSetting.key == "doubt_rate_cfg").first()
+    if not row:
+        row = AppSetting(key="doubt_rate_cfg"); db.add(row)
+    row.value = _json.dumps(cfg)
+    db.commit()
+    return {"message": "Doubt limits saved", "config": cfg}
+@router.post("/questionbank")
+async def admin_upload_questionbank(
+    title: str = Form(...),
+    medium: str = Form("English"),
+    category: str = Form("Question Bank"),
+    subject: str = Form("General"),
+    external_link: str = Form(""),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    _=Depends(get_admin)
+):
+    import base64
+    from models import Material, StudentProfile
+    link = (external_link or "").strip()
+    content_b64 = None
+    fname = None
+    if file is not None and file.filename:
+        raw = await file.read()
+        # NO compression — stored as-is. Cap to keep MySQL packet safe.
+        if len(raw) > 30 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File is larger than 30MB. Please use the link option for very large files.")
+        content_b64 = __import__("r2_storage").store_file_value(__import__("r2_storage").new_key("materials", file.filename), raw, file.content_type or "application/pdf")
+        fname = file.filename
+    elif not link:
+        raise HTTPException(status_code=400, detail="Provide a PDF file or a link.")
+    m = Material(
+        teacher_id=None, teacher_name="Admin", subject=(subject.strip() or "General"),
+        material_type="other", category=(category.strip() or "Question Bank"),
+        title=(title.strip() or fname or "Question Bank"), filename=fname,
+        content_b64=content_b64, medium=(medium.strip() or "English"),
+        is_global=True, external_link=(link or None)
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    # notify ALL students
+    try:
+        for sp in db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all():
+            if sp.user:
+                db.add(Notification(user_id=sp.user_id,
+                    title=f"📘 New {category.strip() or 'Question Bank'} ({medium.strip()})",
+                    message=f"{title.strip()} is now available in the Question Bank.",
+                    notif_type="questionbank"))
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"id": m.id, "message": "Question Bank uploaded."}
+
+@router.get("/questionbank")
+def admin_list_questionbank(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Material
+    ms = db.query(Material).options(defer(Material.content_b64)).filter(Material.is_global == True).order_by(Material.created_at.desc()).all()
+    return [{"id": m.id, "title": m.title, "category": m.category, "medium": m.medium,
+             "subject": m.subject, "has_file": bool(m.content_b64), "external_link": m.external_link,
+             "filename": m.filename, "date": str(m.created_at)[:10]} for m in ms]
+
+@router.patch("/material/{mid}/approval")
+def admin_material_approval(mid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Material
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Material not found")
+    st = (payload.get("status") or "").strip()
+    if st not in ("approved", "pending", "rejected"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    m.approval_status = st
+    db.commit()
+    return {"message": f"Material marked {st}."}
+
+@router.delete("/material/{mid}")
+def admin_delete_material(mid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Material
+    m = db.query(Material).options(defer(Material.content_b64)).filter(Material.id == mid).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Material not found")
+    db.delete(m); db.commit()
+    return {"message": "Material deleted."}
+
+
+@router.post("/material/{mid}/copy")
+def admin_material_copy(mid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Admin kisi bhi teacher ki class material ko ek ya zyada doosre batch me copy kare (MAT-2)."""
+    from models import Material
+    from teacher_routes import _copy_target_batches, _copy_material_rows
+    src = db.query(Material).filter(Material.id == mid).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Material not found")
+    targets = _copy_target_batches(payload)
+    if not targets:
+        raise HTTPException(status_code=400, detail="Select at least one target batch")
+    made = _copy_material_rows(db, src, targets, getattr(src, "teacher_name", None))
+    return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
+
+
+# ===================================================================== CLASS REPORTS
+@router.get("/class-reports")
+def admin_class_reports(teacher_id: int = 0, db: Session = Depends(get_db),
+                        current_user=Depends(get_admin)):
+    """Every teacher's submitted class reports, with delay + teaching-hours
+    analytics. Reuses the same computation the teacher portal uses, so both
+    sides always agree."""
+    from teacher_routes import _report_rows, _report_summary
+    from models import TeacherProfile
+    tmap = {}
+    teachers = []
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
+        nm = tp.user.name if tp.user else ("Teacher #%d" % tp.id)
+        tmap[tp.id] = nm
+        teachers.append({"id": tp.id, "name": nm, "subjects": tp.subjects or []})
+    rows = _report_rows(db, None, teacher_map=tmap)
+    if teacher_id:
+        rows = [r for r in rows if r["teacher_id"] == teacher_id]
+    # per-teacher leaderboard of punctuality / hours
+    per_teacher = []
+    for t in teachers:
+        tr = [r for r in rows if r["teacher_id"] == t["id"]] if not teacher_id else rows
+        if teacher_id and t["id"] != teacher_id:
+            continue
+        s = _report_summary(tr)
+        per_teacher.append({"teacher_id": t["id"], "name": t["name"],
+                            "subjects": t["subjects"], **s})
+    per_teacher.sort(key=lambda x: (-(x["on_time_pct"] if x["on_time_pct"] is not None else -1),
+                                    -x["month_hours"]))
+    return {"summary": _report_summary(rows), "rows": rows[:80],
+            "teachers": teachers, "per_teacher": per_teacher}
+
+
+@router.get("/pending-class-reports")
+def admin_pending_class_reports(days: int = 60, db: Session = Depends(get_db),
+                                current_user=Depends(get_admin)):
+    """Jo classes ho chuki hain par unka class report (lecture) ab tak submit NAHI hua —
+    teacher-wise grouped + poori details (subject/chapter/date/time/kitne din overdue).
+    'Done' = us class ka active Lecture exist karta hai (bilkul wahi definition jo frontend
+    ke Done chip me hai). Isse admin ko ek jagah dikh jaata hai kis teacher ki kitni report
+    pending hai aur kaun si class ki."""
+    from models import TimetableEntry, TeacherProfile, User, Lecture
+    from teacher_routes import _slot_start, _ist_now
+    now = _ist_now()
+    today = now.date()
+    now_min = now.hour * 60 + now.minute
+    cutoff = today - timedelta(days=max(7, min(int(days or 60), 180)))
+    # report ho chuki (active lecture) — ek query
+    done_ids = set(x[0] for x in db.query(Lecture.timetable_entry_id).filter(
+        Lecture.is_active == True, Lecture.timetable_entry_id.isnot(None)).all())  # noqa: E712
+    # teacher naam prefetch (N+1 avoid)
+    tpairs = db.query(TeacherProfile.id, TeacherProfile.user_id).all()
+    uids = [uid for _tid, uid in tpairs if uid]
+    unames = {}
+    if uids:
+        for uid, nm in db.query(User.id, User.name).filter(User.id.in_(uids)):
+            unames[uid] = nm
+    tmap = {tid: (unames.get(uid) or ("Teacher #%d" % tid)) for tid, uid in tpairs}
+    # sirf LIVE (archived nahi) chapter classes, cutoff window me
+    q = db.query(TimetableEntry).filter(
+        TimetableEntry.entry_type == "chapter",
+        TimetableEntry.entry_date.isnot(None),
+        TimetableEntry.entry_date <= today,
+        TimetableEntry.entry_date >= cutoff)
+    if hasattr(TimetableEntry, "archive_gen_id"):
+        q = q.filter(TimetableEntry.archive_gen_id.is_(None))
+    by_teacher = {}
+    for e in q.all():
+        if e.id in done_ids:
+            continue
+        d = e.entry_date
+        # class over? (aaj ki class -> scheduled start time nikal gaya ho tabhi)
+        if d == today:
+            sm = _slot_start(getattr(e, "time_text", None))
+            if sm is None or now_min <= sm:
+                continue
+        tid = e.teacher_id
+        g = by_teacher.setdefault(tid, {"teacher_id": tid,
+                                        "teacher_name": tmap.get(tid, "—") or "—",
+                                        "count": 0, "items": []})
+        g["count"] += 1
+        g["items"].append({
+            "id": e.id, "subject": e.subject or "", "chapter": e.chapter or "",
+            "part": e.part or "", "class_name": e.class_name or "",
+            "date": str(d), "time": getattr(e, "time_text", None) or "",
+            "days_overdue": (today - d).days,
+        })
+    groups = sorted(by_teacher.values(), key=lambda x: -x["count"])
+    for g in groups:
+        g["items"].sort(key=lambda x: (-x["days_overdue"], x["date"], x["time"]))
+        g["items"] = g["items"][:150]
+    return {"total": sum(g["count"] for g in groups),
+            "teacher_count": len(groups), "teachers": groups}
+
+
+@router.get("/teacher-report")
+def admin_teacher_report_data(teacher_ids: str = "", period: str = "month",
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Report ka JSON (UI preview/teacher-picker ke liye) — PDF ke bina."""
+    import teacher_report as TR
+    ids = [int(x) for x in teacher_ids.split(",") if x.strip().isdigit()] or None
+    label, data = TR.collect_all(db, ids, "week" if period == "week" else "month")
+    return {"period_label": label, "teachers": data}
+
+
+@router.get("/teacher-report-pdf")
+def admin_teacher_report_pdf(teacher_ids: str = "all", period: str = "month",
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Premium teacher progress PDF — all / selective / single teacher, weekly ya monthly.
+    teacher_ids='all' -> saare; warna comma-separated ids (e.g. '3,7,12')."""
+    from fastapi import Response
+    import teacher_report as TR
+    ids = None
+    if teacher_ids and teacher_ids != "all":
+        ids = [int(x) for x in teacher_ids.split(",") if x.strip().isdigit()] or None
+    pdf = TR.build_report_pdf(db, ids, "week" if period == "week" else "month")
+    fn = "MVS_Teacher_Report_%s.pdf" % ("weekly" if period == "week" else "monthly")
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
+
+
+# ============================================================ MATERIAL ANALYTICS
+@router.get("/materials-tree")
+def admin_materials_tree(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Every subject's uploaded material, chapter/part-wise, with engagement. Optional batch
+    filter (batch=<id> shows that batch + global; batch=-1 shows global/legacy only)."""
+    from teacher_routes import _material_tree
+    return {"subjects": _material_tree(db, None, (batch or None))}
+
+
+@router.get("/material/{mid}/audience")
+def admin_material_audience(mid: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from teacher_routes import _material_audience
+    return _material_audience(db, mid)
+
+
+# ==================================================== LIVE USERS (students + teachers + admins)
+LIVE_WINDOW_MIN = 3
+
+
+@router.get("/live-users")
+def admin_live_users(full: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Who is online right now + counts. FAST: GROUP BY + sirf phone column.
+    Auto-refresh (har 15s) sirf LIVE list + counts laata hai; poori never/offline
+    list sirf tab click par (full=1) -> egress + memory churn kam."""
+    from models import UserSession, User, UserRole, StudentProfile, TeacherProfile
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=LIVE_WINDOW_MIN)
+
+    # login count + last_seen per user — GROUP BY (saari session rows load NAHI)
+    agg = (db.query(UserSession.user_id, func.count(UserSession.id), func.max(UserSession.last_seen))
+           .group_by(UserSession.user_id).all())
+    by_user = {uid: {"count": c, "last": last, "live": None} for uid, c, last in agg}
+
+    # sirf RECENT (live) sessions ka detail (chhota set — poori table nahi)
+    # ended_at set => logout ho chuka, live me mat dikhao. "Live" ab last_active pe (open tab
+    # nahi, actually active hona chahiye — background/idle ya purana client live nahi ginta).
+    for s in db.query(UserSession).filter(UserSession.last_active != None, UserSession.last_active >= cutoff,  # noqa: E711
+                                          UserSession.ended_at == None).all():
+        d = by_user.get(s.user_id)
+        if d and (d["live"] is None or (s.last_active and s.last_active > (d["live"].last_active or cutoff))):
+            d["live"] = s
+
+    # sirf un users ko load karo jinke sessions hain (logged-in) — poore 1 lakh users NAHI
+    uids = list(by_user.keys())
+    users = db.query(User).filter(User.id.in_(uids)).all() if uids else []
+
+    # phones — sirf inhi users ke (poori student table nahi)
+    phones = {}
+    if uids:
+        for uid, ph in db.query(StudentProfile.user_id, StudentProfile.phone).filter(StudentProfile.user_id.in_(uids)):
+            phones[uid] = ph
+        for uid, ph in db.query(TeacherProfile.user_id, TeacherProfile.phone).filter(TeacherProfile.user_id.in_(uids)):
+            phones.setdefault(uid, ph)
+
+    # never-logged-in count = total users - jinke sessions hain (COUNT only, load nahi)
+    total_users = db.query(func.count(User.id)).filter(
+        User.role.in_([UserRole.student, UserRole.teacher, UserRole.admin])).scalar() or 0
+
+    live, offline, never = [], [], []
+    n_never = max(0, total_users - len(uids))
+    n_offline = 0
+    for u in users:
+        role = getattr(u.role, "value", str(u.role))
+        d = by_user.get(u.id)
+        base = {"user_id": u.id, "name": u.name, "code": u.user_id, "role": role,
+                "phone": phones.get(u.id) or "", "logins": (d["count"] if d else 0)}
+        if not d or not d["last"]:
+            continue
+        base["last_seen"] = str(d["last"])[:16]
+        base["last_seen_min"] = int((now - d["last"]).total_seconds() // 60)
+        if d["live"]:
+            s = d["live"]
+            base["page"] = s.current_page or "\u2014"
+            base["duration_min"] = max(0, int((now - (s.started_at or s.last_seen)).total_seconds() // 60))
+            live.append(base)
+        else:
+            n_offline += 1
+            if full:
+                offline.append(base)
+
+    live.sort(key=lambda x: -x["duration_min"])
+    counts = {"live": len(live), "students_live": sum(1 for x in live if x["role"] == "student"),
+              "teachers_live": sum(1 for x in live if x["role"] == "teacher"),
+              "admins_live": sum(1 for x in live if x["role"] == "admin"),
+              "editors_live": sum(1 for x in live if x["role"] == "editor"),
+              "graphics_live": sum(1 for x in live if x["role"] == "graphics"),
+              "youtubers_live": sum(1 for x in live if x["role"] == "youtuber"),
+              "pms_live": sum(1 for x in live if x["role"] == "production_manager"),
+              "never": n_never, "offline": n_offline}
+    if full:
+        offline.sort(key=lambda x: x["last_seen_min"])
+        never.sort(key=lambda x: x["name"])
+    return {"live": live, "offline": offline, "never": never, "counts": counts}
+
+
+@router.get("/user/{user_id}/sessions")
+def admin_user_sessions(user_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Every time this person came online - the 'recent' list the admin scrolls."""
+    from models import UserSession, User, StudentProfile, TeacherProfile
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    rows = db.query(UserSession).filter(UserSession.user_id == user_id).order_by(
+        UserSession.started_at.desc()).limit(60).all()
+    # full profile detail for the click-view (batch / phone / class / medium / subjects)
+    detail = {}
+    sp = db.query(StudentProfile).filter(StudentProfile.user_id == user_id).first()
+    if sp:
+        detail = {"batch": sp.batch_name or (sp.batch.value if hasattr(sp.batch, "value") else sp.batch) or "",
+                  "phone": sp.phone or "", "class_level": sp.class_level or "",
+                  "class_name": sp.class_name or "", "medium": sp.medium or "",
+                  "subjects": sp.subjects or [], "email": sp.email or ""}
+    else:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.user_id == user_id).first()
+        if tp:
+            detail = {"batch": tp.batch or "", "phone": tp.phone or "",
+                      "subjects": tp.subjects or []}
+    out = []
+    for s in rows:
+        mins = 0
+        if s.started_at and s.last_seen:
+            mins = max(0, int((s.last_seen - s.started_at).total_seconds() // 60))
+        out.append({"started": str(s.started_at)[:16], "last_seen": str(s.last_seen)[:16],
+                    "minutes": mins, "page": s.current_page or "\u2014"})
+    return {"name": u.name, "code": u.user_id,
+            "role": getattr(u.role, "value", str(u.role)),
+            "logins": len(out), "sessions": out, "detail": detail}
+
+
+# ==================================================== CLASS COMPLIANCE (missed / delayed)
+DELAY_WARN_THRESHOLD = 2      # more than this many late classes in the month -> warn
+
+
+@router.get("/class-compliance")
+def admin_class_compliance(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Per-teacher punctuality: classes that were MISSED (scheduled date passed and
+    never marked done) and classes that started LATE, with a month-wise count so
+    repeat offenders are obvious."""
+    from teacher_routes import _delay_of, _delay_band, _duration_of
+    from models import TimetableEntry, TeacherProfile
+    today = ist_today()
+    month_start = date(today.year, today.month, 1)
+
+    tmap = {}
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
+        tmap[tp.id] = {"id": tp.id, "name": (tp.user.name if tp.user else "Teacher #%d" % tp.id),
+                       "user_id": tp.user_id, "subjects": tp.subjects or []}
+
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.entry_type == "chapter",
+        (TimetableEntry.status == None) | (TimetableEntry.status != "pending")).all()
+
+    missed, late_rows = [], []
+    per = {}
+    for e in entries:
+        t = tmap.get(e.teacher_id)
+        tname = t["name"] if t else ""
+        p = per.setdefault(e.teacher_id, {"missed": 0, "late": 0, "late_month": 0,
+                                          "ontime": 0, "done": 0, "delays": []})
+        # MISSED: the class date has passed but it was never marked done
+        if e.entry_date and e.entry_date < today and not getattr(e, "completed", False):
+            p["missed"] += 1
+            missed.append({"id": e.id, "teacher_id": e.teacher_id, "teacher_name": tname,
+                           "subject": e.subject, "chapter": e.chapter, "part": e.part,
+                           "date": str(e.entry_date), "slot": e.time_text,
+                           "days_ago": (today - e.entry_date).days})
+            continue
+        if not getattr(e, "completed", False):
+            continue
+        p["done"] += 1
+        d = _delay_of(e)
+        band = _delay_band(d)
+        if band == "ontime":
+            p["ontime"] += 1
+        elif band in ("minor", "late"):
+            p["late"] += 1
+            p["delays"].append(d)
+            if e.entry_date and e.entry_date >= month_start:
+                p["late_month"] += 1
+            late_rows.append({"id": e.id, "teacher_id": e.teacher_id, "teacher_name": tname,
+                              "subject": e.subject, "chapter": e.chapter, "part": e.part,
+                              "date": str(e.entry_date) if e.entry_date else "",
+                              "slot": e.time_text, "started": e.start_time,
+                              "delay_min": d, "band": band})
+
+    teachers = []
+    for tid, p in per.items():
+        t = tmap.get(tid)
+        if not t:
+            continue
+        avg = round(sum(p["delays"]) / len(p["delays"])) if p["delays"] else None
+        total = p["done"]
+        teachers.append({
+            "teacher_id": tid, "name": t["name"], "subjects": t["subjects"],
+            "classes_done": total, "missed": p["missed"],
+            "late": p["late"], "late_this_month": p["late_month"], "ontime": p["ontime"],
+            "avg_delay": avg,
+            "on_time_pct": (round(p["ontime"] * 100 / total) if total else None),
+            "at_risk": p["late_month"] > DELAY_WARN_THRESHOLD or p["missed"] > 0,
+        })
+    teachers.sort(key=lambda x: (-(x["missed"]), -(x["late_this_month"])))
+    missed.sort(key=lambda x: x["date"], reverse=True)
+    late_rows.sort(key=lambda x: x["date"], reverse=True)
+    return {"teachers": teachers, "missed": missed[:60], "late": late_rows[:60],
+            "totals": {"missed": len(missed), "late": len(late_rows),
+                       "at_risk": sum(1 for t in teachers if t["at_risk"])},
+            "threshold": DELAY_WARN_THRESHOLD}
+
+
+@router.post("/warn-teacher/{teacher_id}")
+def admin_warn_teacher(teacher_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Send the punctuality reminder to a teacher who keeps starting late."""
+    from models import TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
+    if not tp or not tp.user:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    msg = ("Your classes have been starting late repeatedly.\n\n"
+           "This affects MVS Foundation's reputation and makes the children anxious. "
+           "It will also reflect in your monthly report.\n\n"
+           "Please start your classes on time.")
+    db.add(Notification(user_id=tp.user_id, title="\u26a0\ufe0f Class Punctuality Reminder",
+                        message=msg, notif_type="warning"))
+    db.commit()
+    return {"message": "Reminder sent to %s" % tp.user.name}
+
+
+# ==================================================== DOUBTS OVERVIEW (subject cards)
+@router.get("/doubts-overview")
+def admin_doubts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Subject cards for the doubts page: who teaches it, how many doubts came in,
+    how many are resolved, how many are still pending - and how long the oldest
+    pending one has been waiting."""
+    from models import Doubt, DoubtStatus, TeacherProfile
+    from sqlalchemy.orm import load_only as _lo
+    now = datetime.now()
+    # Sirf grouping ke columns load karo — image/audio/attachment base64 (har doubt me
+    # 4 blobs) load karne ki zaroorat nahi. Ye poori list par bahut RAM bachata hai.
+    def _cs(s):
+        s = (s or "").strip() or "General"
+        if _SR:
+            try:
+                return _SR.canon_display(s) or s
+            except Exception:
+                return s
+        return s
+    tmap = {}
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
+        for s in (tp.subjects or []):
+            tmap.setdefault(_cs(s), tp.user.name if tp.user else "")
+    # EFFICIENT: subject+status par GROUP BY — SAARE doubt rows memory me load NAHI karta
+    # (bade doubt table par bhi turant, RAM spike nahi; pehle poori list load hoti thi ->
+    # 9.9GB RAM + slow + QueuePool pressure ka bada kaaran). _doubt_needs_attention hamesha
+    # False hai (follow-up system hata diya) isliye resolved kabhi pending nahi banta.
+    by = {}
+    grand_total = 0
+    rows = db.query(Doubt.subject, Doubt.status,
+                    func.count(Doubt.id), func.min(Doubt.created_at)).group_by(
+                    Doubt.subject, Doubt.status).all()
+    for subject, status, cnt, oldest in rows:
+        cnt = int(cnt or 0)
+        grand_total += cnt
+        sub = _cs(subject)
+        c = by.setdefault(sub, {"subject": sub, "teacher": tmap.get(sub, ""),
+                                "total": 0, "resolved": 0, "pending": 0,
+                                "oldest_pending_min": None})
+        c["total"] += cnt
+        resolved = (getattr(status, "value", str(status)) == "resolved")
+        if resolved:
+            c["resolved"] += cnt
+        else:
+            c["pending"] += cnt
+            if oldest:
+                mins = int((now - oldest).total_seconds() // 60)
+                if c["oldest_pending_min"] is None or mins > c["oldest_pending_min"]:
+                    c["oldest_pending_min"] = mins
+    # ---- on-time vs late resolved per subject (scalar cols only -> cheap, no blobs) ----
+    import doubt_metrics as _dm
+    _sla_now = _dm.sla_hours(db)
+    _oh = _dm.office_cfg(db)
+    for c in by.values():
+        c["on_time"] = 0
+        c["late"] = 0
+        c["max_late_min"] = 0
+    resolved_rows = db.query(Doubt.subject, Doubt.created_at, Doubt.resolved_at, Doubt.sla_snapshot)\
+        .filter(Doubt.status == DoubtStatus.resolved, Doubt.resolved_at.isnot(None)).all()
+    tot_on = tot_late = 0
+    for subj, cat, rat, snap in resolved_rows:
+        m = _dm.metrics_for(cat, rat, snap, _sla_now, _oh)
+        if not m:
+            continue
+        sub = _cs(subj)
+        c = by.get(sub)
+        if not c:
+            continue
+        if m["late"]:
+            c["late"] += 1
+            tot_late += 1
+            if m["late_minutes"] > c["max_late_min"]:
+                c["max_late_min"] = m["late_minutes"]
+        else:
+            c["on_time"] += 1
+            tot_on += 1
+    for c in by.values():
+        c["max_late_label"] = _dm.fmt_dur(c["max_late_min"]) if c["max_late_min"] else ""
+    out = sorted(by.values(), key=lambda x: (-x["pending"], -x["late"], x["subject"]))
+    return {"subjects": out,
+            "totals": {"total": grand_total,
+                       "pending": sum(c["pending"] for c in out),
+                       "resolved": sum(c["resolved"] for c in out),
+                       "on_time": tot_on, "late": tot_late},
+            "sla_hours": _sla_now,
+            "office_hours": {"enabled": _oh["enabled"], "start": _oh["start"], "end": _oh["end"]}}
+
+# ------------------------------------------------------------------
+#  ADMIN PASSWORD RESET (teacher/student) — purana password hashed
+#  hota hai isliye dekha nahi ja sakta; admin naya set/generate karta hai.
+# ------------------------------------------------------------------
+import secrets as _secrets, string as _string
+
+@router.get("/credentials")
+def admin_view_credentials(role: str, profile_id: int, db: Session = Depends(get_db),
+                           _=Depends(get_admin)):
+    """Admin ko kisi teacher/student ke CURRENT login credentials dikhao —
+    bina reset kiye. plain_password sirf tab available jab account portal se
+    bana ho ya kabhi admin ne reset kiya ho (hash se purana recover nahi hota)."""
+    if role == "teacher":
+        prof = db.query(TeacherProfile).filter(TeacherProfile.id == profile_id).first()
+    elif role == "student":
+        prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
+    elif role == "admin":
+        # admin ka koi profile nahi — User hi hai; plain password AppSetting me
+        user = db.query(User).filter(User.id == profile_id, User.role == UserRole.admin).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == ("adm_pw_%d" % user.id)).first()
+        return {"name": user.name, "user_id": user.user_id,
+                "password": (row.value if row else None)}
+    else:
+        raise HTTPException(status_code=400, detail="Role must be teacher, student or admin")
+    if not prof:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    user = db.query(User).filter(User.id == prof.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found")
+    return {"name": user.name, "user_id": user.user_id,
+            "password": (getattr(prof, "plain_password", None) or None)}
+
+
+# ===== v89: PAYOUT PASSCODE RESET — admin approval ke baad hi reset =====
+@router.get("/passcode-resets")
+def admin_passcode_resets(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Jin teachers ne payout passcode reset maanga hai (pending approvals)."""
+    rows = (db.query(TeacherProfile, User)
+              .join(User, TeacherProfile.user_id == User.id)
+              .filter(TeacherProfile.passcode_reset_pending == True)
+              .order_by(TeacherProfile.id).all())
+    return [{"teacher_id": tp.id, "name": u.name, "user_id": u.user_id,
+             "subjects": tp.subjects or [], "has_photo": bool(tp.photo_b64)}
+            for tp, u in rows]
+
+
+@router.post("/passcode-resets/{tid}/review")
+def admin_passcode_reset_review(tid: int, payload: dict, db: Session = Depends(get_db),
+                                _=Depends(get_admin)):
+    """Approve → purana passcode clear (teacher naya banayega). Reject → kuch nahi badalta."""
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    status = (payload.get("status") or "").strip().lower()
+    if status not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be approved or rejected")
+    tp.passcode_reset_pending = False
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    if status == "approved":
+        tp.payout_passcode = None
+        if u:
+            db.add(Notification(user_id=u.id, title="Passcode Reset Approved",
+                                message="Your payout passcode reset request has been approved by the admin. Open the Payout section to set a new passcode.",
+                                notif_type="passcode_reset_approved"))
+    else:
+        if u:
+            db.add(Notification(user_id=u.id, title="Passcode Reset Rejected",
+                                message="Your payout passcode reset request has been rejected. If you did not send this request, please contact the admin.",
+                                notif_type="passcode_reset_rejected"))
+    db.commit()
+    return {"message": "Passcode reset " + status, "teacher_id": tid, "status": status}
+
+
+# ===== v90: LETTER REMARKS — teacher ke doubts admin check karke reply kare =====
+@router.get("/letter-remarks")
+def admin_letter_remarks(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Jin teachers ne appointment letter pe doubt/remark bheja hai (pending)."""
+    rows = (db.query(TeacherProfile, User)
+              .join(User, TeacherProfile.user_id == User.id)
+              .filter(TeacherProfile.letter_remark_status == "pending")
+              .order_by(TeacherProfile.letter_remark_at.is_(None),
+                        TeacherProfile.letter_remark_at.desc())
+              .all())
+    out = []
+    for tp, u in rows:
+        out.append({"teacher_id": tp.id, "name": u.name, "user_id": u.user_id,
+                    "subjects": tp.subjects or [], "has_photo": bool(tp.photo_b64),
+                    "remark": tp.letter_remark or "",
+                    "at": tp.letter_remark_at.isoformat() if tp.letter_remark_at else ""})
+    return out
+
+
+@router.post("/letter-remarks/{tid}/review")
+def admin_letter_remark_review(tid: int, payload: dict, db: Session = Depends(get_db),
+                               _=Depends(get_admin)):
+    """Reply likhkar remark resolve karo — teacher ko notification chala jaata hai.
+    Letter me kuch badalna ho to Payouts → Pay Structure se update karke yahan bata do."""
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    if tp.letter_remark_status != "pending":
+        raise HTTPException(status_code=400, detail="This teacher has no pending remark.")
+    reply = (payload.get("reply") or "").strip()
+    if len(reply) < 3:
+        raise HTTPException(status_code=400, detail="Please write a reply the teacher can understand.")
+    tp.letter_remark_status = "resolved"
+    tp.letter_remark_reply = reply
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    if u:
+        db.add(Notification(user_id=u.id, title="Letter Remark — Admin Reply",
+                            message="The admin has replied to your appointment letter remark: " + reply[:180] + ("..." if len(reply) > 180 else ""),
+                            notif_type="letter_remark_resolved"))
+    db.commit()
+    return {"message": "Reply sent — remark resolved.", "teacher_id": tid, "status": "resolved"}
+
+
+@router.post("/reset-password")
+def admin_reset_password(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    role = (payload.get("role") or "").strip()          # 'teacher' | 'student'
+    profile_id = payload.get("profile_id")
+    new_pass = (payload.get("password") or "").strip()
+
+    admin_user = None
+    if role == "teacher":
+        prof = db.query(TeacherProfile).filter(TeacherProfile.id == profile_id).first()
+    elif role == "student":
+        prof = db.query(StudentProfile).filter(StudentProfile.id == profile_id).first()
+    elif role == "admin":
+        admin_user = db.query(User).filter(User.id == profile_id, User.role == UserRole.admin).first()
+        if not admin_user:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        prof = None
+    else:
+        raise HTTPException(status_code=400, detail="Role must be teacher, student or admin")
+    if role != "admin":
+        if not prof:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        user = db.query(User).filter(User.id == prof.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User account not found")
+    else:
+        user = admin_user
+
+    if not new_pass:  # auto-generate friendly password
+        new_pass = "MVS@" + "".join(_secrets.choice(_string.digits) for _ in range(4))
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    user.password = hash_password(new_pass)
+    if role == "admin":
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == ("adm_pw_%d" % user.id)).first()
+        if row:
+            row.value = new_pass
+        else:
+            db.add(AppSetting(key="adm_pw_%d" % user.id, value=new_pass))
+    else:
+        prof.plain_password = new_pass  # teacher+student dono — admin ko credentials visible rahen
+    try:
+        db.commit()
+    except Exception:
+        # race: doosri request ne same adm_pw row bana di -> rollback + update
+        db.rollback()
+        user.password = hash_password(new_pass)
+        if role == "admin":
+            from models import AppSetting
+            _r = db.query(AppSetting).filter(AppSetting.key == ("adm_pw_%d" % user.id)).first()
+            if _r:
+                _r.value = new_pass
+            else:
+                db.add(AppSetting(key="adm_pw_%d" % user.id, value=new_pass))
+        else:
+            prof.plain_password = new_pass
+        db.commit()
+    return {"message": "Password reset successfully", "name": user.name,
+            "user_id": user.user_id, "password": new_pass}
+
+# ------------------------------------------------------------------
+#  MVS PORTAL <-> CRM STUDENT OVERVIEW
+#  Kitne students portal se aaye, kitne app (sheet) se, aur portal par
+#  kitne unlocked students ne abhi tak batch select hi nahi kiya.
+# ------------------------------------------------------------------
+@router.get("/portal-overview")
+def portal_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import StudentProfile as _SP
+    import time as _time
+    # 30s cache — students + dashboard dono is par depend karte hain
+    _oc = globals().setdefault("_POV_CACHE", {})
+    _hit = _oc.get("ov")
+    if _hit and (_time.time() - _hit[0] < 30):
+        return _hit[1]
+    # COUNT queries — saare profiles load NAHI karta (1 lakh par bhi turant, RAM spike nahi)
+    total = db.query(func.count(_SP.id)).scalar() or 0
+    portal = db.query(func.count(_SP.id)).filter(_SP.source == "mvs_portal").scalar() or 0
+    app = total - portal
+    pending, portal_reachable = [], False
+    try:
+        from ext_materials import portal_unlocked_students
+        lst = portal_unlocked_students()
+        if lst is not None:
+            portal_reachable = True
+            # sirf phone column laao (light) — full profiles nahi
+            existing_phones = {p for (p,) in db.query(_SP.phone).filter(_SP.phone.isnot(None))}
+            for st in lst:
+                ph = "".join(ch for ch in str(st.get("phone", "")) if ch.isdigit())[-10:]
+                if len(ph) == 10 and ph not in existing_phones:
+                    pending.append({"name": st.get("name") or "", "phone": ph,
+                                    "class_level": str(st.get("class_level") or st.get("class") or ""),
+                                    "session": st.get("session") or ""})
+    except Exception:
+        pass
+    # last student-sheet upload — Students page pe dikhane ke liye (IST display)
+    last_upload = ""
+    try:
+        from models import AppSetting as _AS
+        _lu = db.query(_AS).filter(_AS.key == "last_student_sheet_upload").first()
+        if _lu and _lu.value:
+            from datetime import timedelta as _tdu
+            try:
+                _dtv = datetime.fromisoformat(_lu.value)
+                last_upload = (_dtv + _tdu(hours=5, minutes=30)).strftime("%d %b %Y, %I:%M %p")
+            except Exception:
+                last_upload = _lu.value
+    except Exception:
+        last_upload = ""
+    res = {"total": total, "mvs_portal": portal, "mvs_app": app,
+           "portal_reachable": portal_reachable,
+           "pending_count": len(pending), "pending": pending[:300],
+           "last_upload": last_upload}
+    _oc["ov"] = (_time.time(), res)
+    return res
+
+
+# ------------------------------------------------------------------
+#  DANGER: DELETE ALL STUDENTS (fresh re-upload ke liye)
+# ------------------------------------------------------------------
+@router.delete("/students/all")
+def delete_all_students(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    if (payload or {}).get("confirm") != "DELETE ALL STUDENTS":
+        raise HTTPException(status_code=400, detail='Type "DELETE ALL STUDENTS" to confirm.')
+    import models as M
+    from models import StudentProfile as _SP, User as _U, UserRole as _UR
+
+    stu_users = db.query(_U).filter(_U.role == _UR.student).all()
+    stu_uids = [u.id for u in stu_users]
+    total = db.query(_SP).count()
+    if not stu_uids and not total:
+        return {"message": "No students to delete.", "deleted": 0}
+
+    errors = []
+
+    def wipe(fn, label):
+        try:
+            with db.begin_nested():   # savepoint: ek fail hua to sirf wahi rollback hota hai
+                fn()
+        except Exception as e:
+            errors.append(f"{label}: {type(e).__name__}")
+
+    # Model-driven cleanup: har mapped table jisme student_id/user_id column hai
+    for mp in list(M.Base.registry.mappers):
+        cls = mp.class_
+        name = cls.__name__
+        if name in ("StudentProfile", "User"):
+            continue
+        cols = {c.key for c in mp.columns}
+        if "student_id" in cols:
+            if name == "Material":
+                # teacher-uploaded materials (student_id NULL) safe rehte hain
+                wipe(lambda c=cls: db.query(c).filter(c.student_id.isnot(None))
+                     .delete(synchronize_session=False), name)
+            else:
+                wipe(lambda c=cls: db.query(c).delete(synchronize_session=False), name)
+        elif "user_id" in cols and stu_uids:
+            for i in range(0, len(stu_uids), 500):
+                chunk = stu_uids[i:i + 500]
+                wipe(lambda c=cls, ch=chunk: db.query(c).filter(c.user_id.in_(ch))
+                     .delete(synchronize_session=False), name)
+
+    wipe(lambda: db.query(_SP).delete(synchronize_session=False), "StudentProfile")
+    wipe(lambda: db.query(_U).filter(_U.role == _UR.student)
+         .delete(synchronize_session=False), "User")
+    db.commit()
+
+    remaining = db.query(_SP).count()
+    if remaining:
+        raise HTTPException(status_code=500,
+                            detail=f"Deletion incomplete — {remaining} students still remain. Issues: {', '.join(sorted(set(errors))[:6]) or 'unknown'}")
+    return {"message": f"All {total} students deleted. You can now upload fresh data.",
+            "deleted": total}
+
+# ==================================================================
+#  MVS PORTAL PRIORITY SYNC
+#  Rule: agar koi student MVS Portal par exist karta hai to woh HAMESHA
+#  "mvs_portal" category ka hai — chahe pehle sheet (MVS App) se add hua ho.
+#  Yeh sync MVS App students ko portal par check karke unhe transfer kar
+#  deta hai aur unka data (class, medium, subjects) portal se refresh karta hai.
+# ==================================================================
+_EXAM_KEY_CANDIDATES = {
+    "session": ("exam_session", "session", "exam_session_label", "examsession"),
+    "stream":  ("exam_stream", "stream", "nios_stream", "examstream"),
+    "ref":     ("nios_ref", "nios_reference", "niosref", "nios_ref_no", "niosrefno",
+                "reference", "ref", "ref_no", "refno", "reference_no", "referenceno",
+                "enrollment", "enrollment_no", "enrollmentno", "enrollment_number",
+                "enrolment_no", "enroll_no", "enrollno", "registration_no",
+                "registration_number", "reg_no", "regno", "admission_no",
+                "adm_no", "admno", "student_ref", "roll_no", "uid"),
+}
+
+
+def _portal_pick(st, keys):
+    # case-insensitive bhi: class manager 'refNo' / 'Ref_No' / 'NIOS_REF' bheje to bhi mile
+    lower_map = {}
+    for k in st.keys():
+        try:
+            lower_map.setdefault(str(k).lower(), k)
+        except Exception:
+            pass
+    for k in keys:
+        v = st.get(k)
+        if v and str(v).strip():
+            return str(v).strip()
+        lk = lower_map.get(k.lower())
+        if lk is not None:
+            v = st.get(lk)
+            if v and str(v).strip():
+                return str(v).strip()
+    return ""
+
+
+def _map_session_text(db, text):
+    """Class-manager ka exam session text (e.g. 'Stream 2', 'October 2026')
+    ko hamare session id (stream2 / oct2026 / ondemand / apr2027) se map karo.
+    Match na mile to '' (kuch overwrite mat karo)."""
+    t = (text or "").strip().lower()
+    if not t:
+        return ""
+    t2 = t.replace(" ", "")
+    try:
+        from syllabus_routes import _sessions
+        sess = _sessions(db)
+    except Exception:
+        sess = []
+    for x in sess:
+        xid = (x.get("id") or "").lower()
+        lbl = (x.get("label") or "").lower()
+        if t2 == xid or t == lbl:
+            return xid
+    for x in sess:  # substring match on label: 'stream 2' ⊂ 'stream 2 examination'
+        xid = (x.get("id") or "").lower()
+        lbl2 = (x.get("label") or "").lower().replace(" ", "")
+        if t2 and t2 in lbl2:
+            return xid
+    if "ondemand" in t2 or "odes" in t2:
+        return "ondemand"
+    if "stream2" in t2:
+        return "stream2"
+    if "stream1" in t2:
+        # NIOS stream 1 = public exam — nearest upcoming tma session
+        for x in sess:
+            if x.get("tma", True) and (x.get("id") or "").startswith("oct"):
+                return x.get("id") or ""
+        for x in sess:
+            if x.get("tma", True):
+                return x.get("id") or ""
+    # bulletproof fallback: "April 2027" / "Apr 2027" / "October 2026" -> apr2027 / oct2026
+    m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?\s*(20\d{2})", t)
+    if m:
+        return m.group(1)[:3] + m.group(2)
+    return ""
+
+
+def _stream_for_session(db, session_id):
+    try:
+        from syllabus_routes import _sessions
+        for x in _sessions(db):
+            if (x.get("id") or "") == session_id:
+                return "1" if x.get("tma", True) else "2"
+    except Exception:
+        pass
+    return ""
+
+
+def _apply_portal_exam_info(sp, st, db=None):
+    """Class manager se exam session / stream / NIOS ref copy karo.
+    RULE: kabhi bhi empty value se overwrite nahi — jo class manager
+    na bheje wo portal ka apna value bana rahe."""
+    if not isinstance(st, dict):
+        return
+    # session: pehle direct id-ish keys, phir free-text ko map karke
+    raw_sess = _portal_pick(st, _EXAM_KEY_CANDIDATES["session"])
+    raw_stream = _portal_pick(st, _EXAM_KEY_CANDIDATES["stream"])
+    ref = _portal_pick(st, _EXAM_KEY_CANDIDATES["ref"])
+    # class manager ke 'Exam Session' field me aksar 'Stream 2' likha hota hai
+    blob = " ".join(x for x in [raw_sess, raw_stream] if x)
+    new_sid = ""
+    if raw_sess and not re.search(r"stream", raw_sess, re.I):
+        new_sid = _map_session_text(db, raw_sess) or (raw_sess[:30] if re.fullmatch(r"[a-z0-9_-]+", raw_sess, re.I) else "")
+    if not new_sid and blob:
+        new_sid = _map_session_text(db, blob)
+    if new_sid:
+        sp.exam_session = new_sid
+        stv = _stream_for_session(db, new_sid)
+        if stv:
+            sp.exam_stream = stv
+    elif raw_stream:
+        m = re.search(r"([1-4])", raw_stream)
+        if m:
+            sp.exam_stream = m.group(1)
+    if ref:
+        sp.nios_ref = ref.upper()[:40]
+
+
+def _sync_one_from_portal(sp, db):
+    """Ek student ko portal par check karo. True agar mvs_portal me transfer hua."""
+    from ext_materials import portal_fetch_student
+    if not sp.phone:
+        return False
+    st = portal_fetch_student(sp.phone)
+    if not st or not st.get("unlocked"):
+        return False
+    sp.source = "mvs_portal"                       # priority: portal jeet-ta hai
+    if st.get("class_level"):
+        sp.class_level = st["class_level"]
+    if st.get("subjects"):
+        # class manager ke raw naam (PHYSICS / SCIENCE / DATA ENTRY) official
+        # NIOS naam pe canonical karo — duplicate subjects kabhi nahi banenge
+        sp.subjects = _SR.canon_list(st["subjects"], sp.class_level) if _SR else st["subjects"]
+    if st.get("medium"):
+        sp.medium = st["medium"]
+    if st.get("name") and sp.user and (not sp.user.name or sp.user.name.startswith("Student ")):
+        sp.user.name = st["name"]
+    _apply_portal_exam_info(sp, st, db)
+    return True
+
+
+@router.post("/students/sync-portal")
+def sync_students_with_portal(payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """MVS App students ko MVS Portal par check karke transfer — FAST (bulk map,
+    koi per-student external call nahi) + batch-wise (progress). Cursor: after_id."""
+    from models import StudentProfile as _SP
+    from ext_materials import _cfg, pick_medium
+    url, key = _cfg()
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 300)
+    pmap = _portal_phone_map()   # bulk, cached — poore sync me portal sirf 1 baar hit
+
+    def _clean_subs(st):
+        out = []
+        for x in (st.get("subjects") or []):
+            nm = (x.get("name") if isinstance(x, dict) else str(x)) or ""
+            nm = nm.split("(")[0].strip()
+            if nm:
+                out.append(nm)
+        return out
+
+    base = db.query(_SP).filter(
+        (_SP.source == "mvs_app") | (_SP.source.is_(None)), _SP.phone.isnot(None))
+    total = base.count() if after_id == 0 else None
+    chunk = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    moved, last_id = [], after_id
+    for sp in chunk:
+        last_id = sp.id
+        ph = "".join(c for c in str(sp.phone or "") if c.isdigit())[-10:]
+        st = pmap.get(ph)
+        if not st:
+            continue
+        sp.source = "mvs_portal"          # portal top-priority
+        _pc = str(st.get("class_level") or st.get("class") or "")
+        if _pc:
+            sp.class_level = _pc
+        _pmed = pick_medium(st)
+        if _pmed:
+            sp.medium = _pmed
+        _es = _clean_subs(st)
+        if _es:
+            sp.subjects = _SR.canon_list(_es, sp.class_level) if _SR else _es
+        if st.get("name") and sp.user and (not sp.user.name or sp.user.name.startswith("Student ")):
+            sp.user.name = st["name"]
+        try:
+            _apply_portal_exam_info(sp, st, db)
+        except Exception:
+            pass
+        moved.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                      "user_id": sp.user.user_id if sp.user else ""})
+    db.commit()
+    return {"checked": len(chunk), "moved": len(moved), "students": moved[:200],
+            "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
+
+
+@router.post("/students/backfill-session")
+def backfill_session_from_portal(payload: dict = None, db: Session = Depends(get_db),
+                                 _=Depends(get_admin)):
+    """Fill EXAM SESSION for students whose exam_session is blank — from MVS Portal.
+    Uses the cached bulk map first, then a per-student fetch (deep) on a miss, and maps the
+    portal's session text bulletproof-ly (April 2027 -> apr2027, Stream 2 -> stream2, ...).
+    Only exam_session/stream are touched. Cursor: after_id."""
+    from models import StudentProfile as _SP
+    from ext_materials import _cfg, portal_fetch_student
+    url, key = _cfg()
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 40)
+    deep = payload.get("deep", True)
+    pmap = _portal_phone_map()
+    empty = (_SP.exam_session.is_(None)) | (_SP.exam_session == "")
+    base = db.query(_SP).filter(empty, _SP.phone.isnot(None))
+    total = base.count() if after_id == 0 else None
+    chunk = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    filled, rows, last_id = 0, [], after_id
+    not_found, no_session = 0, 0
+    for sp in chunk:
+        last_id = sp.id
+        ph = "".join(c for c in str(sp.phone or "") if c.isdigit())[-10:]
+        st = pmap.get(ph)
+        found = bool(st)
+        if not st and deep:
+            try:
+                st = portal_fetch_student(sp.phone)
+                found = bool(st)
+            except Exception:
+                st = None
+        before = sp.exam_session
+        if st:
+            try:
+                _apply_portal_exam_info(sp, st, db)
+            except Exception:
+                pass
+        if sp.exam_session and sp.exam_session != before:
+            filled += 1
+            rows.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                         "user_id": sp.user.user_id if sp.user else "", "session": sp.exam_session})
+        elif not found:
+            not_found += 1
+        else:
+            no_session += 1
+    db.commit()
+    return {"checked": len(chunk), "filled": filled, "students": rows[:200],
+            "not_found": not_found, "no_session": no_session,
+            "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
+
+
+@router.post("/students/backfill-medium")
+def backfill_medium_from_portal(payload: dict = None, db: Session = Depends(get_db),
+                                _=Depends(get_admin)):
+    """Jin students ka MEDIUM khaali hai (chahe pehle se mvs_portal tagged ho — jinhe
+    normal Sync skip kar deta hai) unka medium MVS Portal se bharo. Pehle bulk map se
+    (fast, 1 external call), na mile to per-student single fetch (deep) se. Cursor: after_id.
+    Sirf medium set hota hai — baaki fields chhedte nahi."""
+    from models import StudentProfile as _SP
+    from ext_materials import _cfg, pick_medium, portal_fetch_student
+    url, key = _cfg()
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="MVS Portal connection is not configured")
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 40)
+    deep = payload.get("deep", True)   # True = bulk map miss pe single fetch bhi karo
+    pmap = _portal_phone_map()         # cached — poore run me portal 1 baar (deep miss chhod ke)
+
+    empty = (_SP.medium.is_(None)) | (_SP.medium == "")
+    base = db.query(_SP).filter(empty, _SP.phone.isnot(None))
+    total = base.count() if after_id == 0 else None
+    chunk = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    filled, rows, last_id = 0, [], after_id
+    not_found, no_medium = 0, 0   # diagnostic: portal pe mila hi nahi / mila par medium khaali
+    for sp in chunk:
+        last_id = sp.id
+        ph = "".join(c for c in str(sp.phone or "") if c.isdigit())[-10:]
+        portal_st = pmap.get(ph)
+        found = bool(portal_st)
+        med = pick_medium(portal_st or {})
+        if not med and deep:
+            try:
+                st = portal_fetch_student(sp.phone)
+                if st:
+                    found = True
+                    med = st.get("medium") or ""
+            except Exception:
+                med = ""
+        if med:
+            sp.medium = med
+            filled += 1
+            rows.append({"name": sp.user.name if sp.user else "", "phone": sp.phone,
+                         "user_id": sp.user.user_id if sp.user else "", "medium": med})
+        elif not found:
+            not_found += 1
+        else:
+            no_medium += 1
+    db.commit()
+    return {"checked": len(chunk), "filled": filled, "students": rows[:200],
+            "not_found": not_found, "no_medium": no_medium,
+            "last_id": last_id, "has_more": len(chunk) == limit, "total": total}
+
+
+# ===== STUDENT REQUESTS (subject / batch change — student asks, admin approves) =====
+def _student_requests_list(db):
+    from models import AppSetting
+    import json as _json
+    row = db.query(AppSetting).filter(AppSetting.key == "student_requests").first()
+    if not row or not row.value:
+        return []
+    try:
+        d = _json.loads(row.value)
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def _student_requests_save(db, lst):
+    from models import AppSetting
+    import json as _json
+    row = db.query(AppSetting).filter(AppSetting.key == "student_requests").first()
+    if not row:
+        row = AppSetting(key="student_requests")
+        db.add(row)
+    row.value = _json.dumps(lst[-600:])
+    db.commit()
+
+
+def _has_pending_request(db, student_id, rtype):
+    """Kya is student ka isi type (subject/batch) ka koi request ABHI pending hai?"""
+    for r in _student_requests_list(db):
+        if (r.get("status") or "pending") == "pending" \
+                and int(r.get("student_id", 0) or 0) == int(student_id or 0) \
+                and (r.get("type") or "") == rtype:
+            return r
+    return None
+
+
+def add_student_request(db, rec):
+    """Append a pending change request (called from the student endpoints).
+    DUPLICATE GUARD: ek student ka ek type ka sirf EK request pending reh sakta hai — jab tak
+    approve/reject na ho, dusra same request nahi banta. Returns {'id':..} ya {'duplicate':True}."""
+    lst = _student_requests_list(db)
+    existing = _has_pending_request(db, rec.get("student_id"), rec.get("type") or "")
+    if existing:
+        return {"duplicate": True, "id": existing.get("id")}
+    rec["id"] = (max([int(r.get("id", 0) or 0) for r in lst] + [0]) + 1)
+    rec.setdefault("status", "pending")
+    lst.append(rec)
+    _student_requests_save(db, lst)
+    return {"duplicate": False, "id": rec["id"]}
+
+
+@router.get("/student-requests")
+def admin_student_requests(status: str = "pending", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Student change requests for the admin queue. Refreshes each student's CURRENT
+    subjects/batch live so the admin sees the real before/after."""
+    from models import StudentProfile
+    lst = _student_requests_list(db)
+    pending = sum(1 for r in lst if (r.get("status") or "pending") == "pending")
+    if status:
+        lst = [r for r in lst if (r.get("status") or "pending") == status]
+    out = []
+    for r in sorted(lst, key=lambda x: x.get("at", ""), reverse=True)[:300]:
+        sp = db.query(StudentProfile).filter(StudentProfile.id == r.get("student_id")).first()
+        # session label: request me jo aaya wahi, warna student ke current exam_session se
+        _slbl = r.get("session_label") or ""
+        if not _slbl and sp:
+            _slbl = _norm_session_label(db, sp.exam_session or "") or _session_friendly(sp.exam_session or "")
+        out.append({**r,
+                    "current_subjects": ((sp.subjects or []) if sp else []),
+                    "current_batch": ((sp.batch_name if sp else "") or ""),
+                    "current_batch_label": (_student_batch_fields(db, sp)[2] if sp else ""),
+                    "session_label": _slbl,
+                    "student_name": (sp.user.name if sp and sp.user else r.get("name") or "Student"),
+                    "phone": ((sp.phone if sp else "") or r.get("phone") or ""),
+                    "class_level": ((sp.class_level if sp else "") or r.get("class_level") or ""),
+                    "exists": bool(sp)})
+    return {"requests": out, "pending": pending}
+
+
+@router.get("/student-requests/count")
+def admin_student_requests_count(db: Session = Depends(get_db), _=Depends(get_admin)):
+    return {"pending": sum(1 for r in _student_requests_list(db) if (r.get("status") or "pending") == "pending")}
+
+
+@router.post("/student-requests/{rid}/review")
+def admin_student_request_review(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve -> student ke profile me change APPLY karo (subjects ya batch) + har jagah
+    propagate (admin record, student profile, teachers, know-your-teachers \u2014 sab sp.subjects /
+    batch pointers se LIVE padhte hain) + notify. Reject -> REASON zaroori; wahi reason student
+    ko notification me dikhta hai. BULLETPROOF: batch approve ab session-aware + teeno pointer."""
+    from models import StudentProfile, Notification
+    from datetime import datetime as _dt
+    action = (payload.get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action must be approve or reject")
+    reason = (payload.get("reason") or "").strip()[:400]
+    if action == "reject" and not reason:
+        raise HTTPException(status_code=400, detail="Reject karne ke liye reason zaroori hai (student ko dikhega).")
+    lst = _student_requests_list(db)
+    rec = next((r for r in lst if int(r.get("id", 0) or 0) == int(rid)), None)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if (rec.get("status") or "pending") != "pending":
+        raise HTTPException(status_code=400, detail="This request is already " + str(rec.get("status")))
+    sp = db.query(StudentProfile).filter(StudentProfile.id == rec.get("student_id")).first()
+    applied = ""
+    if not sp:
+        rec["status"] = "rejected"
+        rec["reason"] = "Student record no longer exists"
+        rec["reviewed_at"] = _dt.utcnow().isoformat()
+        _student_requests_save(db, lst)
+        raise HTTPException(status_code=404, detail="Student no longer exists")
+    if action == "approve":
+        if rec.get("type") == "subject":
+            subs = [str(s).strip() for s in (rec.get("requested") or []) if str(s).strip()]
+            canon = (_SR.canon_list(subs, sp.class_level) if _SR else subs)
+            # canon kabhi-kabhi unknown subject gira deta -> agar khaali ho jaye to raw rakho
+            sp.subjects = canon if canon else subs
+            applied = "Subjects updated to: " + (", ".join(sp.subjects) or "\u2014")
+        elif rec.get("type") == "batch":
+            bn = (rec.get("requested") or "").strip()
+            if bn:
+                try:
+                    applied = "Batch changed to " + _force_primary_batch(db, sp, bn)
+                except Exception:
+                    sp.batch_name = bn
+                    applied = "Batch changed to " + bn
+        rec["status"] = "approved"
+    else:
+        rec["status"] = "rejected"
+        rec["reason"] = reason
+    rec["reviewed_at"] = _dt.utcnow().isoformat()
+    _student_requests_save(db, lst)   # commits sp + batch pointer changes too (same session)
+    if sp.user:
+        if action == "approve":
+            title = "\u2705 Request approved"
+            msg = "Your %s-change request has been approved. %s." % (rec.get("type", ""), applied or "Done")
+        else:
+            title = "Request not approved"
+            msg = "Your %s-change request was not approved.\nReason: %s" % (rec.get("type", ""), reason)
+        db.add(Notification(user_id=sp.user_id, title=title, message=msg, notif_type="student_request"))
+        db.commit()
+    return {"ok": True, "status": rec["status"], "applied": applied}
+
+
+# ==================================================================
+#  WHATSAPP — WELCOME MESSAGE (sirf MVS App students ko)
+# ==================================================================
+@router.get("/whatsapp/status")
+def whatsapp_status(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import whatsapp as W
+    from models import StudentProfile as _SP
+    pend = db.query(_SP).filter(
+        _SP.welcome_sent_at.is_(None), _SP.phone.isnot(None)).count()
+    sent = db.query(_SP).filter(_SP.welcome_sent_at.isnot(None)).count()
+    c = W.cfg()
+    return {"configured": W.is_configured(), "provider": c["provider"],
+            "missing": W.missing(), "campaign": c["campaign"], "params": c["params"],
+            "pending": pend, "sent": sent, "link": c["link"], "template": c["template"],
+            "sample": W.build_message("Rahul Sharma", "Lakshya Science", "9876543210"),
+            "sample_params": W.build_params("Rahul Sharma", "Lakshya Science", "9876543210")}
+
+
+@router.get("/whatsapp/pending")
+def whatsapp_pending(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """MVS App students jinhe abhi welcome message nahi gaya."""
+    from models import StudentProfile as _SP
+    rows = db.query(_SP).filter(
+        _SP.welcome_sent_at.is_(None), _SP.phone.isnot(None)).all()
+    return [{"profile_id": x.id, "name": x.user.name if x.user else "Student",
+             "phone": x.phone, "batch": x.batch_name or ""} for x in rows]
+
+
+@router.get("/whatsapp/login-pending")
+def whatsapp_login_pending(batch: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Students jinhone abhi tak EK BAAR bhi login nahi kiya (never active).
+    Signal: last_seen IS NULL AND active_session_token IS NULL. Batch-wise counts bhi."""
+    from models import StudentProfile as _SP
+    base = db.query(_SP).filter(
+        _SP.phone.isnot(None),
+        _SP.last_seen.is_(None),
+        _SP.active_session_token.is_(None))
+    total = base.count()
+    # per-batch counts
+    bc = {}
+    for x in base.all():
+        b = (x.batch_name or "—")
+        bc[b] = bc.get(b, 0) + 1
+    per_batch = sorted([{"batch": k, "count": v} for k, v in bc.items()], key=lambda z: -z["count"])
+    q = base
+    if (batch or "").strip():
+        q = q.filter(_SP.batch_name == batch.strip())
+    rows = q.order_by(_SP.id.desc()).limit(1000).all()
+    return {"total": total, "per_batch": per_batch,
+            "students": [{"profile_id": x.id, "name": (x.user.name if x.user else "Student"),
+                          "phone": x.phone, "batch": x.batch_name or "",
+                          "reminded": bool(x.login_reminder_at)} for x in rows]}
+
+
+@router.post("/whatsapp/send-login-reminder")
+def whatsapp_send_login_reminder(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Never-logged-in students ko WhatsApp login-reminder. payload:
+       {"profile_ids":[..]}  ya  {"all_pending": true, "batch": ""}  (+ after_id, limit paging)."""
+    import whatsapp as W
+    from datetime import datetime as _dt
+    from models import StudentProfile as _SP
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp is not configured. Missing on Railway: " + ", ".join(W.missing()))
+    payload = payload or {}
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 50)
+    total = None
+    base = db.query(_SP).filter(
+        _SP.phone.isnot(None),
+        _SP.last_seen.is_(None),
+        _SP.active_session_token.is_(None))
+    if payload.get("all_pending"):
+        b = (payload.get("batch") or "").strip()
+        if b:
+            base = base.filter(_SP.batch_name == b)
+        if after_id == 0:
+            total = base.count()
+        students = base.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    else:
+        ids = payload.get("profile_ids") or []
+        if not ids:
+            raise HTTPException(status_code=400, detail="No students selected")
+        students = base.filter(_SP.id.in_(ids)).order_by(_SP.id).limit(limit).all()
+    # Pehle sab zaroori fields nikaal lo (plain values) — threads me ORM/DB touch NAHI
+    # karenge (session thread-safe nahi hota). last_id order-wise students se.
+    last_id = after_id
+    jobs = []
+    for sp in students:
+        last_id = sp.id
+        nm = sp.user.name if sp.user else "Student"
+        bt = sp.batch_name or ""
+        try:
+            msg = W.build_message(nm, bt, sp.phone)
+        except Exception:
+            msg = None
+        jobs.append({"id": sp.id, "name": nm, "phone": sp.phone, "batch": bt, "msg": msg})
+
+    # BULLETPROOF: slow sends se PEHLE DB connection pool me wapas chhod do (idle connection
+    # ko MySQL maar deta tha -> ResourceClosedError). Update ke liye fresh connection milega.
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # WhatsApp sends ko PARALLEL bhejo (network I/O) taaki 50 messages bhi gateway
+    # timeout se pehle nikal jaayein -> 502 khatam. DB write baad me main thread me.
+    def _one(j):
+        try:
+            if j["msg"] is None:
+                return (j["id"], False, "message build failed", j["name"], j["phone"])
+            ok, detail = W.send(j["phone"], text=j["msg"], name=j["name"], batch=j["batch"])
+            return (j["id"], bool(ok), str(detail), j["name"], j["phone"])
+        except Exception as e:
+            return (j["id"], False, str(e), j["name"], j["phone"])
+
+    results = []
+    if jobs:
+        from concurrent.futures import ThreadPoolExecutor
+        _workers = min(15, len(jobs))
+        with ThreadPoolExecutor(max_workers=_workers) as ex:
+            results = list(ex.map(_one, jobs))
+
+    sent, failed = 0, []
+    ok_ids = []
+    for (sid, ok, detail, nm, ph) in results:
+        if ok:
+            ok_ids.append(sid); sent += 1
+        else:
+            failed.append({"name": nm, "phone": ph, "error": str(detail)[:120]})
+    if ok_ids:
+        db.query(_SP).filter(_SP.id.in_(ok_ids)).update(
+            {_SP.login_reminder_at: _dt.now()}, synchronize_session=False)
+    db.commit()
+    return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "last_id": last_id, "has_more": len(students) == limit, "total": total,
+            "message": "%d reminder(s) sent, %d failed." % (sent, len(failed))}
+
+
+@router.get("/whatsapp/login-reminder-config")
+def get_login_reminder_config(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppSetting
+    h = db.query(AppSetting).filter(AppSetting.key == "login_reminder_hours").first()
+    e = db.query(AppSetting).filter(AppSetting.key == "login_reminder_enabled").first()
+    try:
+        hours = int((h.value if h else "0") or "0")
+    except Exception:
+        hours = 0
+    enabled = (e.value if e else "1") not in ("0", "false", "off", "")
+    return {"hours": hours, "enabled": bool(enabled)}
+
+
+@router.post("/whatsapp/login-reminder-config")
+def set_login_reminder_config(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Auto login-reminder ka fixed hours + on/off. payload: {"hours": 24, "enabled": true}."""
+    from models import AppSetting
+    payload = payload or {}
+    try:
+        hours = max(0, int(payload.get("hours") or 0))
+    except Exception:
+        hours = 0
+    enabled = "1" if payload.get("enabled", True) else "0"
+    for key, val in (("login_reminder_hours", str(hours)), ("login_reminder_enabled", enabled)):
+        r = db.query(AppSetting).filter(AppSetting.key == key).first()
+        if r:
+            r.value = val
+        else:
+            db.add(AppSetting(key=key, value=val))
+    db.commit()
+    return {"ok": True, "hours": hours, "enabled": payload.get("enabled", True)}
+
+
+@router.post("/whatsapp/send-welcome")
+def whatsapp_send_welcome(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Welcome message bhejo. payload:
+       {"profile_ids": [1,2,3]}  ya  {"all_pending": true}
+       {"template": "...", "resend": false}"""
+    import whatsapp as W
+    from datetime import datetime as _dt
+    from models import StudentProfile as _SP
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp is not configured. Missing on Railway: " + ", ".join(W.missing()))
+    payload = payload or {}
+    template = (payload.get("template") or "").strip() or None
+    resend = bool(payload.get("resend"))
+    after_id = int(payload.get("after_id") or 0)
+    limit = int(payload.get("limit") or 50)   # chhota batch -> koi timeout nahi
+
+    total = None
+    if payload.get("all_pending"):
+        q = db.query(_SP).filter(_SP.phone.isnot(None))
+        if not resend:
+            q = q.filter(_SP.welcome_sent_at.is_(None))
+        if after_id == 0:
+            total = q.count()
+        students = q.filter(_SP.id > after_id).order_by(_SP.id).limit(limit).all()
+    else:
+        ids = payload.get("profile_ids") or []
+        if not ids:
+            raise HTTPException(status_code=400, detail="No students selected")
+        students = (db.query(_SP).filter(_SP.phone.isnot(None), _SP.id.in_(ids))
+                    .order_by(_SP.id).limit(limit).all())
+
+    # Pehle plain data nikaal lo (threads me ORM/DB touch nahi — session thread-safe nahi).
+    last_id = after_id
+    jobs = []
+    for sp in students:
+        last_id = sp.id
+        name = sp.user.name if sp.user else "Student"
+        bt = sp.batch_name or ""
+        try:
+            msg = W.build_message(name, bt, sp.phone, template)
+        except Exception:
+            msg = None
+        jobs.append({"id": sp.id, "name": name, "phone": sp.phone, "batch": bt, "msg": msg})
+
+    # BULLETPROOF: slow WhatsApp sends se PEHLE DB connection pool me wapas chhod do.
+    # Warna 50 sequential/parallel slow sends ke dauraan MySQL idle connection maar deta tha
+    # -> baad me commit/agle request ke get_current_user par "ResourceClosedError". Ab send ke
+    # waqt koi DB connection held nahi; update ke liye fresh (pre-pinged) connection milega.
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # Sends PARALLEL (network I/O) -> 50 messages bhi gateway timeout se pehle (sum nahi, max).
+    def _one(j):
+        try:
+            if j["msg"] is None:
+                return (j["id"], False, "message build failed", j["name"], j["phone"])
+            ok, detail = W.send(j["phone"], text=j["msg"], name=j["name"], batch=j["batch"])
+            return (j["id"], bool(ok), str(detail), j["name"], j["phone"])
+        except Exception as e:
+            return (j["id"], False, str(e), j["name"], j["phone"])
+
+    results = []
+    if jobs:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(15, len(jobs))) as ex:
+            results = list(ex.map(_one, jobs))
+
+    sent, failed, ok_ids = 0, [], []
+    for (sid, ok, detail, nm, ph) in results:
+        if ok:
+            ok_ids.append(sid); sent += 1
+        else:
+            failed.append({"name": nm, "phone": ph, "error": str(detail)[:120]})
+    # Jo bhej chuke unhe SAVE karo (fresh connection par bulk update) — crash ho bhi to progress na khoye.
+    if ok_ids:
+        db.query(_SP).filter(_SP.id.in_(ok_ids)).update(
+            {_SP.welcome_sent_at: _dt.now()}, synchronize_session=False)
+    db.commit()
+    return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "last_id": last_id, "has_more": len(students) == limit, "total": total,
+            "message": f"{sent} message(s) sent, {len(failed)} failed."}
+
+@router.post("/whatsapp/test")
+def whatsapp_test(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Apne number par ek test message bhejo."""
+    import whatsapp as W
+    phone = "".join(ch for ch in str((payload or {}).get("phone") or "") if ch.isdigit())[-10:]
+    if len(phone) != 10:
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit phone")
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp is not configured. Missing on Railway: " + ", ".join(W.missing()))
+    name = (payload or {}).get("name") or "Test Student"
+    batch = (payload or {}).get("batch") or "Lakshya Science"
+    ok, detail = W.send(phone, text=W.build_message(name, batch, phone), name=name, batch=batch)
+    return {"ok": ok, "detail": detail[:300],
+            "params_sent": W.build_params(name, batch, phone)}
+
+# =============================================================================
+# TEACHER PERFORMANCE — ADMIN SETTINGS (Phase 1)
+# Saare scoring weights/config yahin se read/update hote hain (spec Part 24).
+# Additive: generic AppSetting store par, koi nayi table nahi.
+# =============================================================================
+@router.get("/perf-settings")
+def perf_settings_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import perf_config as _pc
+    cfg = _pc.get_perf_config(db)
+    return {"config": cfg, "defaults": _pc.PERF_DEFAULTS,
+            "component_weight_sum": _pc.component_weight_sum(cfg)}
+
+
+@router.post("/perf-settings")
+def perf_settings_set(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import perf_config as _pc
+    patch = (payload or {}).get("config", payload) or {}
+    if (payload or {}).get("reset"):
+        # defaults par reset
+        from models import AppSetting
+        row = db.query(AppSetting).filter(AppSetting.key == "perf_config").first()
+        if row:
+            db.delete(row); db.commit()
+        cfg = _pc.get_perf_config(db)
+    else:
+        cfg = _pc.save_perf_config(db, patch)
+    try:
+        import perf_engine as _pe; _pe.bust_board_cache()
+    except Exception:
+        pass
+    return {"ok": True, "config": cfg, "component_weight_sum": _pc.component_weight_sum(cfg)}
+
+
+@router.get("/perf-scores")
+def perf_scores(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Phase 2: saare teachers ka month-scoped 8-component performance score (ranked)."""
+    import perf_engine as _pe
+    try:
+        return _pe.compute(db, month)
+    except Exception as _e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        # TP20: fail ko empty-month se alag; raw DB text client ko nahi (trace server log me).
+        return {"month": month or "", "frozen": False, "weights": {},
+                "team_avg_workload_units": 0, "results": [], "error": "compute_failed"}
+
+
+@router.get("/perf-history")
+def perf_history(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Phase 8: available months + kaunse frozen hain (leaderboard month-selector ke liye)."""
+    import perf_engine as _pe
+    return _pe.history_months(db)
+
+
+@router.post("/perf-snapshot")
+def perf_snapshot(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Phase 8: is month ke scores ko freeze/re-freeze (weights badalne par purani ranking na badle)."""
+    import perf_engine as _pe
+    try:
+        return _pe.freeze_month(db, (payload or {}).get("month", ""))
+    except HTTPException:
+        raise
+    except Exception:
+        # TP16: snapshot save fail hua to clear failure do (fake freeze nahi).
+        raise HTTPException(503, "Freeze nahi ho paaya — dubara try karein (koi snapshot save nahi hua).")
+
+
+@router.get("/perf-correction-preview")
+def perf_correction_preview(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """PAST month ke liye purana-vs-corrected scores ka diff (sirf preview, koi write nahi).
+    Admin isse dekh ke decide karta hai ki correction apply karni hai ya nahi."""
+    import perf_engine as _pe
+    if not month:
+        raise HTTPException(400, "month required (YYYY-MM)")
+    try:
+        prev = _pe.correction_preview(db, month)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        raise HTTPException(503, "Preview nahi ban paaya — dubara try karein.")
+    # paid/finalized teacher payouts ka warning (ye leaderboard snapshot se alag hain —
+    # re-freeze unko nahi chhuta, par admin ko pata rehna chahiye).
+    try:
+        from models import PayoutMonth
+        mk = prev.get("month", month)
+        paid_n = db.query(PayoutMonth).filter(
+            PayoutMonth.month == mk,
+            PayoutMonth.status.in_(["finalized", "paid", "credited", "receipt_confirmed", "in_progress"])).count()
+        prev["payouts_locked"] = int(paid_n)
+    except Exception:
+        prev["payouts_locked"] = 0
+    return prev
+
+
+@router.post("/perf-correction-apply")
+def perf_correction_apply(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ne approve kiya -> PAST month ka corrected snapshot save (re-freeze). Paid teacher
+    payouts (PayoutMonth.snapshot) alag frozen hain — unpe asar nahi (paisa safe)."""
+    import perf_engine as _pe
+    month = (payload or {}).get("month", "")
+    if not month:
+        raise HTTPException(400, "month required (YYYY-MM)")
+    try:
+        return _pe.apply_correction(db, month)
+    except HTTPException:
+        raise
+    except Exception as _e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        import traceback as _tb; _tb.print_exc()
+        _msg = str(_e)
+        if "current month" in _msg:
+            raise HTTPException(400, "Current month already live/corrected hai — correction sirf past months ke liye.")
+        raise HTTPException(503, "Correction apply nahi ho paayi — dubara try karein (koi snapshot save nahi hua).")
+
+
+@router.get("/teacher-activity/{tid}")
+def teacher_activity(tid: int, limit: int = 30, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Kisi teacher ke portal actions ka log (timetable timing/delete/reschedule)."""
+    import perf_engine as _pe
+    return _pe.teacher_activity_rows(db, tid, limit)
+
+
+@router.get("/teacher-video-contribution/{tid}")
+def teacher_video_contribution_admin(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin view of ONE teacher's video-initiative contributions (proposals + stages +
+    rewards) — same shape as the teacher's own endpoint, so the ranking breakdown can list
+    that teacher's proposed/approved/published videos and open each task."""
+    import perf_engine as _pe
+    from models import TeacherProfile, User
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found")
+    data = _pe.video_contribution(db, tp)
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    data["teacher_name"] = (u.name if u else "Teacher #%d" % tid)
+    return data
+
+
+@router.get("/teacher-perf-targets/{tid}")
+def teacher_perf_targets_get(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Individual teacher ke saved targets + timetable-se AUTO suggestions (dono option)."""
+    import perf_engine as _pe
+    from models import TeacherProfile, User
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found")
+    u = db.query(User).filter(User.id == tp.user_id).first()
+    saved = _pe.get_teacher_targets(db, tid)
+    return {"teacher_id": tid, "name": (u.name if u else "Teacher #%d" % tid),
+            "subjects": tp.subjects or [],
+            "saved": saved.get("targets", {}), "mode": saved.get("mode", ""),
+            "period": saved.get("period", "monthly"),
+            "session_start": saved.get("session_start", ""),
+            "session_end": saved.get("session_end", ""),
+            "auto": _pe.auto_targets_from_timetable(db, tp, month)}
+
+
+@router.post("/teacher-perf-targets/{tid}")
+def teacher_perf_targets_set(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Individual teacher ke targets save (mode auto/manual, period monthly/session + dates)."""
+    import perf_engine as _pe
+    from models import TeacherProfile
+    if not db.query(TeacherProfile).filter(TeacherProfile.id == tid).first():
+        raise HTTPException(404, "Teacher not found")
+    pl = payload or {}
+    try:
+        r = _pe.save_teacher_targets(db, tid, pl.get("targets", {}), pl.get("mode", "manual"),
+                                     pl.get("period", "monthly"),
+                                     pl.get("session_start", ""), pl.get("session_end", ""))
+    except HTTPException:
+        raise
+    except Exception:
+        # TP16: save fail hua to clear failure do (fake "saved" nahi).
+        raise HTTPException(503, "Targets save nahi ho paaye — dubara try karein (koi data change nahi hua).")
+    return {"ok": True, **r}
+
+
+@router.get("/whatsapp/config")
+def whatsapp_get_config(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Combirds/WhatsApp config (portal me set kiya hua) — API key masked."""
+    from models import AppSetting
+    keys = ["wa_api_url", "wa_api_key", "wa_format", "wa_welcome",
+            "wa_announce", "wa_welcome_msg", "wa_login", "wa_note",
+            "wa_lang", "wa_link", "wa_sender", "wa_otp"]
+    rows = {r.key: (r.value or "") for r in
+            db.query(AppSetting).filter(AppSetting.key.in_(keys)).all()}
+    key = rows.pop("wa_api_key", "")
+    rows["wa_api_key_set"] = bool(key)
+    rows["wa_api_key_masked"] = (("\u2022" * max(0, len(key) - 4) + key[-4:]) if key else "")
+    return rows
+
+
+@router.post("/whatsapp/config")
+def whatsapp_set_config(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppSetting
+    allowed = ["wa_api_url", "wa_api_key", "wa_format", "wa_welcome",
+               "wa_announce", "wa_welcome_msg", "wa_login", "wa_note",
+               "wa_lang", "wa_link", "wa_sender", "wa_otp"]
+    for k in allowed:
+        if k not in (payload or {}):
+            continue
+        v = (payload.get(k) or "").strip()
+        if k == "wa_api_key" and not v:
+            continue   # blank -> purani key ko preserve karo
+        row = db.query(AppSetting).filter(AppSetting.key == k).first()
+        if not row:
+            db.add(AppSetting(key=k, value=v))
+        else:
+            row.value = v
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/whatsapp/announce")
+def whatsapp_announce(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Announcement (Template 2) — custom message sabhi/selected MVS App students ko."""
+    import whatsapp as W
+    from models import StudentProfile as _SP
+    if not W.is_configured():
+        raise HTTPException(status_code=503,
+                            detail="WhatsApp not configured: " + ", ".join(W.missing()))
+    msg = (payload.get("message") or "").strip().replace("\n", " ").replace("\r", " ")
+    if not msg:
+        raise HTTPException(status_code=400, detail="Message is required")
+    q = db.query(_SP).filter(_SP.phone.isnot(None),
+                             ((_SP.source == "mvs_app") | (_SP.source.is_(None))))
+    batch = (payload.get("batch") or "").strip()
+    if batch:
+        q = q.filter(_SP.batch_name == batch)
+    ids = payload.get("profile_ids")
+    if ids:
+        q = q.filter(_SP.id.in_(ids))
+    students = q.limit(int(payload.get("limit") or 500)).all()
+    sent, failed = 0, []
+    for sp in students:
+        if (getattr(sp, "source", None) or "mvs_app") == "mvs_portal":
+            continue
+        name = sp.user.name if sp.user else "Student"
+        ok, detail = W.send_announce(sp.phone, name, msg)
+        if ok:
+            sent += 1
+        else:
+            failed.append({"name": name, "phone": sp.phone, "error": detail[:120]})
+    return {"sent": sent, "failed": len(failed), "errors": failed[:25],
+            "message": f"{sent} sent, {len(failed)} failed."}
+
+
+# ==================================================================
+#  SESSION DEADLINES (batch / subject wise)
+#  Timetable auto-shift in dates se aage nahi jaata. Priority:
+#  subject+class > subject > batch > global > default (10 Sept)
+# ==================================================================
+@router.get("/session-deadlines")
+def list_session_deadlines(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import SessionDeadline as _SD
+    from teacher_routes import _default_end
+    rows = db.query(_SD).order_by(_SD.scope, _SD.key).all()
+    return {
+        "default": str(_default_end()),
+        "deadlines": [{"id": r.id, "scope": r.scope, "key": r.key or "",
+                       "end_date": str(r.end_date), "note": r.note or ""} for r in rows],
+    }
+
+
+@router.post("/session-deadlines")
+def set_session_deadline(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import SessionDeadline as _SD
+    from datetime import datetime as _dtx
+    scope = (payload.get("scope") or "global").strip()
+    if scope not in ("global", "batch", "subject"):
+        raise HTTPException(status_code=400, detail="scope must be global, batch or subject")
+    key = (payload.get("key") or "").strip()
+    if scope != "global" and not key:
+        raise HTTPException(status_code=400, detail="Please select a batch or subject")
+    if scope == "global":
+        key = ""
+    try:
+        end = _dtx.strptime(payload["end_date"], "%Y-%m-%d").date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please choose a valid end date")
+
+    row = db.query(_SD).filter(_SD.scope == scope, _SD.key == key).first()
+    if row:
+        row.end_date = end
+        row.note = (payload.get("note") or "").strip() or None
+    else:
+        db.add(_SD(scope=scope, key=key, end_date=end,
+                   note=(payload.get("note") or "").strip() or None))
+    db.commit()
+    return {"message": "Deadline saved."}
+
+
+@router.delete("/session-deadlines/{did}")
+def delete_session_deadline(did: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import SessionDeadline as _SD
+    row = db.query(_SD).filter(_SD.id == did).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(row); db.commit()
+    return {"message": "Deadline removed."}
+
+# ==================================================================
+#  APP REVIEWS (moderation)
+# ==================================================================
+@router.get("/app-reviews")
+def list_app_reviews(status: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppReview
+    q = db.query(AppReview).order_by(AppReview.id.desc())
+    if status:
+        q = q.filter(AppReview.status == status)
+    out = []
+    for r in q.limit(300).all():
+        out.append({"id": r.id, "rating": r.rating, "review": r.review or "",
+                    "status": r.status, "admin_note": r.admin_note or "",
+                    "student": r.student.user.name if r.student and r.student.user else "Student",
+                    "phone": r.student.phone if r.student else "",
+                    "batch": r.student.batch_name if r.student else "",
+                    "created_at": str(r.created_at or "")})
+    return out
+
+
+@router.patch("/app-reviews/{rid}")
+def action_app_review(rid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppReview, Notification
+    from datetime import datetime as _dtx
+    r = db.query(AppReview).filter(AppReview.id == rid).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Review not found")
+    action = (payload.get("action") or "").strip()
+    note = (payload.get("note") or "").strip() or None
+    if action not in ("approve", "resolve"):
+        raise HTTPException(status_code=400, detail="action must be approve or resolve")
+    r.status = "approved" if action == "approve" else "resolved"
+    r.admin_note = note
+    r.reviewed_at = _dtx.now()
+    if r.student and r.student.user:
+        if action == "approve":
+            msg = "Your review has been approved! You can now post it on the Play Store straight from the portal."
+        else:
+            msg = "Your review has been addressed." + (f" Note: {note}" if note else "") + " You can update your review now."
+        db.add(Notification(user_id=r.student.user.id, title="Your App Review",
+                            message=msg, notif_type="app_review"))
+    db.commit()
+    return {"message": "Review " + ("approved." if action == "approve" else "marked as resolved.")}
+
+
+@router.delete("/app-reviews/{rid}")
+def delete_app_review(rid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """v86: admin review-log entry delete kar sakta hai."""
+    from models import AppReview
+    r = db.query(AppReview).filter(AppReview.id == rid).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Review not found")
+    db.delete(r); db.commit()
+    return {"message": "Review deleted."}
+
+# ==================================================================
+#  DANGER: RESET PORTAL DATA (category-wise)
+#  Users (students/teachers/admins), profiles, subjects aur deadlines
+#  SAFE rehte hain — sirf chuna hua content data delete hota hai.
+# ==================================================================
+RESET_CATEGORIES = {
+    "timetable":     ["TimetableEntry"],
+    "materials":     ["Material", "MaterialView"],
+    "doubts":        ["Doubt"],
+    "submissions":   ["DPPSubmission", "TestSubmission", "ExamAttempt", "ExamResult", "ExamView"],
+    "progress":      ["LectureVerification", "StudentStats"],
+    "notifications": ["Notification"],
+    "reviews":       ["AppReview"],
+}
+
+
+@router.post("/reset-data")
+def reset_portal_data(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    if (payload or {}).get("confirm") != "RESET PORTAL DATA":
+        raise HTTPException(status_code=400, detail='Type "RESET PORTAL DATA" to confirm.')
+    cats = [c for c in (payload.get("categories") or []) if c in RESET_CATEGORIES]
+    if not cats:
+        raise HTTPException(status_code=400, detail="Select at least one category.")
+    import models as M
+    results, errors = {}, []
+    for cat in cats:
+        total = 0
+        for cls_name in RESET_CATEGORIES[cat]:
+            cls = getattr(M, cls_name, None)
+            if cls is None:
+                continue
+            try:
+                with db.begin_nested():
+                    total += db.query(cls).delete(synchronize_session=False)
+            except Exception as e:
+                errors.append(f"{cls_name}: {type(e).__name__}")
+        results[cat] = total
+    db.commit()
+    return {"message": "Portal data reset complete.", "deleted": results,
+            "errors": errors[:6]}
+
+# =====================================================================
+# ADMIN: TEACHER ATTENDANCE + CONTRACTS (APPOINTMENT LETTERS) + PAYOUTS
+# =====================================================================
+def _teacher_name_map(db):
+    from models import TeacherProfile
+    out = {}
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
+        out[tp.id] = tp.user.name if tp.user else f"Teacher {tp.id}"
+    return out
+
+@router.get("/attendance")
+def admin_attendance_day(day: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek din ki attendance — saare active teachers, punch in/out + leave status ke saath."""
+    from models import TeacherAttendance, TeacherProfile, User, TeacherLeave
+    from teacher_routes import (_ist_now, _fmt_t, _att_hours, _ensure_geofence,
+                                _policy_map, _policy_required, _policy_label,
+                                _net_hours, _extra_hours)
+    _ensure_geofence(db)
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d").date() if day else _ist_now().date()
+    except Exception:
+        d = _ist_now().date()
+    rows = {a.teacher_id: a for a in db.query(TeacherAttendance).filter(TeacherAttendance.att_date == d).all()}
+    lrows = {l.teacher_id: l for l in db.query(TeacherLeave).filter(
+        TeacherLeave.status == "approved",
+        TeacherLeave.start_date <= d, TeacherLeave.end_date >= d).all()}
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all()
+    pols = _policy_map(db, [tp.id for tp in tps])
+    out = []
+    for tp in tps:
+        a = rows.get(tp.id)
+        lv = lrows.get(tp.id)
+        pol = pols.get(tp.id) or {}
+        req = _policy_required(pol)
+        status = "absent"
+        if a and a.punch_in and a.punch_out:
+            # Present (Short) bhi PRESENT hi hai — bas assigned hours se kam
+            status = "done" if (_net_hours(a, pol) or 0) >= req else "short"
+        elif a and a.punch_in:
+            status = "working"
+        elif lv:
+            status = "leave"
+        elif pol.get("disabled"):
+            status = "offsite"        # v101: attendance disabled — target only, na present na absent
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "disabled": bool(pol.get("disabled")),
+                    "punch_in": _fmt_t(a.punch_in) if a else None,
+                    "punch_out": _fmt_t(a.punch_out) if a else None,
+                    "in_dist": a.in_dist if a else None, "out_dist": a.out_dist if a else None,
+                    "in_office": a.in_office if a else None, "out_office": a.out_office if a else None,
+                    "leave_type": (lv.leave_type if lv else None),
+                    "hours": _att_hours(a), "net_hours": _net_hours(a, pol),
+                    "extra_hours": _extra_hours(a, pol), "required_hours": req,
+                    "policy_label": _policy_label(pol), "work_type": pol.get("work_type"),
+                    "mode": pol.get("mode"), "policy_set": bool(pol.get("configured")),
+                    "status": status})
+    out.sort(key=lambda x: (x["status"] in ("absent",), x["name"]))
+    return {"date": str(d), "day": d.strftime("%A"), "teachers": out,
+            "present": sum(1 for x in out if x["status"] in ("done", "short", "working", "leave")),
+            "total": len(out)}
+
+@router.get("/attendance/month")
+def admin_attendance_month(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Month summary — teacher-wise present / leave / short / absent + net & extra hours.
+    Present = net hours (gap - lunch break) >= assigned required hours.
+    Short day (required se kam) bhi PRESENT count hota hai. Extra hours sirf display —
+    unka koi payout nahi. Approved leave alag count; bina punch/leave = AB."""
+    from models import TeacherAttendance, TeacherProfile, User
+    from teacher_routes import (_month_range, _ensure_geofence, _leave_days_map, _elapsed_days,
+                                _ist_now, _policy_map, _policy_required, _policy_label,
+                                _day_status, _net_hours, _extra_hours)
+    _ensure_geofence(db)
+    start, end = _month_range(month)
+    rows = db.query(TeacherAttendance).filter(
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end).all()
+    by_tid = {}
+    for a in rows:
+        by_tid.setdefault(a.teacher_id, []).append(a)
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all()
+    pols = _policy_map(db, [tp.id for tp in tps])
+    today = _ist_now().date()
+    elapsed = _elapsed_days(start, end)
+    out = []
+    for tp in tps:
+        pol = pols.get(tp.id) or {}
+        req = _policy_required(pol)
+        trows = by_tid.get(tp.id, [])
+        full = sum(1 for a in trows if _day_status(a, pol) == "present")
+        short = sum(1 for a in trows if _day_status(a, pol) == "short")
+        present = full + short          # short day bhi PRESENT
+        net = round(sum(_net_hours(a, pol) or 0 for a in trows), 1)
+        extra = round(sum(_extra_hours(a, pol) for a in trows), 1)
+        lvmap = _leave_days_map(db, tp.id, start, end)
+        leave_days = round(sum(lvmap.values()), 1)
+        leave_elapsed = round(sum(v for d, v in lvmap.items() if d <= today), 1)
+        absent = 0 if pol.get("disabled") else max(0, round(elapsed - present - leave_elapsed))
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "disabled": bool(pol.get("disabled")),
+                    "present_days": present, "full_days": full, "short_days": short,
+                    "leave_days": leave_days, "absent_days": absent,
+                    "total_hours": net, "extra_hours": extra, "required_hours": req,
+                    "policy_label": _policy_label(pol), "work_type": pol.get("work_type"),
+                    "mode": pol.get("mode"), "policy_set": bool(pol.get("configured"))})
+    out.sort(key=lambda x: -x["present_days"])
+    return {"month": start.strftime("%Y-%m"), "elapsed_days": elapsed, "teachers": out}
+
+@router.get("/attendance/teacher/{tid}")
+def admin_attendance_teacher(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek teacher ki date-wise attendance (admin detail view) + policy-aware status."""
+    from models import TeacherAttendance
+    from teacher_routes import (_month_range, _fmt_t, _att_hours, _ensure_geofence,
+                                _leave_days_map, _policy_dict, _policy_required, _policy_label,
+                                _day_status, _net_hours, _extra_hours)
+    _ensure_geofence(db)
+    start, end = _month_range(month)
+    rows = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tid,
+        TeacherAttendance.att_date >= start, TeacherAttendance.att_date < end
+    ).order_by(TeacherAttendance.att_date.desc()).all()
+    lvmap = _leave_days_map(db, tid, start, end)
+    pol = _policy_dict(db, tid)
+    req = _policy_required(pol)
+
+    def _st(r):
+        return _day_status(r, pol) if (r and (r.punch_in or r.punch_out)) else ""
+
+    return {"month": start.strftime("%Y-%m"),
+            "leave_dates": sorted(str(d) for d in lvmap.keys()),
+            "policy": {**pol, "required": req, "label": _policy_label(pol)},
+            "required_hours": req,
+            "rows": [{"date": str(r.att_date), "day": r.att_date.strftime("%A"),
+                      "punch_in": _fmt_t(r.punch_in), "punch_out": _fmt_t(r.punch_out),
+                      "hours": _att_hours(r), "net_hours": _net_hours(r, pol),
+                      "extra_hours": _extra_hours(r, pol),
+                      "status": _st(r)} for r in rows]}
+
+
+# ===== ADMIN: MANUAL PUNCH (teacher punch karna bhool gaya ho) =====
+@router.post("/attendance/punch")
+def admin_add_punch(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher present tha par punch karna bhool gaya — admin kisi bhi date ke liye
+    punch-in / punch-out time add kare. Policy ke hisaab se present/short apne aap
+    calculate hoga; teacher ko notification jaati hai."""
+    from models import TeacherAttendance, TeacherProfile, Notification
+    from teacher_routes import _ist_now, _fmt_t, _ensure_geofence
+    _ensure_geofence(db)
+    tid = payload.get("teacher_id")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first() if tid else None
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    try:
+        d = datetime.strptime((payload.get("date") or "").strip(), "%Y-%m-%d").date() \
+            if (payload.get("date") or "").strip() else _ist_now().date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    def _hm(s):
+        try:
+            h, m = str(s or "").strip().split(":")
+            h, m = int(h), int(m)
+            assert 0 <= h <= 23 and 0 <= m <= 59
+            return h, m
+        except Exception:
+            return None
+    pin_raw, pout_raw = (payload.get("punch_in") or "").strip(), (payload.get("punch_out") or "").strip()
+    pin, pout = _hm(pin_raw), _hm(pout_raw)
+    if not pin:
+        raise HTTPException(status_code=400, detail="Punch-in time is required (HH:MM)")
+    if pout_raw and not pout:
+        raise HTTPException(status_code=400, detail="Punch-out time must be HH:MM")
+    if pin and pout and (pout[0] * 60 + pout[1]) <= (pin[0] * 60 + pin[1]):
+        raise HTTPException(status_code=400, detail="Punch-out must be after punch-in")
+    a = db.query(TeacherAttendance).filter(
+        TeacherAttendance.teacher_id == tp.id, TeacherAttendance.att_date == d).first()
+    if not a:
+        a = TeacherAttendance(teacher_id=tp.id, att_date=d)
+        db.add(a)
+    a.punch_in = datetime.combine(d, datetime.min.time()).replace(hour=pin[0], minute=pin[1])
+    a.punch_out = datetime.combine(d, datetime.min.time()).replace(hour=pout[0], minute=pout[1]) if pout else None
+    a.in_office = a.in_office or "Admin entry"
+    if pout:
+        a.out_office = a.out_office or "Admin entry"
+    if tp.user_id:
+        db.add(Notification(
+            user_id=tp.user_id, title="Punch Added by Admin",
+            message=(f"Admin ne aapki {d.strftime('%d %b %Y')} ki punch entry add ki hai — "
+                     f"In {_fmt_t(a.punch_in)}"
+                     + (f", Out {_fmt_t(a.punch_out)}" if a.punch_out else "")
+                     + ". Galat lage to admin se sampark karein."),
+            notif_type="attendance"))
+    db.commit()
+    return {"ok": True, "message": "Punch saved.",
+            "date": str(d), "punch_in": _fmt_t(a.punch_in), "punch_out": _fmt_t(a.punch_out)}
+
+# ===== SMART WORK TIMING (per-teacher policy — admin set karta hai) =====
+@router.get("/attendance/policies")
+def admin_work_policies(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare active teachers ki work-timing policy (unset = default 8h/day full time)."""
+    from models import TeacherProfile, User
+    from teacher_routes import _policy_map, _policy_required, _policy_label
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all()
+    pols = _policy_map(db, [tp.id for tp in tps])
+    out = []
+    for tp in sorted(tps, key=lambda t: (t.user.name if t.user else "")):
+        pol = pols.get(tp.id) or {}
+        subs = tp.subjects if isinstance(tp.subjects, list) else []
+        subs = [s if isinstance(s, str) else (s.get("name") or "") for s in subs]
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "subjects": [s for s in subs if s],
+                    "policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}})
+    return {"teachers": out}
+
+@router.post("/attendance/policy")
+def admin_set_work_policy(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek teacher ki smart timing save karo:
+    work_type: full_time (lunch break skip) | part_time (no break);
+    mode: fixed (entry/exit pakka) | hours (sirf daily hours) | flexible (min 1h).
+    Validations: required >= 1h; fixed me exit > entry; break sirf full_time."""
+    from models import TeacherProfile, TeacherWorkPolicy
+    from teacher_routes import (WORK_TYPES, POLICY_MODES, MAX_WORK_HOURS, MIN_PRESENT_HOURS,
+                                _parse_hhmm, _policy_from_row, _policy_required, _policy_label,
+                                _ist_now)
+    tid = payload.get("teacher_id")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first() if tid else None
+    if not tp:
+        raise HTTPException(404, "Teacher not found")
+    wt = (payload.get("work_type") or "full_time").strip().lower()
+    if wt not in WORK_TYPES:
+        raise HTTPException(400, "Work type must be full_time or part_time")
+    mode = (payload.get("mode") or "hours").strip().lower()
+    if mode not in POLICY_MODES:
+        raise HTTPException(400, "Mode must be fixed, hours or flexible")
+    try:
+        brk = int(payload.get("break_minutes") or 0)
+    except Exception:
+        raise HTTPException(400, "Break minutes must be a number")
+    if brk < 0 or brk > 240:
+        raise HTTPException(400, "Break must be between 0 and 240 minutes")
+    if wt != "full_time":
+        brk = 0                                  # lunch break sirf full-time me
+    entry = (payload.get("entry_time") or "").strip()
+    exit_ = (payload.get("exit_time") or "").strip()
+    try:
+        req_h = float(payload.get("required_hours") or 0)
+    except Exception:
+        raise HTTPException(400, "Required hours must be a number")
+    if mode == "fixed":
+        en, ex = _parse_hhmm(entry), _parse_hhmm(exit_)
+        if en is None or ex is None:
+            raise HTTPException(400, "Fixed mode needs valid entry and exit times (HH:MM)")
+        if ex <= en:
+            raise HTTPException(400, "Exit time must be after entry time")
+        span_h = (ex - en) / 60.0
+        if span_h > MAX_WORK_HOURS:
+            raise HTTPException(400, "Entry-exit span cannot exceed %d hours" % MAX_WORK_HOURS)
+        if brk >= (ex - en):
+            raise HTTPException(400, "Break cannot be longer than the entry-exit span")
+        req_h = round(span_h - brk / 60.0, 2)    # fixed mode me required auto = span - break
+        if req_h < MIN_PRESENT_HOURS:
+            raise HTTPException(400, "Fixed timing must allow at least 1 working hour after the break")
+    elif mode == "hours":
+        if req_h < MIN_PRESENT_HOURS or req_h > MAX_WORK_HOURS:
+            raise HTTPException(400, "Required hours must be between 1 and %d" % MAX_WORK_HOURS)
+        entry, exit_ = "", ""
+    else:                                        # flexible — sirf minimum 1h
+        req_h = MIN_PRESENT_HOURS
+        entry, exit_ = "", ""
+    disabled = bool(payload.get("disabled"))      # v101: attendance off — target only
+    p = db.query(TeacherWorkPolicy).filter(TeacherWorkPolicy.teacher_id == tp.id).first()
+    if not p:
+        p = TeacherWorkPolicy(teacher_id=tp.id)
+        db.add(p)
+    p.work_type, p.mode = wt, mode
+    p.required_hours = req_h
+    p.entry_time, p.exit_time = entry, exit_
+    p.break_minutes = brk
+    p.disabled = disabled
+    p.updated_at = _ist_now()
+    db.commit()
+    pol = _policy_from_row(p, tp.id)
+    msg = "Work timing saved for %s — %s" % (tp.user.name if tp.user else "teacher", _policy_label(pol))
+    if disabled:
+        msg += " · attendance disabled (target only)"
+    return {"message": msg,
+            "teacher_id": tp.id,
+            "policy": {**pol, "required": _policy_required(pol), "label": _policy_label(pol)}}
+
+
+# ===== LEAVE REQUESTS (admin review) =====
+@router.get("/leaves")
+def admin_leaves(status: str = "", teacher_id: int = 0,
+                 db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare leave requests — default pending pehle, teacher ka naam ke saath."""
+    from models import TeacherLeave, TeacherProfile, User
+    q = db.query(TeacherLeave)
+    if status:
+        q = q.filter(TeacherLeave.status == status)
+    if teacher_id:
+        q = q.filter(TeacherLeave.teacher_id == teacher_id)
+    rows = q.order_by(TeacherLeave.created_at.desc()).limit(200).all()
+    names = {}
+    for tp in db.query(TeacherProfile).options(defer(TeacherProfile.photo_b64)).all():
+        u = db.query(User).filter(User.id == tp.user_id).first()
+        names[tp.id] = u.name if u else f"Teacher #{tp.id}"
+    pend = db.query(TeacherLeave).filter(TeacherLeave.status == "pending").count()
+    return {"pending_count": pend, "leaves": [{
+        "id": r.id, "teacher_id": r.teacher_id,
+        "teacher": names.get(r.teacher_id, f"Teacher #{r.teacher_id}"),
+        "start_date": str(r.start_date), "end_date": str(r.end_date),
+        "days": (r.end_date - r.start_date).days + 1,
+        "leave_type": r.leave_type, "reason": r.reason or "",
+        "status": r.status, "admin_remark": r.admin_remark or "",
+        "paid": bool(getattr(r, "paid", False)),
+        "reviewed_at": r.reviewed_at.strftime("%d %b %Y, %I:%M %p") if r.reviewed_at else "",
+        "created_at": r.created_at.strftime("%d %b %Y") if r.created_at else "",
+    } for r in rows]}
+
+
+@router.post("/leaves/{lid}/review")
+def admin_leave_review(lid: int, payload: dict = Body(default={}),
+                       db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Approve / reject leave. v86: approve karte waqt PAID/UNPAID select hota hai
+    (paid => koi salary deduction nahi). Approved FULL leave ki us-din ki classes
+    apne aap aage move ho jaati hain (reschedule-approval me NAHI jaati, teacher
+    ke reschedule count/salary pe asar NAHI) aur students ko teacher ki photo ke
+    saath notification jaati hai."""
+    from models import TeacherLeave, TeacherProfile, Notification
+    from teacher_routes import _ist_now, _ensure_v86, _auto_move_leave_classes, _notify_class_moved
+    _ensure_v86(db)
+    lv = db.query(TeacherLeave).filter(TeacherLeave.id == lid).first()
+    if not lv:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+    if lv.status != "pending":
+        raise HTTPException(status_code=400, detail=f"This request is already {lv.status}")
+    action = (payload.get("action") or "").strip().lower()
+    if action not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Action must be 'approved' or 'rejected'")
+    lv.status = action
+    lv.admin_remark = (payload.get("remark") or "").strip()
+    lv.paid = bool(payload.get("paid", False)) if action == "approved" else False
+    lv.reviewed_at = _ist_now()
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == lv.teacher_id).first()
+    moved = []
+    if action == "approved" and tp:
+        try:
+            moved = _auto_move_leave_classes(db, tp, lv)
+        except Exception:
+            moved = []
+    if tp and tp.user_id:
+        rng = f'{lv.start_date.strftime("%d %b")} - {lv.end_date.strftime("%d %b")}'
+        if action == "approved":
+            tmsg = (f"Your leave ({rng}) has been approved as "
+                    f"{'PAID — iski koi salary deduction nahi hogi' if lv.paid else 'UNPAID — per-day rate se deduction hogi'}"
+                    + (f": {lv.admin_remark}" if lv.admin_remark else "."))
+            if moved:
+                tmsg += (f" Leave ke dinon ki {len(moved)} class(es) apne aap aage move ho gayi hain "
+                         f"(ye aapke reschedule count me nahi judegi). Time table check karein.")
+            db.add(Notification(user_id=tp.user_id, title="✅ Leave Approved",
+                                message=tmsg, notif_type="leave"))
+        else:
+            db.add(Notification(user_id=tp.user_id, title="❌ Leave Rejected",
+                                message=f"Your leave request ({rng}) was rejected"
+                                        + (f": {lv.admin_remark}" if lv.admin_remark else "."),
+                                notif_type="leave"))
+    if moved:
+        tname = tp.user.name if tp.user else "Your teacher"
+        _notify_class_moved(db, tp, moved, "Class Rescheduled — ",
+                            f"{tname} is on approved leave, so the class has been moved.")
+    db.commit()
+    return {"ok": True, "status": lv.status, "paid": bool(lv.paid),
+            "classes_moved": len(moved)}
+
+# ===== CONTRACTS =====
+@router.get("/teacher/{tid}/contract")
+def admin_get_contract(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import TeacherContract, TeacherProfile
+    from teacher_routes import _contract_out
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
+    if not c:
+        return {"exists": False, "teacher_name": tp.user.name if tp.user else ""}
+    return _contract_out(c, tp.user.name if tp.user else "")
+
+@router.post("/teacher/{tid}/contract")
+def admin_set_contract(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Contract create/update. require_reaccept=True bhejo to teacher ko letter
+    dobara accept karna padega (terms badalne pe)."""
+    from models import TeacherContract, TeacherProfile
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    from teacher_routes import _ensure_contract_columns as _ecc
+    _ecc(db)   # pehle migration (rollback pending work uda sakta hai, isliye sabse pehle)
+    c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
+    creating = c is None
+    if creating:
+        c = TeacherContract(teacher_id=tid)
+        db.add(c)
+    _old_gross = (c.base_salary or 0) + (c.allowances or 0)
+    if "designation" in payload:
+        c.designation = (payload.get("designation") or "Subject Teacher").strip() or "Subject Teacher"
+    if "joining_date" in payload:
+        d = (payload.get("joining_date") or "").strip()
+        if d:
+            try:
+                c.joining_date = datetime.strptime(d, "%Y-%m-%d").date()
+            except Exception:
+                raise HTTPException(status_code=400, detail="Joining date must be in YYYY-MM-DD format")
+        else:
+            c.joining_date = None
+    def _num(k, cur):
+        try:
+            return max(0, int(payload.get(k)))
+        except Exception:
+            return cur
+    from teacher_routes import _salary_breakup, DEFAULT_CONTRACT_RULES
+    if "gross_salary" in payload:
+        # AUTO MODE (Faculty Service Agreement): sirf gross do - breakup, rules,
+        # working days sab agreement ke % se khud set hote hain.
+        gross = _num("gross_salary", 0)
+        if gross <= 0:
+            raise HTTPException(status_code=400, detail="Gross salary must be greater than 0")
+        c.base_salary = gross
+        c.allowances = 0
+        c.working_days = 26
+        for k, v in _salary_breakup(gross).items():
+            setattr(c, k, v)
+        if not (payload.get("rules_text") or "").strip():
+            c.rules_text = DEFAULT_CONTRACT_RULES
+    else:
+        if "base_salary" in payload:
+            c.base_salary = _num("base_salary", c.base_salary or 0)
+        if "allowances" in payload:
+            c.allowances = _num("allowances", c.allowances or 0)
+        if "working_days" in payload:
+            wd = _num("working_days", c.working_days or 26)
+            c.working_days = min(31, max(1, wd))
+    if "rules_text" in payload and (payload.get("rules_text") or "").strip():
+        c.rules_text = (payload.get("rules_text") or "").strip()
+    _new_gross = (c.base_salary or 0) + (c.allowances or 0)
+    if creating or payload.get("require_reaccept") or _old_gross != _new_gross:
+        c.accepted = False
+        c.accepted_at = None
+        c.signature_name = None
+    db.commit()
+    return {"message": "Contract saved. The teacher will see the appointment letter on next portal open."
+            if (creating or payload.get("require_reaccept")) else "Contract saved."}
+
+# ===== PAYOUTS =====
+@router.get("/payouts")
+def admin_payouts(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Month ke liye saare teachers ka payout overview (contract ho ya na ho)."""
+    from models import TeacherProfile, User, TeacherContract
+    from teacher_routes import compute_payout, _month_range
+    start, _e = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        name = tp.user.name if tp.user else ""
+        p = compute_payout(db, tp.id, mk)
+        if p:
+            p.update({"teacher_id": tp.id, "name": name, "configured": True})
+            out.append(p)
+        else:
+            out.append({"teacher_id": tp.id, "name": name, "configured": False, "month": mk})
+    out.sort(key=lambda x: (not x["configured"], x["name"]))
+    total = sum(x.get("net_payout", 0) for x in out if x.get("configured"))
+    return {"month": mk, "teachers": out, "total_net": total}
+
+@router.get("/teacher/{tid}/payout")
+def admin_teacher_payout(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from teacher_routes import compute_payout
+    p = compute_payout(db, tid, month)
+    if not p:
+        return {"exists": False}
+    p["exists"] = True
+    return p
+
+# ===== EARNINGS MODEL (v80) — appointment-letter rule, admin controls =====
+@router.get("/earnings")
+def admin_earnings(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare active teachers ka earnings overview (appointment-letter model)."""
+    from teacher_routes import earnings_payload, _ist_now
+    import time as _time
+    month = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="Invalid month (use YYYY-MM).")
+    # 60s cache — earnings heavy calc hai (har teacher par portal activity), repeat load instant
+    _ec = globals().setdefault("_EARN_CACHE", {})
+    _hit = _ec.get(month)
+    if _hit and (_time.time() - _hit[0] < 60):
+        return _hit[1]
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        out.append(earnings_payload(db, tp, month))
+    out.sort(key=lambda x: x["teacher"]["name"])
+    # v104: target-only teachers ka payment amount nahi dikhata — sirf estimated %.
+    # Unke amounts ₹ totals ka hissa nahi hote.
+    total = sum(x["earnings"]["net_payable"] for x in out if not x.get("target_only"))
+    tonly = sum(1 for x in out if x.get("target_only"))
+    avg = round(sum(x["earnings"]["perf_score"] for x in out) / len(out)) if out else 0
+    res = {"month": month, "teachers": out, "total_net": total, "avg_perf": avg,
+           "target_only_count": tonly}
+    _ec[month] = (_time.time(), res)
+    return res
+
+
+def _earn_cache_bust():
+    """P09: pay-config / finalize / credit / review ke baad overview cache invalidate —
+    warna overview purana amount dikhata tha jabki detail naya. (Cache sirf display ke liye;
+    payment authority snapshot/fresh compute se.)"""
+    try:
+        globals().get("_EARN_CACHE", {}).clear()
+    except Exception:
+        pass
+
+
+@router.get("/earnings/teacher/{tid}")
+def admin_earnings_teacher(tid: int, request: Request, month: str = "", db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Ek teacher ka full earnings payload (slip / letter / detail modal ke liye)."""
+    get_payout_admin(request, current_user)   # P15: finance unlock enforce (sensitive earnings)
+    from teacher_routes import earnings_payload, _ist_now
+    month = (month or "").strip() or _ist_now().strftime("%Y-%m")
+    if not re.match(r"^\d{4}-\d{2}$", month):
+        raise HTTPException(status_code=400, detail="Invalid month (use YYYY-MM).")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    return earnings_payload(db, tp, month)
+
+
+@router.get("/earnings/configs")
+def admin_earnings_configs(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Har teacher ki pay structure + monthly targets (editor list)."""
+    from teacher_routes import get_pay_config, EARNINGS_PAY_FIELDS, EARNINGS_TARGET_FIELDS
+    out = []
+    for tp in db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(User.is_active == True).all():
+        cfg = get_pay_config(db, tp.id)
+        row = {"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+               "subjects": tp.subjects or [], "saved": cfg.id is not None,
+               "designation": cfg.designation or "", "department": cfg.department or "",
+               "employee_code": cfg.employee_code or "", "bank_name": cfg.bank_name or "",
+               "account_no": cfg.account_no or "", "ifsc": cfg.ifsc or "",
+               "payout_mode": getattr(cfg, "payout_mode", "standard") or "standard",
+               "contract_notes": getattr(cfg, "contract_notes", "") or ""}
+        for k in EARNINGS_PAY_FIELDS + EARNINGS_TARGET_FIELDS:
+            row[k] = int(getattr(cfg, k) or 0)
+        for k in ("contract_base", "task_rate", "project_rate", "delay_relax",
+                  "delay_deduct", "reject_relax", "reject_deduct"):
+            row[k] = int(getattr(cfg, k, 0) or 0)
+        out.append(row)
+    out.sort(key=lambda x: x["name"])
+    return {"configs": out}
+
+
+@router.post("/earnings/config")
+def admin_earnings_config_save(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher ki pay structure + targets + bank details save karo (upsert)."""
+    from models import TeacherPayConfig
+    from teacher_routes import EARNINGS_PAY_FIELDS, EARNINGS_TARGET_FIELDS, EARNINGS_DEFAULTS
+    tid = int(payload.get("teacher_id") or 0)
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    cfg = db.query(TeacherPayConfig).filter(TeacherPayConfig.teacher_id == tid).first()
+    if not cfg:
+        cfg = TeacherPayConfig(teacher_id=tid, **EARNINGS_DEFAULTS)
+        db.add(cfg)
+
+    def _num(key, cur):
+        v = payload.get(key, None)
+        if v is None or v == "":
+            return cur
+        try:
+            v = int(v)
+        except Exception:
+            raise HTTPException(status_code=400, detail="%s must be a number" % key)
+        if v < 0:
+            raise HTTPException(status_code=400, detail="%s cannot be negative" % key)
+        return v
+
+    for k in EARNINGS_PAY_FIELDS + EARNINGS_TARGET_FIELDS:
+        cur = getattr(cfg, k)
+        setattr(cfg, k, _num(k, int(cur if cur is not None else EARNINGS_DEFAULTS[k])))
+    # Contract / task-based payout mode config
+    try:
+        from teacher_routes import CONTRACT_NUM_FIELDS
+    except Exception:
+        CONTRACT_NUM_FIELDS = ("contract_base", "task_rate", "project_rate",
+                               "delay_relax", "delay_deduct", "reject_relax", "reject_deduct")
+    if "payout_mode" in payload:
+        _pm = str(payload.get("payout_mode") or "standard").strip().lower()
+        setattr(cfg, "payout_mode", "contract" if _pm == "contract" else "standard")
+    # P26: contract numeric fields ab SILENTLY coerce nahi hote — galat/negative/non-finite
+    # value reject (saaf error), warna galti chhup jaati thi.
+    import math as _m26
+    for k in CONTRACT_NUM_FIELDS:
+        if k in payload and payload[k] not in (None, ""):
+            try:
+                _v = float(payload[k])
+            except Exception:
+                raise HTTPException(status_code=400, detail="%s must be a number" % k)
+            if (not _m26.isfinite(_v)) or _v < 0:
+                raise HTTPException(status_code=400, detail="%s must be a non-negative number" % k)
+            setattr(cfg, k, int(_v))
+    # P26: working_days (contract per-day deduction base) 1..31 hi — 0 pe silent 26 fallback nahi.
+    if "working_days" in payload and payload["working_days"] not in (None, ""):
+        try:
+            _wd = int(float(payload["working_days"]))
+        except Exception:
+            raise HTTPException(status_code=400, detail="working_days must be a number")
+        if _wd < 1 or _wd > 31:
+            raise HTTPException(status_code=400, detail="working_days 1 se 31 ke beech hona chahiye")
+        setattr(cfg, "working_days", _wd)
+    if "contract_notes" in payload and payload["contract_notes"] is not None:
+        setattr(cfg, "contract_notes", str(payload["contract_notes"]).strip()[:600])
+    for k in ("designation", "department", "employee_code", "bank_name", "account_no", "ifsc"):
+        if k in payload and payload[k] is not None:
+            setattr(cfg, k, str(payload[k]).strip()[:120])
+    # v95: editable target names (core 4) + custom extra targets (add/delete)
+    if isinstance(payload.get("target_labels"), dict):
+        lab = {}
+        for k in ("tests", "videos", "live", "shorts"):
+            v = str(payload["target_labels"].get(k) or "").strip()[:60]
+            if v:
+                lab[k] = v
+        cfg.target_labels = lab
+    if isinstance(payload.get("custom_targets"), list):
+        out = []
+        for c in payload["custom_targets"][:12]:
+            if not isinstance(c, dict):
+                continue
+            nm = str(c.get("name") or "").strip()[:60]
+            if not nm:
+                continue
+            try:
+                cnt = max(0, min(999, int(c.get("count") or 0)))
+            except Exception:
+                cnt = 0
+            out.append({"name": nm, "count": cnt})
+        cfg.custom_targets = out
+    db.commit()
+    _earn_cache_bust()   # P09: config change -> overview cache invalidate
+    return {"message": "Pay structure saved for %s." % (tp.user.name if tp.user else "teacher")}
+
+# ===== PERFORMANCE PAYOUT (template, approvals, finalize) =====
+@router.get("/teacher/{tid}/payout-template")
+def admin_get_payout_template(tid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Teacher ki monthly responsibility template (target + weight%)."""
+    from teacher_routes import _perf_seed
+    from models import PayoutTemplate
+    _perf_seed(db, tid)
+    rows = db.query(PayoutTemplate).filter(PayoutTemplate.teacher_id == tid).order_by(PayoutTemplate.sort, PayoutTemplate.id).all()
+    return {"template": [{"id": r.id, "key": r.key, "label": r.label, "target": r.target or 0,
+                          "weight": r.weight_pct or 0, "source": r.source} for r in rows],
+            "weight_sum": sum(r.weight_pct or 0 for r in rows)}
+
+@router.put("/teacher/{tid}/payout-template")
+def admin_set_payout_template(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Template save: [{key,label,target,weight,source}]. Weight sum 100 hona
+    chahiye (0-target wali categories calculation se baahar ho jaati hain)."""
+    from teacher_routes import _perf_seed
+    from models import PayoutTemplate
+    _perf_seed(db, tid)
+    items = payload.get("template") or []
+    if not items:
+        raise HTTPException(400, "Template khaali hai")
+    wsum = sum(float(i.get("weight") or 0) for i in items)
+    if abs(wsum - 100) > 0.01:
+        raise HTTPException(400, "The weights must total 100%% (currently %.1f%%)" % wsum)
+    rows = {r.key: r for r in db.query(PayoutTemplate).filter(PayoutTemplate.teacher_id == tid).all()}
+    for i, it in enumerate(items):
+        key = (it.get("key") or "").strip()
+        if not key:
+            continue
+        r = rows.get(key)
+        if not r:
+            r = PayoutTemplate(teacher_id=tid, key=key)
+            db.add(r)
+        r.label = (it.get("label") or r.label or key)[:80]
+        r.target = max(0, int(it.get("target") or 0))
+        r.weight_pct = max(0.0, float(it.get("weight") or 0))
+        r.source = "auto" if it.get("source") == "auto" else "manual"
+        r.sort = i
+    db.commit()
+    return {"message": "Template saved - every month will now be calculated from it"}
+
+@router.get("/payout-approvals")
+def admin_payout_approvals(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare teachers ke pending manual tasks (approve/reject queue)."""
+    from models import PayoutTask, TeacherProfile, User
+    from teacher_routes import _month_range
+    start, _e = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    rows = db.query(PayoutTask).filter(PayoutTask.status == "pending", PayoutTask.month == mk).order_by(PayoutTask.created_at).all()
+    out = []
+    for t in rows:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == t.teacher_id).first()
+        out.append({"id": t.id, "teacher_id": t.teacher_id,
+                    "teacher_name": (tp.user.name if tp and tp.user else ""),
+                    "key": t.key, "title": t.title, "note": t.note or "",
+                    "done_date": str(t.done_date) if t.done_date else None,
+                    "created_at": t.created_at.strftime("%d %b, %I:%M %p") if t.created_at else ""})
+    return {"month": mk, "pending": out}
+
+@router.post("/payout-task/{task_id}/approve")
+def admin_approve_payout_task(task_id: int, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import PayoutTask
+    t = db.query(PayoutTask).filter(PayoutTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    t.status = "approved"
+    t.approved_by = getattr(current_user, "name", "Admin") or "Admin"
+    t.approved_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Approved - it now counts"}
+
+@router.post("/payout-task/{task_id}/reject")
+def admin_reject_payout_task(task_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutTask
+    t = db.query(PayoutTask).filter(PayoutTask.id == task_id).first()
+    if not t:
+        raise HTTPException(404, "Task not found")
+    t.status = "rejected"
+    db.commit()
+    return {"message": "Rejected"}
+
+@router.post("/teacher/{tid}/payout-missed-class")
+def admin_flag_missed_class(tid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Scheduled class nahi hui -> us month ke live_class count se ghatao."""
+    from models import PayoutTask, TimetableEntry
+    from teacher_routes import _month_range
+    eid = int(payload.get("entry_id") or 0)
+    e = db.query(TimetableEntry).filter(TimetableEntry.id == eid, TimetableEntry.teacher_id == tid).first()
+    if not e:
+        raise HTTPException(404, "Class entry not found")
+    mk = e.entry_date.strftime("%Y-%m") if e.entry_date else ""
+    if not mk:
+        raise HTTPException(400, "Entry has no date")
+    flag = (payload.get("missed") is True) or (str(payload.get("missed")) == "true")
+    ex = db.query(PayoutTask).filter(PayoutTask.teacher_id == tid, PayoutTask.key == "live_class",
+                                     PayoutTask.status == "missed", PayoutTask.ref_id == eid).first()
+    if flag and not ex:
+        db.add(PayoutTask(teacher_id=tid, month=mk, key="live_class",
+                          title="Class not held: %s (%s)" % (e.chapter or e.subject, e.entry_date),
+                          status="missed", ref_id=eid, done_date=e.entry_date,
+                          note=(payload.get("note") or "")[:300]))
+        db.commit()
+        return {"message": "Marked as missed - removed from this month's count"}
+    if not flag and ex:
+        db.delete(ex); db.commit()
+        return {"message": "Missed flag removed"}
+    return {"message": "No change"}
+
+@router.get("/teacher/{tid}/payout-classes")
+def admin_payout_classes(tid: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Us month ki scheduled classes + missed flags (detail modal ke liye)."""
+    from models import TimetableEntry, PayoutTask
+    from teacher_routes import _month_range
+    start, end = _month_range(month)
+    mk = start.strftime("%Y-%m")
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tid,
+        TimetableEntry.entry_date >= start, TimetableEntry.entry_date < end,
+        TimetableEntry.entry_type == "chapter", TimetableEntry.status == "approved"
+    ).order_by(TimetableEntry.entry_date).all()
+    missed = {x.ref_id for x in db.query(PayoutTask).filter(
+        PayoutTask.teacher_id == tid, PayoutTask.key == "live_class", PayoutTask.status == "missed").all()}
+    return {"month": mk, "classes": [
+        {"id": e.id, "date": str(e.entry_date), "subject": e.subject,
+         "chapter": e.chapter or "", "missed": e.id in missed} for e in entries]}
+
+@router.post("/teacher/{tid}/contract-review")
+def admin_contract_review(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Contract teachers: admin enters leave days for the month and releases the payout.
+    Until released, the teacher sees 'under review'. Setting leave here recomputes the
+    per-day leave deduction automatically. reviewed=False re-hides it (edit mode)."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
+    from models import PayoutMonth, TeacherProfile
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec:
+        rec = PayoutMonth(teacher_id=tid, month=mk, status="in_progress")
+        db.add(rec)
+    # P04: finalize/credit/paid ho chuke month ko review (leave/reviewed edit) se MAT badlo —
+    # warna already-paid month ka live net badal jaata tha (26k -> 16k). Correction sirf
+    # explicit re-open/audited flow se. Review sirf finalize se PEHLE (draft/in_progress).
+    if (rec.status or "") in ("finalized", "credited", "receipt_confirmed", "paid"):
+        raise HTTPException(409, "Ye month finalize/credit ho chuka hai — leave/review ab edit nahi ho sakta. Correction ke liye month ko dubara open karna padega.")
+    try:
+        rec.leave_days = max(0, int(float(payload.get("leave_days", 0) or 0)))
+    except Exception:
+        rec.leave_days = 0
+    rec.reviewed = bool(payload.get("reviewed", True))
+    db.commit()
+    _earn_cache_bust()   # P09
+    return {"message": "Review saved.", "leave_days": rec.leave_days, "reviewed": rec.reviewed}
+
+
+@router.post("/teacher/{tid}/payout-finalize")
+def admin_finalize_payout(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Month lock: poora breakdown snapshot me freeze (baad me data badle to bhi record same).
+    Snapshot live earnings model (v80) se — jo admin screen par dikhta hai."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
+    import json as _json
+    from models import PayoutMonth, TeacherProfile
+    from teacher_routes import _month_range, earnings_payload
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    snap = earnings_payload(db, tp, mk, _live=True)   # P05: FRESH compute (purana snapshot nahi)
+    _earn = snap.get("earnings") if isinstance(snap, dict) else None
+    if not isinstance(_earn, dict):
+        raise HTTPException(503, "Earnings load nahi hua — dubara try karein.")
+    # P02: calculation DEPENDENCY fail hua to finalize MAT karo (galat 0 freeze/pay se bachao).
+    if _earn.get("calc_error"):
+        raise HTTPException(409, "Is teacher ka performance/earnings calculation abhi complete nahi hua — finalize block hai. Thodi der baad dubara try karein (koi 0 freeze nahi hua).")
+    if payload.get("waive_deductions"):
+        # Relaxation: is month ke deductions waive karo — net = base + incentive (no deductions).
+        # P01: earnings keys 'earnings' ke ANDAR hain (root pe nahi) — sahi level se read/write.
+        try:
+            _lv = float(_earn.get("leave_deduction", 0) or 0)
+            _rv = float(_earn.get("reviewed_deduction", 0) or 0)
+            if (_lv + _rv) > 0:
+                _net0 = float(_earn.get("net_payable", 0) or 0)
+                _pct0 = float(_earn.get("salary_pct", 0) or 0)
+                _earn["leave_deduction"] = 0
+                _earn["reviewed_deduction"] = 0
+                _earn["net_payable"] = round(float(_earn.get("base_earned", 0) or 0) + float(_earn.get("incentive", 0) or 0))
+                _earn["deductions_waived"] = True
+                _earn["deductions_waived_amount"] = round(_lv + _rv)
+                if _net0 > 0 and _pct0 > 0:
+                    _earn["salary_pct"] = round(_earn["net_payable"] * _pct0 / _net0, 1)
+        except Exception:
+            pass
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec:
+        rec = PayoutMonth(teacher_id=tid, month=mk)
+        db.add(rec)
+    if rec.status in ("credited", "receipt_confirmed", "paid"):
+        raise HTTPException(400, "This month is already credited — cannot re-finalize.")
+    rec.snapshot = _json.dumps(snap, default=str)
+    rec.status = "finalized"
+    rec.reviewed = True   # P03: finalize = released -> teacher ko amount dikhe ("under review" nahi)
+    rec.finalized_at = datetime.utcnow()
+    _fin_note = "Month finalized (snapshot frozen)"
+    if _earn.get("deductions_waived"):
+        _fin_note += " \u2014 deductions waived (\u20b9" + str(_earn.get("deductions_waived_amount", 0)) + ")"
+    # P11: audit se pehle flush — naya rec ho to rec.id populate ho (warna audit entity_id=None).
+    try:
+        db.flush()
+    except Exception:
+        pass
+    _pay_audit(db, "payout_month", rec.id, "finalized", current_user.id, "admin",
+               _fin_note, teacher_id=tid, month=mk)
+    db.commit()
+    _earn_cache_bust()   # P09
+    return {"message": "Month finalized - snapshot saved", "status": rec.status}
+
+@router.post("/teacher/{tid}/payout-progress")
+def admin_payout_progress(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Payment process shuru: status -> in_progress."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
+    from models import PayoutMonth
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec or rec.status not in ("finalized",):
+        raise HTTPException(400, "Finalize the month first.")
+    rec.status = "in_progress"
+    rec.in_progress_at = datetime.utcnow()
+    _pay_audit(db, "payout_month", rec.id, "in_progress", current_user.id, "admin",
+               "Payment marked in progress", teacher_id=tid, month=mk)
+    db.commit()
+    _earn_cache_bust()   # P09
+    return {"message": "Marked in progress", "status": rec.status}
+
+@router.post("/teacher/{tid}/payout-paid")
+def admin_payout_paid(tid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Salary credited: status -> credited (+ optional payment reference). Teacher ko
+    CONFIDENTIAL notification (koi amount nahi) + receipt confirm karne ko kaha jaata hai."""
+    get_payout_admin(request, current_user)   # P15: finance write -> finance unlock zaroori
+    from models import PayoutMonth, TeacherProfile
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    rec = db.query(PayoutMonth).filter(PayoutMonth.teacher_id == tid, PayoutMonth.month == mk).first()
+    if not rec or rec.status not in ("finalized", "in_progress"):
+        raise HTTPException(400, "Finalize the month first.")
+    rec.status = "credited"
+    rec.reviewed = True   # P03: credited = released (teacher ko amount dikhe)
+    rec.paid_at = datetime.utcnow()
+    ref = (payload.get("pay_ref") or "").strip()[:120]
+    if ref:
+        rec.pay_ref = ref
+    _pay_audit(db, "payout_month", rec.id, "credited", current_user.id, "admin",
+               "Salary credited%s" % ((" (ref: " + ref + ")") if ref else ""), teacher_id=tid, month=mk)
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if tp and tp.user_id:
+            notify(db, tp.user_id, "Salary credited",
+                   "Your payout for %s has been credited. Please open your Payout section and confirm receipt." % _fmt_month_label(mk),
+                   "payout")
+    except Exception:
+        pass
+    db.commit()
+    _earn_cache_bust()   # P09
+    return {"message": "Marked as credited", "status": rec.status}
+
+def _fmt_month_label(mk):
+    try:
+        from datetime import datetime as _dt
+        return _dt.strptime(mk, "%Y-%m").strftime("%B %Y")
+    except Exception:
+        return mk
+
+@router.get("/payout-lifecycle")
+def admin_payout_lifecycle(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Us month me har teacher ki salary lifecycle status (admin panel ke liye)."""
+    from models import PayoutMonth
+    from teacher_routes import _month_range
+    mk = _month_range(month or "")[0].strftime("%Y-%m")
+    rows = db.query(PayoutMonth).filter(PayoutMonth.month == mk).all()
+    def _st(r):
+        s = r.status
+        if s == "paid":
+            s = "credited"   # legacy alias
+        return {"teacher_id": r.teacher_id, "status": s,
+                "pay_ref": r.pay_ref or "",
+                "finalized_at": r.finalized_at.strftime("%d %b %Y") if r.finalized_at else "",
+                "paid_at": r.paid_at.strftime("%d %b %Y") if r.paid_at else "",
+                "receipt_confirmed_at": r.receipt_confirmed_at.strftime("%d %b %Y") if r.receipt_confirmed_at else ""}
+    return {"month": mk, "lifecycle": {str(r.teacher_id): _st(r) for r in rows}}
+
+# ===== OFFICE LOCATION (punch geofence) =====
+@router.get("/dpp-pack-pdf/{pack_id}")
+def admin_dpp_pack_pdf(pack_id: int, kind: str = "q", medium: str = "",
+                       db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: Classes Material tree se kisi bhi teacher ke DPP pack ka PDF (view/download).
+    (teacher endpoint teacher_id se filter karta hai -> admin ke liye alag, bina filter.)"""
+    from models import DppPack
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(status_code=404, detail="DPP not found")
+    blob = None
+    if pk.source == "created" and pk.questions:
+        try:
+            from teacher_routes import _dpp_build_pdf
+            blob = _dpp_build_pdf(db, pk, kind, medium or pk.medium)
+        except Exception:
+            blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    else:
+        blob = (pk.q_pdf if kind == "q" else pk.s_pdf)
+    try:
+        from teacher_routes import _dpp_shrink
+        blob = _dpp_shrink(db, pk, kind, blob)
+    except Exception:
+        pass
+    if not blob:
+        raise HTTPException(status_code=404, detail="File not available")
+    med = ("both" if (medium or "").lower().startswith("bo")
+           else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
+    fname = (pk.title or "DPP").replace("/", "-") + \
+        ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), False, sniff=True)
+
+@router.get("/office-location")
+def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from teacher_routes import _ensure_geofence, _office_list, _office_ips, _ip_in_office, _ignored_ips
+    _ensure_geofence(db)
+    offices = _office_list(db)
+    unknown = []
+    try:
+        from models import AppSetting
+        import json as _json
+        row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+        data = _json.loads(row.value) if row and row.value else []
+        have = _office_ips(db)          # exact IPs + ranges (CIDR/wildcard)
+        ignored = _ignored_ips(db)      # exact IPs + ranges (dismissed)
+        # Jo IP whitelisted range me aata hai YA dismissed range me aata hai use "New IPs" me na dikhao
+        unknown = [x for x in data
+                   if isinstance(x, dict) and x.get("ip")
+                   and not _ip_in_office(x["ip"], ignored)
+                   and not _ip_in_office(x["ip"], have)][:10]
+    except Exception:
+        unknown = []
+    return {"active": bool(offices),
+            "offices": [{"name": o["name"], "lat": o["lat"], "lng": o["lng"], "radius": int(o["radius"])} for o in offices],
+            "ips": _office_ips(db), "unknown_ips": unknown}
+
+@router.get("/my-ip")
+def admin_my_ip(request: Request, _=Depends(get_admin)):
+    """Admin ke current device ka public IP — office WiFi add karne ke liye."""
+    from teacher_routes import _client_ip
+    return {"ip": _client_ip(request)}
+
+@router.post("/office-unknown-clear")
+def admin_office_unknown_clear(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """"New IPs" (attempted punches) ka log saaf karo — fresh start ke liye. Office WiFi list par
+    koi asar nahi. Iske baad sirf naye punch-attempts hi 'New IPs' me dikhenge."""
+    from models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+    if not row:
+        row = AppSetting(key="unknown_ips", value="[]"); db.add(row)
+    else:
+        row.value = "[]"
+    db.commit()
+    return {"message": "New IPs list cleared"}
+
+@router.post("/office-ip-dismiss")
+def admin_office_ip_dismiss(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek ya kai 'New IPs' ko permanently dismiss karo — jo office WiFi hai hi nahi (jaise
+    mobile-data / Jio IPs jo har baar badalte hain). Ye entries 'New IPs' se hat jaati hain
+    AUR dubara nahi aatin (na hi unka punch-attempt log hota). Range (CIDR/wildcard) bhi
+    accept hai — mobile pool ek /16 se ignore kar do to poora Jio noise band.
+    NOTE: dismiss sirf LOG suppress karta hai — kisi ka punch block/allow nahi karta.
+    Body: {'ip': '1.2.3.4'} | {'entry': '157.49.0.0/16'} | {'ips': [...]} | {'undo': true, 'ip': ...}"""
+    from models import AppSetting
+    from teacher_routes import _norm_ip_entry, _ip_in_office
+    import json as _json
+    # entries collect (single ya list)
+    raw_entries = []
+    if payload.get("ip"):    raw_entries.append(payload.get("ip"))
+    if payload.get("entry"): raw_entries.append(payload.get("entry"))
+    if isinstance(payload.get("ips"), list): raw_entries.extend(payload.get("ips"))
+    entries = []
+    for e in raw_entries:
+        n = _norm_ip_entry(e)
+        if n and n not in entries:
+            entries.append(n)
+    if not entries:
+        raise HTTPException(status_code=400, detail="IP or range required")
+    undo = bool(payload.get("undo"))
+    # ignored_ips update
+    row = db.query(AppSetting).filter(AppSetting.key == "ignored_ips").first()
+    if not row:
+        row = AppSetting(key="ignored_ips", value="[]"); db.add(row)
+    try:
+        ignored = _json.loads(row.value or "[]")
+        if not isinstance(ignored, list):
+            ignored = []
+    except Exception:
+        ignored = []
+    ignored = [str(x).strip() for x in ignored if str(x).strip() and str(x).strip() not in entries]
+    if not undo:
+        ignored = entries + ignored
+    row.value = _json.dumps(ignored[:200])
+    # unknown_ips se woh saare hata do jo in entries (range bhi) me match karte hain
+    urow = db.query(AppSetting).filter(AppSetting.key == "unknown_ips").first()
+    if urow and urow.value and not undo:
+        try:
+            udata = _json.loads(urow.value)
+            if isinstance(udata, list):
+                urow.value = _json.dumps([x for x in udata
+                    if not (isinstance(x, dict) and x.get("ip") and _ip_in_office(x["ip"], entries))])
+        except Exception:
+            pass
+    db.commit()
+    if undo:
+        return {"message": "%d entr%s restored" % (len(entries), "y" if len(entries) == 1 else "ies")}
+    return {"message": "Dismissed %d entr%s — these will not appear in New IPs again" % (len(entries), "y" if len(entries) == 1 else "ies")}
+
+@router.post("/office-ip-info")
+def admin_office_ip_info(payload: dict = Body(default={}), _=Depends(get_admin)):
+    """Har office WiFi IP ka ISP + city + mobile/proxy flag laata hai (ip-api.com, free, no key).
+    Isse admin dekh sakta hai koi IP bahar ka / mobile-carrier to nahi (jo galti se add ho gaya).
+    Best-effort — API fail ho to 'unknown' return karta hai, kabhi crash nahi."""
+    import urllib.request as _u
+    import json as _json
+    ips = payload.get("ips") or []
+    if not isinstance(ips, list):
+        ips = []
+    ips = [str(x).strip() for x in ips if str(x).strip()][:100]
+    out = {}
+    if not ips:
+        return {"info": out}
+    try:
+        url = ("http://ip-api.com/batch"
+               "?fields=query,status,country,regionName,city,isp,org,mobile,proxy,hosting")
+        body = _json.dumps([{"query": ip} for ip in ips]).encode("utf-8")
+        req = _u.Request(url, data=body, headers={"Content-Type": "application/json"})
+        with _u.urlopen(req, timeout=12) as resp:
+            data = _json.loads(resp.read().decode("utf-8", "ignore"))
+        if isinstance(data, list):
+            for row in data:
+                if not isinstance(row, dict):
+                    continue
+                q = row.get("query") or ""
+                if not q:
+                    continue
+                out[q] = {
+                    "ok": row.get("status") == "success",
+                    "isp": row.get("isp") or row.get("org") or "",
+                    "city": row.get("city") or "",
+                    "region": row.get("regionName") or "",
+                    "country": row.get("country") or "",
+                    "mobile": bool(row.get("mobile")),
+                    "proxy": bool(row.get("proxy")),
+                    "hosting": bool(row.get("hosting")),
+                }
+    except Exception:
+        # API down/blocked — chup-chaap khali laut jao (UI 'lookup unavailable' dikha dega)
+        return {"info": out, "error": "lookup_unavailable"}
+    return {"info": out}
+
+@router.post("/office-location")
+def admin_set_office(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Office branches (multi-location) save karo. Body: {'offices':[{name,lat,lng,radius},...]}
+    ya {'clear': true} (geofence band). Save ke baad teachers sirf kisi branch ke radius me se hi punch kar payenge."""
+    from teacher_routes import _ensure_geofence
+    from models import AppSetting
+    import json as _json
+    _ensure_geofence(db)
+    def _set(k, v):
+        row = db.query(AppSetting).filter(AppSetting.key == k).first()
+        if not row:
+            row = AppSetting(key=k); db.add(row)
+        row.value = str(v)
+    if payload.get("clear"):
+        _set("offices", ""); _set("office_lat", ""); _set("office_lng", ""); _set("office_ips", "")
+        db.commit()
+        return {"message": "Geofence turned off - punching is now allowed from anywhere"}
+    # office WiFi/broadband IPs (optional) — in se aaye punch GPS ke bina allowed.
+    # v121: IP count limit hata di. v123: ab exact IP + CIDR range + wildcard teeno accept.
+    # Dynamic office IP (Excitel jaisa pool) ke liye poori range whitelist karo: 146.196.33.0/24
+    from teacher_routes import _norm_ip_entry
+    clean_ips = []
+    if "ips" in payload:
+        raw_ips = payload.get("ips") or []
+        if not isinstance(raw_ips, list):
+            raise HTTPException(status_code=400, detail="WiFi IPs list bhejo")
+        for ip in raw_ips:
+            norm = _norm_ip_entry(ip)
+            if norm is None:
+                raise HTTPException(status_code=400, detail="Invalid IP / range: %s (use 146.196.33.141, 146.196.33.0/24, or 146.196.33.*)" % str(ip).strip())
+            if norm not in clean_ips:
+                clean_ips.append(norm)
+        _set("office_ips", _json.dumps(clean_ips))
+    # Branches: sirf tab validate/save karo jab caller ne 'offices' bheja ho. Isse
+    # IP-only save (bina branch touch kiye) bhi kaam karta hai — koi silent 400 nahi.
+    raw = payload.get("offices")
+    if "offices" not in payload:
+        db.commit()
+        return {"message": "Office WiFi IP list saved (%d entr%s)" % (len(clean_ips), "y" if len(clean_ips) == 1 else "ies")}
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="Kam se kam 1 office branch bhejo")
+    if len(raw) > 6:
+        raise HTTPException(status_code=400, detail="You can add at most 6 branches")
+    clean, names = [], set()
+    for o in raw:
+        name = str((o or {}).get("name") or "").strip()[:80]
+        if not name:
+            raise HTTPException(status_code=400, detail="Every branch needs a name")
+        if name.lower() in names:
+            raise HTTPException(status_code=400, detail=f"Branch name '{name}' is used twice - use distinct names")
+        names.add(name.lower())
+        try:
+            lat = float(o.get("lat")); lng = float(o.get("lng"))
+            radius = int(o.get("radius") or 30)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"'{name}' has invalid latitude/longitude")
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise HTTPException(status_code=400, detail=f"'{name}' latitude/longitude is out of range")
+        if radius < 5 or radius > 500:
+            raise HTTPException(status_code=400, detail=f"Keep '{name}' radius between 5-500 metres (20-50m is practical due to GPS error)")
+        clean.append({"name": name, "lat": lat, "lng": lng, "radius": radius})
+    _set("offices", _json.dumps(clean))
+    _set("office_lat", ""); _set("office_lng", "")   # purane single-office keys hatao
+    db.commit()
+    names_txt = ", ".join(o["name"] for o in clean)
+    msg = f"{len(clean)} office branch(es) saved ({names_txt}) - punching is now limited to their radius"
+    if clean_ips:
+        msg += f". PC punching from office WiFi ({len(clean_ips)} IP) works without GPS"
+    return {"message": msg}
+
+# ===== AI FORMATTING CONFIG (v122: subject-wise / all-subjects AI toggle) =====
+_AI_FMT_KEY = "ai_format_cfg"
+
+def _ai_fmt_cfg(db: Session) -> dict:
+    """AppSetting se AI formatting config padho — {'all': bool, 'subjects': [names]}."""
+    from models import AppSetting
+    import json as _json
+    cfg = {"all": False, "subjects": []}
+    row = db.query(AppSetting).filter(AppSetting.key == _AI_FMT_KEY).first()
+    if row and row.value:
+        try:
+            data = _json.loads(row.value)
+            cfg["all"] = bool(data.get("all"))
+            subs = data.get("subjects") or []
+            if isinstance(subs, list):
+                cfg["subjects"] = sorted({str(s).strip()[:80] for s in subs if str(s).strip()})
+        except Exception:
+            pass
+    return cfg
+
+@router.get("/ai-format-config")
+def admin_get_ai_format(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """AI formatting config — admin Subjects screen ke toggle ke liye."""
+    import os as _os
+    cfg = _ai_fmt_cfg(db)
+    cfg["ai_available"] = bool((_os.environ.get("GEMINI_API_KEY") or "").strip())
+    return cfg
+
+@router.post("/ai-format-config")
+def admin_set_ai_format(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """AI formatting config save karo. Body: {'all': bool, 'subjects': [name, ...]}"""
+    from models import AppSetting
+    import json as _json
+    subs = payload.get("subjects") or []
+    if not isinstance(subs, list):
+        raise HTTPException(status_code=400, detail="subjects list bhejo")
+    _seen = {}
+    for s in subs:
+        n = str(s).strip()[:80]
+        if n and n.lower() not in _seen:
+            _seen[n.lower()] = n
+    clean = sorted(_seen.values())
+    cfg = {"all": bool(payload.get("all")), "subjects": clean}
+    row = db.query(AppSetting).filter(AppSetting.key == _AI_FMT_KEY).first()
+    blob = _json.dumps(cfg, ensure_ascii=False)
+    if row:
+        row.value = blob
+    else:
+        db.add(AppSetting(key=_AI_FMT_KEY, value=blob))
+    db.commit()
+    if cfg["all"]:
+        msg = "AI formatting is now ACTIVE for all subjects"
+    elif clean:
+        msg = f"AI formatting is ACTIVE for {len(clean)} subject(s): {', '.join(clean)}"
+    else:
+        msg = "AI formatting is OFF - offline formatting will be used everywhere"
+    return {"message": msg, **cfg}
+
+# ===== SALARY BULK SETUP (sabhi teachers, sirf gross - baaki sab auto) =====
+@router.get("/contracts-overview")
+def admin_contracts_overview(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Saare active teachers ka contract/salary status - bulk setup screen ke liye."""
+    from models import TeacherProfile, TeacherContract, User
+    from teacher_routes import _ensure_contract_columns
+    _ensure_contract_columns(db)
+    tps = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(
+        User.is_active == True).order_by(User.name).all()
+    out = []
+    for tp in tps:
+        c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tp.id).first()
+        out.append({"teacher_id": tp.id, "name": tp.user.name if tp.user else "",
+                    "subjects": tp.subjects or [],
+                    "designation": (c.designation if c else "Subject Teacher"),
+                    "joining_date": str(c.joining_date) if c and c.joining_date else None,
+                    "gross_salary": ((c.base_salary or 0) + (c.allowances or 0)) if c else 0,
+                    "accepted": bool(c and c.accepted), "has_contract": bool(c)})
+    return {"teachers": out}
+
+@router.post("/contracts-bulk")
+def admin_contracts_bulk(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek hi baar me saare teachers ki gross salary set karo. Breakup (Basic/HRA/
+    Conv/Medical/LTA/Special), standard rules (Annexure A) aur 26 working days
+    SAB automatic - Faculty Service Agreement ke % ke hisaab se. Salary badalne
+    par teacher ko letter re-accept karna hota hai."""
+    from models import TeacherProfile, TeacherContract
+    from teacher_routes import _salary_breakup, _ensure_contract_columns, DEFAULT_CONTRACT_RULES
+    _ensure_contract_columns(db)
+    items = payload.get("items") or []
+    saved, skipped = [], []
+    for it in items:
+        tid = int(it.get("teacher_id") or 0)
+        gross = int(it.get("gross_salary") or 0)
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        if not tp:
+            continue
+        if gross <= 0:
+            skipped.append(tp.user.name if tp.user else str(tid))
+            continue
+        c = db.query(TeacherContract).filter(TeacherContract.teacher_id == tid).first()
+        creating = c is None
+        if creating:
+            c = TeacherContract(teacher_id=tid)
+            db.add(c)
+        old_gross = (c.base_salary or 0) + (c.allowances or 0)
+        c.designation = (it.get("designation") or c.designation or "Subject Teacher").strip() or "Subject Teacher"
+        jd = (it.get("joining_date") or "").strip()
+        if jd:
+            try:
+                c.joining_date = datetime.strptime(jd, "%Y-%m-%d").date()
+            except Exception:
+                pass
+        c.base_salary = gross
+        c.allowances = 0
+        c.working_days = 26
+        for k, v in _salary_breakup(gross).items():
+            setattr(c, k, v)
+        if not (c.rules_text or "").strip():
+            c.rules_text = DEFAULT_CONTRACT_RULES
+        if creating or old_gross != gross:
+            c.accepted = False
+            c.accepted_at = None
+            c.signature_name = None
+        saved.append(tp.user.name if tp.user else str(tid))
+    db.commit()
+    msg = "Contract set for %d teacher(s) (breakup + rules auto-filled)." % len(saved)
+    if skipped:
+        msg += " %d skip (salary 0/khaali): %s" % (len(skipped), ", ".join(skipped))
+    return {"message": msg, "saved": saved, "skipped": skipped}
+
+@router.post("/teacher/{tid}/payout-adjust")
+def admin_add_adjustment(tid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutAdjustment, TeacherProfile
+    from teacher_routes import _month_range
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    kind = (payload.get("kind") or "").strip()
+    if kind not in ("extra", "bonus", "deduction"):
+        raise HTTPException(status_code=400, detail="Type must be extra, bonus or deduction")
+    try:
+        amount = int(payload.get("amount"))
+        assert amount > 0
+    except Exception:
+        raise HTTPException(status_code=400, detail="Amount must be a positive number")
+    start, _e = _month_range((payload.get("month") or "").strip())
+    a = PayoutAdjustment(teacher_id=tid, month=start.strftime("%Y-%m"), kind=kind,
+                         amount=amount, note=(payload.get("note") or "").strip()[:200] or None)
+    db.add(a)
+    db.commit()
+    return {"message": "Adjustment added", "id": a.id}
+
+@router.delete("/payout-adjust/{aid}")
+def admin_delete_adjustment(aid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import PayoutAdjustment
+    a = db.query(PayoutAdjustment).filter(PayoutAdjustment.id == aid).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Adjustment not found")
+    db.delete(a)
+    db.commit()
+    return {"message": "Adjustment removed"}
+
+
+# ===== EXAM / TEST TRACKER (subject-wise, all teachers) =====
+_EXAM_COLS_READY_ADMIN = False
+
+def _ensure_exam_columns(db):
+    """Add scheduled_at / attempted / skipped columns on first use (MySQL/Postgres/SQLite).
+    Runs once per process; every ALTER is best-effort so existing databases upgrade themselves."""
+    global _EXAM_COLS_READY_ADMIN
+    if _EXAM_COLS_READY_ADMIN:
+        return
+    from sqlalchemy import text as _text
+    stmts = [
+        ("ALTER TABLE exams ADD COLUMN scheduled_at DATETIME NULL",
+         "ALTER TABLE exams ADD COLUMN scheduled_at TIMESTAMP NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN attempted JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN attempted TEXT NULL"),
+        ("ALTER TABLE exam_attempts ADD COLUMN skipped JSON NULL",
+         "ALTER TABLE exam_attempts ADD COLUMN skipped TEXT NULL"),
+        # Public shareable-test columns — model me ye hain, isliye admin Tests Tracker
+        # ka `db.query(Exam)` inke bina "Unknown column" 500 deta tha. Yahin self-heal.
+        ("ALTER TABLE exams ADD COLUMN public_field_config TEXT NULL",
+         "ALTER TABLE exams ADD COLUMN public_field_config TEXT"),
+        ("ALTER TABLE exams ADD COLUMN public_views INT DEFAULT 0",
+         "ALTER TABLE exams ADD COLUMN public_views INTEGER DEFAULT 0"),
+    ]
+    for group in stmts:
+        for st in group:
+            try:
+                db.execute(_text(st))
+                db.commit()
+                break
+            except Exception:
+                db.rollback()
+    _EXAM_COLS_READY_ADMIN = True
+
+
+@router.get("/exams")
+def admin_exams(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """All tests across teachers with submission tracking (for the admin Tests Tracker)."""
+    _ensure_exam_columns(db)
+    try:
+        from teacher_routes import _exam_sig as _esig
+    except Exception:
+        _esig = lambda e: str(getattr(e, "id", ""))
+    rows = db.query(Exam).filter(Exam.is_active == True).order_by(Exam.created_at.desc()).all()
+    out = []
+    for e in rows:
+        nq = db.query(ExamQuestion).filter(ExamQuestion.exam_id == e.id).count()
+        na = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id).count()
+        ng = db.query(ExamAttempt).filter(ExamAttempt.exam_id == e.id,
+                                          ExamAttempt.status == "graded").count()
+        out.append({"id": e.id, "title": e.title, "subject": e.subject, "chapter": e.chapter,
+                    "teacher_name": e.teacher_name, "test_type": e.test_type, "medium": e.medium,
+                    "class_name": getattr(e, "class_name", "") or "",
+                    "group_key": _esig(e),
+                    "total_marks": e.total_marks, "duration_min": e.duration_min,
+                    "questions": nq, "attempts": na, "graded": ng,
+                    "batch_id": getattr(e, "batch_id", None),
+                    "scheduled_at": e.scheduled_at.isoformat() if getattr(e, "scheduled_at", None) else None,
+                    "created_at": e.created_at.isoformat() if e.created_at else None})
+    return out
+
+
+def _adm_blabel(bid, bmap):
+    """Batch id -> label (Name — Session); duplicate batch records with the same label collapse."""
+    nm, se = bmap.get(bid, ("", ""))
+    lab = nm if not se or (se.lower() in (nm or "").lower()) else (nm + " — " + se)
+    return lab or "All students"
+
+
+def _adm_exam_group_exams(db, ids_csv):
+    """All active Exams for the given comma-separated ids (the copies of one test). No owner filter."""
+    try:
+        id_list = [int(x) for x in str(ids_csv or "").split(",") if str(x).strip()]
+    except Exception:
+        id_list = []
+    if not id_list:
+        return []
+    return db.query(Exam).filter(Exam.id.in_(id_list), Exam.is_active == True).all()
+
+
+@router.get("/exam-group/ranking")
+def admin_exam_group_ranking(ids: str = "", batch: int = 0,
+                             db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Aggregated ranking across ALL batch-copies of one test (highest marks = rank 1),
+    each row tagged with its batch. Optional ?batch= narrows to one batch."""
+    from models import StudentProfile
+    try:
+        from teacher_routes import _exam_batch_meta as _bmeta
+    except Exception:
+        _bmeta = None
+    exams = _adm_exam_group_exams(db, ids)
+    if not exams:
+        raise HTTPException(404, "Test not found")
+    if _bmeta:
+        bmeta, bmap = _bmeta(db, exams)
+    else:
+        from models import Batch
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        bmeta = []
+    exam_batch = {e.id: getattr(e, "batch_id", None) for e in exams}
+    sel_label = _adm_blabel(batch, bmap) if batch else None
+    use_ids = [e.id for e in exams if (not sel_label or _adm_blabel(getattr(e, "batch_id", None), bmap) == sel_label)]
+    atts = (db.query(ExamAttempt)
+            .filter(ExamAttempt.exam_id.in_(use_ids), ExamAttempt.status == "graded").all())
+    sids = {a.student_id for a in atts}
+    sp_map = {}
+    if sids:
+        for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
+            sp_map[sp.id] = sp
+    rows = []
+    for a in atts:
+        sp = sp_map.get(a.student_id)
+        nm = a.student_name or ((sp.user.name if sp and sp.user else "") or "Student")
+        bid = exam_batch.get(a.exam_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        rows.append({"student_id": a.student_id, "name": nm,
+                     "marks": round(float(a.total_awarded or 0), 1),
+                     "class_name": ((sp.class_name if sp else "") or ""),
+                     "batch": (blab or "All students")})
+    rows.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+    rep = exams[0]
+    return {"exam": {"title": rep.title or "Test", "subject": rep.subject or "",
+                     "chapter": rep.chapter or "", "class_name": getattr(rep, "class_name", "") or "",
+                     "total_marks": rep.total_marks, "test_type": rep.test_type},
+            "batches": bmeta, "graded": len(rows), "rows": rows}
+
+
+@router.get("/exam/{exam_id}/students")
+def admin_exam_students(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Tests Tracker drill-down: ek test ke saare students status-wise (submitted / evaluated /
+    pending) — naam, phone, class, batch sahit — taaki admin teacher ko follow-up kar sake."""
+    _ensure_exam_columns(db)
+    from models import StudentProfile, User as _U
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    atts = (db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id)
+            .order_by(ExamAttempt.submitted_at.desc()).all())
+    sids = {a.student_id for a in atts}
+    smap = {}
+    if sids:
+        for _sid, _nm, _ph, _cl, _bn in (db.query(StudentProfile.id, _U.name, StudentProfile.phone,
+                                                   StudentProfile.class_level, StudentProfile.batch_name)
+                                          .join(_U, _U.id == StudentProfile.user_id)
+                                          .filter(StudentProfile.id.in_(list(sids))).all()):
+            smap[_sid] = {"name": _nm or ("Student #%d" % _sid), "phone": _ph or "",
+                          "class_level": _cl or "", "batch": _bn or ""}
+    students = []
+    for a in atts:
+        info = smap.get(a.student_id, {})
+        students.append({"attempt_id": a.id, "student_id": a.student_id,
+                         "name": info.get("name", "Student"), "phone": info.get("phone", ""),
+                         "class_level": info.get("class_level", ""), "batch": info.get("batch", ""),
+                         "status": ("evaluated" if a.status == "graded" else "pending"),
+                         "score": (a.total_awarded if a.status == "graded" else None),
+                         "submitted_at": (a.submitted_at.isoformat() if a.submitted_at else None)})
+    na = len(atts)
+    ng = sum(1 for a in atts if a.status == "graded")
+    return {"exam": {"id": ex.id, "title": ex.title, "subject": ex.subject,
+                     "teacher_name": ex.teacher_name, "total_marks": ex.total_marks,
+                     "test_type": ex.test_type, "attempts": na, "graded": ng, "pending": max(0, na - ng)},
+            "students": students}
+
+
+# ===== ORPHAN DATA CLEANUP (content left behind by deleted teachers) =====
+_ORPHAN_SQL = "teacher_id IS NOT NULL AND teacher_id NOT IN (SELECT id FROM teacher_profiles)"
+
+def _orphan_counts(db):
+    def c(sql):
+        try:
+            return int(db.execute(_sqltext(sql)).scalar() or 0)
+        except Exception:
+            db.rollback()
+            return 0
+    return {
+        "tests": c("SELECT COUNT(*) FROM exams WHERE " + _ORPHAN_SQL),
+        "lectures": c("SELECT COUNT(*) FROM lectures WHERE " + _ORPHAN_SQL),
+        "timetables": c("SELECT COUNT(*) FROM timetables WHERE " + _ORPHAN_SQL),
+        "dpp_submissions": c("SELECT COUNT(*) FROM dpp_submissions WHERE dpp_id NOT IN (SELECT id FROM dpps)"),
+        "test_submissions": c("SELECT COUNT(*) FROM test_submissions WHERE test_id NOT IN (SELECT id FROM tests)"),
+    }
+
+_ORPHAN_DELETE_STMTS = [
+    "DELETE FROM exam_results WHERE attempt_id IN (SELECT id FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + "))",
+    "DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM exam_questions WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM exam_views WHERE exam_id IN (SELECT id FROM exams WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM exams WHERE " + _ORPHAN_SQL,
+    "DELETE FROM lecture_questions WHERE lecture_id IN (SELECT id FROM lectures WHERE " + _ORPHAN_SQL + ")",
+    "DELETE FROM lectures WHERE " + _ORPHAN_SQL,
+    "DELETE FROM timetables WHERE " + _ORPHAN_SQL,
+    "DELETE FROM teacher_attendance WHERE " + _ORPHAN_SQL,
+    "DELETE FROM teacher_contracts WHERE " + _ORPHAN_SQL,
+    "DELETE FROM payout_adjustments WHERE " + _ORPHAN_SQL,
+    "DELETE FROM dpp_submissions WHERE dpp_id NOT IN (SELECT id FROM dpps)",
+    "DELETE FROM test_submissions WHERE test_id NOT IN (SELECT id FROM tests)",
+]
+
+@router.get("/orphan-data/summary")
+def orphan_data_summary(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """How much leftover content exists from teachers that no longer exist."""
+    counts = _orphan_counts(db)
+    return {"counts": counts, "total": sum(counts.values())}
+
+@router.post("/orphan-data/cleanup")
+def orphan_data_cleanup(db: Session = Depends(get_db), _=Depends(get_admin)):
+    """One click: remove every leftover item (tests, lectures, timetables, orphan
+    submissions) uploaded by teachers whose accounts have been deleted."""
+    counts = _orphan_counts(db)
+    if sum(counts.values()):
+        for sql in _ORPHAN_DELETE_STMTS:
+            try:
+                db.execute(_sqltext(sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+    return {"removed": counts, "total": sum(counts.values())}
+
+
+# ===== DPP RANKINGS — admin: sab packs + submission counts =====
+@router.get("/dpp-rankings")
+def admin_dpp_rankings(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import DppPack, DppAnswer, DppEvent, TeacherProfile, User as _U
+    try:
+        from teacher_routes import _dpp_sig as _dsig
+    except Exception:
+        _dsig = lambda pk: str(getattr(pk, "id", ""))
+    packs = db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).order_by(DppPack.created_at.desc()).all()
+    out = []
+    for pk in packs:
+        subs = (db.query(DppAnswer)
+                .filter(DppAnswer.pack_id == pk.id, DppAnswer.status != "staged")
+                .all())
+        checked = sum(1 for a in subs if a.status == "checked")
+        tname = ""
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == pk.teacher_id).first()
+        if tp and tp.user_id:
+            u = db.query(_U).filter(_U.id == tp.user_id).first()
+            tname = u.name if u else ""
+        if not subs and not tname:
+            tname = ""
+        out.append({"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
+                    "chapter": pk.chapter or "", "part": pk.part or "",
+                    "class_name": getattr(pk, "class_name", "") or "",
+                    "medium": pk.medium or "", "source": pk.source or "",
+                    "teacher": tname,
+                    "teacher_id": pk.teacher_id,
+                    "batch_id": getattr(pk, "batch_id", None),
+                    "group_key": _dsig(pk),
+                    "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else "",
+                    "submitted": len(subs), "checked": checked,
+                    "pending": len(subs) - checked,
+                    "views": (db.query(DppEvent.student_id)
+                              .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
+                              .distinct().count()),
+                    "downloads": (db.query(DppEvent.student_id)
+                                  .filter(DppEvent.pack_id == pk.id, DppEvent.event == "download")
+                                  .distinct().count())})
+    return {"packs": out}
+
+
+@router.get("/dpp-packs/{pack_id}/ranking")
+def admin_dpp_ranking(pack_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ranking rows — same details as teacher (names clickable)."""
+    from models import DppPack, DppAnswer, StudentProfile, User as _U2
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id == pack_id, DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
+    out = []
+    for i, a in enumerate(rows):
+        srow = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
+        nm = ""
+        if srow:
+            u = db.query(_U2).filter(_U2.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        nm = nm or f"Student #{a.student_id}"
+        out.append({"rank": i + 1, "name": nm, "student_id": a.student_id,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "checked_at": a.checked_at.strftime("%d %b %Y, %I:%M %p") if a.checked_at else "",
+                    "checked_by": a.checked_by or "",
+                    "remarks": a.remarks or "",
+                    "filename": a.filename or "",
+                    "class_name": (srow.class_name if srow else "") or "",
+                    "phone": (srow.phone if srow else "") or ""})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
+                     "chapter": pk.chapter or "", "part": pk.part or "",
+                     "class_name": getattr(pk, "class_name", "") or ""},
+            "count": len(out), "rows": out}
+
+
+def _adm_dpp_group_packs(db, ids_csv):
+    """All DppPacks for the given comma-separated ids (the copies of one DPP). No owner filter
+    — admin sees every batch-copy."""
+    from models import DppPack
+    try:
+        id_list = [int(x) for x in str(ids_csv or "").split(",") if str(x).strip()]
+    except Exception:
+        id_list = []
+    if not id_list:
+        return []
+    return db.query(DppPack).filter(DppPack.id.in_(id_list)).all()
+
+
+@router.get("/dpp-group/ranking")
+def admin_dpp_group_ranking(ids: str = "", batch: int = 0,
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Aggregated ranking across ALL batch-copies of one DPP (earliest submit = rank 1),
+    each row tagged with the student's batch. Optional ?batch= narrows to one batch."""
+    from models import DppAnswer, StudentProfile, User as _U
+    try:
+        from teacher_routes import _dpp_batch_meta as _bmeta
+    except Exception:
+        _bmeta = None
+    packs = _adm_dpp_group_packs(db, ids)
+    if not packs:
+        raise HTTPException(404, "DPP not found")
+    if _bmeta:
+        bmeta, bmap = _bmeta(db, packs)
+    else:
+        from models import Batch
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        bmeta = []
+    pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
+    sel_label = _adm_blabel(batch, bmap) if batch else None
+    use_ids = [p.id for p in packs if (not sel_label or _adm_blabel(getattr(p, "batch_id", None), bmap) == sel_label)]
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
+    sids = {a.student_id for a in rows}
+    name_map, cls_map, ph_map = {}, {}, {}
+    if sids:
+        for sp, nm in (db.query(StudentProfile, _U.name)
+                       .join(_U, _U.id == StudentProfile.user_id)
+                       .filter(StudentProfile.id.in_(sids)).all()):
+            name_map[sp.id] = nm or ("Student #%d" % sp.id)
+            cls_map[sp.id] = (sp.class_name or "")
+            ph_map[sp.id] = (sp.phone or "")
+    out = []
+    for i, a in enumerate(rows):
+        bid = pack_batch.get(a.pack_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"rank": i + 1, "name": name_map.get(a.student_id, "Student #%d" % a.student_id),
+                    "student_id": a.student_id,
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+                    "status": a.status or "submitted",
+                    "class_name": cls_map.get(a.student_id, ""),
+                    "batch": (blab or "All students"),
+                    "phone": ph_map.get(a.student_id, "")})
+    rep = packs[0]
+    return {"pack": {"title": rep.title or "DPP", "subject": rep.subject or "",
+                     "chapter": rep.chapter or "", "part": rep.part or "",
+                     "class_name": getattr(rep, "class_name", "") or ""},
+            "batches": bmeta, "count": len(out), "rows": out}
+
+
+@router.get("/dpp-group/answers")
+def admin_dpp_group_answers(ids: str = "", batch: int = 0,
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Aggregated submissions across all batch-copies of one DPP, each tagged with its batch.
+    Optional ?batch= narrows to one batch."""
+    from models import DppAnswer, StudentProfile, User as _U
+    try:
+        from teacher_routes import _dpp_batch_meta as _bmeta
+    except Exception:
+        _bmeta = None
+    packs = _adm_dpp_group_packs(db, ids)
+    if not packs:
+        raise HTTPException(404, "DPP not found")
+    if _bmeta:
+        bmeta, bmap = _bmeta(db, packs)
+    else:
+        from models import Batch
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        bmeta = []
+    pack_batch = {p.id: getattr(p, "batch_id", None) for p in packs}
+    sel_label = _adm_blabel(batch, bmap) if batch else None
+    use_ids = [p.id for p in packs if (not sel_label or _adm_blabel(getattr(p, "batch_id", None), bmap) == sel_label)]
+    rows = (db.query(DppAnswer)
+            .filter(DppAnswer.pack_id.in_(use_ids), DppAnswer.status != "staged")
+            .order_by(DppAnswer.submitted_at.desc()).all())
+    sids = {a.student_id for a in rows}
+    name_map, cls_map = {}, {}
+    if sids:
+        for sp, nm in (db.query(StudentProfile, _U.name)
+                       .join(_U, _U.id == StudentProfile.user_id)
+                       .filter(StudentProfile.id.in_(sids)).all()):
+            name_map[sp.id] = nm or ("Student #%d" % sp.id)
+            cls_map[sp.id] = (sp.class_level or "")
+    out = []
+    for a in rows:
+        bid = pack_batch.get(a.pack_id)
+        bn, se = bmap.get(bid, ("", ""))
+        blab = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append({"id": a.id, "pack_id": a.pack_id,
+                    "student": name_map.get(a.student_id, "Student #%d" % a.student_id),
+                    "class_level": cls_map.get(a.student_id, ""),
+                    "batch": (blab or "All students"),
+                    "filename": a.filename, "status": a.status, "remarks": a.remarks,
+                    "allow_resubmit": bool(getattr(a, "allow_resubmit", False)),
+                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else None,
+                    "checked_at": a.checked_at.strftime("%d %b %Y") if a.checked_at else None})
+    return {"batches": bmeta, "count": len(out), "answers": out}
+
+
+@router.get("/dpp-packs/{pack_id}/track-list")
+def admin_dpp_track_list(pack_id: int, event: str = "view",
+                         db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import DppPack, DppEvent, StudentProfile, User as _U3
+    pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
+    if not pk:
+        raise HTTPException(404, "DPP pack not found")
+    ev = (event or "view").lower()
+    if ev not in ("view", "download"):
+        raise HTTPException(400, "event must be 'view' or 'download'")
+    rows = (db.query(DppEvent)
+            .filter(DppEvent.pack_id == pack_id, DppEvent.event == ev)
+            .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all())
+    seen = set()
+    out = []
+    for e in rows:
+        if e.student_id in seen:
+            continue
+        seen.add(e.student_id)
+        nm = ""
+        srow = db.query(StudentProfile).filter(StudentProfile.id == e.student_id).first()
+        if srow:
+            u = db.query(_U3).filter(_U3.id == srow.user_id).first()
+            nm = (u.name if u else "") or ""
+        out.append({"name": nm or f"Student #{e.student_id}",
+                    "at": e.created_at.strftime("%d %b %Y, %I:%M %p") if e.created_at else ""})
+    return {"pack": {"id": pk.id, "title": pk.title or "DPP"},
+            "event": ev, "count": len(out), "rows": out}
+
+
+# =====================================================================
+# SECURE PAYOUT ACCESS  (spec V3 PART 52-56) — server-side passcode gate
+# =====================================================================
+# The Payout/Payroll module needs more than a normal admin login. Admin must
+# unlock it with a passcode (hashed server-side). Set ONCE; forgot-reset needs a
+# verify number; too many wrong tries -> temporary lockout. On unlock the admin
+# gets a short-lived "payout access" token (15 min) that payout APIs will require.
+from security import verify_password as _pa_verify, create_access_token as _pa_mktok, decode_token as _pa_detok
+from datetime import timedelta as _pa_td, datetime as _pa_dt
+
+_PA_MAX_FAILS = 5
+_PA_LOCK_MIN = 15          # lockout minutes after max fails
+_PA_SESSION_MIN = 15       # payout access session length (inactivity handled client-side)
+
+
+def _pa_row(db):
+    from models import PayoutAccess
+    r = db.query(PayoutAccess).filter(PayoutAccess.id == 1).first()
+    return r
+
+
+def _pa_locked(r):
+    if r and r.locked_until and r.locked_until > _pa_dt.utcnow():
+        return int((r.locked_until - _pa_dt.utcnow()).total_seconds())
+    return 0
+
+
+def get_payout_admin(request: Request, current_user=Depends(get_admin)):
+    """Dependency for payout APIs: normal admin PLUS a valid, unexpired payout token
+    (sent as header X-Payout-Token). Fails 428 if the module is not unlocked."""
+    tok = request.headers.get("X-Payout-Token") or request.query_params.get("ptoken") or ""
+    if not tok:
+        raise HTTPException(status_code=428, detail="Payout locked — unlock required")
+    try:
+        payload = _pa_detok(tok)
+    except Exception:
+        raise HTTPException(status_code=428, detail="Payout session expired — unlock again")
+    if payload.get("scope") != "payout" or str(payload.get("sub")) != str(current_user.id):
+        raise HTTPException(status_code=428, detail="Payout session invalid — unlock again")
+    return current_user
+
+
+@router.get("/payout/access-status")
+def payout_access_status(db: Session = Depends(get_db), _=Depends(get_admin)):
+    r = _pa_row(db)
+    locked = _pa_locked(r)
+    try:
+        _bio = bool(r and r.webauthn_creds and _wjson.loads(r.webauthn_creds))
+    except Exception:
+        _bio = False
+    return {
+        "configured": bool(r and r.passcode_hash),
+        "locked": locked > 0,
+        "locked_seconds": locked,
+        "attempts_left": max(0, _PA_MAX_FAILS - (r.failed_attempts if r else 0)),
+        "session_minutes": _PA_SESSION_MIN,
+        "has_biometric": _bio,
+    }
+
+
+@router.post("/payout/setup")
+def payout_setup(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Set the passcode ONCE. Fails if already configured (nobody can silently change it)."""
+    from models import PayoutAccess
+    r = _pa_row(db)
+    if r and r.passcode_hash:
+        raise HTTPException(400, "Payout passcode is already set. Use Forgot to reset it.")
+    pc = str(payload.get("passcode") or "").strip()
+    phone = "".join(ch for ch in str(payload.get("verify_phone") or "") if ch.isdigit())
+    if len(pc) < 4:
+        raise HTTPException(400, "Passcode must be at least 4 characters.")
+    if len(phone) < 10:
+        raise HTTPException(400, "A valid 10-digit verify number is required (for forgot-reset).")
+    if not r:
+        r = PayoutAccess(id=1)
+        db.add(r)
+    r.passcode_hash = hash_password(pc)
+    r.verify_phone = phone[-10:]
+    r.set_by = current_user.id
+    r.set_at = _pa_dt.utcnow()
+    r.failed_attempts = 0
+    r.locked_until = None
+    db.commit()
+    return {"ok": True, "message": "Payout passcode set. Keep it safe — it cannot be changed without the verify number."}
+
+
+@router.post("/payout/unlock")
+def payout_unlock(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    r = _pa_row(db)
+    if not r or not r.passcode_hash:
+        raise HTTPException(400, "Payout passcode not set yet.")
+    locked = _pa_locked(r)
+    if locked > 0:
+        raise HTTPException(423, "Too many wrong attempts. Locked for %d more seconds." % locked)
+    pc = str(payload.get("passcode") or "")
+    if not _pa_verify(pc, r.passcode_hash):
+        r.failed_attempts = (r.failed_attempts or 0) + 1
+        if r.failed_attempts >= _PA_MAX_FAILS:
+            r.locked_until = _pa_dt.utcnow() + _pa_td(minutes=_PA_LOCK_MIN)
+            r.failed_attempts = 0
+            db.commit()
+            raise HTTPException(423, "Too many wrong attempts. Payout locked for %d minutes." % _PA_LOCK_MIN)
+        left = _PA_MAX_FAILS - r.failed_attempts
+        db.commit()
+        raise HTTPException(401, "Wrong passcode. %d attempt(s) left." % left)
+    # success
+    r.failed_attempts = 0
+    r.locked_until = None
+    db.commit()
+    token = _pa_mktok({"sub": str(current_user.id), "scope": "payout"},
+                      expires_delta=_pa_td(minutes=_PA_SESSION_MIN))
+    return {"ok": True, "payout_token": token, "session_minutes": _PA_SESSION_MIN}
+
+
+@router.post("/payout/reset")
+def payout_reset(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Forgot-reset: only works if the verify number matches the one set at setup."""
+    r = _pa_row(db)
+    if not r or not r.passcode_hash:
+        raise HTTPException(400, "Payout passcode not set yet — use Setup.")
+    phone = "".join(ch for ch in str(payload.get("verify_phone") or "") if ch.isdigit())[-10:]
+    new_pc = str(payload.get("new_passcode") or "").strip()
+    if phone != (r.verify_phone or ""):
+        raise HTTPException(401, "Verify number does not match. Reset denied.")
+    if len(new_pc) < 4:
+        raise HTTPException(400, "New passcode must be at least 4 characters.")
+    r.passcode_hash = hash_password(new_pc)
+    r.set_by = current_user.id
+    r.set_at = _pa_dt.utcnow()
+    r.failed_attempts = 0
+    r.locked_until = None
+    db.commit()
+    token = _pa_mktok({"sub": str(current_user.id), "scope": "payout"},
+                      expires_delta=_pa_td(minutes=_PA_SESSION_MIN))
+    return {"ok": True, "payout_token": token, "message": "Passcode reset successfully."}
+
+
+# =====================================================================
+# PAYOUT AUDIT TRAIL (append-only) + DEDUCTION REVIEW LIFECYCLE (spec V3)
+# =====================================================================
+def _pay_audit(db, entity_type, entity_id, action, actor_id, actor_role,
+               detail="", teacher_id=None, month=None):
+    """Immutable audit line. Sirf insert (kabhi update/delete nahi)."""
+    from models import PayoutAudit
+    try:
+        db.add(PayoutAudit(entity_type=entity_type, entity_id=entity_id, action=action,
+                           actor_id=actor_id, actor_role=actor_role, detail=(detail or "")[:1000],
+                           teacher_id=teacher_id, month=month))
+    except Exception:
+        pass
+
+
+_DED_CATEGORIES = {"manual", "class_delay", "doubt_sla", "notes_delay", "reschedule", "task_delay"}
+
+
+def _ded_out(db, d):
+    from models import TeacherProfile
+    nm = ""
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
+        # P11: name User par hota hai (TeacherProfile.name nahi) — warna AttributeError se naam gayab.
+        nm = ((tp.user.name if (tp and tp.user) else "") or "")
+    except Exception:
+        pass
+    return {
+        "id": d.id, "teacher_id": d.teacher_id, "teacher_name": nm,
+        "month": d.month, "category": d.category, "amount": d.amount,
+        "final_amount": d.final_amount, "reason": d.reason or "", "status": d.status,
+        "issue_text": d.issue_text or "", "admin_response": d.admin_response or "",
+        "created_at": d.created_at.strftime("%d %b %Y, %I:%M %p") if d.created_at else "",
+        "issue_at": d.issue_at.strftime("%d %b %Y, %I:%M %p") if d.issue_at else "",
+        "resolved_at": d.resolved_at.strftime("%d %b %Y, %I:%M %p") if d.resolved_at else "",
+    }
+
+
+@router.get("/payout-deductions")
+def payout_deductions_list(month: str = "", teacher_id: int = 0, status: str = "",
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: saari deductions (filter by month / teacher / status)."""
+    from models import DeductionReview
+    q = db.query(DeductionReview)
+    if month:
+        q = q.filter(DeductionReview.month == month)
+    if teacher_id:
+        q = q.filter(DeductionReview.teacher_id == teacher_id)
+    if status:
+        q = q.filter(DeductionReview.status == status)
+    rows = q.order_by(DeductionReview.created_at.desc()).all()
+    out = [_ded_out(db, d) for d in rows]
+    pending_issues = sum(1 for d in rows if d.status == "issue_raised")
+    return {"deductions": out, "count": len(out), "pending_issues": pending_issues}
+
+
+@router.post("/payout-deduction")
+def payout_deduction_create(payload: dict = Body(...), db: Session = Depends(get_db),
+                            current_user=Depends(get_admin)):
+    """Admin: nayi deduction propose karo -> status 'reviewing' (abhi apply nahi hoti)."""
+    from models import DeductionReview, TeacherProfile
+    tid = int(payload.get("teacher_id") or 0)
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    amount = int(payload.get("amount") or 0)
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be greater than 0.")
+    month = (payload.get("month") or "").strip() or datetime.now().strftime("%Y-%m")
+    category = (payload.get("category") or "manual").strip()
+    if category not in _DED_CATEGORIES:
+        category = "manual"
+    reason = (payload.get("reason") or "").strip()[:300]
+    d = DeductionReview(teacher_id=tid, month=month, category=category, amount=amount,
+                        reason=reason, status="reviewing", created_by=current_user.id)
+    db.add(d)
+    db.flush()
+    _pay_audit(db, "deduction_review", d.id, "created", current_user.id, "admin",
+               "Proposed Rs %d (%s): %s" % (amount, category, reason), teacher_id=tid, month=month)
+    # notify teacher (confidential — amount teacher ko apni deduction me dikhta hai, leaderboard me nahi)
+    try:
+        if tp.user_id:
+            notify(db, tp.user_id, "Deduction under review",
+                   "A deduction of Rs %d is under review for %s. You may raise an issue if you disagree." % (amount, month),
+                   "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "deduction": _ded_out(db, d)}
+
+
+@router.post("/payout-deduction/{did}/resolve")
+def payout_deduction_resolve(did: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                             current_user=Depends(get_admin)):
+    """Admin: issue/review resolve karo -> approve | reject | modify."""
+    from models import DeductionReview, TeacherProfile
+    d = db.query(DeductionReview).filter(DeductionReview.id == did).first()
+    if not d:
+        raise HTTPException(404, "Deduction not found.")
+    if d.status in ("finalized", "rejected"):
+        raise HTTPException(400, "This deduction is already resolved.")
+    action = (payload.get("action") or "").strip().lower()
+    note = (payload.get("admin_response") or "").strip()[:1000]
+    if action == "approve":
+        d.final_amount = d.amount
+        d.status = "finalized"
+        aud = "approved"
+    elif action == "reject":
+        d.final_amount = 0
+        d.status = "rejected"
+        aud = "rejected"
+    elif action == "modify":
+        new_amt = int(payload.get("final_amount") or 0)
+        if new_amt <= 0:
+            raise HTTPException(400, "Modified amount must be greater than 0 (use Reject to cancel).")
+        d.final_amount = new_amt
+        d.status = "finalized"
+        aud = "modified"
+    else:
+        raise HTTPException(400, "action must be approve, reject, or modify.")
+    d.admin_response = note
+    d.resolved_by = current_user.id
+    d.resolved_at = datetime.now()
+    _pay_audit(db, "deduction_review", d.id, aud, current_user.id, "admin",
+               "%s -> final Rs %s. %s" % (aud, d.final_amount, note), teacher_id=d.teacher_id, month=d.month)
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first()
+        if tp and tp.user_id:
+            msg = {"approved": "A deduction of Rs %d has been confirmed for %s." % (d.final_amount or 0, d.month),
+                   "modified": "A deduction has been revised to Rs %d for %s." % (d.final_amount or 0, d.month),
+                   "rejected": "A deduction under review for %s has been cancelled." % d.month}.get(aud, "Deduction updated.")
+            notify(db, tp.user_id, "Deduction " + aud, msg, "payout")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "deduction": _ded_out(db, d)}
+
+
+@router.get("/payout-audit")
+def payout_audit_list(teacher_id: int = 0, month: str = "", limit: int = 100,
+                      db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: audit trail (read-only)."""
+    from models import PayoutAudit
+    q = db.query(PayoutAudit)
+    if teacher_id:
+        q = q.filter(PayoutAudit.teacher_id == teacher_id)
+    if month:
+        q = q.filter(PayoutAudit.month == month)
+    rows = q.order_by(PayoutAudit.created_at.desc()).limit(min(500, max(1, limit))).all()
+    return {"audit": [{
+        "id": r.id, "entity_type": r.entity_type, "entity_id": r.entity_id,
+        "teacher_id": r.teacher_id, "month": r.month, "action": r.action,
+        "actor_role": r.actor_role, "detail": r.detail or "",
+        "at": r.created_at.strftime("%d %b %Y, %I:%M %p") if r.created_at else "",
+    } for r in rows]}
+
+
+# ---- Doubt SLA (hours) — admin configurable (spec: kahin hard-code nahi) ----
+@router.get("/doubt-sla")
+def doubt_sla_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import perf_config as _pc
+    cfg = _pc.get_perf_config(db)
+    return {"doubt_sla_hours": cfg.get("doubt_sla_hours", 15)}
+
+
+@router.post("/doubt-sla")
+def doubt_sla_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    import perf_config as _pc
+    try:
+        hrs = float(payload.get("doubt_sla_hours"))
+    except Exception:
+        raise HTTPException(400, "doubt_sla_hours must be a number.")
+    if hrs < 1 or hrs > 240:
+        raise HTTPException(400, "Doubt SLA must be between 1 and 240 hours.")
+    cfg = _pc.save_perf_config(db, {"doubt_sla_hours": hrs})
+    _pay_audit(db, "policy", None, "doubt_sla_changed", current_user.id, "admin",
+               "Doubt SLA set to %s hours" % hrs)
+    db.commit()
+    return {"ok": True, "doubt_sla_hours": cfg.get("doubt_sla_hours", hrs)}
+
+
+# ---- Doubt office hours — average response time sirf office hours ka waqt counts ----
+@router.get("/doubt-office-hours")
+def doubt_office_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import doubt_metrics as _dm
+    return _dm.office_cfg(db)
+
+
+@router.post("/doubt-office-hours")
+def doubt_office_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    import doubt_metrics as _dm
+    try:
+        cfg = _dm.save_office_cfg(db, payload or {})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    _pay_audit(db, "policy", None, "doubt_office_hours_changed", current_user.id, "admin",
+               "Office hours set to %s:00-%s:00 (enabled=%s)" % (cfg["start"], cfg["end"], cfg["enabled"]))
+    db.commit()
+    return {"ok": True, **cfg}
+
+
+# ---- Admin control-room doubt report (today / week / month / custom) ----
+def _doubt_report_label(rng, frm, to):
+    rng = (rng or "").strip().lower()
+    if rng == "custom":
+        return "%s to %s" % (frm or "?", to or "?")
+    return {"today": "Today", "day": "Today", "week": "Last 7 days", "weekly": "Last 7 days",
+            "month": "Last 30 days", "monthly": "Last 30 days", "": "All time",
+            "all": "All time"}.get(rng, rng.title())
+
+
+def _parse_teachers(teachers):
+    if not teachers:
+        return None
+    return [t for t in (teachers.split("|") if "|" in teachers else teachers.split(",")) if t.strip()]
+
+
+@router.get("/doubts-report")
+def admin_doubts_report(range: str = "month", frm: str = "", to: str = "", teachers: str = "",
+                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    import mvs_services as MS
+    import doubt_report as DR
+    start, end = MS.utc_bounds(range, frm, to)
+    return DR.report_data(db, start, end, _doubt_report_label(range, frm, to),
+                          only_teachers=_parse_teachers(teachers))
+
+
+@router.get("/doubts-report.pdf")
+def admin_doubts_report_pdf(range: str = "month", frm: str = "", to: str = "", teachers: str = "",
+                            db: Session = Depends(get_db), _=Depends(get_admin)):
+    import mvs_services as MS
+    import doubt_report as DR
+    start, end = MS.utc_bounds(range, frm, to)
+    label = _doubt_report_label(range, frm, to)
+    data = DR.report_data(db, start, end, label, only_teachers=_parse_teachers(teachers))
+    pdf = DR.report_pdf(db, data, label)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=doubt_report.pdf"})
+
+
+# =====================================================================
+# BIOMETRIC (WebAuthn) UNLOCK FALLBACK for Payout — additive to passcode
+# =====================================================================
+# Passcode ALWAYS works. Biometric is an optional extra: admin ek baar apna
+# device (face/fingerprint) register karta hai (passcode se unlock hone ke baad),
+# fir agli baar face/fingerprint se bhi unlock kar sakta hai. Server-side verify
+# hota hai (webauthn library). Library na ho to endpoints clean 503 dete hain —
+# app aur passcode bilkul unaffected.
+import base64 as _b64, json as _wjson
+
+
+def _wa_lib():
+    try:
+        import webauthn as _wa
+        return _wa
+    except Exception:
+        raise HTTPException(503, "Biometric not enabled on the server. Add 'webauthn' to requirements.txt.")
+
+
+def _b64u_e(b):
+    return _b64.urlsafe_b64encode(b).decode().rstrip("=")
+
+
+def _b64u_d(s):
+    s = s or ""
+    s += "=" * (-len(s) % 4)
+    return _b64.urlsafe_b64decode(s.encode())
+
+
+def _wa_origin_rp(request: Request):
+    from urllib.parse import urlparse
+    origin = request.headers.get("origin") or ""
+    if not origin:
+        host = request.headers.get("host") or "app.mvsfoundation.in"
+        origin = "https://" + host
+    rp_id = urlparse(origin).hostname or "app.mvsfoundation.in"
+    return origin, rp_id
+
+
+def _wa_creds(row):
+    try:
+        return _wjson.loads(row.webauthn_creds) if row and row.webauthn_creds else []
+    except Exception:
+        return []
+
+
+@router.post("/payout/biometric/register-begin")
+def payout_bio_register_begin(request: Request, db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Device register karne ke options. Sirf UNLOCKED payout session me (passcode ke baad)."""
+    _require_payout_token(request, current_user)   # passcode se unlocked hona zaroori
+    wa = _wa_lib()
+    from webauthn import generate_registration_options, options_to_json
+    from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, UserVerificationRequirement,
+                                          AuthenticatorAttachment, ResidentKeyRequirement, PublicKeyCredentialDescriptor)
+    r = _pa_row(db)
+    if not r or not r.passcode_hash:
+        raise HTTPException(400, "Set the passcode first.")
+    origin, rp_id = _wa_origin_rp(request)
+    existing = _wa_creds(r)
+    excl = [PublicKeyCredentialDescriptor(id=_b64u_d(c["id"])) for c in existing]
+    opts = generate_registration_options(
+        rp_id=rp_id, rp_name="MVS Payout", user_name="payout-admin",
+        user_id=str(current_user.id).encode(),
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM,
+            resident_key=ResidentKeyRequirement.DISCOURAGED,
+            user_verification=UserVerificationRequirement.REQUIRED),
+        exclude_credentials=excl)
+    r.reg_challenge = _b64u_e(opts.challenge)
+    db.commit()
+    return _wjson.loads(options_to_json(opts))
+
+
+@router.post("/payout/biometric/register-complete")
+def payout_bio_register_complete(request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    _require_payout_token(request, current_user)
+    _wa_lib()
+    from webauthn import verify_registration_response
+    r = _pa_row(db)
+    if not r or not r.reg_challenge:
+        raise HTTPException(400, "Registration not started.")
+    origin, rp_id = _wa_origin_rp(request)
+    cred = payload.get("credential") or payload
+    try:
+        v = verify_registration_response(credential=_wjson.dumps(cred),
+                                         expected_challenge=_b64u_d(r.reg_challenge),
+                                         expected_rp_id=rp_id, expected_origin=origin)
+    except Exception as e:
+        raise HTTPException(400, "Biometric registration failed: " + str(e)[:120])
+    creds = _wa_creds(r)
+    creds.append({"id": _b64u_e(v.credential_id), "pk": _b64u_e(v.credential_public_key), "sc": v.sign_count})
+    r.webauthn_creds = _wjson.dumps(creds)
+    r.reg_challenge = None
+    _pay_audit(db, "payout_access", None, "biometric_registered", current_user.id, "admin", "Device biometric registered")
+    db.commit()
+    return {"ok": True, "count": len(creds)}
+
+
+@router.post("/payout/biometric/auth-begin")
+def payout_bio_auth_begin(request: Request, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Biometric unlock ke options (koi passcode/token nahi chahiye — ye unlock hi hai)."""
+    _wa_lib()
+    from webauthn import generate_authentication_options, options_to_json
+    from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
+    r = _pa_row(db)
+    creds = _wa_creds(r)
+    if not creds:
+        raise HTTPException(400, "No biometric registered.")
+    origin, rp_id = _wa_origin_rp(request)
+    allow = [PublicKeyCredentialDescriptor(id=_b64u_d(c["id"])) for c in creds]
+    opts = generate_authentication_options(rp_id=rp_id, allow_credentials=allow,
+                                           user_verification=UserVerificationRequirement.REQUIRED)
+    r.auth_challenge = _b64u_e(opts.challenge)
+    db.commit()
+    return _wjson.loads(options_to_json(opts))
+
+
+@router.post("/payout/biometric/auth-complete")
+def payout_bio_auth_complete(request: Request, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    _wa_lib()
+    from webauthn import verify_authentication_response
+    r = _pa_row(db)
+    if not r or not r.auth_challenge:
+        raise HTTPException(400, "Unlock not started.")
+    if _pa_locked(r) > 0:
+        raise HTTPException(423, "Too many attempts. Locked temporarily.")
+    origin, rp_id = _wa_origin_rp(request)
+    cred = payload.get("credential") or payload
+    raw_id = cred.get("id") or cred.get("rawId") or ""
+    creds = _wa_creds(r)
+    match = next((c for c in creds if c["id"] == raw_id), None)
+    if not match:
+        raise HTTPException(400, "Unknown device.")
+    try:
+        v = verify_authentication_response(credential=_wjson.dumps(cred),
+                                           expected_challenge=_b64u_d(r.auth_challenge),
+                                           expected_rp_id=rp_id, expected_origin=origin,
+                                           credential_public_key=_b64u_d(match["pk"]),
+                                           credential_current_sign_count=int(match.get("sc") or 0))
+    except Exception as e:
+        raise HTTPException(401, "Biometric verification failed: " + str(e)[:120])
+    match["sc"] = v.new_sign_count
+    r.webauthn_creds = _wjson.dumps(creds)
+    r.auth_challenge = None
+    r.failed_attempts = 0
+    r.locked_until = None
+    _pay_audit(db, "payout_access", None, "biometric_unlock", current_user.id, "admin", "Unlocked via biometric")
+    db.commit()
+    token = _pa_mktok({"sub": str(current_user.id), "scope": "payout"},
+                      expires_delta=_pa_td(minutes=_PA_SESSION_MIN))
+    return {"ok": True, "payout_token": token, "session_minutes": _PA_SESSION_MIN}
+
+
+# =====================================================================
+# DYNAMIC INCENTIVE ENGINE (spec Part 76-120) — admin side
+# =====================================================================
+import incentive_engine as _ie
+
+_INC_PAYROLL_STATUSES = ("approved", "included_in_payroll", "paid")
+
+
+def _inc_settings(db):
+    from models import AppSetting
+    import json as _j
+    row = db.query(AppSetting).filter(AppSetting.key == "incentive_settings").first()
+    cfg = {"global_cap": 0, "stacking": "allow", "timezone": "Asia/Kolkata"}
+    if row and row.value:
+        try:
+            cfg.update(_j.loads(row.value))
+        except Exception:
+            pass
+    return cfg
+
+
+def _inc_params(r):
+    return {"min_threshold": r.min_threshold, "unit_size": r.unit_size,
+            "unit_reward": r.unit_reward, "tiers": r.tiers or [],
+            "percentage": r.percentage, "target_value": r.target_value,
+            "target_reward": r.target_reward, "max_reward": r.max_reward}
+
+
+def _inc_eligible_teachers(db, r):
+    from models import TeacherProfile, User, UserRole
+    q = db.query(TeacherProfile).join(User, TeacherProfile.user_id == User.id).filter(
+        User.role == UserRole.teacher, User.is_active == True)
+    tps = q.all()
+    et = (r.eligibility_type or "all")
+    ids = r.eligibility_ids or []
+    if et == "teachers" and ids:
+        idset = set(int(x) for x in ids)
+        return [t for t in tps if t.id in idset]
+    if et == "subjects" and ids:
+        want = set(str(x).strip().lower() for x in ids)
+        out = []
+        for t in tps:
+            subs = [str(s).strip().lower() for s in (t.subjects or [])]
+            if want & set(subs):
+                out.append(t)
+        return out
+    return tps
+
+
+def _inc_metric_value(db, r, tp, month):
+    """(value, status). AUTO metric -> portal activity; MANUAL -> recorded value.
+    MANUAL me value na ho to (None, 'analytics_pending') — penalize mat karo."""
+    from models import IncentiveMetricValue
+    metric = r.metric
+    if metric in _ie.AUTO_METRICS:
+        from teacher_routes import _month_activity
+        act = _month_activity(db, tp, month)
+        return float(act.get(_ie.AUTO_METRICS[metric], 0) or 0), "available"
+    mv = db.query(IncentiveMetricValue).filter(
+        IncentiveMetricValue.teacher_id == tp.id,
+        IncentiveMetricValue.metric == metric,
+        IncentiveMetricValue.period == month).first()
+    if not mv or mv.status == "analytics_pending":
+        return None, "analytics_pending"
+    return float(mv.value or 0), "available"
+
+
+def _inc_rule_effective(r, month):
+    ef = r.effective_from or ""
+    eu = r.effective_until or ""
+    if ef and month < ef:
+        return False
+    if eu and month > eu:
+        return False
+    return True
+
+
+def _inc_rule_out(r):
+    return {"id": r.id, "name": r.name, "description": r.description or "", "metric": r.metric,
+            "calc_type": r.calc_type, "period": r.period, "min_threshold": r.min_threshold,
+            "unit_size": r.unit_size, "unit_reward": r.unit_reward, "tiers": r.tiers or [],
+            "percentage": r.percentage, "target_value": r.target_value, "target_reward": r.target_reward,
+            "max_reward": r.max_reward, "eligibility_type": r.eligibility_type,
+            "eligibility_ids": r.eligibility_ids or [], "stacking": r.stacking,
+            "review_mode": r.review_mode, "status": r.status, "version": r.version,
+            "effective_from": r.effective_from or "", "effective_until": r.effective_until or ""}
+
+
+@router.get("/incentive-rules")
+def incentive_rules_list(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveRule
+    rows = db.query(IncentiveRule).filter(IncentiveRule.status != "superseded").order_by(IncentiveRule.id.desc()).all()
+    return {"rules": [_inc_rule_out(r) for r in rows]}
+
+
+def _inc_apply_fields(r, p):
+    r.name = (p.get("name") or "").strip()[:120] or "Incentive"
+    r.description = (p.get("description") or "").strip()[:400]
+    r.metric = (p.get("metric") or "video_views").strip()
+    r.calc_type = (p.get("calc_type") or "per_unit").strip()
+    r.period = (p.get("period") or "monthly").strip()
+    for k in ("min_threshold", "unit_size", "unit_reward", "percentage",
+              "target_value", "target_reward", "max_reward"):
+        try:
+            setattr(r, k, float(p.get(k) or 0))
+        except Exception:
+            setattr(r, k, 0)
+    r.tiers = p.get("tiers") or []
+    r.eligibility_type = (p.get("eligibility_type") or "all").strip()
+    r.eligibility_ids = p.get("eligibility_ids") or []
+    r.stacking = (p.get("stacking") or "allow").strip()
+    r.review_mode = (p.get("review_mode") or "review").strip()
+    r.effective_from = (p.get("effective_from") or "").strip()[:7]
+    r.effective_until = (p.get("effective_until") or "").strip()[:7]
+
+
+@router.post("/incentive-rule")
+def incentive_rule_create(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import IncentiveRule
+    r = IncentiveRule(created_by=current_user.id, version=1)
+    _inc_apply_fields(r, payload)
+    r.status = "active" if (payload.get("status") == "active") else "draft"
+    db.add(r)
+    db.flush()
+    _pay_audit(db, "incentive_rule", r.id, "rule_created", current_user.id, "admin",
+               "Rule '%s' (%s/%s)" % (r.name, r.metric, r.calc_type))
+    db.commit()
+    return {"ok": True, "rule": _inc_rule_out(r)}
+
+
+@router.post("/incentive-rule/{rid}/update")
+def incentive_rule_update(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Edit = NAYI version (spec Part 102): purani rule 'superseded', nayi active.
+    Purana payroll purani rule se juda rehta hai (ledger me rule_version frozen)."""
+    from models import IncentiveRule
+    old = db.query(IncentiveRule).filter(IncentiveRule.id == rid).first()
+    if not old:
+        raise HTTPException(404, "Rule not found.")
+    nr = IncentiveRule(created_by=current_user.id, version=(old.version or 1) + 1,
+                       parent_id=old.parent_id or old.id)
+    _inc_apply_fields(nr, payload)
+    nr.status = "active" if (payload.get("status") == "active") else "draft"
+    old.status = "superseded"
+    db.add(nr)
+    db.flush()
+    _pay_audit(db, "incentive_rule", nr.id, "rule_edited", current_user.id, "admin",
+               "Rule '%s' -> v%d" % (nr.name, nr.version))
+    db.commit()
+    return {"ok": True, "rule": _inc_rule_out(nr)}
+
+
+@router.post("/incentive-rule/{rid}/status")
+def incentive_rule_status(rid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import IncentiveRule
+    r = db.query(IncentiveRule).filter(IncentiveRule.id == rid).first()
+    if not r:
+        raise HTTPException(404, "Rule not found.")
+    st = (payload.get("status") or "").strip()
+    if st not in ("active", "inactive", "draft"):
+        raise HTTPException(400, "Invalid status.")
+    r.status = st
+    _pay_audit(db, "incentive_rule", r.id, "rule_" + ("activated" if st == "active" else "deactivated"),
+               current_user.id, "admin", "Status -> " + st)
+    db.commit()
+    return {"ok": True, "rule": _inc_rule_out(r)}
+
+
+@router.get("/incentive-preview")
+def incentive_preview(rule_id: int, teacher_id: int, month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveRule, TeacherProfile
+    from teacher_routes import _month_range
+    mk = _month_range(month or "")[0].strftime("%Y-%m")
+    r = db.query(IncentiveRule).filter(IncentiveRule.id == rule_id).first()
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
+    if not r or not tp:
+        raise HTTPException(404, "Rule or teacher not found.")
+    val, vst = _inc_metric_value(db, r, tp, mk)
+    if val is None:
+        return {"metric_value": None, "status": "analytics_pending", "calculated": 0,
+                "explain": "Metric value not available yet."}
+    res = _ie.compute_incentive(r.calc_type, val, _inc_params(r))
+    return {"metric_value": val, "status": vst, "calculated": res["capped"],
+            "raw": res["calculated"], "explain": res["explain"]}
+
+
+@router.post("/incentive-run")
+def incentive_run(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Us month ke liye saari active+effective rules calculate karo. Idempotent:
+    (rule, teacher, period) par ek hi ledger; already-decided (approved/paid/rejected)
+    ko chhoo-ta nahi (freeze). Auto-mode rules turant approved, warna pending_review."""
+    from models import IncentiveRule, IncentiveLedger
+    from teacher_routes import _month_range
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    rules = [r for r in db.query(IncentiveRule).filter(IncentiveRule.status == "active").all()
+             if _inc_rule_effective(r, mk)]
+    created = updated = pending_analytics = 0
+    FROZEN = ("approved", "included_in_payroll", "paid", "rejected", "disputed")
+    for r in rules:
+        for tp in _inc_eligible_teachers(db, r):
+            val, vst = _inc_metric_value(db, r, tp, mk)
+            ex = db.query(IncentiveLedger).filter(
+                IncentiveLedger.rule_id == r.id, IncentiveLedger.teacher_id == tp.id,
+                IncentiveLedger.period == mk).first()
+            if ex and ex.status in FROZEN:
+                continue  # decided -> frozen, no silent change
+            if val is None:
+                # analytics pending — record but never penalize / never pay
+                if not ex:
+                    db.add(IncentiveLedger(rule_id=r.id, rule_version=r.version, rule_name=r.name,
+                        teacher_id=tp.id, period=mk, metric=r.metric, metric_value=0,
+                        calculated_reward=0, final_reward=0, status="analytics_pending",
+                        explain="Metric value not available"))
+                    pending_analytics += 1
+                else:
+                    ex.status = "analytics_pending"; ex.calculated_reward = 0; ex.final_reward = 0
+                continue
+            res = _ie.compute_incentive(r.calc_type, val, _inc_params(r))
+            calc = res["capped"]
+            if calc <= 0:
+                if ex and ex.status not in FROZEN:
+                    ex.calculated_reward = 0; ex.final_reward = 0; ex.metric_value = val
+                    ex.status = "rejected"; ex.explain = res["explain"]
+                continue
+            auto = (r.review_mode == "auto")
+            status = "approved" if auto else "pending_review"
+            if not ex:
+                db.add(IncentiveLedger(rule_id=r.id, rule_version=r.version, rule_name=r.name,
+                    teacher_id=tp.id, period=mk, metric=r.metric, metric_value=val,
+                    calculated_reward=calc, final_reward=(calc if auto else 0),
+                    status=status, explain=res["explain"],
+                    approved_at=(datetime.utcnow() if auto else None),
+                    approved_by=(current_user.id if auto else None)))
+                created += 1
+            else:
+                ex.metric_value = val; ex.calculated_reward = calc; ex.explain = res["explain"]
+                ex.status = status
+                if auto:
+                    ex.final_reward = calc; ex.approved_at = datetime.utcnow(); ex.approved_by = current_user.id
+                updated += 1
+    _pay_audit(db, "incentive", None, "calculation_generated", current_user.id, "admin",
+               "Run for %s: %d new, %d updated, %d analytics-pending" % (mk, created, updated, pending_analytics),
+               month=mk)
+    db.commit()
+    return {"ok": True, "month": mk, "created": created, "updated": updated,
+            "analytics_pending": pending_analytics, "rules": len(rules)}
+
+
+def _inc_ledger_out(db, l):
+    from models import TeacherProfile
+    nm = ""
+    try:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == l.teacher_id).first()
+        nm = (tp.name if tp else "") or ""
+    except Exception:
+        pass
+    return {"id": l.id, "rule_id": l.rule_id, "rule_name": l.rule_name or ("Manual" if l.is_manual else ""),
+            "teacher_id": l.teacher_id, "teacher_name": nm, "period": l.period, "metric": l.metric,
+            "metric_value": l.metric_value, "calculated_reward": l.calculated_reward,
+            "final_reward": l.final_reward, "status": l.status, "explain": l.explain or "",
+            "is_manual": bool(l.is_manual), "reason": l.reason or "", "reference": l.reference or ""}
+
+
+@router.get("/incentive-ledger")
+def incentive_ledger_list(month: str = "", teacher_id: int = 0, status: str = "",
+                          db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveLedger
+    q = db.query(IncentiveLedger)
+    if month:
+        q = q.filter(IncentiveLedger.period == month)
+    if teacher_id:
+        q = q.filter(IncentiveLedger.teacher_id == teacher_id)
+    if status:
+        q = q.filter(IncentiveLedger.status == status)
+    rows = q.order_by(IncentiveLedger.created_at.desc()).all()
+    out = [_inc_ledger_out(db, l) for l in rows]
+    pending = sum(1 for l in rows if l.status == "pending_review")
+    return {"ledger": out, "count": len(out), "pending_review": pending}
+
+
+@router.post("/incentive-ledger/{lid}/resolve")
+def incentive_ledger_resolve(lid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import IncentiveLedger
+    l = db.query(IncentiveLedger).filter(IncentiveLedger.id == lid).first()
+    if not l:
+        raise HTTPException(404, "Incentive not found.")
+    if l.status in ("paid", "included_in_payroll"):
+        raise HTTPException(400, "Already in payroll — cannot change.")
+    action = (payload.get("action") or "").strip().lower()
+    if action == "approve":
+        l.final_reward = l.calculated_reward
+        l.status = "approved"
+    elif action == "reject":
+        l.final_reward = 0
+        l.status = "rejected"
+    elif action == "adjust":
+        amt = int(payload.get("final_reward") or 0)
+        if amt < 0:
+            raise HTTPException(400, "Amount cannot be negative.")
+        l.final_reward = amt
+        l.status = "approved"
+    else:
+        raise HTTPException(400, "action must be approve, reject, or adjust.")
+    l.approved_at = datetime.utcnow()
+    l.approved_by = current_user.id
+    _pay_audit(db, "incentive", l.id, "calculation_" + ("approved" if l.status == "approved" else "rejected"),
+               current_user.id, "admin", "%s -> Rs %s" % (action, l.final_reward),
+               teacher_id=l.teacher_id, month=l.period)
+    db.commit()
+    return {"ok": True, "ledger": _inc_ledger_out(db, l)}
+
+
+@router.post("/incentive-manual")
+def incentive_manual(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Manual incentive (controlled): teacher+amount+reason+reference. Admin-confirmed = approved."""
+    from models import IncentiveLedger, TeacherProfile
+    from teacher_routes import _month_range
+    tid = int(payload.get("teacher_id") or 0)
+    tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+    if not tp:
+        raise HTTPException(404, "Teacher not found.")
+    amt = int(payload.get("amount") or 0)
+    if amt <= 0:
+        raise HTTPException(400, "Amount must be greater than 0.")
+    reason = (payload.get("reason") or "").strip()
+    if len(reason) < 3:
+        raise HTTPException(400, "A reason is required for a manual incentive.")
+    mk = _month_range(payload.get("month") or "")[0].strftime("%Y-%m")
+    l = IncentiveLedger(rule_id=None, rule_name="Manual Incentive", teacher_id=tid, period=mk,
+                        metric="manual", metric_value=0, calculated_reward=amt, final_reward=amt,
+                        status="approved", is_manual=True, reason=reason[:300],
+                        reference=(payload.get("reference") or "").strip()[:200],
+                        explain="Manual incentive", approved_at=datetime.utcnow(), approved_by=current_user.id)
+    db.add(l)
+    db.flush()
+    _pay_audit(db, "incentive", l.id, "manual_incentive_added", current_user.id, "admin",
+               "Manual Rs %d: %s" % (amt, reason[:120]), teacher_id=tid, month=mk)
+    db.commit()
+    return {"ok": True, "ledger": _inc_ledger_out(db, l)}
+
+
+@router.get("/incentive-metric-values")
+def incentive_metric_values(period: str = "", metric: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveMetricValue, TeacherProfile
+    q = db.query(IncentiveMetricValue)
+    if period:
+        q = q.filter(IncentiveMetricValue.period == period)
+    if metric:
+        q = q.filter(IncentiveMetricValue.metric == metric)
+    rows = q.order_by(IncentiveMetricValue.updated_at.desc()).all()
+    out = []
+    for v in rows:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == v.teacher_id).first()
+        out.append({"id": v.id, "teacher_id": v.teacher_id, "teacher_name": (tp.name if tp else "") or "",
+                    "metric": v.metric, "period": v.period, "value": v.value, "source": v.source,
+                    "status": v.status, "note": v.note or ""})
+    return {"values": out}
+
+
+@router.post("/incentive-metric-value")
+def incentive_metric_value_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    """Views/watch-time/custom jaisi metrics ke liye controlled value entry (spec Part 86/89).
+    status 'analytics_pending' rakh sakte ho jab data available na ho — penalize nahi hota."""
+    from models import IncentiveMetricValue
+    tid = int(payload.get("teacher_id") or 0)
+    metric = (payload.get("metric") or "").strip()
+    period = (payload.get("period") or "").strip()
+    if not (tid and metric and period):
+        raise HTTPException(400, "teacher_id, metric and period are required.")
+    status = (payload.get("status") or "available").strip()
+    v = db.query(IncentiveMetricValue).filter(
+        IncentiveMetricValue.teacher_id == tid, IncentiveMetricValue.metric == metric,
+        IncentiveMetricValue.period == period).first()
+    if not v:
+        v = IncentiveMetricValue(teacher_id=tid, metric=metric, period=period, created_by=current_user.id)
+        db.add(v)
+    try:
+        v.value = float(payload.get("value") or 0)
+    except Exception:
+        v.value = 0
+    v.source = (payload.get("source") or "manual").strip()
+    v.status = "analytics_pending" if status == "analytics_pending" else "available"
+    v.note = (payload.get("note") or "").strip()[:200]
+    _pay_audit(db, "incentive_metric", None, "metric_value_set", current_user.id, "admin",
+               "%s=%s for T%d %s" % (metric, v.value, tid, period), teacher_id=tid, month=period)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/incentive-settings")
+def incentive_settings_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    return _inc_settings(db)
+
+
+@router.post("/incentive-settings")
+def incentive_settings_set(payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_admin)):
+    from models import AppSetting
+    import json as _j
+    cfg = _inc_settings(db)
+    try:
+        cfg["global_cap"] = max(0, float(payload.get("global_cap", cfg["global_cap"]) or 0))
+    except Exception:
+        pass
+    stk = (payload.get("stacking") or cfg["stacking"]).strip()
+    if stk in ("allow", "none", "highest"):
+        cfg["stacking"] = stk
+    row = db.query(AppSetting).filter(AppSetting.key == "incentive_settings").first()
+    if not row:
+        db.add(AppSetting(key="incentive_settings", value=_j.dumps(cfg)))
+    else:
+        row.value = _j.dumps(cfg)
+    _pay_audit(db, "incentive", None, "settings_changed", current_user.id, "admin",
+               "cap=%s stacking=%s" % (cfg["global_cap"], cfg["stacking"]))
+    db.commit()
+    return {"ok": True, "settings": cfg}
+
+
+@router.get("/incentive-analytics")
+def incentive_analytics(month: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import IncentiveRule, IncentiveLedger
+    from teacher_routes import _month_range, _incentive_teacher_total
+    mk = _month_range(month or "")[0].strftime("%Y-%m")
+    active_rules = db.query(IncentiveRule).filter(IncentiveRule.status == "active").count()
+    rows = db.query(IncentiveLedger).filter(IncentiveLedger.period == mk).all()
+    pending = sum(1 for l in rows if l.status == "pending_review")
+    approved_total = sum((l.final_reward or 0) for l in rows if l.status in _INC_PAYROLL_STATUSES)
+    paid_total = sum((l.final_reward or 0) for l in rows if l.status == "paid")
+    # per-teacher effective (after stacking + global cap)
+    per = {}
+    for l in rows:
+        per.setdefault(l.teacher_id, 0)
+    per_teacher = []
+    from models import TeacherProfile
+    for tid in per:
+        tp = db.query(TeacherProfile).filter(TeacherProfile.id == tid).first()
+        per_teacher.append({"teacher_id": tid, "teacher_name": (tp.name if tp else "") or "",
+                            "effective": _incentive_teacher_total(db, tid, mk)})
+    per_teacher.sort(key=lambda x: -x["effective"])
+    return {"month": mk, "active_rules": active_rules, "pending_review": pending,
+            "approved_total": int(approved_total), "paid_total": int(paid_total),
+            "per_teacher": per_teacher}
+
+
+# =====================================================================
+# PRODUCTION ECOSYSTEM — user management (YouTubers, Editors, Graphics, PMs)
+# These users are OUTSIDE the teacher/academic system.
+# =====================================================================
+_PROD_ROLE_PREFIX = {
+    "production_manager": "MVSPM", "editor": "MVSED",
+    "graphics": "MVSGR", "youtuber": "MVSYT",
+}
+_PROD_ROLES = set(_PROD_ROLE_PREFIX.keys())
+
+
+def _gen_prod_uid(role, name, db):
+    initials = "".join(p[0] for p in (name or "").strip().split()[:2]).upper() or "X"
+    base = _PROD_ROLE_PREFIX.get(role, "MVSPR")
+    i = 1
+    while True:
+        cand = f"{base}{i:02d}"
+        if not db.query(User).filter(User.user_id == cand).first():
+            return cand
+        i += 1
+
+
+def _prod_user_out(db, u):
+    from models import YouTuberProfile, ProductionStaffProfile
+    role = getattr(u.role, "value", str(u.role))
+    row = {"id": u.id, "name": u.name, "user_id": u.user_id, "role": role,
+           "is_active": bool(u.is_active)}
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        row["approval_required"] = bool(yp.approval_required) if yp else True
+        row["password"] = (yp.plain_password if yp else "") or ""
+        row["profile_id"] = yp.id if yp else None
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        row["recommended_load"] = (sp.recommended_load if sp else 5)
+        row["password"] = (sp.plain_password if sp else "") or ""
+        row["profile_id"] = sp.id if sp else None
+        row["editor_specialization"] = (getattr(sp, "editor_specialization", "") or "") if sp else ""
+        row["target_long"] = getattr(sp, "target_long", None) if sp else None
+        row["target_short"] = getattr(sp, "target_short", None) if sp else None
+        row["target_thumbnails"] = getattr(sp, "target_thumbnails", None) if sp else None
+        # Compensation arrangement — Admin-only serializer (PM-facing outputs me NAHI jaata)
+        row["compensation_type"] = ((getattr(sp, "compensation_type", "") or "SALARIED").strip().upper()
+                                     if sp else "SALARIED")
+    return row
+
+
+@router.get("/production-users")
+def list_production_users(role: str = "", db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import UserRole as _UR
+    q = db.query(User).filter(User.role.in_([_UR.production_manager, _UR.editor,
+                                             _UR.youtuber, _UR.graphics]))
+    if role in _PROD_ROLES:
+        q = q.filter(User.role == role)
+    return [_prod_user_out(db, u) for u in q.order_by(User.name.asc()).all()]
+
+
+@router.post("/production-users/{uid}/compensation")
+def set_editor_compensation(uid: int, payload: dict = Body(...),
+                            db: Session = Depends(get_db), me=Depends(get_admin)):
+    """ADMIN-only: ek editor ko SALARIED <-> PROJECT_BASED set karo. Sirf field set hoti hai —
+    koi paisa/rate/history change nahi (wo baad ke finance phases me). PM ye nahi kar sakta."""
+    from models import ProductionStaffProfile, UserRole as _UR
+    want = (str((payload or {}).get("compensation_type") or "")).strip().upper()
+    if want not in ("SALARIED", "PROJECT_BASED"):
+        raise HTTPException(400, "compensation_type must be SALARIED or PROJECT_BASED")
+    u = db.query(User).filter(User.id == uid).first()
+    if not u or u.role != _UR.editor:
+        raise HTTPException(404, "Editor not found")
+    sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == uid).first()
+    if not sp:
+        raise HTTPException(404, "Editor profile not found")
+    # Note: PROJECT_BASED -> SALARIED conversion jab financial history ho, wo spec §0.4 ke
+    # tahat alag approval se hoga. Abhi koi finance data nahi, isliye simple set safe hai.
+    sp.compensation_type = want
+    db.commit()
+    return {"ok": True, "compensation_type": want}
+
+
+@router.post("/production-users")
+def create_production_user(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import YouTuberProfile, ProductionStaffProfile
+    name = (payload.get("name") or "").strip()
+    role = (payload.get("role") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid production role")
+    uid = (payload.get("user_id") or "").strip() or _gen_prod_uid(role, name, db)
+    if db.query(User).filter(User.user_id == uid).first():
+        raise HTTPException(status_code=400, detail="This User ID already exists")
+    pwd = (payload.get("password") or "").strip() or "".join(
+        secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    u = User(name=name, user_id=uid, password=hash_password(pwd), role=role, is_active=True)
+    db.add(u)
+    db.flush()
+    if role == "youtuber":
+        db.add(YouTuberProfile(user_id=u.id, plain_password=pwd,
+                               approval_required=bool(payload.get("approval_required", True)),
+                               phone=(payload.get("phone") or "").strip()))
+    else:
+        def _spec(v):
+            v = (v or "").strip().lower()
+            return v if v in ("long", "short", "hybrid") else ""
+
+        def _tgt(v):
+            try:
+                return int(v) if (v is not None and str(v).strip() != "") else None
+            except Exception:
+                return None
+        db.add(ProductionStaffProfile(user_id=u.id, staff_role=role, plain_password=pwd,
+                                      phone=(payload.get("phone") or "").strip(),
+                                      recommended_load=int(payload.get("recommended_load") or 5),
+                                      editor_specialization=_spec(payload.get("editor_specialization")),
+                                      target_long=_tgt(payload.get("target_long")),
+                                      target_short=_tgt(payload.get("target_short")),
+                                      target_thumbnails=_tgt(payload.get("target_thumbnails"))))
+    db.commit()
+    return {"ok": True, "id": u.id, "user_id": uid, "password": pwd, "role": role}
+
+
+@router.patch("/production-users/{uid}")
+def update_production_user(uid: int, payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import YouTuberProfile, ProductionStaffProfile
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    role = getattr(u.role, "value", str(u.role))
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Not a production user")
+    if "name" in payload and (payload.get("name") or "").strip():
+        u.name = payload["name"].strip()
+    if "is_active" in payload:
+        u.is_active = bool(payload["is_active"])
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        if yp and "approval_required" in payload:
+            yp.approval_required = bool(payload["approval_required"])
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        if sp and "recommended_load" in payload:
+            sp.recommended_load = int(payload["recommended_load"] or 5)
+        if sp and "editor_specialization" in payload:
+            v = (payload.get("editor_specialization") or "").strip().lower()
+            sp.editor_specialization = v if v in ("long", "short", "hybrid") else ""
+        for _k in ("target_long", "target_short", "target_thumbnails"):
+            if sp and _k in payload:
+                try:
+                    raw = payload.get(_k)
+                    setattr(sp, _k, int(raw) if (raw is not None and str(raw).strip() != "") else None)
+                except Exception:
+                    pass
+    db.commit()
+    return {"ok": True}
+
+
+def _purge_user_references(db, user_id):
+    """BULLETPROOF user-delete prep: discover EVERY foreign key that references users.id
+    from the LIVE database schema and clear it before the user row is deleted —
+      * nullable FK column  -> SET NULL (keep the row, just unlink the deleted user)
+      * NOT NULL FK column   -> DELETE the row (it can't exist without the user)
+    This automatically covers video_task_chat_reads AND any table added in the future,
+    so deleting a production user never fails again on an FK constraint (error 1451).
+    Each statement runs in its own SAVEPOINT so one problem table can't abort the rest."""
+    from sqlalchemy import text as _t
+    try:
+        bind = db.get_bind()
+        dialect = bind.dialect.name
+    except Exception:
+        dialect = ""
+    cols = []  # list of (table, column, nullable_bool)
+    try:
+        if dialect == "mysql":
+            rows = db.execute(_t(
+                "SELECT k.TABLE_NAME, k.COLUMN_NAME, c.IS_NULLABLE "
+                "FROM information_schema.KEY_COLUMN_USAGE k "
+                "JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA=k.TABLE_SCHEMA "
+                "  AND c.TABLE_NAME=k.TABLE_NAME AND c.COLUMN_NAME=k.COLUMN_NAME "
+                "WHERE k.REFERENCED_TABLE_NAME='users' AND k.REFERENCED_COLUMN_NAME='id' "
+                "  AND k.TABLE_SCHEMA=DATABASE()")).fetchall()
+            cols = [(r[0], r[1], str(r[2]).upper() == "YES") for r in rows]
+        elif dialect == "sqlite":
+            tbls = [r[0] for r in db.execute(_t(
+                "SELECT name FROM sqlite_master WHERE type='table'")).fetchall()]
+            for tb in tbls:
+                try:
+                    fks = db.execute(_t("PRAGMA foreign_key_list('%s')" % tb)).fetchall()
+                except Exception:
+                    continue
+                notnull = {}
+                for ci in db.execute(_t("PRAGMA table_info('%s')" % tb)).fetchall():
+                    notnull[ci[1]] = (ci[3] == 1)
+                for fk in fks:
+                    if fk[2] == "users" and (fk[4] in ("id", None)):
+                        cols.append((tb, fk[3], not notnull.get(fk[3], False)))
+    except Exception:
+        cols = []
+
+    # A12 / §22: never let generic FK cleanup touch project-editor financial ledger tables,
+    # even if a future column happens to reference users.id.
+    try:
+        import editor_finance as _ef
+        _fin_skip = set(_ef.FINANCE_TABLES)
+    except Exception:
+        _fin_skip = {"editor_comp_agreements", "editor_rate_rules", "editor_engagements",
+                     "editor_work_submissions", "editor_earnings", "editor_payout_statements",
+                     "editor_statement_lines", "editor_statement_payments"}
+    cols = [(tb, col, nullable) for (tb, col, nullable) in cols if tb not in _fin_skip]
+
+    def _run(sql):
+        try:
+            with db.begin_nested():
+                db.execute(_t(sql), {"uid": user_id})
+        except Exception:
+            pass
+    # 1) null every nullable reference (safe, removes most blockers)
+    for tb, col, nullable in cols:
+        if nullable:
+            _run("UPDATE `%s` SET `%s`=NULL WHERE `%s`=:uid" % (tb, col, col))
+    # 2) delete mandatory-reference rows — twice, so FK chains between these tables resolve
+    for _ in range(2):
+        for tb, col, nullable in cols:
+            if not nullable:
+                _run("DELETE FROM `%s` WHERE `%s`=:uid" % (tb, col))
+
+
+@router.delete("/production-users/{uid}")
+def delete_production_user(uid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import (YouTuberProfile, ProductionStaffProfile, GraphicsTask,
+                        VideoTask, EditingSession)
+    from models import VideoTaskChapter as _VC
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    role = getattr(u.role, "value", str(u.role))
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Not a production user")
+    unassigned = 0
+    _EDIT_LC = ("editor_assigned", "editing", "editing_paused", "editing_soon", "editing_done")
+    # ===== A12 / §22: data-retention safety — an editor with ANY compensation history is
+    # ARCHIVED (deactivated), never destructively deleted. Finance ledger + statements survive.
+    if role == "editor":
+        try:
+            import editor_finance as _ef
+            from models import VideoTaskChapter as _VC0
+            _sp0 = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+            if _sp0 and _ef.has_financial_history(db, _sp0.id):
+                # free active operational work so it can be reassigned (no new work for this account),
+                # but KEEP the profile and every financial record.
+                for t in db.query(VideoTask).filter(VideoTask.editor_id == _sp0.id).all():
+                    t.editor_id = None
+                    if getattr(t, "lifecycle", None) in _EDIT_LC:
+                        t.lifecycle = "approved"
+                    unassigned += 1
+                try:
+                    for c in db.query(_VC0).filter(_VC0.editor_id == _sp0.id).all():
+                        c.editor_id = None
+                        c.editor_inherited = False
+                        if (getattr(c, "lifecycle", "") or "") in _EDIT_LC:
+                            c.lifecycle = "approved"
+                        if (getattr(c, "edit_state", "") or "") in ("assigned", "editing", "paused"):
+                            c.edit_state = ""
+                        unassigned += 1
+                    for t in db.query(VideoTask).filter(VideoTask.project_editor_id == _sp0.id).all():
+                        t.project_editor_id = None
+                except Exception:
+                    pass
+                u.is_active = False   # deactivate: no new login/assignment; records retained
+                db.commit()
+                summ = _ef.financial_history_summary(db, _sp0.id)
+                return {"ok": True, "deleted": False, "archived": True, "deactivated": True,
+                        "unassigned": unassigned, "history": summ,
+                        "detail": "This editor has payout history, so the account was archived (deactivated) instead of deleted. All rate agreements, earnings, statements and payments are preserved."}
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        if yp:
+            db.delete(yp)
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        if sp:
+            if role == "editor":
+                # unassign editor from all tasks; revert active editing back to 'approved' so PM can reassign
+                for t in db.query(VideoTask).filter(VideoTask.editor_id == sp.id).all():
+                    t.editor_id = None
+                    if getattr(t, "lifecycle", None) in _EDIT_LC:
+                        t.lifecycle = "approved"
+                    unassigned += 1
+                # remove their editing sessions (historical, tied to this profile)
+                for es in db.query(EditingSession).filter(EditingSession.editor_id == sp.id).all():
+                    db.delete(es)
+                # PROJECT CHAPTERS: free every chapter this editor owned + any whole-project
+                # assignment, so the editor profile can be deleted without orphaning chapter work.
+                try:
+                    for c in db.query(_VC).filter(_VC.editor_id == sp.id).all():
+                        c.editor_id = None
+                        c.editor_inherited = False
+                        if (getattr(c, "lifecycle", "") or "") in _EDIT_LC:
+                            c.lifecycle = "approved"
+                        if (getattr(c, "edit_state", "") or "") in ("assigned", "editing", "paused"):
+                            c.edit_state = ""
+                        unassigned += 1
+                    for t in db.query(VideoTask).filter(VideoTask.project_editor_id == sp.id).all():
+                        t.project_editor_id = None
+                except Exception:
+                    pass
+            elif role == "graphics":
+                for t in db.query(VideoTask).filter(VideoTask.graphics_id == sp.id).all():
+                    t.graphics_id = None
+                    unassigned += 1
+                for g in db.query(GraphicsTask).filter(GraphicsTask.graphics_id == sp.id).all():
+                    db.delete(g)
+                # PROJECT CHAPTERS: free graphics assignment too
+                try:
+                    for c in db.query(_VC).filter(_VC.graphics_id == sp.id).all():
+                        c.graphics_id = None
+                        c.gfx_state = ""
+                        unassigned += 1
+                except Exception:
+                    pass
+            # defensive: clear any cross-referenced column so FK delete of the profile never blocks
+            try:
+                db.query(VideoTask).filter(VideoTask.editor_id == sp.id).update(
+                    {VideoTask.editor_id: None}, synchronize_session=False)
+                db.query(VideoTask).filter(VideoTask.graphics_id == sp.id).update(
+                    {VideoTask.graphics_id: None}, synchronize_session=False)
+            except Exception:
+                pass
+            db.flush()
+            db.delete(sp)
+    # profile deletes ko DB tak bhej do, taaki dynamic purge unhe dobara na chhue
+    try:
+        db.flush()
+    except Exception:
+        pass
+    # BULLETPROOF: har table jo users.id ko reference karti hai (video_task_chat_reads samet,
+    # aur future ki koi bhi) usko live schema se dhoondh ke saaf karo — phir hi user delete.
+    _purge_user_references(db, u.id)
+    db.delete(u)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # ek aur baar purge + delete (koi race / adhoori chain) — phir bhi fail ho to saaf error
+        try:
+            _purge_user_references(db, u.id)
+            uu = db.query(User).filter(User.id == uid).first()
+            if uu:
+                db.delete(uu)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=409,
+                                detail="Could not delete: this user still has linked records. Please try again.")
+    return {"ok": True, "unassigned": unassigned, "deleted": True}
+
+
+@router.post("/production-users/{uid}/reset-password")
+def reset_production_password(uid: int, payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import YouTuberProfile, ProductionStaffProfile
+    payload = payload or {}
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    role = getattr(u.role, "value", str(u.role))
+    if role not in _PROD_ROLES:
+        raise HTTPException(status_code=400, detail="Not a production user")
+    new_pass = (payload.get("password") or "").strip() or ("MVS@" + "".join(
+        secrets.choice(string.digits) for _ in range(4)))
+    if len(new_pass) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    u.password = hash_password(new_pass)
+    if role == "youtuber":
+        yp = db.query(YouTuberProfile).filter(YouTuberProfile.user_id == u.id).first()
+        if yp:
+            yp.plain_password = new_pass
+    else:
+        sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.user_id == u.id).first()
+        if sp:
+            sp.plain_password = new_pass
+    db.commit()
+    return {"ok": True, "user_id": u.user_id, "password": new_pass}
+
+
+# ===================== PUBLIC TEST TRACKER (admin-only, FULL details) =====================
+# Har public shareable test ka alag tracker: opens (views) + attempts + saare personal details
+# (phone/email/city/NIOS ref + custom fields) + CSV export. Teacher ko sirf name+score dikhta hai;
+# yahan admin ko sab kuch.
+@router.get("/public-tests")
+def admin_public_tests(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Exam, PublicExamAttempt
+    from sqlalchemy import func as _f
+    rows = (db.query(Exam).filter(Exam.public_token != None, Exam.public_token != "")  # noqa: E711
+            .order_by(Exam.id.desc()).all())
+    cmap = dict(db.query(PublicExamAttempt.exam_id, _f.count(PublicExamAttempt.id))
+                .group_by(PublicExamAttempt.exam_id).all())
+    out = []
+    for ex in rows:
+        _enabled = bool(ex.public_enabled)
+        _attempts = int(cmap.get(ex.id, 0) or 0)
+        # Link OFF + zero submissions => tracker se hata do (sirf tabhi dikhao jab link ON ho
+        # ya koi attempt aa chuka ho). Scholarship tests hamesha rakho (admin wahan se manage karta).
+        if (not _enabled) and _attempts == 0 and (getattr(ex, "result_type", "ranking") != "scholarship"):
+            continue
+        out.append({
+            "exam_id": ex.id, "title": ex.title or "", "subject": ex.subject or "",
+            "teacher_name": ex.teacher_name or "",
+            "enabled": _enabled, "token": ex.public_token or "",
+            "link": (("/t/" + ex.public_token) if ex.public_token else ""),
+            "views": int(getattr(ex, "public_views", 0) or 0),
+            "attempts": _attempts,
+            "total_marks": ex.total_marks or 0,
+            "scholarship": (getattr(ex, "result_type", "ranking") == "scholarship"),
+            "declared": bool(getattr(ex, "scholarship_declared", False)),
+            "created_at": ex.created_at.isoformat() if getattr(ex, "created_at", None) else None,
+        })
+    return {"tests": out, "count": len(out)}
+
+
+def _pub_extra_vals(r):
+    ev = {}
+    try:
+        for k, v in (r.extra or {}).items():
+            ev[k] = (v.get("value") if isinstance(v, dict) else v)
+    except Exception:
+        pass
+    return ev
+
+
+@router.get("/public-tests/{exam_id}/responses")
+def admin_public_test_responses(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import Exam, PublicExamAttempt
+    import public_routes as _pr
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    # RANKED — INTEGRITY-AWARE (teacher portal ke SAME order): honest students rule-todne
+    # walon se upar (tie ya chhote gap par bhi). Pehle admin yahan pure-score se rank karta tha
+    # isliye teacher vs admin ranking MISMATCH ho raha tha.
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id).all())
+    rows.sort(key=lambda r: _pr._integrity_rank_key(
+        r.total_awarded, getattr(r, "violations", 0), r.created_at, r.id))
+    cfg = _pr.public_fields_cfg(ex)
+    custom_cols = [{"key": f["key"], "label": f["label"]} for f in cfg if f["key"] not in _pr._KNOWN_KEYS]
+    return {
+        "exam_id": ex.id, "title": ex.title or "", "teacher_name": ex.teacher_name or "",
+        "subject": ex.subject or "", "enabled": bool(ex.public_enabled),
+        "class_name": getattr(ex, "class_name", "") or "",
+        "duration_min": ex.duration_min or 0,
+        "scheduled_at": (ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None),
+        "token": ex.public_token or "", "link": (("/t/" + ex.public_token) if ex.public_token else ""),
+        "views": int(getattr(ex, "public_views", 0) or 0),
+        "total_marks": ex.total_marks or 0, "count": len(rows),
+        "custom_cols": custom_cols,
+        "integrity_mode": (getattr(ex, "integrity_mode", None) or "OFF"),
+        "responses": [{
+            "rank": i + 1,
+            "id": r.id, "name": r.name, "phone": r.phone, "email": r.email,
+            "class_course": r.class_course, "city": r.city, "nios_ref": r.nios_ref,
+            "extra": _pub_extra_vals(r),
+            "score": r.total_awarded, "total": r.total_marks,
+            "correct": r.correct_count, "q_total": r.q_total,
+            "violations": int(getattr(r, "violations", 0) or 0),
+            "flagged": bool(getattr(r, "flagged", False)),
+            "at": (r.created_at.isoformat() if r.created_at else None),
+        } for i, r in enumerate(rows)]}
+
+
+@router.get("/public-tests/{exam_id}/export")
+def admin_public_test_export(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    import csv as _csv, io as _io, re as _re2
+    from fastapi.responses import Response as _Resp
+    from models import Exam, PublicExamAttempt
+    import public_routes as _pr
+    ex = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    rows = (db.query(PublicExamAttempt).filter(PublicExamAttempt.exam_id == exam_id)
+            .order_by(PublicExamAttempt.created_at.desc()).all())
+    cfg = _pr.public_fields_cfg(ex)
+    custom = [f for f in cfg if f["key"] not in _pr._KNOWN_KEYS]
+    buf = _io.StringIO(); buf.write("﻿")
+    w = _csv.writer(buf)
+    w.writerow(["Name", "Phone", "Email", "Class/Course", "City", "NIOS Ref"]
+               + [f["label"] for f in custom]
+               + ["Score", "Out of", "Correct", "Questions", "Submitted At"])
+    for r in rows:
+        ev = _pub_extra_vals(r)
+        w.writerow([r.name or "", r.phone or "", r.email or "", r.class_course or "",
+                    r.city or "", r.nios_ref or ""]
+                   + [ev.get(f["key"], "") for f in custom]
+                   + [r.total_awarded, r.total_marks, r.correct_count, r.q_total,
+                      (r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "")])
+    fn = "public-test-%s.csv" % ((_re2.sub(r"[^A-Za-z0-9]+", "-", (ex.title or "test")).strip("-")[:40]) or "test")
+    return _Resp(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                 headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
+
+
+# ===================== ADMIN "Sent by Me" — notification view tracking =====================
+# Admin jo notification bheje uske view counts + kaun-kaun ne dekha (teacher wale jaisa).
+@router.get("/notify-log")
+def admin_notify_log(db: Session = Depends(get_db), me=Depends(get_admin)):
+    from models import Notification
+    rows = (db.query(Notification)
+            .filter(Notification.sender_role == "admin",
+                    Notification.batch_key.isnot(None))
+            .order_by(Notification.created_at.desc()).all())
+    batches = {}
+    for n in rows:
+        b = batches.get(n.batch_key)
+        if not b:
+            b = {"batch_key": n.batch_key, "title": n.title, "message": n.message,
+                 "label": n.batch_label or "Everyone", "sent": 0, "viewed": 0,
+                 "created_at": ist_iso(n.created_at)}  # IST offset — warna UTC time dikhta tha
+            batches[n.batch_key] = b
+        b["sent"] += 1
+        if n.is_read:
+            b["viewed"] += 1
+    return sorted(batches.values(), key=lambda b: b["created_at"] or "", reverse=True)
+
+
+@router.get("/notify-log/{batch_key}")
+def admin_notify_log_detail(batch_key: str, db: Session = Depends(get_db), me=Depends(get_admin)):
+    from models import Notification, User
+    rows = (db.query(Notification)
+            .filter(Notification.sender_role == "admin",
+                    Notification.batch_key == batch_key)
+            .order_by(Notification.created_at.asc()).all())
+    if not rows:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    _uids = list({n.user_id for n in rows if n.user_id})
+    _umap = {}
+    if _uids:
+        for uid, nm, role in db.query(User.id, User.name, User.role).filter(User.id.in_(_uids)):
+            _umap[uid] = (nm or "User", getattr(role, "value", str(role)))
+    out = []
+    for n in rows:
+        nm, role = _umap.get(n.user_id, ("User", ""))
+        out.append({"name": nm, "role": role, "read": bool(n.is_read),
+                    "read_at": ist_iso(n.read_at)})
+    out.sort(key=lambda r: (r["read"], r["name"].lower()), reverse=True)
+    return {"batch_key": batch_key, "title": rows[0].title,
+            "label": rows[0].batch_label or "Everyone", "recipients": out}
+
+
+# ================= PROJECT-BASED EDITOR COMPENSATION — RATE PLAN (Phase 3) =================
+# Confidential: gated by get_payout_admin (payout must be UNLOCKED). Amounts in paise.
+# PM never reaches these. SALARIED editors are rejected. Existing finance systems untouched.
+def _ecomp_staff_or_400(db, staff_id):
+    from models import ProductionStaffProfile
+    sp = db.query(ProductionStaffProfile).filter(ProductionStaffProfile.id == int(staff_id or 0)).first()
+    if not sp or sp.staff_role != "editor":
+        raise HTTPException(404, "Editor not found")
+    if (getattr(sp, "compensation_type", "") or "SALARIED").strip().upper() != "PROJECT_BASED":
+        raise HTTPException(400, "This editor is SALARIED — rates apply only to project-based editors.")
+    return sp
+
+
+def _ecomp_agreement_out(db, ag):
+    import editor_finance as ef
+    from models import EditorRateRule
+    rules = (db.query(EditorRateRule).filter(EditorRateRule.agreement_id == ag.id)
+             .order_by(EditorRateRule.order_index.asc(), EditorRateRule.id.asc()).all())
+    rrows = [{"id": r.id, "order_index": r.order_index, "label": r.label or "",
+              "video_type": r.video_type or "", "editing_type": r.editing_type or "",
+              "duration_min_seconds": r.duration_min_seconds, "duration_max_seconds": r.duration_max_seconds,
+              "pricing_strategy": r.pricing_strategy or ef.STRAT_BAND,
+              "amount_minor": int(r.amount_minor or 0),
+              "amount_display": ef.minor_to_display(r.amount_minor, ag.currency),
+              "is_urgent": bool(r.is_urgent), "days_required": r.days_required or "",
+              "active": bool(r.active)} for r in rules]
+    return {"id": ag.id, "staff_id": ag.staff_id, "currency": ag.currency or "INR",
+            "version": ag.version or 1, "state": ag.state or "draft", "notes": ag.notes or "",
+            "created_at": ag.created_at.isoformat() if ag.created_at else None,
+            "published_at": ag.published_at.isoformat() if ag.published_at else None,
+            "updated_at": (ag.updated_at.isoformat() if getattr(ag, "updated_at", None)
+                           else (ag.published_at.isoformat() if ag.published_at
+                                 else (ag.created_at.isoformat() if ag.created_at else None))),
+            "rules": rrows,
+            "overlaps": ef.detect_overlaps([r for r in rules if r.active])}
+
+
+@router.get("/editor-comp/{staff_id}")
+def ecomp_get(staff_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    from models import EditorCompensationAgreement as _AG
+    sp = _ecomp_staff_or_400(db, staff_id)
+    active = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "active")
+              .order_by(_AG.version.desc()).first())
+    draft = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft")
+             .order_by(_AG.id.desc()).first())
+    return {"staff_id": sp.id, "currency": "INR",
+            "active": _ecomp_agreement_out(db, active) if active else None,
+            "draft": _ecomp_agreement_out(db, draft) if draft else None}
+
+
+@router.post("/editor-comp/{staff_id}/seed-draft")
+def ecomp_seed_draft(staff_id: int, payload: dict = Body(default={}),
+                     db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Owner's 8-row source rate card ko DRAFT ke roop me seed karo (editable). Auto-publish nahi."""
+    import editor_finance as ef
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    sp = _ecomp_staff_or_400(db, staff_id)
+    if db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft").first():
+        raise HTTPException(400, "A draft already exists for this editor — edit it or discard it first.")
+    currency = (str((payload or {}).get("currency") or "INR")).strip().upper() or "INR"
+    last = db.query(_AG).filter(_AG.staff_id == sp.id).order_by(_AG.version.desc()).first()
+    ver = (last.version + 1) if last else 1
+    ag = _AG(staff_id=sp.id, currency=currency, version=ver, state="draft",
+             created_by=getattr(me, "id", None),
+             notes="Imported from source rate card — confirm currency, duration boundaries (15:00 & 20:00 overlap) and terms before publishing. Footer: " + ef.SOURCE_FOOTER)
+    db.add(ag); db.flush()
+    for rd in ef.draft_rule_dicts():
+        db.add(_RR(agreement_id=ag.id, **rd))
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/rule/save")
+def ecomp_rule_save(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Add/update a rule on a DRAFT agreement. amount_rupees (UI) -> paise. Published plans are locked."""
+    import editor_finance as ef
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    p = payload or {}
+    ag = db.query(_AG).filter(_AG.id == int(p.get("agreement_id") or 0)).first()
+    if not ag:
+        raise HTTPException(404, "Agreement not found")
+    if ag.state != "draft":
+        raise HTTPException(400, "Only a DRAFT plan can be edited. Published plans are version-locked.")
+    strat = (str(p.get("pricing_strategy") or ef.STRAT_BAND)).strip().upper()
+    if strat not in ef.PRICING_STRATEGIES:
+        raise HTTPException(400, "Invalid pricing strategy")
+    try:
+        amount_minor = (ef.rupees_to_minor(p.get("amount_rupees")) if p.get("amount_rupees") is not None
+                        else int(p.get("amount_minor") or 0))
+    except Exception:
+        raise HTTPException(400, "Invalid amount")
+    if amount_minor < 0:
+        raise HTTPException(400, "Amount cannot be negative")
+    def _sec(v):
+        if v in (None, "", "null"):
+            return None
+        try:
+            return ef.parse_duration_to_seconds(v)
+        except Exception:
+            raise HTTPException(400, "Invalid duration")
+    lo, hi = _sec(p.get("duration_min")), _sec(p.get("duration_max"))
+    if lo is not None and hi is not None and hi < lo:
+        raise HTTPException(400, "Max duration cannot be less than min duration")
+    rid = int(p.get("id") or 0)
+    if rid:
+        r = db.query(_RR).filter(_RR.id == rid, _RR.agreement_id == ag.id).first()
+        if not r:
+            raise HTTPException(404, "Rule not found")
+    else:
+        r = _RR(agreement_id=ag.id,
+                order_index=(db.query(_RR).filter(_RR.agreement_id == ag.id).count()))
+        db.add(r)
+    r.label = (str(p.get("label") or "")).strip()[:40]
+    r.video_type = (str(p.get("video_type") or "")).strip()[:60]
+    r.editing_type = (str(p.get("editing_type") or "")).strip()[:80]
+    r.duration_min_seconds = lo
+    r.duration_max_seconds = hi
+    r.pricing_strategy = strat
+    r.amount_minor = amount_minor
+    r.is_urgent = bool(p.get("is_urgent"))
+    r.days_required = (str(p.get("days_required") or "")).strip()[:40]
+    if p.get("active") is not None:
+        r.active = bool(p.get("active"))
+    from datetime import datetime as _dt2
+    ag.updated_at = _dt2.utcnow()   # editing a rule counts as editing the plan
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/rule/{rule_id}/archive")
+def ecomp_rule_archive(rule_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    r = db.query(_RR).filter(_RR.id == int(rule_id)).first()
+    if not r:
+        raise HTTPException(404, "Rule not found")
+    ag = db.query(_AG).filter(_AG.id == r.agreement_id).first()
+    if not ag or ag.state != "draft":
+        raise HTTPException(400, "Only rules in a DRAFT plan can be archived here.")
+    r.active = False
+    from datetime import datetime as _dt2
+    ag.updated_at = _dt2.utcnow()
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/{agreement_id}/publish")
+def ecomp_publish(agreement_id: int, payload: dict = Body(default={}),
+                  db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Publish a DRAFT -> active. Overlaps ko Admin ko acknowledge karna padta hai (ack_overlaps=true)."""
+    import editor_finance as ef
+    from datetime import datetime as _dt
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    ag = db.query(_AG).filter(_AG.id == int(agreement_id)).first()
+    if not ag:
+        raise HTTPException(404, "Agreement not found")
+    if ag.state != "draft":
+        raise HTTPException(400, "This plan is not a draft.")
+    rules = db.query(_RR).filter(_RR.agreement_id == ag.id, _RR.active == True).all()  # noqa: E712
+    if not rules:
+        raise HTTPException(400, "Add at least one active rule before publishing.")
+    overlaps = ef.detect_overlaps(rules)
+    if overlaps and not bool((payload or {}).get("ack_overlaps")):
+        raise HTTPException(409, "Overlapping rules found (e.g. 15:00 / 20:00). Resolve the boundaries, or confirm to publish with overlaps acknowledged.")
+    # archive any existing active version, then activate this one
+    for old in db.query(_AG).filter(_AG.staff_id == ag.staff_id, _AG.state == "active").all():
+        old.state = "archived"
+        old.effective_to = _dt.utcnow()
+    ag.state = "active"
+    ag.published_at = _dt.utcnow()
+    ag.effective_from = _dt.utcnow()
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, ag)}
+
+
+@router.post("/editor-comp/{staff_id}/discard-draft")
+def ecomp_discard_draft(staff_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    sp = _ecomp_staff_or_400(db, staff_id)
+    draft = db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft").first()
+    if not draft:
+        raise HTTPException(404, "No draft to discard")
+    db.query(_RR).filter(_RR.agreement_id == draft.id).delete()
+    db.delete(draft)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/editor-comp/{staff_id}/new-version")
+def ecomp_new_version(staff_id: int, db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Edit a PUBLISHED plan safely: clone the ACTIVE agreement into a new editable DRAFT (copies its
+    rules). Admin edits the draft and publishes it as the next version. Existing engagements stay
+    pinned to their frozen version, so published/finalized work is never silently repriced (spec §13)."""
+    from datetime import datetime as _dt
+    from models import EditorCompensationAgreement as _AG, EditorRateRule as _RR
+    sp = _ecomp_staff_or_400(db, staff_id)
+    # If a draft already exists, just OPEN it (idempotent) — clicking Edit should never error,
+    # it should land the Admin in the editable draft every time.
+    existing = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "draft")
+                .order_by(_AG.id.desc()).first())
+    if existing:
+        return {"ok": True, "resumed": True, "agreement": _ecomp_agreement_out(db, existing)}
+    active = (db.query(_AG).filter(_AG.staff_id == sp.id, _AG.state == "active")
+              .order_by(_AG.version.desc()).first())
+    if not active:
+        raise HTTPException(400, "No published plan to edit. Use Import / seed a draft first.")
+    last = db.query(_AG).filter(_AG.staff_id == sp.id).order_by(_AG.version.desc()).first()
+    ver = (last.version + 1) if last else 1
+    draft = _AG(staff_id=sp.id, currency=active.currency, version=ver, state="draft",
+                created_by=getattr(me, "id", None),
+                notes="Editing published plan v%d. Changes take effect only after you publish, and apply to NEW assignments — existing jobs keep their agreed rate." % active.version)
+    db.add(draft); db.flush()
+    for r in db.query(_RR).filter(_RR.agreement_id == active.id).order_by(_RR.order_index.asc(), _RR.id.asc()).all():
+        db.add(_RR(agreement_id=draft.id, order_index=r.order_index, label=r.label,
+                   video_type=r.video_type, editing_type=r.editing_type,
+                   duration_min_seconds=r.duration_min_seconds, duration_max_seconds=r.duration_max_seconds,
+                   pricing_strategy=r.pricing_strategy, amount_minor=r.amount_minor,
+                   is_urgent=r.is_urgent, days_required=r.days_required, active=r.active))
+    db.commit()
+    return {"ok": True, "agreement": _ecomp_agreement_out(db, draft)}
+
+
+@router.post("/editor-comp/preview-match")
+def ecomp_preview_match(payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Admin: sample duration/type pe rule matching preview (publish se pehle verify)."""
+    import editor_finance as ef
+    from models import EditorRateRule as _RR, EditorCompensationAgreement as _AG
+    p = payload or {}
+    ag = db.query(_AG).filter(_AG.id == int(p.get("agreement_id") or 0)).first()
+    if not ag:
+        raise HTTPException(404, "Agreement not found")
+    try:
+        sec = ef.parse_duration_to_seconds(p.get("duration"))
+    except Exception as e:
+        raise HTTPException(400, str(e) or "Invalid duration")
+    rules = db.query(_RR).filter(_RR.agreement_id == ag.id).all()
+    res = ef.match_rate(rules, sec, p.get("video_type"), p.get("editing_type"), bool(p.get("urgent")))
+    res["amount_display"] = (ef.minor_to_display(res["amount_minor"], ag.currency)
+                             if res.get("amount_minor") is not None else None)
+    res["duration_seconds"] = sec
+    return res
+
+
+# ================= PROJECT EDITOR — FINANCIAL REVIEW (Phase 5) =================
+@router.get("/editor-earnings")
+def admin_editor_earnings(status: str = "", staff_id: int = 0,
+                          db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Finance review queue across project-based editors. Filter by financial_state / editor."""
+    import editor_finance as _ef
+    rows = _ef.admin_earnings_queue(db, status=(status or None), staff_id=(staff_id or None))
+    return {"items": rows,
+            "counts": {
+                "pending_verification": sum(1 for r in rows if r["financial_state"] == "pending_verification"),
+                "estimate": sum(1 for r in rows if r["financial_state"] == "estimate"),
+                "approved": sum(1 for r in rows if r["financial_state"] == "approved"),
+                "on_hold": sum(1 for r in rows if r["financial_state"] == "on_hold"),
+                "rejected": sum(1 for r in rows if r["financial_state"] == "rejected"),
+            }}
+
+
+@router.post("/editor-earnings/{earning_id}/decide")
+def admin_editor_earning_decide(earning_id: int, payload: dict = Body(...),
+                                db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Admin financial decision on one earning: approve | hold | reject. amount_rupees optional
+    (ambiguous/custom resolve). Payable tabhi jab QC technical_ok + approved + amount."""
+    import editor_finance as _ef
+    p = payload or {}
+    decision = (str(p.get("decision") or "")).strip().lower()
+    if decision not in ("approve", "hold", "reject"):
+        raise HTTPException(400, "decision must be approve, hold or reject")
+    amt = None
+    if p.get("amount_rupees") not in (None, ""):
+        try:
+            amt = _ef.rupees_to_minor(p.get("amount_rupees"))
+        except Exception:
+            raise HTTPException(400, "Invalid amount")
+    try:
+        er = _ef.admin_decide_earning(db, earning_id, decision, amount_minor=amt,
+                                      note=(p.get("note") or ""), actor_id=getattr(me, "id", None))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not er:
+        raise HTTPException(404, "Earning not found")
+    db.commit()
+    # notify the editor on a decision (no amount in a reject/hold title; editor sees own detail)
+    try:
+        from models import ProductionStaffProfile as _SP
+        sp = db.query(_SP).filter(_SP.id == er.staff_id).first()
+        if sp and sp.user_id:
+            import production_core as _pc
+            _msg = {"approve": "Your edit's payment was approved.",
+                    "hold": "Your edit's payment is on hold — Admin will review.",
+                    "reject": "Your edit's payment was not approved."}.get(decision, "Payment updated.")
+            _pc.notify(db, sp.user_id, "Payout update", _msg, "payout")
+    except Exception:
+        pass
+    return {"ok": True, "financial_state": er.financial_state,
+            "eligible_at": er.eligible_at.isoformat() if er.eligible_at else None}
+
+
+# ===== Project-based editor: monthly payout statements (Phase 5b) — finance Admin only =====
+@router.get("/editor-statements")
+def admin_editor_statements(period: str = "", db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Monthly settlement overview across project editors for `period` (IST YYYY-MM)."""
+    import editor_finance as _ef
+    per = (period or _ef.current_ist_period())
+    try:
+        rows = _ef.admin_statements_overview(db, per)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"period": per, "items": rows}
+
+
+@router.post("/editor-earnings/{staff_id}/clear-lock")
+def admin_clear_editor_earnings_lock(staff_id: int, db: Session = Depends(get_db),
+                                     me=Depends(get_payout_admin)):
+    """Finance Admin clears a project editor's forgotten My-Earnings passcode so they can set a new one."""
+    from models import ProductionStaffProfile as _SP
+    sp = db.query(_SP).filter(_SP.id == int(staff_id)).first()
+    if not sp:
+        raise HTTPException(404, "Editor not found")
+    sp.earnings_passcode_hash = ""
+    db.commit()
+    return {"ok": True, "detail": "Earnings passcode cleared. The editor can set a new one."}
+
+
+@router.post("/editor-statements/build")
+def admin_editor_statement_build(payload: dict = Body(...), db: Session = Depends(get_db),
+                                 me=Depends(get_payout_admin)):
+    """Create (or fetch) the draft statement for an editor+period and return its full detail."""
+    import editor_finance as _ef
+    p = payload or {}
+    staff_id = p.get("staff_id"); period = p.get("period")
+    if not staff_id or not period:
+        raise HTTPException(400, "staff_id and period required")
+    try:
+        st = _ef.get_or_create_draft(db, int(staff_id), period)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    db.commit()
+    return _ef.statement_detail(db, st.id)
+
+
+@router.get("/editor-statements/{statement_id}")
+def admin_editor_statement_detail(statement_id: int, db: Session = Depends(get_db),
+                                  me=Depends(get_payout_admin)):
+    import editor_finance as _ef
+    d = _ef.statement_detail(db, statement_id)
+    if not d:
+        raise HTTPException(404, "Statement not found")
+    return d
+
+
+@router.post("/editor-statements/{statement_id}/adjustment")
+def admin_editor_statement_adjustment(statement_id: int, payload: dict = Body(...),
+                                      db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Set an authorized +/- adjustment on a DRAFT statement (e.g. correction, add-on)."""
+    import editor_finance as _ef
+    p = payload or {}
+    rupees = p.get("amount_rupees", 0)
+    try:
+        # allow negative adjustments
+        neg = str(rupees).strip().startswith("-")
+        minor = _ef.rupees_to_minor(str(rupees).lstrip("-"))
+        if neg:
+            minor = -minor
+        st = _ef.set_statement_adjustment(db, statement_id, minor, note=(p.get("note") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not st:
+        raise HTTPException(404, "Statement not found")
+    db.commit()
+    return _ef.statement_detail(db, st.id)
+
+
+@router.post("/editor-statements/{statement_id}/finalize")
+def admin_editor_statement_finalize(statement_id: int, db: Session = Depends(get_db),
+                                    me=Depends(get_payout_admin)):
+    """Freeze the statement (snapshot approved lines, lock totals, assign ID). Idempotent."""
+    import editor_finance as _ef
+    st = _ef.finalize_statement(db, statement_id, actor_id=getattr(me, "id", None))
+    if not st:
+        raise HTTPException(404, "Statement not found")
+    db.commit()
+    # notify the editor that a statement is ready
+    try:
+        from models import ProductionStaffProfile as _SP
+        import production_core as _pc
+        sp = db.query(_SP).filter(_SP.id == st.staff_id).first()
+        if sp and sp.user_id:
+            _pc.notify(db, sp.user_id, "Payout statement ready",
+                       "Your %s payout statement is finalized." % st.period, "payout")
+    except Exception:
+        pass
+    return _ef.statement_detail(db, st.id)
+
+
+@router.post("/editor-statements/{statement_id}/payment")
+def admin_editor_statement_payment(statement_id: int, payload: dict = Body(...),
+                                   db: Session = Depends(get_db), me=Depends(get_payout_admin)):
+    """Record a payment allocation (bookkeeping; does not transfer money)."""
+    import editor_finance as _ef
+    p = payload or {}
+    if p.get("amount_rupees") in (None, ""):
+        raise HTTPException(400, "amount_rupees required")
+    try:
+        amt = _ef.rupees_to_minor(p.get("amount_rupees"))
+        pm = _ef.record_statement_payment(db, statement_id, amt, method=(p.get("method") or ""),
+                                          reference=(p.get("reference") or ""),
+                                          actor_id=getattr(me, "id", None), note=(p.get("note") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not pm:
+        raise HTTPException(404, "Statement not found")
+    db.commit()
+    return _ef.statement_detail(db, statement_id)
+
+
+# ============================= SCHOLARSHIP (admin manage) =============================
+def _sch_exam(db, exam_id):
+    from models import Exam
+    ex = db.query(Exam).filter(Exam.id == int(exam_id)).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    return ex
+
+
+@router.get("/scholarship/{exam_id}")
+def admin_scholarship_get(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Full scholarship data (results with phone, checks log, declared, discount)."""
+    import json as _json
+    import scholarship as SCH
+    from models import ScholarshipResult, ScholarshipCheck, ScholarshipBatchClick
+    ex = _sch_exam(db, exam_id)
+    results = (db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == ex.id)
+               .order_by(ScholarshipResult.rank_no.asc(), ScholarshipResult.id.asc()).all())
+    checks = (db.query(ScholarshipCheck).filter(ScholarshipCheck.exam_id == ex.id)
+              .order_by(ScholarshipCheck.checked_at.desc()).limit(2000).all())
+    try:
+        disc = _json.loads(getattr(ex, "discount_batches", None) or "[]")
+    except Exception:
+        disc = []
+    return {
+        "exam_id": ex.id, "title": ex.title,
+        "result_type": getattr(ex, "result_type", "ranking"),
+        "declared": bool(getattr(ex, "scholarship_declared", False)),
+        "public_token": ex.public_token,
+        "results": [{"id": r.id, "rank": i + 1, "name": r.name, "batch": r.batch, "phone": r.phone}
+                    for i, r in enumerate(results)],
+        "checks": [{"id": c.id, "name": c.name, "phone": c.phone, "class": c.student_class,
+                    "selected": bool(c.matched), "batch": c.matched_batch,
+                    "at": c.checked_at.strftime("%d %b %Y, %I:%M %p") if c.checked_at else ""}
+                   for c in checks],
+        "check_count": len(checks),
+        "selected_checks": sum(1 for c in checks if c.matched),
+        "discount_batches": disc if isinstance(disc, list) else [],
+        "discount_banner": getattr(ex, "discount_banner", None) or "",
+        "clicks": _sch_click_stats(db, ex.id),
+    }
+
+
+def _sch_click_stats(db, exam_id):
+    """Batch-click live tracker: per-batch clicks, total, distinct students, top batch."""
+    from models import ScholarshipBatchClick
+    rows = db.query(ScholarshipBatchClick).filter(ScholarshipBatchClick.exam_id == exam_id).all()
+    per = {}
+    phones = set()
+    for r in rows:
+        t = r.batch_title or "(untitled)"
+        if t not in per:
+            per[t] = {"title": t, "clicks": 0, "students": set()}
+        per[t]["clicks"] += 1
+        if r.phone:
+            per[t]["students"].add(r.phone)
+            phones.add(r.phone)
+    items = sorted(
+        [{"title": v["title"], "clicks": v["clicks"], "students": len(v["students"])} for v in per.values()],
+        key=lambda x: x["clicks"], reverse=True)
+    return {
+        "total_clicks": len(rows),
+        "distinct_students": len(phones),
+        "per_batch": items,
+        "top_batch": (items[0]["title"] if items else ""),
+    }
+
+
+def _sch_save_results(db, exam_id, rows):
+    """rows -> ScholarshipResult replace (phone normalize)."""
+    import scholarship as SCH
+    from models import ScholarshipResult
+    db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == exam_id).delete(synchronize_session=False)
+    n = 0
+    for i, r in enumerate(rows):
+        nm = (r.get("name") or "").strip()
+        bt = (r.get("batch") or "").strip()
+        ph = SCH.norm_phone(r.get("phone") or "")
+        if not (nm or bt or ph):
+            continue
+        db.add(ScholarshipResult(exam_id=exam_id, rank_no=i, name=nm[:160], batch=bt[:220], phone=ph))
+        n += 1
+    db.commit()
+    return n
+
+
+@router.post("/scholarship/{exam_id}/results")
+def admin_scholarship_set_results(exam_id: int, payload: dict = Body(...),
+                                  db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Results replace karo (name, batch, phone)."""
+    ex = _sch_exam(db, exam_id)
+    rows = payload.get("results") or []
+    n = _sch_save_results(db, ex.id, rows)
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+        db.commit()
+    return {"saved": n}
+
+
+@router.post("/scholarship/{exam_id}/seed")
+def admin_scholarship_seed(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """image-1 ke 20 students (name+batch) auto-fill. Maujooda phones NAAM se preserve."""
+    import scholarship as SCH
+    from models import ScholarshipResult
+    ex = _sch_exam(db, exam_id)
+    prev = {r.name.strip().lower(): r.phone for r in
+            db.query(ScholarshipResult).filter(ScholarshipResult.exam_id == ex.id).all() if r.name}
+    rows = [{"name": nm, "batch": bt, "phone": prev.get(nm.strip().lower(), "")}
+            for nm, bt in SCH.SEED_RESULTS]
+    n = _sch_save_results(db, ex.id, rows)
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+        db.commit()
+    return {"saved": n, "message": "20 students auto-filled. Ab phone numbers daalo."}
+
+
+@router.post("/scholarship/{exam_id}/bulk")
+async def admin_scholarship_bulk(exam_id: int, file: UploadFile = File(...),
+                                 db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Excel/CSV bulk upload -> results replace."""
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    data = await file.read()
+    rows = SCH.parse_results_xlsx(data)
+    if not rows:
+        raise HTTPException(400, "No rows found. Template use karo (Name, Batch, Phone).")
+    n = _sch_save_results(db, ex.id, rows)
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+        db.commit()
+    return {"saved": n}
+
+
+@router.get("/scholarship/{exam_id}/template.xlsx")
+def admin_scholarship_template(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    _sch_exam(db, exam_id)
+    data = SCH.results_template_xlsx()
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="scholarship_template.xlsx"'})
+
+
+@router.post("/scholarship/{exam_id}/declare")
+def admin_scholarship_declare(exam_id: int, payload: dict = Body(...),
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    ex = _sch_exam(db, exam_id)
+    ex.scholarship_declared = bool(payload.get("declared", True))
+    if getattr(ex, "result_type", "") != "scholarship":
+        ex.result_type = "scholarship"
+    db.commit()
+    return {"declared": bool(ex.scholarship_declared)}
+
+
+@router.post("/scholarship/{exam_id}/mode")
+def admin_scholarship_mode(exam_id: int, payload: dict = Body(...),
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    """result_type set: 'scholarship' ya 'ranking'."""
+    ex = _sch_exam(db, exam_id)
+    rt = (payload.get("result_type") or "").strip().lower()
+    ex.result_type = "scholarship" if rt == "scholarship" else "ranking"
+    db.commit()
+    return {"result_type": ex.result_type}
+
+
+@router.post("/scholarship/{exam_id}/discount")
+def admin_scholarship_discount(exam_id: int, payload: dict = Body(...),
+                               db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Non-selected students ke liye discount course cards set karo."""
+    import json as _json
+    ex = _sch_exam(db, exam_id)
+    cards = payload.get("discount_batches") or []
+    clean = []
+    for c in cards[:12]:
+        if not isinstance(c, dict):
+            continue
+        _img = (c.get("img") or "")
+        # base64 data-URL (downloaded thumbnail) bada hota hai — allow; plain URL chhota
+        _img = _img[:900000] if _img.startswith("data:") else _img[:1200]
+        _cls = str(c.get("cls") or "").strip()
+        _cls = _cls if _cls in ("10", "12") else ""
+        clean.append({"title": (c.get("title") or "")[:140], "img": _img,
+                      "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
+                      "url": (c.get("url") or "")[:800], "tag": (c.get("tag") or "")[:40],
+                      "desc": (c.get("desc") or "")[:300], "cls": _cls})
+    ex.discount_batches = _json.dumps(clean)
+    db.commit()
+    return {"saved": len(clean)}
+
+
+@router.post("/scholarship/{exam_id}/fetch-batch")
+def admin_scholarship_fetch_batch(exam_id: int, payload: dict = Body(...),
+                                  db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin ne paste kiya batch URL -> thumbnail + title + price auto-fetch (OG/JSON-LD)."""
+    import scholarship as SCH
+    url = (payload.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "URL required")
+    meta = SCH.fetch_batch_meta(url)
+    if not (meta.get("title") or meta.get("image")):
+        raise HTTPException(422, "Is link se details fetch nahi ho payi. URL check karein ya manually bhar dein.")
+    return meta
+
+
+@router.post("/scholarship/{exam_id}/banner")
+async def admin_scholarship_banner(exam_id: int, file: UploadFile = File(None),
+                                   remove: int = 0, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Promo banner upload (ya remove=1 se hatao). Compress karke base64 me store."""
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    if remove or file is None:
+        ex.discount_banner = None
+        db.commit()
+        return {"banner": ""}
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12MB).")
+    data_url = SCH.compress_banner(raw)
+    if not data_url:
+        raise HTTPException(422, "Could not process image.")
+    ex.discount_banner = data_url
+    db.commit()
+    return {"banner": data_url}
+
+
+@router.get("/scholarship/{exam_id}/checks.xlsx")
+def admin_scholarship_checks_xlsx(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    data = SCH.checks_xlsx(db, ex)
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="scholarship_checks.xlsx"'})
+
+
+@router.get("/scholarship/{exam_id}/result.pdf")
+def admin_scholarship_result_pdf(exam_id: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    ex = _sch_exam(db, exam_id)
+    data = SCH.result_pdf(db, ex)
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="MVS_Scholarship_Result.pdf"'})
+
+
+# ========================= UNIVERSAL PUBLIC-TEST MARKETING =========================
+def _pub_marketing(db):
+    """Singleton PublicMarketing row (id=1) get/create."""
+    from models import PublicMarketing
+    row = db.query(PublicMarketing).filter(PublicMarketing.id == 1).first()
+    if not row:
+        row = PublicMarketing(id=1, enabled=True)
+        db.add(row); db.commit(); db.refresh(row)
+    return row
+
+
+def _pub_live_batches(db):
+    """Active batches — joinable dropdown ke candidate. App ke SAME convention se:
+    active != False AND status != 'completed'/'archived' (case-insensitive) AND not archived.
+    IMPORTANT: har SESSION alag entry (e.g. Lakshya Science April 2027 AUR October 2027 dono),
+    isliye dedup sirf (name + session) par — name par nahi (warna October hide ho jaata)."""
+    from models import Batch
+    rows = db.query(Batch).order_by(Batch.sort.asc(), Batch.id.asc()).all()
+    out = []
+    seen = set()
+    for b in rows:
+        nm = (b.name or "").strip()
+        if not nm:
+            continue
+        st = (b.status or "").strip().lower()
+        # app convention: inactive / completed / archived batches chhod do
+        if b.active is False or st in ("completed", "archived") or b.archived_at is not None:
+            continue
+        sess = (b.session or "").strip()
+        key = (nm.lower(), sess.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": nm, "session": sess, "type": (b.type or ""), "status": (b.status or "")})
+    out.sort(key=lambda x: (x["name"].lower(), x["session"].lower()))
+    return out
+
+
+def _pub_click_stats(db):
+    from models import PublicTestClick
+    rows = db.query(PublicTestClick).all()
+    per = {}; phones = set()
+    for r in rows:
+        t = r.batch_title or "(untitled)"
+        per.setdefault(t, {"title": t, "clicks": 0, "students": set()})
+        per[t]["clicks"] += 1
+        if r.phone:
+            per[t]["students"].add(r.phone); phones.add(r.phone)
+    items = sorted([{"title": v["title"], "clicks": v["clicks"], "students": len(v["students"])}
+                    for v in per.values()], key=lambda x: x["clicks"], reverse=True)
+    return {"total_clicks": len(rows), "distinct_students": len(phones),
+            "per_batch": items, "top_batch": (items[0]["title"] if items else "")}
+
+
+def _pub_click_rows(db, limit=2000):
+    """Har click ki detail row — name, phone, class, batch, test, time (newest first)."""
+    from models import PublicTestClick
+    rows = (db.query(PublicTestClick)
+            .order_by(PublicTestClick.clicked_at.desc(), PublicTestClick.id.desc())
+            .limit(limit).all())
+    out = []
+    for r in rows:
+        out.append({
+            "name": r.name or "",
+            "phone": r.phone or "",
+            "class": r.student_class or "",
+            "batch": r.batch_title or "",
+            "test": r.test_title or "",
+            "time": (r.clicked_at.strftime("%d %b %Y, %I:%M %p") if getattr(r, "clicked_at", None) else ""),
+        })
+    return out
+
+
+@router.get("/public-marketing")
+def admin_public_marketing_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    import json as _json
+    row = _pub_marketing(db)
+    try:
+        batches = _json.loads(row.batches or "[]")
+    except Exception:
+        batches = []
+    try:
+        join_b = _json.loads(row.join_batches or "[]")
+    except Exception:
+        join_b = []
+    return {
+        "enabled": bool(row.enabled),
+        "banner": row.banner or "",
+        "batches": batches if isinstance(batches, list) else [],
+        "join_batches": join_b if isinstance(join_b, list) else [],
+        "live_batches": _pub_live_batches(db),
+        "clicks": _pub_click_stats(db),
+        "click_rows": _pub_click_rows(db),
+    }
+
+
+@router.post("/public-marketing")
+def admin_public_marketing_save(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import json as _json
+    row = _pub_marketing(db)
+    if "enabled" in payload:
+        row.enabled = bool(payload.get("enabled"))
+    cards = payload.get("batches")
+    if isinstance(cards, list):
+        clean = []
+        for c in cards:
+            if not isinstance(c, dict):
+                continue
+            if not (c.get("title") or c.get("url")):
+                continue
+            _img = (c.get("img") or "")
+            _img = _img[:900000] if _img.startswith("data:") else _img[:1200]
+            _cls = str(c.get("cls") or "").strip()
+            _cls = _cls if _cls in ("10", "12") else ""
+            clean.append({"title": (c.get("title") or "")[:140], "img": _img,
+                          "price": (c.get("price") or "")[:40], "old": (c.get("old") or "")[:40],
+                          "url": (c.get("url") or "")[:800], "tag": (c.get("tag") or "")[:40],
+                          "desc": (c.get("desc") or "")[:300], "cls": _cls})
+        row.batches = _json.dumps(clean)
+    jb = payload.get("join_batches")
+    if isinstance(jb, list):
+        names = []
+        for n in jb:
+            n = str(n or "").strip()[:160]
+            if n and n not in names:
+                names.append(n)
+        row.join_batches = _json.dumps(names[:60])
+    db.commit()
+    return {"saved": True}
+
+
+@router.post("/public-marketing/fetch-batch")
+def admin_public_marketing_fetch(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import scholarship as SCH
+    url = (payload.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "URL required")
+    meta = SCH.fetch_batch_meta(url)
+    if not (meta.get("title") or meta.get("image")):
+        raise HTTPException(422, "Is link se details fetch nahi ho payi. URL check karein ya manually bhar dein.")
+    return meta
+
+
+@router.post("/public-marketing/banner")
+async def admin_public_marketing_banner(file: UploadFile = File(None), remove: int = 0,
+                                        db: Session = Depends(get_db), _=Depends(get_admin)):
+    import scholarship as SCH
+    row = _pub_marketing(db)
+    if remove or file is None:
+        row.banner = None; db.commit()
+        return {"banner": ""}
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12MB).")
+    data_url = SCH.compress_banner(raw)
+    if not data_url:
+        raise HTTPException(422, "Could not process image.")
+    row.banner = data_url; db.commit()
+    return {"banner": data_url}
+
+
+@router.get("/public-marketing/clicks.xlsx")
+def admin_public_marketing_clicks_xlsx(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    data = SCH.public_clicks_xlsx(_pub_click_rows(db, limit=100000))
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="batch_interest_students.xlsx"'})
+
+
+@router.get("/public-marketing/clicks.pdf")
+def admin_public_marketing_clicks_pdf(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import scholarship as SCH
+    data = SCH.public_clicks_pdf(_pub_click_rows(db, limit=100000))
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="MVS_Batch_Interest_Report.pdf"'})
+
+
+# ============================= MVS SERVICES (admin) =============================
+def _svc_sessions(db):
+    from models import Batch
+    out = []
+    seen = set()
+    try:
+        for (s,) in db.query(Batch.session).distinct().all():
+            s = (s or "").strip()
+            if s and s.lower() not in seen:
+                seen.add(s.lower()); out.append(s)
+    except Exception:
+        pass
+    out.sort()
+    return out
+
+
+def _svc_stats(db, sid):
+    from models import MVSServiceInteraction as MI
+    rows = db.query(MI).filter(MI.service_id == sid).all()
+    clicks = sum(1 for r in rows if r.clicked_at is not None)
+    yes = sum(1 for r in rows if r.response == "yes")
+    no = sum(1 for r in rows if r.response == "no")
+    revenue = sum((r.amount or 0) for r in rows if r.response == "yes")
+    return {"clicks": clicks, "yes": yes, "no": no, "revenue": round(revenue, 2),
+            "total_students": len(set((r.student_id for r in rows if r.student_id)))}
+
+
+def _svc_out(s):
+    import json as _json
+    try:
+        tb = _json.loads(s.target_batches or "[]")
+    except Exception:
+        tb = []
+    return {
+        "id": s.id, "kind": s.kind or "link", "title": s.title or "", "description": s.description or "",
+        "thumbnail": s.thumbnail or "", "link": s.link or "", "price": s.price or "", "old_price": s.old_price or "",
+        "tag": s.tag or "", "active": bool(s.active), "target_class": s.target_class or "",
+        "target_session": s.target_session or "", "target_batches": tb if isinstance(tb, list) else [],
+        "require_practical": bool(s.require_practical), "sort": s.sort or 0,
+    }
+
+
+@router.get("/services")
+def admin_services_list(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import MVSService
+    rows = db.query(MVSService).order_by(MVSService.sort.asc(), MVSService.id.desc()).all()
+    out = []
+    for s in rows:
+        d = _svc_out(s)
+        d["stats"] = _svc_stats(db, s.id)
+        out.append(d)
+    return {"services": out, "live_batches": _pub_live_batches(db), "sessions": _svc_sessions(db)}
+
+
+@router.post("/services")
+def admin_services_save(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    import json as _json
+    from models import MVSService
+    sid = payload.get("id")
+    s = db.query(MVSService).filter(MVSService.id == sid).first() if sid else None
+    if not s:
+        s = MVSService(); db.add(s)
+    s.kind = "practical" if (payload.get("kind") == "practical") else "link"
+    s.title = (payload.get("title") or "")[:220]
+    s.description = (payload.get("description") or "")[:600]
+    s.link = (payload.get("link") or "")[:800]
+    s.price = (payload.get("price") or "")[:40]
+    s.old_price = (payload.get("old_price") or "")[:40]
+    s.tag = (payload.get("tag") or "")[:60]
+    tc = str(payload.get("target_class") or "").strip()
+    s.target_class = tc if tc in ("10", "12") else ""
+    s.target_session = (payload.get("target_session") or "")[:60]
+    tb = payload.get("target_batches")
+    if isinstance(tb, list):
+        s.target_batches = _json.dumps([str(x).strip()[:160] for x in tb if str(x).strip()][:40])
+    s.require_practical = bool(payload.get("require_practical")) or (s.kind == "practical")
+    if "active" in payload:
+        s.active = bool(payload.get("active"))
+    if payload.get("thumbnail") is not None:
+        th = payload.get("thumbnail") or ""
+        s.thumbnail = th if th else None
+    db.commit()
+    return {"saved": True, "id": s.id}
+
+
+@router.post("/services/{sid}/thumbnail")
+async def admin_services_thumbnail(sid: int, file: UploadFile = File(None), remove: int = 0,
+                                   db: Session = Depends(get_db), _=Depends(get_admin)):
+    import scholarship as SCH
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    if remove or file is None:
+        s.thumbnail = None; db.commit()
+        return {"thumbnail": ""}
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(413, "Image too large (max 12MB).")
+    data_url = SCH.compress_banner(raw, max_w=900)
+    if not data_url:
+        raise HTTPException(422, "Could not process image.")
+    s.thumbnail = data_url; db.commit()
+    return {"thumbnail": data_url}
+
+
+@router.post("/services/{sid}/toggle")
+def admin_services_toggle(sid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    s.active = bool(payload.get("active"))
+    db.commit()
+    return {"active": s.active}
+
+
+@router.delete("/services/{sid}")
+def admin_services_delete(sid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import MVSService, MVSServiceInteraction as MI
+    db.query(MI).filter(MI.service_id == sid).delete()
+    db.query(MVSService).filter(MVSService.id == sid).delete()
+    db.commit()
+    return {"deleted": True}
+
+
+@router.get("/services/{sid}/tracker")
+def admin_services_tracker(sid: int, range: str = "", frm: str = "", to: str = "",
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    import mvs_services as MS
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    start, end = MS.utc_bounds(range, frm, to)
+    yes_rows = MS.interaction_rows(db, service_id=sid, response="yes", start=start, end=end)
+    no_rows = MS.interaction_rows(db, service_id=sid, response="no", start=start, end=end)
+    clk_start, clk_end = MS.utc_bounds(range, frm, to)
+    clk_rows = MS.interaction_rows(db, service_id=sid, response="clicked", start=clk_start, end=clk_end)
+
+    def row(r, withshot=False):
+        when = r.responded_at or r.clicked_at
+        d = {"id": r.id, "student_id": r.student_id, "name": r.student_name or "",
+             "phone": r.student_phone or "",
+             "class": r.student_class or "", "amount": (r.amount if r.amount else None),
+             "has_screenshot": bool(r.screenshot),
+             "time": (when.strftime("%d %b %Y, %I:%M %p") if when else "")}
+        return d
+    revenue = round(sum((r.amount or 0) for r in yes_rows), 2)
+    return {
+        "title": s.title or "", "all_time": _svc_stats(db, sid),
+        "range": {"clicks": len(clk_rows), "yes": len(yes_rows), "no": len(no_rows), "revenue": revenue},
+        "yes_rows": [row(r) for r in yes_rows],
+        "no_rows": [row(r) for r in no_rows],
+    }
+
+
+@router.delete("/services/{sid}/interaction/{iid}")
+def admin_services_delete_interaction(sid: int, iid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Ek tracker row (ek student ka click/purchase record) delete karo — demo/test cleanup ke liye."""
+    from models import MVSServiceInteraction as MI
+    r = db.query(MI).filter(MI.id == iid, MI.service_id == sid).first()
+    if not r:
+        raise HTTPException(404, "Record not found")
+    db.delete(r)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.get("/services/{sid}/chat-thread/{student_id}")
+def admin_service_chat_thread(sid: int, student_id: int,
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Tracker se Services Chat shortcut — is student+service ka thread ensure karke id return karo."""
+    from service_chat_models import ServiceChatThread
+    from models import MVSServiceInteraction as MI, MVSService, StudentProfile
+    t = db.query(ServiceChatThread).filter(
+        ServiceChatThread.service_id == sid,
+        ServiceChatThread.student_id == student_id).first()
+    if not t:
+        r = db.query(MI).filter(MI.service_id == sid, MI.student_id == student_id).first()
+        sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+        s = db.query(MVSService).filter(MVSService.id == sid).first()
+        t = ServiceChatThread(
+            service_id=sid, student_id=student_id,
+            student_user_id=(sp.user_id if sp else None),
+            student_name=((r.student_name if r else "") or "Student"),
+            student_phone=((r.student_phone if r else "") or ""),
+            student_class=((r.student_class if r else "") or ""),
+            service_title=(s.title if s else ""), enabled=True)
+        db.add(t)
+        db.commit()
+    return {"thread_id": t.id, "student_name": t.student_name or "Student"}
+
+
+@router.post("/services/{sid}/interaction/{iid}/amount")
+def admin_services_set_amount(sid: int, iid: int, payload: dict = Body(...),
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin khud amount likh sakta hai — jab student ne sirf screenshot daala ho, amount nahi."""
+    from models import MVSServiceInteraction as MI
+    r = db.query(MI).filter(MI.id == iid, MI.service_id == sid).first()
+    if not r:
+        raise HTTPException(404, "Record not found")
+    raw = payload.get("amount")
+    if raw in (None, ""):
+        r.amount = None
+    else:
+        try:
+            amt = float(raw)
+        except Exception:
+            raise HTTPException(400, "Invalid amount")
+        if amt < 0:
+            raise HTTPException(400, "Amount cannot be negative")
+        r.amount = amt
+    db.commit()
+    return {"ok": True, "amount": r.amount}
+
+
+@router.get("/services/{sid}/screenshot/{iid}")
+def admin_services_screenshot(sid: int, iid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    import base64 as _b64
+    from fastapi import Response
+    from models import MVSServiceInteraction as MI
+    r = db.query(MI).filter(MI.id == iid, MI.service_id == sid).first()
+    if not r or not r.screenshot:
+        raise HTTPException(404, "No screenshot")
+    data = r.screenshot
+    try:
+        if data.startswith("data:"):
+            head, b64 = data.split(",", 1)
+            mime = head.split(";")[0].split(":")[1] if ":" in head else "image/jpeg"
+            return Response(content=_b64.b64decode(b64), media_type=mime)
+    except Exception:
+        pass
+    raise HTTPException(422, "Bad screenshot data")
+
+
+@router.get("/services/{sid}/export.xlsx")
+def admin_services_export(sid: int, type: str = "all", range: str = "", frm: str = "", to: str = "",
+                          db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import mvs_services as MS
+    from models import MVSService
+    s = db.query(MVSService).filter(MVSService.id == sid).first()
+    if not s:
+        raise HTTPException(404, "Service not found")
+    start, end = MS.utc_bounds(range, frm, to)
+    resp = type if type in ("yes", "no") else None
+    rows = MS.interaction_rows(db, service_id=sid, response=resp, start=start, end=end)
+    data = MS.export_interactions_xlsx(db, rows, title=s.title or "MVS Service")
+    fname = "service_%s_%s.xlsx" % (sid, type)
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % fname})
+
+
+# ===================== MVS Services — DATA CONTROL ROOM (merged export) =====================
+def _dcr_ids(services):
+    out = []
+    for p in (services or "").split(","):
+        p = p.strip()
+        if p.isdigit():
+            out.append(int(p))
+    return out or None
+
+
+def _dcr_gather(db, response, range, frm, to, services):
+    import mvs_services as MS
+    import data_control_room as DCR
+    start, end = MS.utc_bounds(range, frm, to)
+    rows = DCR.merged_rows(db, response=response, start=start, end=end,
+                           service_ids=_dcr_ids(services))
+    summ = DCR.summarize(rows)
+    rlab = {"yes": "Purchased (Yes)", "no": "Not yet (No)"}.get((response or "all").lower(), "All responses")
+    meta = {"response_label": rlab, "range_label": DCR.range_label(range, frm, to),
+            "total": summ["total"], "yes": summ["yes"], "no": summ["no"], "revenue": summ["revenue"]}
+    return rows, meta
+
+
+@router.get("/services/data-room")
+def admin_data_room(response: str = "all", range: str = "", frm: str = "", to: str = "",
+                    services: str = "", limit: int = 400,
+                    db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Merged preview across all services + the service list for the filter UI."""
+    from models import MVSService
+    rows, meta = _dcr_gather(db, response, range, frm, to, services)
+    svc_list = [{"id": s.id, "title": s.title or ("Service #%s" % s.id),
+                 "class": s.target_class or ""}
+                for s in db.query(MVSService).order_by(MVSService.sort.asc(), MVSService.id.desc()).all()]
+    preview = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows[:max(1, limit)]]
+    return {"rows": preview, "truncated": len(rows) > len(preview),
+            "summary": {"total": meta["total"], "yes": meta["yes"], "no": meta["no"], "revenue": meta["revenue"]},
+            "range_label": meta["range_label"], "response_label": meta["response_label"],
+            "services": svc_list}
+
+
+@router.get("/services/data-room/export")
+def admin_data_room_export(fmt: str = "xlsx", response: str = "all", range: str = "", frm: str = "",
+                           to: str = "", services: str = "",
+                           db: Session = Depends(get_db), _=Depends(get_admin)):
+    from fastapi import Response
+    import data_control_room as DCR
+    fmt = (fmt or "xlsx").lower()
+    rows, meta = _dcr_gather(db, response, range, frm, to, services)
+    stamp = (meta["range_label"] or "all").lower().replace(" ", "_").replace("…", "x")
+    base = "mvs_data_room_%s_%s" % ((response or "all").lower(), stamp)
+    if fmt in ("xlsx", "excel"):
+        data = DCR.build_xlsx(rows, meta)
+        return Response(content=data,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": 'attachment; filename="%s.xlsx"' % base})
+    if fmt == "pdf":
+        data = DCR.build_pdf(rows, meta)
+        return Response(content=data, media_type="application/pdf",
+                        headers={"Content-Disposition": 'attachment; filename="%s.pdf"' % base})
+    if fmt in ("png", "image", "img"):
+        data = DCR.build_png(rows, meta)
+        return Response(content=data, media_type="image/png",
+                        headers={"Content-Disposition": 'attachment; filename="%s.png"' % base})
+    raise HTTPException(400, "Unsupported format")
+
+
+# ============================= MVS Services — Notify all =============================
+@router.post("/services/{sid}/notify")
+def admin_services_notify(sid: int, payload: dict = None, db: Session = Depends(get_db), me=Depends(get_admin)):
+    """Is product ke sabhi target students ko notification bhejo — click karne par wo
+    Materials > MVS Services section pe redirect ho jaate hain (notif_type=mvs_service)."""
+    import mvs_services as MS
+    from models import MVSService
+    s = db.query(MVSService).get(sid)
+    if not s:
+        raise HTTPException(404, "Service not found")
+    payload = payload or {}
+    title = (payload.get("title") or s.title or "MVS Services").strip()
+    msg = (payload.get("message") or ("Check it out in MVS Services: " + (s.title or ""))).strip()
+    targets = MS.targeted_student_users(s, db)
+    import time as _t
+    bkey = "svc%s-%s" % (sid, int(_t.time()))
+    sent = 0
+    for (u, _p) in targets:
+        try:
+            notify(db, u.id, title, msg, "mvs_service",
+                   sender_id=getattr(me, "id", None), sender_role="admin",
+                   batch_key=bkey, batch_label="MVS Services")
+            sent += 1
+        except Exception:
+            pass
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"sent": sent}
+
+
+# ============================= Live Events / Classes =============================
+def _event_out(e):
+    return {"id": e.id, "title": e.title or "", "subtitle": e.subtitle or "",
+            "url": e.url or "", "video_url": e.video_url or "", "start_at": e.start_at or "",
+            "active": bool(e.active), "target_class": e.target_class or "",
+            "target_batch_id": getattr(e, "target_batch_id", None), "sort": e.sort or 0}
+
+
+@router.get("/events")
+def admin_events_list(db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent, LiveEventClick
+    evs = db.query(LiveEvent).order_by(LiveEvent.id.desc()).all()
+    out = []
+    for e in evs:
+        d = _event_out(e)
+        try:
+            d["clicks"] = db.query(LiveEventClick).filter(LiveEventClick.event_id == e.id).count()
+        except Exception:
+            d["clicks"] = 0
+        out.append(d)
+    return {"events": out}
+
+
+@router.get("/events/{eid}/tracker")
+def admin_events_tracker(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Event ke Join-Now clicks — count + students ki list (name/phone/class/time)."""
+    from models import LiveEvent, LiveEventClick
+    ev = db.query(LiveEvent).get(eid)
+    rows = db.query(LiveEventClick).filter(LiveEventClick.event_id == eid)\
+             .order_by(LiveEventClick.id.desc()).all()
+    out = []
+    for r in rows:
+        out.append({"id": r.id, "name": r.student_name or "", "phone": r.student_phone or "",
+                    "class": r.student_class or "",
+                    "time": (r.clicked_at.strftime("%d %b %Y, %I:%M %p") if r.clicked_at else "")})
+    return {"title": (ev.title if ev else ""), "clicks": len(out), "rows": out}
+
+
+@router.post("/events")
+def admin_events_save(payload: dict, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    eid = payload.get("id")
+    e = db.query(LiveEvent).get(eid) if eid else None
+    if not e:
+        e = LiveEvent()
+        db.add(e)
+    for f in ("title", "subtitle", "url", "video_url", "start_at", "target_class"):
+        if f in payload:
+            setattr(e, f, (payload.get(f) or ""))
+    if "target_batch_id" in payload:
+        bv = payload.get("target_batch_id")
+        try:
+            e.target_batch_id = int(bv) if bv not in (None, "", "0", 0) else None
+        except Exception:
+            e.target_batch_id = None
+    if "active" in payload:
+        e.active = bool(payload.get("active"))
+    db.commit()
+    db.refresh(e)
+    return _event_out(e)
+
+
+@router.post("/events/{eid}/toggle")
+def admin_events_toggle(eid: int, payload: dict = None, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    e = db.query(LiveEvent).get(eid)
+    if not e:
+        raise HTTPException(404, "Event not found")
+    payload = payload or {}
+    e.active = bool(payload.get("active")) if ("active" in payload) else (not e.active)
+    db.commit()
+    return {"active": bool(e.active)}
+
+
+@router.delete("/events/{eid}")
+def admin_events_delete(eid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import LiveEvent
+    e = db.query(LiveEvent).get(eid)
+    if not e:
+        raise HTTPException(404, "Event not found")
+    db.delete(e)
+    db.commit()
+    return {"deleted": True}

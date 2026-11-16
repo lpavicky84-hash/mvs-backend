@@ -1,39 +1,181 @@
 """
-Web Push sender (VAPID). Phone/browser par notification bhejta hai — Chrome, Edge,
-Firefox, aur installed-PWA Safari (iOS 16.4+). Agar VAPID keys env me set nahi hain
-to sab kuch gracefully no-op (kuch nahi tootta).
+Web Push sender (VAPID) — ab EVERY notification ke saath phone push jaata hai.
 
-Env vars (Railway):
-  VAPID_PUBLIC_KEY   — base64url public key (frontend ko bhi jaata hai)
-  VAPID_PRIVATE_KEY  — base64url raw private key
-  VAPID_SUBJECT      — "mailto:you@domain" (optional, default mailto:support@mvsfoundation.in)
+Architecture: ek persistent background worker + queue. notify() sirf enqueue karta
+hai (micro-seconds, request block nahi hoti). Worker short window me saare jobs
+drain karke payload-wise COALESCE karta hai — isliye 9798-student broadcast bhi
+1 DB query + N sends ban jaata hai (thread/session explosion nahi).
 
-Sending background thread me hota hai taaki bade broadcasts request ko block na karein.
+VAPID keys env me na ho to sab gracefully no-op.
+  VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
 """
 import os
 import json
+import time
 import threading
+
+try:
+    import queue as _queue
+except Exception:
+    _queue = None
 
 _PUB = (os.getenv("VAPID_PUBLIC_KEY") or "").strip()
 _PRIV = (os.getenv("VAPID_PRIVATE_KEY") or "").strip()
 _SUBJ = (os.getenv("VAPID_SUBJECT") or "mailto:support@mvsfoundation.in").strip()
 
+_Q = _queue.Queue(maxsize=200000) if _queue else None
+_worker_lock = threading.Lock()
+_worker_started = False
+
 
 def enabled():
-    return bool(_PUB and _PRIV)
+    return bool(_PUB and _PRIV and _Q is not None)
 
 
 def public_key():
     return _PUB
 
 
-def _clean(s, n=4000):
-    s = "" if s is None else str(s)
-    return s[:n]
+def _ids(user_ids):
+    seq = user_ids if isinstance(user_ids, (list, tuple, set)) else [user_ids]
+    out = []
+    for u in seq:
+        try:
+            if u:
+                out.append(int(u))
+        except Exception:
+            pass
+    return out
+
+
+def enqueue(user_ids, title, body, url="/", tag=None):
+    """Notification ke saath phone push queue me daalo (best-effort, non-blocking)."""
+    if not enabled():
+        return
+    ids = _ids(user_ids)
+    if not ids:
+        return
+    payload = {"title": (str(title or "MVS Foundation"))[:160],
+               "body": (str(body or ""))[:480], "url": url or "/"}
+    if tag:
+        payload["tag"] = str(tag)[:80]
+    pj = json.dumps(payload, sort_keys=True)
+    try:
+        _Q.put_nowait((ids, pj))
+        _ensure_worker()
+    except Exception:
+        pass
+
+
+# backward-compatible helpers
+def push_many(user_ids, title, body, url="/", tag=None):
+    enqueue(user_ids, title, body, url=url, tag=tag)
+
+
+def push_one(user_id, title, body, url="/", tag=None):
+    if user_id:
+        enqueue([user_id], title, body, url=url, tag=tag)
+
+
+def _ensure_worker():
+    global _worker_started
+    if _worker_started or not enabled():
+        return
+    with _worker_lock:
+        if _worker_started:
+            return
+        try:
+            threading.Thread(target=_worker_loop, daemon=True).start()
+            _worker_started = True
+        except Exception:
+            pass
+
+
+def _worker_loop():
+    while True:
+        try:
+            first = _Q.get()
+            batch = [first]
+            deadline = time.time() + 0.5     # chhoti window me coalesce
+            while len(batch) < 20000:
+                rem = deadline - time.time()
+                if rem <= 0:
+                    break
+                try:
+                    batch.append(_Q.get(timeout=rem))
+                except Exception:
+                    break
+            _process(batch)
+        except Exception:
+            time.sleep(1)
+
+
+def _process(batch):
+    # payload-wise user_ids coalesce
+    groups = {}
+    for ids, pj in batch:
+        s = groups.get(pj)
+        if s is None:
+            s = set(); groups[pj] = s
+        s.update(ids)
+    try:
+        from database import SessionLocal
+        from push_models import PushSubscription
+    except Exception:
+        return
+    db = SessionLocal()
+    try:
+        for pj, uidset in groups.items():
+            uids = list(uidset)
+            rows = []
+            for i in range(0, len(uids), 900):
+                chunk = uids[i:i + 900]
+                try:
+                    for s in db.query(PushSubscription).filter(
+                            PushSubscription.user_id.in_(chunk)).all():
+                        rows.append((s.id, s.endpoint, s.p256dh, s.auth))
+                except Exception:
+                    try: db.rollback()
+                    except Exception: pass
+            if not rows:
+                continue
+            dead = _send_group(rows, pj)
+            for i in range(0, len(dead), 900):
+                try:
+                    db.query(PushSubscription).filter(
+                        PushSubscription.id.in_(dead[i:i + 900])).delete(synchronize_session=False)
+                    db.commit()
+                except Exception:
+                    try: db.rollback()
+                    except Exception: pass
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+def _send_group(rows, payload_json):
+    """rows = [(id, endpoint, p256dh, auth), ...] (plain tuples, thread-safe). Returns dead ids."""
+    dead = []
+
+    def _run(r):
+        return (r[0], _send_one(r[1], r[2], r[3], payload_json))
+
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=24) as ex:
+            for sid, res in ex.map(_run, rows):
+                if res == "dead":
+                    dead.append(sid)
+    except Exception:
+        for r in rows:
+            if _send_one(r[1], r[2], r[3], payload_json) == "dead":
+                dead.append(r[0])
+    return dead
 
 
 def _send_one(endpoint, p256dh, auth, payload_json):
-    """Returns True (ok), 'dead' (gone -> prune), or False (transient)."""
     from pywebpush import webpush, WebPushException
     try:
         webpush(
@@ -51,80 +193,3 @@ def _send_one(endpoint, p256dh, auth, payload_json):
         return False
     except Exception:
         return False
-
-
-def _worker(user_ids, payload):
-    if not enabled():
-        return
-    try:
-        from database import SessionLocal
-        from push_models import PushSubscription
-    except Exception:
-        return
-    payload_json = json.dumps(payload)
-    db = SessionLocal()
-    try:
-        subs = (db.query(PushSubscription)
-                .filter(PushSubscription.user_id.in_(list(user_ids))).all())
-        if not subs:
-            return
-        dead = []
-        try:
-            from concurrent.futures import ThreadPoolExecutor
-            jobs = [(s.id, s.endpoint, s.p256dh, s.auth) for s in subs]
-
-            def _run(job):
-                sid, ep, pk, au = job
-                r = _send_one(ep, pk, au, payload_json)
-                return (sid, r)
-
-            with ThreadPoolExecutor(max_workers=16) as ex:
-                for sid, r in ex.map(_run, jobs):
-                    if r == "dead":
-                        dead.append(sid)
-        except Exception:
-            # fallback: sequential
-            for s in subs:
-                r = _send_one(s.endpoint, s.p256dh, s.auth, payload_json)
-                if r == "dead":
-                    dead.append(s.id)
-        if dead:
-            try:
-                db.query(PushSubscription).filter(
-                    PushSubscription.id.in_(dead)).delete(synchronize_session=False)
-                db.commit()
-            except Exception:
-                db.rollback()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass
-
-
-def push_many(user_ids, title, body, url="/", tag=None):
-    """Best-effort phone push to many users — non-blocking (background thread)."""
-    try:
-        ids = list({int(u) for u in (user_ids or []) if u})
-    except Exception:
-        ids = [u for u in (user_ids or []) if u]
-    if not enabled() or not ids:
-        return
-    payload = {"title": _clean(title, 160) or "MVS Foundation",
-               "body": _clean(body, 480), "url": url or "/"}
-    if tag:
-        payload["tag"] = str(tag)[:80]
-    try:
-        threading.Thread(target=_worker, args=(ids, payload), daemon=True).start()
-    except Exception:
-        pass
-
-
-def push_one(user_id, title, body, url="/", tag=None):
-    if user_id:
-        push_many([user_id], title, body, url=url, tag=tag)

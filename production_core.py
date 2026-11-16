@@ -258,6 +258,12 @@ def notify(db, user_id, title, message, ntype="production", link=None):
         return
     db.add(Notification(user_id=user_id, title=title, message=message,
                         notif_type=ntype, link=link or None))
+    try:
+        import push_service, re as _re
+        _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
+        push_service.enqueue([user_id], _t, message, url=(link or "/"))
+    except Exception:
+        pass
 
 
 def notify_pms(db, title, message, ntype="production", link=None):

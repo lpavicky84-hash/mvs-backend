@@ -867,6 +867,12 @@ def student_set_active_batch(payload: dict = Body(...), db: Session = Depends(ge
 def notify(db, user_id, title, message, notif_type):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
     db.add(n)
+    try:
+        import push_service, re as _re
+        _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
+        push_service.enqueue([user_id], _t, message, url="/")
+    except Exception:
+        pass
 
 # ===== MVS brand logo (premium viewers ka header) — public branding, auth nahi =====
 @router.get("/logo")

@@ -260,6 +260,13 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str,
                      sender_id=sender_id, sender_role=sender_role,
                      batch_key=batch_key, batch_label=batch_label)
     db.add(n)
+    # phone push (best-effort, non-blocking; queue coalesces bulk sends)
+    try:
+        import push_service, re as _re
+        _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
+        push_service.enqueue([user_id], _t, message, url="/")
+    except Exception:
+        pass
 
 # ===== DASHBOARD =====
 @router.get("/dashboard", response_model=TeacherDashboard)
