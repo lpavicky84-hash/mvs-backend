@@ -12543,7 +12543,8 @@ def admin_services_tracker(sid: int, range: str = "", frm: str = "", to: str = "
 
     def row(r, withshot=False):
         when = r.responded_at or r.clicked_at
-        d = {"id": r.id, "name": r.student_name or "", "phone": r.student_phone or "",
+        d = {"id": r.id, "student_id": r.student_id, "name": r.student_name or "",
+             "phone": r.student_phone or "",
              "class": r.student_class or "", "amount": (r.amount if r.amount else None),
              "has_screenshot": bool(r.screenshot),
              "time": (when.strftime("%d %b %Y, %I:%M %p") if when else "")}
@@ -12567,6 +12568,31 @@ def admin_services_delete_interaction(sid: int, iid: int, db: Session = Depends(
     db.delete(r)
     db.commit()
     return {"deleted": True}
+
+
+@router.get("/services/{sid}/chat-thread/{student_id}")
+def admin_service_chat_thread(sid: int, student_id: int,
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Tracker se Services Chat shortcut — is student+service ka thread ensure karke id return karo."""
+    from service_chat_models import ServiceChatThread
+    from models import MVSServiceInteraction as MI, MVSService, StudentProfile
+    t = db.query(ServiceChatThread).filter(
+        ServiceChatThread.service_id == sid,
+        ServiceChatThread.student_id == student_id).first()
+    if not t:
+        r = db.query(MI).filter(MI.service_id == sid, MI.student_id == student_id).first()
+        sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+        s = db.query(MVSService).filter(MVSService.id == sid).first()
+        t = ServiceChatThread(
+            service_id=sid, student_id=student_id,
+            student_user_id=(sp.user_id if sp else None),
+            student_name=((r.student_name if r else "") or "Student"),
+            student_phone=((r.student_phone if r else "") or ""),
+            student_class=((r.student_class if r else "") or ""),
+            service_title=(s.title if s else ""), enabled=True)
+        db.add(t)
+        db.commit()
+    return {"thread_id": t.id, "student_name": t.student_name or "Student"}
 
 
 @router.post("/services/{sid}/interaction/{iid}/amount")

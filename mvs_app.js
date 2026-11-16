@@ -12837,7 +12837,9 @@ function _svcTrkCss(){
     '.svc-amt-add{display:inline-flex;align-items:center;gap:3px;background:rgba(217,119,6,.12);color:#b45309;border:1px dashed #e0a948;border-radius:8px;padding:3px 11px;font-weight:700;font-size:.74rem;cursor:pointer}',
     '.svc-amt-add:hover{background:rgba(217,119,6,.2)}.svc-amt-add svg{width:12px;height:12px}',
     '.svc-amt-edit{background:none;border:none;color:#b8941f;cursor:pointer;padding:2px;vertical-align:middle}.svc-amt-edit svg{width:14px;height:14px}',
-    '.svc-noamt-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e0a948;vertical-align:middle;margin-left:4px}'
+    '.svc-noamt-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e0a948;vertical-align:middle;margin-left:4px}',
+    '.svc-trk-chat{background:rgba(18,140,126,.12);border:1px solid rgba(18,140,126,.3);color:#0f7a6c;cursor:pointer;padding:5px 7px;border-radius:9px;vertical-align:middle}',
+    '.svc-trk-chat:hover{background:rgba(18,140,126,.22)}.svc-trk-chat svg{width:16px;height:16px;display:block}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -12858,12 +12860,13 @@ async function _svcTrkLoad(){
     var rg=d.range||{}, at=d.all_time||{};
     function chip(k,lbl){ return '<button class="btn btn-sm '+(window._svcTrkRange===k?'btn-primary':'btn-ghost')+'" onclick="window._svcTrkRange=\''+k+'\';_svcTrkLoad()">'+lbl+'</button>'; }
     function delBtn(iid){ return '<button class="svc-trk-del" title="Delete this record" onclick="_svcTrkDelRow('+id+','+iid+')">'+ic('trash')+'</button>'; }
+    function chatBtn(stuId){ return (stuId==null?'':'<button class="svc-trk-chat" title="Open chat with this student" onclick="_svcTrkOpenChat('+id+','+stuId+')">'+ic('chat')+'</button>'); }
     var yesRows=(d.yes_rows||[]).map(function(r){
       var paid=(r.amount && r.amount>0);
       var amtCell = paid
         ? '<span class="svc-paid-tag">'+ic('check')+' Paid ₹'+r.amount+'</span> <button class="svc-amt-edit" title="Edit amount" onclick="_svcSetAmount('+id+','+r.id+','+(r.amount||0)+')">'+ic('edit')+'</button>'
         : '<button class="svc-amt-add" onclick="_svcSetAmount('+id+','+r.id+',0)">'+ic('plus')+' Set amount</button>';
-      return '<tr class="'+(paid?'row-paid':'row-unpaid')+'"><td data-label="Name">'+esc(r.name||'—')+(paid?'':' <span class="svc-noamt-dot" title="Amount not entered yet"></span>')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Amount">'+amtCell+'</td><td data-label="Screenshot">'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
+      return '<tr class="'+(paid?'row-paid':'row-unpaid')+'"><td data-label="Name">'+esc(r.name||'—')+(paid?'':' <span class="svc-noamt-dot" title="Amount not entered yet"></span>')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Amount">'+amtCell+'</td><td data-label="Screenshot">'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center;white-space:nowrap">'+chatBtn(r.student_id)+' '+delBtn(r.id)+'</td></tr>';
     }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:12px">No purchases in this range.</td></tr>';
     var noRows=(d.no_rows||[]).map(function(r){
       return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
@@ -12893,6 +12896,14 @@ async function _svcTrkDelRow(sid, iid){
   if(!confirm('Delete this record? This cannot be undone.')) return;
   try{ await api('/api/admin/services/'+sid+'/interaction/'+iid,'DELETE'); toast('Record deleted.'); _svcTrkLoad(); loadAServices(); }
   catch(e){ toast((e&&e.message)||'Delete failed',true); }
+}
+function _svcTrkOpenChat(sid, stuId){
+  // Tracker se shortcut: is student ki Services Chat seedha khol do.
+  api('/api/admin/services/'+sid+'/chat-thread/'+stuId).then(function(r){
+    if(!r || !r.thread_id){ toast('Chat not available for this student',true); return; }
+    try{ closeModal(); }catch(e){}
+    openAServicesChat(r.thread_id);
+  }).catch(function(e){ toast((e&&e.message)||'Could not open chat',true); });
 }
 function _svcSetAmount(sid, iid, cur){
   // Student ne sirf screenshot daala, amount nahi likha — admin yahan khud amount likh sakta hai.
@@ -50091,10 +50102,11 @@ function sOpenServiceChat(sid, title){
 }
 
 /* ---------- ADMIN: "Services Chat" panel (WhatsApp-style) ---------- */
-async function openAServicesChat(){
+async function openAServicesChat(openTid){
   _scChatCss();
   showModal('Services Chat', '<div id="sc-adm"><div class="spinner" style="margin:30px auto"></div></div>', '<button class="btn btn-ghost" onclick="_scClose();closeModal()">Close</button>');
-  _scAdmRenderList();
+  await _scAdmRenderList();
+  if(openTid){ try{ _scAdmOpen(openTid); }catch(e){} }
 }
 async function _scAdmRenderList(){
   _scClose();
