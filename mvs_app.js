@@ -48,6 +48,17 @@ const ICONS={
   image:_S+'<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
 };
 function ic(k){ return ICONS[k]||''; }
+// ===== Boot splash: app ready hote hi brand splash hatao (black screen fix) =====
+function _hideBootSplash(){
+  try{ var s=document.getElementById('boot-splash'); if(!s) return;
+    if(s._hiding) return; s._hiding=true;
+    s.style.transition='opacity .35s'; s.style.opacity='0';
+    setTimeout(function(){ try{ if(s&&s.parentNode) s.parentNode.removeChild(s); }catch(e){} }, 380);
+  }catch(e){}
+}
+// Safety: splash kabhi atke nahi — max 12s, aur window load par bhi hatao.
+try{ setTimeout(function(){ _hideBootSplash(); }, 12000); }catch(e){}
+try{ window.addEventListener('load', function(){ setTimeout(function(){ _hideBootSplash(); }, 500); }); }catch(e){}
 function statCard(label,num,iconKey,accent,nav,blink){
   const bl=(blink&&Number(num)>0)?' stat-blink':'';
   return `<div class="stat-card stat-${accent}${nav?' clickable':''}${bl}"${nav?` onclick="${nav}"`:''}><div class="sc-badge sc-${accent}">${ic(iconKey)}</div><div class="sc-label">${label}</div><div class="sc-num">${num}</div></div>`;
@@ -989,6 +1000,7 @@ function goLogin(portal){
   try{ history.replaceState({mvs:1,auth:portal},'', _portalPath(portal)); }catch(e){}
   document.getElementById('landing').style.display='none';
   document.getElementById('login-screen').classList.add('active');
+  try{ _hideBootSplash(); }catch(e){}
   try{ _setupStaffLoginEye(); }catch(e){}   // password eye (teacher/admin/production/editor/graphics/youtuber)
   // show right sub-screen
   document.getElementById('login-standard').style.display='none';
@@ -3118,6 +3130,7 @@ function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);count
 let _tGender='', _tSuffix='';
 async function openTeacher(){
   try{_saveSession();}catch(e){}
+  try{ _initDownloadAppBtns(); _hideBootSplash(); }catch(e){}
   try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){} [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
   try{
  const p=await api('/api/teacher/profile');
@@ -14389,6 +14402,7 @@ function applyAdminAccess(){
 }
 function openAdmin(){
   try{_saveSession();}catch(e){}
+  try{ _initDownloadAppBtns(); _hideBootSplash(); }catch(e){}
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
   try{ initAdminBatches(); }catch(e){}
@@ -22930,7 +22944,7 @@ const STUDENT_BATCHES=[
 ];
 async function openStudent(){
   try{_saveSession();}catch(e){}
-  try{ _initDownloadAppBtn(); }catch(e){}
+  try{ _initDownloadAppBtn(); _hideBootSplash(); }catch(e){}
   // Sidebar load pe FULLY closed rahe — sab sections band, user click pe hi khulein.
   // forceAll=true taaki late-inject hone wale sub-items (Classes Material/DPP Submit) bhi chhup jayein.
   try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
@@ -33432,6 +33446,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .ph-search{display:none}',              /* phone/tablet: search chhupa do -> icons fit */
 '  .ph-live{padding:7px 11px;font-size:.78rem}',
 '  .ph-bell{width:38px;height:38px}',
+'  .ph-pushbtn{padding:0!important;width:38px!important;height:38px!important;border-radius:11px!important;justify-content:center;gap:0}',   /* phone: sirf gold bell icon (Enable Alerts text hide) -> header fit */
+'  .ph-pushbtn .ph-push-lbl{display:none}',
 '  .pdash-greet{display:block;margin:2px 2px 14px}',
 '  .pdash-greet h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.02em;line-height:1.15}',
 '  .pdash-date{font-size:.82rem;color:var(--muted);margin-top:3px}',
@@ -33530,6 +33546,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '<div class="ps-nav">'+navHtml+'</div>'+
           '<div class="ps-foot">'+
             '<div class="ps-prof" onclick="prodProfileOpen(\''+portal+'\')" title="Your profile"><div class="ps-prof-av" id="ps-prof-av-'+portal+'">'+esc((initials?initials(NAME||d.title):(NAME||d.title||'?').slice(0,1)).toUpperCase())+'</div><div class="ps-prof-i"><div class="ps-prof-n">'+esc(NAME||d.title)+'</div><div class="ps-prof-r">'+esc(d.role||portal)+'</div></div></div>'+
+            '<button class="sb-dlapp blink js-dlapp-btn" data-portal="'+portal+'" style="display:none;width:100%;margin:10px 0 0" onclick="openDownloadApp(\''+portal+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><line x1="5" y1="21" x2="19" y2="21"/></svg><span>Download App</span></button>'+
             '<button class="ps-fbtn" onclick="logout()">'+icon('logout')+'<span>Logout</span></button>'+
           '</div>'+
         '</aside>'+
@@ -33574,6 +33591,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     prodStartNotifPoll(portal);
     try{ _pushInit(); }catch(e){}   // production/editor/youtuber/graphics bhi push subscribe karein (phone notifications)
     try{ _prodPushCss(); _prodPushSync(portal); }catch(e){}
+    try{ _initDownloadAppBtns(); _hideBootSplash(); }catch(e){}
     // v-perf/live: production team ki online presence UserSession me record karo taaki
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
     // presence touch hoti thi -> kabhi live nahi dikhte the). Turant + har 40s (_hbTimer).
@@ -50478,30 +50496,43 @@ function _deviceKind(){
     return 'desktop';
   }catch(e){ return 'desktop'; }
 }
-function _stopDlBlink(){ try{ var b=document.getElementById('s-hdr-dlapp'); if(b) b.classList.remove('blink'); }catch(e){} }
-function _initDownloadAppBtn(){
+var _DL_NAMES={student:'Class Manager',teacher:'Teacher',admin:'Admin',production:'Production',editor:'Editor',youtuber:'Studio',graphics:'Graphics'};
+function _dlPortalKey(){
   try{
-    var btn=document.getElementById('s-hdr-dlapp'); if(!btn) return;
-    var k=_deviceKind();
-    // PC par ya already-installed app (standalone) me button chhupa do.
-    if(k==='desktop' || _isStandalonePWA()){ btn.style.display='none'; return; }
-    btn.style.display='';
-    var done=false;
-    try{ done = (k==='ios') ? (localStorage.getItem('mvs_app_ios_seen')==='1') : (localStorage.getItem('mvs_app_dl')==='1'); }catch(e){}
-    if(done) btn.classList.remove('blink'); else btn.classList.add('blink');
+    var p=(typeof CURRENT_PORTAL!=='undefined'&&CURRENT_PORTAL)||(typeof _portalFromPath==='function'&&_portalFromPath())||'student';
+    return _DL_NAMES[p]?p:'student';
+  }catch(e){ return 'student'; }
+}
+function _stopDlBlink(){
+  try{ var pk=window._dlPortal; document.querySelectorAll('.js-dlapp-btn').forEach(function(b){ if(!pk||b.getAttribute('data-portal')===pk) b.classList.remove('blink'); }); }catch(e){}
+}
+// Har portal ke download button (header/sidebar) ko device ke hisaab se show/hide + blink.
+function _initDownloadAppBtns(){
+  try{
+    var k=_deviceKind(); var show=(k!=='desktop' && !_isStandalonePWA());
+    document.querySelectorAll('.js-dlapp-btn').forEach(function(btn){
+      if(!show){ btn.style.display='none'; return; }
+      btn.style.display='';
+      var pk=btn.getAttribute('data-portal')||'student'; var done=false;
+      try{ done=(k==='ios')?(localStorage.getItem('mvs_app_ios_seen')==='1'):(localStorage.getItem('mvs_app_dl_'+pk)==='1'); }catch(e){}
+      if(done) btn.classList.remove('blink'); else btn.classList.add('blink');
+    });
   }catch(e){}
 }
+function _initDownloadAppBtn(){ _initDownloadAppBtns(); }   // alias (purane callers ke liye)
 function _doApkDownload(){
-  try{ localStorage.setItem('mvs_app_dl','1'); }catch(e){}
+  var pk=window._dlPortal||'student';
+  try{ localStorage.setItem('mvs_app_dl_'+pk,'1'); }catch(e){}
   _stopDlBlink();
   try{
-    var a=document.createElement('a'); a.href='/apps/student.apk'; a.download='MVS-Class-Manager.apk';
+    var a=document.createElement('a'); a.href='/apps/'+pk+'.apk'; a.download='MVS-'+pk+'.apk';
     document.body.appendChild(a); a.click(); a.remove();
-  }catch(e){ try{ location.href='/apps/student.apk'; }catch(_){} }
+  }catch(e){ try{ location.href='/apps/'+pk+'.apk'; }catch(_){} }
   try{ toast('Download started — open the file to install. / Download shuru — install karne ke liye file kholein.'); }catch(e){}
   var dl=document.getElementById('dlapp-doneline'); if(dl) dl.style.display='';
 }
-function openDownloadApp(){
+function openDownloadApp(portal){
+  window._dlPortal=(portal&&_DL_NAMES[portal])?portal:_dlPortalKey();
   var k=_deviceKind();
   window._dlKind=(k==='ios'?'ios':'android');
   if(k==='ios'){ try{ localStorage.setItem('mvs_app_ios_seen','1'); }catch(e){} }
@@ -50514,6 +50545,7 @@ function _dlStep(n, html){
 }
 function _dlContent(){
   var kind=window._dlKind||'android', L=(window._dlLang==='hi'?'hi':'en'), C={};
+  var nm=_DL_NAMES[window._dlPortal||'student']||'Class Manager';
   if(kind==='ios'){
     C.en={title:'Add MVS to your Home Screen',
       steps:['Tap the <b>Share</b> button at the bottom of Safari.',
@@ -50530,14 +50562,14 @@ function _dlContent(){
       safe:'<b>बिलकुल सुरक्षित।</b> Apple सिर्फ़ इस एक-बार के Home Screen स्टेप से ऐप इंस्टॉल करता है — कुछ डाउनलोड नहीं करना।',
       action:'समझ गया', fn:''};
   } else {
-    C.en={title:'Install the MVS Class Manager App',
+    C.en={title:'Install the MVS '+nm+' App',
       steps:['Tap <b>Download App</b> below — the app file will start downloading.',
              'Open the downloaded file. Android may warn <i>&ldquo;This type of file can harm your device.&rdquo;</i> This is normal for apps installed outside the Play Store — tap <b>Download anyway</b> / <b>Open</b>.',
              'If asked, allow <b>Install unknown apps</b> for your browser, then tap <b>Install</b>.',
              'Open the app, log in, and turn on notifications.'],
       safe:'<b>&#10003; 100% Safe.</b> This is the official MVS Foundation app. That warning appears only because we give it to you directly instead of through the Play Store — nothing is wrong, and you can install it with full confidence to make your studies even stronger.',
       action:'Download App', fn:'_doApkDownload()'};
-    C.hi={title:'MVS Class Manager ऐप इंस्टॉल करें',
+    C.hi={title:'MVS '+nm+' ऐप इंस्टॉल करें',
       steps:['नीचे <b>Download App</b> दबाएँ — ऐप फ़ाइल डाउनलोड होने लगेगी।',
              'डाउनलोड हुई फ़ाइल खोलें। Android चेतावनी दिखा सकता है <i>&ldquo;यह फ़ाइल आपके डिवाइस को नुकसान पहुँचा सकती है।&rdquo;</i> Play Store के बाहर की ऐप्स के लिए यह सामान्य है — <b>Download anyway</b> / <b>Open</b> दबाएँ।',
              'पूछे जाने पर अपने ब्राउज़र के लिए <b>Install unknown apps</b> allow करें, फिर <b>Install</b> दबाएँ।',
@@ -50552,7 +50584,7 @@ function _appSheet(){
   _dlAppCss();
   var L=(window._dlLang==='hi'?'hi':'en');
   var d=_dlContent();
-  var icon='<img src="/app-icon/student.png" alt="MVS" onerror="this.onerror=null;this.src=\''+_logoSrc()+'\'" style="width:50px;height:50px;border-radius:13px;object-fit:cover;flex:0 0 auto;box-shadow:0 8px 20px -8px rgba(0,0,0,.5)">';
+  var icon='<img src="/app-icon/'+(window._dlPortal||'student')+'.png" alt="MVS" onerror="this.onerror=null;this.src=\''+_logoSrc()+'\'" style="width:50px;height:50px;border-radius:13px;object-fit:cover;flex:0 0 auto;box-shadow:0 8px 20px -8px rgba(0,0,0,.5)">';
   var toggle='<button class="dla-lang" onclick="_dlToggleLang()" title="Change language">'+(L==='en'?'हिंदी':'English')+'</button>';
   var steps=d.steps.map(function(s,i){ return _dlStep(i+1, s); }).join('');
   var hasDl=!!d.fn;
@@ -50643,6 +50675,12 @@ function _pushShowNudge(){
 }
 async function _pushEnable(){
   var x=document.getElementById('push-nudge'); if(x) x.remove();
+  // iPhone Safari TAB: web push support nahi hai — error dene ki jagah "Add to Home Screen"
+  // install guide kholo (install ke baad hi iOS push allow karta hai).
+  if(_isIosDevice() && !_isStandalonePWA()){
+    try{ window._dlPortal=_dlPortalKey(); window._dlKind='ios'; localStorage.setItem('mvs_app_ios_seen','1'); }catch(e){}
+    _stopDlBlink(); _appSheet(); return;
+  }
   if(!_pushSupported()){ toast('This browser does not support notifications.',true); return; }
   try{
     var perm=await Notification.requestPermission();
