@@ -50349,19 +50349,60 @@ function _urlB64ToUint8(base64){
   for(var i=0;i<raw.length;i++){ out[i]=raw.charCodeAt(i); }
   return out;
 }
+function _isIosDevice(){
+  try{ var ua=navigator.userAgent||''; return /iPad|iPhone|iPod/.test(ua) || (navigator.platform==='MacIntel' && (navigator.maxTouchPoints||0)>1); }catch(e){ return false; }
+}
+function _isStandalonePWA(){
+  try{ return (window.navigator.standalone===true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); }catch(e){ return false; }
+}
 async function _pushInit(){
-  if(!_pushSupported() || !TOKEN) return;
+  if(!TOKEN) return;
   if(window._pushInited) return; window._pushInited=true;
   try{ if(!document.querySelector('link[rel="manifest"]')){ var _l=document.createElement('link'); _l.rel='manifest'; _l.href='/manifest.webmanifest'; document.head.appendChild(_l); } }catch(e){}
   try{
     var info=await api('/api/push/vapid-public-key');
     if(!info || !info.enabled || !info.key){ return; }   // VAPID set nahi -> feature dormant
     window._vapidKey=info.key;
+    // iPhone/iPad Safari TAB: push tabhi chalega jab app Home Screen par install ho (iOS 16.4+).
+    // Isliye tab me install-guide dikhao (enable button yahan kaam nahi karega).
+    if(_isIosDevice() && !_isStandalonePWA() && !_pushSupported()){ _iosInstallGuide(); return; }
+    if(!_pushSupported()) return;
     var reg=await navigator.serviceWorker.register('/service-worker.js');
     if(Notification.permission==='granted'){ await _pushSubscribe(reg, info.key); }
     else if(Notification.permission==='default'){ _pushShowNudge(); }
   }catch(e){ window._pushInited=false; }
 }
+function _iosInstallGuide(){
+  try{ if(localStorage.getItem('ios_install_off')==='1') return; }catch(e){}
+  if(document.getElementById('ios-install')) return;
+  var share='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+  var plus='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#14213d" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>';
+  var ov=document.createElement('div'); ov.id='ios-install';
+  ov.style.cssText='position:fixed;inset:0;z-index:9100;background:rgba(10,15,30,.55);display:flex;align-items:flex-end;justify-content:center;padding:0';
+  ov.innerHTML='<div style="background:var(--card,#fff);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px 20px 26px;box-shadow:0 -14px 40px -10px rgba(0,0,0,.4)">'
+    +'<div style="width:42px;height:4px;border-radius:999px;background:#d8cfbb;margin:0 auto 16px"></div>'
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'
+    +'<img src="'+_logoSrc()+'" alt="MVS Foundation" onerror="_logoFallback(this)" style="flex:0 0 auto;width:48px;height:48px;border-radius:12px;object-fit:cover;background:#fff;border:1px solid var(--border,#e7ddc7)">'
+    +'<div><div style="font-weight:900;font-size:1.15rem;color:var(--text,#14213d)">Install MVS on your phone</div>'
+    +'<div style="font-size:.82rem;color:var(--text-muted,#6b6355)">Get class alerts & notices right on your Home Screen — never miss an update.</div></div></div>'
+    +'<div style="margin-top:16px;display:flex;flex-direction:column;gap:12px">'
+    +_iosStep('1','<span>Tap the <b>Share</b> button '+share+' at the bottom of Safari.</span>')
+    +_iosStep('2','<span>Scroll down and tap <b>Add to Home Screen</b> '+plus+'.</span>')
+    +_iosStep('3','<span>Tap <b>Add</b>, then open <b>MVS</b> from your Home Screen and turn on notifications.</span>')
+    +'</div>'
+    +'<div style="font-size:.74rem;color:var(--text-muted,#6b6355);margin-top:14px;background:rgba(37,99,235,.07);border-radius:10px;padding:9px 12px">This one-time step is required by Apple for notifications on iPhone.</div>'
+    +'<button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="(function(){try{localStorage.setItem(\'ios_install_off\',\'1\')}catch(e){};var x=document.getElementById(\'ios-install\');if(x)x.remove();})()">Got it</button>'
+    +'</div>';
+  ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+function _iosStep(n, html){
+  return '<div style="display:flex;align-items:flex-start;gap:12px">'
+    +'<div style="flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:#14213d;color:#fff;font-weight:800;font-size:.82rem;display:flex;align-items:center;justify-content:center">'+n+'</div>'
+    +'<div style="font-size:.9rem;line-height:1.5;color:var(--text,#14213d);padding-top:2px">'+html+'</div></div>';
+}
+// Student khud bhi guide khol sake
+function iosInstallHelp(){ try{ localStorage.removeItem('ios_install_off'); }catch(e){} _iosInstallGuide(); }
 async function _pushSubscribe(reg, key){
   try{
     reg=reg||await navigator.serviceWorker.ready;
