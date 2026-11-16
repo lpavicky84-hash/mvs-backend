@@ -3854,10 +3854,13 @@ body.dark .po-pill.red{color:#f87171}
   .trk-me{padding:10px 12px;gap:8px}
   .trk-me-hint{display:none}
   .trk-me-rank{font-size:1.3rem}
-  .sbb-row{gap:8px;padding:8px 10px}
-  .sbb-av{width:30px;height:30px;font-size:.76rem}
-  .sbb-main{min-width:0}
-  .sbb-nm{font-size:.78rem;margin-bottom:2px}
+  .sbb-row{gap:8px;padding:8px 10px;align-items:flex-start}
+  .sbb-av{width:30px;height:30px;font-size:.76rem;margin-top:1px}
+  .sbb-main{min-width:0;flex:1;overflow:hidden}
+  .sbb-nm{font-size:.78rem;margin-bottom:2px;display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;min-width:0}
+  .sbb-nm .xm-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sbb-sub{word-break:break-word}
+  .dpp-rk-st{align-self:center;margin-top:2px}
   .trk-cmp-score{font-size:1.15rem}
   .trk-cmp-who{font-size:.64rem}
   .trk-cmp-diff{font-size:.66rem;padding:3px 8px;text-align:center}
