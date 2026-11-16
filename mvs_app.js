@@ -50375,6 +50375,9 @@ function _installMetaInit(){
     _metaTag('apple-mobile-web-app-title', (path==='/teacher')?'MVS Teacher':(path==='/admin')?'MVS Admin':'MVS');
     _metaTag('theme-color','#14213d');
     if(!document.querySelector('link[rel="apple-touch-icon"]')){ var ai=document.createElement('link'); ai.rel='apple-touch-icon'; ai.href='/push-icon.png'; document.head.appendChild(ai); }
+    // Service worker ko jaldi register karo (login se pehle bhi) — proper PWA + TWA/APK me
+    // push ready, aur PWABuilder bhi SW detect kar leta hai.
+    try{ if('serviceWorker' in navigator){ navigator.serviceWorker.register('/service-worker.js').catch(function(){}); } }catch(e){}
   }catch(e){}
 }
 async function _pushInit(){

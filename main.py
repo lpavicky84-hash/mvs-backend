@@ -1149,14 +1149,15 @@ def _serve_manifest(start: str = "/"):
     man = {
         "name": nm,
         "short_name": ("MVS" if s in ("/", "/student") else nm.replace("MVS ", "MVS ")),
+        "description": "MVS Foundation — class updates, study material, tests and notices for NIOS students.",
         "id": (s if s != "/" else "/student"),
         "start_url": (s if s != "/" else "/"),
         "scope": "/",
         "display": "standalone",
+        "orientation": "portrait",
         "background_color": "#fdfbf6",
         "theme_color": "#14213d",
         "icons": [
-            {"src": "/push-icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
             {"src": "/push-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
             {"src": "/push-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
