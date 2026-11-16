@@ -49,7 +49,8 @@
   .hdr-dlapp:hover{filter:brightness(1.06);transform:translateY(-1px)}
   .hdr-dlapp svg{width:15px;height:15px}
   .hdr-dlapp.blink{animation:sbBlink 1.2s ease-in-out infinite}
-  @media(max-width:520px){ .hdr-dlapp .hdr-dlapp-tx{display:none} .hdr-dlapp{padding:8px 9px} }
+  /* "App" text hamesha dikhe (bachon ko saaf samajh aaye ki ye app download button hai) */
+  @media(max-width:400px){ .hdr-dlapp{padding:7px 11px;gap:5px;font-size:.78rem} }
   .user-info{display:flex;align-items:center;gap:12px}
   .uinfo-link{cursor:pointer;border-radius:12px;padding:6px 8px;margin:-6px -8px;transition:.15s}
   .mstat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px}
