@@ -1568,7 +1568,10 @@ function _ensureNotifCss(){
     '.npnl-open{font-size:.64rem;font-weight:800;letter-spacing:.03em;color:#8a6d10;background:rgba(201,162,39,.14);border-radius:999px;padding:2px 9px;white-space:nowrap}',
     '.npnl-msg{font-size:.8rem;color:var(--text-muted);line-height:1.5;margin-top:3px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}',
     '.npnl-tm{font-size:.68rem;color:var(--text-muted);margin-top:6px;font-weight:600;opacity:.85}',
-    '.npnl-dot{position:absolute;top:13px;right:13px;width:9px;height:9px;border-radius:50%;background:#c9a227;box-shadow:0 0 0 4px rgba(201,162,39,.18)}',
+    '.npnl-dot{position:absolute;top:13px;right:13px;width:9px;height:9px;border-radius:50%;background:#c9a227;box-shadow:0 0 0 4px rgba(201,162,39,.18);animation:npnlBlink 1.1s ease-in-out infinite}',
+    '@keyframes npnlBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(201,162,39,.5)}50%{opacity:.5;box-shadow:0 0 0 7px rgba(201,162,39,0)}}',
+    '.npnl-it.unread{animation:npnlRow 1.6s ease-in-out infinite}',
+    '@keyframes npnlRow{0%,100%{background:linear-gradient(100deg,rgba(201,162,39,.12),transparent 72%)}50%{background:linear-gradient(100deg,rgba(201,162,39,.03),transparent 72%)}}',
     '.npnl-img{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:9px;display:none;background:var(--border)}',
     '.npnl-empty{text-align:center;padding:40px 10px;color:var(--text-muted)}',
     '.npnl-empty .ne-ic{width:54px;height:54px;border-radius:50%;background:var(--primary-50,rgba(201,162,39,.12));display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#8a6d10}',
@@ -1788,6 +1791,7 @@ async function notifPopupOnOpen(role){
   showNotifPop(role,unread);
   if(role==='student'){ try{ _maybeCommPopup('student',list); }catch(e){} }
   startNotifPolling(role);
+  try{ _pushInit(); }catch(e){}
 }
 async function pollNotifs(role){
   if(document.hidden) return;   // v167: backgrounded tab poll na kare -> server load kam
@@ -1863,6 +1867,7 @@ async function openAdminNotify(){
     <div id="an-filters" class="ex-grid2" style="display:none">
       <div><label class="ex-lbl">Class (optional)</label><select class="form-control" id="an-class" onchange="anClassChange()">${clsOpts}</select></div>
       <div><label class="ex-lbl">Subject (optional)</label><select class="form-control" id="an-subject" onchange="anScope()">${subOpts}</select></div>
+      <div style="grid-column:1/-1"><label class="ex-lbl">Batch (optional)</label><select class="form-control" id="an-batch" onchange="anScope()"><option value="">All batches</option></select></div>
     </div>
     <div id="an-scope" style="margin:6px 0 12px"></div>
     <div class="form-group"><label>Title</label><input class="form-control" id="an-title" placeholder="e.g. Holiday Notice"></div>
@@ -1874,6 +1879,7 @@ async function openAdminNotify(){
     </div>`,
    `<button class="btn btn-ghost" onclick="openAdminSentLog()">${ic('chart')} Sent &amp; Views</button><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitAdminNotify()">${ic('bell')} Send Notification</button>`);
   anScope();
+  _fillBatchSelect('an-batch', '');
 }
 // ===== Admin "Sent by Me" — notification view tracking (like teacher) =====
 async function openAdminSentLog(){
@@ -1918,8 +1924,9 @@ function anScope(){
   if(v==='teachers'){ label='Teachers Only'; n=c.teachers; }
   else if(v==='students'){
     label='Students'; n=c.students;
-    const cl=val('an-class'), sub=val('an-subject');
-    if(cl||sub){ label='Students'+(cl?' · Class '+cl:'')+(sub?' · '+sub:''); star='*'; }
+    const cl=val('an-class'), sub=val('an-subject'), bt=document.getElementById('an-batch');
+    const btTxt=(bt&&bt.value)?(bt.options[bt.selectedIndex]||{}).text:'';
+    if(cl||sub||(bt&&bt.value)){ label='Students'+(cl?' · Class '+cl:'')+(sub?' · '+sub:'')+(btTxt?' · '+btTxt:''); star='*'; }
   } else { label='Everyone — Teachers + Students'; n=c.all; }
   box.innerHTML=`<div style="display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--primary-50),#fff);border:1px solid var(--border);border-radius:14px;padding:12px 16px">
     <div style="font-size:1.7rem;font-weight:800;color:var(--primary);line-height:1">${n}${star}</div>
@@ -1946,7 +1953,7 @@ async function submitAdminNotify(){
   const title=val('an-title'), message=document.getElementById('an-msg').value.trim(), target=val('an-target');
   if(!title||!message){ toast('Title and message are required.',true); return; }
   const body={title,message,target};
-  if(target==='students'){ body.class_name=val('an-class')||''; body.subject=val('an-subject')||''; }
+  if(target==='students'){ body.class_name=val('an-class')||''; body.subject=val('an-subject')||''; body.batch_id=val('an-batch')||''; }
   const link=val('an-link'); if(link) body.link=link;
   if(window._anImg) body.image_b64=window._anImg;
   const btns=document.querySelectorAll('.modal-footer .btn'); btns.forEach(b=>b.disabled=true);
@@ -12553,8 +12560,8 @@ async function loadAServices(){
     var cards=svcs.map(_admSvcCard).join('')||'<div class="sch-sub" style="padding:20px;text-align:center">No services yet. Add your first product.</div>';
     el.innerHTML='<div id="a-events-wrap"></div>'
       +'<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm dcr-open-btn" onclick="openDataControlRoom()">'+ic('chart')+' Data Control Room</button>'
-      +'<button class="btn btn-secondary btn-sm" style="position:relative" onclick="openAServicesChat()">'+ic('chat')+' Services Chat<span id="a-svc-chat-badge" style="display:none;position:absolute;top:-7px;right:-6px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)"></span></button>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-sm dcr-open-btn" onclick="openDataControlRoom()">'+ic('chart')+' Data Control Room</button>'
+      +'<button class="a-scbtn" onclick="openAServicesChat()">'+ic('chat')+' Services Chat<span id="a-svc-chat-badge" class="b" style="display:none"></span></button>'
       +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div></div>'
       +'<div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">'+cards+'</div>';
     loadAEvents(); _scAdmBadge();
@@ -12563,7 +12570,7 @@ async function loadAServices(){
 function _scAdmBadge(){
   try{ api('/api/admin/service-chats').then(function(d){
     var n=(d&&d.total_unread)||0; var b=document.getElementById('a-svc-chat-badge');
-    if(b){ if(n){ b.textContent=n; b.style.display=''; } else { b.style.display='none'; } }
+    if(b){ if(n){ b.textContent=(n>99?'99+':n); b.style.display=''; b.classList.add('sc-blink'); } else { b.style.display='none'; b.classList.remove('sc-blink'); } }
   }).catch(function(){}); }catch(e){}
 }
 // ---------------- Live Events / Classes (admin) ----------------
@@ -12631,6 +12638,26 @@ function _isoToLocalInput(iso){
   var p=function(n){return (n<10?'0':'')+n;};
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
 }
+// Shared: batch list (deduped by name+session label) for targeting dropdowns
+async function _loadBatchList(){
+  if(window._batchListCache) return window._batchListCache;
+  try{
+    var d=await api('/api/admin/batches'); var seen={}; var out=[];
+    (d.batches||[]).forEach(function(b){
+      var label=(b.name||('Batch '+b.id))+(b.session?(' — '+b.session):'');
+      if(seen[label]) return; seen[label]=1; out.push({id:b.id,label:label});
+    });
+    window._batchListCache=out; return out;
+  }catch(e){ return []; }
+}
+function _batchOptsHtml(list, sel){
+  return ['<option value="">All batches</option>'].concat((list||[]).map(function(b){
+    return '<option value="'+b.id+'"'+(String(sel||'')===String(b.id)?' selected':'')+'>'+esc(b.label)+'</option>';
+  })).join('');
+}
+function _fillBatchSelect(selId, sel){
+  _loadBatchList().then(function(list){ var el=document.getElementById(selId); if(el) el.innerHTML=_batchOptsHtml(list, sel); });
+}
 function openEventEditor(id){
   _ensureSchCss();
   var e=(window._admEvents||[]).filter(function(x){return x.id===id;})[0]||{};
@@ -12643,11 +12670,14 @@ function openEventEditor(id){
     +'<div id="ev-prev" style="margin-top:8px;max-width:320px"></div>'
     +'<label class="sch-lbl">Date &amp; time (kab hone wala hai)</label><input type="datetime-local" class="sch-in" id="ev-when" value="'+esc(_isoToLocalInput(e.start_at))+'">'
     +'<label class="sch-lbl">Show to class</label><select class="sch-in" id="ev-class"><option value=""'+(!e.target_class?' selected':'')+'>All classes</option><option value="10"'+(e.target_class==='10'?' selected':'')+'>Class 10 only</option><option value="12"'+(e.target_class==='12'?' selected':'')+'>Class 12 only</option></select>'
+    +'<label class="sch-lbl">Show to batch (optional)</label><select class="sch-in" id="ev-batch"><option value="">All batches</option></select>'
+    +'<div class="sch-sub" style="margin-top:4px">Kisi ek batch ko hi dikhana ho to choose karo — warna "All batches" rehne do.</div>'
     +'<label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.9rem;font-weight:700;cursor:pointer"><input type="checkbox" id="ev-active" '+(e.active?'checked':'')+'> Make this LIVE on student dashboard now</label>'
     +'</div>';
   showModal(id?'Edit Event':'Add Event','<div id="ev-ed">'+body+'</div>',
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="_evSave()">Save</button>');
   _evPrevRefresh();
+  _fillBatchSelect('ev-batch', e.target_batch_id||'');
 }
 function _evPrevRefresh(){
   var box=document.getElementById('ev-prev'); if(!box) return;
@@ -12666,6 +12696,7 @@ async function _evSave(){
     video_url:(document.getElementById('ev-video')||{}).value||'',
     start_at:iso,
     target_class:(document.getElementById('ev-class')||{}).value||'',
+    target_batch_id:(document.getElementById('ev-batch')||{}).value||'',
     active:!!(document.getElementById('ev-active')||{}).checked };
   if(!payload.title.trim()){ toast('Please enter a title',true); return; }
   try{ await api('/api/admin/events','POST',payload); closeModal(); toast('Event saved!'); loadAEvents(); }
@@ -13059,16 +13090,16 @@ function _pmTrackerHtml(cl, rows){
   var tbl='';
   if(rows.length){
     var body=rows.map(function(r,i){
-      return '<tr><td>'+(i+1)+'</td><td>'+esc(r.name||'—')+'</td><td>'+esc(r.phone||'—')+'</td><td>'+esc(r['class']||'—')+'</td>'
-        +'<td>'+esc(r.batch||'—')+'</td><td style="color:var(--text-muted)">'+esc(r.test||'')+'</td><td style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td></tr>';
+      return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td>'
+        +'<td data-label="Batch Clicked">'+esc(r.batch||'—')+'</td><td data-label="From Test" style="color:var(--text-muted)">'+esc(r.test||'—')+'</td><td data-label="Time" style="color:var(--text-muted)">'+esc(r.time||'')+'</td></tr>';
     }).join('');
     tbl='<div style="margin-top:12px">'
       +'<button type="button" class="btn btn-ghost btn-sm" onclick="_pmToggleClicks(this)" aria-expanded="false">'+ic('eye')+' View all student details ('+rows.length+') ▾</button>'
       +'<div id="pm-clicks-list" style="display:none;margin-top:10px">'
       +'<div class="sch-acts" style="margin-bottom:8px"><button class="btn btn-ghost btn-sm" onclick="_pmDlXlsx()">'+ic('download')+' Download Excel</button>'
       +'<button class="btn btn-ghost btn-sm" onclick="_pmDlPdf()">'+ic('download')+' Premium PDF</button></div>'
-      +'<div style="overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:10px"><table class="pm-ctbl"><thead><tr>'
-      +'<th>#</th><th>Name</th><th>Phone</th><th>Class</th><th>Batch Clicked</th><th>From Test</th><th>Time</th></tr></thead><tbody>'
+      +'<div class="svc-trk-scroll" style="max-height:52vh;overflow:auto"><table class="pm-ctbl svc-trk-tbl"><thead><tr>'
+      +'<th>Name</th><th>Phone</th><th>Class</th><th>Batch Clicked</th><th>From Test</th><th>Time</th></tr></thead><tbody>'
       +body+'</tbody></table></div></div></div>';
   }
   return '<div class="sch-sec"><h4>Batch Click Tracker (live)</h4><div class="sch-sub">Non-joined students kis batch par click kar rahe hain — live.</div>'
@@ -23448,8 +23479,9 @@ async function loadSServices(){
       var chatBtn='';
       if(s.chat){
         var ttl=(s.title||'MVS Service').replace(/'/g,'\\u0027');
-        chatBtn='<button class="sc-chat-btn" onclick="sOpenServiceChat('+s.id+',\''+esc(ttl)+'\')">'+ic('chat')+' Chat with MVS Support'
-          +(s.chat.unread?'<span class="b">'+s.chat.unread+'</span>':'')+'</button>';
+        var unr=(s.chat.unread||0);
+        chatBtn='<button class="sc-chat-btn'+(unr?' sc-cta-blink':'')+'" onclick="sOpenServiceChat('+s.id+',\''+esc(ttl)+'\')">'+ic('chat')+' '+(unr?('New reply from MVS Support'):('Chat with MVS Support'))
+          +(unr?'<span class="b sc-blink">'+(unr>99?'99+':unr)+'</span>':'')+'</button>';
       }
       return '<div class="svc-card">'+thumb+'<div class="svc-body">'
         +'<span class="svc-tag">'+esc(s.tag||'MVS Service')+'</span>'
@@ -23561,7 +23593,11 @@ async function _svcSubmitYes(sid){
         +'<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>'
         +'<div style="font-weight:900;font-size:1.4rem;color:#14213d">Thank you!</div>'
         +'<div style="color:var(--text-muted);font-size:.9rem;margin-top:7px;line-height:1.5">Your purchase has been recorded successfully.<br>Our team will verify it shortly.</div>'
-        +'<button class="btn btn-primary" style="width:100%;margin-top:20px" onclick="var o=document.getElementById(\'svc-ov\');if(o)o.remove()">Done</button></div>';
+        +'<div style="background:rgba(18,140,126,.09);border:1px solid rgba(18,140,126,.22);border-radius:12px;padding:12px 14px;margin-top:18px;text-align:left">'
+        +'<div style="font-weight:800;color:#0f5132;font-size:.9rem;margin-bottom:3px">Have a doubt?</div>'
+        +'<div style="color:var(--text-muted);font-size:.82rem;line-height:1.5">If you have any questions or doubts about this service, chat directly with our support team — we are here to help.</div></div>'
+        +'<button class="sc-chat-btn" style="margin-top:14px" onclick="var o=document.getElementById(\'svc-ov\');if(o)o.remove();sOpenServiceChat('+sid+',\''+esc((((window._svcData&&window._svcData.services)||[]).filter(function(x){return x.id===sid;})[0]||{}).title||'MVS Service').replace(/\x27/g,'\\u0027')+'\')">'+ic('chat')+' Chat with MVS Support</button>'
+        +'<button class="btn btn-ghost" style="width:100%;margin-top:9px" onclick="var o=document.getElementById(\'svc-ov\');if(o)o.remove()">Done</button></div>';
     } else { var ov=document.getElementById('svc-ov'); if(ov) ov.remove(); }
     _svcConfetti();
     toast('Thank you! Your purchase is recorded.');
@@ -49938,11 +49974,29 @@ function _scChatCss(){
     '.sc-empty{text-align:center;padding:36px 16px;color:var(--text-muted)}',
     '.sc-chat-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;border:none;background:linear-gradient(135deg,#128c7e,#075e54);color:#fff;border-radius:12px;padding:11px;font-weight:800;font-size:.88rem;cursor:pointer;position:relative}',
     '.sc-chat-btn:hover{filter:brightness(1.06)}',
-    '.sc-chat-btn .b{position:absolute;top:-7px;right:-5px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)}',
+    '.sc-chat-btn .b{position:absolute;top:-7px;right:-5px;min-width:20px;text-align:center;background:#ff3b30;color:#fff;font-size:.66rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)}',
+    '@keyframes scCtaBlink{0%,100%{box-shadow:0 0 0 0 rgba(37,211,102,.55)}50%{box-shadow:0 0 0 6px rgba(37,211,102,0)}}',
+    '.sc-cta-blink{animation:scCaBlink 1.3s ease-in-out infinite,scCtaBlink 1.3s ease-in-out infinite}',
+    '@keyframes scCaBlink{0%,100%{filter:brightness(1)}50%{filter:brightness(1.15)}}',
     '.sc-back{background:rgba(255,255,255,.24);border:1px solid rgba(255,255,255,.35);color:#fff;cursor:pointer;font-weight:800;font-size:.82rem;border-radius:9px;height:32px;padding:0 13px 0 9px;display:inline-flex;align-items:center;gap:3px;justify-content:center;flex:none;margin-right:8px;letter-spacing:.02em}',
     '.sc-back:hover{background:rgba(255,255,255,.4)}',
     '.sc-tgl{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer;color:#fff}',
-    '.sc-disabled-tip{font-size:.7rem;color:#fee2e2;background:rgba(220,38,38,.3);padding:2px 8px;border-radius:999px;font-weight:700}'
+    '.sc-disabled-tip{font-size:.7rem;color:#fee2e2;background:rgba(220,38,38,.3);padding:2px 8px;border-radius:999px;font-weight:700}',
+    '@keyframes scBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.14)}}',
+    '@keyframes scPulse{0%{box-shadow:0 0 0 0 rgba(37,211,102,.5)}70%{box-shadow:0 0 0 7px rgba(37,211,102,0)}100%{box-shadow:0 0 0 0 rgba(37,211,102,0)}}',
+    '.sc-blink{animation:scBlink 1s ease-in-out infinite}',
+    // premium admin "Services Chat" button
+    '.a-scbtn{position:relative;display:inline-flex;align-items:center;gap:7px;border:none;border-radius:11px;padding:8px 15px;font-weight:800;font-size:.82rem;cursor:pointer;color:#fff;background:linear-gradient(135deg,#128c7e,#075e54);box-shadow:0 4px 14px -5px rgba(7,94,84,.7)}',
+    '.a-scbtn:hover{filter:brightness(1.08)}.a-scbtn svg{width:16px;height:16px}',
+    '.a-scbtn .b{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 6px;background:#ff3b30;color:#fff;font-size:.68rem;font-weight:800;border-radius:999px;border:2px solid var(--card,#fff);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(255,59,48,.5)}',
+    // unread filter row (WhatsApp-style)
+    '.sc-filter{display:flex;gap:8px;margin:2px 0 11px}',
+    '.sc-fchip{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:6px 15px;font-size:.8rem;font-weight:700;cursor:pointer;color:var(--text-muted);display:inline-flex;align-items:center;gap:6px}',
+    '.sc-fchip.on{background:#0f5132;color:#fff;border-color:#0f5132}',
+    '.sc-fchip .n{background:#25d366;color:#083a26;border-radius:999px;font-size:.68rem;font-weight:800;padding:0 7px;min-width:18px;text-align:center}',
+    '.sc-fchip.on .n{background:#fff;color:#0f5132}',
+    '.sc-badge{animation:scBlink 1.1s ease-in-out infinite}',
+    '.sc-li.has-unread{background:rgba(37,211,102,.07)}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -50119,27 +50173,36 @@ async function _scAdmRenderList(){
 }
 function _scAdmPaint(q){
   var box=document.getElementById('sc-adm'); if(!box) return;
-  var chats=(window._scAdmChats||[]);
+  var all=(window._scAdmChats||[]);
+  var totalUnread=all.reduce(function(a,c){return a+(c.unread||0);},0);
+  var unreadCount=all.filter(function(c){return (c.unread||0)>0;}).length;
+  var chats=all;
   q=(q||'').trim().toLowerCase();
   if(q){ chats=chats.filter(function(c){ return ((c.student_name||'')+' '+(c.service_title||'')+' '+(c.student_phone||'')).toLowerCase().indexOf(q)>=0; }); }
+  if(window._scAdmFilter==='unread'){ chats=chats.filter(function(c){return (c.unread||0)>0;}); }
   var rows=chats.map(function(c){
     var ini=(String(c.student_name||'S').trim().charAt(0)||'S').toUpperCase();
     var prev=(c.last_sender==='admin'?'You: ':'')+(c.last_text||'No messages yet');
-    return '<div class="sc-li'+(c.enabled?'':' off')+'" onclick="_scAdmOpen('+c.thread_id+')">'
+    var hu=(c.unread||0)>0;
+    return '<div class="sc-li'+(c.enabled?'':' off')+(hu?' has-unread':'')+'" onclick="_scAdmOpen('+c.thread_id+')">'
       +'<div class="sc-av">'+esc(ini)+(c.online?'<span class="sc-dot"></span>':'')+'</div>'
       +'<div class="sc-li-main"><div class="sc-li-top"><span class="sc-li-nm">'+esc(c.student_name||'Student')+'</span>'
       +'<span class="sc-li-at">'+esc(_istTime(c.last_at)||'')+'</span></div>'
-      +'<div class="sc-li-sub"><span class="sc-li-prev">'+esc(prev)+'</span>'
-      +(c.unread?('<span class="sc-badge">'+c.unread+'</span>'):'')+'</div>'
+      +'<div class="sc-li-sub"><span class="sc-li-prev"'+(hu?' style="color:var(--text);font-weight:700"':'')+'>'+esc(prev)+'</span>'
+      +(hu?('<span class="sc-badge">'+(c.unread>99?'99+':c.unread)+'</span>'):'')+'</div>'
       +'<div style="margin-top:4px"><span class="sc-li-svc">'+esc(c.service_title||'Service')+'</span>'+(c.enabled?'':' <span class="sc-disabled-tip">disabled</span>')+'</div>'
       +'</div></div>';
   }).join('');
-  var totalUnread=(window._scAdmChats||[]).reduce(function(a,c){return a+(c.unread||0);},0);
-  box.innerHTML='<input class="sc-search" placeholder="Search student, phone or service…" oninput="_scAdmPaint(this.value)"'+(q?(' value="'+esc(q)+'"'):'')+'>'
-    +(rows?('<div class="sc-list">'+rows+'</div>'):'<div class="sc-empty">No service chats yet. They appear here when a student buys a service.</div>')
+  var filterRow='<div class="sc-filter"><span class="sc-fchip'+(window._scAdmFilter!=='unread'?' on':'')+'" onclick="window._scAdmFilter=\'\';_scAdmPaint(_scAdmQ())">All</span>'
+    +'<span class="sc-fchip'+(window._scAdmFilter==='unread'?' on':'')+'" onclick="window._scAdmFilter=\'unread\';_scAdmPaint(_scAdmQ())">Unread'+(unreadCount?' <span class="n">'+unreadCount+'</span>':'')+'</span></div>';
+  var emptyMsg=(window._scAdmFilter==='unread')?'No unread chats right now.':'No service chats yet. They appear here when a student buys a service.';
+  box.innerHTML='<input class="sc-search" id="sc-adm-q" placeholder="Search student, phone or service…" oninput="_scAdmPaint(this.value)"'+(q?(' value="'+esc(q)+'"'):'')+'>'
+    +filterRow
+    +(rows?('<div class="sc-list">'+rows+'</div>'):'<div class="sc-empty">'+emptyMsg+'</div>')
     +(totalUnread?('<div style="text-align:center;margin-top:10px;font-size:.76rem;color:var(--text-muted)">'+totalUnread+' unread message'+(totalUnread===1?'':'s')+'</div>'):'');
   if(q){ var si=box.querySelector('.sc-search'); if(si){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); } }
 }
+function _scAdmQ(){ var el=document.getElementById('sc-adm-q'); return el?el.value:''; }
 function _scAdmOpen(tid){
   var box=document.getElementById('sc-adm'); if(!box) return;
   var c=((window._scAdmChats||[]).filter(function(x){return x.thread_id===tid;})[0])||{};
@@ -50178,8 +50241,8 @@ function _dcrCss(){
     '.dcr-chip.on{background:rgba(184,148,31,.13);border-color:#b8941f;color:#8a6d16}',
     '.dcr-chip .k{font-size:.62rem;background:#14213d;color:#fff;border-radius:999px;padding:0 6px;font-weight:800}',
     '.dcr-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}',
-    '.dcr-stat{border:1px solid var(--border);border-radius:13px;padding:12px;text-align:center;background:var(--card)}',
-    '.dcr-stat .n{font-size:1.5rem;font-weight:900;line-height:1}',
+    '.dcr-stat{border:1px solid var(--border);border-radius:13px;padding:12px 8px;text-align:center;background:var(--card);min-width:0}',
+    '.dcr-stat .n{font-size:clamp(.95rem,3.2vw,1.45rem);font-weight:900;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.dcr-stat .l{font-size:.68rem;color:var(--text-muted);font-weight:700;margin-top:4px;text-transform:uppercase;letter-spacing:.03em}',
     '.dcr-dl{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0 4px}',
     '.dcr-dl-btn{border:none;border-radius:13px;padding:14px 10px;color:#fff;font-weight:800;font-size:.86rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .1s,filter .1s}',
@@ -50271,3 +50334,66 @@ function _dcrDl(fmt){
   var ext={xlsx:'xlsx',pdf:'pdf',png:'png'}[fmt]||'xlsx';
   _dlPdf('/api/admin/services/data-room/export?fmt='+fmt+'&'+_dcrQS(), 'MVS_Data_Control_Room.'+ext);
 }
+
+/* ============================================================================
+   WEB PUSH — phone/browser notifications (Chrome, Edge, Firefox, installed-PWA Safari)
+   Service worker /service-worker.js (same origin). VAPID keys na ho to sab dormant.
+   ========================================================================== */
+function _pushSupported(){
+  try{ return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window); }catch(e){ return false; }
+}
+function _urlB64ToUint8(base64){
+  var pad='='.repeat((4-base64.length%4)%4);
+  var b64=(base64+pad).replace(/-/g,'+').replace(/_/g,'/');
+  var raw=atob(b64); var out=new Uint8Array(raw.length);
+  for(var i=0;i<raw.length;i++){ out[i]=raw.charCodeAt(i); }
+  return out;
+}
+async function _pushInit(){
+  if(!_pushSupported() || !TOKEN) return;
+  if(window._pushInited) return; window._pushInited=true;
+  try{ if(!document.querySelector('link[rel="manifest"]')){ var _l=document.createElement('link'); _l.rel='manifest'; _l.href='/manifest.webmanifest'; document.head.appendChild(_l); } }catch(e){}
+  try{
+    var info=await api('/api/push/vapid-public-key');
+    if(!info || !info.enabled || !info.key){ return; }   // VAPID set nahi -> feature dormant
+    window._vapidKey=info.key;
+    var reg=await navigator.serviceWorker.register('/service-worker.js');
+    if(Notification.permission==='granted'){ await _pushSubscribe(reg, info.key); }
+    else if(Notification.permission==='default'){ _pushShowNudge(); }
+  }catch(e){ window._pushInited=false; }
+}
+async function _pushSubscribe(reg, key){
+  try{
+    reg=reg||await navigator.serviceWorker.ready;
+    var sub=await reg.pushManager.getSubscription();
+    if(!sub){ sub=await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:_urlB64ToUint8(key||window._vapidKey) }); }
+    await api('/api/push/subscribe','POST',{ subscription:sub.toJSON(), ua:(navigator.userAgent||'').slice(0,200) });
+    return true;
+  }catch(e){ return false; }
+}
+function _pushShowNudge(){
+  try{ if(sessionStorage.getItem('push_nudge_off')==='1') return; }catch(e){}
+  if(document.getElementById('push-nudge')) return;
+  var d=document.createElement('div'); d.id='push-nudge';
+  d.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9000;background:#14213d;color:#fff;border-radius:14px;padding:12px 15px;display:flex;align-items:center;gap:11px;box-shadow:0 14px 34px -12px rgba(0,0,0,.55);max-width:94vw;width:390px';
+  d.innerHTML='<div style="flex:0 0 auto;width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#e8c15a);color:#14213d;display:flex;align-items:center;justify-content:center">'+ic('bell')+'</div>'
+    +'<div style="flex:1;min-width:0;font-size:.82rem;line-height:1.35">Get MVS updates on your phone — never miss a class or notice.</div>'
+    +'<button id="push-nudge-yes" style="flex:0 0 auto;background:#b8941f;color:#fff;border:none;border-radius:9px;padding:8px 13px;font-weight:800;font-size:.8rem;cursor:pointer">Enable</button>'
+    +'<button id="push-nudge-no" style="flex:0 0 auto;background:none;border:none;color:#aeb6c2;cursor:pointer;font-size:1.2rem;line-height:1">×</button>';
+  document.body.appendChild(d);
+  document.getElementById('push-nudge-yes').onclick=_pushEnable;
+  document.getElementById('push-nudge-no').onclick=function(){ try{sessionStorage.setItem('push_nudge_off','1');}catch(e){} var x=document.getElementById('push-nudge'); if(x) x.remove(); };
+}
+async function _pushEnable(){
+  var x=document.getElementById('push-nudge'); if(x) x.remove();
+  if(!_pushSupported()){ toast('This browser does not support notifications.',true); return; }
+  try{
+    var perm=await Notification.requestPermission();
+    if(perm!=='granted'){ toast('Notifications blocked — enable them in your browser settings.',true); return; }
+    var reg=await navigator.serviceWorker.register('/service-worker.js');
+    var ok=await _pushSubscribe(reg, window._vapidKey);
+    toast(ok?'Phone alerts enabled! You will now get MVS notifications on your phone.':'Could not enable alerts, please try again.',!ok);
+  }catch(e){ toast('Could not enable alerts.',true); }
+}
+// Settings/menu se bhi enable kar sakein
+function pushEnableFromSettings(){ if(!window._vapidKey){ _pushInit().then(function(){ _pushEnable(); }); } else { _pushEnable(); } }

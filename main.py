@@ -28,6 +28,8 @@ import homework_models  # Homework Checker tables (register before create_all)
 import homework_routes  # Homework Checker (student <-> teacher)
 import service_chat_models  # MVS Services Chat tables (register before create_all)
 import service_chat_routes  # MVS Services Chat (student <-> admin)
+import push_models  # Web Push subscription table (register before create_all)
+import push_routes  # Web Push subscribe/unsubscribe
 
 load_dotenv()
 
@@ -56,6 +58,8 @@ def ensure_columns():
         "ALTER TABLE timetable_entries ADD COLUMN mirror_of_id INTEGER NULL",
         # Batch Restart (archive generations): content ko hide/restore karne ke liye archive_gen_id
         "ALTER TABLE timetable_entries ADD COLUMN archive_gen_id INTEGER NULL",
+        # Live events ko ek specific batch ke students ko target karne ke liye (optional)
+        "ALTER TABLE live_events ADD COLUMN target_batch_id INTEGER NULL",
         "ALTER TABLE dpp_packs ADD COLUMN archive_gen_id INTEGER NULL",
         "ALTER TABLE materials ADD COLUMN archive_gen_id INTEGER NULL",
         "ALTER TABLE exams ADD COLUMN archive_gen_id INTEGER NULL",
@@ -972,6 +976,7 @@ app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
 app.include_router(homework_routes.router)
 app.include_router(service_chat_routes.router)
+app.include_router(push_routes.router)
 app.include_router(support_routes.router)
 import academic_calendar
 app.include_router(academic_calendar.router)
@@ -1025,6 +1030,67 @@ def _serve_app_js(request: _Request):
     if os.path.exists(_APP_JS_FILE):
         return _cached_file(request, _APP_JS_FILE, "application/javascript")
     return JSONResponse(status_code=404, content={"detail": "mvs_app.js not found"})
+
+
+# ===== Web Push: service worker + manifest (same-origin, root scope) =====
+_SERVICE_WORKER_JS = """/* MVS Foundation — push service worker */
+self.addEventListener('install', function(e){ self.skipWaiting(); });
+self.addEventListener('activate', function(e){ e.waitUntil(self.clients.claim()); });
+self.addEventListener('push', function(e){
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch(err){ try { d = { title:'MVS Foundation', body:(e.data&&e.data.text())||'' }; } catch(_){ d = {}; } }
+  var title = d.title || 'MVS Foundation';
+  var opts = {
+    body: d.body || '',
+    icon: d.icon || '/push-icon.png',
+    badge: '/push-badge.png',
+    tag: d.tag || undefined,
+    renotify: !!d.tag,
+    data: { url: d.url || '/' },
+    vibrate: [90, 40, 90]
+  };
+  e.waitUntil(self.registration.showNotification(title, opts));
+});
+self.addEventListener('notificationclick', function(e){
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(clients.matchAll({ type:'window', includeUncontrolled:true }).then(function(cl){
+    for (var i=0;i<cl.length;i++){
+      if (cl[i].url.indexOf(self.location.origin) === 0 && 'focus' in cl[i]){
+        cl[i].focus(); if (cl[i].navigate) { try { cl[i].navigate(url); } catch(_){} } return;
+      }
+    }
+    if (clients.openWindow) return clients.openWindow(url);
+  }));
+});
+"""
+
+_MANIFEST_JSON = """{
+  "name": "MVS Foundation",
+  "short_name": "MVS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdfbf6",
+  "theme_color": "#14213d",
+  "icons": [
+    { "src": "/push-icon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/push-icon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}"""
+
+
+@app.get("/service-worker.js")
+def _serve_service_worker():
+    from fastapi.responses import Response as _R
+    return _R(content=_SERVICE_WORKER_JS, media_type="application/javascript",
+              headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
+
+
+@app.get("/manifest.webmanifest")
+def _serve_manifest():
+    from fastapi.responses import Response as _R
+    return _R(content=_MANIFEST_JSON, media_type="application/manifest+json",
+              headers={"Cache-Control": "public, max-age=3600"})
 
 
 # ===== Public shareable test page (guest, no login) — /t/<token> =====

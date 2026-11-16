@@ -3669,18 +3669,45 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), me=Depends(get_ad
                     image_url = "/api/notif-image?k=" + _up.quote(str(_ref), safe="")
         except Exception:
             image_url = None
-    q = db.query(User).filter(User.is_active == True, User.role != "admin")
+    batch_id = payload.get("batch_id")
+    try:
+        batch_id = int(batch_id) if batch_id not in (None, "", "0", 0) else None
+    except Exception:
+        batch_id = None
+
+    def _snorm(x):
+        try:
+            return _SR.canon_norm(x)
+        except Exception:
+            return (str(x or "")).strip().lower()
+
     if target == "teachers":
-        q = q.filter(User.role == "teacher")
+        users = db.query(User).filter(User.is_active == True, User.role == "teacher").all()
     elif target == "students":
-        q = q.filter(User.role == "student")
-        if subject or cls:
-            q = q.join(StudentProfile, StudentProfile.user_id == User.id)
+        if not cls and not subject and not batch_id:
+            # koi filter nahi -> sabhi active students
+            users = db.query(User).filter(User.is_active == True, User.role == "student").all()
+        else:
+            base = (db.query(User, StudentProfile)
+                    .join(StudentProfile, StudentProfile.user_id == User.id)
+                    .filter(User.is_active == True, User.role == "student"))
             if cls:
-                q = q.filter(StudentProfile.class_level == cls)
+                base = base.filter(StudentProfile.class_level == cls)
+            if batch_id:
+                from sqlalchemy import or_ as _or2
+                sib = _sibling_batch_ids(db, [batch_id]) if "_sibling_batch_ids" in globals() else [batch_id]
+                base = base.filter(_or2(StudentProfile.active_batch_id.in_(sib),
+                                        StudentProfile.batch_id.in_(sib)))
+            pairs = base.all()
             if subject:
-                q = q.filter(StudentProfile.subjects.like("%" + subject + "%"))
-    users = q.all()
+                sn = _snorm(subject)
+                # subjects ek JSON list hai — SQL LIKE JSON par reliable nahi, isliye Python me
+                # exact (normalized) membership check: SIRF un students ko jinke paas ye subject hai.
+                pairs = [(u, sp) for (u, sp) in pairs
+                         if any(_snorm(x) == sn for x in (sp.subjects or []))]
+            users = [u for (u, sp) in pairs]
+    else:
+        users = db.query(User).filter(User.is_active == True, User.role != "admin").all()
     # view-tracking batch + human label (admin "Sent by Me")
     import uuid as _uuid
     batch = _uuid.uuid4().hex[:24]
@@ -3695,6 +3722,15 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), me=Depends(get_ad
             label = "%s Students" % subject
         else:
             label = "All Students"
+        if batch_id:
+            try:
+                from models import Batch as _B
+                _b = db.query(_B).filter(_B.id == batch_id).first()
+                if _b:
+                    label += " · %s%s" % (_b.name or ("Batch %s" % batch_id),
+                                          (" (" + _b.session + ")") if getattr(_b, "session", "") else "")
+            except Exception:
+                pass
     else:
         label = "Everyone (Teachers + Students)"
     _sid = getattr(me, "id", None)
@@ -3703,6 +3739,13 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), me=Depends(get_ad
                link=link, image_url=image_url,
                batch_key=batch, batch_label=label, sender_id=_sid, sender_role="admin")
     db.commit()
+    # Phone push (best-effort, background) — sabhi recipients ke phone par bhi dikhe
+    try:
+        import push_service
+        push_service.push_many([u.id for u in users], title, message,
+                               url=(link or "/"), tag="broadcast-" + batch[:8])
+    except Exception:
+        pass
     _scope = target if target != "students" else (
         "students" + (" · " + cls if cls else "") + (" · " + subject if subject else ""))
     return {"message": "Notification sent to %d people!" % len(users), "count": len(users),
@@ -12758,7 +12801,8 @@ def admin_services_notify(sid: int, payload: dict = None, db: Session = Depends(
 def _event_out(e):
     return {"id": e.id, "title": e.title or "", "subtitle": e.subtitle or "",
             "url": e.url or "", "video_url": e.video_url or "", "start_at": e.start_at or "",
-            "active": bool(e.active), "target_class": e.target_class or "", "sort": e.sort or 0}
+            "active": bool(e.active), "target_class": e.target_class or "",
+            "target_batch_id": getattr(e, "target_batch_id", None), "sort": e.sort or 0}
 
 
 @router.get("/events")
@@ -12802,6 +12846,12 @@ def admin_events_save(payload: dict, db: Session = Depends(get_db), _=Depends(ge
     for f in ("title", "subtitle", "url", "video_url", "start_at", "target_class"):
         if f in payload:
             setattr(e, f, (payload.get(f) or ""))
+    if "target_batch_id" in payload:
+        bv = payload.get("target_batch_id")
+        try:
+            e.target_batch_id = int(bv) if bv not in (None, "", "0", 0) else None
+        except Exception:
+            e.target_batch_id = None
     if "active" in payload:
         e.active = bool(payload.get("active"))
     db.commit()

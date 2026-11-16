@@ -5046,6 +5046,23 @@ def student_events_active(db: Session = Depends(get_db), current_user=Depends(ge
     from models import LiveEvent
     prof = get_student_profile(current_user, db)
     cl = str(getattr(prof, "class_level", "") or "").strip()
+    # student ke saare batch ids (primary + active + add-on enrollments), siblings-expanded
+    my_bids = set()
+    for v in (getattr(prof, "active_batch_id", None), getattr(prof, "batch_id", None)):
+        if v:
+            my_bids.add(v)
+    try:
+        from models import StudentBatch as _SB
+        for (bid,) in db.query(_SB.batch_id).filter(_SB.student_id == prof.id).all():
+            if bid:
+                my_bids.add(bid)
+    except Exception:
+        pass
+    try:
+        if my_bids:
+            my_bids = set(_sibling_batch_ids(db, list(my_bids)))
+    except Exception:
+        pass
     out = []
     try:
         evs = db.query(LiveEvent).filter(LiveEvent.active == True).all()  # noqa: E712
@@ -5055,6 +5072,14 @@ def student_events_active(db: Session = Depends(get_db), current_user=Depends(ge
         tc = (e.target_class or "").strip()
         if tc and tc != cl:
             continue
+        tb = getattr(e, "target_batch_id", None)
+        if tb:
+            try:
+                tb_set = set(_sibling_batch_ids(db, [tb]))
+            except Exception:
+                tb_set = {tb}
+            if not (my_bids & tb_set):
+                continue
         out.append({"id": e.id, "title": e.title or "", "subtitle": e.subtitle or "",
                     "url": e.url or "", "video_url": e.video_url or "", "start_at": e.start_at or ""})
     # soonest start_at first (empty start_at last)

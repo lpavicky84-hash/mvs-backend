@@ -1141,6 +1141,7 @@ class LiveEvent(Base):
     start_at     = Column(String(40), default="")        # UTC ISO string e.g. 2026-11-13T11:30:00.000Z
     active       = Column(Boolean, default=False)
     target_class = Column(String(10), default="")        # "" | "10" | "12"
+    target_batch_id = Column(Integer, nullable=True)     # optional: sirf is batch ke students ko dikhe
     sort         = Column(Integer, default=0)
     created_at   = Column(DateTime, default=func.now())
 

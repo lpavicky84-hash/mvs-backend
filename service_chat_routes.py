@@ -416,13 +416,20 @@ async def admin_service_send(tid: int, message: str = Form(""),
     if not (message or "").strip() and not files:
         raise HTTPException(status_code=400, detail="Empty message.")
     msg = await _post_msg(db, t, "admin", (getattr(current_user, "name", "") or "MVS Support"), message, files)
-    # notify the student
+    # notify the student (+ phone push, best-effort)
     try:
         from admin_routes import notify
         if t.student_user_id:
             notify(db, t.student_user_id, "New message from MVS Support",
                    'You have a reply about "%s".' % (t.service_title or "your service"),
                    "service_chat")
+            try:
+                import push_service
+                preview = (message or "").strip() or "Sent you an attachment"
+                push_service.push_one(t.student_user_id, "MVS Support replied",
+                                      preview[:120], url="/", tag="svc-chat-%d" % t.id)
+            except Exception:
+                pass
             db.commit()
     except Exception:
         try: db.rollback()
