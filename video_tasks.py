@@ -1424,8 +1424,16 @@ def _checked_b64(payload):
 
 
 def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
+    if not user_id:
+        return
     db.add(Notification(user_id=user_id, title=title, message=message,
                         notif_type=ntype, link=link or None))
+    try:  # phone push bhi (editor/graphics/youtuber/teacher pipeline chat)
+        import push_service, re as _re
+        _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
+        push_service.enqueue([user_id], _t, message, url=(link or "/"))
+    except Exception:
+        pass
 
 
 def _vtc_ref_snapshot(db, ref_ids):

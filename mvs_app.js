@@ -33569,6 +33569,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='editor'||portal==='graphics'){ try{ setTimeout(function(){ _attSelfCheck(portal); },900); }catch(e){} }
     if(portal==='editor'){ try{ window._edtApplyNavGate(); }catch(e){} }
     prodStartNotifPoll(portal);
+    try{ _pushInit(); }catch(e){}   // production/editor/youtuber/graphics bhi push subscribe karein (phone notifications)
     // v-perf/live: production team ki online presence UserSession me record karo taaki
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
     // presence touch hoti thi -> kabhi live nahi dikhte the). Turant + har 40s (_hbTimer).
