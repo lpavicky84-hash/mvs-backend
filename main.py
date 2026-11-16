@@ -1089,12 +1089,49 @@ def _serve_service_worker():
 _LOGO_PNG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
 
 
+_PUSH_ICON_CACHE = {"data": None}
+
+
+def _build_push_icon():
+    """512x512 app/notification icon — asli MVS logo centered on matching bg (maskable-safe)."""
+    try:
+        from PIL import Image
+        import io
+        src = Image.open(_LOGO_PNG_FILE).convert("RGBA")
+        size = 512
+        try:
+            bg = src.getpixel((2, 2))
+            if len(bg) == 4 and bg[3] < 20:
+                bg = (20, 33, 61, 255)       # transparent corner -> brand navy
+            else:
+                bg = (bg[0], bg[1], bg[2], 255)
+        except Exception:
+            bg = (20, 33, 61, 255)
+        canvas = Image.new("RGBA", (size, size), bg)
+        inner = int(size * 0.80)             # 80% -> maskable safe zone
+        logo = src.copy()
+        logo.thumbnail((inner, inner), Image.LANCZOS)
+        canvas.alpha_composite(logo, ((size - logo.width) // 2, (size - logo.height) // 2))
+        out = io.BytesIO()
+        canvas.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        try:
+            with open(_LOGO_PNG_FILE, "rb") as f:
+                return f.read()
+        except Exception:
+            return b""
+
+
 @app.get("/push-icon.png")
-def _serve_push_icon(request: _Request):
-    # Install/notification icon = asli MVS logo (public, no auth)
-    if os.path.exists(_LOGO_PNG_FILE):
-        return _cached_file(request, _LOGO_PNG_FILE, "image/png")
-    return JSONResponse(status_code=404, content={"detail": "icon not found"})
+def _serve_push_icon():
+    from fastapi.responses import Response as _R
+    if _PUSH_ICON_CACHE["data"] is None:
+        _PUSH_ICON_CACHE["data"] = _build_push_icon()
+    d = _PUSH_ICON_CACHE["data"]
+    if not d:
+        return JSONResponse(status_code=404, content={"detail": "icon not found"})
+    return _R(content=d, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/manifest.webmanifest")
@@ -1202,6 +1239,18 @@ def _portal_html_versioned():
     except Exception:
         return None, ver
     html = html.replace('src="/mvs_app.js"', 'src="/mvs_app.js?v=' + ver + '"')
+    # PWA/TWA (PWABuilder + iOS) ke liye manifest + install meta STATIC head me — taaki
+    # crawler (jo JS nahi chalata) bhi isse PWA detect kare aur APK ban sake. Runtime par
+    # mvs_app.js isi manifest link ko portal-wise sahi start_url se update kar deta hai.
+    if "rel=\"manifest\"" not in html and "</head>" in html:
+        _inj = ('<link rel="manifest" href="/manifest.webmanifest">'
+                '<meta name="theme-color" content="#14213d">'
+                '<meta name="apple-mobile-web-app-capable" content="yes">'
+                '<meta name="mobile-web-app-capable" content="yes">'
+                '<meta name="apple-mobile-web-app-status-bar-style" content="default">'
+                '<meta name="apple-mobile-web-app-title" content="MVS">'
+                '<link rel="apple-touch-icon" href="/push-icon.png">')
+        html = html.replace("</head>", _inj + "</head>", 1)
     c["ver"] = ver
     c["html"] = html
     return html, ver
