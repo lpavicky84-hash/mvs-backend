@@ -4904,6 +4904,25 @@ def student_services(db: Session = Depends(get_db), current_user=Depends(get_stu
     chat_by_sid = {}
     try:
         from service_chat_models import ServiceChatThread, ServiceChatMsg
+        # Purane paid students (feature se pehle buy kiya) ke liye bhi thread ensure karo,
+        # taaki unke card par bhi chat button dikhe.
+        have = {t.service_id for t in db.query(ServiceChatThread.service_id).filter(
+            ServiceChatThread.student_id == prof.id).all()}
+        made = False
+        for sid_k, r in my.items():
+            if (r.response == "yes") and (sid_k not in have):
+                svc = next((x for x in visible if x.id == sid_k), None)
+                db.add(ServiceChatThread(
+                    service_id=sid_k, student_id=prof.id,
+                    student_user_id=getattr(current_user, "id", None),
+                    student_name=(getattr(current_user, "name", "") or "Student"),
+                    student_phone=(getattr(prof, "phone", "") or ""),
+                    student_class=(getattr(prof, "class_name", "") or getattr(prof, "class_level", "") or ""),
+                    service_title=(svc.title if svc else ""), enabled=True))
+                have.add(sid_k)
+                made = True
+        if made:
+            db.commit()
         for t in db.query(ServiceChatThread).filter(ServiceChatThread.student_id == prof.id).all():
             unread = db.query(ServiceChatMsg).filter(
                 ServiceChatMsg.thread_id == t.id,

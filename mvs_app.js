@@ -12575,7 +12575,7 @@ async function loadAEvents(){
     var cards=(d.events||[]).map(_admEventCard).join('')||'<div class="sch-sub" style="padding:14px;text-align:center;border:1px dashed var(--border);border-radius:12px">No events yet. Add a live class or event — students ko dashboard pe countdown banner dikhega.</div>';
     el.innerHTML='<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h2 style="margin:0">Live Events &amp; Classes</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Student dashboard pe full-width countdown banner — link + time + YouTube thumbnail (auto)</div></div>'
       +'<button class="btn btn-primary btn-sm" onclick="openEventEditor(null)">'+ic('plus')+' Add Event</button></div>'
-      +'<div class="apt-grid" style="margin-top:14px">'+cards+'</div>';
+      +'<div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">'+cards+'</div>';
   }catch(e){ el.innerHTML='<div class="sch-sub" style="color:var(--danger)">Could not load events</div>'; }
 }
 function _admEventCard(e){
@@ -12826,8 +12826,23 @@ async function _svcSave(){
   try{ await api('/api/admin/services','POST',payload); closeModal(); toast('Service saved!'); loadAServices(); }
   catch(e){ toast((e&&e.message)||'Save failed',true); }
 }
+function _svcTrkCss(){
+  if(document.getElementById('svc-trk-extra')) return;
+  var s=document.createElement('style'); s.id='svc-trk-extra';
+  s.textContent=[
+    '.svc-trk-tbl tbody tr.row-paid{border-left:4px solid #1f7a52 !important;background:rgba(31,122,82,.055) !important}',
+    '.svc-trk-tbl tbody tr.row-unpaid{border-left:4px solid #e0a948 !important}',
+    '.svc-paid-tag{display:inline-flex;align-items:center;gap:3px;background:rgba(31,122,82,.14);color:#1f7a52;font-weight:800;font-size:.72rem;padding:2px 9px;border-radius:999px;white-space:nowrap}',
+    '.svc-paid-tag svg{width:12px;height:12px}',
+    '.svc-amt-add{display:inline-flex;align-items:center;gap:3px;background:rgba(217,119,6,.12);color:#b45309;border:1px dashed #e0a948;border-radius:8px;padding:3px 11px;font-weight:700;font-size:.74rem;cursor:pointer}',
+    '.svc-amt-add:hover{background:rgba(217,119,6,.2)}.svc-amt-add svg{width:12px;height:12px}',
+    '.svc-amt-edit{background:none;border:none;color:#b8941f;cursor:pointer;padding:2px;vertical-align:middle}.svc-amt-edit svg{width:14px;height:14px}',
+    '.svc-noamt-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e0a948;vertical-align:middle;margin-left:4px}'
+  ].join('');
+  document.head.appendChild(s);
+}
 async function openServiceTracker(id){
-  _ensureSchCss();
+  _ensureSchCss(); _svcTrkCss();
   window._svcTrkId=id; window._svcTrkRange='';
   showModal('Service Tracker','<div id="svc-trk"><div class="spinner" style="margin:30px auto"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   _svcTrkLoad();
@@ -12844,7 +12859,11 @@ async function _svcTrkLoad(){
     function chip(k,lbl){ return '<button class="btn btn-sm '+(window._svcTrkRange===k?'btn-primary':'btn-ghost')+'" onclick="window._svcTrkRange=\''+k+'\';_svcTrkLoad()">'+lbl+'</button>'; }
     function delBtn(iid){ return '<button class="svc-trk-del" title="Delete this record" onclick="_svcTrkDelRow('+id+','+iid+')">'+ic('trash')+'</button>'; }
     var yesRows=(d.yes_rows||[]).map(function(r){
-      return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Amount">'+(r.amount?('₹'+r.amount):'—')+'</td><td data-label="Screenshot">'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
+      var paid=(r.amount && r.amount>0);
+      var amtCell = paid
+        ? '<span class="svc-paid-tag">'+ic('check')+' Paid ₹'+r.amount+'</span> <button class="svc-amt-edit" title="Edit amount" onclick="_svcSetAmount('+id+','+r.id+','+(r.amount||0)+')">'+ic('edit')+'</button>'
+        : '<button class="svc-amt-add" onclick="_svcSetAmount('+id+','+r.id+',0)">'+ic('plus')+' Set amount</button>';
+      return '<tr class="'+(paid?'row-paid':'row-unpaid')+'"><td data-label="Name">'+esc(r.name||'—')+(paid?'':' <span class="svc-noamt-dot" title="Amount not entered yet"></span>')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Amount">'+amtCell+'</td><td data-label="Screenshot">'+(r.has_screenshot?('<a href="#" onclick="_svcViewShot('+id+','+r.id+');return false" style="color:#b8941f;font-weight:700">View</a>'):'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
     }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:12px">No purchases in this range.</td></tr>';
     var noRows=(d.no_rows||[]).map(function(r){
       return '<tr><td data-label="Name">'+esc(r.name||'—')+'</td><td data-label="Phone">'+esc(r.phone||'—')+'</td><td data-label="Class">'+esc(r['class']||'—')+'</td><td data-label="Time" style="color:var(--text-muted);white-space:nowrap">'+esc(r.time||'')+'</td><td data-label="" style="text-align:center">'+delBtn(r.id)+'</td></tr>';
@@ -12874,6 +12893,17 @@ async function _svcTrkDelRow(sid, iid){
   if(!confirm('Delete this record? This cannot be undone.')) return;
   try{ await api('/api/admin/services/'+sid+'/interaction/'+iid,'DELETE'); toast('Record deleted.'); _svcTrkLoad(); loadAServices(); }
   catch(e){ toast((e&&e.message)||'Delete failed',true); }
+}
+function _svcSetAmount(sid, iid, cur){
+  // Student ne sirf screenshot daala, amount nahi likha — admin yahan khud amount likh sakta hai.
+  var v=prompt('Is student ne kitna pay kiya? Amount (₹) likhiye:', (cur?cur:''));
+  if(v===null) return;
+  v=(''+v).trim().replace(/[,₹\s]/g,'');
+  var num=(v==='')?null:Number(v);
+  if(v!=='' && (isNaN(num)||num<0)){ toast('Valid amount daaliye',true); return; }
+  api('/api/admin/services/'+sid+'/interaction/'+iid+'/amount','POST',{amount:num}).then(function(){
+    toast(num==null?'Amount cleared':('Amount set: ₹'+num)); _svcTrkLoad(); loadAServices();
+  }).catch(function(e){ toast((e&&e.message)||'Could not save amount',true); });
 }
 function _svcViewShot(sid, iid){
   var url=API+'/api/admin/services/'+sid+'/screenshot/'+iid;

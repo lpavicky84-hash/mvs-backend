@@ -12569,6 +12569,29 @@ def admin_services_delete_interaction(sid: int, iid: int, db: Session = Depends(
     return {"deleted": True}
 
 
+@router.post("/services/{sid}/interaction/{iid}/amount")
+def admin_services_set_amount(sid: int, iid: int, payload: dict = Body(...),
+                              db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin khud amount likh sakta hai — jab student ne sirf screenshot daala ho, amount nahi."""
+    from models import MVSServiceInteraction as MI
+    r = db.query(MI).filter(MI.id == iid, MI.service_id == sid).first()
+    if not r:
+        raise HTTPException(404, "Record not found")
+    raw = payload.get("amount")
+    if raw in (None, ""):
+        r.amount = None
+    else:
+        try:
+            amt = float(raw)
+        except Exception:
+            raise HTTPException(400, "Invalid amount")
+        if amt < 0:
+            raise HTTPException(400, "Amount cannot be negative")
+        r.amount = amt
+    db.commit()
+    return {"ok": True, "amount": r.amount}
+
+
 @router.get("/services/{sid}/screenshot/{iid}")
 def admin_services_screenshot(sid: int, iid: int, db: Session = Depends(get_db), _=Depends(get_admin)):
     import base64 as _b64

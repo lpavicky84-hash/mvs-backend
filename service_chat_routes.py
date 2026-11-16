@@ -310,10 +310,45 @@ def student_att_dl(aid: int, db: Session = Depends(get_db), current_user=Depends
 
 
 # ============================== ADMIN ==============================
+def _backfill_paid_threads(db):
+    """Har paid student (response=yes) ke liye thread ensure karo — purane purchases bhi
+    admin ki Services Chat list mein dikhein, taaki admin unhe chat kar sake."""
+    from service_chat_models import ServiceChatThread
+    from models import MVSServiceInteraction as MI, MVSService, StudentProfile
+    try:
+        existing = set()
+        for sv, st in db.query(ServiceChatThread.service_id, ServiceChatThread.student_id).all():
+            existing.add((sv, st))
+        paid = db.query(MI).filter(MI.response == "yes").all()
+        title_map, created = {}, False
+        for r in paid:
+            key = (r.service_id, r.student_id)
+            if key in existing:
+                continue
+            existing.add(key)
+            if r.service_id not in title_map:
+                s = db.query(MVSService).filter(MVSService.id == r.service_id).first()
+                title_map[r.service_id] = (s.title if s else "")
+            sp = db.query(StudentProfile).filter(StudentProfile.id == r.student_id).first()
+            db.add(ServiceChatThread(
+                service_id=r.service_id, student_id=r.student_id,
+                student_user_id=(sp.user_id if sp else None),
+                student_name=(r.student_name or "Student"),
+                student_phone=(r.student_phone or ""), student_class=(r.student_class or ""),
+                service_title=title_map.get(r.service_id, ""), enabled=True))
+            created = True
+        if created:
+            db.commit()
+    except Exception:
+        try: db.rollback()
+        except Exception: pass
+
+
 @router.get("/api/admin/service-chats")
 def admin_service_chats(db: Session = Depends(get_db), _=Depends(get_admin)):
-    """WhatsApp-style list: every thread with a last message, recent first."""
+    """WhatsApp-style list: every paid student (thread), recent first."""
     from service_chat_models import ServiceChatThread, ServiceChatMsg
+    _backfill_paid_threads(db)
     out = []
     try:
         # NOTE: no .nullslast() — MySQL doesn't support the NULLS LAST keyword (it 500s).
