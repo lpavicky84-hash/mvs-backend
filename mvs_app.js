@@ -290,9 +290,10 @@ function _faviconApply(href,isSvg){
   if(!l){ l=document.createElement('link'); l.setAttribute('rel','icon'); document.head.appendChild(l); }
   if(isSvg) l.setAttribute('type','image/svg+xml'); else l.removeAttribute('type');
   l.setAttribute('href',href);
-  var a=document.querySelector("link[rel='apple-touch-icon']");
-  if(!a){ a=document.createElement('link'); a.setAttribute('rel','apple-touch-icon'); document.head.appendChild(a); }
-  a.setAttribute('href',href);
+  // NOTE: apple-touch-icon ko YAHAN set NAHI karte. Wo home-screen (Add to Home Screen) ka icon
+  // hai aur usse har portal ka apna PREMIUM app-icon chahiye (/app-icon/<portal>.png), na ki logo.
+  // apple-touch-icon sirf _installMetaInit() set karta hai. (Pehle yahan logo set ho ke home-screen
+  // icon purana dikhta tha — iOS fix.)
 }
 function _setFavicon(){
   try{
@@ -50409,7 +50410,12 @@ function _installMetaInit(){
     _metaTag('apple-mobile-web-app-status-bar-style','default');
     _metaTag('apple-mobile-web-app-title', (path==='/teacher')?'MVS Teacher':(path==='/admin')?'MVS Admin':'MVS');
     _metaTag('theme-color','#14213d');
-    if(!document.querySelector('link[rel="apple-touch-icon"]')){ var ai=document.createElement('link'); ai.rel='apple-touch-icon'; ai.href='/push-icon.png'; document.head.appendChild(ai); }
+    // apple-touch-icon = har portal ka apna PREMIUM app-icon -> iPhone "Add to Home Screen" par
+    // sahi icon lage (pehle logo dikh raha tha). Har call par force set karo (stale icon override).
+    var _apKey=(path==='/teacher')?'teacher':(path==='/admin')?'admin':(path==='/production')?'production':(path==='/editor')?'editor':(path==='/youtuber')?'youtuber':(path==='/graphics')?'graphics':'student';
+    var _ai=document.querySelector('link[rel="apple-touch-icon"]');
+    if(!_ai){ _ai=document.createElement('link'); _ai.rel='apple-touch-icon'; document.head.appendChild(_ai); }
+    _ai.setAttribute('href','/app-icon/'+_apKey+'.png');
     // Service worker ko jaldi register karo (login se pehle bhi) — proper PWA + TWA/APK me
     // push ready, aur PWABuilder bhi SW detect kar leta hai.
     try{ if('serviceWorker' in navigator){ navigator.serviceWorker.register('/service-worker.js').catch(function(){}); } }catch(e){}
