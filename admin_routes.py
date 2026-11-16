@@ -5936,7 +5936,7 @@ def notify_single_teacher(tid: int, payload: dict, db: Session = Depends(get_db)
     message = (payload.get("message") or "").strip()
     if not title or not message:
         raise HTTPException(status_code=400, detail="Title and message are required")
-    notify(db, tp.user_id, "📢 " + title, message, "admin_message")
+    notify(db, tp.user_id, title, message, "admin_message")
     db.commit()
     return {"message": f"Notification sent to {tp.user.name}"}
 
@@ -11519,7 +11519,7 @@ def admin_notify_log(db: Session = Depends(get_db), me=Depends(get_admin)):
         if not b:
             b = {"batch_key": n.batch_key, "title": n.title, "message": n.message,
                  "label": n.batch_label or "Everyone", "sent": 0, "viewed": 0,
-                 "created_at": n.created_at.isoformat() if n.created_at else None}
+                 "created_at": ist_iso(n.created_at)}  # IST offset — warna UTC time dikhta tha
             batches[n.batch_key] = b
         b["sent"] += 1
         if n.is_read:
@@ -11545,7 +11545,7 @@ def admin_notify_log_detail(batch_key: str, db: Session = Depends(get_db), me=De
     for n in rows:
         nm, role = _umap.get(n.user_id, ("User", ""))
         out.append({"name": nm, "role": role, "read": bool(n.is_read),
-                    "read_at": n.read_at.isoformat() if n.read_at else None})
+                    "read_at": ist_iso(n.read_at)})
     out.sort(key=lambda r: (r["read"], r["name"].lower()), reverse=True)
     return {"batch_key": batch_key, "title": rows[0].title,
             "label": rows[0].batch_label or "Everyone", "recipients": out}
@@ -12626,7 +12626,7 @@ def admin_services_notify(sid: int, payload: dict = None, db: Session = Depends(
     sent = 0
     for (u, _p) in targets:
         try:
-            notify(db, u.id, "\U0001f4e2 " + title, msg, "mvs_service",
+            notify(db, u.id, title, msg, "mvs_service",
                    sender_id=getattr(me, "id", None), sender_role="admin",
                    batch_key=bkey, batch_label="MVS Services")
             sent += 1

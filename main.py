@@ -26,6 +26,8 @@ import translation_routes
 import category_routes  # category workspace API (Phase 4)
 import homework_models  # Homework Checker tables (register before create_all)
 import homework_routes  # Homework Checker (student <-> teacher)
+import service_chat_models  # MVS Services Chat tables (register before create_all)
+import service_chat_routes  # MVS Services Chat (student <-> admin)
 
 load_dotenv()
 
@@ -969,6 +971,7 @@ app.include_router(graphics_routes.router)
 app.include_router(translation_routes.router)
 app.include_router(category_routes.router)
 app.include_router(homework_routes.router)
+app.include_router(service_chat_routes.router)
 app.include_router(support_routes.router)
 import academic_calendar
 app.include_router(academic_calendar.router)

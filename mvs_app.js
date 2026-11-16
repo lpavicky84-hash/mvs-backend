@@ -1879,7 +1879,7 @@ async function openAdminNotify(){
 async function openAdminSentLog(){
   showModal('Sent Notifications — Views','<div style="padding:34px;text-align:center;color:var(--text-muted)">Loading…</div>','');
   let log=[]; try{ log=await api('/api/admin/notify-log'); }catch(e){ showModal('Sent Notifications — Views',errHtml(e)); return; }
-  const rows=log.length?log.map(b=>`<div class="ntlog-row"><div class="ntlog-ic">${ic('bell')}</div><div style="min-width:0;flex:1"><div style="font-weight:800;font-size:.88rem">${esc(b.title)}</div><div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">${esc(b.label)} · ${b.sent} recipient${b.sent===1?'':'s'}${b.created_at?' · '+new Date(b.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div></div><div class="ntlog-views" onclick="openANtViews('${b.batch_key}')" title="See who viewed"><div class="nv-n">${b.viewed}/${b.sent}</div><div class="nv-t">Views</div></div></div>`).join('')
+  const rows=log.length?log.map(b=>`<div class="ntlog-row"><div class="ntlog-ic">${ic('bell')}</div><div style="min-width:0;flex:1"><div style="font-weight:800;font-size:.88rem">${esc(_noEmoji(b.title))}</div><div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">${esc(b.label)} · ${b.sent} recipient${b.sent===1?'':'s'}${b.created_at?' · '+_istTime(b.created_at):''}</div></div><div class="ntlog-views" onclick="openANtViews('${b.batch_key}')" title="See who viewed"><div class="nv-n">${b.viewed}/${b.sent}</div><div class="nv-t">Views</div></div></div>`).join('')
     : '<div class="empty-state" style="padding:30px"><p>No notifications sent yet.</p><small>Send one above — its view tracking will appear here.</small></div>';
   showModal('Sent Notifications — Views',
    `<div style="font-size:.8rem;color:var(--text-muted);margin-bottom:10px">Tap <b>Views</b> on any notification to see exactly who read it.</div><div class="hide-scroll" style="max-height:460px;overflow:auto">${rows}</div>`,
@@ -1890,9 +1890,9 @@ async function openANtViews(batch){
   let d; try{ d=await api('/api/admin/notify-log/'+batch); }catch(e){ showModal('Notification Views',errHtml(e)); return; }
   const recips=d.recipients||[];
   const seen=recips.filter(r=>r.read).length, total=recips.length;
-  const rows=recips.map(r=>`<div class="ntv-row"><div class="ntv-ava">${esc(initials(r.name))}</div><div style="min-width:0;font-weight:700;font-size:.86rem">${esc(r.name)}${r.role?` <span style="font-size:.68rem;color:var(--text-muted);font-weight:600">(${esc(r.role)})</span>`:''}</div>${r.read?`<div class="ntv-seen">✓ Viewed${r.read_at?' · '+new Date(r.read_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}</div>`:'<div class="ntv-pend">Not viewed yet</div>'}</div>`).join('');
+  const rows=recips.map(r=>`<div class="ntv-row"><div class="ntv-ava">${esc(initials(r.name))}</div><div style="min-width:0;font-weight:700;font-size:.86rem">${esc(r.name)}${r.role?` <span style="font-size:.68rem;color:var(--text-muted);font-weight:600">(${esc(r.role)})</span>`:''}</div>${r.read?`<div class="ntv-seen">${ic('check')} Viewed${r.read_at?' · '+_istTime(r.read_at):''}</div>`:'<div class="ntv-pend">Not viewed yet</div>'}</div>`).join('');
   showModal('Notification Views',
-   `<div class="ntf-scope"><div class="ns-n">${seen}/${total}</div><div class="ns-t"><b>${esc(d.title||'Notification')}</b><br>${esc(d.label||'')} — ${seen} of ${total} ${total===1?'person has':'people have'} viewed it.</div></div><div class="hide-scroll" style="max-height:340px;overflow:auto">${rows||'<div class="empty-state"><p>No recipients.</p></div>'}</div>`,
+   `<div class="ntf-scope"><div class="ns-n">${seen}/${total}</div><div class="ns-t"><b>${esc(_noEmoji(d.title)||'Notification')}</b><br>${esc(d.label||'')} — ${seen} of ${total} ${total===1?'person has':'people have'} viewed it.</div></div><div class="hide-scroll" style="max-height:340px;overflow:auto">${rows||'<div class="empty-state"><p>No recipients.</p></div>'}</div>`,
    `<button class="btn btn-ghost" onclick="openAdminSentLog()">${ic('back')} Back</button><button class="btn btn-primary" onclick="closeModal()">Close</button>`);
 }
 function anClassChange(){
@@ -2972,6 +2972,16 @@ function startDoubtBadge(role){
 }
 function toast(msg,err=false){ const t=document.getElementById('toast'); t.className=err?'error':''; document.getElementById('toast-msg').textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Emoji + misc pictographs hata do (titles emoji-free rakhne ke liye) — purane 📢 wale notifs par bhi
+function _noEmoji(s){ try{ return (s==null?'':String(s)).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️‍]/gu,'').replace(/\s{2,}/g,' ').trim(); }catch(e){ return s==null?'':String(s); } }
+// IST time format (admin ka browser kisi bhi tz me ho, hamesha Asia/Kolkata dikhe)
+function _istTime(ts){ if(!ts) return ''; try{ return new Date(ts).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}); }catch(e){ return ''; } }
+// "10:00 AM" / "10:00" -> minutes-since-midnight (null if parse fail)
+function _clockMin(t){ t=(t==null?'':String(t)).trim(); if(!t) return null; var m=/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i.exec(t); if(!m) return null; var h=+m[1], mn=+m[2]; if(m[3]){ h=h%12; if(/pm/i.test(m[3])) h+=12; } return h*60+mn; }
+// Report submit hone par class ki ACTUAL duration (start_time..end_time). Na mile to null -> "90min" fallback.
+function _reportDurMin(x){ try{ if(!x||!x.completed) return null; var a=_clockMin(x.start_time), b=_clockMin(x.end_time); if(a==null||b==null) return null; var d=b-a; if(d<0) d+=24*60; return (d>0&&d<=12*60)?d:null; }catch(e){ return null; } }
+// Weekly-view time pill ka duration text: report hai to actual, warna 90min
+function _wkDurSpan(x){ var d=_reportDurMin(x); return d!=null?('<span title="Actual class duration from the submitted report">'+d+' min</span>'):'<span>90min</span>'; }
 
 // ===== Universal links: any URL typed/pasted in chat, doubts or notifications becomes a
 // clickable link (opens in a new tab, no copy-paste needed) + a WhatsApp/Telegram-style
@@ -12530,6 +12540,7 @@ function _svcPoster(title, seed, compact){
 async function loadAServices(){
   _ensureSchCss();
   var el=document.getElementById('a-services-content');
+  _aptCss();   // grid CSS ensure karo — warna fresh/refresh pe cards full-width stack ho jaate the
   el.innerHTML='<div class="spinner"></div>';
   try{
     var d=await api('/api/admin/services');
@@ -12538,14 +12549,22 @@ async function loadAServices(){
     var cards=svcs.map(_admSvcCard).join('')||'<div class="sch-sub" style="padding:20px;text-align:center">No services yet. Add your first product.</div>';
     el.innerHTML='<div id="a-events-wrap"></div>'
       +'<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
-      +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" style="position:relative" onclick="openAServicesChat()">'+ic('chat')+' Services Chat<span id="a-svc-chat-badge" style="display:none;position:absolute;top:-7px;right:-6px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)"></span></button>'
+      +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div></div>'
       +'<div class="apt-grid" style="margin-top:16px">'+cards+'</div>';
-    loadAEvents();
+    loadAEvents(); _scAdmBadge();
   }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
+}
+function _scAdmBadge(){
+  try{ api('/api/admin/service-chats').then(function(d){
+    var n=(d&&d.total_unread)||0; var b=document.getElementById('a-svc-chat-badge');
+    if(b){ if(n){ b.textContent=n; b.style.display=''; } else { b.style.display='none'; } }
+  }).catch(function(){}); }catch(e){}
 }
 // ---------------- Live Events / Classes (admin) ----------------
 async function loadAEvents(){
   var el=document.getElementById('a-events-wrap'); if(!el) return;
+  _aptCss();
   try{
     var d=await api('/api/admin/events'); window._admEvents=d.events||[];
     var cards=(d.events||[]).map(_admEventCard).join('')||'<div class="sch-sub" style="padding:14px;text-align:center;border:1px dashed var(--border);border-radius:12px">No events yet. Add a live class or event — students ko dashboard pe countdown banner dikhega.</div>';
@@ -23362,7 +23381,7 @@ function _svcCss(){
   document.head.appendChild(s);
 }
 async function loadSServices(){
-  _svcCss();
+  _svcCss(); try{ _scChatCss(); }catch(e){}
   var el=document.getElementById('s-services-content');
   el.innerHTML='<div class="spinner"></div>';
   try{
@@ -23380,6 +23399,12 @@ async function loadSServices(){
       var price=(s.kind!=='practical' && s.price)?('<div class="svc-price"><span class="svc-new">'+esc(s.price)+'</span>'+(s.old_price?'<span class="svc-old">'+esc(s.old_price)+'</span>':'')+'</div>'):'';
       var pracBtn=(s.kind==='practical')?('<button class="svc-prac" onclick="openPracticalSubjects()"><span class="svc-prac-ic">'+ic('book')+'</span><span class="svc-prac-tx"><b>Know your practical subjects</b><small>See your subjects &amp; marks</small></span><span class="svc-prac-ar">&rarr;</span></button>'):'';
       var done=(s.my_response==='yes')?'<div class="svc-done">'+ic('check')+' Thank you! Your purchase has been recorded.</div>':'';
+      var chatBtn='';
+      if(s.chat){
+        var ttl=(s.title||'MVS Service').replace(/'/g,'\\u0027');
+        chatBtn='<button class="sc-chat-btn" onclick="sOpenServiceChat('+s.id+',\''+esc(ttl)+'\')">'+ic('chat')+' Chat with MVS Support'
+          +(s.chat.unread?'<span class="b">'+s.chat.unread+'</span>':'')+'</button>';
+      }
       return '<div class="svc-card">'+thumb+'<div class="svc-body">'
         +'<span class="svc-tag">'+esc(s.tag||'MVS Service')+'</span>'
         +'<div class="svc-title">'+esc(s.title||'MVS Service')+'</div>'
@@ -23387,12 +23412,20 @@ async function loadSServices(){
         +price
         +'<div class="svc-acts">'+pracBtn
         +'<button class="svc-explore" onclick="svcExplore('+s.id+')">Explore &rarr;</button>'
-        +done+'</div></div></div>';
+        +done+'</div>'+chatBtn+'</div></div>';
     }).join('');
     el.innerHTML='<div class="card"><div class="card-body">'
       +'<h3 style="margin:0 0 3px">MVS Services</h3>'
       +'<p style="font-size:.84rem;color:var(--text-muted);margin:0 0 14px">Premium services from MVS Foundation — tap <b>Explore</b> to view & buy.</p>'
       +'<div class="svc-grid">'+cards+'</div></div></div>';
+    // Feedback compulsory: koi service jahan student ne Explore kiya par yes/no nahi diya
+    // -> usse dubara pucho (ek baar, non-dismissable) taaki har click yes/no me resolve ho.
+    try{
+      if(!document.getElementById('svc-ov')){
+        var pend=svcs.filter(function(x){ return x.my_clicked && !x.my_response; })[0];
+        if(pend){ setTimeout(function(){ if(!document.getElementById('svc-ov')) _svcPurchasePopup(pend.id); }, 500); }
+      }
+    }catch(e){}
   }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
 }
 async function svcExplore(sid){
@@ -23419,17 +23452,26 @@ function _svcPurchasePopup(sid){
   if(document.getElementById('svc-ov')) return;
   _svcCss();
   var ov=document.createElement('div'); ov.id='svc-ov'; ov.className='svc-ov';
-  ov.innerHTML='<div class="svc-modal"><div class="bar"></div><div style="padding:24px 22px" id="svc-modal-in">'
+  ov.innerHTML='<div class="svc-modal">'+_svcAskInner(sid, svc)+'</div>';
+  document.body.appendChild(ov);
+  // Feedback compulsory: tap outside does NOT dismiss — student must answer Yes or No.
+}
+function _svcAskInner(sid, svc){
+  return '<div class="bar"></div><div style="padding:24px 22px" id="svc-modal-in">'
     +'<div style="width:60px;height:60px;border-radius:16px;margin:0 auto 14px;background:rgba(201,162,59,.14);display:flex;align-items:center;justify-content:center">'
     +'<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#b8941f" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>'
     +'<div style="font-weight:800;font-size:1.2rem;text-align:center;color:var(--text)">Did you purchase this?</div>'
     +'<div style="text-align:center;color:var(--text-muted);font-size:.9rem;margin-top:6px">'+esc(svc.title||'')+'</div>'
-    +'<div style="display:flex;gap:10px;margin-top:20px">'
-    +'<button class="btn btn-ghost" style="flex:1" onclick="_svcAnswer('+sid+',\'no\')">No</button>'
+    +'<div style="text-align:center;color:var(--text-muted);font-size:.78rem;margin-top:10px">Please let us know so we can help you. This quick answer is required.</div>'
+    +'<div style="display:flex;gap:10px;margin-top:18px">'
+    +'<button class="btn btn-ghost" style="flex:1" onclick="_svcAnswer('+sid+',\'no\')">No, not yet</button>'
     +'<button class="btn btn-primary" style="flex:1" onclick="_svcAnswer('+sid+',\'yes\')">Yes, I purchased</button>'
-    +'</div></div></div>';
-  document.body.appendChild(ov);
-  ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+    +'</div></div>';
+}
+function _svcAskAgain(sid){
+  var svc=((window._svcData&&window._svcData.services)||[]).filter(function(x){return x.id===sid;})[0]||{};
+  var box=document.getElementById('svc-modal-in'); var ov=document.getElementById('svc-ov');
+  if(ov){ ov.querySelector('.svc-modal').innerHTML=_svcAskInner(sid, svc); }
 }
 async function _svcAnswer(sid, ans){
   if(ans==='no'){
@@ -23446,7 +23488,7 @@ async function _svcAnswer(sid, ans){
     +'<label class="svc-up"><span id="svc-up-label">'+ic('upload')+' Upload payment screenshot</span><input type="file" accept="image/*" hidden id="svc-ss" onchange="_svcSsPick(this)"></label>'
     +'<div id="svc-ss-prevwrap"></div>'
     +'<div style="display:flex;gap:10px;margin-top:18px">'
-    +'<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'svc-ov\').remove()">Cancel</button>'
+    +'<button class="btn btn-ghost" style="flex:1" onclick="_svcAskAgain('+sid+')">Back</button>'
     +'<button class="btn btn-primary" style="flex:1" id="svc-submit" onclick="_svcSubmitYes('+sid+')">Submit</button></div>';
 }
 function _svcSsPick(input){
@@ -25388,12 +25430,15 @@ function examCardHTML(e, isNew){
 }
 
 /* ================= TEST RANKING (podium + list + compare) ================= */
-async function openExamRanking(examId,role){
+async function openExamRanking(examId,role,scope){
   role=role||ROLE||'student';
+  scope=scope||'class';
   showModal('Test Ranking','<div class="spinner"></div>','');
   try{
-    const d=await api(`/api/${role}/exam/${examId}/ranking`);
-    window._rankData=d; window._rankRole=role;
+    const d=await api(`/api/${role}/exam/${examId}/ranking${role==='student'?('?scope='+scope):''}`);
+    window._rankData=d; window._rankRole=role; window._rankScope=scope;
+    const examScopeTog=(role==='student')
+      ? `<div class="rk-scope"><button class="${scope==='class'?'on':''}" onclick="openExamRanking(${examId},'student','class')">${ic('users')} Your Class</button><button class="${scope==='all'?'on':''}" onclick="openExamRanking(${examId},'student','all')">${ic('chart')} All Students</button></div>` : '';
     // Student + ranking locked (manual not declared / off) -> marks dikhte hain, ranking nahi
     if(role==='student' && d.locked){
       const off=(d.mode==='off');
@@ -25407,29 +25452,36 @@ async function openExamRanking(examId,role){
     const rows=d.rows||[];
     const adminCtl=(role==='admin')?_rankAdminCtl(examId,d,role):'';
     if(!rows.length){
-      showModal('Test Ranking',adminCtl+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated copies yet</b></p><small>Ranking appears as soon as the checking is done.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      _rkScopeCss();
+      showModal('Test Ranking',examScopeTog+adminCtl+`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No evaluated copies yet</b></p><small>Ranking appears as soon as the checking is done.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
       return;
     }
     const medal=['#f59e0b','#a2946d','#b45309'];
     const total=(d.exam&&d.exam.total_marks)||0;
     const bav=(r,sz)=>`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#a1741a);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${Math.round(sz*.42)}px;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.18)">${esc((r.name||'?').slice(0,1).toUpperCase())}</div>`;
+    const _exAll=(scope==='all');
     const pod=[rows[1],rows[0],rows[2]].filter(Boolean);
     const podHtml=`<div class="trk-podium">${pod.map(r=>{
       const h=r.rank===1?104:r.rank===2?80:66; const sz=r.rank===1?60:50;
-      return `<div class="trk-pod trk-click" onclick="rankClick(${r.student_id})"><div class="trk-pod-av" style="position:relative">${bav(r,sz)}<span class="trk-medal" style="background:${medal[r.rank-1]}">${r.rank}</span></div>
-        <div class="trk-pod-nm">${esc(r.name)}${(role==='student'&&r.student_id===d.me_id)?' <span class="trk-you">(you)</span>':''}</div><div class="trk-pod-sc">${r.marks}<small>/${total}</small></div>
+      const _pc=(!_exAll&&r.student_id!=null)?` trk-click" onclick="rankClick(${r.student_id})"`:` nosel"`;
+      return `<div class="trk-pod${_pc}><div class="trk-pod-av" style="position:relative">${bav(r,sz)}<span class="trk-medal" style="background:${medal[r.rank-1]}">${r.rank}</span></div>
+        <div class="trk-pod-nm">${esc(r.name)}${((role==='student'&&r.student_id===d.me_id)||(_exAll&&r.me))?' <span class="trk-you">(you)</span>':''}</div><div class="trk-pod-sc">${r.marks}<small>/${total}</small></div>
         <div class="trk-pod-base" style="height:${h}px;background:linear-gradient(180deg,${medal[r.rank-1]}33,${medal[r.rank-1]}0d);border-top:4px solid ${medal[r.rank-1]}"><b>#${r.rank}</b></div></div>`;
     }).join('')}</div>`;
-    const meRow=(role==='student'&&d.me_id)?rows.find(r=>r.student_id===d.me_id):null;
+    const meRow=(role==='student')?rows.find(r=>_exAll?r.me:(d.me_id&&r.student_id===d.me_id)):null;
     const meHtml=meRow?`<div class="trk-me"><div class="trk-me-l"><div class="trk-me-rank">#${meRow.rank}</div><div><b>Your Rank</b><div class="trk-me-sub">of ${rows.length} students &middot; <b>${meRow.marks}/${total}</b></div></div></div><div class="trk-me-hint">Tap any student to compare</div></div>`:'';
-    const list=rows.map(r=>`<div class="sbb-row ${(role==='student'&&r.student_id===d.me_id)?'me':''}" onclick="rankClick(${r.student_id})">
+    const _exShowBatch=(scope==='all');
+    const _exBtag=r=>(_exShowBatch&&r.batch)?` <span class="xm-chip" style="font-size:.56rem;color:#9a7d1a;vertical-align:middle">${ic('folder')} ${esc(r.batch)}</span>`:'';
+    const _exClick=r=>(!_exShowBatch&&r.student_id!=null);   // all-scope rows ka student_id nahi — click off
+    const list=rows.map(r=>`<div class="sbb-row ${(role==='student'&&d.me_id&&r.student_id===d.me_id)||(_exShowBatch&&r.me)?'me':''}" ${_exClick(r)?`onclick="rankClick(${r.student_id})"`:''}>
       <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
       <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
-      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${(role==='student'&&r.student_id===d.me_id)?' <span class="trk-you">(you)</span>':''}</div></div>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${((role==='student'&&r.student_id===d.me_id)||(_exShowBatch&&r.me))?' <span class="trk-you">(you)</span>':''}${_exBtag(r)}</div></div>
       ${r.attempted!=null?`<span style="font-size:.68rem;color:var(--text-muted)">${r.attempted} Qs</span>`:''}
       <b class="sbb-xp">${r.marks}<small style="font-weight:600;color:var(--text-muted)">/${total}</small></b></div>`).join('');
+    _rkScopeCss();
     showModal(`${esc(d.exam.title||'Test')} — Ranking`,
-      `${adminCtl}<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(d.exam.subject||'')}${d.exam.chapter?' &middot; '+esc(d.exam.chapter):''} &middot; ${total} marks &middot; ${d.graded} evaluated</div>
+      `${examScopeTog}${adminCtl}<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(d.exam.subject||'')}${d.exam.chapter?' &middot; '+esc(d.exam.chapter):''} &middot; ${total} marks &middot; ${d.graded} evaluated${_exShowBatch?' across all batches':''}</div>
        ${podHtml}${meHtml}<div class="hide-scroll" style="max-height:280px;overflow-y:auto;padding-right:4px">${list}</div>
        ${rows.length>5?`<div class="trk-scroll-hint">Scroll for all ${rows.length} students</div>`:''}`,
       `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
@@ -25510,17 +25562,28 @@ function rankClick(sid){
   }
 }
 /* ================= DPP RANKING (earliest submission first — podium + full list) ================= */
-async function openDppRanking(pid,role){
+function _rkScopeCss(){ if(document.getElementById('rk-scope-css')) return; var s=document.createElement('style'); s.id='rk-scope-css'; s.textContent=[
+  '.rk-scope{display:flex;gap:6px;background:#f4efe3;border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:12px}',
+  '.rk-scope button{flex:1;border:0;background:transparent;border-radius:9px;padding:8px 10px;font-size:.78rem;font-weight:800;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:.15s}',
+  '.rk-scope button svg{width:14px;height:14px}',
+  '.rk-scope button.on{background:linear-gradient(135deg,#b8941f,#a1741a);color:#fff;box-shadow:0 3px 10px -3px rgba(184,148,31,.6)}'
+].join(''); document.head.appendChild(s); }
+async function openDppRanking(pid,role,scope){
   role=role||ROLE||'student';
+  scope=scope||'class';
   showModal('DPP Ranking','<div class="spinner"></div>','');
   try{
-    const d=await api(`/api/${role}/dpp-packs/${pid}/ranking`);
-    window._dppRankData=d; window._dppRankRole=role; window._dppRankPid=pid;
+    const d=await api(`/api/${role}/dpp-packs/${pid}/ranking${role==='student'?('?scope='+scope):''}`);
+    window._dppRankData=d; window._dppRankRole=role; window._dppRankPid=pid; window._dppRankScope=scope;
     const rows=d.rows||[];
     const pk=d.pack||{};
+    // Student: Your Class (apna batch) vs All Students (jin batches me diya un sabka combined)
+    const scopeTog=(role==='student' && (scope==='all' || (d.batches||1)>1 || scope==='class'))
+      ? `<div class="rk-scope"><button class="${scope==='class'?'on':''}" onclick="openDppRanking(${pid},'student','class')">${ic('users')} Your Class</button><button class="${scope==='all'?'on':''}" onclick="openDppRanking(${pid},'student','all')">${ic('chart')} All Students</button></div>` : '';
     const pkLine=`${esc(pk.subject||'')}${pk.chapter?' &middot; '+esc(pk.chapter):''}${pk.part?' &middot; '+esc(pk.part):' &middot; Whole Chapter'}${pk.class_name?' &middot; Class '+esc(pk.class_name):''}`;
     if(!rows.length){
-      showModal(`${esc(pk.title||'DPP')} — Ranking`,`<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No one has submitted yet</b></p><small>Jaise hi pehla student submit karega, ranking yaha dikhne lagegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+      _rkScopeCss();
+      showModal(`${esc(pk.title||'DPP')} — Ranking`,`${scopeTog}<div class="ws-empty"><div class="big">${ic('chart')}</div><p><b>No one has submitted yet</b></p><small>Jaise hi pehla student submit karega, ranking yaha dikhne lagegi.</small></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
       return;
     }
     const canClick=(role==='teacher'||role==='admin');
@@ -25540,13 +25603,16 @@ async function openDppRanking(pid,role){
     }).join('')}</div>`;
     const meRow=(role==='student')?rows.find(r=>r.me):null;
     const meHtml=meRow?`<div class="trk-me"><div class="trk-me-l"><div class="trk-me-rank">#${meRow.rank}</div><div><b>Your Rank</b><div class="trk-me-sub">of ${rows.length} submissions &middot; ${esc(meRow.submitted_at||'')}</div></div></div></div>`:'';
+    const showBatch=(scope==='all');
+    const bTag=r=>(showBatch&&r.batch)?` <span class="xm-chip" style="font-size:.56rem;color:#9a7d1a;vertical-align:middle">${ic('folder')} ${esc(r.batch)}</span>`:'';
     const list=rows.map(r=>`<div class="sbb-row${r.me?' me':''}${canClick?' trk-click':''}" ${canClick?`onclick="dppRankStudent(${r.rank})"`:''}>
       <span class="sbb-rank ${r.rank<=3?'top':''}">${r.rank}</span>
       <span class="sbb-av">${esc((r.name||'?').slice(0,1).toUpperCase())}</span>
-      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${youTag(r)}</div><div class="sbb-sub">${esc(r.submitted_at||'')}</div></div>
+      <div class="sbb-main"><div class="sbb-nm">${esc(r.name)}${youTag(r)}${bTag(r)}</div><div class="sbb-sub">${esc(r.submitted_at||'')}</div></div>
       ${stChip(r)}</div>`).join('');
+    _rkScopeCss();
     showModal(`${esc(pk.title||'DPP')} — Ranking`,
-      `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${pkLine} &middot; <b>${rows.length}</b> submission${rows.length>1?'s':''} &middot; sabse pehle submit = Rank 1</div>
+      `${scopeTog}<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${pkLine} &middot; <b>${rows.length}</b> submission${rows.length>1?'s':''}${showBatch?' across all batches':''} &middot; sabse pehle submit = Rank 1</div>
        ${podHtml}${meHtml}<div class="hide-scroll" style="max-height:260px;overflow-y:auto;padding-right:4px">${list}</div>
        ${rows.length>5?`<div class="trk-scroll-hint">Scroll for all ${rows.length} submissions</div>`:''}`,
       `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
@@ -27301,7 +27367,7 @@ function renderStudentWeekly(tl, subjects, opts){
     if(!p.day||!p.date) return;
     if(p.date<_wsKW||p.date>_weKW) return;  // is week ke bahar
     const _k=s+'|'+(p.date||'')+'|'+(p.time||''); if(_seenSlot.has(_k))return; _seenSlot.add(_k);
-    (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date,id:p.id,chapter:(it.kind==='event'?(p.chapter||''):(it.chapter||'')),part:(it.kind==='event'?'':(p.part||''))});
+    (byDay[p.day]=byDay[p.day]||[]).push({subject:s,time:p.time,st:_statusOf([p.date]),date:p.date,id:p.id,chapter:(it.kind==='event'?(p.chapter||''):(it.chapter||'')),part:(it.kind==='event'?'':(p.part||'')),start_time:p.start_time,end_time:p.end_time,completed:p.completed});
   }); }));
   window._wkByDay=byDay; window._wkOpts=opts||{};
   // Har subject/day ka CURRENT slot dikhta hai: sabse pehli aane wali (upcoming)
@@ -27311,11 +27377,15 @@ function renderStudentWeekly(tl, subjects, opts){
   const _dayDate={}; days.forEach((d,i)=>{ const dd=new Date(_monW0); dd.setDate(_monW0.getDate()+i); _dayDate[d]=dd; });
   const _fdD=x=>x.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   const _todayKW=_tz.toLocaleDateString('en-CA');
-  const cols=days.filter(d=>byDay[d]&&byDay[d].length).map(d=>{
-    // Saari classes dikhao (pehle same-subject same-day ek me collapse ho jati thi
-    // jisse counting galat aati thi) — time ke hisaab se sort.
+  // DAY ORDER: aaj ka din sabse upar, phir aane wale din, phir beete (done) din sabse neeche —
+  // taaki admin ko scroll na karna pade. (Rotation: today=0, tomorrow=1 ... yesterday=6.)
+  const _todayIdx=days.indexOf(days[(_tz.getDay()+6)%7]);
+  const _dayRank=d=>{ const i=days.indexOf(d); return i>=_todayIdx?(i-_todayIdx):(i-_todayIdx+7); };
+  const _withCls=days.filter(d=>byDay[d]&&byDay[d].length).slice().sort((a,b)=>_dayRank(a)-_dayRank(b));
+  const cols=_withCls.map(d=>{
+    // time ke hisaab se sort, lekin DONE classes neeche (pending/upcoming upar) — "done niche jaaye".
     const _tmin=t=>{ const m=/(\d+):(\d+)\s*(am|pm)/i.exec(t||''); if(!m) return 9999; let h=+m[1]%12; if(/pm/i.test(m[3]))h+=12; return h*60+(+m[2]); };
-    const list=byDay[d].slice().sort((a,b)=>_tmin(a.time)-_tmin(b.time));
+    const list=byDay[d].slice().sort((a,b)=>{ const ad=(a.st==='done')?1:0, bd=(b.st==='done')?1:0; if(ad!==bd) return ad-bd; return _tmin(a.time)-_tmin(b.time); });
     const rows=list.map(x=>{
       const tmap=_ttTeacherFor(opts.tipTeacherMap, x.subject, (opts.classLevel||String(x.class_name||'').replace(/\D/g,'').slice(-2)))||opts.tipTeacher||{}, pr=subProg[x.subject]||{done:0,total:0,pct:0};
       // Is class ka running number (uski chronological position). Na mile to done-count fallback.
@@ -27324,7 +27394,7 @@ function renderStudentWeekly(tl, subjects, opts){
       const _rpct=_tot?Math.round(_pos/_tot*100):0;
       const tav=tmap.name?(tmap.url?`<span class="wkc-tav" style="background-image:url(${tmap.url});cursor:zoom-in" onclick="photoZoom('${tmap.url}','${esc((tmap.name||'').replace(/'/g,''))}')" title="Click to view photo"></span>`:`<span class="wkc-tav">${esc(initials(tmap.name))}</span>`):'';
       const stb=x.st==='current'?`<span class="wkc-status live">Live</span>`:x.st==='done'?`<span class="wkc-status done">Completed</span>`:`<span class="wkc-status up">Upcoming</span>`;
-      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}<span>90min</span>${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${_rpct}%"></div></div><div class="wkc-cnt">${_pos}/${_tot} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${_rpct}%</div>${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
+      return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'—')}${_wkDurSpan(x)}${x.date?`<span class="wkc-date">${esc(fmtNice(x.date))}</span>`:''}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)} <span class="wkc-cls">${esc(opts.classLevel?('Class '+opts.classLevel+'th'):'Class 12th')}</span></div>${tmap.name?`<div class="wkc-teacher">${tav}${esc(tmap.name)}</div>`:''}<div class="wkc-bar"><div class="wkc-fill" style="width:${_rpct}%"></div></div><div class="wkc-cnt">${_pos}/${_tot} classes</div></div><div class="wkc-right">${stb}<div class="wkc-pct">${_rpct}%</div>${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
     }).join('');
     const n=list.length;
     const _isTodayW=byDay[d].some(x=>x.date===_todayKW);
@@ -27337,12 +27407,12 @@ function renderStudentWeekly(tl, subjects, opts){
 function wkDayDetail(day){
   const list=((window._wkByDay||{})[day]||[]).slice();
   const _tmin=t=>{ const m=/(\d+):(\d+)\s*(am|pm)/i.exec(t||''); if(!m) return 9999; let h=+m[1]%12; if(/pm/i.test(m[3]))h+=12; return h*60+(+m[2]); };
-  list.sort((a,b)=>_tmin(a.time)-_tmin(b.time));
+  list.sort((a,b)=>{ const ad=(a.st==='done')?1:0, bd=(b.st==='done')?1:0; if(ad!==bd) return ad-bd; return _tmin(a.time)-_tmin(b.time); });
   const opts=window._wkOpts||{};
   const rows=list.map(x=>{
     const tmap=_ttTeacherFor(opts.tipTeacherMap, x.subject, (opts.classLevel||String(x.class_name||'').replace(/\D/g,'').slice(-2)))||{};
     const stb=x.st==='current'?'<span class="wkc-status live">Live</span>':x.st==='done'?'<span class="wkc-status done">Completed</span>':'<span class="wkc-status up">Upcoming</span>';
-    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}<span>90min</span></div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
+    return `<div class="wkc-row"><div class="wkc-time">${esc(x.time||'\u2014')}${_wkDurSpan(x)}</div><div class="wkc-main"><div class="wkc-sub">${esc(x.subject)}</div>${x.chapter?`<div class="wkc-teacher">${esc(x.chapter)}${x.part?' \u2014 '+esc(x.part):''}</div>`:''}${tmap.name?`<div class="wkc-teacher">${esc(tmap.name)}</div>`:''}</div><div class="wkc-right">${stb}${opts.onReport&&x.id?_crChipHTML(x):''}</div></div>`;
   }).join('');
   showModal(`${day} \u2014 ${list.length} class${list.length>1?'es':''}`,
     (opts.onReport?`<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:10px"><b>Done</b> = report submitted &nbsp;\u00b7&nbsp; <b>Pending</b> (blinking) = class ho chuki, report abhi baaki (click karke upload karo).</div>`:'')+(rows||'<div class="empty-state"><p>No classes this day.</p></div>'),'');
@@ -48039,7 +48109,14 @@ function _hwRenderMsgs(role, msgs){
   if(_nb) el.scrollTop=el.scrollHeight;
   imgJobs.forEach(function(j){ _hwLoadImg(j[0],'/api/'+j[1]+'/homework-attachments/'+j[2]+'/view'); });
 }
-async function _hwLoadImg(id,url){ try{ var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return; var u=URL.createObjectURL(await r.blob()); var im=document.getElementById(id); if(im) im.src=u; }catch(e){} }
+window._hwImgCache=window._hwImgCache||{};
+async function _hwLoadImg(id,url){ try{
+  // SPEED: image blob ko cache karo — har 3s poll pe re-render hota tha aur saari
+  // images dubara download hoti thi (bada slowness). Ab ek baar fetch, phir cache se.
+  if(window._hwImgCache[url]){ var im0=document.getElementById(id); if(im0 && !im0.getAttribute('src')) im0.src=window._hwImgCache[url]; return; }
+  var r=await fetch(API+url,{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return;
+  var u=URL.createObjectURL(await r.blob()); window._hwImgCache[url]=u;
+  var im=document.getElementById(id); if(im) im.src=u; }catch(e){} }
 function _hwAttView(id,nm){ var im=document.getElementById(id); if(im&&im.src) window.open(im.src,'_blank'); }
 function _hwAttDl(role,aid,nm){ _openAuthedInline(API+'/api/'+role+'/homework-attachments/'+aid+'/download'); }
 function _hwPickFiles(files){ for(var i=0;i<files.length;i++) _hwAddPend(files[i]); }
@@ -49782,4 +49859,252 @@ function aAcalDelete(session){
   api('/api/admin/academic-calendar/'+encodeURIComponent(session),'DELETE').then(function(){
     toast('Calendar deleted.'); _aAcalSel=''; loadACalendars();
   }).catch(function(e){ toast((e&&e.message)||'Could not delete',true); });
+}
+
+/* ============================================================================
+   MVS SERVICES CHAT  (student <-> admin)  — fast engine
+   Fixes the homework-chat slowness: incremental polling (since id), append-only
+   render, image blob cache (load once), and optimistic send (instant bubble).
+   ========================================================================== */
+window._scImgCache = window._scImgCache || {};   // attachment id -> blob objectURL
+function _scFileIc(){ return (typeof ic==='function'?ic('download'):'↓'); }
+function _scChatCss(){
+  try{ _mcChatCss(); }catch(e){}
+  if(document.getElementById('sc-css')) return;
+  var s=document.createElement('style'); s.id='sc-css';
+  s.textContent=[
+    '.sc-closed{font-size:.78rem;color:#b45309;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.25);border-radius:11px;padding:10px 13px;text-align:center;font-weight:700;margin-top:4px}',
+    '.sc-list{display:flex;flex-direction:column;gap:1px;max-height:min(64vh,580px);overflow:auto;margin:0 -6px}',
+    '.sc-li{display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:12px;cursor:pointer;transition:background .12s}',
+    '.sc-li:hover{background:var(--hover,#f4efe3)}',
+    '.sc-li.off{opacity:.5}',
+    '.sc-av{width:46px;height:46px;border-radius:50%;flex:none;background:linear-gradient(135deg,#128c7e,#075e54);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;position:relative}',
+    '.sc-dot{position:absolute;right:0;bottom:1px;width:12px;height:12px;border-radius:50%;background:#25d366;border:2px solid var(--card,#fff)}',
+    '.sc-li-main{flex:1;min-width:0}',
+    '.sc-li-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}',
+    '.sc-li-nm{font-weight:800;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}',
+    '.sc-li-at{font-size:.66rem;color:var(--text-muted);white-space:nowrap;flex:none}',
+    '.sc-li-sub{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:3px}',
+    '.sc-li-prev{font-size:.8rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}',
+    '.sc-li-svc{font-size:.63rem;color:#8a6d1a;background:rgba(184,148,31,.13);padding:1px 8px;border-radius:999px;font-weight:700;white-space:nowrap}',
+    '.sc-badge{background:#25d366;color:#fff;font-size:.66rem;font-weight:800;border-radius:999px;padding:1px 7px;min-width:18px;text-align:center;flex:none}',
+    '.sc-search{width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:11px;font-size:.9rem;margin-bottom:10px;background:var(--card);color:var(--text)}',
+    '.sc-empty{text-align:center;padding:36px 16px;color:var(--text-muted)}',
+    '.sc-chat-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;border:none;background:linear-gradient(135deg,#128c7e,#075e54);color:#fff;border-radius:12px;padding:11px;font-weight:800;font-size:.88rem;cursor:pointer;position:relative}',
+    '.sc-chat-btn:hover{filter:brightness(1.06)}',
+    '.sc-chat-btn .b{position:absolute;top:-7px;right:-5px;background:#dc2626;color:#fff;font-size:.62rem;font-weight:800;border-radius:999px;padding:1px 7px;border:2px solid var(--card,#fff)}',
+    '.sc-back{background:rgba(255,255,255,.18);border:none;color:#fff;cursor:pointer;font-weight:800;font-size:1.1rem;border-radius:9px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex:none;margin-right:2px}',
+    '.sc-tgl{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer;color:#fff}',
+    '.sc-disabled-tip{font-size:.7rem;color:#fee2e2;background:rgba(220,38,38,.3);padding:2px 8px;border-radius:999px;font-weight:700}'
+  ].join('');
+  document.head.appendChild(s);
+}
+
+/* ---------- shared engine ---------- */
+function _scHostHtml(ctx){
+  var ini=(String(ctx.headerName||'M').trim().charAt(0)||'M').toUpperCase();
+  return '<div class="mc-chat-hdr">'
+    +(ctx.onBack?'<button class="sc-back" onclick="'+ctx.onBack+'">‹</button>':'')
+    +'<div class="mc-chat-av" id="sc-av">'+esc(ini)+'</div>'
+    +'<div style="flex:1;min-width:0"><div class="mc-chat-nm" id="sc-nm">'+esc(ctx.headerName||'MVS Support')+'</div>'
+    +'<div class="mc-chat-sub" id="sc-status"> </div></div>'
+    +(ctx.headerRight||'')+'</div>'
+    +'<div id="sc-msgs" class="mc-chat-msgs"><div class="spinner"></div></div>'
+    +'<div id="sc-comp" class="mc-comp"><div id="sc-pend" class="mc-pend"></div>'
+    +'<textarea id="sc-input" class="form-control" rows="2" placeholder="Write a message… (paste or drop a photo)"></textarea>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">'
+    +'<label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">'+(typeof ic==='function'?ic('image'):'')+' Attach'
+    +'<input id="sc-file" type="file" multiple accept="image/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" style="display:none" onchange="_scPick(this.files)"></label>'
+    +'<button class="btn btn-primary btn-sm" id="sc-send" onclick="_scSend()">Send</button></div></div>';
+}
+function _scMount(ctx){
+  _scChatCss();
+  if(window._scTimer){ clearInterval(window._scTimer); window._scTimer=null; }
+  ctx.lastId=0; ctx.rendered={}; ctx.enabled=true;
+  window._scCtx=ctx; window._scPend=[];
+  var host=document.getElementById(ctx.hostId); if(!host) return;
+  host.innerHTML=_scHostHtml(ctx);
+  var input=document.getElementById('sc-input'), comp=document.getElementById('sc-comp');
+  if(input){
+    input.addEventListener('paste',function(e){ var items=((e.clipboardData||{}).items)||[]; var got=false; for(var i=0;i<items.length;i++){ if((items[i].type||'').indexOf('image')===0){ var f=items[i].getAsFile(); if(f){ _scAddPend(f); got=true; } } } if(got){ e.preventDefault(); } });
+    input.addEventListener('input',_scTypingPing);
+    input.addEventListener('keydown',function(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); _scSend(); } });
+  }
+  if(comp){ comp.addEventListener('dragover',function(e){e.preventDefault();comp.classList.add('drag');}); comp.addEventListener('dragleave',function(){comp.classList.remove('drag');}); comp.addEventListener('drop',function(e){e.preventDefault();comp.classList.remove('drag');var fs=((e.dataTransfer||{}).files)||[];for(var i=0;i<fs.length;i++){_scAddPend(fs[i]);}}); }
+  _scPoll(true);
+  window._scTimer=setInterval(function(){ _scPoll(false); }, 2500);
+}
+function _scClose(){ if(window._scTimer){ clearInterval(window._scTimer); window._scTimer=null; } window._scCtx=null; window._scPend=[]; }
+function _scPoll(first){
+  var ctx=window._scCtx; if(!ctx) return;
+  if(!document.getElementById('sc-msgs')){ _scClose(); return; }
+  var url=ctx.base+'?since='+(ctx.lastId||0);
+  api(url).then(function(r){
+    if(!r) return;
+    if(first){ var m=document.getElementById('sc-msgs'); if(m && (ctx.lastId||0)===0) m.innerHTML=''; }
+    if(typeof r.enabled!=='undefined') _scApplyEnabled(ctx, r.enabled);
+    var msgs=(r.messages||[]);
+    if(msgs.length){ _scAppend(ctx,msgs); }
+    if(r.last_id && r.last_id>(ctx.lastId||0)) ctx.lastId=r.last_id;
+    _scStatus(ctx, r.status||{});
+    if(ctx.onPoll){ try{ ctx.onPoll(r); }catch(e){} }
+  }).catch(function(){});
+}
+function _scBubble(ctx,m,imgJobs){
+  var mine=(m.sender_role===ctx.role);
+  var who;
+  if(ctx.role==='student'){ who=mine?'You':'MVS Support'; }
+  else { who=mine?'You':(m.sender_name||'Student'); }
+  var atts=(m.attachments||[]).map(function(a){
+    var nm=esc((a.filename||'file'));
+    if(a.is_image){ var id='scimg-'+a.id; imgJobs.push([id,a.id]); var cached=window._scImgCache[a.id];
+      return '<div class="mc-img-wrap"><img loading="lazy" id="'+id+'"'+(cached?(' src="'+cached+'"'):'')+' alt="image" onclick="_scImgOpen('+a.id+')">'
+        +'<button class="mc-img-dl" onclick="event.stopPropagation();_scAttDl('+a.id+')">'+_scFileIc()+'</button></div>'; }
+    return '<div class="mc-file" onclick="_scAttDl('+a.id+')">'+_scFileIc()+'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</span></div>';
+  }).join('');
+  var tick=mine?' <span class="tick">✓</span>':'';
+  return '<div class="mc-b '+(mine?'me':'them')+'" data-id="'+m.id+'"><div class="who">'+esc(who)+'</div>'
+    +(m.message?'<div class="mc-txt">'+_msgHtml(m.message)+'</div>':'')+atts
+    +'<div class="at">'+esc(_istTime(m.at)||'')+tick+'</div></div>';
+}
+function _scAppend(ctx,msgs){
+  var el=document.getElementById('sc-msgs'); if(!el) return;
+  var nearBottom=(el.scrollHeight-el.scrollTop-el.clientHeight)<130;
+  var imgJobs=[];
+  msgs.forEach(function(m){
+    if(ctx.rendered[m.id]) return; ctx.rendered[m.id]=1;
+    el.insertAdjacentHTML('beforeend', _scBubble(ctx,m,imgJobs));
+  });
+  if(nearBottom) el.scrollTop=el.scrollHeight;
+  imgJobs.forEach(function(j){ _scLoadImg(ctx,j[0],j[1]); });
+}
+async function _scLoadImg(ctx,domId,aid){
+  var im=document.getElementById(domId);
+  if(window._scImgCache[aid]){ if(im && !im.getAttribute('src')) im.src=window._scImgCache[aid]; return; }
+  try{ var r=await fetch(API+ctx.attBase+aid+'/view',{headers:{Authorization:'Bearer '+TOKEN}}); if(!r.ok) return;
+    var u=URL.createObjectURL(await r.blob()); window._scImgCache[aid]=u; var im2=document.getElementById(domId); if(im2) im2.src=u; }catch(e){}
+}
+function _scImgOpen(aid){ var u=window._scImgCache[aid]; if(u){ window.open(u,'_blank'); } else { _openAuthedInline(API+window._scCtx.attBase+aid+'/view'); } }
+function _scAttDl(aid){ _openAuthedInline(API+window._scCtx.attBase+aid+'/download'); }
+var _scTypeLast=0;
+function _scTypingPing(){ var ctx=window._scCtx; if(!ctx) return; var now=Date.now(); if(now-_scTypeLast<2500) return; _scTypeLast=now; try{ fetch(API+ctx.base+'/typing',{method:'POST',headers:{Authorization:'Bearer '+TOKEN}}).catch(function(){}); }catch(e){} }
+function _scStatus(ctx,st){
+  var nm=document.getElementById('sc-nm'), sub=document.getElementById('sc-status'), av=document.getElementById('sc-av');
+  if(nm && st.other_name) nm.textContent=st.other_name;
+  if(av && st.other_name){ av.textContent=(String(st.other_name).trim().charAt(0)||'?').toUpperCase(); }
+  if(!sub) return;
+  if(st.other_typing){ sub.innerHTML='<span class="mc-typing">typing<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span>'; }
+  else if(st.other_online){ sub.innerHTML='<span class="mc-online">● online</span>'; }
+  else if(st.other_last_seen){ sub.textContent='last seen '+st.other_last_seen; }
+  else { sub.innerHTML=' '; }
+}
+function _scApplyEnabled(ctx,enabled){
+  ctx.enabled=enabled;
+  var comp=document.getElementById('sc-comp'); if(!comp) return;
+  var closed=document.getElementById('sc-closed');
+  if(enabled===false){
+    if(!closed){ var d=document.createElement('div'); d.id='sc-closed'; d.className='sc-closed';
+      d.textContent=(ctx.role==='student')?'This chat has been closed by MVS. Please reach out to support if you still need help.':'This chat is disabled for the student. Enable it to let them reply.';
+      comp.parentNode.insertBefore(d, comp); }
+    comp.style.display='none';
+  } else { if(closed) closed.remove(); comp.style.display=''; }
+}
+async function _scSend(){
+  var ctx=window._scCtx; if(!ctx) return;
+  if(ctx.enabled===false){ toast('This chat is closed.',true); return; }
+  var input=document.getElementById('sc-input'); var txt=(input&&input.value||'').trim(); var pend=(window._scPend||[]).slice();
+  if(!txt && !pend.length){ return; }
+  var el=document.getElementById('sc-msgs');
+  var tmpId='sctmp'+(++window._scTmpSeq);
+  if(el){
+    var ah=pend.map(function(p){ return p.url?('<div class="mc-img-wrap"><img src="'+p.url+'" style="opacity:.7"></div>'):('<div class="mc-file">'+_scFileIc()+'<span>'+esc(p.file.name||'file')+'</span></div>'); }).join('');
+    el.insertAdjacentHTML('beforeend','<div class="mc-b me" id="'+tmpId+'"><div class="who">You</div>'+(txt?('<div class="mc-txt">'+_msgHtml(txt)+'</div>'):'')+ah+'<div class="at">'+esc(_istTime(new Date().toISOString()))+' <span class="tick" style="opacity:.45">⧖</span></div></div>');
+    el.scrollTop=el.scrollHeight;
+  }
+  if(input){ input.value=''; } window._scPend=[]; _scRenderPend();
+  try{
+    var fd=new FormData(); fd.append('message',txt); pend.forEach(function(p){ fd.append('files',p.file,p.file.name||'file'); });
+    var r=await fetch(API+ctx.base+'/messages',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    if(!r.ok){ var dd=null; try{dd=await r.json();}catch(e){} throw new Error((dd&&dd.detail)||'Send failed'); }
+    var j=await r.json(); var m=j&&j.message; var tmp=document.getElementById(tmpId);
+    if(m){
+      ctx.rendered[m.id]=1; if((j.last_id||m.id)>(ctx.lastId||0)) ctx.lastId=(j.last_id||m.id);
+      var imgJobs=[]; var fresh=_scBubble(ctx,m,imgJobs);
+      if(tmp){ tmp.outerHTML=fresh; } else if(el){ el.insertAdjacentHTML('beforeend',fresh); }
+      imgJobs.forEach(function(x){ _scLoadImg(ctx,x[0],x[1]); });
+    } else if(tmp){ var tk=tmp.querySelector('.tick'); if(tk){ tk.textContent='✓'; tk.style.opacity='1'; } }
+  }catch(e){ var t2=document.getElementById(tmpId); if(t2){ var tk2=t2.querySelector('.tick'); if(tk2){ tk2.textContent='!'; tk2.style.color='#dc2626'; tk2.style.opacity='1'; } } toast((e&&e.message)||'Could not send',true); }
+}
+window._scTmpSeq=window._scTmpSeq||0;
+function _scPick(files){ for(var i=0;i<files.length;i++){ _scAddPend(files[i]); } var f=document.getElementById('sc-file'); if(f) f.value=''; }
+function _scAddPend(f){ if(!f) return; window._scPend=window._scPend||[]; var e={file:f,url:''}; if((f.type||'').indexOf('image')===0){ e.url=URL.createObjectURL(f); } window._scPend.push(e); _scRenderPend(); }
+function _scRenderPend(){ var el=document.getElementById('sc-pend'); if(!el) return; el.innerHTML=(window._scPend||[]).map(function(p,i){ return '<span class="mc-chip">'+(p.url?('<img src="'+p.url+'">'):(_scFileIc()+' '))+esc(p.file.name||'file')+' <span class="x" onclick="_scRemovePend('+i+')">×</span></span>'; }).join(''); }
+function _scRemovePend(i){ (window._scPend||[]).splice(i,1); _scRenderPend(); }
+
+/* ---------- STUDENT: open chat from a purchased service card ---------- */
+function sOpenServiceChat(sid, title){
+  _scChatCss();
+  if(document.getElementById('svc-ov')) return;
+  var ov=document.createElement('div'); ov.id='svc-ov'; ov.className='svc-ov';
+  ov.innerHTML='<div class="svc-modal" style="max-width:470px"><div class="bar"></div><div style="padding:12px 12px 14px" id="sc-host"></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){ if(e.target===ov){ _scClose(); ov.remove(); try{ loadSServices(); }catch(x){} } });
+  _scMount({ role:'student', hostId:'sc-host',
+    base:'/api/student/service-chat/'+sid, attBase:'/api/student/service-chat-attachments/',
+    headerName:'MVS Support', title:title||'' });
+}
+
+/* ---------- ADMIN: "Services Chat" panel (WhatsApp-style) ---------- */
+async function openAServicesChat(){
+  _scChatCss();
+  showModal('Services Chat', '<div id="sc-adm"><div class="spinner" style="margin:30px auto"></div></div>', '<button class="btn btn-ghost" onclick="_scClose();closeModal()">Close</button>');
+  _scAdmRenderList();
+}
+async function _scAdmRenderList(){
+  _scClose();
+  var box=document.getElementById('sc-adm'); if(!box) return;
+  box.innerHTML='<div class="spinner" style="margin:30px auto"></div>';
+  try{
+    var d=await api('/api/admin/service-chats'); window._scAdmChats=(d.chats||[]);
+    _scAdmPaint('');
+  }catch(e){ box.innerHTML='<div class="alert alert-danger">'+esc((e&&e.message)||'Could not load chats')+'</div>'; }
+}
+function _scAdmPaint(q){
+  var box=document.getElementById('sc-adm'); if(!box) return;
+  var chats=(window._scAdmChats||[]);
+  q=(q||'').trim().toLowerCase();
+  if(q){ chats=chats.filter(function(c){ return ((c.student_name||'')+' '+(c.service_title||'')+' '+(c.student_phone||'')).toLowerCase().indexOf(q)>=0; }); }
+  var rows=chats.map(function(c){
+    var ini=(String(c.student_name||'S').trim().charAt(0)||'S').toUpperCase();
+    var prev=(c.last_sender==='admin'?'You: ':'')+(c.last_text||'No messages yet');
+    return '<div class="sc-li'+(c.enabled?'':' off')+'" onclick="_scAdmOpen('+c.thread_id+')">'
+      +'<div class="sc-av">'+esc(ini)+(c.online?'<span class="sc-dot"></span>':'')+'</div>'
+      +'<div class="sc-li-main"><div class="sc-li-top"><span class="sc-li-nm">'+esc(c.student_name||'Student')+'</span>'
+      +'<span class="sc-li-at">'+esc(_istTime(c.last_at)||'')+'</span></div>'
+      +'<div class="sc-li-sub"><span class="sc-li-prev">'+esc(prev)+'</span>'
+      +(c.unread?('<span class="sc-badge">'+c.unread+'</span>'):'')+'</div>'
+      +'<div style="margin-top:4px"><span class="sc-li-svc">'+esc(c.service_title||'Service')+'</span>'+(c.enabled?'':' <span class="sc-disabled-tip">disabled</span>')+'</div>'
+      +'</div></div>';
+  }).join('');
+  var totalUnread=(window._scAdmChats||[]).reduce(function(a,c){return a+(c.unread||0);},0);
+  box.innerHTML='<input class="sc-search" placeholder="Search student, phone or service…" oninput="_scAdmPaint(this.value)"'+(q?(' value="'+esc(q)+'"'):'')+'>'
+    +(rows?('<div class="sc-list">'+rows+'</div>'):'<div class="sc-empty">No service chats yet. They appear here when a student buys a service.</div>')
+    +(totalUnread?('<div style="text-align:center;margin-top:10px;font-size:.76rem;color:var(--text-muted)">'+totalUnread+' unread message'+(totalUnread===1?'':'s')+'</div>'):'');
+  if(q){ var si=box.querySelector('.sc-search'); if(si){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); } }
+}
+function _scAdmOpen(tid){
+  var box=document.getElementById('sc-adm'); if(!box) return;
+  var c=((window._scAdmChats||[]).filter(function(x){return x.thread_id===tid;})[0])||{};
+  var right='<label class="sc-tgl" title="Turn the student’s chat on or off"><input type="checkbox" id="sc-adm-tgl" '+(c.enabled!==false?'checked':'')+' onchange="_scAdmToggle('+tid+',this.checked)"> <span id="sc-adm-tgl-l">'+(c.enabled!==false?'On':'Off')+'</span></label>';
+  box.innerHTML='<div id="sc-host"></div>';
+  _scMount({ role:'admin', hostId:'sc-host',
+    base:'/api/admin/service-chat/'+tid, attBase:'/api/admin/service-chat-attachments/',
+    headerName:(c.student_name||'Student'), onBack:'_scAdmRenderList()', headerRight:right });
+}
+function _scAdmToggle(tid, enabled){
+  var l=document.getElementById('sc-adm-tgl-l'); if(l) l.textContent=enabled?'On':'Off';
+  api('/api/admin/service-chat/'+tid+'/toggle','POST',{enabled:enabled}).then(function(r){
+    if(window._scCtx) window._scCtx.enabled=!!(r&&r.enabled);
+    toast(enabled?'Chat enabled for the student':'Chat disabled for the student');
+  }).catch(function(e){ toast((e&&e.message)||'Failed',true); var t=document.getElementById('sc-adm-tgl'); if(t) t.checked=!enabled; if(l) l.textContent=!enabled?'On':'Off'; });
 }

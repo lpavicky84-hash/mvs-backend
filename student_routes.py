@@ -3758,10 +3758,21 @@ def student_exam_pdf(exam_id: int, kind: str = "q", db: Session = Depends(get_db
     return __import__("r2_storage").proxy_response(ex.q_pdf, "application/pdf", "questions.pdf", False, sniff=True)
 
 
+def _exam_sig_local(e):
+    import re as _r
+    cl = _r.sub(r"\D", "", str(getattr(e, "class_name", "") or ""))
+    return "|".join([_subj_norm(e.subject or ""), cl, (e.title or "").strip().lower(),
+                     (e.chapter or "").strip().lower(), (e.test_type or "").strip().lower(),
+                     str(getattr(e, "total_marks", 0) or 0)])
+
+
 @router.get("/exam/{exam_id}/ranking")
-def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
+def student_exam_ranking(exam_id: int, scope: str = "class",
+                         db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """scope=class (default): student ke APNE batch test copy ki ranking. scope=all: jin-jin
+    batches me ye test diya gaya un SABHI ka combined ranking (batch tag ke saath, highest marks=1)."""
     sp = get_student_profile(current_user, db)
-    from models import Exam
+    from models import Exam, ExamAttempt, StudentProfile, User, Batch
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -3772,9 +3783,43 @@ def student_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
                 "exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
                          "chapter": exam.chapter, "total_marks": exam.total_marks,
                          "test_type": exam.test_type}}
+    if (scope or "class").lower() == "all":
+        sig = _exam_sig_local(exam)
+        sibs = [e for e in db.query(Exam).filter(Exam.title == exam.title, Exam.is_active == True).all()
+                if _exam_sig_local(e) == sig] or [exam]
+        eids = [e.id for e in sibs]
+        exam_batch = {e.id: getattr(e, "batch_id", None) for e in sibs}
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
+        atts = (db.query(ExamAttempt)
+                .filter(ExamAttempt.exam_id.in_(eids), ExamAttempt.status == "graded").all())
+        sids = {a.student_id for a in atts}
+        nmap, cmap = {}, {}
+        if sids:
+            for spr, nm in (db.query(StudentProfile, User.name)
+                            .join(User, User.id == StudentProfile.user_id)
+                            .filter(StudentProfile.id.in_(sids)).all()):
+                nmap[spr.id] = nm or "Student"; cmap[spr.id] = spr.class_name or ""
+        rws = []
+        for a in atts:
+            bid = exam_batch.get(a.exam_id)
+            bn, se = bmap.get(bid, ("", ""))
+            rws.append({"name": nmap.get(a.student_id, "Student"),
+                        "marks": round(float(a.total_awarded or 0), 1),
+                        "class_name": cmap.get(a.student_id, ""),
+                        "batch": bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se),
+                        "me": bool(a.student_id == sp.id)})
+        rws.sort(key=lambda r: (-r["marks"], r["name"].lower()))
+        for i, r in enumerate(rws, 1):
+            r["rank"] = i
+        return {"scope": "all", "mode": mode, "me_id": sp.id, "graded": len(rws), "rows": rws,
+                "batches": len(eids),
+                "exam": {"id": exam.id, "title": exam.title, "subject": exam.subject,
+                         "chapter": exam.chapter, "total_marks": exam.total_marks,
+                         "test_type": exam.test_type, "class_name": getattr(exam, "class_name", "") or ""}}
     data = _exam_ranking_rows(db, exam_id)
     data["me_id"] = sp.id
     data["mode"] = mode
+    data["scope"] = "class"
     return data
 
 
@@ -3911,32 +3956,64 @@ def student_dpp_packs(batch: int = 0, gen: int = 0, db: Session = Depends(get_db
 
 
 # ===== DPP RANKING — sabse pehle submit karne wala rank #1 =====
+def _dpp_sig_local(pk):
+    """Signature identical across a DPP's batch-copies (subject+class+title+chapter+part)."""
+    import re as _r
+    cl = _r.sub(r"\D", "", str(getattr(pk, "class_name", "") or ""))
+    return "|".join([_subj_norm(pk.subject or ""), cl, (pk.title or "").strip().lower(),
+                     (pk.chapter or "").strip().lower(), (pk.part or "").strip().lower()])
+
+
 @router.get("/dpp-packs/{pack_id}/ranking")
-def student_dpp_ranking(pack_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
-    """Is pack ke sabhi submissions — earliest submit = rank 1. Students ko sirf naam dikhte hain."""
-    from models import DppPack, DppAnswer, StudentProfile, User
+def student_dpp_ranking(pack_id: int, scope: str = "class",
+                        db: Session = Depends(get_db), current_user=Depends(get_student)):
+    """Ranking — earliest submit = rank 1. scope=class (default): student ke APNE batch copy ki
+    ranking. scope=all: jin-jin batches me ye DPP diya gaya un SABHI ka combined ranking (batch tag
+    ke saath). Students ko sirf naam dikhte hain."""
+    from models import DppPack, DppAnswer, StudentProfile, User, Batch
     sp = get_student_profile(current_user, db)
     pk = db.query(DppPack).filter(DppPack.id == pack_id).first()
     if not pk:
         raise HTTPException(404, "DPP pack not found")
+    scope = (scope or "class").lower()
+    if scope == "all":
+        sig = _dpp_sig_local(pk)
+        sibs = db.query(DppPack).filter(DppPack.title == pk.title).all()  # narrow, then sig-filter
+        pack_ids = [p.id for p in sibs if _dpp_sig_local(p) == sig] or [pk.id]
+    else:
+        pack_ids = [pk.id]
+    pack_batch = {}
+    bmap = {}
+    if scope == "all":
+        for p in db.query(DppPack).filter(DppPack.id.in_(pack_ids)).all():
+            pack_batch[p.id] = getattr(p, "batch_id", None)
+        bmap = {b.id: (b.name or "", getattr(b, "session", "") or "") for b in db.query(Batch).all()}
     rows = (db.query(DppAnswer)
-            .filter(DppAnswer.pack_id == pack_id, DppAnswer.status != "staged")
+            .filter(DppAnswer.pack_id.in_(pack_ids), DppAnswer.status != "staged")
             .order_by(DppAnswer.submitted_at.asc(), DppAnswer.id.asc()).all())
+    # names in one query
+    sids = {a.student_id for a in rows}
+    nmap = {}
+    if sids:
+        for spr, nm in (db.query(StudentProfile, User.name)
+                        .join(User, User.id == StudentProfile.user_id)
+                        .filter(StudentProfile.id.in_(sids)).all()):
+            nmap[spr.id] = nm or "Student"
     out = []
     for i, a in enumerate(rows):
-        srow = db.query(StudentProfile).filter(StudentProfile.id == a.student_id).first()
-        nm = ""
-        if srow:
-            u = db.query(User).filter(User.id == srow.user_id).first()
-            nm = (u.name if u else "") or ""
-        nm = nm or "Student"
-        out.append({"rank": i + 1, "name": nm,
-                    "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
-                    "status": a.status or "submitted",
-                    "me": bool(srow and srow.id == sp.id)})
+        row = {"rank": i + 1, "name": nmap.get(a.student_id, "Student"),
+               "submitted_at": a.submitted_at.strftime("%d %b %Y, %I:%M %p") if a.submitted_at else "",
+               "status": a.status or "submitted",
+               "me": bool(a.student_id == sp.id)}
+        if scope == "all":
+            bid = pack_batch.get(a.pack_id)
+            bn, se = bmap.get(bid, ("", ""))
+            row["batch"] = bn if not se or (se.lower() in (bn or "").lower()) else (bn + " — " + se)
+        out.append(row)
     return {"pack": {"id": pk.id, "title": pk.title or "DPP", "subject": pk.subject or "",
                      "chapter": pk.chapter or "", "part": pk.part or "",
                      "class_name": getattr(pk, "class_name", "") or ""},
+            "scope": scope, "batches": (len(pack_ids) if scope == "all" else 1),
             "count": len(out), "rows": out, "me_id": sp.id}
 
 
@@ -4823,6 +4900,18 @@ def student_services(db: Session = Depends(get_db), current_user=Depends(get_stu
             my[r.service_id] = r
     except Exception:
         my = {}
+    # Chat threads (service-wise) — card par chat button + unread badge ke liye
+    chat_by_sid = {}
+    try:
+        from service_chat_models import ServiceChatThread, ServiceChatMsg
+        for t in db.query(ServiceChatThread).filter(ServiceChatThread.student_id == prof.id).all():
+            unread = db.query(ServiceChatMsg).filter(
+                ServiceChatMsg.thread_id == t.id,
+                ServiceChatMsg.sender_role == "admin",
+                ServiceChatMsg.id > (t.student_last_read_id or 0)).count()
+            chat_by_sid[t.service_id] = {"enabled": bool(t.enabled), "unread": unread, "thread_id": t.id}
+    except Exception:
+        chat_by_sid = {}
     out = []
     for s in visible:
         r = my.get(s.id)
@@ -4833,6 +4922,7 @@ def student_services(db: Session = Depends(get_db), current_user=Depends(get_stu
             "tag": s.tag or "",
             "my_clicked": bool(r and r.clicked_at),
             "my_response": (r.response if r else ""),
+            "chat": chat_by_sid.get(s.id),
         })
     return {"services": out, "has_practical": MS.student_has_practical(prof)}
 
@@ -4919,8 +5009,15 @@ def student_service_purchase(sid: int, payload: dict = Body(...), db: Session = 
     else:
         r.amount = None
         r.screenshot = None
+    # Purchase par chat auto-enable (admin approval ki zaroorat nahi)
+    if resp == "yes":
+        try:
+            import service_chat_routes as SCC
+            SCC.ensure_thread_on_purchase(db, sid, prof, current_user)
+        except Exception:
+            pass
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "chat": (resp == "yes")}
 
 
 @router.get("/events/active")
