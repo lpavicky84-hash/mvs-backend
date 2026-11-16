@@ -1250,22 +1250,38 @@ _APP_KEYS = {p[0] for p in _APP_PORTALS}
 _APK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "apks")
 
 
+def _find_apk(key):
+    """'<key>.apk' ko case-insensitive dhoondo — Student.apk / student.apk / STUDENT.apk sab chalein
+    (Linux case-sensitive hai, isliye GitHub pe jo bhi case ho match ho jaaye)."""
+    exact = os.path.join(_APK_DIR, key + ".apk")
+    if os.path.exists(exact):
+        return exact
+    target = (key + ".apk").lower()
+    try:
+        for fn in os.listdir(_APK_DIR):
+            if fn.lower() == target:
+                return os.path.join(_APK_DIR, fn)
+    except Exception:
+        pass
+    return None
+
+
 @app.get("/api/apps")
 def _apps_list():
     """Har portal ke Android app (APK) ki availability.
-    Source: repo ke 'apks/<portal>.apk' file, YA env APK_<PORTAL>_URL (external link).
+    Source: repo ke 'apks/<portal>.apk' file (kisi bhi case me), YA env APK_<PORTAL>_URL.
     Landing page ka 'Download Apps' section isi se banta hai."""
     out = []
     for key, label, desc, color in _APP_PORTALS:
         env_url = (os.getenv("APK_%s_URL" % key.upper()) or "").strip()
-        fpath = os.path.join(_APK_DIR, key + ".apk")
+        fpath = _find_apk(key)
         url = ""
         size = 0
         available = False
         if env_url:
             url = env_url
             available = True
-        elif os.path.exists(fpath):
+        elif fpath:
             url = "/apps/%s.apk" % key
             available = True
             try:
@@ -1292,8 +1308,8 @@ def _serve_apk(portal: str, request: _Request):
     if env_url:
         from fastapi.responses import RedirectResponse as _RR
         return _RR(env_url, status_code=302)
-    fpath = os.path.join(_APK_DIR, portal + ".apk")
-    if not os.path.exists(fpath):
+    fpath = _find_apk(portal)
+    if not fpath:
         raise _HX(404, "APK not uploaded yet")
     from fastapi.responses import FileResponse as _FR
     return _FR(
