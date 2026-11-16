@@ -33540,6 +33540,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
             '<div style="display:flex;align-items:center;gap:12px">'+
               (portal==='production'?'<div class="ph-search"><input id="prod-gsearch" placeholder="Search tasks, creators, editors..." oninput="prodGSearch(this.value)" autocomplete="off"></div>':'')+
               (portal==='production'?'<button class="ph-live" id="prod-live-pill" onclick="prodNav(\'production\',\'liveteam\')" title="Production team live — tap to view"><span class="ph-live-dot"></span><b id="prod-live-n">0</b> live</button>':'')+
+              '<button class="ph-bell ph-pushbtn off" id="'+portal+'-pushbtn" onclick="prodEnablePush(\''+portal+'\')" title="Phone pe notifications on karein">'+icon('bell')+'<b class="ph-push-lbl" id="'+portal+'-push-lbl">Enable Alerts</b></button>'+
               '<button class="ph-bell ph-theme" onclick="toggleDark()" title="Dark / Light mode"><span class="thm-moon">'+ic('moon')+'</span><span class="thm-sun">'+ic('sun')+'</span></button>'+
               '<button class="ph-bell" onclick="prodBell(\''+portal+'\')">'+icon('bell')+'<span class="ph-bell-dot" id="'+portal+'-bell-dot" style="display:none">0</span></button>'+
               '<div class="ph-badge">'+d.title+'</div>'+
@@ -33570,6 +33571,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='editor'){ try{ window._edtApplyNavGate(); }catch(e){} }
     prodStartNotifPoll(portal);
     try{ _pushInit(); }catch(e){}   // production/editor/youtuber/graphics bhi push subscribe karein (phone notifications)
+    try{ _prodPushCss(); _prodPushSync(portal); }catch(e){}
     // v-perf/live: production team ki online presence UserSession me record karo taaki
     // Live Users + PM ke live-team me editors/graphics/PM/YouTuber dikhein (pehle sirf chat
     // presence touch hoti thi -> kabhi live nahi dikhte the). Turant + har 40s (_hbTimer).
@@ -33577,6 +33579,37 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(portal==='production'){ _prodNavBadges(); if(window._prodBadgeInt) clearInterval(window._prodBadgeInt); window._prodBadgeInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodNavBadges(); },20000);
       try{ _prodLivePoll(); if(window._prodLiveInt) clearInterval(window._prodLiveInt); window._prodLiveInt=setInterval(function(){ var pa=document.getElementById('production-app'); if(pa&&pa.classList.contains('active')&&!document.hidden) _prodLivePoll(); },20000); }catch(e){} }
     return Promise.resolve();
+  };
+
+  // ===== Phone-notifications enable button (production/editor/youtuber/graphics header) =====
+  window._prodPushCss=function(){
+    if(document.getElementById('prod-push-css')) return;
+    var s=document.createElement('style'); s.id='prod-push-css';
+    s.textContent=''
+      +'.ph-pushbtn{width:auto!important;padding:0 13px!important;gap:7px;border-radius:999px!important;font-weight:800;font-size:.8rem;display:inline-flex;align-items:center;white-space:nowrap}'
+      +'.ph-pushbtn .ph-push-lbl{font-size:.8rem;font-weight:800;letter-spacing:.01em}'
+      +'.ph-pushbtn.off{background:linear-gradient(135deg,#f0d793,#e2b458)!important;color:#3a2e07!important;border-color:#e2b458!important;box-shadow:0 6px 16px -8px rgba(201,150,46,.9);animation:phPushPulse 1.8s ease-in-out infinite}'
+      +'.ph-pushbtn.off svg{stroke:#3a2e07}'
+      +'.ph-pushbtn.on{background:rgba(22,163,74,.14)!important;color:#15803d!important;border-color:rgba(22,163,74,.4)!important}'
+      +'.ph-pushbtn.on svg{stroke:#15803d}'
+      +'.ph-pushbtn.blocked{background:rgba(220,38,38,.12)!important;color:#b91c1c!important;border-color:rgba(220,38,38,.35)!important}'
+      +'.ph-pushbtn.blocked svg{stroke:#b91c1c}'
+      +'@keyframes phPushPulse{0%,100%{box-shadow:0 6px 16px -8px rgba(201,150,46,.9)}50%{box-shadow:0 6px 22px -4px rgba(201,150,46,1)}}';
+    document.head.appendChild(s);
+  };
+  window._prodPushSync=function(portal){
+    var b=document.getElementById(portal+'-pushbtn'); if(!b) return;
+    var lbl=document.getElementById(portal+'-push-lbl');
+    var perm='default';
+    try{ perm=(window.Notification&&Notification.permission)||'default'; }catch(e){}
+    b.classList.remove('on','off','blocked');
+    if(perm==='granted'){ b.classList.add('on'); if(lbl) lbl.textContent='Alerts On'; b.title='Phone notifications ON hain'; }
+    else if(perm==='denied'){ b.classList.add('blocked'); if(lbl) lbl.textContent='Blocked'; b.title='Browser settings me notifications unblock karein'; }
+    else { b.classList.add('off'); if(lbl) lbl.textContent='Enable Alerts'; b.title='Phone pe notifications on karne ke liye tap karein'; }
+  };
+  window.prodEnablePush=function(portal){
+    try{ pushEnableFromSettings(); }catch(e){}
+    var _n=0, _t=setInterval(function(){ _n++; try{ _prodPushSync(portal); }catch(e){} if(_n>=6) clearInterval(_t); }, 700);
   };
 
   // ===== Daily self check-in (leave) for Editor / Graphics =====
