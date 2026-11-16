@@ -50355,10 +50355,32 @@ function _isIosDevice(){
 function _isStandalonePWA(){
   try{ return (window.navigator.standalone===true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); }catch(e){ return false; }
 }
+function _metaTag(name, content, attr){
+  try{ attr=attr||'name'; var sel='meta['+attr+'="'+name+'"]'; var el=document.querySelector(sel);
+    if(!el){ el=document.createElement('meta'); el.setAttribute(attr,name); document.head.appendChild(el); }
+    el.setAttribute('content',content); }catch(e){}
+}
+// Install meta — har portal ka apna home-screen app, apne hi portal (start_url) par khule.
+// Login ke bina bhi chale, isliye alag function jo load par bhi call hota hai.
+function _installMetaInit(){
+  try{
+    if(!document.head) return;
+    var path=(location.pathname||'/');
+    var m=document.querySelector('link[rel="manifest"]');
+    if(!m){ m=document.createElement('link'); m.rel='manifest'; document.head.appendChild(m); }
+    m.setAttribute('href','/manifest.webmanifest?start='+encodeURIComponent(path));
+    _metaTag('apple-mobile-web-app-capable','yes');
+    _metaTag('mobile-web-app-capable','yes');
+    _metaTag('apple-mobile-web-app-status-bar-style','default');
+    _metaTag('apple-mobile-web-app-title', (path==='/teacher')?'MVS Teacher':(path==='/admin')?'MVS Admin':'MVS');
+    _metaTag('theme-color','#14213d');
+    if(!document.querySelector('link[rel="apple-touch-icon"]')){ var ai=document.createElement('link'); ai.rel='apple-touch-icon'; ai.href='/push-icon.png'; document.head.appendChild(ai); }
+  }catch(e){}
+}
 async function _pushInit(){
   if(!TOKEN) return;
   if(window._pushInited) return; window._pushInited=true;
-  try{ if(!document.querySelector('link[rel="manifest"]')){ var _l=document.createElement('link'); _l.rel='manifest'; _l.href='/manifest.webmanifest'; document.head.appendChild(_l); } }catch(e){}
+  try{ _installMetaInit(); }catch(e){}
   try{
     var info=await api('/api/push/vapid-public-key');
     if(!info || !info.enabled || !info.key){ return; }   // VAPID set nahi -> feature dormant
@@ -50409,21 +50431,42 @@ async function _pushSubscribe(reg, key){
     var sub=await reg.pushManager.getSubscription();
     if(!sub){ sub=await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:_urlB64ToUint8(key||window._vapidKey) }); }
     await api('/api/push/subscribe','POST',{ subscription:sub.toJSON(), ua:(navigator.userAgent||'').slice(0,200) });
+    // Subscribe ho gaya -> nudge hamesha ke liye hata do, dobara na dikhe.
+    try{ localStorage.setItem('push_nudge_off','1'); }catch(e){}
+    var _n=document.getElementById('push-nudge'); if(_n) _n.remove();
     return true;
   }catch(e){ return false; }
 }
+function _pushCss(){
+  if(document.getElementById('push-css')) return;
+  var s=document.createElement('style'); s.id='push-css';
+  s.textContent=[
+    '@keyframes pushUp{from{transform:translate(-50%,130%);opacity:0}to{transform:translate(-50%,0);opacity:1}}',
+    '.push-nudge{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:9000;width:min(430px,calc(100vw - 26px));box-sizing:border-box;background:linear-gradient(135deg,#1c2b4d,#14213d);color:#fff;border-radius:16px;padding:13px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 20px 48px -16px rgba(0,0,0,.6);border:1px solid rgba(232,193,88,.3);animation:pushUp .42s cubic-bezier(.2,.9,.3,1)}',
+    '.push-nudge .pn-ic{flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#e8c15a,#b8941f);color:#14213d;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px -6px rgba(184,148,31,.75)}',
+    '.push-nudge .pn-ic svg{width:22px;height:22px}',
+    '.push-nudge .pn-tx{flex:1;min-width:0}',
+    '.push-nudge .pn-tx b{display:block;font-size:.9rem;font-weight:800;letter-spacing:.01em}',
+    '.push-nudge .pn-tx span{font-size:.76rem;color:#c3cde0;line-height:1.35}',
+    '.push-nudge .pn-yes{flex:0 0 auto;background:linear-gradient(135deg,#e8c15a,#b8941f);color:#14213d;border:none;border-radius:10px;padding:9px 16px;font-weight:800;font-size:.82rem;cursor:pointer;box-shadow:0 5px 14px -5px rgba(184,148,31,.8)}',
+    '.push-nudge .pn-yes:hover{filter:brightness(1.07)}',
+    '.push-nudge .pn-no{flex:0 0 auto;background:rgba(255,255,255,.1);border:none;color:#aeb6c2;cursor:pointer;width:26px;height:26px;border-radius:8px;font-size:1rem;line-height:1;display:flex;align-items:center;justify-content:center}',
+    '.push-nudge .pn-no:hover{background:rgba(255,255,255,.2)}'
+  ].join('');
+  document.head.appendChild(s);
+}
 function _pushShowNudge(){
-  try{ if(sessionStorage.getItem('push_nudge_off')==='1') return; }catch(e){}
+  try{ if(localStorage.getItem('push_nudge_off')==='1') return; }catch(e){}
   if(document.getElementById('push-nudge')) return;
-  var d=document.createElement('div'); d.id='push-nudge';
-  d.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9000;background:#14213d;color:#fff;border-radius:14px;padding:12px 15px;display:flex;align-items:center;gap:11px;box-shadow:0 14px 34px -12px rgba(0,0,0,.55);max-width:94vw;width:390px';
-  d.innerHTML='<div style="flex:0 0 auto;width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#b8941f,#e8c15a);color:#14213d;display:flex;align-items:center;justify-content:center">'+ic('bell')+'</div>'
-    +'<div style="flex:1;min-width:0;font-size:.82rem;line-height:1.35">Get MVS updates on your phone — never miss a class or notice.</div>'
-    +'<button id="push-nudge-yes" style="flex:0 0 auto;background:#b8941f;color:#fff;border:none;border-radius:9px;padding:8px 13px;font-weight:800;font-size:.8rem;cursor:pointer">Enable</button>'
-    +'<button id="push-nudge-no" style="flex:0 0 auto;background:none;border:none;color:#aeb6c2;cursor:pointer;font-size:1.2rem;line-height:1">×</button>';
+  _pushCss();
+  var d=document.createElement('div'); d.id='push-nudge'; d.className='push-nudge';
+  d.innerHTML='<div class="pn-ic">'+ic('bell')+'</div>'
+    +'<div class="pn-tx"><b>Turn on phone alerts</b><span>Get class updates &amp; notices on your phone.</span></div>'
+    +'<button class="pn-yes" id="push-nudge-yes">Enable</button>'
+    +'<button class="pn-no" id="push-nudge-no">×</button>';
   document.body.appendChild(d);
   document.getElementById('push-nudge-yes').onclick=_pushEnable;
-  document.getElementById('push-nudge-no').onclick=function(){ try{sessionStorage.setItem('push_nudge_off','1');}catch(e){} var x=document.getElementById('push-nudge'); if(x) x.remove(); };
+  document.getElementById('push-nudge-no').onclick=function(){ try{localStorage.setItem('push_nudge_off','1');}catch(e){} var x=document.getElementById('push-nudge'); if(x) x.remove(); };
 }
 async function _pushEnable(){
   var x=document.getElementById('push-nudge'); if(x) x.remove();
@@ -50438,3 +50481,7 @@ async function _pushEnable(){
 }
 // Settings/menu se bhi enable kar sakein
 function pushEnableFromSettings(){ if(!window._vapidKey){ _pushInit().then(function(){ _pushEnable(); }); } else { _pushEnable(); } }
+// Install meta login se pehle bhi lag jaaye (taaki login page se install karne par bhi
+// SAHI portal ka home-screen app bane — teacher->/teacher, admin->/admin).
+try{ _installMetaInit(); }catch(e){}
+try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMetaInit(); }catch(e){} }); }catch(e){}

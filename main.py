@@ -1086,11 +1086,46 @@ def _serve_service_worker():
               headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
 
 
+_LOGO_PNG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+
+
+@app.get("/push-icon.png")
+def _serve_push_icon(request: _Request):
+    # Install/notification icon = asli MVS logo (public, no auth)
+    if os.path.exists(_LOGO_PNG_FILE):
+        return _cached_file(request, _LOGO_PNG_FILE, "image/png")
+    return JSONResponse(status_code=404, content={"detail": "icon not found"})
+
+
 @app.get("/manifest.webmanifest")
-def _serve_manifest():
+def _serve_manifest(start: str = "/"):
+    """Dynamic manifest — start_url us portal ka jahan se install hua (teacher/admin/student).
+    Isse har portal ka alag home-screen app apne hi portal par khulta hai."""
     from fastapi.responses import Response as _R
-    return _R(content=_MANIFEST_JSON, media_type="application/manifest+json",
-              headers={"Cache-Control": "public, max-age=3600"})
+    import json as _json
+    allowed = {"/", "/student", "/teacher", "/admin", "/production",
+               "/editor", "/youtuber", "/graphics"}
+    s = start if start in allowed else "/"
+    names = {"/teacher": "MVS Teacher", "/admin": "MVS Admin", "/production": "MVS Production",
+             "/editor": "MVS Editor", "/youtuber": "MVS Studio", "/graphics": "MVS Graphics"}
+    nm = names.get(s, "MVS Foundation")
+    man = {
+        "name": nm,
+        "short_name": ("MVS" if s in ("/", "/student") else nm.replace("MVS ", "MVS ")),
+        "id": (s if s != "/" else "/student"),
+        "start_url": (s if s != "/" else "/"),
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#fdfbf6",
+        "theme_color": "#14213d",
+        "icons": [
+            {"src": "/push-icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/push-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/push-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ],
+    }
+    return _R(content=_json.dumps(man), media_type="application/manifest+json",
+              headers={"Cache-Control": "public, max-age=600"})
 
 
 # ===== Public shareable test page (guest, no login) — /t/<token> =====
