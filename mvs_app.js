@@ -22929,6 +22929,7 @@ const STUDENT_BATCHES=[
 ];
 async function openStudent(){
   try{_saveSession();}catch(e){}
+  try{ _initDownloadAppBtn(); }catch(e){}
   // Sidebar load pe FULLY closed rahe — sab sections band, user click pe hi khulein.
   // forceAll=true taaki late-inject hone wale sub-items (Classes Material/DPP Submit) bhi chhup jayein.
   try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){}
@@ -50462,6 +50463,106 @@ function _iosStep(n, html){
 }
 // Student khud bhi guide khol sake
 function iosInstallHelp(){ try{ localStorage.removeItem('ios_install_off'); }catch(e){} _iosInstallGuide(); }
+
+// ===== Download App (student) — Android APK / iOS Add-to-Home / PC hidden =====
+function _deviceKind(){
+  try{
+    if(_isIosDevice()) return 'ios';
+    if(/android/i.test(navigator.userAgent||'')) return 'android';
+    return 'desktop';
+  }catch(e){ return 'desktop'; }
+}
+function _stopDlBlink(){ try{ var b=document.getElementById('s-dlapp-btn'); if(b) b.classList.remove('blink'); }catch(e){} }
+function _initDownloadAppBtn(){
+  try{
+    var btn=document.getElementById('s-dlapp-btn'); if(!btn) return;
+    var k=_deviceKind();
+    // PC par ya already-installed app (standalone) me button chhupa do.
+    if(k==='desktop' || _isStandalonePWA()){ btn.style.display='none'; return; }
+    btn.style.display='';
+    var done=false;
+    try{ done = (k==='ios') ? (localStorage.getItem('mvs_app_ios_seen')==='1') : (localStorage.getItem('mvs_app_dl')==='1'); }catch(e){}
+    if(done) btn.classList.remove('blink'); else btn.classList.add('blink');
+  }catch(e){}
+}
+function _doApkDownload(){
+  try{ localStorage.setItem('mvs_app_dl','1'); }catch(e){}
+  _stopDlBlink();
+  try{
+    var a=document.createElement('a'); a.href='/apps/student.apk'; a.download='MVS-Class-Manager.apk';
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){ try{ location.href='/apps/student.apk'; }catch(_){} }
+  try{ toast('Download started — open the file to install. / Download shuru — install karne ke liye file kholein.'); }catch(e){}
+  var dl=document.getElementById('dlapp-doneline'); if(dl) dl.style.display='';
+}
+function openDownloadApp(){
+  var k=_deviceKind();
+  if(k==='ios'){ try{ localStorage.setItem('mvs_app_ios_seen','1'); }catch(e){} _stopDlBlink(); }
+  _appSheet(k==='ios'?'ios':'android');
+}
+function _dlStep(n, en, hi){
+  return '<div class="dla-step"><div class="dla-num">'+n+'</div><div class="dla-tx"><div class="dla-en">'+en+'</div><div class="dla-hi">'+hi+'</div></div></div>';
+}
+function _appSheet(kind){
+  var old=document.getElementById('dlapp-sheet'); if(old) old.remove();
+  _dlAppCss();
+  var icon='<img src="/app-icon/student.png" alt="MVS" onerror="this.onerror=null;this.src=\''+_logoSrc()+'\'" style="width:54px;height:54px;border-radius:14px;object-fit:cover;flex:0 0 auto;box-shadow:0 8px 20px -8px rgba(0,0,0,.5)">';
+  var steps, action, safe, titleEn, titleHi;
+  if(kind==='ios'){
+    titleEn='Add MVS to your Home Screen'; titleHi='MVS ko Home Screen par add karein';
+    steps=_dlStep('1','Tap the <b>Share</b> button at the bottom of Safari.','Safari ke neeche <b>Share</b> button dabayein.')
+      +_dlStep('2','Scroll down and tap <b>Add to Home Screen</b>.','Neeche scroll karke <b>Add to Home Screen</b> dabayein.')
+      +_dlStep('3','Tap <b>Add</b> — the MVS app icon appears on your Home Screen.','<b>Add</b> dabayein — MVS app ka icon aapke Home Screen par aa jayega.')
+      +_dlStep('4','Open it, log in, and turn on notifications.','Ise kholein, login karein aur notifications on karein.');
+    safe='<b>Completely safe.</b> Apple installs apps only through this one-time Home Screen step — there is nothing to download and nothing to worry about.<div class="dla-hi">Apple sirf is ek-baar wale Home Screen step se app install karta hai — kuch download nahi karna, ghabrane ki koi baat nahi.</div>';
+    action='<button class="dla-go" onclick="(function(){var x=document.getElementById(\'dlapp-sheet\');if(x)x.remove();})()">Got it / Samajh gaya</button>';
+  } else {
+    titleEn='Install the MVS Class Manager App'; titleHi='MVS Class Manager app install karein';
+    steps=_dlStep('1','Tap <b>Download App</b> below — the app file will start downloading.','Neeche <b>Download App</b> dabayein — app file download hone lagegi.')
+      +_dlStep('2','Open the downloaded file. Android may warn <i>&ldquo;This type of file can harm your device.&rdquo;</i> This is normal for apps installed outside the Play Store — tap <b>Download anyway</b> / <b>Open</b>.','Download hui file kholein. Android <i>&ldquo;is tarah ki file aapke device ko nuksan pahuncha sakti hai&rdquo;</i> warning dikha sakta hai. Play Store ke bahar wale apps ke liye yeh bilkul normal hai — <b>Download anyway</b> / <b>Open</b> dabayein.')
+      +_dlStep('3','If asked, allow <b>Install unknown apps</b> for your browser, then tap <b>Install</b>.','Agar pooche to browser ke liye <b>Install unknown apps</b> allow karein, phir <b>Install</b> dabayein.')
+      +_dlStep('4','Open the app, log in, and turn on notifications.','App kholein, login karein aur notifications on karein.');
+    safe='<b>&#10003; 100% Safe.</b> This is the official MVS Foundation app. That warning appears only because we give it to you directly instead of through the Play Store — nothing is wrong, and you can install it with full confidence to make your studies even stronger.<div class="dla-hi">Yeh official MVS Foundation app hai. Warning sirf isliye aati hai kyunki hum ise aapko seedha de rahe hain, Play Store se nahi — koi dikkat nahi, aap poore bharose ke saath install karke apni padhai aur strong bana sakte ho.</div>';
+    action='<button class="dla-go" onclick="_doApkDownload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><line x1="5" y1="21" x2="19" y2="21"/></svg>Download App</button>'
+      +'<div id="dlapp-doneline" class="dla-done" style="display:none">&#10003; Download started! Check your notification bar, then open the file.<br>Download shuru ho gaya! Notification bar me dekhein, phir file kholein.</div>';
+  }
+  var ov=document.createElement('div'); ov.id='dlapp-sheet'; ov.className='dla-ov';
+  ov.innerHTML='<div class="dla-sheet">'
+    +'<div class="dla-grip"></div>'
+    +'<div class="dla-head">'+icon+'<div style="min-width:0"><div class="dla-title">'+titleEn+'</div><div class="dla-sub">'+titleHi+'</div></div><button class="dla-x" onclick="(function(){var x=document.getElementById(\'dlapp-sheet\');if(x)x.remove();})()">&times;</button></div>'
+    +'<div class="dla-steps">'+steps+'</div>'
+    +'<div class="dla-safe">'+safe+'</div>'
+    +'<div class="dla-foot">'+action+'</div>'
+    +'</div>';
+  ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+function _dlAppCss(){
+  if(document.getElementById('dla-css')) return;
+  var s=document.createElement('style'); s.id='dla-css';
+  s.textContent=''
+  +'.dla-ov{position:fixed;inset:0;z-index:9200;background:rgba(10,15,30,.55);display:flex;align-items:flex-end;justify-content:center;animation:dlaFade .2s ease}'
+  +'@keyframes dlaFade{from{opacity:0}to{opacity:1}}'
+  +'.dla-sheet{background:var(--card,#fff);width:100%;max-width:500px;max-height:92vh;overflow-y:auto;border-radius:22px 22px 0 0;padding:16px 20px 24px;box-shadow:0 -18px 46px -10px rgba(0,0,0,.45);animation:dlaUp .28s cubic-bezier(.2,.8,.2,1)}'
+  +'@media(min-width:620px){.dla-ov{align-items:center}.dla-sheet{border-radius:22px;max-height:88vh}}'
+  +'@keyframes dlaUp{from{transform:translateY(60px);opacity:.6}to{transform:translateY(0);opacity:1}}'
+  +'.dla-grip{width:44px;height:4px;border-radius:999px;background:#d8cfbb;margin:2px auto 16px}'
+  +'.dla-head{display:flex;align-items:center;gap:13px;margin-bottom:16px}'
+  +'.dla-title{font-weight:900;font-size:1.1rem;color:var(--text,#2a2416);line-height:1.2}'
+  +'.dla-sub{font-size:.8rem;color:var(--text-muted,#8a8168);margin-top:2px}'
+  +'.dla-x{margin-left:auto;background:none;border:none;font-size:1.6rem;line-height:1;color:var(--text-muted,#8a8168);cursor:pointer;padding:0 4px;flex:0 0 auto}'
+  +'.dla-steps{display:flex;flex-direction:column;gap:13px;margin-bottom:16px}'
+  +'.dla-step{display:flex;align-items:flex-start;gap:12px}'
+  +'.dla-num{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#e2b458,#c9972a);color:#3a2e07;font-weight:800;font-size:.86rem;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px -4px rgba(201,150,46,.8)}'
+  +'.dla-tx{min-width:0}'
+  +'.dla-en{font-size:.9rem;line-height:1.5;color:var(--text,#2a2416)}'
+  +'.dla-hi{font-size:.82rem;line-height:1.5;color:var(--text-muted,#8a8168);margin-top:2px}'
+  +'.dla-safe{font-size:.82rem;line-height:1.55;color:var(--text,#2a2416);background:linear-gradient(135deg,rgba(22,163,74,.1),rgba(22,163,74,.04));border:1px solid rgba(22,163,74,.28);border-radius:13px;padding:12px 14px;margin-bottom:16px}'
+  +'.dla-go{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:14px;border:none;border-radius:14px;font-weight:800;font-size:1rem;color:#3a2e07;background:linear-gradient(135deg,#f0d793,#e2b458);box-shadow:0 10px 24px -10px rgba(201,150,46,.9);cursor:pointer}'
+  +'.dla-go svg{width:19px;height:19px}'
+  +'.dla-done{text-align:center;font-size:.78rem;color:#15803d;font-weight:700;margin-top:12px;line-height:1.5}';
+  document.head.appendChild(s);
+}
 async function _pushSubscribe(reg, key){
   try{
     reg=reg||await navigator.serviceWorker.ready;
