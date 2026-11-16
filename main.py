@@ -1141,21 +1141,28 @@ _APP_ICON_CACHE = {}
 
 @app.get("/app-icon/{fname}")
 def _serve_app_icon(fname: str):
-    """Har portal ka alag premium icon. fname = '<portal>.png' ya '<portal>_mask.png'
-    (maskable). File icons/ folder se aati hai; na mile to generic MVS push-icon fallback."""
+    """Har portal ka alag premium icon.
+       '<portal>.png'        -> 512 any
+       '<portal>_mask.png'   -> 512 maskable
+       '<portal>-192.png'    -> 192 any (backend downscale)
+       '<portal>_mask-192.png' -> 192 maskable (downscale)
+    File icons/ folder se aati hai; na mile to generic MVS push-icon fallback."""
     from fastapi.responses import Response as _R
     import re as _re
     name = (fname or "").strip()
-    # sirf safe filename: letters, _ , aur .png
-    if not _re.match(r"^[a-z]+(_mask)?\.png$", name):
+    m = _re.match(r"^([a-z]+)(_mask)?(-192)?\.png$", name)
+    if not m:
         return JSONResponse(status_code=404, content={"detail": "bad icon name"})
-    base = name[:-4].replace("_mask", "")
-    if base not in {p[0] for p in _APP_PORTALS}:
+    portal = m.group(1)
+    is_mask = bool(m.group(2))
+    is_192 = bool(m.group(3))
+    if portal not in {p[0] for p in _APP_PORTALS}:
         return JSONResponse(status_code=404, content={"detail": "unknown portal icon"})
     if name in _APP_ICON_CACHE:
         data = _APP_ICON_CACHE[name]
     else:
-        fpath = os.path.join(_APP_ICON_DIR, name)
+        src_name = portal + ("_mask" if is_mask else "") + ".png"
+        fpath = os.path.join(_APP_ICON_DIR, src_name)
         data = None
         if os.path.exists(fpath):
             try:
@@ -1167,6 +1174,16 @@ def _serve_app_icon(fname: str):
             if _PUSH_ICON_CACHE["data"] is None:
                 _PUSH_ICON_CACHE["data"] = _build_push_icon()
             data = _PUSH_ICON_CACHE["data"]
+        if is_192 and data:  # 512 source ko 192 me downscale (manifest size match)
+            try:
+                from PIL import Image
+                import io as _io
+                im = Image.open(_io.BytesIO(data)).convert("RGBA").resize((192, 192), Image.LANCZOS)
+                _b = _io.BytesIO()
+                im.save(_b, format="PNG")
+                data = _b.getvalue()
+            except Exception:
+                pass
         _APP_ICON_CACHE[name] = data
     if not data:
         return JSONResponse(status_code=404, content={"detail": "icon not found"})
@@ -1190,7 +1207,9 @@ def _serve_manifest(start: str = "/"):
     if key not in {p[0] for p in _APP_PORTALS}:
         key = "student"
     icon_any = "/app-icon/%s.png" % key
+    icon_any192 = "/app-icon/%s-192.png" % key
     icon_mask = "/app-icon/%s_mask.png" % key
+    icon_mask192 = "/app-icon/%s_mask-192.png" % key
     man = {
         "name": nm,
         "short_name": ("MVS" if s in ("/", "/student") else nm),
@@ -1198,13 +1217,17 @@ def _serve_manifest(start: str = "/"):
         "id": (s if s != "/" else "/student"),
         "start_url": (s if s != "/" else "/"),
         "scope": "/",
+        "lang": "en",
+        "dir": "ltr",
+        "categories": ["education"],
         "display": "standalone",
         "orientation": "portrait",
         "background_color": "#101d3c",
         "theme_color": "#14213d",
         "icons": [
-            {"src": icon_any, "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": icon_any192, "sizes": "192x192", "type": "image/png", "purpose": "any"},
             {"src": icon_any, "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": icon_mask192, "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
             {"src": icon_mask, "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
     }
