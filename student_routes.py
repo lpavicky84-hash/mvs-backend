@@ -870,7 +870,8 @@ def notify(db, user_id, title, message, notif_type):
     try:
         import push_service, re as _re
         _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
-        push_service.enqueue([user_id], _t, message, url="/")
+        _pp = push_service.portal_for_user(db, user_id)   # recipient ka portal -> SAHI app khule
+        push_service.enqueue([user_id], _t, message, url=(("/" + _pp) if _pp else "/"), portal=_pp)
     except Exception:
         pass
 

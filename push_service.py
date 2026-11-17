@@ -97,7 +97,34 @@ def _ids(user_ids):
     return out
 
 
-def enqueue(user_ids, title, body, url="/", tag=None):
+# ===== Role -> portal path mapping (har notification SAHI app me khule) =====
+# Bug tha: har push ka url "/" (root) jaata tha -> root student Class Manager login hai,
+# isliye teacher/editor/etc ke notification click karte hi STUDENT app khul jaata tha. Ab
+# recipient ke role se portal nikaalke payload me `portal` (+ scoped url) bhejte hain, aur
+# service worker us portal ki hi window focus/open karta hai.
+_ROLE_PORTAL = {
+    "admin": "admin", "teacher": "teacher", "student": "student",
+    "production_manager": "production", "editor": "editor",
+    "youtuber": "youtuber", "graphics": "graphics",
+}
+
+
+def portal_for_role(role):
+    r = getattr(role, "value", role)
+    return _ROLE_PORTAL.get(str(r or "").strip(), "")
+
+
+def portal_for_user(db, user_id):
+    """Recipient user ka portal (teacher/student/editor/...) uske role se. Fail -> ''."""
+    try:
+        from models import User
+        row = db.query(User.role).filter(User.id == int(user_id)).first()
+        return portal_for_role(row[0]) if row else ""
+    except Exception:
+        return ""
+
+
+def enqueue(user_ids, title, body, url="/", tag=None, portal=""):
     """Notification ke saath phone push queue me daalo (best-effort, non-blocking)."""
     if not enabled():
         return
@@ -106,6 +133,8 @@ def enqueue(user_ids, title, body, url="/", tag=None):
         return
     payload = {"title": (_px_clean(str(title or "MVS Foundation")) or "MVS Foundation")[:160],
                "body": (_px_clean(str(body or "")) or "")[:480], "url": url or "/"}
+    if portal:
+        payload["portal"] = str(portal)[:20]
     if tag:
         payload["tag"] = str(tag)[:80]
     pj = json.dumps(payload, sort_keys=True)
@@ -162,6 +191,37 @@ def _worker_loop():
             time.sleep(1)
 
 
+def _role_portal(role):
+    """UserRole -> jis app (portal) pe notification khulna chahiye."""
+    r = (getattr(role, "value", None) or str(role or "")).strip().lower()
+    if r == "production_manager":
+        return "production"
+    if r in ("teacher", "student", "admin", "editor", "graphics", "youtuber"):
+        return r
+    return ""
+
+
+def _payload_with_portal(pj, portal):
+    """Payload me recipient ka portal daalo aur url ko us app ke path par set karo. Isse SW ko
+    pata chal jaata hai ki kaunsa app kholna hai -> teacher ka notification student app pe nahi
+    khulega. Original deep-link (task id) ?n= me rakho (app chahe to use kare)."""
+    if not portal:
+        return pj
+    try:
+        import urllib.parse as _up
+        d = json.loads(pj)
+        link = d.get("url") or ""
+        base = "/" + portal
+        if link and str(link) not in ("/", ""):
+            d["url"] = base + "?n=" + _up.quote(str(link), safe="")
+        else:
+            d["url"] = base
+        d["portal"] = portal
+        return json.dumps(d, sort_keys=True)
+    except Exception:
+        return pj
+
+
 def _process(batch):
     # payload-wise user_ids coalesce
     groups = {}
@@ -179,27 +239,41 @@ def _process(batch):
     try:
         for pj, uidset in groups.items():
             uids = list(uidset)
-            rows = []
+            # user_id -> portal (role-based): notification ko SAHI app pe kholne ke liye.
+            role_map = {}
+            try:
+                from models import User
+                for i in range(0, len(uids), 900):
+                    for uid, role in db.query(User.id, User.role).filter(
+                            User.id.in_(uids[i:i + 900])):
+                        role_map[uid] = _role_portal(role)
+            except Exception:
+                try: db.rollback()
+                except Exception: pass
+            # subscriptions ko PORTAL ke hisaab se group karo (har portal ka alag payload+url).
+            by_portal = {}
             for i in range(0, len(uids), 900):
                 chunk = uids[i:i + 900]
                 try:
                     for s in db.query(PushSubscription).filter(
                             PushSubscription.user_id.in_(chunk)).all():
-                        rows.append((s.id, s.endpoint, s.p256dh, s.auth))
+                        p = role_map.get(s.user_id, "")
+                        by_portal.setdefault(p, []).append((s.id, s.endpoint, s.p256dh, s.auth))
                 except Exception:
                     try: db.rollback()
                     except Exception: pass
-            if not rows:
-                continue
-            dead = _send_group(rows, pj)
-            for i in range(0, len(dead), 900):
-                try:
-                    db.query(PushSubscription).filter(
-                        PushSubscription.id.in_(dead[i:i + 900])).delete(synchronize_session=False)
-                    db.commit()
-                except Exception:
-                    try: db.rollback()
-                    except Exception: pass
+            for p, rows in by_portal.items():
+                if not rows:
+                    continue
+                dead = _send_group(rows, _payload_with_portal(pj, p))
+                for i in range(0, len(dead), 900):
+                    try:
+                        db.query(PushSubscription).filter(
+                            PushSubscription.id.in_(dead[i:i + 900])).delete(synchronize_session=False)
+                        db.commit()
+                    except Exception:
+                        try: db.rollback()
+                        except Exception: pass
     finally:
         try:
             db.close()

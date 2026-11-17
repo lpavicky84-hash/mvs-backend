@@ -59,7 +59,8 @@ def push_unsubscribe(payload: dict = Body(default={}),
 @router.post("/test")
 def push_test(db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Khud ko ek test push bhej ke dekho ki phone par aata hai ya nahi."""
-    push_service.push_one(user.id, "MVS Foundation",
-                          "Test notification — push working! You will now get alerts on your phone.",
-                          url="/")
+    _pp = push_service.portal_for_user(db, user.id)   # test push bhi user ke SAHI app me khule
+    push_service.enqueue([user.id], "MVS Foundation",
+                         "Test notification — push working! You will now get alerts on your phone.",
+                         url=(("/" + _pp) if _pp else "/"), portal=_pp)
     return {"ok": True, "enabled": push_service.enabled()}

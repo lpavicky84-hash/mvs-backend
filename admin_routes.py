@@ -1018,7 +1018,9 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str, link=Non
     # bhi safe — push_service queue me payload-wise coalesce kar deta hai.
     try:
         import push_service
-        push_service.enqueue([user_id], _push_title(title), message, url=(link or "/"))
+        _pp = push_service.portal_for_user(db, user_id)   # recipient ka portal -> SAHI app khule
+        push_service.enqueue([user_id], _push_title(title), message,
+                             url=(link or (("/" + _pp) if _pp else "/")), portal=_pp)
     except Exception:
         pass
 
