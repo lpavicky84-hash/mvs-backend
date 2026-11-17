@@ -5509,7 +5509,10 @@ async function openUploadHub(prefill){
   const typeOpts=Object.keys(UPLOAD_TYPES).map(t=>`<option ${t===preLabel?'selected':''}>${t}</option>`).join('');
   const subOpts=subs.map(s=>`<option ${prefill.subject===s?'selected':''}>${esc(s)}</option>`).join('');
   const _uhBL=(window._mtBatchList||[]);
-  const _uhBatOpts=_uhBL.length?`<div style="max-width:280px"><label class="ex-lbl">Course / Batch</label><select class="form-control" id="uh-batch"><option value="">All courses (global)</option>${_uhBL.map(b=>`<option value="${b.id}"${String(window._mtBatch)===String(b.id)?' selected':''}>${esc(b.name)}</option>`).join('')}</select><div class="ex-hint" style="font-size:.72rem;color:var(--text-muted);margin-top:3px">Kisi ek course ke liye upload karo, ya "All courses" = sabhi ko dikhega.</div></div>`:'';
+  const _uhReq=(window._REQUIRE_BATCH!==false);
+  const _uhFirstOpt=_uhReq?`<option value="">Select a course / batch</option>`:`<option value="">All courses (global)</option>`;
+  const _uhHint=_uhReq?`Select at least one course / batch to upload.`:`Upload for a single course, or "All courses" = visible to everyone.`;
+  const _uhBatOpts=_uhBL.length?`<div style="max-width:280px"><label class="ex-lbl">Course / Batch${_uhReq?' <span style="color:var(--danger,#e11)">*</span>':''}</label><select class="form-control" id="uh-batch">${_uhFirstOpt}${_uhBL.map(b=>`<option value="${b.id}"${String(window._mtBatch)===String(b.id)?' selected':''}>${esc(b.name)}</option>`).join('')}</select><div class="ex-hint" style="font-size:.72rem;color:var(--text-muted);margin-top:3px">${_uhHint}</div></div>`:'';
   showModal('Upload Material',
     `<div class="alert alert-info">One place for every upload. Students get a bell notification as soon as you publish.</div>
      <div class="ex-grid2">
@@ -5547,6 +5550,9 @@ function uhTypeChange(){
 async function submitUploadHub(){
   const fi=document.getElementById('uh-file');
   if(!fi.files.length){ toast('Please select a PDF.',true); return; }
+  // batch compulsory: agar selector maujood hai aur koi course select nahi -> rok do
+  var _uhSel=document.getElementById('uh-batch');
+  if(window._REQUIRE_BATCH!==false && _uhSel && !(_uhSel.value||'').trim()){ toast('Please select at least one batch to continue.',true); return; }
   const t=UPLOAD_TYPES[val('uh-type')]||{mt:'notes'};
   if(t.mt==='other'&&!val('uh-cat').trim()){ toast('Please enter a category.',true); return; }
   let f=fi.files[0];
@@ -6628,6 +6634,7 @@ async function submitUploadDpp(){
   const qf=(document.getElementById('ud-qpdf')||{}).files||[];
   const sf=(document.getElementById('ud-spdf')||{}).files||[];
   if(!qf.length||!sf.length){ toast('Please upload both the Questions and Solutions PDFs.',true); return; }
+  if(!_batchGateOK()) return;
   const fd=new FormData();
   fd.append('subject',val('ud-sub')); fd.append('class_name',val('ud-cls')); fd.append('chapter',val('ud-ch')); fd.append('part',val('ud-part'));
   fd.append('title',val('ud-title')); fd.append('medium',val('ud-medium'));
@@ -6662,6 +6669,7 @@ async function submitUploadMission75Pdf(){
   const title=(val('m75-title')||'').trim();
   if(!qf.length||!sf.length){ toast('Please upload both the Question PDF and the Answer PDF.',true); return; }
   if(!title){ toast('Please enter a title.',true); var t=document.getElementById('m75-title'); if(t)t.focus(); return; }
+  if(!_batchGateOK()) return;
   const fd=new FormData();
   fd.append('subject',val('m75-sub')||''); fd.append('class_name',val('m75-cls')||''); fd.append('chapter',val('m75-ch')||'');
   fd.append('title',title); fd.append('medium',val('m75-medium')||'English');
@@ -7112,20 +7120,38 @@ function _mbdCSS(){
     +'.mbd-car{color:var(--text-muted)}';
   document.head.appendChild(s);
 }
+// ===== Teacher content (test / DPP / material) ke liye BATCH COMPULSORY — global option hidden =====
+// TOGGLE: _REQUIRE_BATCH = true  -> "All batches (global)" option chhupa + upload se pehle kam-se-kam
+// 1 batch zaroori. Jab aapko global ka option dobara dikhana ho, bas neeche wali line ko false kar
+// do (window._REQUIRE_BATCH = false) aur deploy karo -> purana behavior wapas. Purane/pehle se global
+// content waise ka waisa rehta hai (edit karte waqt uske liye global option dikhta rehta hai).
+window._REQUIRE_BATCH = (typeof window._REQUIRE_BATCH !== 'undefined') ? window._REQUIRE_BATCH : true;
+function _batchEmptyLabel(){ return window._REQUIRE_BATCH ? 'Select batch(es)' : 'All batches (global)'; }
+function _batchGateOK(){
+  // Naye upload (multi-batch field maujood) me kam-se-kam 1 batch chuna ho. Flag off -> koi rok nahi.
+  if(!window._REQUIRE_BATCH) return true;
+  try{
+    if(document.getElementById('mbf-wrap') && _multiBatchIds().length < 1){
+      toast('Please select at least one batch to continue.', true); return false;
+    }
+  }catch(e){}
+  return true;
+}
 function _multiBatchDD(label, list){
   list=list||window._ttBatchList||[]; if(!list.length) return '';
   window._mbdList=list; _mbdCSS();
   var chk=list.map(function(b){
     return '<label class="mbd-row"><input type="checkbox" class="mbf-chk" value="'+b.id+'" onchange="_mbdSync()"> '+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</label>';
   }).join('');
-  return '<div class="form-group" id="mbf-wrap"><label class="ex-lbl">'+(label||'Batch / Course')+' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(ek ya zyada \u2014 kuch na chuno to global)</span></label>'
-    +'<div class="mbd-box"><button type="button" class="mbd-btn" id="mbf-btn" onclick="_mbdToggle(event)"><span id="mbf-lbl">All batches (global)</span><span class="mbd-car">\u25be</span></button>'
+  var _hint = window._REQUIRE_BATCH ? 'Select at least one batch' : 'one or more \u2014 leave empty for all batches';
+  return '<div class="form-group" id="mbf-wrap"><label class="ex-lbl">'+(label||'Batch / Course')+' <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">('+_hint+')</span></label>'
+    +'<div class="mbd-box"><button type="button" class="mbd-btn" id="mbf-btn" onclick="_mbdToggle(event)"><span id="mbf-lbl">'+_batchEmptyLabel()+'</span><span class="mbd-car">\u25be</span></button>'
     +'<div class="mbd-panel" id="mbf-panel">'+chk+'</div></div></div>';
 }
 function _mbdToggle(e){ if(e){e.stopPropagation();} var p=document.getElementById('mbf-panel'); if(p) p.classList.toggle('on');
   if(!window._mbdDocBound){ window._mbdDocBound=true; document.addEventListener('click',function(ev){ var box=document.querySelector('.mbd-box'); var pan=document.getElementById('mbf-panel'); if(pan&&box&&!box.contains(ev.target)) pan.classList.remove('on'); }); } }
 function _mbdSync(){ var lbl=document.getElementById('mbf-lbl'); if(!lbl) return; var ids=_multiBatchIds(); var list=window._mbdList||window._ttBatchList||[];
-  if(!ids.length){ lbl.textContent='All batches (global)'; return; }
+  if(!ids.length){ lbl.textContent=_batchEmptyLabel(); return; }
   if(ids.length===1){ var b=list.filter(function(x){return String(x.id)===String(ids[0]);})[0]; lbl.textContent=b?b.name:'1 batch'; return; }
   lbl.textContent=ids.length+' batches selected'; }
 function _multiBatchField(label){
@@ -7137,10 +7163,15 @@ function _multiBatchIds(){
 // Single-batch dropdown for EDIT (re-target the one item). Pre-selected to current batch.
 function _singleBatchField(curBid){
   var list=window._ttBatchList||[]; if(!list.length) return '';
-  var opts='<option value="">All batches (global)</option>'+list.map(function(b){
+  var _isGlobalNow = (curBid===''||curBid==null||String(curBid)==='0');
+  // _REQUIRE_BATCH on: global option sirf tab dikhao jab item PEHLE se global hai (taaki wo global
+  // reh sake \u2014 purana content na toote). Jo pehle se kisi batch me hai, usme global option nahi.
+  var _showGlobal = (!window._REQUIRE_BATCH) || _isGlobalNow;
+  var globalOpt = _showGlobal ? ('<option value=""'+(_isGlobalNow?' selected':'')+'>All batches (global)</option>') : '';
+  var opts=globalOpt+list.map(function(b){
     return '<option value="'+b.id+'"'+(String(curBid||'')===String(b.id)?' selected':'')+'>'+esc(b.name)+(b.session?(' \u00b7 '+esc(b.session)):'')+'</option>';
   }).join('');
-  return '<div class="form-group"><label class="ex-lbl">Batch / Course <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(is item ko is batch me move/keep karo)</span></label><select class="form-control" id="mbf-sel">'+opts+'</select></div>';
+  return '<div class="form-group"><label class="ex-lbl">Batch / Course <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">(keep or move this item to a batch)</span></label><select class="form-control" id="mbf-sel">'+opts+'</select></div>';
 }
 function _singleBatchId(){ var s=document.getElementById('mbf-sel'); if(!s) return undefined; var v=s.value; return v?parseInt(v,10):null; }
 // ===== Teacher Tests — per-device NEW-submission tracking (localStorage) =====
@@ -11962,6 +11993,7 @@ async function submitExam(){
     for(let i=0;i<_examQs.length;i++){ const q=_examQs[i];
       if(!(q.q||'').trim()&&!q.image_b64){ toast('Question '+(i+1)+': please fill the question',true); return; }
       if(!(q.model||'').trim()&&!q.model_answer_image){ toast('Question '+(i+1)+': model answer MANDATORY hai — answer bharo',true); return; } }
+    if(!window._dppEditId && !_batchGateOK()) return;   // naya DPP -> kam-se-kam 1 batch zaroori
     const _em=window._dppEditMeta||{};
     const payload={ subject:(val('ex-sub')||_em.subject||''), class_name:((val('ex-cls-sel')||_em.class_name)||''),
       chapter:((val('ex-ch-sel')!==undefined&&val('ex-ch-sel')!=='')?val('ex-ch-sel'):(val('ex-ch')||_em.chapter||'')), part:((val('ex-part-sel')||_em.part)||''),
@@ -12013,6 +12045,7 @@ async function submitExam(){
             model_answer_hi:biling?((q.model_hi||'').trim()||null):null};
   });
   const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
+  if(!window._editExamId && !_batchGateOK()) return;   // naya test -> kam-se-kam 1 batch zaroori
   const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:(parseInt(val('ex-dur'))||0),scheduled_at:_sched||null,questions:questions};
   if(!window._editExamId) body.batch_ids=_multiBatchIds();
   else { var _sb=_singleBatchId(); if(_sb!==undefined) body.batch_id=_sb; }

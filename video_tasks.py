@@ -534,8 +534,8 @@ def _subject_cls(subject):
 # hataye jaate).
 # =============================================================
 WEEK_DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-ONE_SHOT_DEADLINE = "2026-09-10T23:59"     # saare One Shot chapters ki deadline
-RAPID_REVISION_DEADLINE = "2026-09-30T23:59"  # Rapid Revision (per subject) deadline
+ONE_SHOT_DEADLINE = "2026-12-31T23:59"     # saare One Shot chapters ki deadline
+RAPID_REVISION_DEADLINE = "2026-12-31T23:59"  # Rapid Revision (per subject) deadline
 
 # normal task filter (special One Shot / Rapid Revision tasks lists/stats se bahar)
 def _now_ist():
@@ -983,6 +983,25 @@ def _display_base_cls(display):
     return base, cls
 
 
+def _find_special_by_ident(db, tid, kind, want_ident):
+    """SPAM-FIX: exact subject-string match ke alawa NORMALIZED IDENTITY se bhi
+    existing active task dhoondho. Canonical naam thoda drift kar jaye (spacing,
+    alias, '&' vs 'and') to exact '==' match fail ho jata tha -> har poll naya
+    task ban-ke-merge hota tha aur same notification baar-baar phone par jaata tha.
+    Identity (class-aware, alias-robust) se match karke us ek hi task ko reuse
+    karte hain -> dobara create/notify kabhi nahi. Cancelled tasks ignore (delete
+    stick kare)."""
+    if not want_ident:
+        return None
+    for t in (db.query(VideoTask)
+              .filter(VideoTask.teacher_id == tid, VideoTask.kind == kind,
+                      VideoTask.cancelled.isnot(True))
+              .order_by(VideoTask.id.asc()).all()):
+        if _subj_ident(*_display_base_cls(t.subject)) == want_ident:
+            return t
+    return None
+
+
 def _tagged_chapters_for(db, name, cls):
     """([{title, kind}], source) — syllabus chapter master PE/TMA tag ke saath,
     _chapters_for jaisi hi resolution + title format. Resolve na ho to ([], '')."""
@@ -1119,7 +1138,7 @@ def _dedupe_special(db, teacher_id, kind):
     return changed
 
 
-def _ensure_kind_parity(db, tp):
+def _ensure_kind_parity(db, tp, _defer=None):
     """v78: One Shot jis-jis subject ka hai, un sabka Rapid Revision bhi ho.
     Profile subjects baad me clear/change ho jayein to purane (orphan) One Shot
     tasks ke liye RR kabhi banta hi nahi tha (early return) — isliye admin
@@ -1161,7 +1180,8 @@ def _ensure_kind_parity(db, tp):
                        'A Rapid Revision task for %s is now in My Tasks — record a rapid '
                        'revision video of every chapter and paste each chapter\'s link in '
                        'front of it. Deadline: %s.'
-                       % (subj, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")))
+                       % (subj, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")),
+                       _defer=_defer)
     return True
 
 
@@ -1225,7 +1245,16 @@ def _ensure_special_teacher(db, tp):
     if not _is_nios_teacher(db, tp):
         _cancel_auto_special(db, tp)
         return
-    changed = _ensure_kind_parity(db, tp)
+    # Auto-create notifications ka phone-push commit SUCCESS ke baad hi bhejo (warna commit
+    # rollback hone par bhi push jaata tha -> same notification phone par baar-baar spam).
+    _pending = []   # [(user_id, title, message, link), ...]
+    def _flush_pending(ok):
+        if ok:
+            for _j in _pending:
+                try: _vt_push(db, *_j)
+                except Exception: pass
+        _pending.clear()
+    changed = _ensure_kind_parity(db, tp, _defer=_pending)
     subs = _teacher_subject_list(db, tp)
     if not subs:
         # v115: subjects empty ho tab bhi duplicate-merge chalao — warna pehle bane
@@ -1241,8 +1270,12 @@ def _ensure_special_teacher(db, tp):
         if changed:
             try:
                 db.commit()
+                _flush_pending(True)
             except Exception:
                 db.rollback()
+                _flush_pending(False)
+        else:
+            _flush_pending(False)
         return
     _u = db.query(User).filter(User.id == tp.user_id).first()
     # Inactive teacher ke tasks bhi sync/create hote rahenge (admin monitor me
@@ -1275,6 +1308,17 @@ def _ensure_special_teacher(db, tp):
                 changed = True
                 if t is None:
                     t = lt
+        # SPAM-FIX: exact subject-string match na mile to normalized identity se
+        # EXISTING active task dhoondho aur reuse karo — warna har poll ek naya task
+        # ban-ke-merge hota tha aur same "is now in My Tasks" push baar-baar jaata tha.
+        if t is None:
+            t = _find_special_by_ident(db, tp.id, "one_shot",
+                                       _subj_ident(*_display_base_cls(display)))
+            if t is not None and (t.subject or "") != display:
+                t.subject = display
+                t.title = "One Shot — %s (All Chapters)" % display
+                _hist_add(t, "edited", "Subject name standardized: %s" % display)
+                changed = True
         # Respect a deliberate delete: a cancelled One Shot for this subject (exact match
         # or under a name variant) must be neither re-synced nor resurrected.
         if (t is not None and getattr(t, "cancelled", False)) or \
@@ -1292,8 +1336,18 @@ def _ensure_special_teacher(db, tp):
                 _vt_notify(db, tp.user_id, "One Shot Task — %s" % display,
                            'A One Shot video task for %s is now in My Tasks — record one-shot '
                            'videos of every chapter and paste each chapter\'s link in front of it. '
-                           'Deadline: %s.' % (display, _dl(ONE_SHOT_DEADLINE).strftime("%d %b %Y")))
+                           'Deadline: %s.' % (display, _dl(ONE_SHOT_DEADLINE).strftime("%d %b %Y")),
+                           _defer=_pending)
             changed = True
+        # deadline ko current constant pe sync rakho (bina notify) — purane tasks bhi
+        # nayi deadline (31 Dec) dikhayein, chahe wo pehle Sep deadline se bane ho.
+        try:
+            _want_os_dl = _dl(ONE_SHOT_DEADLINE)
+            if t is not None and t.deadline != _want_os_dl:
+                t.deadline = _want_os_dl
+                changed = True
+        except Exception:
+            pass
         _psr = _pe_sync_prune(db, t, tp.id, nm, cl)
         if _psr is None:
             if titles and _sync_chapters(db, t, titles):
@@ -1322,6 +1376,16 @@ def _ensure_special_teacher(db, tp):
                 changed = True
                 if rt is None:
                     rt = lt
+        # SPAM-FIX: identity se existing active Rapid Revision reuse (One Shot jaisa) —
+        # exact-string drift pe dobara create/notify kabhi nahi.
+        if rt is None:
+            rt = _find_special_by_ident(db, tp.id, "rapid_revision",
+                                        _subj_ident(*_display_base_cls(display)))
+            if rt is not None and (rt.subject or "") != display:
+                rt.subject = display
+                rt.title = "Rapid Revision — %s (All Chapters)" % display
+                _hist_add(rt, "edited", "Subject name standardized: %s" % display)
+                changed = True
         # Respect a deliberate delete (same as One Shot above).
         if (rt is not None and getattr(rt, "cancelled", False)) or \
            (rt is None and _subj_ident(*_display_base_cls(display)) in _cx_rr):
@@ -1341,8 +1405,16 @@ def _ensure_special_teacher(db, tp):
                            'A Rapid Revision task for %s is now in My Tasks — record a rapid '
                            'revision video of every chapter and paste each chapter\'s link in '
                            'front of it. Deadline: %s.'
-                           % (display, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")))
+                           % (display, _dl(RAPID_REVISION_DEADLINE).strftime("%d %b %Y")),
+                           _defer=_pending)
             changed = True
+        try:
+            _want_rr_dl = _dl(RAPID_REVISION_DEADLINE)
+            if rt is not None and rt.deadline != _want_rr_dl:
+                rt.deadline = _want_rr_dl
+                changed = True
+        except Exception:
+            pass
         _psr = _pe_sync_prune(db, rt, tp.id, nm, cl)
         if _psr is None:
             if titles and _sync_chapters(db, rt, titles):
@@ -1401,8 +1473,12 @@ def _ensure_special_teacher(db, tp):
     if changed:
         try:
             db.commit()
+            _flush_pending(True)    # push ab bhejo — task pakka save ho gaya
         except Exception:
             db.rollback()
+            _flush_pending(False)   # commit fail -> koi push nahi (spam ka ilaaj)
+    else:
+        _flush_pending(False)
 
 # ~2MB image ka base64 — isse bada payload proxy/DB dono ke liye risky.
 # Frontend compress karta hai; ye server-side safety net hai.
@@ -1423,11 +1499,13 @@ def _checked_b64(payload):
     return b64
 
 
-def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
+def _vt_push(db, user_id, title, message, link=None):
+    """SIRF phone push (non-transactional queue). Ise DB commit ke BAAD call karo —
+    warna commit rollback ho jaane par bhi push nikal jaata tha, aur same auto
+    One Shot/Rapid Revision notification phone par baar-baar (har poll/minute) aata
+    tha. Ye us spam ka root-cause fix hai."""
     if not user_id:
         return
-    db.add(Notification(user_id=user_id, title=title, message=message,
-                        notif_type=ntype, link=link or None))
     try:  # phone push bhi (editor/graphics/youtuber/teacher pipeline chat)
         import push_service, re as _re
         _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
@@ -1435,6 +1513,20 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None):
         push_service.enqueue([user_id], _t, message, url=(link or (("/" + _pp) if _pp else "/")), portal=_pp)
     except Exception:
         pass
+
+
+def _vt_notify(db, user_id, title, message, ntype="video_task", link=None, _defer=None):
+    """Notification row add karo + phone push. _defer ek list ho to push TURANT nahi
+    bhejte — job us list me daal dete hain, taaki caller COMMIT success ke baad hi
+    push kare (commit rollback ho to koi push na jaaye)."""
+    if not user_id:
+        return
+    db.add(Notification(user_id=user_id, title=title, message=message,
+                        notif_type=ntype, link=link or None))
+    if _defer is not None:
+        _defer.append((user_id, title, message, link))
+        return
+    _vt_push(db, user_id, title, message, link)
 
 
 def _vtc_ref_snapshot(db, ref_ids):
