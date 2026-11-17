@@ -3133,6 +3133,7 @@ function stopCountdown(){ if(countdownTimer){clearInterval(countdownTimer);count
 let _tGender='', _tSuffix='';
 async function openTeacher(){
   try{_saveSession();}catch(e){}
+  try{ _loadBatchCfg(); }catch(e){}   // admin-set batch-compulsory flag portal-wide fetch
   try{ _initDownloadAppBtns(); _hideBootSplash(); }catch(e){}
   try{initNavAccordion();}catch(e){} try{initNavCollapse();}catch(e){} [400,1200].forEach(function(d){ setTimeout(function(){ try{ document.querySelectorAll(".app .sidebar-nav").forEach(function(nav){ if(typeof _accGroupClose==="function") _accGroupClose(nav,false); }); }catch(e){} }, d); });
   try{
@@ -7122,10 +7123,15 @@ function _mbdCSS(){
 }
 // ===== Teacher content (test / DPP / material) ke liye BATCH COMPULSORY — global option hidden =====
 // TOGGLE: _REQUIRE_BATCH = true  -> "All batches (global)" option chhupa + upload se pehle kam-se-kam
-// 1 batch zaroori. Jab aapko global ka option dobara dikhana ho, bas neeche wali line ko false kar
-// do (window._REQUIRE_BATCH = false) aur deploy karo -> purana behavior wapas. Purane/pehle se global
-// content waise ka waisa rehta hai (edit karte waqt uske liye global option dikhta rehta hai).
+// 1 batch zaroori. Ye ab ADMIN PORTAL se ek click me on/off hota hai:
+//   Admin -> Classes Material page -> top par "Teacher Upload Settings" card -> toggle.
+// Value backend (app_settings.require_batch) me save hoti hai aur sab teachers ko milti hai.
+// Default (unset) = true (compulsory). Neeche sirf fallback default hai jab tak fetch na ho.
 window._REQUIRE_BATCH = (typeof window._REQUIRE_BATCH !== 'undefined') ? window._REQUIRE_BATCH : true;
+// Portal open/login par admin-set value fetch karke flag set karo (code chhedne ki zaroorat nahi).
+async function _loadBatchCfg(){
+  try{ var r=await api('/api/teacher/app-flags'); if(r && typeof r.require_batch!=='undefined'){ window._REQUIRE_BATCH = !!r.require_batch; } }catch(e){}
+}
 function _batchEmptyLabel(){ return window._REQUIRE_BATCH ? 'Select batch(es)' : 'All batches (global)'; }
 function _batchGateOK(){
   // Naye upload (multi-batch field maujood) me kam-se-kam 1 batch chuna ho. Flag off -> koi rok nahi.
@@ -14475,6 +14481,7 @@ function applyAdminAccess(){
 }
 function openAdmin(){
   try{_saveSession();}catch(e){}
+  try{ _loadBatchCfg(); }catch(e){}   // admin-set batch-compulsory flag fetch (preview parity)
   try{ _initDownloadAppBtns(); _hideBootSplash(); }catch(e){}
   document.getElementById('admin-app').classList.add('active');
   try{ initAdminDppTracker(); }catch(e){}
@@ -20306,8 +20313,61 @@ function _codeChips(list){ return list.map(s=>`<span class="code-chip">${esc(s.n
 function _tSubjToggle(id,btn){ var b=document.getElementById(id); if(!b) return; var open=b.style.display!=='none'; b.style.display=open?'none':'block'; try{ var c=btn&&btn.querySelector('.tsubj-chev'); if(c) c.style.transform=open?'rotate(0deg)':'rotate(180deg)'; }catch(e){} }
 async function loadAMaterial(){
   const el=document.getElementById('a-material-content');
-  el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2></div><div id="a-mat-tree"></div>`;
+  el.innerHTML=`<div class="sm-head"><h2>Classes Material</h2></div><div id="a-batchcfg-card"></div><div id="a-mat-tree"></div>`;
   _renderMaterialTree('a-mat-tree','/api/admin/materials-tree','/api/admin', !!_mtSub);
+  try{ _renderBatchCfgCard(); }catch(e){}
+}
+// ===== Teacher Upload Settings — "Batch Required" toggle (admin, one click) =====
+function _batchCfgCss(){
+  if(document.getElementById('batchcfg-css')) return;
+  var s=document.createElement('style'); s.id='batchcfg-css';
+  s.textContent='.bcfg-card{display:flex;align-items:center;gap:14px;flex-wrap:wrap;'
+    +'background:var(--card-bg,#fff);border:1px solid var(--border,#e5e7eb);border-radius:16px;'
+    +'padding:15px 18px;margin:0 0 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}'
+    +'.bcfg-ico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;'
+    +'background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;flex:0 0 42px}'
+    +'.bcfg-ico svg{width:22px;height:22px}'
+    +'.bcfg-txt{flex:1;min-width:190px}'
+    +'.bcfg-txt h3{margin:0;font-size:.98rem;font-weight:700;display:flex;align-items:center;gap:8px}'
+    +'.bcfg-txt p{margin:4px 0 0;font-size:.76rem;line-height:1.35;color:var(--text-muted,#6b7280)}'
+    +'.bcfg-pill{font-size:.64rem;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.3px}'
+    +'.bcfg-on{background:rgba(16,185,129,.15);color:#059669}.bcfg-off{background:rgba(148,163,184,.18);color:#64748b}'
+    +'.bcfg-sw{position:relative;display:inline-block;width:52px;height:30px;flex:0 0 52px}'
+    +'.bcfg-sw input{opacity:0;width:0;height:0}'
+    +'.bcfg-sl{position:absolute;inset:0;cursor:pointer;background:#cbd5e1;border-radius:999px;transition:.25s}'
+    +'.bcfg-sl:before{content:"";position:absolute;height:22px;width:22px;left:4px;top:4px;background:#fff;border-radius:50%;transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.3)}'
+    +'.bcfg-sw input:checked+.bcfg-sl{background:linear-gradient(135deg,#10b981,#059669)}'
+    +'.bcfg-sw input:checked+.bcfg-sl:before{transform:translateX(22px)}'
+    +'.bcfg-sw input:disabled+.bcfg-sl{opacity:.6;cursor:wait}';
+  document.head.appendChild(s);
+}
+function _batchCfgHTML(on){
+  var pill=on?'<span class="bcfg-pill bcfg-on">ON</span>':'<span class="bcfg-pill bcfg-off">OFF</span>';
+  var desc=on
+    ?'Teachers must select at least one batch for every test, DPP and material. The "All batches (global)" option is hidden from their upload forms. Content already uploaded as global stays global.'
+    :'Teachers can upload to "All batches (global)" again. Batch selection is optional.';
+  return '<div class="bcfg-card">'
+    +'<div class="bcfg-ico">'+(ic('shield')||'🛡️')+'</div>'
+    +'<div class="bcfg-txt"><h3>Teacher Upload — Batch Required '+pill+'</h3><p>'+desc+'</p></div>'
+    +'<label class="bcfg-sw"><input type="checkbox" '+(on?'checked':'')+' onchange="_batchCfgToggle(this)"><span class="bcfg-sl"></span></label>'
+    +'</div>';
+}
+async function _renderBatchCfgCard(){
+  var host=document.getElementById('a-batchcfg-card'); if(!host) return;
+  _batchCfgCss();
+  var on=true;
+  try{ var r=await api('/api/admin/batch-required'); on=!!r.require_batch; }catch(e){}
+  window._batchCfgOn=on; window._REQUIRE_BATCH=on;
+  host.innerHTML=_batchCfgHTML(on);
+}
+async function _batchCfgToggle(cb){
+  var want=!!cb.checked; cb.disabled=true;
+  try{
+    var r=await api('/api/admin/batch-required','POST',{require_batch:want});
+    var on=!!r.require_batch; window._batchCfgOn=on; window._REQUIRE_BATCH=on;
+    toast(on?'Batch selection is now compulsory for teachers.':'Global upload option re-enabled for teachers.');
+    var host=document.getElementById('a-batchcfg-card'); if(host) host.innerHTML=_batchCfgHTML(on);
+  }catch(e){ toast((e&&e.message)||'Could not update setting',true); cb.checked=!want; cb.disabled=false; }
 }
 
 async function loadAReports(){

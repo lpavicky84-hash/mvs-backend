@@ -70,6 +70,16 @@ def _hsafe(_n):
 router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
 
+@router.get("/app-flags")
+def teacher_app_flags(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Portal-wide flags jo frontend ko load par chahiye. require_batch: teacher ko
+    test/DPP/material upload me kam-se-kam 1 batch chunna zaroori (admin toggle)."""
+    from models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == "require_batch").first()
+    require_batch = True if (row is None or row.value is None) else (str(row.value).strip() == "1")
+    return {"require_batch": require_batch}
+
+
 @router.get("/tt-batches")
 def teacher_tt_batches(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Active batches for the teacher's timetable builder — 'Completed' batches are hidden

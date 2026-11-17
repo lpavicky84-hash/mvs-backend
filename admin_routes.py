@@ -2064,6 +2064,33 @@ def set_teacher_students_access(tid: int, payload: dict, db: Session = Depends(g
     db.commit()
     return {"ok": True, "allowed": allowed, "ids": sorted(ids)}
 
+# ===== Batch-compulsory toggle (teacher upload forms) — admin se on/off =====
+def _require_batch_value(db):
+    """True = teacher ko test/DPP/material upload me kam-se-kam 1 batch chunna zaroori
+    (global option hidden). Unset -> default True (compulsory)."""
+    from models import AppSetting
+    row = db.query(AppSetting).filter(AppSetting.key == "require_batch").first()
+    return True if (row is None or row.value is None) else (str(row.value).strip() == "1")
+
+
+@router.get("/batch-required")
+def batch_required_get(db: Session = Depends(get_db), _=Depends(get_admin)):
+    return {"require_batch": _require_batch_value(db)}
+
+
+@router.post("/batch-required")
+def batch_required_set(payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    from models import AppSetting
+    want = bool((payload or {}).get("require_batch"))
+    row = db.query(AppSetting).filter(AppSetting.key == "require_batch").first()
+    if row is None:
+        row = AppSetting(key="require_batch")
+        db.add(row)
+    row.value = "1" if want else "0"
+    db.commit()
+    return {"ok": True, "require_batch": want}
+
+
 @router.post("/teachers/add")
 def add_teacher(req: RegisterRequest, db: Session = Depends(get_db), _=Depends(get_admin)):
     """Admin adds a teacher — auto-generates a professional MVS user ID"""
