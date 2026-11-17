@@ -33555,7 +33555,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var html=''+
       '<div class="prodwrap">'+
         '<aside class="prodside">'+
-          '<button class="ps-close" onclick="prodCloseDrawer(\''+id+'\')" aria-label="Menu band karein"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>'+
+          '<button class="ps-close" onclick="prodCloseSide(\''+id+'\')" aria-label="Menu band karein"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>'+
           '<div class="ps-brand"><div class="ps-logo">'+logo+'</div><div><div class="ps-title">'+d.title+'</div><div class="ps-sub">'+d.sub+'</div></div></div>'+
           '<div class="ps-nav">'+navHtml+'</div>'+
           '<div class="ps-foot">'+
@@ -33581,7 +33581,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '</header>'+
           '<div class="prodbody" id="'+portal+'-body"><div class="p-load">Loading...</div></div>'+
         '</section>'+
-        '<div class="prod-scrim" onclick="prodCloseDrawer(\''+id+'\')"></div>'+
+        '<div class="prod-scrim" onclick="prodCloseSide(\''+id+'\')"></div>'+
       '</div>';
     el=document.createElement('div'); el.id=id; el.className='app prodapp'; el.innerHTML=html;
     document.body.appendChild(el);
@@ -33610,7 +33610,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(app.classList.contains('side-open')){ app.classList.remove('side-open'); _prodScrollFix(app); }
     else { app.classList.add('side-open'); }
   };
-  window.prodCloseDrawer=function(id){
+  window.prodCloseSide=function(id){
     var app=document.getElementById(id); if(!app) return;
     if(!app.classList.contains('side-open')) return;
     app.classList.remove('side-open'); _prodScrollFix(app);
