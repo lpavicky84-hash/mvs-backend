@@ -2511,7 +2511,7 @@ function parseClassDT(dateStr,timeStr){
 function _ytWatch(link){ if(link){ try{ window.open(link,'_blank','noopener'); }catch(e){ location.href=link; } } }
 function _ytBtn(link,blink){ if(!link) return ''; return '<button class="btn btn-primary btn-sm lb-join'+(blink?' ytw-blink':'')+'" data-yt="'+esc(link)+'" onclick="_ytWatch(this.dataset.yt)" style="background:linear-gradient(135deg,#ef4444,#dc2626);border-color:#dc2626">'+ic('play')+' Watch on YouTube</button>'; }
 (function(){ if(document.getElementById('ytw-css')) return; var s=document.createElement('style'); s.id='ytw-css';
-  s.textContent='@keyframes ytwPulse{0%,100%{box-shadow:0 4px 14px -4px rgba(220,38,38,.6),0 0 0 0 rgba(220,38,38,.55)}50%{box-shadow:0 4px 14px -4px rgba(220,38,38,.7),0 0 0 8px rgba(220,38,38,0)}}.ytw-blink{animation:ytwPulse 1.2s ease-in-out infinite}';
+  s.textContent='@keyframes ytwPulse{0%,100%{opacity:1}50%{opacity:.62}}.ytw-blink{animation:ytwPulse 1.2s ease-in-out infinite}';
   document.head.appendChild(s); })();
 let _cdTimer=null;
 function startLiveCountdown(entries){
@@ -33643,7 +33643,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       +'.ph-pushbtn.on svg{stroke:#15803d}'
       +'.ph-pushbtn.blocked{background:rgba(220,38,38,.12)!important;color:#b91c1c!important;border-color:rgba(220,38,38,.35)!important}'
       +'.ph-pushbtn.blocked svg{stroke:#b91c1c}'
-      +'@keyframes phPushPulse{0%,100%{box-shadow:0 6px 16px -8px rgba(201,150,46,.9)}50%{box-shadow:0 6px 22px -4px rgba(201,150,46,1)}}';
+      +'@keyframes phPushPulse{0%,100%{opacity:1}50%{opacity:.6}}';
     document.head.appendChild(s);
   };
   window._prodPushSync=function(portal){
