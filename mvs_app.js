@@ -50665,7 +50665,7 @@ async function _pushInit(){
     if(!_pushSupported()) return;
     var reg=await navigator.serviceWorker.register('/service-worker.js');
     if(Notification.permission==='granted'){ await _pushSubscribe(reg, info.key); }
-    else if(Notification.permission==='default'){ _pushShowNudge(); }
+    else { _pushShowNudge(); }   // 'default' YA 'denied' -> enable hone tak har load par banner
   }catch(e){ window._pushInited=false; }
 }
 function _iosInstallGuide(){
@@ -50848,8 +50848,9 @@ async function _pushSubscribe(reg, key){
     var sub=await reg.pushManager.getSubscription();
     if(!sub){ sub=await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:_urlB64ToUint8(key||window._vapidKey) }); }
     await api('/api/push/subscribe','POST',{ subscription:sub.toJSON(), ua:(navigator.userAgent||'').slice(0,200) });
-    // Subscribe ho gaya -> nudge hamesha ke liye hata do, dobara na dikhe.
-    try{ localStorage.setItem('push_nudge_off','1'); }catch(e){}
+    // Subscribe ho gaya -> YAHI ek asli "enabled" flag hai; ab banner hamesha ke liye band.
+    try{ localStorage.setItem('mvs_push_on','1'); localStorage.removeItem('push_nudge_off'); }catch(e){}
+    window._pushNudgeDismissed=true;
     var _n=document.getElementById('push-nudge'); if(_n) _n.remove();
     return true;
   }catch(e){ return false; }
@@ -50873,17 +50874,25 @@ function _pushCss(){
   document.head.appendChild(s);
 }
 function _pushShowNudge(){
-  try{ if(localStorage.getItem('push_nudge_off')==='1') return; }catch(e){}
+  // Sirf ASLI enable (subscribe success) par hamesha ke liye band hota hai. Purana 'push_nudge_off'
+  // (jo close par set hota tha) ab NAHI dekhte -> jisne galti se close kiya use refresh par dobara banner milega.
+  try{ if(localStorage.getItem('mvs_push_on')==='1') return; }catch(e){}
+  if(window._pushNudgeDismissed) return;   // isi page-load me close kiya -> refresh tak chup; refresh par wapas
   if(document.getElementById('push-nudge')) return;
   _pushCss();
+  var _denied=false; try{ _denied=(('Notification' in window) && Notification.permission==='denied'); }catch(e){}
+  var _sub=_denied
+    ? 'Notifications are turned off for this app. Tap “Turn on” to see how to enable them, so you never miss a class alert.'
+    : 'Turn on notifications for class alerts &amp; updates — even when the app is closed.';
   var d=document.createElement('div'); d.id='push-nudge'; d.className='push-nudge';
   d.innerHTML='<div class="pn-ic">'+ic('bell')+'</div>'
-    +'<div class="pn-tx"><b>Never miss an announcement</b><span>Turn on notifications for class alerts &amp; updates — even when the app is closed.</span></div>'
+    +'<div class="pn-tx"><b>Never miss an announcement</b><span>'+_sub+'</span></div>'
     +'<button class="pn-yes" id="push-nudge-yes">Turn on</button>'
     +'<button class="pn-no" id="push-nudge-no">×</button>';
   document.body.appendChild(d);
   document.getElementById('push-nudge-yes').onclick=_pushEnable;
-  document.getElementById('push-nudge-no').onclick=function(){ try{localStorage.setItem('push_nudge_off','1');}catch(e){} var x=document.getElementById('push-nudge'); if(x) x.remove(); };
+  // Close = sirf isi load tak (localStorage me kuch set NAHI) -> refresh par banner wapas, jab tak enable na ho.
+  document.getElementById('push-nudge-no').onclick=function(){ window._pushNudgeDismissed=true; var x=document.getElementById('push-nudge'); if(x) x.remove(); };
 }
 async function _pushEnable(){
   var x=document.getElementById('push-nudge'); if(x) x.remove();
@@ -50896,7 +50905,7 @@ async function _pushEnable(){
   if(!_pushSupported()){ toast('This browser does not support notifications.',true); return; }
   try{
     var perm=await Notification.requestPermission();
-    if(perm!=='granted'){ toast('Notifications blocked — enable them in your browser settings.',true); return; }
+    if(perm!=='granted'){ toast('Notifications are off. Please allow notifications for MVS in your phone settings, then reopen the app.',true); return; }
     var reg=await navigator.serviceWorker.register('/service-worker.js');
     var ok=await _pushSubscribe(reg, window._vapidKey);
     toast(ok?'Phone alerts enabled! You will now get MVS notifications on your phone.':'Could not enable alerts, please try again.',!ok);
