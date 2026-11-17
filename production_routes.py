@@ -181,6 +181,7 @@ def pm_dashboard(db: Session = Depends(get_db), me=Depends(get_pm_or_admin)):
 
 
 # ============================================================ TASK LIST
+_PM_COUNTS_CACHE = {}   # count-bar ke per-status counts ka short cache (status/page switch fast)
 @router.get("/tasks")
 def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
              graphics_id: int = 0, priority: str = "", q: str = "",
@@ -356,19 +357,34 @@ def pm_tasks(status: str = "", creator_type: str = "", editor_id: int = 0,
     # ---- PER-STATUS COUNTS for the premium count bar (computed from ALL non-status filters) ----
     # One cheap COUNT per status key on the shared base query; the grand total is every card that
     # matches the current teacher/channel/type/thumb/date/search selection across all statuses.
-    _ckeys = ["shoot_pending", "pm_review", "approved", "editor_assigned", "editing",
-              "qc_pending", "ready_for_youtube", "uploaded", "changes_required"]
-    _counts = {}
-    for _k in _ckeys:
-        _cf = pc.stage_filter(_k)
+    # SPEED: ye counts `status` ya `page` par depend NAHI karte — sirf non-status filters par.
+    # Pehle har status-tab click aur har page par 10 COUNT queries dobara chalti thi (Task Manager
+    # slow). Ab inhe non-status filters ke hisaab se 20s cache karo -> status switch + paging instant.
+    import time as _tc
+    _cc_key = "|".join(str(x) for x in [
+        creator_type, teacher_id, editor_id, graphics_id, priority, q, deadline,
+        channel, channel_id, video_type, video_type_id, date_field, date_range,
+        date_from, date_to, thumb])
+    _cc_hit = _PM_COUNTS_CACHE.get(_cc_key)
+    if _cc_hit and (_tc.time() - _cc_hit[0] < 20):
+        _counts, _counts_total = _cc_hit[1], _cc_hit[2]
+    else:
+        _ckeys = ["shoot_pending", "pm_review", "approved", "editor_assigned", "editing",
+                  "qc_pending", "ready_for_youtube", "uploaded", "changes_required"]
+        _counts = {}
+        for _k in _ckeys:
+            _cf = pc.stage_filter(_k)
+            try:
+                _counts[_k] = (query.filter(_cf).count() if _cf is not None else 0)
+            except Exception:
+                _counts[_k] = 0
         try:
-            _counts[_k] = (query.filter(_cf).count() if _cf is not None else 0)
+            _counts_total = query.count()
         except Exception:
-            _counts[_k] = 0
-    try:
-        _counts_total = query.count()
-    except Exception:
-        _counts_total = 0
+            _counts_total = 0
+        if len(_PM_COUNTS_CACHE) > 300:
+            _PM_COUNTS_CACHE.clear()
+        _PM_COUNTS_CACHE[_cc_key] = (_tc.time(), _counts, _counts_total)
     # now narrow to the selected status for the actual page
     if status:
         _sf = pc.stage_filter(status)

@@ -303,18 +303,22 @@ def teacher_dashboard(db: Session = Depends(get_db), current_user=Depends(get_te
     # Purana legacy `tests` table khaali rehta tha, isliye card 0 dikhata tha.
     total_tests = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).count()
     # unresolved = not-resolved PLUS resolved-but-new-follow-up (thread ka last msg student ka)
+    # SPEED: pehle ye saare doubts (blobs ke saath!) load karta tha + har resolved doubt par ALAG
+    # query (N+1 = sainkdo queries) -> dashboard 30s+ slow. Ab: non-resolved ka seedha COUNT, aur
+    # resolved doubts ki responses ek hi batched query me laake last-message-role nikaalo.
     from models import DoubtResponse as _DR
-    unresolved = 0
-    for d in db.query(Doubt).filter(Doubt.teacher_id == tp.id,
-                                    Doubt.assigned_to_admin == False).all():
-        is_resolved = (getattr(d.status, "value", str(d.status)) == "resolved")
-        if not is_resolved:
-            unresolved += 1
-        else:
-            r = (db.query(_DR).filter(_DR.doubt_id == d.id)
-                 .order_by(_DR.created_at.desc(), _DR.id.desc()).first())
-            if r and r.role == "student":
-                unresolved += 1
+    _dbase = db.query(Doubt).filter(Doubt.teacher_id == tp.id, Doubt.assigned_to_admin == False)
+    unresolved = _dbase.filter(Doubt.status != DoubtStatus.resolved).count()
+    _res_ids = [rid for (rid,) in _dbase.filter(Doubt.status == DoubtStatus.resolved)
+                .with_entities(Doubt.id).all()]
+    if _res_ids:
+        _last_role = {}
+        for _i in range(0, len(_res_ids), 900):
+            for _did, _role in (db.query(_DR.doubt_id, _DR.role)
+                                .filter(_DR.doubt_id.in_(_res_ids[_i:_i + 900]))
+                                .order_by(_DR.doubt_id.asc(), _DR.created_at.asc(), _DR.id.asc())):
+                _last_role[_did] = _role   # loop end -> har doubt ka LAST response ka role
+        unresolved += sum(1 for _r in _last_role.values() if _r == "student")
 
     return TeacherDashboard(
         total_done=total_done, total_pending=total_pending,
@@ -595,17 +599,26 @@ def get_doubts(
     # has_* neeche ek halki length-query se aata hai.
     _dfr = (defer(Doubt.image_b64), defer(Doubt.audio_b64),
             defer(Doubt.answer_audio_b64), defer(Doubt.answer_attach_b64))
-    # Unassigned doubts (creation ke waqt koi teacher match nahi hua) — agar is
-    # teacher ke subject ke hain to claim kar lo taaki panel pe dikhein aur
-    # answer/respond/resolve (jo teacher_id se filter karte hain) chal sakein.
-    _claimed = False
-    for d in db.query(Doubt).options(*_dfr).filter(Doubt.teacher_id == None,
-                                    Doubt.assigned_to_admin == False).all():
-        if _teacher_teaches(tp, d.subject):
-            d.teacher_id = tp.id
-            _claimed = True
-    if _claimed:
-        db.commit()
+    # Unassigned doubts (creation ke waqt koi teacher match nahi hua) — agar is teacher ke subject
+    # ke hain to claim kar lo taaki panel pe dikhein. SPEED: ye ek WRITE-on-READ scan hai jo pehle
+    # HAR load par chalta tha (unassigned doubts ka full scan + write + commit) -> doubt section
+    # 40-50s slow. Ab per-teacher 90s throttle -> baar-baar open karne par ye heavy scan skip,
+    # naya doubt max 90s me claim ho jaata hai (students ke doubts waise bhi creation par assign
+    # hote hain; ye sirf fallback hai).
+    import time as _tcl
+    _CLAIM_TS = globals().setdefault("_DOUBT_CLAIM_TS", {})
+    if (_tcl.time() - _CLAIM_TS.get(tp.id, 0)) > 90:
+        _CLAIM_TS[tp.id] = _tcl.time()
+        if len(_CLAIM_TS) > 2000:
+            _CLAIM_TS.clear(); _CLAIM_TS[tp.id] = _tcl.time()
+        _claimed = False
+        for d in db.query(Doubt).options(*_dfr).filter(Doubt.teacher_id == None,
+                                        Doubt.assigned_to_admin == False).all():
+            if _teacher_teaches(tp, d.subject):
+                d.teacher_id = tp.id
+                _claimed = True
+        if _claimed:
+            db.commit()
     own = db.query(Doubt).options(*_dfr).filter(Doubt.teacher_id == tp.id).all()
     away = (db.query(Doubt).options(*_dfr).filter(Doubt.assigned_by_teacher_id == tp.id, Doubt.teacher_id != tp.id).all())
     rows, seen = [], set()

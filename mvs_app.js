@@ -14323,7 +14323,15 @@ async function resolveDoubt(id){
     }
     await api(`/api/teacher/doubts/${id}/resolve`,'PATCH',{answer:answer||'(voice answer)',answer_image_link:null,answer_audio_b64:ab,answer_attach_b64:fb,answer_attach_mime:fmime,answer_attach_name:fname});
     delete _cmpState[key];
-    toast('Doubt resolved.'); loadTDoubts();
+    // SPEED: poora 696-doubt reload MAT karo (yahi reply ko 30s slow karta tha). Local me is doubt
+    // ko resolved mark karke turant re-render, aur counts ke liye sirf halka /doubt-stats refresh.
+    try{
+      var _d=(window._tDoubts||[]).find(function(x){return x.id===id;});
+      if(_d){ _d.status='resolved'; _d.needs_attention=false; if(answer) _d.answer=answer; }
+    }catch(_e){}
+    toast('Doubt resolved.');
+    try{ tRenderDoubts(); }catch(_e){}
+    try{ api('/api/teacher/doubt-stats').then(function(s){ window._tDoubtStats=s; var b=document.getElementById('t-doubt-badge'); if(b){ b.textContent=s.pending||0; b.style.display=(s.pending||0)>0?'':'none'; } try{ tRenderDoubts(); }catch(_e){} }).catch(function(){}); }catch(_e){}
   }catch(e){ toast(e.message,true); if(btn){btn.disabled=false;btn.textContent='Resolve';} }
 }
 function viewAnswerFile(role,id,mime,name){
@@ -16425,8 +16433,10 @@ function _avtCard(t){
       const asgThumbBtn=`<button class="btn btn-ghost btn-sm" onclick="prodThumbUpload('admin',${t.id})" title="Upload / change / remove the thumbnail">${ic('image')} Thumbnail</button>`;
       const asgInfo=(t.editor_name||t.graphics_name)
         ?`<span class="vt-pill editing_soon" style="cursor:default">${[t.editor_name?('Editor: '+esc(t.editor_name)):'',t.graphics_name?('Graphics: '+esc(t.graphics_name)):''].filter(Boolean).join(' · ')}</span>`:'';
-      return `<div class="vt-card st-${t.status}${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}" data-editorid="${t.editor_id||0}" data-created="${esc(t.created_date||'')}">${_vtThumb(t,'a')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status} vt-col vt-collapsed${t.status==='submitted'?' vt-sub-blink':''}" data-tid-card="${t.id}" data-done="${['approved','editing_soon','editing_done','uploaded'].includes(t.status)?1:0}" data-pending="${(!['approved','editing_soon','editing_done','uploaded','submitted'].includes(t.status))?1:0}" data-delayed="${((t.on_time===false)||(['assigned','reshoot','rejected'].includes(t.status)&&t.seconds_left!=null&&t.seconds_left<0))?1:0}" data-collab="${t.is_collab?1:0}" data-collabdone="${t.is_collab?(t.collab_all_verified?1:0):''}" data-tid="${t.teacher_id||0}" data-cid="${t.channel_id||0}" data-vt="${esc(t.video_type||'')}" data-vstatus="${t.status}" data-editorid="${t.editor_id||0}" data-created="${esc(t.created_date||'')}">${_vtThumb(t,'a')}<div class="vt-body">
         <div class="vt-title">${esc(t.title)}${t.is_collab?_vtCollabChip(t,'a'):''}${t.status==='submitted'?`<span class="vt-newsub">${ic('bell')} NEW · ${esc(t.submitted_by_name||(t.is_collab?'Collab':t.teacher))}${t.is_collab?' (collab)':''}</span>`:''}</div>
+        <button type="button" class="vt-viewdet" onclick="event.stopPropagation();tCardToggle(this)">${ic('chev-down')}<span>View Details</span></button>
+        <div class="vt-collapse">
         <div class="vt-chips">${t.is_collab?`<span class="vt-pill assigned" style="cursor:pointer" onclick="event.stopPropagation();vtCollabPopup(${t.id},'a')">${ic('users')} Collab</span>`:`<span class="vt-pill assigned">${ic('user')} ${esc(t.teacher)}</span>`}${t.is_old?`<span class="vt-pill" style="background:rgba(120,113,108,.18);color:#78716c;font-weight:800">OLD · not counted</span>`:''}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}${t.streaming?`<span class="vt-pill assigned"${t.streaming==='live'?' style="background:rgba(220,38,38,.15);color:#dc2626"':''}>${t.streaming==='live'?'Live':'Recorded'}</span>`:''}${asgInfo}</div>
         <div class="vt-meta">
           <span class="${dlBlink}">${ic('clock')} ${dlLbl}: <b>${esc(t.deadline_nice)}</b>${t.status==='assigned'&&t.seconds_left!=null?` · <span data-vt-cd="${t.id}" data-secs="${t.seconds_left}"></span>`:''}</span>
@@ -16442,7 +16452,7 @@ function _avtCard(t){
           ${refvBtn}${histBtn}${admChatBtn}${convoBtn}${reviewBtn}${editBtn}${editTaskBtn}${asgEditorBtn}${asgGfxBtn}${asgThumbBtn}${ytBtn}${notifyBtn}
           <button class="btn btn-ghost btn-sm" onclick="vtMarkOld(${t.id},${t.is_old?'false':'true'})" title="Old = pre-portal content, will not count this month">${t.is_old?ic('refresh')+' Mark as New':ic('clock')+' Mark as Old'}</button>
           ${delTaskBtn}
-        </div></div></div>`;
+        </div></div></div></div>`;
 }
 async function aVtConvo(id){
   let comments=[]; try{ const d=await api('/api/admin/video-tasks/'+id+'/comments'); comments=d.comments||[]; }catch(e){}
@@ -38971,6 +38981,8 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     if(document.getElementById('ytcard-css')) return;
     var s=document.createElement('style'); s.id='ytcard-css';
     s.textContent='.ptc.yt-collapsed .ptc-collapse{display:none}'+
+      // SPEED: sirf on-screen cards render ho (400+ cards ek saath slow the) -> list turant khule.
+      '.ptc{content-visibility:auto;contain-intrinsic-size:0 300px}'+
       '.yt-viewdet{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:11px;padding:9px 12px;border:1px solid var(--border,#e5ddcb);border-radius:11px;background:linear-gradient(180deg,rgba(201,138,46,.08),transparent);color:var(--text,#2a2313);font-family:inherit;font-weight:800;font-size:.8rem;cursor:pointer;transition:border-color .14s,box-shadow .14s}'+
       '.yt-viewdet:hover{border-color:#c98a2e;box-shadow:0 5px 14px rgba(201,138,46,.14)}'+
       '.yt-viewdet svg{width:15px;height:15px;transition:transform .2s}'+
