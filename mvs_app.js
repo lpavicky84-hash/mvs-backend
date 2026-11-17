@@ -50860,16 +50860,20 @@ function _pushCss(){
   var s=document.createElement('style'); s.id='push-css';
   s.textContent=[
     '@keyframes pushUp{from{transform:translate(-50%,130%);opacity:0}to{transform:translate(-50%,0);opacity:1}}',
-    '.push-nudge{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:9000;width:min(430px,calc(100vw - 26px));box-sizing:border-box;background:linear-gradient(135deg,#1c2b4d,#14213d);color:#fff;border-radius:16px;padding:13px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 20px 48px -16px rgba(0,0,0,.6);border:1px solid rgba(232,193,88,.3);animation:pushUp .42s cubic-bezier(.2,.9,.3,1)}',
-    '.push-nudge .pn-ic{flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#e8c15a,#b8941f);color:#14213d;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px -6px rgba(184,148,31,.75)}',
-    '.push-nudge .pn-ic svg{width:22px;height:22px}',
-    '.push-nudge .pn-tx{flex:1;min-width:0}',
-    '.push-nudge .pn-tx b{display:block;font-size:.9rem;font-weight:800;letter-spacing:.01em}',
-    '.push-nudge .pn-tx span{font-size:.76rem;color:#c3cde0;line-height:1.35}',
-    '.push-nudge .pn-yes{flex:0 0 auto;background:linear-gradient(135deg,#e8c15a,#b8941f);color:#14213d;border:none;border-radius:10px;padding:9px 16px;font-weight:800;font-size:.82rem;cursor:pointer;box-shadow:0 5px 14px -5px rgba(184,148,31,.8)}',
-    '.push-nudge .pn-yes:hover{filter:brightness(1.07)}',
-    '.push-nudge .pn-no{flex:0 0 auto;background:rgba(255,255,255,.1);border:none;color:#aeb6c2;cursor:pointer;width:26px;height:26px;border-radius:8px;font-size:1rem;line-height:1;display:flex;align-items:center;justify-content:center}',
-    '.push-nudge .pn-no:hover{background:rgba(255,255,255,.2)}'
+    '.push-nudge{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9000;width:min(430px,calc(100vw - 24px));box-sizing:border-box;background:linear-gradient(158deg,#263860 0%,#18263f 52%,#0f1930 100%);color:#fff;border-radius:20px;padding:16px 16px 15px;box-shadow:0 26px 60px -18px rgba(5,10,25,.78),0 0 0 1px rgba(232,193,88,.28),inset 0 1px 0 rgba(255,255,255,.05);animation:pushUp .42s cubic-bezier(.2,.9,.3,1);overflow:hidden}',
+    '.push-nudge:before{content:"";position:absolute;top:-55%;left:-12%;width:65%;height:150%;background:radial-gradient(circle at 50% 50%,rgba(233,194,90,.22),transparent 68%);pointer-events:none}',
+    '.push-nudge .pn-top{display:flex;align-items:flex-start;gap:13px;position:relative}',
+    '.push-nudge .pn-ic{flex:0 0 auto;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#f5d488 0%,#dcab44 58%,#b8841c 100%);color:#1a2338;display:flex;align-items:center;justify-content:center;box-shadow:0 9px 22px -7px rgba(201,150,46,.78),inset 0 1px 0 rgba(255,255,255,.4)}',
+    '.push-nudge .pn-ic svg{width:23px;height:23px}',
+    '.push-nudge .pn-tx{flex:1;min-width:0;padding-right:30px}',
+    '.push-nudge .pn-tx b{display:block;font-size:.98rem;font-weight:800;letter-spacing:.01em;color:#fdf7e8;line-height:1.26}',
+    '.push-nudge .pn-tx span{display:block;margin-top:3px;font-size:.78rem;color:#bcc7dd;line-height:1.45}',
+    '.push-nudge .pn-yes{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;background:linear-gradient(135deg,#f7df9c 0%,#e7bf62 46%,#cf9a31 100%);color:#2a2008;border:none;border-radius:13px;padding:12px 16px;font-weight:800;font-size:.92rem;letter-spacing:.01em;cursor:pointer;box-shadow:0 12px 26px -9px rgba(201,150,46,.85),inset 0 1px 0 rgba(255,255,255,.35)}',
+    '.push-nudge .pn-yes svg{width:18px;height:18px}',
+    '.push-nudge .pn-yes:hover{filter:brightness(1.05)}',
+    '.push-nudge .pn-yes:active{transform:translateY(1px)}',
+    '.push-nudge .pn-no{position:absolute;top:13px;right:13px;z-index:2;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#b2bccd;cursor:pointer;width:28px;height:28px;border-radius:9px;font-size:1.05rem;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s}',
+    '.push-nudge .pn-no:hover{background:rgba(255,255,255,.18);color:#fff}'
   ].join('');
   document.head.appendChild(s);
 }
@@ -50885,10 +50889,10 @@ function _pushShowNudge(){
     ? 'Notifications are turned off for this app. Tap “Turn on” to see how to enable them, so you never miss a class alert.'
     : 'Turn on notifications for class alerts &amp; updates — even when the app is closed.';
   var d=document.createElement('div'); d.id='push-nudge'; d.className='push-nudge';
-  d.innerHTML='<div class="pn-ic">'+ic('bell')+'</div>'
-    +'<div class="pn-tx"><b>Never miss an announcement</b><span>'+_sub+'</span></div>'
-    +'<button class="pn-yes" id="push-nudge-yes">Turn on</button>'
-    +'<button class="pn-no" id="push-nudge-no">×</button>';
+  d.innerHTML='<button class="pn-no" id="push-nudge-no" aria-label="Close">×</button>'
+    +'<div class="pn-top"><div class="pn-ic">'+ic('bell')+'</div>'
+    +'<div class="pn-tx"><b>Never miss an announcement</b><span>'+_sub+'</span></div></div>'
+    +'<button class="pn-yes" id="push-nudge-yes">'+ic('bell')+'Turn on notifications</button>';
   document.body.appendChild(d);
   document.getElementById('push-nudge-yes').onclick=_pushEnable;
   // Close = sirf isi load tak (localStorage me kuch set NAHI) -> refresh par banner wapas, jab tak enable na ho.
