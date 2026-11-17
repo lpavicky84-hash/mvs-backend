@@ -16593,6 +16593,10 @@ function _ensureCbpCss(){
     '.vt-card.st-not_completed{border-left:3px solid #dc2626}',
     // premium: card ka hover lift + smooth shadow
     '.vt-card{transition:transform .15s ease,box-shadow .15s ease}',
+    // SPEED: bahut saare cards (400+ tasks, 1000+ projects) ek saath render karna slow tha.
+    // content-visibility:auto -> browser sirf on-screen cards ko render/paint karta hai, off-screen
+    // skip -> list turant khulti hai (DOM/filter wahi ka wahi, scroll pe baaki render hote hain).
+    '.vt-card{content-visibility:auto;contain-intrinsic-size:0 320px}',
     '.vt-card:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(120,90,20,.16)}',
     '.vt-foot{display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
     '.vt-thumb-status{margin:10px 0 4px;padding:10px 12px;border-radius:10px;border:1px solid rgba(124,79,192,.3);background:rgba(124,79,192,.07)}',
@@ -16797,14 +16801,26 @@ async function loadAVTasks(fromCache){
     if(fromCache && window._avtCache){
       ({stats,ch,ts,ty,list,spec}=window._avtCache);
     }else{
-      [stats,ch,ts,ty,list,spec]=await Promise.all([
+      // SPEED: 5 core endpoints se page turant khole. One Shot/Rapid/Projects (~1139 cards)
+      // wala /special bhaari hai aur uska section waise bhi COLLAPSED hota hai -> use blocking
+      // load se hata ke BACKGROUND me laao; aane par ek baar re-render (numbers bhar jaayein).
+      [stats,ch,ts,ty,list]=await Promise.all([
       api('/api/admin/video-tasks/stats'),
       api('/api/admin/video-channels'),
       api('/api/admin/teachers'),
       api('/api/admin/video-types'),
-      api('/api/admin/video-tasks'),
-      api('/api/admin/video-tasks/special?kind=all').catch(()=>null)]);
+      api('/api/admin/video-tasks')]);
+      spec=(window._avtCache&&window._avtCache.spec)||null;   // purana ho to turant render ke liye reuse
       window._avtCache={stats,ch,ts,ty,list,spec};
+      // spec HAMESHA background me FRESH laao (blocking nahi) — stale na rahe, page turant khule.
+      api('/api/admin/video-tasks/special?kind=all').then(function(sp){
+        if(!sp) return;
+        if(window._avtCache) window._avtCache.spec=sp;
+        window._avtSpec=(sp&&sp.one_shot)?sp:null;
+        try{ if(window._avtSpec){ (sp.one_shot.tasks||[]).forEach(function(t){window._avtMap[t.id]=t;}); ((sp.rapid_revision||{}).tasks||[]).forEach(function(t){window._avtMap[t.id]=t;}); ((sp.project||{}).tasks||[]).forEach(function(t){window._avtMap[t.id]=t;}); } }catch(e){}
+        var _el=document.getElementById('a-vtasks-content');
+        if(_el && _el.offsetParent!==null){ try{ loadAVTasks(true); }catch(e){} }   // projects numbers + cards bhar do
+      }).catch(function(){});
     }
     _vtChannels=ch.channels||[];
     _vtTypes=ty.types||[];
@@ -16854,9 +16870,9 @@ async function loadAVTasks(fromCache){
         <div class="vtm-go">${ic('chev-down')}</div></div>
       <div class="vtm-card ${_avtView==='projects'?'on':''}" onclick="avtView('projects')">
         <div class="vtm-ic">${ic('folder')}</div>
-        <div class="vtm-main"><div class="vtm-n">${_spt.osD+_spt.rrD+_spt.prD}<span> / ${_spt.osT+_spt.rrT+_spt.prT} videos done</span>${spNewN?` <span class="vt-new vt-new-clk" onclick="event.stopPropagation();_vtShowNewProjects()" title="Show only NEW projects">NEW ${spNewN}</span>`:''}</div>
+        <div class="vtm-main"><div class="vtm-n">${(window._avtSpec&&window._avtSpec.one_shot)?`${_spt.osD+_spt.rrD+_spt.prD}<span> / ${_spt.osT+_spt.rrT+_spt.prT} videos done</span>${spNewN?` <span class="vt-new vt-new-clk" onclick="event.stopPropagation();_vtShowNewProjects()" title="Show only NEW projects">NEW ${spNewN}</span>`:''}`:`<span style="font-size:.9rem;color:var(--text-muted)">loading…</span>`}</div>
           <div class="vtm-l">Projects</div>
-          <div class="vtm-s">One Shot · Rapid Revision · Projects · ${spAll} cards</div></div>
+          <div class="vtm-s">${(window._avtSpec&&window._avtSpec.one_shot)?`One Shot · Rapid Revision · Projects · ${spAll} cards`:'One Shot · Rapid Revision · Projects'}</div></div>
         <div class="vtm-go">${ic('chev-down')}</div></div></div>`;
     el.innerHTML=`
       <div class="vt-hero"><div><h3>Production Task Manager</h3><p>Assign video tasks with thumbnails & deadlines, review submissions, and publish to students.</p></div><div class="vt-sp"></div>
