@@ -1753,9 +1753,25 @@ def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_st
             db.rollback()
         except Exception:
             pass
-    return db.query(Notification).filter(
+    rows = db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).limit(50).all()
+    # Purane notifications ka display bhi emoji-free karo (DB write kiye bina — detach).
+    try:
+        from models import _notif_clean
+        for n in rows:
+            try:
+                ct = _notif_clean(n.title); cm = _notif_clean(n.message)
+                if ct != n.title:
+                    n.title = ct
+                if cm != n.message:
+                    n.message = cm
+                db.expunge(n)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return rows
 
 @router.patch("/notifications/read-all")
 def mark_all_read(db: Session = Depends(get_db), current_user=Depends(get_student)):

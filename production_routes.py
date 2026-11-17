@@ -3766,8 +3766,9 @@ def prod_notify_log(tid: int, db: Session = Depends(get_db), me=Depends(get_pm_o
     for n in rows:
         b = batches.get(n.batch_key)
         if not b:
-            b = {"batch_key": n.batch_key, "label": n.batch_label or "Students", "title": n.title,
-                 "message": n.message, "sent": 0, "viewed": 0, "clicked": 0,
+            from models import _notif_clean
+            b = {"batch_key": n.batch_key, "label": n.batch_label or "Students", "title": _notif_clean(n.title),
+                 "message": _notif_clean(n.message), "sent": 0, "viewed": 0, "clicked": 0,
                  "created_at": n.created_at.isoformat() if n.created_at else None}
             batches[n.batch_key] = b
         b["sent"] += 1

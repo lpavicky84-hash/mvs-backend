@@ -963,6 +963,20 @@ def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_te
     notifs = db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).limit(20).all()
+    try:
+        from models import _notif_clean
+        for n in notifs:
+            try:
+                ct = _notif_clean(n.title); cm = _notif_clean(n.message)
+                if ct != n.title:
+                    n.title = ct
+                if cm != n.message:
+                    n.message = cm
+                db.expunge(n)
+            except Exception:
+                pass
+    except Exception:
+        pass
     return notifs
 
 @router.patch("/notifications/read-all")
@@ -1686,7 +1700,12 @@ def edit_tt_entry(entry_id: int, payload: dict, db: Session = Depends(get_db), c
     tp = get_teacher_profile(current_user, db)
     from models import TimetableEntry
     e = db.query(TimetableEntry).filter(TimetableEntry.id == entry_id).first()
-    if not e or (e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
+    # BUGFIX: dashboard today-classes subject ke VARIANTS (e.g. "Data Entry Operations (229)")
+    # ko _subj_scope_for se dikhata hai, par pehle edit sirf exact tp.subjects check karta tha
+    # -> variant/admin-uploaded entry par "Add Topic" 404 ho ke save nahi hota tha. Ab edit scope
+    # ko display scope ke barabar kar diya -> jo class dikh rahi hai uska topic add ho jaayega.
+    _scope = _subj_scope_for(db, TimetableEntry, tp.subjects or [])
+    if not e or (e.subject not in _scope and e.subject not in (tp.subjects or []) and e.teacher_id != tp.id):
         raise HTTPException(status_code=404, detail="Entry not found")
     _old_time = e.time_text or ""
     _old_date = e.entry_date.strftime("%d %b") if e.entry_date else ""
@@ -1900,7 +1919,7 @@ def teacher_notify(payload: dict, db: Session = Depends(get_db), current_user=De
                 User.is_active == True, User.role == "student").all()
             label = "All Students"
     batch = uuid.uuid4().hex[:24]
-    sender = "👨‍🏫 " + current_user.name
+    sender = current_user.name
     sent = 0
     for sp in sps:
         if not sp.user_id:
@@ -1925,7 +1944,8 @@ def teacher_notify_log(db: Session = Depends(get_db), current_user=Depends(get_t
     for n in rows:
         b = batches.get(n.batch_key)
         if not b:
-            b = {"batch_key": n.batch_key, "title": n.title, "message": n.message,
+            from models import _notif_clean
+            b = {"batch_key": n.batch_key, "title": _notif_clean(n.title), "message": _notif_clean(n.message),
                  "label": n.batch_label or "Students", "sent": 0, "viewed": 0,
                  "created_at": n.created_at.isoformat() if n.created_at else None}
             batches[n.batch_key] = b

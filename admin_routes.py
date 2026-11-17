@@ -1014,6 +1014,22 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str, link=Non
             except Exception:
                 pass
     db.add(n)
+    # Har notification ke saath phone push (best-effort, non-blocking). Broadcast loop me
+    # bhi safe — push_service queue me payload-wise coalesce kar deta hai.
+    try:
+        import push_service
+        push_service.enqueue([user_id], _push_title(title), message, url=(link or "/"))
+    except Exception:
+        pass
+
+
+def _push_title(t):
+    # emoji/leading symbol hata ke saaf title (push ke liye)
+    try:
+        import re
+        return re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(t or "")).strip() or "MVS Foundation"
+    except Exception:
+        return str(t or "MVS Foundation")
 
 
 def admins_for_section(db, section: str):
@@ -3739,13 +3755,7 @@ def admin_notify(payload: dict, db: Session = Depends(get_db), me=Depends(get_ad
                link=link, image_url=image_url,
                batch_key=batch, batch_label=label, sender_id=_sid, sender_role="admin")
     db.commit()
-    # Phone push (best-effort, background) — sabhi recipients ke phone par bhi dikhe
-    try:
-        import push_service
-        push_service.push_many([u.id for u in users], title, message,
-                               url=(link or "/"), tag="broadcast-" + batch[:8])
-    except Exception:
-        pass
+    # (Phone push har notify() se already queue ho jaata hai — payload-wise coalesced.)
     _scope = target if target != "students" else (
         "students" + (" · " + cls if cls else "") + (" · " + subject if subject else ""))
     return {"message": "Notification sent to %d people!" % len(users), "count": len(users),
@@ -6017,7 +6027,8 @@ def admin_notifications(db: Session = Depends(get_db), current_user=Depends(get_
     # section ka hai -> click karne par dashboard pe atak jaata tha (teacher/student endpoints raw
     # ORM bhejte hain isliye unme ye fields aate the aur unka redirect chalta tha). Ab admin me bhi
     # notif_type + link + image_url bhejo -> sahi section redirect + exact record deep-link.
-    return [{"id": n.id, "title": n.title, "message": n.message,
+    from models import _notif_clean
+    return [{"id": n.id, "title": _notif_clean(n.title), "message": _notif_clean(n.message),
              "is_read": n.is_read, "notif_type": n.notif_type,
              "link": getattr(n, "link", None), "image_url": getattr(n, "image_url", None),
              "created_at": n.created_at.isoformat() if n.created_at else None} for n in notifs]
@@ -11560,7 +11571,8 @@ def admin_notify_log(db: Session = Depends(get_db), me=Depends(get_admin)):
     for n in rows:
         b = batches.get(n.batch_key)
         if not b:
-            b = {"batch_key": n.batch_key, "title": n.title, "message": n.message,
+            from models import _notif_clean
+            b = {"batch_key": n.batch_key, "title": _notif_clean(n.title), "message": _notif_clean(n.message),
                  "label": n.batch_label or "Everyone", "sent": 0, "viewed": 0,
                  "created_at": ist_iso(n.created_at)}  # IST offset — warna UTC time dikhta tha
             batches[n.batch_key] = b

@@ -2,8 +2,41 @@ from sqlalchemy import (
     Column, Integer, String, Text, Boolean, DateTime,
     ForeignKey, Enum, Date, Time, JSON, Float, UniqueConstraint
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
+import re as _re_notif
+
+# ===== Notifications ko EMOJI-FREE rakho (professional look) =====
+# Emoji blocks strip karo, par ye PRESERVE karo: ★ ☆ (rating), ₹ (currency),
+# → arrows, aur Hindi/Devanagari text. Har notification (chahe kahin se bhi bane)
+# yaha se saaf ho jaata hai -> @validates title/message par.
+_NOTIF_EMOJI_RE = _re_notif.compile(
+    "["
+    "\U0001F300-\U0001FAFF"      # pictographs, emoticons, transport, supplemental, extended-A
+    "\U0001F000-\U0001F0FF"      # mahjong / dominoes / playing cards
+    "\U00002600-\U00002604"      # misc symbols (★ U+2605, ☆ U+2606 ko chhodo)
+    "\U00002607-\U000026FF"
+    "\U00002700-\U000027BF"      # dingbats (checkmarks, pencils, scissors)
+    "\U0001F1E6-\U0001F1FF"      # regional indicator flags
+    "\U00002B00-\U00002BFF"      # misc symbols & arrows (colored star etc.)
+    "\U0000FE00-\U0000FE0F"      # variation selectors
+    "\U0000200D"                 # zero-width joiner (👨‍🏫 jaise combos)
+    "\U000020E3"                 # keycap
+    "\U00002139"                 # info
+    "]", _re_notif.UNICODE)
+
+
+def _notif_clean(s):
+    """Notification title/body se emoji hatao + extra spaces saaf karo."""
+    if not s:
+        return s
+    try:
+        t = _NOTIF_EMOJI_RE.sub("", str(s))
+        t = _re_notif.sub(r"[ \t]{2,}", " ", t)
+        t = _re_notif.sub(r" *\n *", "\n", t)
+        return t.strip()
+    except Exception:
+        return s
 try:
     from sqlalchemy.dialects.mysql import MEDIUMTEXT
     _B64TEXT = Text().with_variant(MEDIUMTEXT(), "mysql")   # MySQL TEXT = 64KB limit hota hai
@@ -828,6 +861,11 @@ class Notification(Base):
     clicked_at  = Column(DateTime, nullable=True)     # kab link pe click kiya (video link tracking)
 
     user = relationship("User", back_populates="notifications")
+
+    @validates("title", "message")
+    def _clean_notif_text(self, key, value):
+        # Har notification title/body yaha se emoji-free ho jaata hai (write-time).
+        return _notif_clean(value)
 
 # =============================================
 # AVAILABLE SUBJECTS (admin-managed master list per class)

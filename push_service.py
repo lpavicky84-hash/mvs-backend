@@ -12,7 +12,27 @@ VAPID keys env me na ho to sab gracefully no-op.
 import os
 import json
 import time
+import hashlib
 import threading
+import re as _re_px
+
+# Push notification title/body ko bhi emoji-free rakho (★ ₹ Hindi preserve).
+_PX_EMOJI_RE = _re_px.compile(
+    "[\U0001F300-\U0001FAFF\U0001F000-\U0001F0FF\U00002600-\U00002604"
+    "\U00002607-\U000026FF\U00002700-\U000027BF\U0001F1E6-\U0001F1FF"
+    "\U00002B00-\U00002BFF\U0000FE00-\U0000FE0F\U0000200D\U000020E3\U00002139]",
+    _re_px.UNICODE)
+
+
+def _px_clean(s):
+    if not s:
+        return s
+    try:
+        t = _PX_EMOJI_RE.sub("", str(s))
+        t = _re_px.sub(r"[ \t]{2,}", " ", t)
+        return t.strip()
+    except Exception:
+        return s
 
 try:
     import queue as _queue
@@ -26,6 +46,35 @@ _SUBJ = (os.getenv("VAPID_SUBJECT") or "mailto:support@mvsfoundation.in").strip(
 _Q = _queue.Queue(maxsize=200000) if _queue else None
 _worker_lock = threading.Lock()
 _worker_started = False
+
+# ===== DEDUP: ek hi notification (same user + same title/body/url) ko baar-baar push na karo.
+# Bug tha: task-sync/retry ki wajah se purana notification phone par repeat ho raha tha.
+# Window ke andar same payload dobara aaye to us user ke liye skip. =====
+_RECENT = {}
+_RECENT_LOCK = threading.Lock()
+_RECENT_TTL = 12 * 3600          # 12 ghante: same content dobara push nahi
+_RECENT_MAX = 120000
+
+
+def _dedup_filter(ids, pj):
+    """Return sirf un user_ids ko jinhe ye EXACT payload pichle _RECENT_TTL me nahi gaya."""
+    now = time.time()
+    h = hashlib.md5(pj.encode("utf-8")).hexdigest()
+    out = []
+    try:
+        with _RECENT_LOCK:
+            if len(_RECENT) > _RECENT_MAX:
+                for k, t in list(_RECENT.items()):
+                    if now - t > _RECENT_TTL:
+                        _RECENT.pop(k, None)
+            for uid in ids:
+                key = str(uid) + "|" + h
+                if now - _RECENT.get(key, 0) > _RECENT_TTL:
+                    _RECENT[key] = now
+                    out.append(uid)
+    except Exception:
+        return ids
+    return out
 
 
 def enabled():
@@ -55,11 +104,14 @@ def enqueue(user_ids, title, body, url="/", tag=None):
     ids = _ids(user_ids)
     if not ids:
         return
-    payload = {"title": (str(title or "MVS Foundation"))[:160],
-               "body": (str(body or ""))[:480], "url": url or "/"}
+    payload = {"title": (_px_clean(str(title or "MVS Foundation")) or "MVS Foundation")[:160],
+               "body": (_px_clean(str(body or "")) or "")[:480], "url": url or "/"}
     if tag:
         payload["tag"] = str(tag)[:80]
     pj = json.dumps(payload, sort_keys=True)
+    ids = _dedup_filter(ids, pj)          # same notification dobara push na ho
+    if not ids:
+        return
     try:
         _Q.put_nowait((ids, pj))
         _ensure_worker()

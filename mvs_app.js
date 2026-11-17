@@ -2471,8 +2471,11 @@ async function submitEditTopic(id){
   const part=val('et-part'); if(!part){ toast('Please enter a topic!',true); return; }
   try{
  await api('/api/teacher/timetable-entry/'+id,'PATCH',{part});
- closeModal(); toast('Topic saved. ');
+ closeModal(); toast('Topic saved.');
  _remEntries=await api('/api/teacher/my-timetable'); renderTopicReminders();
+ // Dashboard "Today's Classes" bhi refresh karo -> "Topic Pending" turant hat jaaye (pehle sirf
+ // reminders/timetable refresh hote the, dashboard stale reh jaata tha).
+ try{ if(typeof loadTeacherToday==='function') loadTeacherToday(); }catch(_e){}
  if(document.getElementById('t-page-timetable').classList.contains('active')) loadTTimetable();
   }catch(e){ toast(e.message,true); }
 }
@@ -12566,6 +12569,10 @@ async function loadAServices(){
   _ensureSchCss();
   var el=document.getElementById('a-services-content');
   _aptCss();   // grid CSS ensure karo — warna fresh/refresh pe cards full-width stack ho jaate the
+  // Toolbar buttons (.a-scbtn / .dcr-open-btn) + unread blink badge ki CSS pehle hi inject karo —
+  // warna page pe button plain/toote dikhte the aur sirf panel khulne par premium bante the.
+  try{ _scChatCss(); }catch(e){}
+  try{ _dcrCss(); }catch(e){}
   el.innerHTML='<div class="spinner"></div>';
   try{
     var d=await api('/api/admin/services');
@@ -12579,6 +12586,14 @@ async function loadAServices(){
       +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div></div>'
       +'<div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">'+cards+'</div>';
     loadAEvents(); _scAdmBadge();
+    // New chat aane par Services Chat ka unread count live blink kare (bina page reload) —
+    // services page active aur tab visible ho tabhi poll (battery/CPU waste na ho).
+    try{ if(window._svcBadgeInt) clearInterval(window._svcBadgeInt);
+      window._svcBadgeInt=setInterval(function(){
+        var pg=document.getElementById('a-page-services');
+        if(pg && pg.classList.contains('active') && !document.hidden){ _scAdmBadge(); }
+      },25000);
+    }catch(e){}
   }catch(e){ el.innerHTML='<div class="card"><div class="card-body" style="color:var(--danger)">'+esc((e&&e.message)||'Could not load services')+'</div></div>'; }
 }
 function _scAdmBadge(){
@@ -12740,13 +12755,13 @@ function _admSvcCard(s){
   if((s.target_batches||[]).length) tgt.push((s.target_batches.length)+' batch'+(s.target_batches.length>1?'es':''));
   if(s.require_practical && s.kind!=='practical') tgt.push('Practical req.');
   var tgtHtml=tgt.length?tgt.map(function(t){return '<span style="font-size:.64rem;font-weight:700;background:rgba(184,148,31,.12);color:#8a6d16;border-radius:6px;padding:2px 7px">'+t+'</span>';}).join(' '):'<span style="font-size:.66rem;color:var(--text-muted)">All students</span>';
-  return '<div class="card" style="padding:14px"><div style="display:flex;gap:12px">'
-    +'<div style="flex:0 0 120px">'+thumb+'</div>'
-    +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1rem">'+esc(s.title||'(untitled)')+'</b>'+classBadge
+  return '<div class="card" style="padding:14px;overflow:hidden"><div style="display:flex;gap:12px">'
+    +'<div style="flex:0 0 clamp(82px,26vw,120px);min-width:0">'+thumb+'</div>'
+    +'<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1rem;min-width:0;overflow-wrap:anywhere">'+esc(s.title||'(untitled)')+'</b>'+classBadge
     +'<label class="sw" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer"><input type="checkbox" '+(s.active?'checked':'')+' onchange="_admSvcToggle('+s.id+',this.checked)"> '+(s.active?'<span style="color:#1f7a52">LIVE</span>':'<span style="color:var(--text-muted)">OFF</span>')+'</label></div>'
     +((s.kind!=='practical' && s.price)?'<div style="font-weight:800;margin-top:2px">'+esc(s.price)+(s.old_price?' <span style="color:var(--text-muted);text-decoration:line-through;font-weight:500;font-size:.82rem">'+esc(s.old_price)+'</span>':'')+'</div>':(s.kind==='practical'?'<div style="font-size:.74rem;color:var(--text-muted);margin-top:2px">No price · Explore only</div>':''))
     +'<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">'+tgtHtml+'</div>'
-    +'<div style="display:flex;gap:12px;margin-top:9px;font-size:.74rem;color:var(--text-muted)"><span><b style="color:var(--text)">'+(st.clicks||0)+'</b> clicks</span><span><b style="color:#1f7a52">'+(st.yes||0)+'</b> bought</span><span><b style="color:#c0392b">'+(st.no||0)+'</b> no</span><span><b style="color:#b8941f">₹'+(st.revenue||0)+'</b></span></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:9px;font-size:.74rem;color:var(--text-muted)"><span style="white-space:nowrap"><b style="color:var(--text)">'+(st.clicks||0)+'</b> clicks</span><span style="white-space:nowrap"><b style="color:#1f7a52">'+(st.yes||0)+'</b> bought</span><span style="white-space:nowrap"><b style="color:#c0392b">'+(st.no||0)+'</b> no</span><span style="white-space:nowrap"><b style="color:#b8941f">₹'+(st.revenue||0)+'</b></span></div>'
     +'</div></div>'
     +'<div class="sch-acts" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="openServiceTracker('+s.id+')">'+ic('chart')+' Live Tracker</button>'
     +'<button class="btn btn-ghost btn-sm" onclick="_admSvcNotify('+s.id+')">'+ic('bell')+' Notify all</button>'
@@ -13128,6 +13143,23 @@ function _pmToggleClicks(btn){
   el.style.display=open?'none':'block';
   btn.setAttribute('aria-expanded', open?'false':'true');
   btn.innerHTML=btn.innerHTML.replace(open?'▴':'▾', open?'▾':'▴');
+  _modalRepaint();
+  // Khulne par expanded list ko view me scroll karo — UX behtar + actual scroll se bhi
+  // repaint force hota hai (ghost double-safe clear ho jaata hai).
+  if(!open){ try{ requestAnimationFrame(function(){ el.scrollIntoView({block:'nearest'}); }); }catch(e){} }
+}
+// iOS Safari repaint fix: modal ke andar display:none->block toggle karne par kabhi-kabhi
+// upar ke elements (banner buttons / Fetch) ka PURANA paint "ghost" ban ke naye content par
+// overlap kar jaata tha. Modal body ko 1 frame ke liye apni compositor-layer par le jaake
+// wapas laane se poora modal cleanly repaint ho jaata hai -> koi ghost/overlap nahi.
+function _modalRepaint(){
+  try{
+    var mb=document.getElementById('modal-body'); if(!mb) return;
+    var pv=mb.style.transform;
+    mb.style.transform='translateZ(0)';
+    void mb.offsetHeight;
+    requestAnimationFrame(function(){ try{ mb.style.transform=pv||''; }catch(e){} });
+  }catch(e){}
 }
 function _pmDlXlsx(){ _dlPdf('/api/admin/public-marketing/clicks.xlsx','batch_interest_students.xlsx'); }
 function _pmDlPdf(){ _dlPdf('/api/admin/public-marketing/clicks.pdf','MVS_Batch_Interest_Report.pdf'); }

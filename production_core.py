@@ -2300,7 +2300,8 @@ def notifications_out(db, user, limit=40):
                         cid = int(m2.group(1))
         except Exception:
             tid = None; cid = None
-        out.append({"id": n.id, "title": n.title or "", "message": n.message or "",
+        from models import _notif_clean
+        out.append({"id": n.id, "title": _notif_clean(n.title) or "", "message": _notif_clean(n.message) or "",
                     "type": n.notif_type or "", "is_read": bool(n.is_read),
                     "task_id": tid, "chapter_id": cid, "at": _dt(n.created_at)})
     return out
