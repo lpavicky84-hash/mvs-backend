@@ -28648,7 +28648,15 @@ function errHtml(e){ return `<div class="alert alert-danger"> ${esc(e.message)}<
   // overlay behind the drawer
   var ov=document.createElement('div'); ov.className='side-overlay';
   document.body.appendChild(ov);
-  function closeSidebar(){ document.querySelectorAll('.sidebar.open').forEach(function(sb){sb.classList.remove('open');}); ov.classList.remove('show'); }
+  // iOS repaint safety-net: fixed drawer band hote hi kabhi-kabhi document white reh jaata tha.
+  // 1px scroll-jiggle browser ko visible area turant dobara paint karne par majboor karta hai.
+  function _drawerRepaint(){
+    try{ var y=window.pageYOffset||document.documentElement.scrollTop||0;
+      window.scrollTo(0, y+1);
+      requestAnimationFrame(function(){ try{ window.scrollTo(0, y); }catch(e){} });
+    }catch(e){}
+  }
+  function closeSidebar(){ document.querySelectorAll('.sidebar.open').forEach(function(sb){sb.classList.remove('open');}); ov.classList.remove('show'); _drawerRepaint(); }
   window.closeSidebar=closeSidebar;
   ov.addEventListener('click',closeSidebar);
   function openSidebar(appEl){ var sb=appEl.querySelector('.sidebar'); if(sb){ sb.classList.add('open'); ov.classList.add('show'); } }

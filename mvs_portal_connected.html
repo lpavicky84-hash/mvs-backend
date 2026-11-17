@@ -1547,7 +1547,10 @@ canvas{max-width:100%}
 /* ---------- TABLET + PHONE (<=1000px): sidebar becomes a drawer ---------- */
 @media(max-width:1000px){
   .hamburger{display:flex}
-  .sidebar{width:min(300px,85vw);transform:translateX(-112%);transition:transform .28s cubic-bezier(.4,0,.2,1);height:100dvh;overflow-y:auto;z-index:1200;box-shadow:0 0 60px rgba(0,0,0,.4);padding-top:env(safe-area-inset-top)}
+  /* iOS WHITE-SCREEN/HANG permanent fix: fixed sidebar par height:100dvh tha jo SCROLL ke
+     waqt (URL-bar show/hide se dvh badalta hai) baar-baar recalc hota tha -> repaint storm ->
+     portal hang + white screen. Ab top:0;bottom:0 se full-height STABLE rehti hai (dvh nahi). */
+  .sidebar{width:min(300px,85vw);transform:translateX(-112%);transition:transform .28s cubic-bezier(.4,0,.2,1);top:0;bottom:0;height:auto;overflow-y:auto;z-index:1200;box-shadow:0 0 60px rgba(0,0,0,.4);padding-top:env(safe-area-inset-top);will-change:transform}
   .sidebar.open{transform:translateX(0)}
   /* undo the old 70px icon-collapse (it hid all nav text) */
   .sidebar-logo span{display:inline}
