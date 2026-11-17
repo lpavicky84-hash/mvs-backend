@@ -32381,7 +32381,10 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.prodwrap{display:flex;height:100%;width:100%}',
 /* sidebar */
 '.prodside{width:258px;flex:0 0 258px;background:#171203;color:#f0e6cf;display:flex;flex-direction:column;border-right:1px solid rgba(230,173,78,.16);overflow:hidden;height:100%}',
-'.prodside .ps-brand{display:flex;align-items:center;gap:11px;padding:18px 18px 14px;flex:0 0 auto}',
+'.ps-close{display:none;position:absolute;top:13px;right:13px;z-index:3;width:36px;height:36px;border-radius:10px;border:1px solid rgba(230,173,78,.32);background:rgba(230,173,78,.14);color:#e6ad4e;cursor:pointer;align-items:center;justify-content:center;-webkit-tap-highlight-color:rgba(230,173,78,.25)}',
+'.ps-close svg{width:20px;height:20px}',
+'.ps-close:active{background:rgba(230,173,78,.26)}',
+'.prodside .ps-brand{display:flex;align-items:center;gap:11px;padding:18px 44px 14px 18px;flex:0 0 auto}',
 '.prodside .ps-nav{flex:1 1 auto;overflow-y:auto;min-height:0;padding-bottom:6px}',
 '.prodside .ps-nav::-webkit-scrollbar{width:7px}',
 '.prodside .ps-nav::-webkit-scrollbar-thumb{background:rgba(230,173,78,.28);border-radius:8px}',
@@ -33017,7 +33020,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '.vv-vrow{flex-wrap:wrap}',
 '.rate-row{flex-wrap:wrap;gap:6px}',
 '.apa-rq{grid-template-columns:1fr 1fr}',
-'.prod-scrim{display:none;position:fixed;inset:0;z-index:55;background:rgba(15,10,4,.45)}',
+'.prod-scrim{display:none;position:fixed;inset:0;z-index:55;background:rgba(15,10,4,.45);cursor:pointer}',
 '.prodapp.side-open .prod-scrim{display:block}',
 '}',
 /* very small phones (<=380px): single-column KPIs, no horizontal overflow */
@@ -33460,8 +33463,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
 '  .pdash-greet{display:block;margin:2px 2px 14px}',
 '  .pdash-greet h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.02em;line-height:1.15}',
 '  .pdash-date{font-size:.82rem;color:var(--muted);margin-top:3px}',
-'  .prod-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}',
+'  .prod-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55;cursor:pointer}',
 '  .prodapp.side-open .prod-scrim{display:block}',
+'  .ps-close{display:inline-flex}',
 '  .pk-grid{grid-template-columns:1fr 1fr;gap:11px}',
 '  .pk-card{padding:14px 14px 13px}',
 '  .pk-val{font-size:1.5rem}',
@@ -33551,6 +33555,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var html=''+
       '<div class="prodwrap">'+
         '<aside class="prodside">'+
+          '<button class="ps-close" onclick="prodCloseDrawer(\''+id+'\')" aria-label="Menu band karein"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>'+
           '<div class="ps-brand"><div class="ps-logo">'+logo+'</div><div><div class="ps-title">'+d.title+'</div><div class="ps-sub">'+d.sub+'</div></div></div>'+
           '<div class="ps-nav">'+navHtml+'</div>'+
           '<div class="ps-foot">'+
