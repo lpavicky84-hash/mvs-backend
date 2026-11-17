@@ -33553,7 +33553,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
         '<section class="prodmain">'+
           '<header class="prodhead">'+
             '<div style="display:flex;align-items:center;gap:12px">'+
-              '<button class="prod-burger" onclick="document.getElementById(\''+id+'\').classList.toggle(\'side-open\')">'+icon('list')+'</button>'+
+              '<button class="prod-burger" onclick="prodToggleDrawer(\''+id+'\')">'+icon('list')+'</button>'+
               '<div><div class="ph-hi" id="'+portal+'-hi">Welcome</div><div class="ph-date" id="'+portal+'-date"></div></div>'+
             '</div>'+
             '<div style="display:flex;align-items:center;gap:12px">'+
@@ -33567,12 +33567,41 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
           '</header>'+
           '<div class="prodbody" id="'+portal+'-body"><div class="p-load">Loading...</div></div>'+
         '</section>'+
-        '<div class="prod-scrim" onclick="document.getElementById(\''+id+'\').classList.remove(\'side-open\')"></div>'+
+        '<div class="prod-scrim" onclick="prodCloseDrawer(\''+id+'\')"></div>'+
       '</div>';
     el=document.createElement('div'); el.id=id; el.className='app prodapp'; el.innerHTML=html;
     document.body.appendChild(el);
     return el;
   }
+
+  // ===== Prod drawer open/close — iOS SCROLL-FREEZE permanent fix =====
+  // Bug: .prodapp position:fixed hai aur uske andar .prodbody overflow-y:auto scroll karta hai.
+  // Jab fixed+transform drawer (.prodside) khulta/band hota hai, iOS Safari andar wale scroll
+  // layer ko "pause" kar deta hai -> scroll freeze/hang. Fix: drawer band hote hi .prodbody ko
+  // ek micro-reflow do -> iOS scroll layer dobara bana deta hai -> scroll turant chalu.
+  function _prodScrollFix(app){
+    try{
+      var body=app.querySelector('.prodbody'); if(!body) return;
+      var st=body.scrollTop||0;
+      body.style.overflowY='hidden';
+      void body.offsetHeight;                 // force reflow
+      requestAnimationFrame(function(){
+        body.style.overflowY='';              // CSS (overflow-y:auto) wapas
+        try{ body.scrollTop=st+1; body.scrollTop=st; }catch(e){}  // momentum re-arm
+      });
+    }catch(e){}
+  }
+  window.prodToggleDrawer=function(id){
+    var app=document.getElementById(id); if(!app) return;
+    if(app.classList.contains('side-open')){ app.classList.remove('side-open'); _prodScrollFix(app); }
+    else { app.classList.add('side-open'); }
+  };
+  window.prodCloseDrawer=function(id){
+    var app=document.getElementById(id); if(!app) return;
+    if(!app.classList.contains('side-open')) return;
+    app.classList.remove('side-open'); _prodScrollFix(app);
+  };
+  window._prodScrollFix=_prodScrollFix;
 
   // --- open a portal (called after login / restore) ---
   window.openProdPortal=function(portal){
@@ -33945,7 +33974,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     // let the SWR background-refresh quietly re-render THIS portal's current page when
     // fresh data arrives (guarded by _swrBlocked so it never disturbs active work).
     try{ _curLoader=function(){ try{ _refresh(portal); }catch(e){} }; }catch(e){}
-    el.classList.remove('side-open');
+    if(el.classList.contains('side-open')){ el.classList.remove('side-open'); try{ _prodScrollFix(el); }catch(e){} }
     el.querySelectorAll('.ps-item').forEach(function(n){ n.classList.toggle('on', n.getAttribute('data-page')===page); });
     // NOTE: nav groups sirf header click (prodNavGroup) se khulte hain. Yaha auto-open
     // nahi karte -> sidebar load pe fully collapsed rehta hai (user ki request).
