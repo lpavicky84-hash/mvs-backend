@@ -16802,6 +16802,10 @@ async function loadAVTasks(fromCache){
   const _up=document.getElementById('a-page-urgent');
   if(_up&&_up.classList.contains('active')){ loadAUrgent(); return; }
   const el=document.getElementById('a-vtasks-content');
+  // "View Details" collapse ki CSS (.vt-collapsed/.vt-viewdet) teacher-page function me thi —
+  // admin task page par load nahi hoti thi, isliye admin cards collapse nahi hote the (sab khula
+  // dikhta tha). Ab yahan bhi inject -> admin cards bhi production jaise compact (collapsed).
+  try{ _tCardChipCss(); }catch(e){}
   softSpin(el);
   if(_vtTimer){ clearInterval(_vtTimer); _vtTimer=null; }
   // Admin date filter (premDateFilter scope 'avt') -> client-side re-filter of loaded cards.
