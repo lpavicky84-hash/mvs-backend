@@ -3470,42 +3470,61 @@ def teacher_student_counts(db: Session = Depends(get_db), current_user=Depends(g
     from models import StudentProfile, AvailableSubject
     tp = get_teacher_profile(current_user, db)
     subs = tp.subjects or []
+    _tsc = tp.subject_classes or []
+    # Teacher ke EFFECTIVE taught (subject,class) keys — BILKUL my-students-list jaisa. Pehle count
+    # sirf tp.subjects par chalta tha (subject_classes gate ke bina), isliye count me wo class bhi
+    # dikh jaati thi jo teacher nahi padhata — aur list (jo gate lagati hai) se NUMBER MISMATCH hota
+    # tha. Ab dono ek hi membership test use karte hain -> count == list, hamesha sahi.
+    def _tkeys(cls):
+        if _SR is None:
+            return {_subj_key(x) for x in subs if _subj_key(x)}
+        keys = set()
+        if _tsc:
+            for sc in _tsc:
+                try:
+                    nm = (sc.get("subject") or "").strip()
+                    c = str(sc.get("class") or sc.get("class_level") or "").strip()
+                except Exception:
+                    continue
+                if nm:
+                    keys.add(_SR.canon_key(nm, c or cls))
+        else:
+            for x in subs:
+                keys.add(_SR.canon_key(x, cls))
+        return keys
     students = db.query(StudentProfile).options(defer(StudentProfile.photo_b64)).all()
-    # precompute each student's (class, canonical subject-key set) ONCE (was recomputed for
-    # every subject x student pair)
-    _sk_cache = []
-    for sp in students:
-        if not sp.subjects:
-            continue
-        cls = str(sp.class_level or "").strip() or "?"
-        keys = ({_SR.canon_key(x, cls) for x in sp.subjects} if _SR is not None
-                else {_subj_key(x) for x in sp.subjects})
-        _sk_cache.append((sp.id, cls, keys))
     # (subject_key, class_level) -> NIOS subject code
     code_map = {}
     for a in db.query(AvailableSubject).all():
         code_map[(_subj_key(a.name), str(a.class_level or "").strip())] = a.code
-    out = []
+    out_map = {}       # (disp, cls) -> {"count": n, "code": code}
     seen_ids = set()
-    seen_sk = set()  # same subject do baar list me ho to duplicate card na bane
-    for s in subs:
-        sk = _subj_key(s)
-        if sk in seen_sk:
+    for sp in students:
+        if not sp.subjects:
             continue
-        seen_sk.add(sk)
-        per_cls = {}
-        for sid, cls, keys in _sk_cache:
-            tkey = _SR.canon_key(s, cls) if _SR is not None else sk
-            if tkey in keys:
-                seen_ids.add(sid)
-                per_cls[cls] = per_cls.get(cls, 0) + 1
-        for cls in sorted(per_cls):
-            disp = _SR.canon_display(s, cls) if _SR else s
-            code = code_map.get((sk, cls))
-            if _SR is not None:
-                code = (_SR.canon_subject(s, cls) or {}).get("code") or code
-            out.append({"subject": disp, "class": cls,
-                        "code": code, "count": per_cls[cls]})
+        scls = "".join(ch for ch in str(sp.class_level or "") if ch.isdigit())[:2] or None
+        tkeys = _tkeys(scls)
+        matched = [x for x in sp.subjects
+                   if (_SR.canon_key(x, scls) if _SR is not None else _subj_key(x)) in tkeys]
+        if not matched:
+            continue
+        seen_ids.add(sp.id)
+        clskey = scls or "?"
+        seen_disp = set()
+        for x in matched:
+            disp = _SR.canon_display(x, scls) if _SR else x
+            if disp in seen_disp:
+                continue
+            seen_disp.add(disp)
+            key = (disp, clskey)
+            if key not in out_map:
+                code = code_map.get((_subj_key(x), clskey))
+                if _SR is not None:
+                    code = (_SR.canon_subject(x, scls) or {}).get("code") or code
+                out_map[key] = {"count": 0, "code": code}
+            out_map[key]["count"] += 1
+    out = [{"subject": disp, "class": cls, "code": v["code"], "count": v["count"]}
+           for (disp, cls), v in out_map.items()]
     out.sort(key=lambda x: (-x["count"], (x["subject"] or ""), x["class"]))
     return {"total": len(seen_ids), "subjects": out}
 

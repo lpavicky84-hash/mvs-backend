@@ -108,7 +108,23 @@ def _candidates(cls):
         return list(_OFFICIAL[cls])
     return _OFFICIAL["10"] + _OFFICIAL["12"]
 
+_CANON_SUBJECT_MEMO = {}
 def canon_subject(name, cls=None):
+    """Memoized wrapper — canon_subject pure hai (NIOS registry static), isliye same
+    (name, cls) ka result cache safe hai. Students page/teacher counts har student ke har
+    subject par ise hazaaron baar call karte the (regex-heavy) -> yahi sabse bada slowdown tha."""
+    _mk = (name if isinstance(name, str) else str(name or ""),
+           cls if (cls is None or isinstance(cls, str)) else str(cls))
+    if _mk in _CANON_SUBJECT_MEMO:
+        return _CANON_SUBJECT_MEMO[_mk]
+    r = _canon_subject_impl(name, cls)
+    if len(_CANON_SUBJECT_MEMO) > 50000:
+        _CANON_SUBJECT_MEMO.clear()
+    _CANON_SUBJECT_MEMO[_mk] = r
+    return r
+
+
+def _canon_subject_impl(name, cls=None):
     """Kisi bhi raw subject naam ko resolve karo.
     Returns dict: {"name": official_name, "code": code|None, "ambiguous": bool}
     ya None agar NIOS list me nahi mila (custom subject — caller original rakhe).
@@ -210,12 +226,22 @@ def canon_norm(name, cls=None):
     r = canon_subject(name, cls)
     return squash(r["name"]) if r else squash(raw_clean(name))
 
+_CANON_LIST_MEMO = {}
 def canon_list(names, cls=None):
-    """List of raw subjects -> canonical display names (dupes merge, order stable)."""
+    """List of raw subjects -> canonical display names (dupes merge, order stable).
+    Memoized: zyadatar students ka subject-set same hota hai (ek hi stream), isliye yahi
+    cache students-page/teacher-counts ke full scans ko turant bana deta hai."""
+    _mk = (tuple(names or []), cls if (cls is None or isinstance(cls, str)) else str(cls))
+    _hit = _CANON_LIST_MEMO.get(_mk)
+    if _hit is not None:
+        return list(_hit)
     out, seen = [], set()
     for n in names or []:
         d = canon_display(n, cls)
         if d and d not in seen:
             seen.add(d)
             out.append(d)
+    if len(_CANON_LIST_MEMO) > 20000:
+        _CANON_LIST_MEMO.clear()
+    _CANON_LIST_MEMO[_mk] = tuple(out)
     return out

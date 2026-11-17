@@ -20713,10 +20713,9 @@ async function loadAStudents(){
   try{
     _stuFilter='';_stuSearch='';_stuPage=1;_stuSess='';_stuMed='';_stuBatch='';_stuClass='';_stuSrcFilter='';
     if(el && !(_aStuPageRows&&_aStuPageRows.length)) el.innerHTML='<div style="padding:40px;text-align:center"><div class="spinner"></div></div>';
-    // FAST: pehle list+counts dikhao. portal-overview ek EXTERNAL (MVS Portal) call hai jo slow
+    // FAST: counts+list PARALLEL. portal-overview ek EXTERNAL (MVS Portal) call hai jo slow
     // ho sakti hai — usko block mat karo, background me laao aur aane par re-render kar do.
-    await _stuReloadCounts();
-    await _stuReload();
+    await _stuRefreshAll();
     api('/api/admin/portal-overview').then(function(ov){ window._aPortalOv=ov; try{ aRenderStudents(); }catch(e){} }).catch(function(){});
     // v170: fresh open par hi filters reset hote hain (upar). Background SWR refresh ab
     // filters/search ko WIPE na kare — sirf current filters ke saath list dobara laaye.
@@ -20730,12 +20729,17 @@ function _stuQP(){
     +'&subject='+encodeURIComponent(_stuFilter?_stuFParts().sub:'')
     +'&page='+_stuPage+'&page_size='+_stuSize;
 }
-async function _stuReload(){
+async function _stuReload(skipRender){
   window._stuLastErr='';
   try{ const d=await api('/api/admin/students-paged?'+_stuQP()); _aStuPageRows=d.students||[]; _aStuTotal=d.total||0; }
   catch(e){ _aStuPageRows=[]; _aStuTotal=0; window._stuLastErr=(e&&e.message)||String(e); try{ console.error('students-paged error:',e); }catch(_){} }
   _aStu=_aStuPageRows;  // current page — openStudentProfile jaise purane references isi par kaam karein
-  aRenderStudents();
+  if(!skipRender) aRenderStudents();
+}
+// Counts + list ko PARALLEL chalao (pehle sequential await the -> double wait). Dono aane ke
+// baad ek hi baar render -> 1 click pe sab turant, koi stale flicker nahi.
+function _stuRefreshAll(){
+  return Promise.all([_stuReloadCounts(), _stuReload(true)]).then(function(){ try{ aRenderStudents(); }catch(e){} });
 }
 async function _stuReloadCounts(){
   try{ _aStuFC=await api('/api/admin/student-filter-counts?source='+encodeURIComponent(_stuSrcFilter||'')
@@ -21391,7 +21395,7 @@ function pickedSubjects(wrapId){
 }
 let _stuSrcFilter='';
 function aStuSrcFilter(src){ _stuSrcFilter=src; _stuPage=1; _stuReloadCounts().then(_stuReload); }
-function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; _stuReloadCounts().then(_stuReload); }
+function aStuClass(c){ _stuClass=c; _stuFilter=''; _stuPage=1; _stuRefreshAll(); }
 // Subject filter class-aware hai: value "English||10" — same-name subjects
 // (Class 10 English vs Class 12 English) kabhi merge nahi honge
 function _stuFParts(){ const v=_stuFilter||''; const i=v.lastIndexOf('||'); if(i<0) return {sub:v,cls:''}; return {sub:v.slice(0,i),cls:v.slice(i+2)}; }
@@ -21474,8 +21478,8 @@ function aRenderStudents(){
   page.forEach(s=>{ if(s.has_photo) loadImgInto('sphoto-'+s.profile_id,'/api/admin/student/'+s.profile_id+'/photo'); });
 }
 function aStuSetFilter(sub){ _stuFilter=sub; _stuPage=1; _stuReload(); }
-function aStuSess(v){ _stuSess=v; _stuPage=1; _stuReloadCounts().then(_stuReload); }
-function aStuMed(v){ _stuMed=v; _stuPage=1; _stuReloadCounts().then(_stuReload); }
+function aStuSess(v){ _stuSess=v; _stuPage=1; _stuRefreshAll(); }
+function aStuMed(v){ _stuMed=v; _stuPage=1; _stuRefreshAll(); }
 function aStuBatch(v){ _stuBatch=v; _stuPage=1; _stuReload(); }
 // ---- Fix Batch <-> Session: student ka batch uske exam session se align karo ----
 window.openBatchAlign=function(){
