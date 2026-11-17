@@ -5037,6 +5037,7 @@ def admin_student_reset_password(sid: int, db: Session = Depends(get_db), _=Depe
     return {"ok": True, "password": new_pw}
 
 
+_SPAGED_SUBJ_CACHE = {}   # canonical-subject match ke liye matched-id list ka short cache (paging fast)
 @router.get("/students-paged")
 def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session: str = "",
                          medium: str = "", source: str = "", batch: str = "",
@@ -5078,15 +5079,47 @@ def admin_students_paged(q: str = "", subject: str = "", cls: str = "", session:
             or_(User.name.ilike(ql), StudentProfile.phone.ilike(ql),
                 User.user_id.ilike(ql), StudentProfile.email.ilike(ql),
                 StudentProfile.nios_ref.ilike(ql)))
-    if subject:
-        sub = subject.split("|")[0].strip()
+    sub = subject.split("|")[0].strip() if subject else ""
+    if sub and _SR:
+        # CANONICAL subject match — dropdown counts (_SR.canon_list) variants ko bhi ginte hain
+        # (e.g. "English (302)", "ENGLISH" sab "English"). Pehle yaha raw json_contains("English")
+        # hota tha jo variants chhod deta tha -> dropdown count aur result count MISMATCH (2884 vs
+        # 2555). Ab same canon logic: light scan (id+subjects+class) se matching ids nikaalo, phir
+        # us page ke full rows laao -> dono counts bilkul barabar, saare subjects ke liye.
+        import time as _t2
+        _ckey = "%s|%s|%s|%s|%s|%s|%s" % (source, cls, session, medium, batch, q, sub)
+        _hit = _SPAGED_SUBJ_CACHE.get(_ckey)
+        if _hit and (_t2.time() - _hit[0] < 20):
+            matched = _hit[1]
+        else:
+            light = qy.with_entities(StudentProfile.id, StudentProfile.subjects,
+                                     StudentProfile.class_level).order_by(StudentProfile.id.desc()).all()
+            matched = []
+            for _rid, _ssubs, _clv in light:
+                try:
+                    if sub in _SR.canon_list(_ssubs or [], _clv):
+                        matched.append(_rid)
+                except Exception:
+                    pass
+            if len(_SPAGED_SUBJ_CACHE) > 200:
+                _SPAGED_SUBJ_CACHE.clear()
+            _SPAGED_SUBJ_CACHE[_ckey] = (_t2.time(), matched)
+        total = len(matched)
+        page_ids = matched[(page - 1) * page_size: (page - 1) * page_size + page_size]
+        rows = []
+        if page_ids:
+            _rmap = {sp.id: sp for sp in db.query(StudentProfile)
+                     .options(defer(StudentProfile.photo_b64), joinedload(StudentProfile.user))
+                     .filter(StudentProfile.id.in_(page_ids)).all()}
+            rows = [_rmap[i] for i in page_ids if i in _rmap]
+    else:
         if sub:
             try:
                 qy = qy.filter(func.json_contains(StudentProfile.subjects, _json.dumps(sub)))
             except Exception:
                 pass
-    total = qy.count()
-    rows = qy.order_by(StudentProfile.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        total = qy.count()
+        rows = qy.order_by(StudentProfile.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
     _pids = [sp.id for sp in rows]
     _photo_set = set()
     if _pids:
@@ -5145,6 +5178,11 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     base = db.query(StudentProfile)
     if source: base = base.filter(StudentProfile.source == source)
     if medium: base = base.filter(StudentProfile.medium == medium)
+    # CLASS facet ko class-filter se ALAG rakho (jaise session facet alag hai): warna ek class
+    # chunne par baaki classes dropdown se gayab ho jaate the aur user ko dusri class par jaane ke
+    # liye pehle 'All Classes' dabana padta tha. base_nocls (source+medium[+session], par class
+    # nahi) se classes list banao -> dropdown me hamesha saari classes, seedha switch ho jaaye.
+    base_nocls = base
     if cls: base = base.filter(StudentProfile.class_level == str(cls))
     # SESSION facet ko session-filter se ALAG rakho: warna ek session chunne par baaki sessions
     # dropdown se gayab ho jaate the (user ko 'All Sessions' pe jaana padta tha). base_nosess
@@ -5153,8 +5191,10 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
     if session:
         if session == "__none__":
             base = base.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
+            base_nocls = base_nocls.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == ""))
         else:
             base = base.filter(StudentProfile.exam_session == session)
+            base_nocls = base_nocls.filter(StudentProfile.exam_session == session)
     total = base.count()
     # ---- SESSION-SEPARATED batch counts (value = "id:<batch_id>"; label = "Name — Session") ----
     # Purana bug: sirf batch_name par group hota tha, isliye October 2026 + April 2027 ke
@@ -5184,7 +5224,8 @@ def student_filter_counts(source: str = "", session: str = "", medium: str = "",
             _bagg[key] = {"batch": key, "label": label, "count": 0, "session": ses}
         _bagg[key]["count"] += c
     batches = sorted(_bagg.values(), key=lambda x: (-x["count"], x["label"].lower()))
-    classes = sorted([c for (c,) in base.with_entities(StudentProfile.class_level).distinct().all() if c])
+    # classes = base_nocls se (class-filter ignore) -> dropdown me hamesha saari classes dikhein
+    classes = sorted([c for (c,) in base_nocls.with_entities(StudentProfile.class_level).distinct().all() if c])
     # sessions = base_nosess se (session-filter ignore) -> dropdown me hamesha saare sessions
     sessions = sorted([s for (s,) in base_nosess.with_entities(StudentProfile.exam_session).distinct().all() if s])
     none_session = base_nosess.filter((StudentProfile.exam_session.is_(None)) | (StudentProfile.exam_session == "")).count()
