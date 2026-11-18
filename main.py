@@ -265,6 +265,10 @@ def ensure_columns():
         "CREATE INDEX ix_users_sess ON users (active_session_token)",
         # students only: 1 mobile + 1 computer slot -> {"m":sid,"d":sid}
         "ALTER TABLE users ADD COLUMN active_sessions TEXT",
+        # result language = student's chosen attempt language (en|hi|hg)
+        "ALTER TABLE exam_attempts ADD COLUMN view_lang VARCHAR(8)",
+        # fresh copy of a test -> its own card (separate attempts) instead of merging by signature
+        "ALTER TABLE exams ADD COLUMN copy_group VARCHAR(40)",
         # multi-batch student: server-side current batch (har device pe same tests)
         "ALTER TABLE student_profiles ADD COLUMN active_batch_id INT",
         # v95: editable monthly target labels + custom targets

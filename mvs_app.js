@@ -5890,9 +5890,19 @@ async function openCopyToBatch(kind,id){
   var dateField=isTest
     ? '<div class="form-group"><label>New date &amp; time <span style="color:var(--text-muted);font-weight:400">(blank = abhi se available)</span></label><input type="datetime-local" class="form-control" id="cpb-date"></div>'
     : '<div class="alert alert-info" style="font-size:.8rem">DPP timetable ke chapter/part se dikhta hai \u2014 naye batch me wahi chapter jab schedule hoga tab apne-aap us date pe aa jaayega. Alag date set karne ki zaroorat nahi.</div>';
+  // TEST only: new independent copy vs same test across batches (premium choice)
+  var _modeSty='display:flex;gap:11px;align-items:flex-start;padding:12px 13px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:9px;cursor:pointer';
+  var _modeSm='display:block;font-size:.76rem;color:var(--text-muted);line-height:1.45;margin-top:3px';
+  var freshChoice=isTest
+    ? '<div class="form-group"><label>How should this copy appear?</label>'
+      +'<label class="cpb-mode" style="'+_modeSty+'"><input type="radio" name="cpb-fresh" value="new" checked style="margin-top:3px;width:17px;height:17px"> <span><b>New, separate test (recommended)</b><small style="'+_modeSm+'">Creates a fresh, independent copy for the selected batch(es) \u2014 its own card and its own results. The new batch\u2019s students are never compared with the original batch\u2019s attempts.</small></span></label>'
+      +'<label class="cpb-mode" style="'+_modeSty+'"><input type="radio" name="cpb-fresh" value="same" style="margin-top:3px;width:17px;height:17px"> <span><b>Same test, shown in these batches too</b><small style="'+_modeSm+'">Keeps it as one test that also appears in the selected batch(es). Results and rankings are combined across all of these batches on one card.</small></span></label>'
+      +'</div>'
+    : '';
   showModal('Copy to other batches',
     '<div class="alert alert-info" style="font-size:.82rem">"<b>'+esc(item.title||'')+'</b>"'+(curName?(' \u2014 abhi <b>'+esc(curName)+'</b> me hai'):'')+'. Copy karne pe saara content (questions'+(isTest?'':'/PDF')+') huboohu chune gaye batch(es) me chala jaayega, aur un batches ke students ko notification bhi jaata hai. Original waise ka waisa rahega.</div>'
     +'<div class="form-group"><label>Target batches <span style="color:var(--text-muted);font-weight:400">(ek ya zyada select karo \u2014 Data Entry jaise common subject ke liye multiple)</span></label><div style="max-height:230px;overflow:auto;padding-right:2px">'+checks+'</div></div>'
+    +freshChoice
     +'<div class="form-group"><label>Title <span style="color:var(--text-muted);font-weight:400">(optional)</span></label><input class="form-control" id="cpb-title" value="'+esc(item.title||'')+'"></div>'
     +dateField,
     '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cpb-btn" onclick="submitCopyToBatch(\''+kind+'\','+id+')">'+ic('copy')+' Copy</button>');
@@ -5901,7 +5911,8 @@ async function submitCopyToBatch(kind,id){
   var bids=[].slice.call(document.querySelectorAll('.cpb-bchk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
   if(!bids.length){ toast('Please pick at least one target batch.',true); return; }
   var payload={batch_ids:bids, title:((document.getElementById('cpb-title')||{}).value||'')};
-  if(kind==='test'){ var dv=(document.getElementById('cpb-date')||{}).value||''; if(dv) payload.scheduled_at=dv; }
+  if(kind==='test'){ var dv=(document.getElementById('cpb-date')||{}).value||''; if(dv) payload.scheduled_at=dv;
+    var fm=document.querySelector('input[name="cpb-fresh"]:checked'); payload.fresh=(fm&&fm.value==='new'); }
   var btn=document.getElementById('cpb-btn'); if(btn){ btn.disabled=true; btn.textContent='Copying\u2026'; }
   try{
     var ep=(kind==='test'?('/api/teacher/exam/'+id+'/copy'):('/api/teacher/dpp-pack/'+id+'/copy'));
@@ -8556,8 +8567,10 @@ async function openCreateExam(type,editData){
     +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. Every question loads into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Load into editor</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
     +((type==='subjective'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — Question &amp; Model Answer in English, with optional Hindi) and upload. Works for every type — MCQ, fill in the blanks, match the following, passage, short &amp; long answers, and numericals. Questions load into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_subjBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-subjbulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_subjBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-subjbulk-import" onclick="_subjBulkImport()" style="display:none">Load into editor</button></div><div id="ex-subjbulk-out" style="margin-top:8px"></div></div>`:'')
     +tools
-    +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`
-    +`<button class="btn btn-primary" onclick="submitExam()" style="width:100%">${editData?'Save Changes — Update Test':'Create Test'}</button>`);
+    +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`,
+    // STICKY FOOTER: Create/Update button ab modal ke neeche pinned rehta hai — teacher kitna bhi
+    // scroll kare (10/20/50 questions), button hamesha dikhta hai, scroll karne ki zaroorat nahi.
+    `<button class="btn btn-primary ex-create-btn" onclick="submitExam()">${editData?('<span class="ex-cb-ic">'+(typeof ic==='function'?ic('check'):'')+'</span> Save Changes — Update Test'):('<span class="ex-cb-ic">'+(typeof ic==='function'?ic('check'):'')+'</span> Create Test')}</button>`);
   { const _mm=document.querySelector('#modal .modal'); if(_mm)_mm.classList.add('cx'); }
   if(!editData){ try{ _mcqBulkCss(); }catch(e){} }   // style the bulk box immediately (not only after file pick)
   (function(){ var slot=document.getElementById('mbf-slot'); if(!slot) return;
@@ -12088,6 +12101,11 @@ function _examResCss(){
   .exr-actions .btn{flex:0 0 auto}
   .exr .sd-box{margin-top:11px}
   .exr-rebtn.on{background:rgba(5,150,105,.14);border-color:rgba(5,150,105,.4);color:#059669;font-weight:800}
+  .exr-retake{display:inline-flex;align-items:center;gap:5px}
+  .exr-retake svg{width:16px;height:16px}
+  .exr-retake:not(.on){color:var(--primary,#b8941f);border-color:rgba(184,148,31,.4)}
+  .exr-retake:not(.on):hover{background:rgba(184,148,31,.1)}
+  .exr-rtx{font-weight:800}
   .exr-renote{margin-top:10px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.28);border-left:3px solid var(--warning);border-radius:10px;padding:9px 12px}
   .exr-renote-h{display:block;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--warning);display:flex;align-items:center;gap:5px}
   .exr-renote-b{display:block;font-size:.86rem;color:var(--text);margin-top:3px;line-height:1.4;overflow-wrap:anywhere}
@@ -12145,6 +12163,44 @@ async function _reupSubmit(attId, examId){
   }catch(e){
     if(btn){ btn.disabled=false; btn.style.opacity=1; }
     toast(e.message||'Could not allow re-upload',true);
+  }
+}
+// ===== Allow RETAKE (objective/MCQ tests) — ek single student ko fresh attempt dene do =====
+async function allowRetake(attId, examId, allow){
+  if(!allow){
+    try{ await api('/api/teacher/attempt/'+attId+'/allow-retake','POST',{allow:false}); toast('Retake turned off for this student.'); _examResultsRefresh(examId); }
+    catch(e){ toast(e.message||'Could not update',true); }
+    return;
+  }
+  _examResCss();
+  var old=document.getElementById('reup-ov'); if(old) old.remove();
+  var chips=['Technical issue during the test — allowing a fresh attempt.','Submitted by mistake before finishing.','Practice retake to improve the score.'];
+  var ov=document.createElement('div'); ov.className='reup-ov'; ov.id='reup-ov';
+  ov.innerHTML='<div class="reup-card" role="dialog" aria-modal="true">'
+    +'<div class="reup-hd"><b>'+ic('refresh')+'Allow this student to retake the test</b><p>The student can attempt this test again from scratch. Their previous answers are cleared and the new score replaces the old one.</p></div>'
+    +'<div class="reup-bd"><label>Reason (optional)</label>'
+      +'<textarea class="reup-ta" id="reup-ta" placeholder="Optional — e.g. Technical issue during the test. Shown to the student in a notification."></textarea>'
+      +'<div class="reup-chips">'+chips.map(function(c){return '<span class="reup-chip" onclick="_reupChip(this)">'+esc(c)+'</span>';}).join('')+'</div>'
+      +'<div class="reup-hint">The student is notified instantly and can retake right away.</div>'
+    +'</div>'
+    +'<div class="reup-ft"><button class="btn btn-ghost" onclick="_reupClose()">Cancel</button>'
+      +'<button class="btn btn-primary" id="reup-go" onclick="_retakeSubmit('+attId+','+examId+')">'+ic('check')+' Allow Retake &amp; Notify</button></div>'
+    +'</div>';
+  ov.addEventListener('click',function(e){ if(e.target===ov) _reupClose(); });
+  document.body.appendChild(ov);
+  var ta=document.getElementById('reup-ta'); if(ta) ta.focus();
+}
+async function _retakeSubmit(attId, examId){
+  var ta=document.getElementById('reup-ta'); var remark=(ta&&ta.value||'').trim();
+  var btn=document.getElementById('reup-go'); if(btn){ btn.disabled=true; btn.style.opacity=.6; }
+  try{
+    await api('/api/teacher/attempt/'+attId+'/allow-retake','POST',{allow:true,remark:remark});
+    _reupClose();
+    toast('Retake allowed. The student has been notified and can attempt the test fresh.');
+    _examResultsRefresh(examId);
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.style.opacity=1; }
+    toast(e.message||'Could not allow retake',true);
   }
 }
 // ===== Public shareable MCQ test (teacher): enable link, pick guest fields, responses, export =====
@@ -13447,8 +13503,11 @@ function _examAttRow(a,d,newSnap,showBatch){
   const dl=a.has_answer?`<button class="btn btn-ghost btn-sm" title="View answer sheet" onclick="viewStudentAnswer(${a.attempt_id},'${nm}')">${ic('eye')} View</button><button class="btn btn-ghost btn-sm ansdl-btn" onclick="downloadStudentAnswer(${a.attempt_id},'${nm}')">${ic('download')} Sheet</button>`:'';
   const btns=`<button class="btn btn-primary btn-sm" onclick="gradeManual(${a.attempt_id},${eid})">${graded?'Edit Marks':'Grade Manually'}</button>`;
   const isSubj=(d.exam.test_type||'')!=='mcq';
-  const reBtn=isSubj?`<button class="btn btn-ghost btn-sm exr-rebtn${a.reupload_allowed?' on':''}" onclick="allowReupload(${a.attempt_id},${eid})">${ic('refresh')} ${a.reupload_allowed?'Re-upload ON':'Allow Re-upload'}</button>`:'';
-  const reNote=(a.reupload_remark)?`<div class="exr-renote"><span class="exr-renote-h">${ic('refresh')} Re-upload ${a.reupload_allowed?'allowed':'note'}</span><span class="exr-renote-b">${esc(a.reupload_remark)}</span></div>`:'';
+  // Subjective -> Allow Re-upload (sheet). MCQ (objective) -> Allow Retake (fresh attempt), icon-type.
+  const reBtn=isSubj
+    ? `<button class="btn btn-ghost btn-sm exr-rebtn${a.reupload_allowed?' on':''}" onclick="allowReupload(${a.attempt_id},${eid})">${ic('refresh')} ${a.reupload_allowed?'Re-upload ON':'Allow Re-upload'}</button>`
+    : (graded?`<button class="btn btn-ghost btn-sm exr-rebtn exr-retake${a.reupload_allowed?' on':''}" title="${a.reupload_allowed?'Retake is ON — tap to turn off':'Allow this student to retake the test fresh (new score replaces old)'}" aria-label="Allow retake" onclick="allowRetake(${a.attempt_id},${eid},${a.reupload_allowed?'false':'true'})">${ic('refresh')}${a.reupload_allowed?'<span class="exr-rtx"> Retake ON</span>':''}</button>`:'');
+  const reNote=(a.reupload_remark)?`<div class="exr-renote"><span class="exr-renote-h">${ic('refresh')} ${isSubj?'Re-upload':'Retake'} ${a.reupload_allowed?'allowed':'note'}</span><span class="exr-renote-b">${esc(a.reupload_remark)}</span></div>`:'';
   const bTag=(showBatch&&a.batch_label)?` <span class="xm-chip" style="font-size:.58rem;color:#9a7d1a">${ic('folder')} ${esc(a.batch_label)}</span>`:'';
   const det=[
     ['Student ID', a.student_code],['Phone', a.phone],['Batch', a.batch],
@@ -25653,7 +25712,7 @@ function examCardHTML(e, isNew){
     stPill=_future?`<span class="tx-pill tx-up">UPCOMING</span>`:(isM?`<span class="tx-pill g">INSTANT RESULT</span>`:`<span class="tx-pill s">TEACHER GRADES</span>`);
   }
   let action = e.reupload_allowed
-    ? `<button class="btn btn-primary btn-sm tx-reup" onclick="openExamPlayer(${e.id})">${ic('refresh')} Upload Again</button>`
+    ? `<button class="btn btn-primary btn-sm tx-reup" onclick="openExamPlayer(${e.id})">${ic('refresh')} ${isM?'Retake Test':'Upload Again'}</button>`
     : e.status==='graded'
     ? `<button class="btn btn-primary btn-sm" onclick="openExamResult(${e.id})">View Result${_got!=null?' \u00b7 '+_got+'/'+e.total_marks:''}</button>`
     : (e.status==='grading'||e.status==='marking')
@@ -26338,6 +26397,9 @@ function _plXhrSubmit(id, body, onprog){
 }
 async function _plSubmitSend(id, body){
   const ex=window._curExam;
+  // student ne jo language/medium chuna (en/hi/hg) wo attempt ke saath bhejo -> result usi
+  // language me dikhega (pehle result hamesha Hindi/bilingual dikhta tha — bug).
+  try{ if(body && typeof body==='object' && (body.lang==null||body.lang==='')) body.lang=_plMed; }catch(e){}
   window._plSubmitting=true;   // Phase 6: autosave/auto-submit se collision na ho
   if(window._plSaveT){ clearTimeout(window._plSaveT); window._plSaveT=null; }
   window._plRetryBody=body; window._plRetryId=id;   // keep answers safe for a retry
@@ -26442,29 +26504,39 @@ async function openExamResult(id){
     }
     const pct=r.total_marks?Math.round(r.total_awarded/r.total_marks*100):0;
     const vClass=r.verdict==='Excellent'?'exc':r.verdict==='Good'?'good':'imp';
-    const biling=r.medium==='Bilingual';
+    // RESULT LANGUAGE = jo student ne ATTEMPT ke time chuna tha (view_lang). Purane attempt me
+    // view_lang na ho to test ke medium par fallback (Hindi->hi, Bilingual->both, warna English).
+    const _vl=(r.view_lang||'').toLowerCase();
+    const vlang=(_vl==='hi'||_vl==='en'||_vl==='hg')?_vl:(r.medium==='Hindi'?'hi':(r.medium==='Bilingual'?'both':'en'));
+    const _pairLangs=(vlang==='hg'||vlang==='both');   // dono dikhao (English + Hindi)
+    const _optMed=(vlang==='both')?'hg':vlang;         // _mcqReviewHtml me 'both' = 'hg' (dono)
+    const _qTxtHtml=(it)=>{ const en=it.question||'', hi=(it.question_hi||'').trim();
+      if(vlang==='hi') return _fmtRich(hi||en);
+      if(_pairLangs) return _fmtRich(en)+((hi&&hi!==String(en).trim())?`<div class="rs-qtext-hi">${_fmtRich(hi)}</div>`:'');
+      return _fmtRich(en); };
     const isMcq=r.test_type==='mcq';
     try{ if(isMcq) _gmMcqCss(); }catch(e){}
     const items=r.results.map(it=>{
       if(isMcq&&it.correct_answer!==undefined){
         const ok=!!it.is_correct;
         const your=(it.your_answer===null||it.your_answer===undefined||it.your_answer==='')?'Not answered':it.your_answer;
-        const ex_=(biling&&it.explanation_hi)?(it.explanation||'')+'\n'+it.explanation_hi:(it.explanation||'');
+        const ex_=(vlang==='hi')?((it.explanation_hi||it.explanation||''))
+                 :(_pairLangs&&it.explanation_hi)?((it.explanation||'')+'\n'+it.explanation_hi):(it.explanation||'');
         // Premium Google-Form jaisa review: saare options, tumhara chosen + correct highlight.
-        // Options na ho (purana data) to purana "Your/Correct answer" text fallback.
+        // Options student ki chosen language me hi dikhte hain (_optMed). Options na ho (purana data) to fallback text.
         const review=(Array.isArray(it.options)&&it.options.length)
-          ? _mcqReviewHtml({options:it.options, options_hi:it.options_hi, correct_option:it.correct_answer}, it.your_answer, true)
+          ? _mcqReviewHtml({options:it.options, options_hi:it.options_hi, correct_option:it.correct_answer}, it.your_answer, true, _optMed)
           : `<div class="rs-ans-row ${ok?'ok':'bad'}"><span class="rs-ans-ic">${ok?ic('check'):'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</span><span><b>Your answer:</b> ${_fmtRich(String(your))}</span></div>${ok?'':`<div class="rs-ans-row ok"><span class="rs-ans-ic">${ic('check')}</span><span><b>Correct answer:</b> ${_fmtRich(String(it.correct_answer||''))}</span></div>`}`;
-        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${review}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(ex_)}</div>`:''}</div>`;
+        return `<div class="rs-q ${ok?'rs-ok':'rs-bad'}"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_qTxtHtml(it)}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${review}${ex_?`<div class="rs-expl"><b>Explanation:</b> ${_fmtRich(ex_)}</div>`:''}</div>`;
       }
-      return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_fmtRich(it.question)}${(biling&&it.question_hi)?`<div class="rs-qtext-hi">${_fmtRich(it.question_hi)}</div>`:''}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${it.remark?`<div class="rs-remark">${esc(it.remark)}</div>`:''}</div>`;
+      return `<div class="rs-q"><div class="rs-qhead"><div class="rs-qtext"><b>Q${it.q_no}.</b> ${_qTxtHtml(it)}</div><div class="rs-marks">${it.marks}/${it.max}</div></div>${it.remark?`<div class="rs-remark">${esc(it.remark)}</div>`:''}</div>`;
     }).join('');
     const st=localStorage.getItem('mvs_start_'+id);
     const dur=r.duration_min||r.duration||0;
     let dlBlock='';
     if(dur&&st){ const left=parseInt(st)+dur*60000-Date.now(); if(left>0)dlBlock=`<span class="rs-dl-note">The answer sheet download will be available after the test duration ends.</span>`; }
     const hasSol=isMcq||((r.results||[]).some(it=>it.model_answer||it.model));
-    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="viewMyAnswer(${id})">${ic('eye')} View My Answer Sheet</button><button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div><div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
+    el.innerHTML=`<div class="pl-head"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div class="pl-title">${esc(r.title)} — Result</div></div><div class="rs-score-card"><div><div class="rs-score-big">${r.total_awarded}/${r.total_marks}</div><div class="rs-score-sub">${pct}% scored</div></div><div class="rs-verdict ${vClass}">${esc(r.verdict||'')}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><span class="tx-pill g">CHECKING DONE ✓</span>${hasSol?`<button class="btn btn-primary btn-sm" onclick="_solHub(${id})">Solutions</button>`:''}${r.has_answer?(dlBlock||`<button class="btn btn-ghost btn-sm" onclick="viewMyAnswer(${id})">${ic('eye')} View My Answer Sheet</button><button class="btn btn-ghost btn-sm" onclick="downloadMyAnswer(${id})">${ic('download')} Download My Answer Sheet</button>`):''}</div>${(isMcq&&r.reupload_allowed)?`<div style="display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.13),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.4);border-left:4px solid var(--primary,#b8941f);border-radius:14px;padding:13px 15px;margin:4px 0 14px">${ic('refresh')}<div style="min-width:0;flex:1"><div style="font-weight:800;font-size:.98rem;color:var(--text,#2e2716)">Retake allowed by your teacher</div>${r.reupload_remark?`<div style="font-size:.88rem;color:var(--text,#2e2716);margin-top:3px;line-height:1.45">“${esc(r.reupload_remark)}”</div>`:''}<div style="font-size:.78rem;color:var(--text-muted,#8a7c55);margin-top:5px">You can attempt this test again — your new score will replace this one.</div><button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="openExamPlayer(${id})">${ic('refresh')} Retake Test Now</button></div></div>`:''}<div class="rs-list">${items}</div>${(r.feedback||'').trim()?`<div class="rs-feedback"><div class="rs-fb-title">Teacher's Suggestion <span class="rs-fb-lang"><button class="on" id="rsfb-en" onclick="rsFbLang('en')">EN</button><button id="rsfb-hi" onclick="rsFbLang('hi')">हिंदी</button></span></div><div class="rs-fb-text" id="rs-fb-text" data-en="${esc(r.feedback)}">${esc(r.feedback)}</div><div class="rs-fb-teacher">— ${esc(r.teacher_name||'Your Teacher')}</div></div>`:''}`;
     renderMath(el);
   }catch(e){ el.innerHTML=errHtml(e); }
 }

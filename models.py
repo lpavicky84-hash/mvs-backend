@@ -1026,6 +1026,7 @@ class Exam(Base):
     q_pdf       = Column(_BIGTEXT, nullable=True)   # Mission 75 PDF mode — question paper (R2 ref/base64)
     s_pdf       = Column(_BIGTEXT, nullable=True)   # answer/solution paper (students ko time khatam hone par)
     q_count     = Column(Integer, default=0)        # PDF test — total questions (attempted-count ke liye)
+    copy_group  = Column(String(40), nullable=True) # fresh copy ko alag card dene ke liye (NULL = purani sig-based grouping)
     created_at  = Column(DateTime, default=func.now())
     # ---- Public shareable test (Google-Form style link; guests bina login de sakein) ----
     public_token   = Column(String(40), nullable=True, index=True)  # random slug — /t/<token>
@@ -1286,6 +1287,7 @@ class ExamAttempt(Base):
     graded_at   = Column(DateTime, nullable=True)
     reupload_allowed = Column(Boolean, default=False)   # teacher ne is single student ko dubara upload allow kiya
     reupload_remark  = Column(Text, nullable=True)      # teacher ka reason — student ko test + notification me dikhta hai
+    view_lang    = Column(String(8), nullable=True)     # student ne attempt ke time jo language chuni (en|hi|hg) -> result usi me
 
 class ExamSession(Base):
     """Server-authoritative timer for a PORTAL (logged-in student) test (Phase 6).

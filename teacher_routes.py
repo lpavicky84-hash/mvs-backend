@@ -2612,7 +2612,12 @@ def teacher_exam_ranking(exam_id: int, db: Session = Depends(get_db), current_us
 # ===================== TEST (EXAM) dedup — ek test jo multiple batch me diya gaya =====================
 def _exam_sig(e):
     """Signature IDENTICAL across the copies of one test in different batches (copy preserves
-    subject/class/title/chapter/test_type/total_marks). One card per test instead of per batch."""
+    subject/class/title/chapter/test_type/total_marks). One card per test instead of per batch.
+    copy_group set ho (fresh copy / grouped copy) to wahi grouping decide karta hai -> fresh copy
+    ko apna alag card milta hai, chahe title/subject original jaisa hi ho."""
+    _cg = getattr(e, "copy_group", None)
+    if _cg:
+        return "cg:" + str(_cg)
     import re as _r
     cl = _r.sub(r"\D", "", str(getattr(e, "class_name", "") or ""))
     return "|".join([_subj_norm(e.subject or ""), cl,
@@ -5000,6 +5005,27 @@ def _notify_new_content(db, batch_id, subject, teacher_name, kind, exam_id=None,
     except Exception:
         db.rollback()
 
+def _bg_notify_new_content(exam_id, batch_id, subject, teacher_name, kind, class_name, gender):
+    """Notification fan-out ko response ke BAAD background me chalao. Bade batch (100-200 students)
+    me har student ko notify + push portal lookup request ke andar 40-50s le leta tha -> test create
+    slow. Ab create turant return hota hai; notifications background me jaate hain."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        _notify_new_content(db, batch_id, subject, teacher_name, kind,
+                            exam_id=exam_id, class_name=class_name, gender=gender)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
 def _parse_dur(v):
     """Test duration ko normalize: 0 / blank / invalid -> None (no time limit);
     positive int -> wahi. None matlab student jab chahe kar sakta hai, koi countdown nahi."""
@@ -5057,10 +5083,18 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                    explanation_hi=(q.get("explanation_hi") or None)))
         _made.append((ex.id, _tb))
     db.commit()
-    # Har target batch ke (ya global ho to sabhi) students ko notification.
+    # Har target batch ke students ko notification — ab BACKGROUND me (create turant return ho).
+    _gender = tp.gender
+    _tname = current_user.name
     for _eid, _tb in _made:
+        if background_tasks is not None:
+            try:
+                background_tasks.add_task(_bg_notify_new_content, _eid, _tb, _subj_in, _tname, "test", _cls_name, _gender)
+                continue
+            except Exception:
+                pass
         try:
-            _notify_new_content(db, _tb, _subj_in, current_user.name, "test", exam_id=_eid, gender=tp.gender)
+            _notify_new_content(db, _tb, _subj_in, _tname, "test", exam_id=_eid, class_name=_cls_name, gender=_gender)
         except Exception:
             pass
     # Bilingual Hindi is now filled on-demand by the portal (free). Paid Gemini
@@ -5405,7 +5439,7 @@ def list_exams(db: Session = Depends(get_db), current_user=Depends(get_teacher))
 
 
 @router.post("/exam/{eid}/copy")
-def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def copy_exam_to_batch(eid: int, payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """Ek existing test ko EK YA ZYADA batch ke liye COPY karo — poore questions same, bas naya batch +
     nayi date (aur chaaho to naya title). Original bilkul chhua nahi jaata. Multi-batch: Data Entry
     jaisa subject jo saare batches me hota hai, ek hi baar me sabhi ko diya ja sakta hai. Har target
@@ -5421,6 +5455,15 @@ def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depend
     _sched = _exam_parse_dt(payload.get("scheduled_at"))
     _title = ((payload.get("title") or "").strip() or src.title)
     _chapter = (payload.get("chapter") if payload.get("chapter") is not None else src.chapter)
+    # fresh=True  -> ye copy(ies) ek NAYA copy_group paate hain -> alag card, apne attempts (purane
+    #                batch ke attempts/comparison se bilkul alag). Saare chune batch ek hi naye card me.
+    # fresh=False -> source ka copy_group inherit (ya None) -> purane card me hi merge (current behavior).
+    _fresh = bool((payload or {}).get("fresh"))
+    if _fresh:
+        import uuid as _uuid
+        _cg = "cp" + _uuid.uuid4().hex[:18]
+    else:
+        _cg = getattr(src, "copy_group", None)
     qsrc = db.query(ExamQuestion).filter(ExamQuestion.exam_id == eid).order_by(ExamQuestion.q_no.asc(), ExamQuestion.id.asc()).all()
     made = []
     for tb in targets:
@@ -5429,7 +5472,7 @@ def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depend
             subject=src.subject, title=_title, chapter=_chapter,
             test_type=src.test_type, class_name=(src.class_name or ""), medium=src.medium,
             total_marks=src.total_marks, duration_min=src.duration_min,
-            scheduled_at=_sched, is_active=True, batch_id=tb)
+            scheduled_at=_sched, is_active=True, batch_id=tb, copy_group=_cg)
         db.add(new_ex); db.flush()
         for q in qsrc:
             db.add(ExamQuestion(
@@ -5440,9 +5483,19 @@ def copy_exam_to_batch(eid: int, payload: dict = Body(...), db: Session = Depend
                 explanation=q.explanation, explanation_hi=q.explanation_hi))
         made.append(new_ex.id)
     db.commit()
-    for tb in targets:
+    _cls_src = getattr(src, "class_name", "")
+    _tname = current_user.name
+    _gender = tp.gender
+    for idx, tb in enumerate(targets):
+        _eid = made[idx] if idx < len(made) else None
+        if background_tasks is not None and _eid:
+            try:
+                background_tasks.add_task(_bg_notify_new_content, _eid, tb, src.subject, _tname, "test", _cls_src, _gender)
+                continue
+            except Exception:
+                pass
         try:
-            _notify_new_content(db, tb, src.subject, current_user.name, "test", class_name=getattr(src,"class_name",""), gender=tp.gender)
+            _notify_new_content(db, tb, src.subject, _tname, "test", class_name=_cls_src, gender=_gender)
         except Exception:
             pass
     return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
@@ -6210,6 +6263,42 @@ def allow_attempt_reupload(attempt_id: int, payload: dict = Body(...),
             pass
     db.commit()
     return {"ok": True, "attempt_id": att.id, "reupload_remark": remark}
+
+
+@router.post("/attempt/{attempt_id}/allow-retake")
+def allow_attempt_retake(attempt_id: int, payload: dict = Body(...),
+                         db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """OBJECTIVE (MCQ) test: ek single student ko fresh RETAKE ki permission do (ya band karo).
+    reupload_allowed=True hone par student exam GET ka already_submitted False ho jaata hai ->
+    student dubara test de sakta hai; naya submit purane attempt ko replace kar deta hai. Status
+    'graded' hi rehta hai taaki retake se pehle result dikhe. Reason optional. allow=false -> band."""
+    _ensure_exam_columns(db)
+    tp = get_teacher_profile(current_user, db)
+    att = db.query(ExamAttempt).filter(ExamAttempt.id == attempt_id).first()
+    if not att:
+        raise HTTPException(404, "Attempt not found")
+    ex = db.query(Exam).filter(Exam.id == att.exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(403, "Not your test")
+    allow = bool((payload or {}).get("allow", True))
+    remark = ((payload or {}).get("remark") or "").strip()
+    att.reupload_allowed = allow
+    att.reupload_remark = (remark or None) if allow else None
+    if allow:
+        from models import StudentProfile
+        sp = db.query(StudentProfile).filter(StudentProfile.id == att.student_id).first()
+        if sp and getattr(sp, "user_id", None):
+            try:
+                notify(db, sp.user_id,
+                       "\U0001f504 Retake allowed: " + (ex.title or ex.subject or "Test"),
+                       "Your teacher has allowed you to retake this test. " +
+                       (("Reason: " + remark + ". ") if remark else "") +
+                       "Open it to attempt fresh — your new score will replace the old one.",
+                       "exam")
+            except Exception:
+                pass
+    db.commit()
+    return {"ok": True, "attempt_id": att.id, "reupload_allowed": allow}
 
 
 @router.post("/attempt/{attempt_id}/grade-manual")

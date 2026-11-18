@@ -3193,6 +3193,11 @@ def student_submit_exam(exam_id: int, payload: dict = Body(...), background_task
                       reupload_allowed=False, reupload_remark=_prev_remark,
                       attempted=(payload.get("attempted") if isinstance(payload.get("attempted"), list) else None),
                       skipped=(payload.get("skipped") if isinstance(payload.get("skipped"), list) else None))
+    try:
+        _vl = (payload.get("lang") or "").strip().lower()[:8]
+        att.view_lang = _vl if _vl in ("en", "hi", "hg") else None
+    except Exception:
+        att.view_lang = None
     db.add(att); db.flush()
     # Phase 6: server timer session ko final mark karo (resume band) — ye commit submit ke saath persist hota hai
     try:
@@ -3278,6 +3283,7 @@ def student_exam_result(exam_id: int, db: Session = Depends(get_db), current_use
             "total_awarded": att.total_awarded, "total_marks": ex.total_marks,
             "verdict": att.verdict, "feedback": att.overall_feedback,
             "test_type": ex.test_type, "medium": ex.medium, "results": items,
+            "view_lang": getattr(att, "view_lang", None),
             "has_answer": bool(att.answer_image_b64),
             "reupload_allowed": bool(getattr(att, "reupload_allowed", False)),
             "reupload_remark": (getattr(att, "reupload_remark", None) or "")}

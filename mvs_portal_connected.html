@@ -2646,6 +2646,14 @@ body.dark .cal-d.on{color:#34d399}
   .modal.cx .modal-close:hover{background:rgba(255,255,255,.28);transform:rotate(90deg)}
   .modal.cx .modal-body{padding:18px 20px 20px;background:#faf7ec;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#ddd3ae transparent}
   .modal.cx .modal-footer:empty{display:none}
+  /* premium pinned Create-Test bar — teacher kahi bhi scroll kare, button hamesha dikhe */
+  .modal.cx .modal-footer{background:#faf7ec;border-top:1px solid #ece3c6;padding:13px 20px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -12px 26px -16px rgba(90,70,15,.4);flex:none}
+  .modal.cx .ex-create-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:14px 18px;font-size:1rem;font-weight:800;letter-spacing:.01em;border:none;border-radius:14px;color:#2a2008;background:linear-gradient(135deg,#f3d072 0%,#d9a93f 52%,#b8841c 100%);box-shadow:0 12px 26px -8px rgba(184,132,28,.72),inset 0 1px 0 rgba(255,255,255,.4);cursor:pointer;transition:transform .12s,filter .12s}
+  .modal.cx .ex-create-btn:hover{filter:brightness(1.05)}
+  .modal.cx .ex-create-btn:active{transform:translateY(1px)}
+  .modal.cx .ex-create-btn:disabled{opacity:.7;cursor:wait}
+  .modal.cx .ex-create-btn .ex-cb-ic{display:inline-flex;align-items:center}
+  .modal.cx .ex-create-btn .ex-cb-ic svg{width:19px;height:19px;stroke-width:2.6}
   .modal.cx .ex-qtype-row{display:flex;align-items:center;gap:10px;margin:0 0 10px}
   .modal.cx .ex-qtype-lbl{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8a9ab5;white-space:nowrap}
   .modal.cx .ex-qtype{flex:1;max-width:310px;padding:9px 12px;border:2px solid #b8941f;border-radius:10px;font:inherit;font-size:.85rem;font-weight:700;color:#4a3c12;background:linear-gradient(135deg,#eef3fb,#e2ebf9);cursor:pointer}
