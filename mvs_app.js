@@ -51296,7 +51296,33 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ni .nb{flex:1;min-width:0}'+
   '#student-app .s-ni .nb .t{font-size:13.5px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:7px}'+
   '#student-app .s-ni .nb .s{font-size:11.5px;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
-  '#student-app .s-nbadge{font-size:8.5px;font-weight:800;color:#fff;background:#e25555;padding:2px 6px;border-radius:6px;letter-spacing:.5px;animation:sblink 1.1s infinite}'+
+  '#student-app .s-nbadge{font-size:8.5px;font-weight:800;color:#fff;background:#e25555;padding:2px 7px;border-radius:6px;letter-spacing:.5px;animation:sblink 1.1s infinite;display:inline-block;white-space:nowrap;flex:0 0 auto;vertical-align:middle;line-height:1.5}'+
+  '#student-app .s-ni .nb .t{flex-wrap:wrap}'+
+  '#student-app .s-av{background-size:cover;background-position:center}'+
+  '#student-app .s-tph{background-size:cover;background-position:center}'+
+  /* blinking count badge on quick-action tiles (new items) */
+  '@keyframes sbadgepulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}'+
+  '#student-app .s-tile .tbg{animation:sbadgepulse 1.2s infinite}'+
+  /* back button on section pages (phone) */
+  '#student-app .s-back{display:none}'+
+  '@media(max-width:'+BREAK+'px){#student-app:not(.s-on-home) .s-back{display:inline-flex}}'+
+  '#student-app .s-back{align-items:center;justify-content:center;width:40px;height:40px;border-radius:12px;background:var(--card);border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,0,0,.08);cursor:pointer;margin-right:4px;flex:0 0 auto}'+
+  '#student-app .s-back svg{width:20px;height:20px;stroke:var(--primary-dark,#a97f1e);fill:none;stroke-width:2.4}'+
+  /* universal search overlay */
+  '#student-app .s-srch{position:fixed;inset:0;z-index:1500;background:var(--bg);display:none;flex-direction:column}'+
+  '#student-app .s-srch.show{display:flex}'+
+  '#student-app .s-srch-top{display:flex;align-items:center;gap:10px;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top));border-bottom:1px solid var(--border);background:var(--card)}'+
+  '#student-app .s-srch-top .bk{width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}'+
+  '#student-app .s-srch-top .bk svg{width:20px;height:20px;stroke:var(--text);fill:none;stroke-width:2.2}'+
+  '#student-app .s-srch-top input{flex:1;border:none;outline:none;background:transparent;font-size:16px;color:var(--text);font-family:inherit}'+
+  '#student-app .s-srch-body{flex:1;overflow-y:auto;padding:10px 16px 20px}'+
+  '#student-app .s-sr-grp{font-size:10.5px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 2px 8px}'+
+  '#student-app .s-sr{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;background:var(--card);border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,0,0,.05);cursor:pointer;margin-bottom:8px}'+
+  '#student-app .s-sr .si{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}'+
+  '#student-app .s-sr .si svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:2}'+
+  '#student-app .s-sr .st{font-size:13.5px;font-weight:700;color:var(--text)}'+
+  '#student-app .s-sr .ss{font-size:11.5px;color:var(--text-muted);margin-top:2px}'+
+  '#student-app .s-sr-empty{text-align:center;color:var(--text-muted);font-size:13px;padding:40px 16px}'+
   '#student-app .s-pad{height:14px}'+
   /* bottom nav */
   '#student-app .s-botnav{position:fixed;left:0;right:0;bottom:0;height:72px;z-index:940;background:var(--card);border-top:1px solid var(--border);align-items:flex-start;justify-content:space-around;padding:8px 6px 0;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -6px 20px rgba(0,0,0,.08)}'+
@@ -51381,8 +51407,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
        soonRow('rate','Rate the App')+
        '<div class="s-row" onclick="_sShare()"><div class="ri c-green">'+svg('share')+'</div><div class="rl">Share with Friends</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>';
     h+='<div class="s-box" style="margin-top:12px"><div class="s-row lg" onclick="_sLogout()"><div class="ri">'+svg('logout')+'</div><div class="rl">Logout</div></div></div>';
-    h+='<div class="s-soc"><a href="https://youtube.com/@ManishVermaOfficial" target="_blank" rel="noopener" style="background:#ff0000"><svg viewBox="0 0 24 24"><path d="M23 7a3 3 0 0 0-2-2c-2-.5-9-.5-9-.5s-7 0-9 .5a3 3 0 0 0-2 2 31 31 0 0 0 0 10 3 3 0 0 0 2 2c2 .5 9 .5 9 .5s7 0 9-.5a3 3 0 0 0 2-2 31 31 0 0 0 0-10zM10 15V9l5 3z"/></svg></a></div>';
-    h+='<div class="s-foot">MVS Foundation · Student App</div></div>';
+    h+='<div class="s-soc">'+
+       '<a href="https://youtube.com/@ManishVermaOfficial" target="_blank" rel="noopener" style="background:#ff0000"><svg viewBox="0 0 24 24"><path d="M23 7a3 3 0 0 0-2-2c-2-.5-9-.5-9-.5s-7 0-9 .5a3 3 0 0 0-2 2 31 31 0 0 0 0 10 3 3 0 0 0 2 2c2 .5 9 .5 9 .5s7 0 9-.5a3 3 0 0 0 2-2 31 31 0 0 0 0-10zM10 15V9l5 3z"/></svg></a>'+
+       '<a href="https://instagram.com/manishvermaofficial" target="_blank" rel="noopener" style="background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg></a>'+
+       '<a href="https://t.me/manishvermaofficial" target="_blank" rel="noopener" style="background:#229ED9"><svg viewBox="0 0 24 24"><path d="M22 3 2 11l6 2 2 6 3-4 5 4 4-16z"/></svg></a>'+
+       '<a href="https://wa.me/" target="_blank" rel="noopener" style="background:#25D366"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.2-1.4A10 10 0 1 0 12 2zm4.5 12.1c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.5.1-.6.8-.8.9-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 0 0-.7.3A3 3 0 0 0 6 9.5c0 1.8 1.3 3.5 1.5 3.7s2.6 4 6.3 5.3c2.3.8 2.3.5 2.7.5a2.5 2.5 0 0 0 1.7-1.2 2 2 0 0 0 .1-1.2c0-.1-.3-.2-.5-.3z"/></svg></a>'+
+       '</div>';
+    h+='<div class="s-foot">MVS Foundation · Class Manager</div></div>';
     sheet.innerHTML=h; sheet.classList.add('show');
   }
   function soonRow(ic,lab){ return '<div class="s-row" style="opacity:.7"><div class="ri '+colStyle(ic)+'">'+svg(ic)+'</div><div class="rl">'+esc(lab)+'</div><span class="rtag soon">SOON</span><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'; }
@@ -51408,6 +51439,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   }
   function buildHome(app){
     var el=ensureHome(app); if(!el) return;
+    if(!el.querySelector('.s-hero')){   // build the shell ONLY once -> no flicker/reload on re-visit
     var nm=navMap(app);
     // quick action tiles = the 12 main sections, in order (only those that exist)
     var tiles=''; var ci=0;
@@ -51423,7 +51455,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
           '<button class="s-hic" onclick="_sGo(\'notifications\')">'+svg('notifications')+'<span class="s-hbadge" id="s-hbadge" style="display:none"></span></button>'+
           '<button class="s-hic" onclick="(window.toggleDark&&toggleDark())">'+svg('theme')+'</button>'+
         '</div></div>'+
-        '<div class="s-search" onclick="_sGo(\'qbank\')">'+'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg><span>Search material, tests, doubts...</span></div>'+
+        '<div class="s-search" onclick="_sOpenSearch()">'+'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg><span>Search material, tests, doubts...</span></div>'+
       '</div>'+
       '<div class="s-batchslot" id="s-batchslot"></div>'+
       '<div id="s-continue"></div>'+
@@ -51434,11 +51466,14 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       '</div>'+
       '<div class="s-sec" id="s-newsec" style="display:none"><div class="s-sec-h"><h3>New for you</h3></div><div class="s-new" id="s-new"></div></div>'+
       '<div class="s-pad"></div>';
+    }   // end build-once shell
 
     // relocate his working batch selector into the home — PHONE ONLY (desktop keeps it in the dashboard, untouched)
     safe(function(){ if(window.innerWidth<=BREAK){ var bs=document.getElementById('s-batch-sel'); var slot=document.getElementById('s-batchslot'); if(bs&&slot&&bs.parentNode!==slot) slot.appendChild(bs); } });
 
-    loadHomeData(app);
+    // refresh data silently with a short cache so re-visiting Home does NOT flash a reload
+    var now=Date.now();
+    if(!window._sHomeDataAt || (now-window._sHomeDataAt)>20000){ window._sHomeDataAt=now; loadHomeData(app); }
   }
 
   function statCard(col,icid,val,lab,go){ return '<div class="s-stat"'+(go?(' onclick="_sGo(\''+go+'\')"'):'')+'><div class="si '+col+'" style="'+gcol(col)+'">'+svg(icid)+'</div><div class="sv">'+esc(val)+'</div><div class="sl">'+esc(lab)+'</div></div>'; }
@@ -51447,6 +51482,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function loadHomeData(app){
     // greeting + name
     safe(function(){ var g=document.getElementById('s-hgt'); if(g&&typeof window.greetingText==='function') g.textContent=window.greetingText(); });
+    // student's own profile photo in the hero avatar
+    safe(function(){ var a=document.getElementById('s-hav'); if(!a) return;
+      if(window._myPhotoUrl){ a.style.backgroundImage='url('+window._myPhotoUrl+')'; a.textContent=''; return; }
+      var url=(typeof window._selfPhoto==='function')?window._selfPhoto('student'):'/api/student/photo';
+      if(typeof window._loadPhotoInto==='function') window._loadPhotoInto('s-hav', url);
+    });
     apiGet('/api/student/profile').then(function(prof){ prof=prof||{};
       var nm=(prof.student_name||prof.name||'Student'); var first=String(nm).split(' ')[0]||'Student';
       window._sHomeName=nm; window._sHomeSub=(prof.batch_name?('NIOS · '+prof.batch_name):'MVS Student');
@@ -51464,18 +51505,30 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       apiGet('/api/student/batch-board'+bq()).then(function(bb){ if(bb&&bb.me&&bb.me.rank!=null){ var r=document.getElementById('s-rankv'); if(r) r.textContent='#'+bb.me.rank; } }).catch(function(){});
     }).catch(function(){ var box=document.getElementById('s-stats'); if(box) box.style.display='none'; });
 
-    // continue (priority) + new-for-you (via workspace)
+    // continue (priority)
     apiGet('/api/student/workspace'+bq()).then(function(w){ w=w||{};
       var p=w.priority; var cc=document.getElementById('s-continue');
       if(cc && p && (p.label||p.title)){
         var act=(p.action||p.kind||'materials');
         cc.innerHTML='<div class="s-lift"><div class="s-cont" onclick="(window.wsGo&&wsGo(\''+esc(act)+'\'))"><div class="ci">'+svg('tests')+'</div><div style="flex:1;min-width:0"><div class="cl">Do this next</div><div class="ct">'+esc(p.label||p.title)+'</div></div><div class="cgo"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div></div>';
       }
-      // new-for-you from recent activity
-      var ac=(w.activity||[]).slice(0,3);
-      if(ac.length){ var nn=document.getElementById('s-new'), ns=document.getElementById('s-newsec');
-        if(nn&&ns){ nn.innerHTML=ac.map(function(a){ return '<div class="s-ni" onclick="(window.wsGo&&wsGo(\'materials\'))"><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(a.title||a.text||'Update')+' <span class="s-nbadge">NEW</span></div><div class="s">'+esc(a.subject||a.when||'')+'</div></div><svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg></div>'; }).join(''); ns.style.display=''; }
-      }
+    }).catch(function(){});
+
+    // new for you — newly uploaded class materials (correct source, deduped, recent first)
+    apiGet('/api/student/materials-v2'+bq()).then(function(mats){ mats=mats||[];
+      var newSet=null; try{ newSet=window._sMatNew; }catch(e){}
+      var seen={}, items=[];
+      mats.forEach(function(m){ if(!m||(m.type!=='notes'&&m.type!=='dpp')) return;
+        var title=String(m.title||m.name||m.chapter||'').trim(); if(!title) return;
+        var key=(m.id!=null?('id'+m.id):title.toLowerCase()); if(seen[key]) return; seen[key]=1;
+        items.push({title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||'')});
+      });
+      items.sort(function(a,b){ if(a.isNew!==b.isNew) return a.isNew?-1:1; return b.ts.localeCompare(a.ts); });
+      items=items.slice(0,4);
+      var nn=document.getElementById('s-new'), ns=document.getElementById('s-newsec'); if(!nn||!ns) return;
+      if(!items.length){ ns.style.display='none'; return; }
+      nn.innerHTML=items.map(function(it){ return '<div class="s-ni" onclick="(window.wsGo&&wsGo(\'materials\'))"><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(it.title)+(it.isNew?' <span class="s-nbadge">NEW</span>':'')+'</div><div class="s">'+esc(it.subject||'Class Material')+'</div></div><svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg></div>'; }).join('');
+      ns.style.display='';
     }).catch(function(){});
 
     // today's classes — teacher photo + LIVE/Upcoming/Done status (premium)
@@ -51488,17 +51541,19 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var nowMin=new Date().getHours()*60+new Date().getMinutes();
       var photos=[];
       wrap.innerHTML=list.map(function(c,i){
-        var subj=esc(c.subject||c.subject_name||c.part||c.chapter||'Class');
-        var tea=String(c.teacher||c.teacher_name||'');
-        var topic=esc(c.part||c.chapter||'');
-        var trline=esc(tea)+(topic?(' · '+topic):'');
+        var rawSub=String(c.subject||c.subject_name||'Class');
+        var tea=String(c.teacher_name||c.teacher||'');
+        var ch=String(c.chapter||''); var pt=String(c.part||'');
+        var topic=[ch,pt].filter(Boolean).join(' · ');           // chapter + part dono
+        var parts=[]; if(tea) parts.push(tea); if(topic) parts.push(topic);
+        var trline=esc(parts.join(' · '));
         var st=tkey(c.time); var done=!!c.class_done;
         var live=(!done && st<=nowMin && nowMin<=st+90);
         var up=(!done && st>nowMin);
         var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>'));
-        var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||'T').toUpperCase();
+        var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||rawSub[0]||'C').toUpperCase();
         var pid='stph_'+i; if(c.teacher_id) photos.push([pid, c.teacher_id]);
-        return '<div class="s-ttc'+(live?' live':'')+'"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+subj+'</div><div class="tr">'+trline+'</div></div>';
+        return '<div class="s-ttc'+(live?' live':'')+'"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div></div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
@@ -51533,6 +51588,40 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var sheet=document.createElement('div'); sheet.className='s-sheet'; sheet.onclick=function(e){ if(e.target===sheet) closeSheet(); }; app.appendChild(sheet);
   }
 
+  /* back button on section pages (phone): injected into the topbar, shown when NOT on home */
+  function addBackBtn(app){ var tb=app.querySelector('.main .topbar')||app.querySelector('.topbar'); if(!tb || tb.querySelector('.s-back')) return;
+    var b=document.createElement('div'); b.className='s-back'; b.title='Home'; b.onclick=function(){ sGo('dashboard'); };
+    b.innerHTML='<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>';
+    tb.insertBefore(b, tb.firstChild);
+  }
+
+  /* universal search overlay — searches sections + study material */
+  function buildSearch(app){ if(app.querySelector('.s-srch')) return;
+    var o=document.createElement('div'); o.className='s-srch';
+    o.innerHTML='<div class="s-srch-top"><div class="bk" onclick="_sCloseSearch()"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></div><input id="s-srch-in" placeholder="Search anything — sections, notes, tests..." autocomplete="off" autocorrect="off" spellcheck="false"></div><div class="s-srch-body" id="s-srch-body"></div>';
+    app.appendChild(o);
+    var inp=o.querySelector('#s-srch-in'); if(inp) inp.addEventListener('input', function(){ renderSearch(inp.value); });
+  }
+  function loadSearchData(){ if(window._sSearchMats) return;
+    apiGet('/api/student/materials-v2'+bq()).then(function(mats){
+      var seen={}; window._sSearchMats=(mats||[]).filter(function(m){return m&&(m.type==='notes'||m.type==='dpp');}).map(function(m){ return {title:String(m.title||m.name||m.chapter||''), subject:String(m.subject||'')}; }).filter(function(x){ if(!x.title) return false; var k=x.title.toLowerCase(); if(seen[k]) return false; seen[k]=1; return true; });
+      var inp=document.getElementById('s-srch-in'); renderSearch(inp?inp.value:'');
+    }).catch(function(){});
+  }
+  var SCOL=['c-gold','c-blue','c-green','c-red','c-purple','c-teal','c-orange','c-navy'];
+  function renderSearch(q){ var body=document.getElementById('s-srch-body'), app=document.getElementById('student-app'); if(!body||!app) return;
+    q=(q||'').trim().toLowerCase(); var html='';
+    var secs=readNav(app).filter(function(it){ return it.id!=='dashboard' && (!q || it.label.toLowerCase().indexOf(q)>=0); });
+    if(secs.length){ html+='<div class="s-sr-grp">Sections</div>'; secs.forEach(function(it,i){ html+='<div class="s-sr" onclick="_sGo(\''+it.id+'\');_sCloseSearch()"><div class="si '+SCOL[i%SCOL.length]+'">'+svg(it.id)+'</div><div><div class="st">'+esc(it.label)+'</div><div class="ss">Open section</div></div></div>'; }); }
+    if(q){ var mats=(window._sSearchMats||[]).filter(function(m){ return m.title.toLowerCase().indexOf(q)>=0 || (m.subject||'').toLowerCase().indexOf(q)>=0; }).slice(0,25);
+      if(mats.length){ html+='<div class="s-sr-grp">Study Material</div>'; mats.forEach(function(m){ html+='<div class="s-sr" onclick="(window.wsGo&&wsGo(\'materials\'));_sCloseSearch()"><div class="si c-gold">'+svg('materials')+'</div><div><div class="st">'+esc(m.title)+'</div><div class="ss">'+esc(m.subject||'Class Material')+'</div></div></div>'; }); }
+    }
+    if(!html) html='<div class="s-sr-empty">Kuch nahi mila. Doosra naam ya section try karo.</div>';
+    body.innerHTML=html;
+  }
+  window._sOpenSearch=function(){ var app=document.getElementById('student-app'); if(!app) return; buildSearch(app); var o=app.querySelector('.s-srch'); if(o) o.classList.add('show'); var inp=document.getElementById('s-srch-in'); if(inp){ inp.value=''; setTimeout(function(){ try{inp.focus();}catch(e){} },80); } renderSearch(''); loadSearchData(); };
+  window._sCloseSearch=function(){ var o=document.querySelector('#student-app .s-srch'); if(o) o.classList.remove('show'); };
+
   function wrapSPage(){ if(window._sPageWrapped || typeof window.sPage!=='function') return; var orig=window.sPage; window._sPageWrapped=true;
     window.sPage=function(page,el){ var r=orig.apply(this,arguments);
       try{ syncActive(page); var app=document.getElementById('student-app'); if(app){ var onHome=(page==='dashboard'); app.classList.toggle('s-on-home',onHome); if(onHome) buildHome(app); } }catch(e){}
@@ -51542,7 +51631,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   window._sGo=sGo; window._sOpenSheet=openSheet; window._sCloseSheet=closeSheet;
 
   function init(){ var app=document.getElementById('student-app'); if(!app) return false;
-    injectCss(); buildBar(app); wrapSPage(); syncActive('dashboard');
+    injectCss(); buildBar(app); addBackBtn(app); wrapSPage(); syncActive('dashboard');
     try{ app.classList.add('s-on-home'); buildHome(app);
       setTimeout(function(){ if(app.classList.contains('s-on-home')) buildHome(app); }, 1500);
     }catch(e){ /* fallback: show original dashboard */ app.classList.remove('s-on-home'); }
