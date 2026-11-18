@@ -58,15 +58,52 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 SESSION_SUPERSEDED = "SESSION_SUPERSEDED"
 
 
-def issue_session_token(db, user):
-    """Login ke waqt call karo: ek naya random session-id (sid) banata hai, use user pe store karta
-    hai (purana session supersede), aur token me sid daal ke return karta hai. Isse jab bhi koi NAYE
-    device pe login karega, purane device ka token mismatch ho ke apne-aap logout ho jaayega."""
-    import uuid
+def _role_val(user):
+    try:
+        return getattr(user.role, "value", user.role)
+    except Exception:
+        return None
+
+
+def _ua_is_mobile(request):
+    """User-Agent se phone/tablet vs computer pehchano. Phone => mobile slot, warna computer slot.
+    (iPad iPadOS 13+ Mac jaisa UA bhejta hai -> computer slot, theek hai.)"""
+    try:
+        ua = (request.headers.get("user-agent") or "") if request is not None else ""
+    except Exception:
+        ua = ""
+    import re as _re
+    return bool(_re.search(r"(Mobile|Android|iPhone|iPod|Windows Phone|BlackBerry|Opera Mini|IEMobile|webOS)", ua or "", _re.I))
+
+
+def issue_session_token(db, user, request=None):
+    """Login ke waqt call karo: naya random session-id (sid) banata hai aur token me daal ke return.
+    - STUDENT: do slot — 1 mobile + 1 computer. Login ki device-type ka slot naye sid se replace hota
+      hai (doosra slot waisa hi rehta hai) -> ek phone + ek computer saath; usi type ki nayi device
+      purani ko logout karti hai. Teen device (2 phone / 2 computer) kabhi saath active nahi.
+    - NON-STUDENT (teacher/admin/production/editor/youtuber/graphics): koi single-session enforce NAHI
+      -> ek saath kitni bhi device par login chal sakta hai (team ki problem fix)."""
+    import uuid, json
     sid = uuid.uuid4().hex
     token = create_access_token({"sub": str(user.id), "role": user.role, "sid": sid})
     try:
-        user.active_session_token = sid
+        if _role_val(user) == "student":
+            slot = "m" if _ua_is_mobile(request) else "d"
+            cur = {}
+            try:
+                cur = json.loads(getattr(user, "active_sessions", None) or "{}")
+                if not isinstance(cur, dict):
+                    cur = {}
+            except Exception:
+                cur = {}
+            cur[slot] = sid
+            cur = {k: cur[k] for k in ("m", "d") if cur.get(k)}
+            user.active_sessions = json.dumps(cur)
+            user.active_session_token = sid   # legacy/online-detect field (students)
+        else:
+            # non-students: store last sid for info, but get_current_user ismein enforce NAHI karta
+            user.active_session_token = sid
+            user.active_sessions = None
         db.add(user)
         db.commit()
     except Exception:
@@ -127,16 +164,25 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
             user = db.query(User).filter(User.id == int(user_id)).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User nahi mila ya inactive hai")
-    # SINGLE SESSION (all roles): token ka sid user ke stored active sid se match karna chahiye.
-    # Agar user ne kisi NAYE device pe login kiya -> stored sid badal gaya -> is purane token ka
-    # sid alag hoga -> 401 SESSION_SUPERSEDED (frontend professional message dikha ke logout karega).
-    # Backward-safe: sirf tab kick karo jab token me sid HO aur stored sid bhi HO aur dono alag hon
-    # (purane bina-sid token aur scoped tokens kabhi galti se logout na ho; naye login par enforce).
+    # SESSION ENFORCEMENT — sirf STUDENTS par (Class Manager). Baaki sabhi roles
+    # (teacher/admin/production/editor/youtuber/graphics) par KOI enforcement nahi ->
+    # ek saath multiple device par login allowed (team ki problem fix).
+    # Student: token ka sid do allowed slots (mobile/computer) me se kisi se match hona chahiye.
+    # Backward-safe: active_sessions set na ho (purane logged-in student / bina-sid token) to kick NAHI.
     try:
-        _tok_sid = payload.get("sid")
-        _cur_sid = getattr(user, "active_session_token", None)
-        if _tok_sid and _cur_sid and _tok_sid != _cur_sid:
-            raise HTTPException(status_code=401, detail=SESSION_SUPERSEDED)
+        if _role_val(user) == "student":
+            _tok_sid = payload.get("sid")
+            if _tok_sid:
+                import json
+                _raw = getattr(user, "active_sessions", None)
+                if _raw:
+                    try:
+                        _slots = json.loads(_raw) or {}
+                    except Exception:
+                        _slots = {}
+                    _valid = set(v for v in _slots.values() if v)
+                    if _valid and _tok_sid not in _valid:
+                        raise HTTPException(status_code=401, detail=SESSION_SUPERSEDED)
     except HTTPException:
         raise
     except Exception:

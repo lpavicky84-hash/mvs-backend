@@ -263,6 +263,8 @@ def ensure_columns():
         # single-session (all roles): active session-id per user
         "ALTER TABLE users ADD COLUMN active_session_token VARCHAR(64)",
         "CREATE INDEX ix_users_sess ON users (active_session_token)",
+        # students only: 1 mobile + 1 computer slot -> {"m":sid,"d":sid}
+        "ALTER TABLE users ADD COLUMN active_sessions TEXT",
         # multi-batch student: server-side current batch (har device pe same tests)
         "ALTER TABLE student_profiles ADD COLUMN active_batch_id INT",
         # v95: editable monthly target labels + custom targets
@@ -1046,17 +1048,29 @@ self.addEventListener('push', function(e){
     badge: '/push-badge.png',
     tag: d.tag || undefined,
     renotify: !!d.tag,
-    data: { url: d.url || '/' },
+    data: { url: d.url || '/', portal: d.portal || '' },
     vibrate: [90, 40, 90]
   };
   e.waitUntil(self.registration.showNotification(title, opts));
 });
+function _mvsPortalOf(u){
+  try{
+    var p = new URL(u, self.location.origin).pathname.toLowerCase();
+    var m = p.match(/^\\/(teacher|student|admin|production|editor|graphics|youtuber)(\\/|$)/);
+    return m ? m[1] : '';
+  }catch(_){ return ''; }
+}
 self.addEventListener('notificationclick', function(e){
   e.notification.close();
-  var url = (e.notification.data && e.notification.data.url) || '/';
+  var data = e.notification.data || {};
+  var url = data.url || '/';
+  // Target app (portal) — backend payload me bhejta hai; warna url se nikaalo. Isse teacher ka
+  // notification student app pe nahi khulega: sirf SAHI portal ka window focus karo.
+  var portal = data.portal || _mvsPortalOf(url);
   e.waitUntil(clients.matchAll({ type:'window', includeUncontrolled:true }).then(function(cl){
     for (var i=0;i<cl.length;i++){
-      if (cl[i].url.indexOf(self.location.origin) === 0 && 'focus' in cl[i]){
+      if (cl[i].url.indexOf(self.location.origin) === 0 && 'focus' in cl[i]
+          && (!portal || _mvsPortalOf(cl[i].url) === portal)){
         cl[i].focus(); if (cl[i].navigate) { try { cl[i].navigate(url); } catch(_){} } return;
       }
     }

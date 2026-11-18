@@ -30,7 +30,7 @@ def generate_user_id(name: str, db: Session) -> str:
         i += 1
 
 @router.post("/register", response_model=TokenResponse)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, request: Request = None, db: Session = Depends(get_db)):
     # Check if user_id taken
     existing = db.query(User).filter(User.user_id == req.user_id).first()
     if existing:
@@ -78,7 +78,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    token = issue_session_token(db, user)
+    token = issue_session_token(db, user, request)
     return TokenResponse(
         access_token=token,
         role=user.role,
@@ -94,8 +94,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account inactive hai. Admin se contact karein.")
 
-    # SINGLE SESSION (all roles): naya sid issue -> is user ki koi bhi purani device apne-aap logout.
-    token = issue_session_token(db, user)
+    # Session: student -> 1 phone + 1 computer slot; non-student -> no enforcement (multi-device ok).
+    token = issue_session_token(db, user, request)
     # students: online/last-seen detection sp.active_session_token par depend karta hai -> set rakho
     if user.role == UserRole.student and user.student_profile:
         try:
@@ -158,7 +158,7 @@ def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     if _sd:
         if not password or not verify_password(password, user.password):
             raise HTTPException(status_code=401, detail="Password galat hai. Bhool gaye ho to 'Forgot Password' dabao.")
-    token = issue_session_token(db, user)
+    token = issue_session_token(db, user, request)
     try:
         sp.active_session_token = token
         db.commit()
@@ -392,7 +392,7 @@ def sso_lookup(payload: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/sso-register")
-def sso_register(payload: dict, db: Session = Depends(get_db)):
+def sso_register(payload: dict, request: Request = None, db: Session = Depends(get_db)):
     phone, err = _sso_phone(payload or {})
     if err:
         raise HTTPException(status_code=400, detail=err)
@@ -406,7 +406,7 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
     # already exists? (double-tap safety)
     sp = db.query(StudentProfile).filter(StudentProfile.phone == phone).first()
     if sp and sp.user:
-        token = issue_session_token(db, sp.user)
+        token = issue_session_token(db, sp.user, request)
         return {"access_token": token, "role": "student", "name": sp.user.name, "existing": True}
     # portal par verify (server-to-server — spoof-proof)
     from ext_materials import portal_fetch_student
@@ -456,7 +456,7 @@ def sso_register(payload: dict, db: Session = Depends(get_db)):
                           class_name="", is_verified=True, plain_password=phone,
                           source="mvs_portal"))
     db.commit()
-    token = issue_session_token(db, u)
+    token = issue_session_token(db, u, request)
     return {"access_token": token, "role": "student", "name": name, "user_id": cand}
 
 
