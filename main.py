@@ -1081,7 +1081,12 @@ self.addEventListener('notificationclick', function(e){
     for (var i=0;i<cl.length;i++){
       if (cl[i].url.indexOf(self.location.origin) === 0 && 'focus' in cl[i]
           && (!portal || _mvsPortalOf(cl[i].url) === portal)){
-        cl[i].focus(); if (cl[i].navigate) { try { cl[i].navigate(url); } catch(_){} } return;
+        // App PEHLE SE khula hai -> focus karo. iOS PWA me navigate() bharosemand nahi, isliye
+        // deep-link URL postMessage se bhi bhejo -> app bina reload SAHI section khol lega.
+        cl[i].focus();
+        try { cl[i].postMessage({ type:'mvs_deeplink', url:url }); } catch(_){}
+        if (cl[i].navigate) { try { cl[i].navigate(url); } catch(_){} }
+        return;
       }
     }
     if (clients.openWindow) return clients.openWindow(url);

@@ -1098,7 +1098,10 @@ async function _restoreSession(){
   try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
   // refresh se pehle wala section YAAD rakho — open* functions history.state ko dashboard pe
   // reset kar dete hain, isliye open karne se PEHLE capture karo (warna hamesha dashboard khulta).
-  var _wantSt=null; try{ var _s0=history.state; if(_s0&&_s0.mvs&&_s0.app&&_s0.pg) _wantSt={app:_s0.app,pg:_s0.pg}; }catch(e){}
+  // Notification deep-link pending ho to last-section restore MAT karo (warna deep-link ke section
+  // ko overwrite kar deta tha -> dashboard/dusre section pe reh jaata).
+  var _dlPending=false; try{ _dlPending=_hasPendingDeepLink(); }catch(e){}
+  var _wantSt=null; try{ if(!_dlPending){ var _s0=history.state; if(_s0&&_s0.mvs&&_s0.app&&_s0.pg) _wantSt={app:_s0.app,pg:_s0.pg}; } }catch(e){}
   try{
     if(ROLE==='teacher') await openTeacher();
     else if(ROLE==='admin') await openAdmin();
@@ -1106,7 +1109,8 @@ async function _restoreSession(){
     else await openStudent();
   }catch(e){}
   // refresh par wahi section par wapas jao (dashboard nahi) — open* ke dashboard reset ke baad.
-  try{ if(_wantSt){ navTo(_wantSt.app,_wantSt.pg); } }catch(e){}
+  // (deep-link pending ho to skip -> deep-link ka section hi khule.)
+  try{ if(_wantSt && !_dlPending){ navTo(_wantSt.app,_wantSt.pg); } }catch(e){}
   return true;
 }
 window.addEventListener('DOMContentLoaded', function(){
@@ -1463,36 +1467,82 @@ function _notifResolvePage(role,type,fbPage,hint){
 // par ye chalega, section open karega, URL saaf karega (refresh pe dobara na chale). =====
 // Boot par hi query string capture (SPA kabhi URL clean kar deta hai login se pehle).
 try{ if(window._MVS_BOOT_QS===undefined) window._MVS_BOOT_QS=(location.search||''); }catch(e){}
-function _applyPushDeepLink(role){
+// URL path se portal nikaalo (student root '/' par hoti hai -> 'student').
+function _dlPortalFromUrl(u){
   try{
-    var sp=new URLSearchParams((window._MVS_BOOT_QS!==undefined?window._MVS_BOOT_QS:'')||location.search||'');
-    window._MVS_BOOT_QS='';   // ek hi baar use ho
-    var nt=sp.get('nt'); if(!nt) return;
+    var p=new URL(u, location.origin).pathname.toLowerCase();
+    var m=p.match(/^\/(teacher|student|admin|production|editor|graphics|youtuber)(\/|$)/);
+    if(m) return m[1];
+    if(p==='/'||p==='') return 'student';
+    return '';
+  }catch(e){ return ''; }
+}
+// CORE routing: query-string (?nt=&nr=) se SAHI section (aur doubt chat) kholo. Boot aur
+// service-worker message (iOS: app pehle se khula) dono isi ko call karte hain.
+function _dlRouteFromQS(role, qs){
+  try{
+    var sp=new URLSearchParams(qs||'');
+    var nt=sp.get('nt'); if(!nt) return false;
     var nr=sp.get('nr')||'';
+    // dedupe: 4s me same deep-link dobara apply na ho (boot + message race se double na chale)
+    var _sig=(role||'')+'|'+nt+'|'+nr;
+    var _now=Date.now();
+    if(window._dlLast && window._dlLast.sig===_sig && (_now-window._dlLast.ts)<4000) return true;
+    window._dlLast={sig:_sig, ts:_now};
     try{ history.replaceState({}, document.title, location.pathname); }catch(e){}
-    // PRODUCTION FAMILY (PM / editor / youtuber / graphics): apne nav + sections -> prodNav se jaao.
+    // PRODUCTION FAMILY (PM / editor / youtuber / graphics): prodNav se section pe jaao.
     if(['production','editor','youtuber','graphics'].indexOf(role)>=0){
       var PROD_GO={ production:{warning:'dashboard',announce:'announce',_def:'tasks'},
                     editor:{warning:'dashboard',_def:'tasks'},
                     youtuber:{warning:'dashboard',_def:'videos'},
                     graphics:{warning:'dashboard',_def:'tasks'} };
       var pm=PROD_GO[role]||{}; var ppg=pm[nt]||pm._def||'tasks';
-      setTimeout(function(){ try{ if(typeof prodNav==='function') prodNav(role, ppg); }catch(e){} }, 600);
-      return;
+      setTimeout(function(){ try{ if(typeof prodNav==='function') prodNav(role, ppg); }catch(e){} }, 300);
+      return true;
     }
     var page=''; try{ page=_notifResolvePage(role, nt, '', ''); }catch(e){}
-    if(!page) return;
+    if(!page) return false;
     var navFn=(role==='teacher')?tPage:(role==='admin')?aPage:(role==='student')?sPage:null;
-    if(!navFn) return;
+    if(!navFn) return false;
     setTimeout(function(){
       try{ navFn(page, null); }catch(e){}
       var appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
       try{ document.querySelectorAll('#'+appId+' .nav-item').forEach(function(el){ el.classList.remove('active'); if((el.getAttribute('onclick')||'').indexOf("'"+page+"'")>=0) el.classList.add('active'); }); }catch(e){}
       // DOUBT fast-reply: teacher ke liye us student ka doubt chat seedha khul jaaye (reply ready)
       if(role==='teacher' && nt.indexOf('doubt')>=0 && nr){ _openDoubtByStudentDL(nr); }
-    }, 550);
+    }, 350);
+    return true;
+  }catch(e){ return false; }
+}
+// BOOT path: fresh load par URL ke query se deep-link apply.
+function _applyPushDeepLink(role){
+  try{
+    var qs=(window._MVS_BOOT_QS!==undefined?window._MVS_BOOT_QS:'')||location.search||'';
+    window._MVS_BOOT_QS='';   // ek hi baar use ho
+    _dlRouteFromQS(role, qs);
   }catch(e){}
 }
+// Peek (consume nahi) — restore flow decide karta hai ki _wantSt restore skip karein.
+function _hasPendingDeepLink(){
+  try{ var q=(window._MVS_BOOT_QS!==undefined?window._MVS_BOOT_QS:'')||location.search||''; return /[?&]nt=/.test(q); }catch(e){ return false; }
+}
+// SERVICE-WORKER MESSAGE path: iOS PWA me app PEHLE SE khula ho to navigate() kaam nahi karta —
+// SW focused window ko postMessage se deep-link bhejta hai; yaha bina reload section khul jaata hai.
+try{
+  if(navigator.serviceWorker && !window._dlSwWired){
+    window._dlSwWired=true;
+    navigator.serviceWorker.addEventListener('message', function(ev){
+      try{
+        var d=ev&&ev.data||{};
+        if(d && d.type==='mvs_deeplink' && d.url){
+          var u=new URL(d.url, location.origin);
+          var role=_dlPortalFromUrl(d.url) || (typeof CURRENT_PORTAL!=='undefined'?CURRENT_PORTAL:'') || '';
+          if(role) _dlRouteFromQS(role, u.search);
+        }
+      }catch(e){}
+    });
+  }
+}catch(e){}
 function _openDoubtByStudentDL(sid){
   var tries=0;
   (function poll(){
