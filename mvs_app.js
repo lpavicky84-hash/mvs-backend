@@ -51373,7 +51373,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var out=[]; app.querySelectorAll('.sidebar-nav .nav-item').forEach(function(el){
       var oc=el.getAttribute('onclick')||''; var m=oc.match(/sPage\(\s*['"]([a-z0-9_]+)['"]/i); if(!m) return;
       var lab=el.querySelector('span:not(.badge)'); var bd=el.querySelector('.badge');
-      var bdg=(bd && bd.offsetParent!==null && (bd.textContent||'').trim()!=='0')?(bd.textContent||'').trim():'';
+      // badge "active" tabhi jab app ne use dikhaya ho. offsetParent use NAHI karte — phone pe
+      // sidebar off-canvas hone se offsetParent null aa sakta tha aur badge (12 etc.) chhup jaata tha.
+      var txt=bd?(bd.textContent||'').trim():'';
+      var shown=false; if(bd){ try{ shown=(bd.style.display!=='none') && (getComputedStyle(bd).display!=='none'); }catch(e){ shown=(bd.style.display!=='none'); } }
+      var bdg=(bd && shown && txt!=='' && txt!=='0')?txt:'';
       out.push({id:m[1], label:(lab?lab.textContent:m[1]).trim(), badge:bdg});
     });
     return out;
@@ -51547,6 +51551,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
     // Tiles + badges HAR baar refresh (build-once nahi) — isse late-inject hone wale nav items
     // (Academic Calendar, DPP Submit, Classes Material) aur unke badge counts turant aa jaate hain.
+    updateMatDppBadges();
     renderTiles(app);
     // notification bell ka count + blink
     refreshBell(app);
@@ -51555,6 +51560,20 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     // har buildHome pe dobara try — tabhi "refresh pe khaali home" wala issue theek hota hai.
     var now=Date.now();
     if(!window._sHomeOK || !window._sHomeDataAt || (now-window._sHomeDataAt)>20000){ window._sHomeDataAt=now; loadHomeData(app); }
+  }
+
+  /* Classes Material + DPP tile ke blink badge — NEW (unseen) uploads ka count _sMatNew se.
+     loadSDashboard home pe _sMatNew set karta hai; yahan se compute karte hain taaki readNav/
+     sidebar badge par bilkul depend na karein (phone pe wo reliable nahi tha). */
+  function updateMatDppBadges(){
+    try{ window._sTileBadges=window._sTileBadges||{};
+      var s=null; try{ s=window._sMatNew; }catch(e){}
+      var hasS=(s && typeof s.size==='number');
+      if(hasS && s.size>0) window._sTileBadges.materials=(s.size>99?'99+':String(s.size)); else delete window._sTileBadges.materials;
+      var mats=window._sHomeMats||window._sMats||[]; var dn=0;
+      if(hasS && mats && mats.length){ mats.forEach(function(m){ if(m&&m.type==='dpp'&&m.id!=null&&s.has(m.id)) dn++; }); }
+      if(dn>0) window._sTileBadges.dpp=dn; else delete window._sTileBadges.dpp;
+    }catch(e){}
   }
 
   /* Quick-action tiles — har buildHome pe fresh (nav late-inject + badge counts pick up) */
@@ -51596,7 +51615,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     if(window._sNavObs || typeof MutationObserver==='undefined') return;
     var nav=app.querySelector('.sidebar-nav');
     var t=null; var cb=function(){ if(t) clearTimeout(t); t=setTimeout(function(){
-      if(app.classList.contains('s-on-home')){ renderTiles(app); refreshBell(app); }
+      if(app.classList.contains('s-on-home')){ updateMatDppBadges(); renderTiles(app); refreshBell(app); }
     }, 140); };
     window._sNavObs=new MutationObserver(cb);
     if(nav) window._sNavObs.observe(nav, {childList:true, subtree:true, attributes:true, attributeFilter:['style','class'], characterData:true});
@@ -51653,12 +51672,10 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var key=(m.id!=null?('id'+m.id):title.toLowerCase()); if(seen[key]) return; seen[key]=1;
         items.push({title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||'')});
       });
-      // DPP quick-action tile ka blink badge — kitni NEW DPP aayi hain (abhi tak unseen)
-      safe(function(){ var dn=0; mats.forEach(function(m){ if(m&&m.type==='dpp'&&m.id!=null&&newSet&&newSet.has(m.id)) dn++; });
-        window._sTileBadges=window._sTileBadges||{};
-        if(dn>0) window._sTileBadges.dpp=dn; else delete window._sTileBadges.dpp;
-        var app2=document.getElementById('student-app'); if(app2) renderTiles(app2);
-      });
+      // Classes Material + DPP tile ke blink badge — materials-v2 + _sMatNew se KHUD compute,
+      // readNav/sidebar badge pe depend nahi (phone pe wo reliable nahi tha).
+      window._sHomeMats=mats;
+      safe(function(){ updateMatDppBadges(); var app2=document.getElementById('student-app'); if(app2) renderTiles(app2); });
       items.sort(function(a,b){ if(a.isNew!==b.isNew) return a.isNew?-1:1; return b.ts.localeCompare(a.ts); });
       items=items.slice(0,4);
       var nn=document.getElementById('s-new'), ns=document.getElementById('s-newsec'); if(!nn||!ns) return;
@@ -51698,9 +51715,18 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
-      updateTtNav();
+      scheduleTtNav();   // arrows ko layout settle hone ke baad measure karo (refresh pe gayab wala fix)
     }).catch(function(){});
     }).catch(function(){});
+  }
+  // updateTtNav ko turant + kai baar (layout/fonts/visibility settle hone par) chalao, aur
+  // resize/ResizeObserver par bhi — warna fresh refresh pe strip ki width 0/galat milti thi
+  // aur arrows chhup jaate the, baad me interaction par aate the.
+  function scheduleTtNav(){
+    try{ updateTtNav(); if(window.requestAnimationFrame) requestAnimationFrame(updateTtNav); }catch(e){}
+    [120,400,900,1600].forEach(function(ms){ setTimeout(function(){ try{ updateTtNav(); }catch(e){} }, ms); });
+    try{ if(!window._sTtResizeHooked){ window._sTtResizeHooked=true; window.addEventListener('resize', function(){ try{ updateTtNav(); }catch(e){} }); } }catch(e){}
+    try{ var s=document.getElementById('s-tt'); if(s && typeof ResizeObserver!=='undefined' && !window._sTtRO){ window._sTtRO=new ResizeObserver(function(){ try{ updateTtNav(); }catch(e){} }); window._sTtRO.observe(s); } }catch(e){}
   }
   function tkey(t){ t=String(t||''); var m=t.match(/(\d+):(\d+)\s*(am|pm)?/i); if(!m) return 0; var h=+m[1], mi=+m[2]; var ap=(m[3]||'').toLowerCase(); if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0; return h*60+mi; }
   window._sTt=function(d){ var s=document.getElementById('s-tt'); if(s) s.scrollBy({left:d*169,behavior:'smooth'}); };
