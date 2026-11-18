@@ -266,10 +266,8 @@ def notify(db, user_id, title, message, ntype="production", link=None):
         # DEEP-LINK: http link -> seedha; warna portal ke SAHI section (editor/graphics/PM/youtuber) par.
         if _lk.startswith("http://") or _lk.startswith("https://"):
             _url = _lk
-        elif _pp:
-            _url = "/%s?nt=%s" % (_pp, (ntype or "production"))
         else:
-            _url = "/"
+            _url = push_service.deeplink_url(_pp, (ntype or "production"))
         push_service.enqueue([user_id], _t, message, url=_url, portal=_pp)
     except Exception:
         pass

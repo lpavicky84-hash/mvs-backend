@@ -871,13 +871,8 @@ def notify(db, user_id, title, message, notif_type, ref=None):
         import push_service, re as _re
         _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
         _pp = push_service.portal_for_user(db, user_id)   # recipient ka portal -> SAHI app khule
-        # DEEP-LINK: notification tap karte hi uske SAHI section (+item) par jaaye, dashboard par nahi.
-        _url = ("/" + _pp) if _pp else "/"
-        if _pp and notif_type:
-            _url = "/%s?nt=%s" % (_pp, notif_type)
-            if ref not in (None, ""):
-                _url += "&nr=" + str(ref)
-        push_service.enqueue([user_id], _t, message, url=_url, portal=_pp)
+        # DEEP-LINK: tap karte hi SAHI section par (student root '/' par serve hoti hai -> helper sambhaalta hai).
+        push_service.enqueue([user_id], _t, message, url=push_service.deeplink_url(_pp, notif_type, ref), portal=_pp)
     except Exception:
         pass
 

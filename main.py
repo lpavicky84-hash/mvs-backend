@@ -1063,7 +1063,11 @@ function _mvsPortalOf(u){
   try{
     var p = new URL(u, self.location.origin).pathname.toLowerCase();
     var m = p.match(/^\\/(teacher|student|admin|production|editor|graphics|youtuber)(\\/|$)/);
-    return m ? m[1] : '';
+    if (m) return m[1];
+    // STUDENT portal sirf ROOT '/' par serve hoti hai (koi /student route nahi) -> root ko 'student' maano,
+    // taaki student ka notification uske pehle se khule window ko focus kare, naya tab na khole.
+    if (p === '/' || p === '') return 'student';
+    return '';
   }catch(_){ return ''; }
 }
 self.addEventListener('notificationclick', function(e){

@@ -124,6 +124,21 @@ def portal_for_user(db, user_id):
         return ""
 
 
+def deeplink_url(portal, notif_type, ref=None):
+    """Notification tap -> SAHI section ka URL. IMPORTANT: student portal sirf ROOT '/' par serve
+    hoti hai (koi '/student' route nahi -> warna 404 'Not Found' aata tha). Baaki sab portals ke
+    apne path hain (/teacher, /admin, /editor, ...). Query ?nt=<type>&nr=<ref> frontend deep-link ke liye."""
+    p = (portal or "").strip()
+    base = "" if p == "student" else p          # student -> root; baaki -> /<portal>
+    path = ("/" + base) if base else "/"
+    if p and notif_type:
+        q = "nt=" + str(notif_type)
+        if ref not in (None, ""):
+            q += "&nr=" + str(ref)
+        path = path + ("&" if "?" in path else "?") + q
+    return path
+
+
 def enqueue(user_ids, title, body, url="/", tag=None, portal=""):
     """Notification ke saath phone push queue me daalo (best-effort, non-blocking)."""
     if not enabled():

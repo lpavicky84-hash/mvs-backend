@@ -1020,13 +1020,12 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str, link=Non
         import push_service
         _pp = push_service.portal_for_user(db, user_id)   # recipient ka portal -> SAHI app khule
         _lk = (link or "")
-        # DEEP-LINK: http link -> seedha browser; warna recipient ke portal ke SAHI section par.
+        # DEEP-LINK: http link -> seedha browser; warna recipient ke portal ke SAHI section par
+        # (student root '/' par serve hoti hai -> helper sambhaalta hai, '/student' 404 nahi).
         if _lk.startswith("http://") or _lk.startswith("https://"):
             _url = _lk
-        elif _pp and notif_type:
-            _url = "/%s?nt=%s" % (_pp, notif_type)
         else:
-            _url = ("/" + _pp) if _pp else "/"
+            _url = push_service.deeplink_url(_pp, notif_type)
         push_service.enqueue([user_id], _push_title(title), message, url=_url, portal=_pp)
     except Exception:
         pass
