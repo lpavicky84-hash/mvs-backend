@@ -5140,3 +5140,19 @@ def student_event_click(eid: int, db: Session = Depends(get_db), current_user=De
     except Exception:
         db.rollback()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Social media links (admin-configurable; shown in the student "More" sheet)
+# Reads the same AppSetting key/value rows the admin writes via /api/admin/social-links.
+# ---------------------------------------------------------------------------
+_SOCIAL_LINK_KEYS = ["youtube", "instagram", "telegram", "whatsapp", "facebook"]
+
+@router.get("/social-links")
+def student_social_links(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import AppSetting
+    out = {}
+    for _k in _SOCIAL_LINK_KEYS:
+        _row = db.query(AppSetting).filter(AppSetting.key == "social_" + _k).first()
+        out[_k] = (_row.value if (_row and _row.value) else "")
+    return out

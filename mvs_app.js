@@ -12782,6 +12782,7 @@ async function loadAServices(){
       +'<div class="sm-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px"><div><h2 style="margin:0">MVS Services</h2><div style="font-size:.74rem;color:var(--text-muted);margin-top:3px">Products shown to students (Materials &rsaquo; MVS Services) — class/session/batch targeting + live tracker</div></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-sm dcr-open-btn" onclick="openDataControlRoom()">'+ic('chart')+' Data Control Room</button>'
       +'<button class="a-scbtn" onclick="openAServicesChat()">'+ic('chat')+' Services Chat<span id="a-svc-chat-badge" class="b" style="display:none"></span></button>'
+      +'<button class="btn btn-sm" onclick="openSocialLinksEditor()" title="Set the social media links shown to students in the More menu">'+ic('share')+' Social Links</button>'
       +'<button class="btn btn-primary btn-sm" onclick="openServiceEditor(null)">'+ic('plus')+' Add Product</button></div></div>'
       +'<div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">'+cards+'</div>';
     loadAEvents(); _scAdmBadge();
@@ -51339,7 +51340,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-sheet.show{display:block}'+
   '#student-app .s-sin{position:absolute;left:0;right:0;bottom:0;max-height:90vh;overflow-y:auto;background:var(--bg);border-radius:22px 22px 0 0;padding:8px 16px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.3);animation:ssup .28s cubic-bezier(.4,0,.2,1)}'+
   '@keyframes ssup{from{transform:translateY(100%)}to{transform:translateY(0)}}'+
-  '#student-app .s-grab{width:40px;height:4px;border-radius:3px;background:var(--border);margin:8px auto 14px}'+
+  '#student-app .s-grab{display:block;width:44px;height:5px;border-radius:3px;background:var(--border);margin:8px auto 10px;border:none;padding:0;cursor:pointer}'+
+  '#student-app .s-shead{display:flex;align-items:center;justify-content:space-between;margin:0 2px 10px}'+
+  '#student-app .s-shead-t{font-size:15px;font-weight:800;color:var(--text)}'+
+  '#student-app .s-sclose{width:38px;height:38px;border-radius:12px;border:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}'+
+  '#student-app .s-sclose svg{width:22px;height:22px;stroke:var(--text);fill:none;stroke-width:2.4}'+
   '#student-app .s-pcard{display:flex;align-items:center;gap:13px;background:linear-gradient(145deg,#132238,#213c5e);border-radius:18px;padding:15px;color:#fff;margin-bottom:6px}'+
   '#student-app .s-pcard .av{width:52px;height:52px;border-radius:15px;background:linear-gradient(135deg,#e7bf55,#a97f1e);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:21px;color:#2a2205}'+
   '#student-app .s-pcard .nm{font-size:17px;font-weight:800}'+
@@ -51418,7 +51423,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     readNav(app).forEach(function(it){ if(MAIN.indexOf(it.id)>=0 || it.id==='dashboard') return; var g=MORE_GRP[it.id]||'My Stuff'; (grp[g]=grp[g]||[]).push(it); });
     var name=(window._sHomeName||'Student');
     var sub=(window._sHomeSub||'MVS Student');
-    var h='<div class="s-sin"><div class="s-grab"></div>';
+    var h='<div class="s-sin"><button class="s-grab" onclick="_sCloseSheet()" aria-label="Close"></button>';
+    // clear close navigation taaki students (jinhe pata nahi) easily band kar sakein
+    h+='<div class="s-shead"><div class="s-shead-t">Menu</div><button class="s-sclose" onclick="_sCloseSheet()" aria-label="Close menu"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div>';
     h+='<div class="s-pcard"><div class="av">'+esc((name[0]||'S').toUpperCase())+'</div><div><div class="nm">'+esc(name)+'</div><div class="sb">'+esc(sub)+'</div></div><button class="ed" onclick="_sGo(\'profile\')">Profile</button></div>';
     function rows(items){ var s='<div class="s-box">'; items.forEach(function(it){ var col=COLORS[(MAIN.length+Math.abs(hash(it.id)))%COLORS.length];
       s+='<div class="s-row" onclick="_sGo(\''+it.id+'\')"><div class="ri '+colStyle(it.id)+'">'+svg(it.id)+'</div><div class="rl">'+esc(it.label)+'</div>'+(it.badge?('<span class="rtag">'+esc(it.badge)+'</span>'):'')+'<svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'; }); return s+'</div>'; }
@@ -51431,15 +51438,67 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
        soonRow('rate','Rate the App')+
        '<div class="s-row" onclick="_sShare()"><div class="ri c-green">'+svg('share')+'</div><div class="rl">Share with Friends</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>';
     h+='<div class="s-box" style="margin-top:12px"><div class="s-row lg" onclick="_sLogout()"><div class="ri">'+svg('logout')+'</div><div class="rl">Logout</div></div></div>';
-    h+='<div class="s-soc">'+
-       '<a href="https://youtube.com/@ManishVermaOfficial" target="_blank" rel="noopener" style="background:#ff0000"><svg viewBox="0 0 24 24"><path d="M23 7a3 3 0 0 0-2-2c-2-.5-9-.5-9-.5s-7 0-9 .5a3 3 0 0 0-2 2 31 31 0 0 0 0 10 3 3 0 0 0 2 2c2 .5 9 .5 9 .5s7 0 9-.5a3 3 0 0 0 2-2 31 31 0 0 0 0-10zM10 15V9l5 3z"/></svg></a>'+
-       '<a href="https://instagram.com/manishvermaofficial" target="_blank" rel="noopener" style="background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg></a>'+
-       '<a href="https://t.me/manishvermaofficial" target="_blank" rel="noopener" style="background:#229ED9"><svg viewBox="0 0 24 24"><path d="M22 3 2 11l6 2 2 6 3-4 5 4 4-16z"/></svg></a>'+
-       '<a href="https://wa.me/" target="_blank" rel="noopener" style="background:#25D366"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.2-1.4A10 10 0 1 0 12 2zm4.5 12.1c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.5.1-.6.8-.8.9-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 0 0-.7.3A3 3 0 0 0 6 9.5c0 1.8 1.3 3.5 1.5 3.7s2.6 4 6.3 5.3c2.3.8 2.3.5 2.7.5a2.5 2.5 0 0 0 1.7-1.2 2 2 0 0 0 .1-1.2c0-.1-.3-.2-.5-.3z"/></svg></a>'+
-       '</div>';
+    // social icons ab ADMIN ke set kiye links se aate hain (demo links hata diye). Sirf jo
+    // link admin ne daala hai wahi icon dikhega. Admin inhe MVS Services page se set karta hai.
+    h+='<div class="s-soc" id="s-soc"></div>';
     h+='<div class="s-foot">MVS Foundation · Class Manager</div></div>';
     sheet.innerHTML=h; sheet.classList.add('show');
+    renderSocial();
   }
+
+  /* social media icons — admin-configured (GET /api/student/social-links). Blank ho to kuch na dikhe. */
+  var SOC_META={
+    youtube:{bg:'#ff0000', svg:'<svg viewBox="0 0 24 24"><path d="M23 7a3 3 0 0 0-2-2c-2-.5-9-.5-9-.5s-7 0-9 .5a3 3 0 0 0-2 2 31 31 0 0 0 0 10 3 3 0 0 0 2 2c2 .5 9 .5 9 .5s7 0 9-.5a3 3 0 0 0 2-2 31 31 0 0 0 0-10zM10 15V9l5 3z"/></svg>'},
+    instagram:{bg:'linear-gradient(45deg,#f09433,#dc2743,#bc1888)', svg:'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/></svg>'},
+    telegram:{bg:'#229ED9', svg:'<svg viewBox="0 0 24 24"><path d="M22 3 2 11l6 2 2 6 3-4 5 4 4-16z"/></svg>'},
+    whatsapp:{bg:'#25D366', svg:'<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15l-1.4 5 5.2-1.4A10 10 0 1 0 12 2zm4.5 12.1c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.5.1-.6.8-.8.9-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a1 1 0 0 0-.7.3A3 3 0 0 0 6 9.5c0 1.8 1.3 3.5 1.5 3.7s2.6 4 6.3 5.3c2.3.8 2.3.5 2.7.5a2.5 2.5 0 0 0 1.7-1.2 2 2 0 0 0 .1-1.2c0-.1-.3-.2-.5-.3z"/></svg>'},
+    facebook:{bg:'#1877F2', svg:'<svg viewBox="0 0 24 24"><path d="M14 8.5h2.5V5.5H14c-2 0-3.5 1.5-3.5 3.5v2H8v3h2.5V22h3v-7.5H16l.5-3h-3V9c0-.3.2-.5.5-.5z"/></svg>'}
+  };
+  var SOC_ORDER=['youtube','instagram','telegram','whatsapp','facebook'];
+  function _socHref(k,v){ v=String(v||'').trim(); if(!v) return ''; if(/^https?:\/\//i.test(v)) return v;
+    if(k==='whatsapp'){ var d=v.replace(/[^0-9]/g,''); return d?('https://wa.me/'+d):''; }
+    return 'https://'+v;
+  }
+  function renderSocial(){
+    var host=document.getElementById('s-soc'); if(!host) return;
+    function paint(cfg){ cfg=cfg||{}; var html='';
+      SOC_ORDER.forEach(function(k){ var href=_socHref(k, cfg[k]); if(!href||!SOC_META[k]) return;
+        html+='<a href="'+esc(href)+'" target="_blank" rel="noopener" style="background:'+SOC_META[k].bg+'">'+SOC_META[k].svg+'</a>';
+      });
+      host.innerHTML=html; host.style.display=html?'flex':'none';
+    }
+    if(window._sSocial){ paint(window._sSocial); return; }
+    paint({});   // jab tak load ho, khaali (koi demo nahi)
+    apiGet('/api/student/social-links').then(function(cfg){ window._sSocial=cfg||{}; paint(window._sSocial); }).catch(function(){});
+  }
+
+  /* ---------- ADMIN: social links editor (MVS Services page ka "Social Links" button) ---------- */
+  var SOC_FIELDS=[['youtube','YouTube','https://youtube.com/@YourChannel'],
+                  ['instagram','Instagram','https://instagram.com/yourhandle'],
+                  ['telegram','Telegram','https://t.me/yourchannel'],
+                  ['whatsapp','WhatsApp','https://wa.me/9199XXXXXXXX  (ya sirf number)'],
+                  ['facebook','Facebook','https://facebook.com/yourpage']];
+  function _socEdForm(cfg){ cfg=cfg||{}; var body=document.getElementById('soc-ed-body'); if(!body) return;
+    var h='<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Jo link yahan daaloge wahi students ke <b>More</b> menu me icon ban kar dikhega. Khaali chhod do to us platform ka icon nahi dikhega. Poora link daalo (https:// ke saath).</div>';
+    SOC_FIELDS.forEach(function(f){ h+='<label style="display:block;font-weight:700;font-size:.82rem;margin:11px 0 4px">'+esc(f[1])+'</label>'+
+      '<input class="form-control" id="soc-ed-'+f[0]+'" placeholder="'+esc(f[2])+'" value="'+esc(cfg[f[0]]||'')+'" autocomplete="off">'; });
+    body.innerHTML=h;
+  }
+  window.openSocialLinksEditor=function(){
+    if(typeof window.showModal!=='function') return;
+    window.showModal('Social Media Links',
+      '<div id="soc-ed-body"><div class="spinner" style="margin:24px auto"></div></div>',
+      '<button class="btn btn-ghost" onclick="closeModal()">Close</button><button class="btn btn-primary" onclick="_saveSocialLinks(this)">Save Links</button>');
+    apiGet('/api/admin/social-links').then(function(cfg){ _socEdForm(cfg||{}); }).catch(function(){ _socEdForm({}); });
+  };
+  window._saveSocialLinks=function(btn){ if(btn) btn.disabled=true;
+    var payload={}; SOC_FIELDS.forEach(function(f){ var i=document.getElementById('soc-ed-'+f[0]); payload[f[0]]=i?String(i.value||'').trim():''; });
+    var fin=function(ok){ if(btn) btn.disabled=false;
+      if(ok){ window._sSocial=payload; try{ if(typeof toast==='function') toast('Social links saved — students ko turant dikhenge.'); }catch(e){} try{ if(typeof closeModal==='function') closeModal(); }catch(e){} }
+      else { try{ if(typeof toast==='function') toast('Save nahi hua, dobara try karo.'); }catch(e){} }
+    };
+    try{ window.api('/api/admin/social-links','POST',payload).then(function(){ fin(true); }).catch(function(){ fin(false); }); }catch(e){ fin(false); }
+  };
   function soonRow(ic,lab){ return '<div class="s-row" style="opacity:.7"><div class="ri '+colStyle(ic)+'">'+svg(ic)+'</div><div class="rl">'+esc(lab)+'</div><span class="rtag soon">SOON</span><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'; }
   function closeSheet(){ var s=document.querySelector('#student-app .s-sheet'); if(s) s.classList.remove('show'); }
   function hash(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return h; }
@@ -51518,14 +51577,32 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var t=extra.slice(0,4).join(' · ')+(extra.length>4?' & more':''); if(t) sub.textContent=t; }
   }
 
-  /* notification bell badge (count + blink) — source: sidebar Notifications nav badge */
+  /* notification bell badge (count + blink) — source: app ka topbar bell badge (#s-notif-badge),
+     jise notification system set karta hai (nav item me badge nahi hota). */
   function refreshBell(app){
     safe(function(){ var b=document.getElementById('s-hbadge'); if(!b) return;
-      var nm=navMap(app); var it=nm['notifications'];
-      var c=(it&&it.badge)?String(it.badge).replace(/[^0-9]/g,''):'';
+      var src=document.getElementById('s-notif-badge');
+      var shown=src && getComputedStyle(src).display!=='none';
+      var c=shown ? String(src.textContent||'').replace(/[^0-9]/g,'') : '';
       if(c && c!=='0'){ b.textContent=(parseInt(c,10)>99?'99+':c); b.style.display='flex'; }
       else { b.style.display='none'; }
     });
+  }
+
+  /* sidebar nav + bell badge LIVE watch — jaise hi app koi nav item inject kare ya kisi badge
+     ka count update kare, tiles/bell turant refresh. Isse "counting nahi aati" wala issue
+     permanently theek — chahe app badge der se set kare. */
+  function setupNavObserver(app){
+    if(window._sNavObs || typeof MutationObserver==='undefined') return;
+    var nav=app.querySelector('.sidebar-nav');
+    var t=null; var cb=function(){ if(t) clearTimeout(t); t=setTimeout(function(){
+      if(app.classList.contains('s-on-home')){ renderTiles(app); refreshBell(app); }
+    }, 140); };
+    window._sNavObs=new MutationObserver(cb);
+    if(nav) window._sNavObs.observe(nav, {childList:true, subtree:true, attributes:true, attributeFilter:['style','class'], characterData:true});
+    // bell badge topbar me hota hai (nav se bahar) — use bhi watch karo
+    var topbar=app.querySelector('.main .topbar')||app.querySelector('.topbar');
+    if(topbar) window._sNavObs.observe(topbar, {childList:true, subtree:true, attributes:true, attributeFilter:['style'], characterData:true});
   }
 
   function statCard(col,icid,val,lab,go){ return '<div class="s-stat"'+(go?(' onclick="_sGo(\''+go+'\')"'):'')+'><div class="si '+col+'" style="'+gcol(col)+'">'+svg(icid)+'</div><div class="sv">'+esc(val)+'</div><div class="sl">'+esc(lab)+'</div></div>'; }
@@ -51701,7 +51778,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   window._sGo=sGo; window._sOpenSheet=openSheet; window._sCloseSheet=closeSheet;
 
   function init(){ var app=document.getElementById('student-app'); if(!app) return false;
-    injectCss(); buildBar(app); addBackBtn(app); wrapSPage(); syncActive('dashboard');
+    injectCss(); buildBar(app); addBackBtn(app); wrapSPage(); syncActive('dashboard'); setupNavObserver(app);
     try{ app.classList.add('s-on-home'); buildHome(app);
       // Hard-refresh pe token/nav late aate hain -> buildHome ko kai baar try karo jab tak data
       // load na ho jaaye (_sHomeOK). Isse "refresh pe khaali home" (image 1) theek hota hai.

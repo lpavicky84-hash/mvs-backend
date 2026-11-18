@@ -12968,3 +12968,33 @@ def admin_events_delete(eid: int, db: Session = Depends(get_db), _=Depends(get_a
     db.delete(e)
     db.commit()
     return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# Social media links (set by admin here; students read them in the "More" sheet
+# via GET /api/student/social-links). Stored in the existing app_settings table.
+# ---------------------------------------------------------------------------
+_SOCIAL_LINK_KEYS = ["youtube", "instagram", "telegram", "whatsapp", "facebook"]
+
+@router.get("/social-links")
+def admin_get_social_links(db: Session = Depends(get_db)):
+    from models import AppSetting
+    out = {}
+    for _k in _SOCIAL_LINK_KEYS:
+        _row = db.query(AppSetting).filter(AppSetting.key == "social_" + _k).first()
+        out[_k] = (_row.value if (_row and _row.value) else "")
+    return out
+
+@router.post("/social-links")
+def admin_set_social_links(payload: dict = Body(...), db: Session = Depends(get_db)):
+    from models import AppSetting
+    for _k in _SOCIAL_LINK_KEYS:
+        if _k in payload:
+            _v = (str(payload.get(_k) or "")).strip()
+            _row = db.query(AppSetting).filter(AppSetting.key == "social_" + _k).first()
+            if _row:
+                _row.value = _v
+            else:
+                db.add(AppSetting(key="social_" + _k, value=_v))
+    db.commit()
+    return {"ok": True}
