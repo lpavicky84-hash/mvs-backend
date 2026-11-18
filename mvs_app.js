@@ -1458,6 +1458,39 @@ function _notifResolvePage(role,type,fbPage,hint){
   if(g && role==='admin'){ try{ if(!adminAllowed(g)) g=''; }catch(e){} }
   return g||fbPage||'';
 }
+// ===== PUSH DEEP-LINK: phone notification tap karte hi uske SAHI section (aur item) par le jaao —
+// dashboard par na atke. Backend push url me ?nt=<notif_type>&nr=<ref> bhejta hai; portal load hone
+// par ye chalega, section open karega, URL saaf karega (refresh pe dobara na chale). =====
+// Boot par hi query string capture (SPA kabhi URL clean kar deta hai login se pehle).
+try{ if(window._MVS_BOOT_QS===undefined) window._MVS_BOOT_QS=(location.search||''); }catch(e){}
+function _applyPushDeepLink(role){
+  try{
+    var sp=new URLSearchParams((window._MVS_BOOT_QS!==undefined?window._MVS_BOOT_QS:'')||location.search||'');
+    window._MVS_BOOT_QS='';   // ek hi baar use ho
+    var nt=sp.get('nt'); if(!nt) return;
+    var nr=sp.get('nr')||'';
+    try{ history.replaceState({}, document.title, location.pathname); }catch(e){}
+    var page=''; try{ page=_notifResolvePage(role, nt, '', ''); }catch(e){}
+    if(!page) return;
+    var navFn=(role==='teacher')?tPage:(role==='admin')?aPage:(role==='student')?sPage:null;
+    if(!navFn) return;
+    setTimeout(function(){
+      try{ navFn(page, null); }catch(e){}
+      var appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+      try{ document.querySelectorAll('#'+appId+' .nav-item').forEach(function(el){ el.classList.remove('active'); if((el.getAttribute('onclick')||'').indexOf("'"+page+"'")>=0) el.classList.add('active'); }); }catch(e){}
+      // DOUBT fast-reply: teacher ke liye us student ka doubt chat seedha khul jaaye (reply ready)
+      if(role==='teacher' && nt.indexOf('doubt')>=0 && nr){ _openDoubtByStudentDL(nr); }
+    }, 550);
+  }catch(e){}
+}
+function _openDoubtByStudentDL(sid){
+  var tries=0;
+  (function poll(){
+    var nm=''; try{ (window._tDoubts||[]).forEach(function(d){ if(String(d.student_id)===String(sid)) nm=d.student_name||nm; }); }catch(e){}
+    if(nm || tries>=7){ try{ openDoubtChat('teacher', parseInt(sid,10)||0, encodeURIComponent(nm||'')); }catch(e){} return; }
+    tries++; setTimeout(poll, 420);
+  })();
+}
 function _notifAvHtml(n,fb){
   if(!n.image_url) return '';
   return `<div class="notif-av" data-nimg="${esc(n.image_url)}">${esc(initials(fb||'MVS'))}<span class="mvs-b">M</span></div>`;
@@ -3155,6 +3188,7 @@ function enterTeacherApp(){
   document.getElementById('t-subject-screen').style.display='none';
   document.getElementById('student-app').classList.remove('active');
   document.getElementById('teacher-app').classList.add('active');
+  try{ _applyPushDeepLink('teacher'); }catch(e){}   // notification tap -> SAHI section (+doubt reply)
   document.getElementById('t-name').textContent=NAME+_tSuffix;
   document.getElementById('t-avatar').textContent=initials(NAME);
   loadTopAvatar('teacher');
@@ -7239,11 +7273,11 @@ function _tSubCss(){
     '.tsub-card:hover{transform:translateY(-3px);box-shadow:0 16px 34px -18px rgba(120,90,10,.55);border-color:var(--primary,#c98a2e)}',
     '.tsub-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#e6ad4e,#c98a2e)}',
     'body.dark .tsub-card{background:linear-gradient(180deg,#152a45,#0f2238);border-color:#2c405e}',
-    '.tsub-top{display:flex;align-items:center;gap:11px}',
+    '.tsub-top{display:flex;align-items:center;gap:11px;padding-right:34px}',
     '.tsub-ic{width:46px;height:46px;flex:0 0 46px;border-radius:13px;background:linear-gradient(135deg,#e6ad4e,#c98a2e);color:#241a05;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.82rem;overflow:hidden;background-size:cover;background-position:center;box-shadow:0 4px 12px -5px rgba(120,90,10,.5)}',
     '.tsub-ic.tsub-ic-photo{color:transparent;box-shadow:0 0 0 2px #fff,0 0 0 4px rgba(201,138,46,.5),0 6px 14px -6px rgba(120,90,10,.6)}',
     'body.dark .tsub-ic.tsub-ic-photo{box-shadow:0 0 0 2px #152a45,0 0 0 4px rgba(201,138,46,.6)}',
-    '.tsub-name{font-weight:800;font-size:1.02rem;color:var(--text,#2b2410);line-height:1.15}',
+    '.tsub-name{font-weight:800;font-size:1.02rem;color:var(--text,#2b2410);line-height:1.15;overflow-wrap:anywhere}',
     '.tsub-sub{font-size:.76rem;color:var(--text-muted,#8a7d5c);margin-top:2px}',
     '.tsub-foot{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}',
     '.tsub-chip{font-size:.68rem;font-weight:700;border-radius:999px;padding:3px 9px;border:1px solid var(--border,#ece2cd);color:var(--text-muted,#8a7d5c)}',
@@ -14553,6 +14587,7 @@ function openAdmin(){
   try{ _loadBatchCfg(); }catch(e){}   // admin-set batch-compulsory flag fetch (preview parity)
   try{ _initDownloadAppBtns(); _hideBootSplash(); }catch(e){}
   document.getElementById('admin-app').classList.add('active');
+  try{ _applyPushDeepLink('admin'); }catch(e){}   // notification tap -> SAHI section
   try{ initAdminDppTracker(); }catch(e){}
   try{ initAdminBatches(); }catch(e){}
   try{ initAdminRequests(); }catch(e){}
@@ -23224,6 +23259,7 @@ function enterStudentApp(){
   document.getElementById('subject-screen').style.display='none';
   document.getElementById('teacher-app').classList.remove('active');
   document.getElementById('student-app').classList.add('active');
+  try{ _applyPushDeepLink('student'); }catch(e){}   // notification tap -> SAHI section
   document.getElementById('s-name').textContent=NAME;
   document.getElementById('s-avatar').textContent=initials(NAME);
   loadTopAvatar('student');

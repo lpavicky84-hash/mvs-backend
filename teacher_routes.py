@@ -264,7 +264,7 @@ def get_teacher_profile(user, db):
     return profile
 
 def notify(db, user_id: int, title: str, message: str, notif_type: str,
-           sender_id=None, sender_role=None, batch_key=None, batch_label=None):
+           sender_id=None, sender_role=None, batch_key=None, batch_label=None, ref=None):
     """Helper to create notification (v93: sender/batch fields optional — views tracking)"""
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
                      sender_id=sender_id, sender_role=sender_role,
@@ -275,7 +275,13 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str,
         import push_service, re as _re
         _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
         _pp = push_service.portal_for_user(db, user_id)   # recipient ka portal -> SAHI app khule
-        push_service.enqueue([user_id], _t, message, url=(("/" + _pp) if _pp else "/"), portal=_pp)
+        # DEEP-LINK: tap karte hi SAHI section (+item) khule, dashboard par na atke.
+        _url = ("/" + _pp) if _pp else "/"
+        if _pp and notif_type:
+            _url = "/%s?nt=%s" % (_pp, notif_type)
+            if ref not in (None, ""):
+                _url += "&nr=" + str(ref)
+        push_service.enqueue([user_id], _t, message, url=_url, portal=_pp)
     except Exception:
         pass
 

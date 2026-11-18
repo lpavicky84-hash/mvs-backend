@@ -864,14 +864,20 @@ def student_set_active_batch(payload: dict = Body(...), db: Session = Depends(ge
     eff = _resolve_student_batch(db, sp, payload.get("batch_id"))
     return {"ok": True, "active_batch_id": eff}
 
-def notify(db, user_id, title, message, notif_type):
+def notify(db, user_id, title, message, notif_type, ref=None):
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
     db.add(n)
     try:
         import push_service, re as _re
         _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"
         _pp = push_service.portal_for_user(db, user_id)   # recipient ka portal -> SAHI app khule
-        push_service.enqueue([user_id], _t, message, url=(("/" + _pp) if _pp else "/"), portal=_pp)
+        # DEEP-LINK: notification tap karte hi uske SAHI section (+item) par jaaye, dashboard par nahi.
+        _url = ("/" + _pp) if _pp else "/"
+        if _pp and notif_type:
+            _url = "/%s?nt=%s" % (_pp, notif_type)
+            if ref not in (None, ""):
+                _url += "&nr=" + str(ref)
+        push_service.enqueue([user_id], _t, message, url=_url, portal=_pp)
     except Exception:
         pass
 
@@ -1546,7 +1552,7 @@ async def ask_doubt(
     db.add(doubt)
     if tp and tp.user:
         notify(db, tp.user_id, f"New Doubt — {current_user.name}",
-               f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt")
+               f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt", ref=sp.id)
     else:
         # Is subject ka koi teacher assign nahi — doubt kisi ke paas nahi jaayega.
         # Admin ko batao taaki Admin Inbox (Doubts page) se reply de sake.
