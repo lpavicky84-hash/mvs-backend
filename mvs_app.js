@@ -1470,6 +1470,16 @@ function _applyPushDeepLink(role){
     var nt=sp.get('nt'); if(!nt) return;
     var nr=sp.get('nr')||'';
     try{ history.replaceState({}, document.title, location.pathname); }catch(e){}
+    // PRODUCTION FAMILY (PM / editor / youtuber / graphics): apne nav + sections -> prodNav se jaao.
+    if(['production','editor','youtuber','graphics'].indexOf(role)>=0){
+      var PROD_GO={ production:{warning:'dashboard',announce:'announce',_def:'tasks'},
+                    editor:{warning:'dashboard',_def:'tasks'},
+                    youtuber:{warning:'dashboard',_def:'videos'},
+                    graphics:{warning:'dashboard',_def:'tasks'} };
+      var pm=PROD_GO[role]||{}; var ppg=pm[nt]||pm._def||'tasks';
+      setTimeout(function(){ try{ if(typeof prodNav==='function') prodNav(role, ppg); }catch(e){} }, 600);
+      return;
+    }
     var page=''; try{ page=_notifResolvePage(role, nt, '', ''); }catch(e){}
     if(!page) return;
     var navFn=(role==='teacher')?tPage:(role==='admin')?aPage:(role==='student')?sPage:null;
@@ -33912,6 +33922,7 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     var hi=document.getElementById(portal+'-hi'); if(hi) hi.textContent=_greet()+', '+(NAME||'');
     var dt=document.getElementById(portal+'-date'); if(dt) dt.textContent=_today();
     prodNav(portal,'dashboard');
+    try{ _applyPushDeepLink(portal); }catch(e){}   // notification tap -> SAHI section (editor/graphics/PM/youtuber)
     try{ prodLoadProfilePhoto(portal); }catch(e){}
     // Editor/Graphics: agar aaj apne portal se koi kaam nahi dikha to ek baar leave check-in popup.
     if(portal==='editor'||portal==='graphics'){ try{ setTimeout(function(){ _attSelfCheck(portal); },900); }catch(e){} }
