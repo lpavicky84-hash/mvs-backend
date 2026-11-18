@@ -51100,3 +51100,219 @@ function pushEnableFromSettings(){ if(!window._vapidKey){ _pushInit().then(funct
 // SAHI portal ka home-screen app bane — teacher->/teacher, admin->/admin).
 try{ _installMetaInit(); }catch(e){}
 try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMetaInit(); }catch(e){} }); }catch(e){}
+
+
+/* ============================================================================
+   STUDENT PHONE UI  —  Bottom navigation bar + premium "More" sheet
+   ----------------------------------------------------------------------------
+   PURPOSE : Phone pe students ko easy navigation (bottom bar + More grid).
+   SCOPE   : ONLY #student-app, ONLY phones (<=900px).
+             Desktop/PC untouched. Teacher/Admin/Production untouched.
+             Section ka ANDAR ka content bilkul nahi chhua — ye sirf
+             navigation chrome add karta hai, existing sPage() ko call karta hai.
+   SAFE    : Purely additive. Kuch remove nahi. Hamburger/sidebar bhi chalta rehta.
+   ========================================================================== */
+(function(){
+  if (window._sMobNavInit) return; window._sMobNavInit = true;
+  var BREAK = 900;
+
+  /* ---- icons (page-id -> svg inner) ---- */
+  var IC = {
+    dashboard:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v10h14V10"/>',
+    teachers:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/>',
+    timetable:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+    acalendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01"/>',
+    mybatches:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    qbank:'<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+    materials:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    services:'<path d="M20 7h-9M14 17H5M17 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM7 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>',
+    dpp:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    tests:'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    doubts:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    homework:'<rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 4V2h6v2M9 13l2 2 4-4"/>',
+    syllabus:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/>',
+    resultcard:'<circle cx="12" cy="8" r="6"/><path d="M15.5 13 17 22l-5-3-5 3 1.5-9"/>',
+    progress:'<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
+    notifications:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    community:'<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+    profile:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>',
+    complaints:'<path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+    feedback:'<path d="M12 2l3 6.5 7 .6-5.3 4.6 1.6 6.9L12 17l-6.3 3.6 1.6-6.9L2 9.1l7-.6z"/>',
+    _def:'<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>'
+  };
+  /* tile colour rotation (premium gradients) */
+  var COLORS = ['g1','g2','g3','g4','g5','g6','g7','g8','g9','g10','g11','g12'];
+  function svg(id){ return '<svg viewBox="0 0 24 24" fill="none" stroke-width="2">'+(IC[id]||IC._def)+'</svg>'; }
+
+  /* ---- scoped CSS (uses portal's own theme vars -> auto cream/gold + dark) ---- */
+  var CSS =
+  '#student-app .s-botnav{display:none}'+
+  '#student-app .s-sheet{display:none}'+
+  '@media(max-width:'+BREAK+'px){'+
+    '#student-app .s-botnav{display:flex}'+
+    '#student-app .main{padding-bottom:calc(74px + env(safe-area-inset-bottom))}'+
+  '}'+
+  /* bottom nav */
+  '#student-app .s-botnav{position:fixed;left:0;right:0;bottom:0;height:72px;z-index:940;'+
+    'background:var(--card);border-top:1px solid var(--border);align-items:flex-start;'+
+    'justify-content:space-around;padding:8px 6px 0;padding-bottom:env(safe-area-inset-bottom);'+
+    'box-shadow:0 -6px 20px rgba(0,0,0,.08)}'+
+  '#student-app .s-botnav .nbi{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;'+
+    'border:none;background:none;cursor:pointer;position:relative;padding:3px 0;font-family:inherit}'+
+  '#student-app .s-botnav .nbi svg{width:23px;height:23px;stroke:var(--text-muted);fill:none;stroke-width:2;transition:stroke .15s,fill .15s}'+
+  '#student-app .s-botnav .nbi .l{font-size:9.5px;font-weight:700;color:var(--text-muted);transition:color .15s}'+
+  '#student-app .s-botnav .nbi.on svg{stroke:var(--primary);fill:color-mix(in srgb,var(--primary) 14%,transparent)}'+
+  '#student-app .s-botnav .nbi.on .l{color:var(--primary)}'+
+  '#student-app .s-botnav .nbi.on::before{content:"";position:absolute;top:-8px;width:30px;height:4px;'+
+    'border-radius:0 0 5px 5px;background:var(--primary)}'+
+  '#student-app .s-botnav .bdg{position:absolute;top:-2px;right:calc(50% - 22px);min-width:16px;height:16px;'+
+    'padding:0 4px;border-radius:8px;background:#e25555;color:#fff;font-size:9px;font-weight:800;'+
+    'display:flex;align-items:center;justify-content:center;border:2px solid var(--card)}'+
+  /* sheet (More) */
+  '#student-app .s-sheet{position:fixed;inset:0;z-index:980;background:rgba(2,8,20,.5)}'+
+  '#student-app .s-sheet.show{display:block}'+
+  '#student-app .s-sheet-in{position:absolute;left:0;right:0;bottom:0;max-height:88vh;overflow-y:auto;'+
+    'background:var(--bg);border-radius:22px 22px 0 0;padding:8px 16px calc(24px + env(safe-area-inset-bottom));'+
+    'box-shadow:0 -10px 40px rgba(0,0,0,.3);animation:ssheetup .28s cubic-bezier(.4,0,.2,1)}'+
+  '@keyframes ssheetup{from{transform:translateY(100%)}to{transform:translateY(0)}}'+
+  '#student-app .s-grab{width:40px;height:4px;border-radius:3px;background:var(--border);margin:8px auto 14px}'+
+  '#student-app .s-sheet h4{margin:0 2px 10px;font-size:11px;font-weight:800;letter-spacing:.6px;'+
+    'text-transform:uppercase;color:var(--text-muted)}'+
+  '#student-app .s-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px}'+
+  '#student-app .s-tile{background:var(--card);border:1px solid var(--border);border-radius:16px;'+
+    'padding:12px 4px 9px;text-align:center;cursor:pointer;position:relative;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
+  '#student-app .s-tile:active{transform:scale(.93)}'+
+  '#student-app .s-tile .ti{width:44px;height:44px;border-radius:14px;margin:0 auto 7px;display:flex;'+
+    'align-items:center;justify-content:center;box-shadow:0 6px 13px rgba(0,0,0,.18)}'+
+  '#student-app .s-tile .ti svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2}'+
+  '#student-app .s-tile .tl{font-size:10.5px;font-weight:700;line-height:1.15;color:var(--text)}'+
+  '#student-app .s-tile .tbg{position:absolute;top:6px;right:8px;min-width:16px;height:16px;padding:0 4px;'+
+    'border-radius:8px;background:#e25555;color:#fff;font-size:9px;font-weight:800;display:flex;'+
+    'align-items:center;justify-content:center;border:1.5px solid var(--card)}'+
+  '#student-app .s-tile .ti.g1{background:linear-gradient(135deg,#e7bf55,#b8941f)}'+
+  '#student-app .s-tile .ti.g2{background:linear-gradient(135deg,#5aa0e6,#2f6cb5)}'+
+  '#student-app .s-tile .ti.g3{background:linear-gradient(135deg,#34c08a,#1c8f63)}'+
+  '#student-app .s-tile .ti.g4{background:linear-gradient(135deg,#f06b6b,#c53e3e)}'+
+  '#student-app .s-tile .ti.g5{background:linear-gradient(135deg,#9b7ee0,#6244b0)}'+
+  '#student-app .s-tile .ti.g6{background:linear-gradient(135deg,#36b9b9,#1f8c8c)}'+
+  '#student-app .s-tile .ti.g7{background:linear-gradient(135deg,#f0994f,#d06d22)}'+
+  '#student-app .s-tile .ti.g8{background:linear-gradient(135deg,#ec6fa6,#c23e78)}'+
+  '#student-app .s-tile .ti.g9{background:linear-gradient(135deg,#6d78e0,#3f49b0)}'+
+  '#student-app .s-tile .ti.g10{background:linear-gradient(135deg,#8fc94f,#5a9a24)}'+
+  '#student-app .s-tile .ti.g11{background:linear-gradient(135deg,#4a6fa0,#263f66)}'+
+  '#student-app .s-tile .ti.g12{background:linear-gradient(135deg,#e77d7d,#b84a4a)}';
+
+  /* ---- inject <style> once ---- */
+  function injectCss(){
+    if (document.getElementById('s-mobnav-css')) return;
+    var st = document.createElement('style'); st.id='s-mobnav-css'; st.textContent=CSS;
+    document.head.appendChild(st);
+  }
+
+  /* ---- read current student nav items from the real sidebar (future-proof) ---- */
+  function readNav(app){
+    var out=[], cur=null;
+    var kids = app.querySelectorAll('.sidebar-nav > *');
+    kids.forEach(function(el){
+      if (el.classList.contains('nav-section')){ cur={group:(el.textContent||'').trim(), items:[]}; out.push(cur); return; }
+      if (el.classList.contains('nav-item')){
+        var oc = el.getAttribute('onclick')||'';
+        var m = oc.match(/sPage\(\s*['"]([a-z0-9_]+)['"]/i);
+        if(!m) return;
+        var lab = el.querySelector('span:not(.badge)');
+        var bdgEl = el.querySelector('.badge');
+        var bdg = (bdgEl && bdgEl.offsetParent!==null && (bdgEl.textContent||'').trim()!=='0') ? (bdgEl.textContent||'').trim() : '';
+        if(cur) cur.items.push({ id:m[1], label:(lab?lab.textContent:m[1]).trim(), badge:bdg });
+      }
+    });
+    return out;
+  }
+
+  /* ---- navigate helper: call portal's own sPage with the matching sidebar element ---- */
+  function sGo(page){
+    try{
+      var app=document.getElementById('student-app');
+      var el = app ? app.querySelector('.sidebar-nav .nav-item[onclick*="sPage(\''+page+'\'"]') : null;
+      if (typeof window.sPage==='function') window.sPage(page, el);
+    }catch(e){}
+    closeSheet();
+    syncActive(page);
+  }
+
+  /* ---- build the More sheet fresh each open (includes JS-injected items) ---- */
+  function openSheet(){
+    var app=document.getElementById('student-app'); if(!app) return;
+    var sheet=app.querySelector('.s-sheet'); if(!sheet) return;
+    var groups=readNav(app);
+    var ci=0, html='<div class="s-sheet-in"><div class="s-grab"></div>';
+    groups.forEach(function(g){
+      if(!g.items.length) return;
+      html+='<h4>'+esc(g.group)+'</h4><div class="s-tiles">';
+      g.items.forEach(function(it){
+        var col=COLORS[ci%COLORS.length]; ci++;
+        html+='<div class="s-tile" onclick="_sGo(\''+it.id+'\')"><div class="ti '+col+'">'+svg(it.id)+'</div>'+
+              (it.badge?('<span class="tbg">'+esc(it.badge)+'</span>'):'')+
+              '<div class="tl">'+esc(it.label)+'</div></div>';
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+    sheet.innerHTML=html;
+    sheet.classList.add('show');
+  }
+  function closeSheet(){ var s=document.querySelector('#student-app .s-sheet'); if(s) s.classList.remove('show'); }
+
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+  /* ---- bottom nav active highlight sync ---- */
+  var BOT=[['dashboard','Home'],['materials','Material'],['tests','Tests'],['dpp','DPP'],['__more','More']];
+  function syncActive(page){
+    var app=document.getElementById('student-app'); if(!app) return;
+    var map={qbank:'materials'}; // Study Material bhi Material tab ke paas highlight
+    var act = map[page]||page;
+    app.querySelectorAll('.s-botnav .nbi').forEach(function(b){
+      var p=b.getAttribute('data-p');
+      b.classList.toggle('on', p===act);
+    });
+  }
+
+  /* ---- build the bottom nav bar once ---- */
+  function buildBar(app){
+    if (app.querySelector('.s-botnav')) return;
+    var bar=document.createElement('div'); bar.className='s-botnav';
+    BOT.forEach(function(it){
+      var id=it[0], lab=it[1];
+      var b=document.createElement('button'); b.className='nbi'; b.setAttribute('data-p', id==='__more'?'__more':id);
+      var ic = id==='__more' ? '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>' : svg(id);
+      b.innerHTML=ic+'<span class="l">'+lab+'</span>';
+      b.onclick = (id==='__more') ? openSheet : function(){ sGo(id); };
+      bar.appendChild(b);
+    });
+    app.appendChild(bar);
+    var sheet=document.createElement('div'); sheet.className='s-sheet'; sheet.onclick=function(e){ if(e.target===sheet) closeSheet(); };
+    app.appendChild(sheet);
+  }
+
+  /* ---- wrap sPage so sidebar/hamburger navigation also syncs the bottom bar ---- */
+  function wrapSPage(){
+    if (window._sPageWrapped || typeof window.sPage!=='function') return;
+    var orig=window.sPage; window._sPageWrapped=true;
+    window.sPage=function(page, el){ var r=orig.apply(this, arguments); try{ syncActive(page); }catch(e){} return r; };
+  }
+
+  window._sGo = sGo;           // used by tile onclicks
+  window._sCloseSheet = closeSheet;
+
+  function init(){
+    var app=document.getElementById('student-app'); if(!app) return false;
+    injectCss(); buildBar(app); wrapSPage(); syncActive('dashboard');
+    return true;
+  }
+
+  /* run now if ready, else wait for #student-app to appear */
+  if (!init()){
+    var tries=0;
+    var iv=setInterval(function(){ if(init() || ++tries>60) clearInterval(iv); }, 500);
+    document.addEventListener('DOMContentLoaded', init);
+  }
+})();
