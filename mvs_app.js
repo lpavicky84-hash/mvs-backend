@@ -51157,12 +51157,24 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
                  community:'Community & Help', complaints:'Community & Help', feedback:'Community & Help' };
 
   var CSS =
+  /* ===== premium theme — STUDENT portal only, LIGHT mode only (dark + teacher/admin untouched) ===== */
+  'body:not(.dark) #student-app{'+
+    '--bg:#eceef4;'+
+    '--bg-card:#ffffff;--card:#ffffff;--panel:#ffffff;--glass-bg:#ffffff;'+
+    '--text:#1b2639;--text-muted:#6b7789;'+
+    '--border:#e3e8f0;'+
+    '--sidebar:#ffffff;--sidebar-text:#33415a;'+
+    'background:#eceef4;'+
+  '}'+
+  'body:not(.dark) #student-app .topbar{background:#ffffff}'+
   '#student-app .s-home{display:none}'+
   '#student-app .s-botnav{display:none}'+
   '#student-app .s-sheet{display:none}'+
   '@media(max-width:'+BREAK+'px){'+
     '#student-app.s-on-home .s-home{display:block}'+
     '#student-app.s-on-home #s-page-dashboard{display:none!important}'+
+    '#student-app.s-on-home .topbar{display:none}'+           /* home: hero replaces the duplicate topbar */
+    '#student-app .hamburger{display:none!important}'+        /* phone: sidebar not needed (bottom nav + More cover all) */
     '#student-app .s-botnav{display:flex}'+
     '#student-app .main{padding-bottom:calc(74px + env(safe-area-inset-bottom))}'+
   '}'+
@@ -51220,13 +51232,29 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttdots{display:flex;justify-content:center;gap:6px;margin-top:11px}'+
   '#student-app .s-ttdots i{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .2s}'+
   '#student-app .s-ttdots i.on{width:18px;border-radius:4px;background:var(--primary)}'+
+  /* today card: teacher photo + status (premium) */
+  '#student-app .s-ttc{min-width:172px}'+
+  '#student-app .s-ttc .ttc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}'+
+  '#student-app .s-tph{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#4a6fa0,#263f66);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex:0 0 auto;box-shadow:0 4px 10px rgba(0,0,0,.18)}'+
+  '#student-app .s-ttc.live .s-tph{border:2px solid rgba(255,255,255,.3)}'+
+  '#student-app .s-chip{font-size:9.5px;font-weight:800;padding:3px 8px;border-radius:8px}'+
+  '#student-app .s-chip.live{color:#fff;background:#e25555;display:inline-flex;align-items:center;gap:4px}'+
+  '#student-app .s-chip.live i{width:5px;height:5px;background:#fff;border-radius:50%;animation:sblink .9s infinite}'+
+  '#student-app .s-chip.up{color:var(--primary-dark);background:var(--primary-50)}'+
+  '#student-app .s-ttc.live .s-chip.up{color:#fff;background:rgba(255,255,255,.18)}'+
+  '#student-app .s-chip.done{color:#1f9d6b;background:rgba(31,157,107,.14)}'+
+  '#student-app .s-chip.over{color:var(--text-muted);background:rgba(0,0,0,.06)}'+
+  /* clickable affordances */
+  '#student-app .s-av{cursor:pointer}'+
+  '#student-app .s-stat{cursor:pointer;transition:transform .1s}'+
+  '#student-app .s-stat:active{transform:scale(.96)}'+
   /* tiles */
   '#student-app .s-ghdr{margin:2px 2px 10px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--text-muted)}'+
   '#student-app .s-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}'+
-  '#student-app .s-tile{background:var(--card);border:1px solid var(--border);border-radius:17px;padding:12px 4px 9px;text-align:center;position:relative;cursor:pointer;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
+  '#student-app .s-tile{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 5px 11px;text-align:center;position:relative;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.06);transition:transform .1s}'+
   '#student-app .s-tile:active{transform:scale(.93)}'+
-  '#student-app .s-tile .ti{width:46px;height:46px;border-radius:14px;margin:0 auto 7px;display:flex;align-items:center;justify-content:center;box-shadow:0 7px 15px rgba(0,0,0,.18)}'+
-  '#student-app .s-tile .ti svg{width:23px;height:23px;stroke:#fff;fill:none;stroke-width:2}'+
+  '#student-app .s-tile .ti{width:50px;height:50px;border-radius:15px;margin:0 auto 9px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 16px rgba(0,0,0,.2)}'+
+  '#student-app .s-tile .ti svg{width:25px;height:25px;stroke:#fff;fill:none;stroke-width:2}'+
   '#student-app .s-tile .tl{font-size:10.5px;font-weight:700;line-height:1.15;color:var(--text)}'+
   '#student-app .s-tile .tbg{position:absolute;top:6px;right:8px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e25555;color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--card)}'+
   '#student-app .s-tile .ti.g1{background:linear-gradient(135deg,#e7bf55,#c99a2e)}'+
@@ -51390,7 +51418,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
     el.innerHTML=
       '<div class="s-hero"><div class="s-htop">'+
-        '<div class="s-hi"><div class="s-av" id="s-hav">S</div><div><div class="s-greet" id="s-hgt">Hello</div><div class="s-nm" id="s-hnm">Student</div></div></div>'+
+        '<div class="s-hi"><div class="s-av" id="s-hav" onclick="_sGo(\'profile\')">S</div><div><div class="s-greet" id="s-hgt">Hello</div><div class="s-nm" id="s-hnm">Student</div></div></div>'+
         '<div class="s-hacts">'+
           '<button class="s-hic" onclick="_sGo(\'notifications\')">'+svg('notifications')+'<span class="s-hbadge" id="s-hbadge" style="display:none"></span></button>'+
           '<button class="s-hic" onclick="(window.toggleDark&&toggleDark())">'+svg('theme')+'</button>'+
@@ -51400,7 +51428,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       '<div class="s-batchslot" id="s-batchslot"></div>'+
       '<div id="s-continue"></div>'+
       '<div class="s-stats" id="s-stats"></div>'+
-      '<div class="s-sec" id="s-ttsec" style="display:none"><div class="s-sec-h"><h3>Today’s Classes</h3><div class="s-ttnav"><button onclick="_sTt(-1)">‹</button><button onclick="_sTt(1)">›</button></div></div><div class="s-tt" id="s-tt" onscroll="_sTtDots()"></div><div class="s-ttdots" id="s-ttdots"></div></div>'+
+      '<div class="s-sec" id="s-ttsec" style="display:none"><div class="s-sec-h"><h3>Today’s Classes</h3><div class="s-ttnav" id="s-ttnav" style="display:none"><button onclick="_sTt(-1)">‹</button><button onclick="_sTt(1)">›</button></div></div><div class="s-tt" id="s-tt" onscroll="_sTtDots()"></div><div class="s-ttdots" id="s-ttdots" style="display:none"></div></div>'+
       '<div class="s-sec"><div class="s-sec-h"><h3>Quick Actions</h3></div><div class="s-tiles">'+tiles+'</div>'+
         '<div class="s-morebar" onclick="_sOpenSheet()"><div class="mi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div><div class="mt"><div class="a">More Options</div><div class="b">'+esc(moreSub||'All sections')+'</div></div><div class="mg"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>'+
       '</div>'+
@@ -51413,7 +51441,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     loadHomeData(app);
   }
 
-  function statCard(col,icid,val,lab){ return '<div class="s-stat"><div class="si '+col+'" style="'+gcol(col)+'">'+svg(icid)+'</div><div class="sv">'+esc(val)+'</div><div class="sl">'+esc(lab)+'</div></div>'; }
+  function statCard(col,icid,val,lab,go){ return '<div class="s-stat"'+(go?(' onclick="_sGo(\''+go+'\')"'):'')+'><div class="si '+col+'" style="'+gcol(col)+'">'+svg(icid)+'</div><div class="sv">'+esc(val)+'</div><div class="sl">'+esc(lab)+'</div></div>'; }
   function gcol(c){ var m={'c-blue':'background:linear-gradient(135deg,#5aa0e6,#2f6cb5)','c-green':'background:linear-gradient(135deg,#34c08a,#1c8f63)','c-gold':'background:linear-gradient(135deg,#e7bf55,#c99a2e)','c-orange':'background:linear-gradient(135deg,#f0994f,#d06d22)','c-purple':'background:linear-gradient(135deg,#9b7ee0,#6244b0)','c-red':'background:linear-gradient(135deg,#f06b6b,#c53e3e)','c-teal':'background:linear-gradient(135deg,#36b9b9,#1f8c8c)','c-navy':'background:linear-gradient(135deg,#4a6fa0,#263f66)'}; return m[c]||m['c-navy']; }
 
   function loadHomeData(app){
@@ -51431,8 +51459,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var td=(perf.tests&&perf.tests.done!=null)?perf.tests.done:'—';
       var dd=(perf.dpp&&perf.dpp.done!=null)?perf.dpp.done:'—';
       var box=document.getElementById('s-stats'); if(!box) return;
-      var html=statCard('c-blue','tests',td,'Tests Done')+statCard('c-green','dpp',dd,'DPP Done');
-      box.innerHTML=html+'<div class="s-stat" id="s-rankcard"><div class="si c-gold" style="'+gcol('c-gold')+'">'+svg('resultcard')+'</div><div class="sv" id="s-rankv">—</div><div class="sl">Batch Rank</div></div>';
+      var html=statCard('c-blue','tests',td,'Tests Done','tests')+statCard('c-green','dpp',dd,'DPP Done','dpp');
+      box.innerHTML=html+'<div class="s-stat" id="s-rankcard" onclick="_sGo(\'resultcard\')"><div class="si c-gold" style="'+gcol('c-gold')+'">'+svg('resultcard')+'</div><div class="sv" id="s-rankv">—</div><div class="sl">Batch Rank</div></div>';
       apiGet('/api/student/batch-board'+bq()).then(function(bb){ if(bb&&bb.me&&bb.me.rank!=null){ var r=document.getElementById('s-rankv'); if(r) r.textContent='#'+bb.me.rank; } }).catch(function(){});
     }).catch(function(){ var box=document.getElementById('s-stats'); if(box) box.style.display='none'; });
 
@@ -51446,11 +51474,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       // new-for-you from recent activity
       var ac=(w.activity||[]).slice(0,3);
       if(ac.length){ var nn=document.getElementById('s-new'), ns=document.getElementById('s-newsec');
-        if(nn&&ns){ nn.innerHTML=ac.map(function(a){ return '<div class="s-ni" onclick="(window.wsGo&&wsGo(\'materials\'))"><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(a.title||a.text||'Update')+'</div><div class="s">'+esc(a.subject||a.when||'')+'</div></div></div>'; }).join(''); ns.style.display=''; }
+        if(nn&&ns){ nn.innerHTML=ac.map(function(a){ return '<div class="s-ni" onclick="(window.wsGo&&wsGo(\'materials\'))"><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(a.title||a.text||'Update')+' <span class="s-nbadge">NEW</span></div><div class="s">'+esc(a.subject||a.when||'')+'</div></div><svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg></div>'; }).join(''); ns.style.display=''; }
       }
     }).catch(function(){});
 
-    // today's classes
+    // today's classes — teacher photo + LIVE/Upcoming/Done status (premium)
     apiGet('/api/student/timetable-plan'+bq()).then(function(plan){ plan=plan||[];
       var today=safe(function(){ return (typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); })||new Date().toLocaleDateString('en-CA');
       var list=plan.filter(function(e){ return e && e.date===today; });
@@ -51458,13 +51486,23 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var wrap=document.getElementById('s-tt'), sec=document.getElementById('s-ttsec'); if(!wrap||!sec) return;
       if(!list.length){ sec.style.display='none'; return; }
       var nowMin=new Date().getHours()*60+new Date().getMinutes();
-      wrap.innerHTML=list.map(function(c){
+      var photos=[];
+      wrap.innerHTML=list.map(function(c,i){
         var subj=esc(c.subject||c.subject_name||c.part||c.chapter||'Class');
-        var tea=esc(c.teacher||c.teacher_name||'');
-        var st=tkey(c.time); var live=(!c.class_done && st<=nowMin && nowMin<=st+90);
-        return '<div class="s-ttc'+(live?' live':'')+'">'+(live?'<span class="s-ltag"><i></i>LIVE</span>':'')+'<div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+subj+'</div><div class="tr">'+tea+'</div></div>';
+        var tea=String(c.teacher||c.teacher_name||'');
+        var topic=esc(c.part||c.chapter||'');
+        var trline=esc(tea)+(topic?(' · '+topic):'');
+        var st=tkey(c.time); var done=!!c.class_done;
+        var live=(!done && st<=nowMin && nowMin<=st+90);
+        var up=(!done && st>nowMin);
+        var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>'));
+        var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||'T').toUpperCase();
+        var pid='stph_'+i; if(c.teacher_id) photos.push([pid, c.teacher_id]);
+        return '<div class="s-ttc'+(live?' live':'')+'"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+subj+'</div><div class="tr">'+trline+'</div></div>';
       }).join('');
-      sec.style.display=''; dots();
+      sec.style.display='';
+      photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
+      updateTtNav();
     }).catch(function(){});
   }
   function tkey(t){ t=String(t||''); var m=t.match(/(\d+):(\d+)\s*(am|pm)?/i); if(!m) return 0; var h=+m[1], mi=+m[2]; var ap=(m[3]||'').toLowerCase(); if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0; return h*60+mi; }
@@ -51474,10 +51512,17 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var max=s.scrollWidth-s.clientWidth; var r=max>0?s.scrollLeft/max:0; var idx=Math.round(r*(n-1));
     var h=''; for(var i=0;i<n;i++) h+='<i class="'+(i===idx?'on':'')+'"></i>'; d.innerHTML=h;
   }
+  // arrows + dots only when the strip actually overflows (conditional)
+  function updateTtNav(){ var s=document.getElementById('s-tt'), nav=document.getElementById('s-ttnav'), dd=document.getElementById('s-ttdots'); if(!s) return;
+    var overflow=s.scrollWidth > s.clientWidth + 4;
+    if(nav) nav.style.display=overflow?'flex':'none';
+    if(dd) dd.style.display=overflow?'flex':'none';
+    dots();
+  }
 
   /* -------- bottom nav -------- */
-  var BOT=[['dashboard','Home'],['materials','Material'],['tests','Tests'],['dpp','DPP'],['__more','More']];
-  function syncActive(page){ var app=document.getElementById('student-app'); if(!app) return; var map={qbank:'materials'}; var act=map[page]||page;
+  var BOT=[['dashboard','Home'],['timetable','Classes'],['tests','Tests'],['dpp','DPP'],['__more','More']];
+  function syncActive(page){ var app=document.getElementById('student-app'); if(!app) return; var map={acalendar:'timetable'}; var act=map[page]||page;
     app.querySelectorAll('.s-botnav .nbi').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-p')===act); }); }
   function buildBar(app){ if(app.querySelector('.s-botnav')) return;
     var bar=document.createElement('div'); bar.className='s-botnav';
