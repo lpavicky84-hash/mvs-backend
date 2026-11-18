@@ -51385,6 +51385,27 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function bq(){ return safe(function(){ return (typeof window._bq==='function')?window._bq():''; })||''; }
   function apiGet(path){ try{ if(typeof window.api==='function') return window.api(path); }catch(e){} return Promise.reject(); }
 
+  /* subject -> teacher {name,suffix,teacher_id,has_photo} map from "Know Your Teacher"
+     (/api/student/my-teachers). Cached once per session. Timetable entry me teacher
+     missing ho to yahi se subject ke teacher ka naam + photo nikaalte hain. */
+  function loadTeacherMap(){
+    if(window._sTeachMapP) return window._sTeachMapP;
+    window._sTeachMapP=apiGet('/api/student/my-teachers').then(function(ts){
+      var map={}; (ts||[]).forEach(function(t){ if(!t||!t.subject) return;
+        var k=String(t.subject).trim().toLowerCase();
+        if(!map[k]) map[k]={name:String(t.name||''),suffix:String(t.suffix||''),teacher_id:t.teacher_id,has_photo:!!t.has_photo};
+      });
+      return map;
+    }).catch(function(){ return {}; });
+    return window._sTeachMapP;
+  }
+  function teaLookup(map,subj){ if(!map||!subj) return null;
+    var k=String(subj).trim().toLowerCase(); if(map[k]) return map[k];
+    var keys=Object.keys(map);                       // loose match (e.g. "Maths" vs "Mathematics")
+    for(var i=0;i<keys.length;i++){ if(keys[i]&&(keys[i].indexOf(k)>=0||k.indexOf(keys[i])>=0)) return map[keys[i]]; }
+    return null;
+  }
+
   /* -------- MORE sheet (list style, image 7) -------- */
   function openSheet(){
     var app=document.getElementById('student-app'); if(!app) return;
@@ -51457,7 +51478,6 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         '</div></div>'+
         '<div class="s-search" onclick="_sOpenSearch()">'+'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg><span>Search material, tests, doubts...</span></div>'+
       '</div>'+
-      '<div class="s-batchslot" id="s-batchslot"></div>'+
       '<div id="s-continue"></div>'+
       '<div class="s-stats" id="s-stats"></div>'+
       '<div class="s-sec" id="s-ttsec" style="display:none"><div class="s-sec-h"><h3>Today’s Classes</h3><div class="s-ttnav" id="s-ttnav" style="display:none"><button onclick="_sTt(-1)">‹</button><button onclick="_sTt(1)">›</button></div></div><div class="s-tt" id="s-tt" onscroll="_sTtDots()"></div><div class="s-ttdots" id="s-ttdots" style="display:none"></div></div>'+
@@ -51468,8 +51488,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       '<div class="s-pad"></div>';
     }   // end build-once shell
 
-    // relocate his working batch selector into the home — PHONE ONLY (desktop keeps it in the dashboard, untouched)
-    safe(function(){ if(window.innerWidth<=BREAK){ var bs=document.getElementById('s-batch-sel'); var slot=document.getElementById('s-batchslot'); if(bs&&slot&&bs.parentNode!==slot) slot.appendChild(bs); } });
+    // NOTE: batch switcher ab home pe NAHI aata. Har section (Time Table, DPP, Tests, etc.)
+    // apna batch bar _pageBatchBar/_mountBatchSelector se khud dikhata hai — front (home) saaf rehta hai.
 
     // refresh data silently with a short cache so re-visiting Home does NOT flash a reload
     var now=Date.now();
@@ -51531,7 +51551,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       ns.style.display='';
     }).catch(function(){});
 
-    // today's classes — teacher photo + LIVE/Upcoming/Done status (premium)
+    // today's classes — teacher photo + name + LIVE/Upcoming/Done status (premium)
+    loadTeacherMap().then(function(tmap){ tmap=tmap||{};
     apiGet('/api/student/timetable-plan'+bq()).then(function(plan){ plan=plan||[];
       var today=safe(function(){ return (typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); })||new Date().toLocaleDateString('en-CA');
       var list=plan.filter(function(e){ return e && e.date===today; });
@@ -51542,7 +51563,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var photos=[];
       wrap.innerHTML=list.map(function(c,i){
         var rawSub=String(c.subject||c.subject_name||'Class');
-        var tea=String(c.teacher_name||c.teacher||'');
+        var tea=String(c.teacher_name||c.teacher||'').trim();
+        var tid=c.teacher_id||0;
+        // timetable entry me teacher missing ho -> subject se "Know Your Teacher" map se nikaalo
+        var look=teaLookup(tmap, rawSub);
+        if(look){ if(!tea){ tea=(look.name+' '+(look.suffix||'')).trim(); } if(!tid){ tid=look.teacher_id||0; } }
         var ch=String(c.chapter||''); var pt=String(c.part||'');
         var topic=[ch,pt].filter(Boolean).join(' · ');           // chapter + part dono
         var parts=[]; if(tea) parts.push(tea); if(topic) parts.push(topic);
@@ -51552,12 +51577,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var up=(!done && st>nowMin);
         var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>'));
         var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||rawSub[0]||'C').toUpperCase();
-        var pid='stph_'+i; if(c.teacher_id) photos.push([pid, c.teacher_id]);
+        var pid='stph_'+i; if(tid) photos.push([pid, tid]);
         return '<div class="s-ttc'+(live?' live':'')+'"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div></div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
       updateTtNav();
+    }).catch(function(){});
     }).catch(function(){});
   }
   function tkey(t){ t=String(t||''); var m=t.match(/(\d+):(\d+)\s*(am|pm)?/i); if(!m) return 0; var h=+m[1], mi=+m[2]; var ap=(m[3]||'').toLowerCase(); if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0; return h*60+mi; }
