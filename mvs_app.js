@@ -51176,8 +51176,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     'box-shadow:0 -10px 40px rgba(0,0,0,.3);animation:ssheetup .28s cubic-bezier(.4,0,.2,1)}'+
   '@keyframes ssheetup{from{transform:translateY(100%)}to{transform:translateY(0)}}'+
   '#student-app .s-grab{width:40px;height:4px;border-radius:3px;background:var(--border);margin:8px auto 14px}'+
-  '#student-app .s-sheet h4{margin:0 2px 10px;font-size:11px;font-weight:800;letter-spacing:.6px;'+
+  '#student-app .s-ghdr{margin:2px 2px 10px;font-size:11px;font-weight:800;letter-spacing:.6px;'+
     'text-transform:uppercase;color:var(--text-muted)}'+
+  /* home launchpad tiles (phone only, dashboard only) */
+  '#student-app .s-home{display:none;padding:12px 16px 2px}'+
+  '@media(max-width:'+BREAK+'px){#student-app.s-on-home .s-home{display:block}}'+
+  '#student-app .s-home .s-hgreet{font-size:19px;font-weight:800;color:var(--text);margin:2px 2px 2px}'+
+  '#student-app .s-home .s-hsub{font-size:12.5px;color:var(--text-muted);margin:0 2px 14px}'+
   '#student-app .s-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px}'+
   '#student-app .s-tile{background:var(--card);border:1px solid var(--border);border-radius:16px;'+
     'padding:12px 4px 9px;text-align:center;cursor:pointer;position:relative;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
@@ -51239,15 +51244,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     syncActive(page);
   }
 
-  /* ---- build the More sheet fresh each open (includes JS-injected items) ---- */
-  function openSheet(){
-    var app=document.getElementById('student-app'); if(!app) return;
-    var sheet=app.querySelector('.s-sheet'); if(!sheet) return;
-    var groups=readNav(app);
-    var ci=0, html='<div class="s-sheet-in"><div class="s-grab"></div>';
+  /* ---- shared: build grouped premium tiles from nav groups ---- */
+  function tilesHtml(groups){
+    var ci=0, html='';
     groups.forEach(function(g){
       if(!g.items.length) return;
-      html+='<h4>'+esc(g.group)+'</h4><div class="s-tiles">';
+      html+='<div class="s-ghdr">'+esc(g.group)+'</div><div class="s-tiles">';
       g.items.forEach(function(it){
         var col=COLORS[ci%COLORS.length]; ci++;
         html+='<div class="s-tile" onclick="_sGo(\''+it.id+'\')"><div class="ti '+col+'">'+svg(it.id)+'</div>'+
@@ -51256,11 +51258,36 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       });
       html+='</div>';
     });
-    html+='</div>';
-    sheet.innerHTML=html;
+    return html;
+  }
+
+  /* ---- More sheet (fresh each open; includes JS-injected items) ---- */
+  function openSheet(){
+    var app=document.getElementById('student-app'); if(!app) return;
+    var sheet=app.querySelector('.s-sheet'); if(!sheet) return;
+    sheet.innerHTML='<div class="s-sheet-in"><div class="s-grab"></div>'+tilesHtml(readNav(app))+'</div>';
     sheet.classList.add('show');
   }
   function closeSheet(){ var s=document.querySelector('#student-app .s-sheet'); if(s) s.classList.remove('show'); }
+
+  /* ---- home launchpad tiles: separate container at top of .main (his dashboard
+         content stays untouched below). Only shown on phone + dashboard page. ---- */
+  function ensureHome(app){
+    var main=app.querySelector('.main'); if(!main) return null;
+    var el=main.querySelector(':scope > .s-home');
+    if(!el){
+      el=document.createElement('div'); el.className='s-home';
+      var tb=main.querySelector('.topbar');
+      if(tb && tb.nextSibling) main.insertBefore(el, tb.nextSibling);
+      else if(tb) main.appendChild(el);
+      else main.insertBefore(el, main.firstChild);
+    }
+    return el;
+  }
+  function refreshHome(app){
+    var el=ensureHome(app); if(!el) return;
+    el.innerHTML='<div class="s-hgreet">Quick Access</div><div class="s-hsub">Jahan jaana ho, seedha tap karo</div>'+tilesHtml(readNav(app));
+  }
 
   function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 
@@ -51293,11 +51320,19 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     app.appendChild(sheet);
   }
 
-  /* ---- wrap sPage so sidebar/hamburger navigation also syncs the bottom bar ---- */
+  /* ---- wrap sPage so sidebar/hamburger nav also syncs bottom bar + home tiles ---- */
   function wrapSPage(){
     if (window._sPageWrapped || typeof window.sPage!=='function') return;
     var orig=window.sPage; window._sPageWrapped=true;
-    window.sPage=function(page, el){ var r=orig.apply(this, arguments); try{ syncActive(page); }catch(e){} return r; };
+    window.sPage=function(page, el){
+      var r=orig.apply(this, arguments);
+      try{
+        syncActive(page);
+        var app=document.getElementById('student-app');
+        if(app){ var onHome=(page==='dashboard'); app.classList.toggle('s-on-home', onHome); if(onHome) refreshHome(app); }
+      }catch(e){}
+      return r;
+    };
   }
 
   window._sGo = sGo;           // used by tile onclicks
@@ -51306,6 +51341,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function init(){
     var app=document.getElementById('student-app'); if(!app) return false;
     injectCss(); buildBar(app); wrapSPage(); syncActive('dashboard');
+    // dashboard is the default landing page -> show home tiles
+    try{ app.classList.add('s-on-home'); refreshHome(app);
+      // catch late JS-injected nav items (e.g. My Batches) without flicker
+      setTimeout(function(){ if(app.classList.contains('s-on-home')) refreshHome(app); }, 1200);
+      setTimeout(function(){ if(app.classList.contains('s-on-home')) refreshHome(app); }, 3000);
+    }catch(e){}
     return true;
   }
 
