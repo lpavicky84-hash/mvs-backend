@@ -51189,7 +51189,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-hacts{display:flex;gap:9px;flex:0 0 auto}'+
   '#student-app .s-hic{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer}'+
   '#student-app .s-hic svg{width:19px;height:19px;stroke:#fff;fill:none;stroke-width:2}'+
-  '#student-app .s-hbadge{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e25555;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #132238}'+
+  '#student-app .s-hbadge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:linear-gradient(135deg,#e7bf55,#c99a2e);color:#2a2205;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #132238;box-shadow:0 0 0 0 rgba(231,191,85,.6);animation:sbellpulse 1.3s infinite}'+
+  '@keyframes sbellpulse{0%{box-shadow:0 0 0 0 rgba(231,191,85,.55)}70%{box-shadow:0 0 0 7px rgba(231,191,85,0)}100%{box-shadow:0 0 0 0 rgba(231,191,85,0)}}'+
   '#student-app .s-search{margin-top:14px;position:relative;z-index:2;display:flex;align-items:center;gap:10px;background:#fff;border-radius:13px;padding:12px 14px;cursor:pointer}'+
   '#student-app .s-search svg{width:18px;height:18px;stroke:#8a7c55;fill:none;stroke-width:2;flex:0 0 auto}'+
   '#student-app .s-search span{font-size:13.5px;color:#8a7c55}'+
@@ -51389,15 +51390,17 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
      (/api/student/my-teachers). Cached once per session. Timetable entry me teacher
      missing ho to yahi se subject ke teacher ka naam + photo nikaalte hain. */
   function loadTeacherMap(){
-    if(window._sTeachMapP) return window._sTeachMapP;
-    window._sTeachMapP=apiGet('/api/student/my-teachers').then(function(ts){
+    // sirf SUCCESSFUL non-empty map cache karo. Agar pehli call (token late hone se) khaali/fail
+    // hui to cache poison na ho — agli baar dobara fetch -> English/Physics teacher turant aa jaaye.
+    if(window._sTeachMap && Object.keys(window._sTeachMap).length) return Promise.resolve(window._sTeachMap);
+    return apiGet('/api/student/my-teachers').then(function(ts){
       var map={}; (ts||[]).forEach(function(t){ if(!t||!t.subject) return;
         var k=String(t.subject).trim().toLowerCase();
         if(!map[k]) map[k]={name:String(t.name||''),suffix:String(t.suffix||''),teacher_id:t.teacher_id,has_photo:!!t.has_photo};
       });
+      if(Object.keys(map).length) window._sTeachMap=map;
       return map;
-    }).catch(function(){ return {}; });
-    return window._sTeachMapP;
+    }).catch(function(){ return window._sTeachMap||{}; });
   }
   function teaLookup(map,subj){ if(!map||!subj) return null;
     var k=String(subj).trim().toLowerCase(); if(map[k]) return map[k];
@@ -51461,14 +51464,6 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function buildHome(app){
     var el=ensureHome(app); if(!el) return;
     if(!el.querySelector('.s-hero')){   // build the shell ONLY once -> no flicker/reload on re-visit
-    var nm=navMap(app);
-    // quick action tiles = the 12 main sections, in order (only those that exist)
-    var tiles=''; var ci=0;
-    MAIN.forEach(function(id){ if(nm[id]){ tiles+=tileHtml(nm[id], ci); ci++; } });
-    // more-bar subtitle: names of the non-main items
-    var extra=readNav(app).filter(function(it){ return MAIN.indexOf(it.id)<0 && it.id!=='dashboard'; }).map(function(it){ return it.label; });
-    var moreSub=extra.slice(0,4).join(' · ')+(extra.length>4?' & more':'');
-
     el.innerHTML=
       '<div class="s-hero"><div class="s-htop">'+
         '<div class="s-hi"><div class="s-av" id="s-hav" onclick="_sGo(\'profile\')">S</div><div><div class="s-greet" id="s-hgt">Hello</div><div class="s-nm" id="s-hnm">Student</div></div></div>'+
@@ -51481,8 +51476,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       '<div id="s-continue"></div>'+
       '<div class="s-stats" id="s-stats"></div>'+
       '<div class="s-sec" id="s-ttsec" style="display:none"><div class="s-sec-h"><h3>Today’s Classes</h3><div class="s-ttnav" id="s-ttnav" style="display:none"><button onclick="_sTt(-1)">‹</button><button onclick="_sTt(1)">›</button></div></div><div class="s-tt" id="s-tt" onscroll="_sTtDots()"></div><div class="s-ttdots" id="s-ttdots" style="display:none"></div></div>'+
-      '<div class="s-sec"><div class="s-sec-h"><h3>Quick Actions</h3></div><div class="s-tiles">'+tiles+'</div>'+
-        '<div class="s-morebar" onclick="_sOpenSheet()"><div class="mi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div><div class="mt"><div class="a">More Options</div><div class="b">'+esc(moreSub||'All sections')+'</div></div><div class="mg"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>'+
+      '<div class="s-sec"><div class="s-sec-h"><h3>Quick Actions</h3></div><div class="s-tiles" id="s-tiles"></div>'+
+        '<div class="s-morebar" onclick="_sOpenSheet()"><div class="mi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div><div class="mt"><div class="a">More Options</div><div class="b" id="s-moresub">All sections</div></div><div class="mg"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>'+
       '</div>'+
       '<div class="s-sec" id="s-newsec" style="display:none"><div class="s-sec-h"><h3>New for you</h3></div><div class="s-new" id="s-new"></div></div>'+
       '<div class="s-pad"></div>';
@@ -51491,9 +51486,46 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     // NOTE: batch switcher ab home pe NAHI aata. Har section (Time Table, DPP, Tests, etc.)
     // apna batch bar _pageBatchBar/_mountBatchSelector se khud dikhata hai — front (home) saaf rehta hai.
 
-    // refresh data silently with a short cache so re-visiting Home does NOT flash a reload
+    // Tiles + badges HAR baar refresh (build-once nahi) — isse late-inject hone wale nav items
+    // (Academic Calendar, DPP Submit, Classes Material) aur unke badge counts turant aa jaate hain.
+    renderTiles(app);
+    // notification bell ka count + blink
+    refreshBell(app);
+
+    // data silently refresh. Agar abhi tak successfully load NAHI hua (token/nav late the), to
+    // har buildHome pe dobara try — tabhi "refresh pe khaali home" wala issue theek hota hai.
     var now=Date.now();
-    if(!window._sHomeDataAt || (now-window._sHomeDataAt)>20000){ window._sHomeDataAt=now; loadHomeData(app); }
+    if(!window._sHomeOK || !window._sHomeDataAt || (now-window._sHomeDataAt)>20000){ window._sHomeDataAt=now; loadHomeData(app); }
+  }
+
+  /* Quick-action tiles — har buildHome pe fresh (nav late-inject + badge counts pick up) */
+  function renderTiles(app){
+    var el=app.querySelector('.main > .s-home'); if(!el) el=app.querySelector('.s-home'); if(!el) return;
+    var host=el.querySelector('#s-tiles'); if(!host) return;
+    var nm=navMap(app);
+    var xb=window._sTileBadges||{};
+    var html='';
+    MAIN.forEach(function(id, mi){ if(!nm[id]) return; var it=nm[id];
+      var col=COLORS[mi%COLORS.length];
+      var cb=xb[id];                                   // computed new-count (e.g. new DPP)
+      var badge=(cb!=null&&cb!=='')?String(cb):(it.badge||'');
+      html+='<div class="s-tile" onclick="_sGo(\''+id+'\')"><div class="ti '+col+'">'+svg(id)+'</div>'+(badge?('<span class="tbg">'+esc(badge)+'</span>'):'')+'<div class="tl">'+esc(it.label)+'</div></div>';
+    });
+    if(html) host.innerHTML=html;
+    // more-bar subtitle (non-main items)
+    var sub=el.querySelector('#s-moresub');
+    if(sub){ var extra=readNav(app).filter(function(it){ return MAIN.indexOf(it.id)<0 && it.id!=='dashboard'; }).map(function(it){ return it.label; });
+      var t=extra.slice(0,4).join(' · ')+(extra.length>4?' & more':''); if(t) sub.textContent=t; }
+  }
+
+  /* notification bell badge (count + blink) — source: sidebar Notifications nav badge */
+  function refreshBell(app){
+    safe(function(){ var b=document.getElementById('s-hbadge'); if(!b) return;
+      var nm=navMap(app); var it=nm['notifications'];
+      var c=(it&&it.badge)?String(it.badge).replace(/[^0-9]/g,''):'';
+      if(c && c!=='0'){ b.textContent=(parseInt(c,10)>99?'99+':c); b.style.display='flex'; }
+      else { b.style.display='none'; }
+    });
   }
 
   function statCard(col,icid,val,lab,go){ return '<div class="s-stat"'+(go?(' onclick="_sGo(\''+go+'\')"'):'')+'><div class="si '+col+'" style="'+gcol(col)+'">'+svg(icid)+'</div><div class="sv">'+esc(val)+'</div><div class="sl">'+esc(lab)+'</div></div>'; }
@@ -51509,10 +51541,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       if(typeof window._loadPhotoInto==='function') window._loadPhotoInto('s-hav', url);
     });
     apiGet('/api/student/profile').then(function(prof){ prof=prof||{};
+      window._sHomeOK=true;                               // data load successful -> stop retry loop
       var nm=(prof.student_name||prof.name||'Student'); var first=String(nm).split(' ')[0]||'Student';
       window._sHomeName=nm; window._sHomeSub=(prof.batch_name?('NIOS · '+prof.batch_name):'MVS Student');
       safe(function(){ var n=document.getElementById('s-hnm'); if(n) n.textContent=first; });
-      safe(function(){ var a=document.getElementById('s-hav'); if(a) a.textContent=(first[0]||'S').toUpperCase(); });
+      safe(function(){ var a=document.getElementById('s-hav'); if(a&&!window._photoUrls){ a.textContent=(first[0]||'S').toUpperCase(); } });
     }).catch(function(){});
 
     // stats: tests done, dpp done, batch rank
@@ -51542,6 +51575,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var title=String(m.title||m.name||m.chapter||'').trim(); if(!title) return;
         var key=(m.id!=null?('id'+m.id):title.toLowerCase()); if(seen[key]) return; seen[key]=1;
         items.push({title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||'')});
+      });
+      // DPP quick-action tile ka blink badge — kitni NEW DPP aayi hain (abhi tak unseen)
+      safe(function(){ var dn=0; mats.forEach(function(m){ if(m&&m.type==='dpp'&&m.id!=null&&newSet&&newSet.has(m.id)) dn++; });
+        window._sTileBadges=window._sTileBadges||{};
+        if(dn>0) window._sTileBadges.dpp=dn; else delete window._sTileBadges.dpp;
+        var app2=document.getElementById('student-app'); if(app2) renderTiles(app2);
       });
       items.sort(function(a,b){ if(a.isNew!==b.isNew) return a.isNew?-1:1; return b.ts.localeCompare(a.ts); });
       items=items.slice(0,4);
@@ -51650,7 +51689,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
   function wrapSPage(){ if(window._sPageWrapped || typeof window.sPage!=='function') return; var orig=window.sPage; window._sPageWrapped=true;
     window.sPage=function(page,el){ var r=orig.apply(this,arguments);
-      try{ syncActive(page); var app=document.getElementById('student-app'); if(app){ var onHome=(page==='dashboard'); app.classList.toggle('s-on-home',onHome); if(onHome) buildHome(app); } }catch(e){}
+      try{ syncActive(page); var app=document.getElementById('student-app'); if(app){ var onHome=(page==='dashboard'); app.classList.toggle('s-on-home',onHome);
+        if(onHome){ buildHome(app);
+          // section se back aane par home hamesha UPAR se (hero) dikhe — warna scroll section wali
+          // position pe atak jaata tha aur hero gayab lagta tha (image 2 wala issue).
+          safe(function(){ var m=app.querySelector('.main'); if(m) m.scrollTop=0; var h=app.querySelector('.s-home'); if(h) h.scrollTop=0; try{ window.scrollTo(0,0); }catch(e){} });
+        } } }catch(e){}
       return r; };
   }
 
@@ -51659,7 +51703,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function init(){ var app=document.getElementById('student-app'); if(!app) return false;
     injectCss(); buildBar(app); addBackBtn(app); wrapSPage(); syncActive('dashboard');
     try{ app.classList.add('s-on-home'); buildHome(app);
-      setTimeout(function(){ if(app.classList.contains('s-on-home')) buildHome(app); }, 1500);
+      // Hard-refresh pe token/nav late aate hain -> buildHome ko kai baar try karo jab tak data
+      // load na ho jaaye (_sHomeOK). Isse "refresh pe khaali home" (image 1) theek hota hai.
+      [600,1400,2600,4200,6500].forEach(function(ms){ setTimeout(function(){
+        if(app.classList.contains('s-on-home')){ renderTiles(app); refreshBell(app); if(!window._sHomeOK) buildHome(app); }
+      }, ms); });
     }catch(e){ /* fallback: show original dashboard */ app.classList.remove('s-on-home'); }
     return true;
   }
