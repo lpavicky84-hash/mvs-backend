@@ -269,6 +269,8 @@ def ensure_columns():
         "ALTER TABLE exam_attempts ADD COLUMN view_lang VARCHAR(8)",
         # fresh copy of a test -> its own card (separate attempts) instead of merging by signature
         "ALTER TABLE exams ADD COLUMN copy_group VARCHAR(40)",
+        # same for DPP: fresh copy -> its own card
+        "ALTER TABLE dpp_packs ADD COLUMN copy_group VARCHAR(40)",
         # multi-batch student: server-side current batch (har device pe same tests)
         "ALTER TABLE student_profiles ADD COLUMN active_batch_id INT",
         # v95: editable monthly target labels + custom targets

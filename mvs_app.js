@@ -5890,15 +5890,14 @@ async function openCopyToBatch(kind,id){
   var dateField=isTest
     ? '<div class="form-group"><label>New date &amp; time <span style="color:var(--text-muted);font-weight:400">(blank = abhi se available)</span></label><input type="datetime-local" class="form-control" id="cpb-date"></div>'
     : '<div class="alert alert-info" style="font-size:.8rem">DPP timetable ke chapter/part se dikhta hai \u2014 naye batch me wahi chapter jab schedule hoga tab apne-aap us date pe aa jaayega. Alag date set karne ki zaroorat nahi.</div>';
-  // TEST only: new independent copy vs same test across batches (premium choice)
+  // Test + DPP dono: new independent copy vs same item across batches (premium choice)
+  var _iw=isTest?'test':'DPP';
   var _modeSty='display:flex;gap:11px;align-items:flex-start;padding:12px 13px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:9px;cursor:pointer';
   var _modeSm='display:block;font-size:.76rem;color:var(--text-muted);line-height:1.45;margin-top:3px';
-  var freshChoice=isTest
-    ? '<div class="form-group"><label>How should this copy appear?</label>'
-      +'<label class="cpb-mode" style="'+_modeSty+'"><input type="radio" name="cpb-fresh" value="new" checked style="margin-top:3px;width:17px;height:17px"> <span><b>New, separate test (recommended)</b><small style="'+_modeSm+'">Creates a fresh, independent copy for the selected batch(es) \u2014 its own card and its own results. The new batch\u2019s students are never compared with the original batch\u2019s attempts.</small></span></label>'
-      +'<label class="cpb-mode" style="'+_modeSty+'"><input type="radio" name="cpb-fresh" value="same" style="margin-top:3px;width:17px;height:17px"> <span><b>Same test, shown in these batches too</b><small style="'+_modeSm+'">Keeps it as one test that also appears in the selected batch(es). Results and rankings are combined across all of these batches on one card.</small></span></label>'
-      +'</div>'
-    : '';
+  var freshChoice='<div class="form-group"><label>How should this copy appear?</label>'
+      +'<label class="cpb-mode" style="'+_modeSty+'"><input type="radio" name="cpb-fresh" value="new" checked style="margin-top:3px;width:17px;height:17px"> <span><b>New, separate '+_iw+' (recommended)</b><small style="'+_modeSm+'">Creates a fresh, independent copy for the selected batch(es) \u2014 its own card and its own '+(isTest?'results':'submissions')+'. The new batch\u2019s students are never compared with the original batch\u2019s '+(isTest?'attempts':'submissions')+'.</small></span></label>'
+      +'<label class="cpb-mode" style="'+_modeSty+'"><input type="radio" name="cpb-fresh" value="same" style="margin-top:3px;width:17px;height:17px"> <span><b>Same '+_iw+', shown in these batches too</b><small style="'+_modeSm+'">Keeps it as one '+_iw+' that also appears in the selected batch(es). '+(isTest?'Results and rankings are':'Submissions are')+' combined across all of these batches on one card.</small></span></label>'
+      +'</div>';
   showModal('Copy to other batches',
     '<div class="alert alert-info" style="font-size:.82rem">"<b>'+esc(item.title||'')+'</b>"'+(curName?(' \u2014 abhi <b>'+esc(curName)+'</b> me hai'):'')+'. Copy karne pe saara content (questions'+(isTest?'':'/PDF')+') huboohu chune gaye batch(es) me chala jaayega, aur un batches ke students ko notification bhi jaata hai. Original waise ka waisa rahega.</div>'
     +'<div class="form-group"><label>Target batches <span style="color:var(--text-muted);font-weight:400">(ek ya zyada select karo \u2014 Data Entry jaise common subject ke liye multiple)</span></label><div style="max-height:230px;overflow:auto;padding-right:2px">'+checks+'</div></div>'
@@ -5911,8 +5910,8 @@ async function submitCopyToBatch(kind,id){
   var bids=[].slice.call(document.querySelectorAll('.cpb-bchk:checked')).map(function(c){return parseInt(c.value,10);}).filter(Boolean);
   if(!bids.length){ toast('Please pick at least one target batch.',true); return; }
   var payload={batch_ids:bids, title:((document.getElementById('cpb-title')||{}).value||'')};
-  if(kind==='test'){ var dv=(document.getElementById('cpb-date')||{}).value||''; if(dv) payload.scheduled_at=dv;
-    var fm=document.querySelector('input[name="cpb-fresh"]:checked'); payload.fresh=(fm&&fm.value==='new'); }
+  if(kind==='test'){ var dv=(document.getElementById('cpb-date')||{}).value||''; if(dv) payload.scheduled_at=dv; }
+  var fm=document.querySelector('input[name="cpb-fresh"]:checked'); payload.fresh=(fm&&fm.value==='new');  // test + dpp dono
   var btn=document.getElementById('cpb-btn'); if(btn){ btn.disabled=true; btn.textContent='Copying\u2026'; }
   try{
     var ep=(kind==='test'?('/api/teacher/exam/'+id+'/copy'):('/api/teacher/dpp-pack/'+id+'/copy'));
@@ -6142,16 +6141,22 @@ function _dppGrpBatchDD(batches,cur,fn){
 }
 async function openDppResultsGroup(idsCsv){
   window._dppGA={ids:idsCsv,batch:0};
-  // Submissions kholte hi is group ke submissions "seen" -> NEW-blink hat jaata (test jaisa)
+  // Submissions kholte hi is group ke submissions "seen" -> card ka NEW-blink hat jaata (test jaisa).
+  // PEHLE jo unseen (naye) the unki ids yaad rakho taaki modal me unke NAAM par bhi NEW blink dikhe.
   try{ const ids=String(idsCsv).split(',').map(x=>parseInt(x,10));
-    const seenIds=[]; (window._dppPacks||[]).forEach(p=>{ if(ids.indexOf(p.id)>=0)(p.subs||[]).forEach(x=>{ if(x&&x.id!=null) seenIds.push(x.id); }); });
+    const _s=window._dppSeenSet||(window._dppSeenSet=_dppSeenLoad());
+    const seenIds=[]; const _newSet=new Set();
+    (window._dppPacks||[]).forEach(p=>{ if(ids.indexOf(p.id)>=0)(p.subs||[]).forEach(x=>{ if(x&&x.id!=null){ seenIds.push(x.id); if(!_s.has(x.id)) _newSet.add(x.id); } }); });
+    window._dppGANew=_newSet;
     _dppSeeIds(seenIds); if(document.getElementById('t-dpp-content')) _renderTDpp();
-  }catch(e){}
+  }catch(e){ window._dppGANew=new Set(); }
   _renderDppGroupAnswers();
 }
 function dppGAbatch(b){ if(window._dppGA){ window._dppGA.batch=b; _renderDppGroupAnswers(); } }
 async function _renderDppGroupAnswers(){
   const G=window._dppGA||{ids:'',batch:0};
+  _newBlinkCss();
+  const _gnew=window._dppGANew||new Set();
   showModal('DPP Submissions','<div class="spinner"></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
     const d=await api(`/api/teacher/dpp-group/answers?ids=${encodeURIComponent(G.ids)}&batch=${G.batch||0}`);
@@ -6160,7 +6165,7 @@ async function _renderDppGroupAnswers(){
       return `<div class="slist-row" style="align-items:flex-start">
         <div class="slist-av">${esc((a.student||'?').slice(0,1).toUpperCase())}</div>
         <div class="slist-info" style="flex:1">
-          <div class="slist-name">${esc(a.student)} ${a.class_level?`<span class="chip" style="font-size:.6rem">Class ${esc(a.class_level)}</span>`:''}${showBatch&&a.batch?` <span class="xm-chip" style="font-size:.6rem;color:#9a7d1a">${ic('folder')} ${esc(a.batch)}</span>`:''}</div>
+          <div class="slist-name">${esc(a.student)}${(a.id!=null&&_gnew.has(a.id))?' <span class="newblink">NEW</span>':''} ${a.class_level?`<span class="chip" style="font-size:.6rem">Class ${esc(a.class_level)}</span>`:''}${showBatch&&a.batch?` <span class="xm-chip" style="font-size:.6rem;color:#9a7d1a">${ic('folder')} ${esc(a.batch)}</span>`:''}</div>
           <div class="slist-meta">Submitted: ${a.submitted_at||'—'} · <b class="dpp-st ${chk?'ok':'wait'}">${chk?'Checked':'Checking…'}</b></div>
           ${chk&&a.remarks?`<div style="font-size:.74rem;margin-top:5px;background:rgba(184,148,31,.08);border-radius:8px;padding:7px 10px"><b>Your remarks:</b> ${esc(a.remarks)}</div>`:''}
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
@@ -6422,12 +6427,15 @@ async function openDppResults(pid){
   showModal('DPP Submissions','<div class="spinner"></div>','');
   try{
     const d=await api(`/api/teacher/dpp-packs/${pid}/answers`);
+    _newBlinkCss();
+    const _s=window._dppSeenSet||(window._dppSeenSet=_dppSeenLoad());   // marking se PEHLE ka seen state
     const rows=(d.answers||[]).map(a=>{
       const chk=a.status==='checked';
+      const _isNew=(a.id!=null&&!_s.has(a.id));
       return `<div class="slist-row" style="align-items:flex-start">
         <div class="slist-av">${esc((a.student||'?').slice(0,1).toUpperCase())}</div>
         <div class="slist-info" style="flex:1">
-          <div class="slist-name">${esc(a.student)} ${a.class_level?`<span class="chip" style="font-size:.6rem">Class ${esc(a.class_level)}</span>`:''}</div>
+          <div class="slist-name">${esc(a.student)}${_isNew?' <span class="newblink">NEW</span>':''} ${a.class_level?`<span class="chip" style="font-size:.6rem">Class ${esc(a.class_level)}</span>`:''}</div>
           <div class="slist-meta">Submitted: ${a.submitted_at||'\u2014'} \u00b7 <b class="dpp-st ${chk?'ok':'wait'}">${chk?'Checked':'Checking\u2026'}</b></div>
           ${chk&&a.remarks?`<div style="font-size:.74rem;margin-top:5px;background:rgba(184,148,31,.08);border-radius:8px;padding:7px 10px"><b>Your remarks:</b> ${esc(a.remarks)}</div>`:''}
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
@@ -6446,6 +6454,8 @@ async function openDppResults(pid){
       `<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:10px">${esc(pk.subject||'')}${pk.chapter?' \u00b7 '+esc(pk.chapter):''}${pk.part?' \u00b7 '+esc(pk.part):''}</div>
        ${rows||'<div class="ws-empty"><p><b>No submissions yet</b></p><small>Students submit karne ke baad yahan dikhenge — status "Checking" rahega.</small></div>'}`,
       `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    // ab ye submissions "seen" -> card ka NEW count hat jaata, reopen par blink nahi (test jaisa)
+    try{ _dppSeeIds((d.answers||[]).map(a=>a.id).filter(x=>x!=null)); if(document.getElementById('t-dpp-content')) _renderTDpp(); }catch(e){}
   }catch(e){ showModal('DPP Submissions',errHtml(e),`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`); }
 }
 async function dppAnsDl(aid){
@@ -7212,7 +7222,7 @@ function _dppSeeGroup(g){ if(!g) return; var ids=[]; (g.packs||[]).forEach(funct
 function _dppSeeIds(ids){ if(!ids||!ids.length) return; _dppMarkSeen(ids); window._dppSeenSet=_dppSeenLoad(); }
 // Blinking NEW badge (results modal + public responses)
 function _newBlinkCss(){ if(document.getElementById('newblink-css'))return; var s=document.createElement('style'); s.id='newblink-css';
-  s.textContent='.newblink{display:inline-block;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;margin-left:7px;vertical-align:middle;animation:nbBlink 1s ease-in-out infinite;box-shadow:0 0 0 3px rgba(220,38,38,.16)}'
+  s.textContent='.newblink{display:inline-block;flex:0 0 auto;white-space:nowrap;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:999px;margin-left:7px;vertical-align:middle;animation:nbBlink 1s ease-in-out infinite;box-shadow:0 0 0 3px rgba(220,38,38,.16)}'
     +'@keyframes nbBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.94)}}';
   document.head.appendChild(s); }
 // Public-test responses "seen" tracking (localStorage, per exam) — for the NEW badge.
@@ -12092,7 +12102,7 @@ function _examResCss(){
   .exr:hover{box-shadow:var(--shadow-lg);border-color:var(--primary)}
   .exr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
   .exr-id{min-width:0;flex:1;cursor:pointer}
-  .exr-name{font-weight:700;font-size:.97rem;line-height:1.35;color:var(--text);overflow-wrap:anywhere;word-break:normal;display:flex;align-items:center;gap:6px}
+  .exr-name{font-weight:700;font-size:.97rem;line-height:1.35;color:var(--text);overflow-wrap:anywhere;word-break:normal;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
   .exr-info{font-size:.8rem;color:var(--text-muted);margin-top:3px;overflow-wrap:anywhere}
   .exr-badge{flex:0 0 auto;align-self:flex-start;white-space:nowrap}
   .exr .sd-chev{transition:transform .18s;display:inline-block;color:var(--text-muted);font-size:1.05rem;line-height:1;flex:0 0 auto}

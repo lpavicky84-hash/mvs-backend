@@ -2700,7 +2700,11 @@ def teacher_exam_group_ranking(ids: str = "", batch: int = 0,
 def _dpp_sig(pk):
     """Signature that is IDENTICAL across the copies of one DPP in different batches
     (copy preserves subject/class/title/chapter/part). Used to show ONE card per DPP with
-    all its batches, instead of a separate card per batch."""
+    all its batches, instead of a separate card per batch.
+    copy_group set ho (fresh copy) to wahi grouping decide karta hai -> fresh copy ka alag card."""
+    _cg = getattr(pk, "copy_group", None)
+    if _cg:
+        return "cg:" + str(_cg)
     import re as _r
     cl = _r.sub(r"\D", "", str(getattr(pk, "class_name", "") or ""))
     return "|".join([_subj_norm(pk.subject or ""), cl,
@@ -2744,7 +2748,7 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
 
 
 @router.post("/dpp-pack/{pid}/copy")
-def copy_dpp_to_batch(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+def copy_dpp_to_batch(pid: int, payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """DPP ko EK YA ZYADA batch ke liye COPY karo — questions/PDF same, bas naya batch (aur chaaho to
     naya title/chapter/part). Original untouched. Har target batch ke students ko notification jaata
     hai (yehi pehle miss ho raha tha). Multi-batch: Data Entry jaise common subject ek hi baar sabko."""
@@ -2760,6 +2764,14 @@ def copy_dpp_to_batch(pid: int, payload: dict = Body(...), db: Session = Depends
     _title = ((payload.get("title") or "").strip() or src.title)
     _chapter = (payload.get("chapter") if payload.get("chapter") is not None else src.chapter)
     _part = (payload.get("part") if payload.get("part") is not None else src.part)
+    # fresh=True -> naya copy_group -> alag card, apne submissions (purane batch se merge/compare nahi).
+    # fresh=False -> source ka copy_group inherit (ya None) -> purane card me hi merge (current behavior).
+    _fresh = bool((payload or {}).get("fresh"))
+    if _fresh:
+        import uuid as _uuid
+        _cg = "cp" + _uuid.uuid4().hex[:18]
+    else:
+        _cg = getattr(src, "copy_group", None)
     made = []
     for tb in targets:
         new_pk = DppPack(
@@ -2768,13 +2780,22 @@ def copy_dpp_to_batch(pid: int, payload: dict = Body(...), db: Session = Depends
             medium=src.medium, source=src.source,
             questions=_copy.deepcopy(src.questions) if src.questions else src.questions,
             q_pdf=src.q_pdf, s_pdf=src.s_pdf,   # R2 references — delete DB-only hai, share safe
-            batch_id=tb)
+            batch_id=tb, copy_group=_cg)
         db.add(new_pk); db.flush()
         made.append(new_pk.id)
     db.commit()
+    _cls_src = getattr(src, "class_name", "")
+    _tname = current_user.name
+    _gender = tp.gender
     for tb in targets:
+        if background_tasks is not None:
+            try:
+                background_tasks.add_task(_bg_notify_new_content, None, tb, src.subject, _tname, "dpp", _cls_src, _gender)
+                continue
+            except Exception:
+                pass
         try:
-            _notify_new_content(db, tb, src.subject, current_user.name, "dpp", class_name=getattr(src,"class_name",""), gender=tp.gender)
+            _notify_new_content(db, tb, src.subject, _tname, "dpp", class_name=_cls_src, gender=_gender)
         except Exception:
             pass
     return {"ok": True, "ids": made, "count": len(made), "batches": len(targets)}
