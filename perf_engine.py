@@ -331,11 +331,33 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
             _today = datetime.utcnow().date()
         _cut = min(_today, (dt1.date() - timedelta(days=1)))
         _subsL = [s for s in (tp.subjects or []) if s]
+        # teacher ka class-scope (subject_classes se) — unassigned dual-class (English/Hindi 10 vs
+        # 12) ki class galat teacher ko credit na ho.
+        import re as _reP
+        def _snormP(s):
+            try:
+                import subjects_registry as _SRP
+                return _SRP.canon_norm(s)
+            except Exception:
+                return _reP.sub(r"[^a-z0-9]", "", str(s or "").lower())
+        _tclsP = {}
+        for _sc in (getattr(tp, "subject_classes", None) or []):
+            try:
+                _snP = _snormP(_sc.get("subject") or "")
+                _cdP = _reP.sub(r"[^0-9]", "", str(_sc.get("class") or ""))
+            except Exception:
+                continue
+            if _snP and _cdP:
+                _tclsP.setdefault(_snP, set()).add(_cdP)
         _condL = [TimetableEntry.teacher_id == tp.id]
-        # TP02: corrected mode me SIRF explicitly-assigned teacher ki classes. Subject-match
-        # fallback (doosre teacher ki same-subject class is teacher ke due/score me aa jaana)
-        # hata diya. Purane mode (past months) me wahi OR-subject behavior — frozen/paid safe.
-        if _subsL and not corrected:
+        if _subsL:
+            # LIVE + past dono: subject-match se saari candidate classes lao — teacher_id chahe tp.id ho,
+            # NULL ho (admin-uploaded), ya BATCH-WISE me kisi aur par set ho. Live month me neeche loop
+            # class-scope (subject_classes) se filter karta hai, bilkul reports (_class_filter) jaisa,
+            # taaki dual-class (English/Hindi 10 vs 12) leak na ho. Pehle live mode SIRF teacher_id==tp.id
+            # ya NULL maangta tha; global->batch-wise hone par in classes ka teacher_id doosre par set ho
+            # gaya, isliye SABHI teachers ko teaching "N/A" (no scheduled classes) aa raha tha — jabki
+            # unke 40+ class reports maujood the. Ab reports aur teaching ka candidate-source EK jaisa hai.
             _condL.append(TimetableEntry.subject.in_(_subsL))
         _qL = db.query(TimetableEntry).filter(
             TimetableEntry.entry_date >= dt0.date(),
@@ -350,6 +372,20 @@ def gather_metrics(db, tp, dt0, dt1, cfg, force_corrected=None):
         _due = 0
         _c_ot = _c_dl = 0
         for e in _rowsL:
+            # LIVE month: non-self (doosre/NULL teacher_id wali) entry ko reports (_class_filter) jaisa
+            # EXACT class-scope se filter karo — Day-N ya bina class_name wali hamesha gino; warna uska
+            # subject+class teacher ke subject_classes me hona chahiye. Isse (a) batch-wise classes jo
+            # tp.id par set nahi, par teacher ke class-scope me aati hain, SAHI ginti hain; aur (b)
+            # dual-class (English/Hindi 10 vs 12) ya doosre teacher ki class cross-credit nahi hoti.
+            # subject_classes set na ho (legacy teacher) -> filter skip (reports jaisa, sab subject-match).
+            if corrected and getattr(e, "teacher_id", None) != tp.id and _tclsP:
+                _part = (getattr(e, "part", "") or "").strip()
+                _cls = str(getattr(e, "class_name", "") or "").strip()
+                if not (_reP.match(r"^day\s*\d+$", _part, _reP.I) or (not _cls)):
+                    _al = _tclsP.get(_snormP(getattr(e, "subject", "") or ""))
+                    _ec = _reP.sub(r"[^0-9]", "", _cls)
+                    if not (_al and _ec and _ec in _al):
+                        continue
             _tx = ((e.chapter or "") + " " + (e.part or "")).lower()
             # TP03: corrected mode me bare "series" ko test mat samjho (e.g. "Series LCR
             # Circuit" ek physics class hai, test nahi). "test series"/"mock test" ab bhi
