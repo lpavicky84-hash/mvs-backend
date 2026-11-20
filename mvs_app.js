@@ -3567,7 +3567,7 @@ async function _renderTodayClasses(targetId){
     const cards=`<div class="stats-grid">${statCard("Today's Classes",_tN,'calendar','indigo',"navTo('teacher-app','today')")}${statCard('Completed',_cN,'check','green',"navTo('teacher-app','today')")}${statCard('Pending',_pN,'clipboard','amber',"navTo('teacher-app','today')")}${statCard('Missed',_mN,'help','red',"openMissedClasses()",_mN>0)}</div>`;
     const rows=cls.length?cls.map(tClassRow).join(''):`<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No classes scheduled today.</td></tr>`;
     const doneAll=all.filter(c=>c.completed).reverse();
-    const doneRows=doneAll.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>\u00b7 ${esc(c.date||'')}</span>${c.homework?'<span>\u00b7 HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>\u00b7 DPP</span>':''}</div></div></div>`).join('');
+    const doneRows=doneAll.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>\u00b7 ${esc(c.date||'')}</span>${c.homework?'<span>\u00b7 HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>\u00b7 DPP</span>':''}</div></div><div class="qb-act"><button class="btn btn-ghost btn-sm" title="Is galat/duplicate entry ko timetable se hatao" onclick="_delReportEntry(${c.id})">${ic('trash')}</button></div></div>`).join('');
     const doneCard=`<div class="card"><div class="card-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" onclick="_tToggleDone()"><h3 style="margin:0">Recently Completed (${doneAll.length})</h3><span id="t-done-chev" style="opacity:.6">\u25be</span></div><div class="card-body" id="t-done-body">${doneAll.length?`<div class="mat-scroll" style="max-height:330px;overflow:auto">${doneRows}</div>`:'<div class="empty-state"><p>No completed reports yet.</p></div>'}</div></div>`;
     el.innerHTML=`${cards}<div class="card"><div class="card-header"><h3>Today's Classes</h3></div><div class="card-body"><div class="table-wrap"><table class="rtable"><thead><tr><th>Subject</th><th>Batch</th><th>Time</th><th>Topic</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>${doneCard}`;
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -3579,7 +3579,7 @@ async function loadTCompletion(){
     const cls=await api('/api/teacher/my-classes'); window._tClasses=cls;
     const pending=cls.filter(c=>!c.completed), done=cls.filter(c=>c.completed).reverse();
     const pendList=pending.length?pending.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.chapter||'')}</div><div class="qb-meta">${statusTag(c.live_status)}<span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span></div></div><div class="qb-act"><button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Submit Report</button></div></div>`).join(''):'<div class="empty-state"><p>No pending classes. All caught up!</p></div>';
-    const doneList=done.length?done.slice(0,15).map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span>${c.homework?'<span>· HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>· DPP ✓</span>':''}</div></div></div>`).join(''):'<div class="empty-state"><p>No completed reports yet.</p></div>';
+    const doneList=done.length?done.slice(0,15).map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span>${c.homework?'<span>· HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>· DPP ✓</span>':''}</div></div><div class="qb-act"><button class="btn btn-ghost btn-sm" title="Is galat/duplicate entry ko timetable se hatao" onclick="_delReportEntry(${c.id})">${ic('trash')}</button></div></div>`).join(''):'<div class="empty-state"><p>No completed reports yet.</p></div>';
     el.innerHTML=`<div class="alert alert-info">Submit a class completion report. The class status becomes <strong>Completed</strong> and counts toward your compliance score.</div><div class="card"><div class="card-header"><h3>Pending Classes (${pending.length})</h3></div><div class="card-body">${pendList}</div></div><div class="card"><div class="card-header"><h3>Recently Completed</h3></div><div class="card-body">${doneList}</div></div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
 }
@@ -5526,6 +5526,19 @@ function fmtDate(d){
   return d;
 }
 async function deleteTTEntry(id){ if(!confirm('Delete this class from your timetable?')) return; try{ await api('/api/teacher/timetable-entry/'+id,'DELETE'); toast('Class deleted.'); loadTTimetable(); }catch(e){ toast(e.message,true); } }
+// Recently Completed / report list se seedha delete — jo galat ya duplicate (dusri class ka,
+// orphan) entry editable timetable me nahi dikhti, usko yahin se hata sako.
+async function _delReportEntry(id){
+  if(!confirm('Is class entry ko hata dein? Galat/duplicate entry timetable aur report se delete ho jaayegi.')) return;
+  try{
+    await api('/api/teacher/timetable-entry/'+id,'DELETE');
+    toast('Entry hata di gayi.');
+    try{ _apiForget('my-classes'); }catch(e){}
+    try{ _apiForget('my-timetable'); }catch(e){}
+    try{ if(document.getElementById('t-completion-content')) loadTCompletion(); }catch(e){}
+    try{ if(document.getElementById('t-done-body')||document.getElementById('t-today-inner')) _renderTodayClasses(); }catch(e){}
+  }catch(e){ toast((e&&e.message)||'Delete nahi hua',true); }
+}
 // ===== TEACHER: DELETE OWN SUBJECT TIMETABLE (one click, type-to-confirm) =====
 function openTTTDelete(){
   const list=_ttEntries||[];
