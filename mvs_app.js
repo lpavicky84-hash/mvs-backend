@@ -1092,7 +1092,15 @@ async function _restoreSession(){
   try{
     const ep=ROLE==='teacher'?'/api/teacher/profile':(ROLE==='student'?'/api/student/profile':(_PROD_PORTALS&&_PROD_PORTALS[ROLE_PORTAL(ROLE)]?_PROD_PORTALS[ROLE_PORTAL(ROLE)].api+'/dashboard':'/api/admin/me'));
     await api(ep);            // token abhi valid hai? (expire ho gaya to catch me login)
-  }catch(e){ TOKEN=null; ROLE=null; try{ localStorage.removeItem('mvs_sess_'+want); }catch(_){} return false; }
+  }catch(e){
+    // Sirf token GALAT/EXPIRE (401/403) par hi session clear karo. Network/transient error
+    // (APK band->khol pe net ready nahi, server cold-start, proxy hiccup) par session KABHI
+    // delete MAT karo — warna app close/background hote hi logout ho jaata tha. Token rakho,
+    // portal optimistically kholo; net aate hi calls normal ho jaati hain, aur token sach me
+    // invalid hua to baad ki calls 2-strike (_authFail) se handle hongi.
+    var _st=(e&&e.status)||0;
+    if(_st===401 || _st===403){ TOKEN=null; ROLE=null; try{ localStorage.removeItem('mvs_sess_'+want); }catch(_){} return false; }
+  }
   try{ localStorage.setItem('mvs_sess_'+ROLE_PORTAL(ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); localStorage.removeItem('mvs_sess'); }catch(e){}
   try{ document.getElementById('landing').style.display='none'; }catch(e){}
   try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
@@ -1296,7 +1304,7 @@ function _notifVisible(role, n){
 async function fetchNotifs(role){ try{ let l=await api(notifEp(role,'/notifications')); if(role==='admin'&&Array.isArray(l)) l=l.filter(n=>_notifVisible('admin',n)); return l; }catch(e){ if(e&&e.status===401) throw e; return []; } }
 async function refreshNotifBadge(role){
   let list;
-  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return []; } list=[]; }
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _authFail(); return []; } list=[]; }
   const unread=list.filter(n=>!n.is_read).length;
   const badge=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   if(badge){ badge.style.display=unread?'flex':'none'; badge.textContent=unread; }
@@ -1323,7 +1331,7 @@ async function pollAdminLive(){
   if(window._adminMe && !adminAllowed('live')) return;
   if(document.hidden) return;   // v167: backgrounded tab poll na kare
   try{
-    const d=await api('/api/admin/live-users').catch(e=>{ if(e&&e.status===401){ _sessionExpired(); } throw e; }); window._lastLive=d;
+    const d=await api('/api/admin/live-users').catch(e=>{ if(e&&e.status===401){ _authFail(); } throw e; }); window._lastLive=d;
     const n=(d.counts&&d.counts.live)||0;
     _setLiveBadge(n);
     const pg=document.getElementById('a-page-live');
@@ -1687,7 +1695,7 @@ function _ensureNotifCss(){
 }
 async function openNotifPanel(role){
   let list;
-  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _authFail(); return; } list=[]; }
   _ensureNotifCss();
   const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?('<div class="npnl">'+list.map(n=>{
@@ -1875,7 +1883,7 @@ function _flashCard(el){
 }
 async function markAllRead(role){
   let list;
-  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } list=[]; }
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _authFail(); return; } list=[]; }
   for(const n of list.filter(x=>!x.is_read)){ try{ await api(notifEp(role,'/notifications/'+n.id+'/read'),'PATCH'); }catch(e){} }
   closeModal(); refreshNotifBadge(role); _lastUnread[role]=0; var _np=document.getElementById('notif-pop'); if(_np)_np.remove(); toast('All marked as read.');
 }
@@ -1902,7 +1910,7 @@ async function notifPopupOnOpen(role){
 async function pollNotifs(role){
   if(document.hidden) return;   // v167: backgrounded tab poll na kare -> server load kam
   let list;
-  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _sessionExpired(); return; } throw e; }
+  try{ list=await fetchNotifs(role); }catch(e){ if(e&&e.status===401){ _authFail(); return; } throw e; }
   const unread=list.filter(n=>!n.is_read);
   const badge=document.getElementById((role==='teacher'?'t':role==='admin'?'a':'s')+'-notif-badge');
   if(badge){ badge.style.display=unread.length?'flex':'none'; badge.textContent=unread.length; }
