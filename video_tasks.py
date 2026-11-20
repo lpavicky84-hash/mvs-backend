@@ -5168,8 +5168,11 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
                         VideoTask.cancelled.isnot(True),
                         VideoTask.kind.in_(["one_shot", "rapid_revision", "project"]))
                 .order_by(VideoTask.kind.asc(), VideoTask.subject.asc()).all())
-    # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards
-    spts = [t for t in spts if (t.subject or "").strip().lower() not in ("", "all subjects")]
+    # legacy "All Subjects"/empty-subject card kabhi na dikhe — sirf subject-wise cards.
+    # PAR projects isse CHHOOT: project title/id se identify hota hai aur uska subject khaali
+    # ho sakta hai (multi-video project). Pehle ye filter empty-subject PROJECT bhi drop kar
+    # deta tha -> teacher ko assign hone ke baad bhi project nahi dikhta tha (yahi asli bug).
+    spts = [t for t in spts if t.kind == "project" or (t.subject or "").strip().lower() not in ("", "all subjects")]
     _sp_ids = [t.id for t in spts]
     _sp_chm = {}
     if _sp_ids:
@@ -5182,6 +5185,12 @@ def vt_my_tasks(db: Session = Depends(get_db), current_user=Depends(get_teacher)
     # sabse zyada progress (done chapters) wala. DB merge alag se _ensure_special_teacher me.
     _seen = {}
     for so in special_all:
+        # PROJECTS har ek alag entity hain (title/id se) — inhe subject ke naam pe KABHI merge
+        # na karo, warna ek hi subject ke do project (jaise B.A Sem 1 vs Sem 5 History) me se
+        # ek gayab ho jaata tha. One Shot / Rapid Revision hi per-subject dedup hote hain.
+        if so.get("kind") == "project":
+            _seen[("project", so.get("id"))] = so
+            continue
         _b, _c = _display_base_cls(so.get("subject") or "")
         key = (so.get("kind"), _subj_ident(_b, _c))
         cur = _seen.get(key)
