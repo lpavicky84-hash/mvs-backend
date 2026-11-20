@@ -757,11 +757,13 @@ def teacher_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
     return {"message": "Reply added", "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)}
 
 
-def _student_chat_payload(db, student_id):
-    """Ek student ke SAARE doubts + poore threads + media flags — WhatsApp-style chat
+def _student_chat_payload(db, student_id, subjects=None):
+    """Ek student ke doubts + poore threads + media flags — WhatsApp-style chat
     view ke liye (teacher + admin dono use karte hain). created_at ASC (purana pehle).
     Media blobs load NAHI karte — sirf has_* flags length se. Role-neutral: frontend
-    apne role ke hisaab se media URLs banata hai."""
+    apne role ke hisaab se media URLs banata hai.
+    subjects=None -> SAARE subjects (admin view). subjects=[...] -> sirf un subjects ke
+    doubts (teacher view): teacher ko doosre subject ke teacher wale doubts nahi dikhne."""
     from models import Doubt, DoubtResponse, StudentProfile, User as _U
     sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
     name = (sp.user.name if sp and sp.user else "Student")
@@ -770,6 +772,10 @@ def _student_chat_payload(db, student_id):
             defer(Doubt.answer_audio_b64), defer(Doubt.answer_attach_b64))
           .filter(Doubt.student_id == student_id)
           .order_by(Doubt.created_at.asc(), Doubt.id.asc()).all())
+    # Teacher view -> sirf apne subject(s) ke doubts (history me bhi). Admin -> subjects=None -> sab.
+    if subjects is not None:
+        _allow = {_subj_norm(s) for s in (subjects or []) if s}
+        ds = [d for d in ds if _subj_norm(d.subject) in _allow]
     rids = [d.id for d in ds]
     img = voice = av = af = set()
     if rids:
@@ -808,10 +814,11 @@ def _student_chat_payload(db, student_id):
 @router.get("/student-doubts")
 def teacher_student_doubts(student_id: int, db: Session = Depends(get_db),
                            current_user=Depends(get_teacher)):
-    """Ek student ke SAARE doubts (chat history) — teacher naam pe click kare to WhatsApp-
-    style chat khule. Full thread + media flags ke saath."""
-    get_teacher_profile(current_user, db)   # auth guard
-    return _student_chat_payload(db, student_id)
+    """Ek student ke doubts (chat history) — teacher naam pe click kare to WhatsApp-
+    style chat khule. Sirf IS teacher ke subject(s) ke doubts (doosre subject wale nahi).
+    Full thread + media flags ke saath."""
+    tp = get_teacher_profile(current_user, db)   # auth guard
+    return _student_chat_payload(db, student_id, subjects=(tp.subjects or []))
 
 
 @router.get("/doubts-assign-targets")
