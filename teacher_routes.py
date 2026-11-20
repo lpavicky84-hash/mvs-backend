@@ -1095,6 +1095,30 @@ def _teacher_classkeys(tp):
             keys.add(_tt_entry_key(nm, cl))
     return keys, bool(keys)
 
+def _class_filter(tp, entries):
+    """Teacher ke timetable entries ko unki ASSIGNED class(es) tak scope karo — EK hi jagah se,
+    taaki har section me behaviour same rahe. Isse dual-class subjects (English/Hindi/DEO —
+    Class 10 vs Class 12) KABHI merge nahi hote: Class 12 teacher ko sirf Class 12, Class 10
+    teacher ko sirf Class 10 dikhe. subject_classes set na ho (legacy teacher) to filter skip
+    (behaviour pehle jaisa). Self-owned (teacher_id), crash 'Day N', aur bina class_name wali
+    entries hamesha rakhte hain (yahi /my-timetable wali proven logic)."""
+    _ck, _has = _teacher_classkeys(tp)
+    if not _has:
+        return list(entries)
+    import re as _re
+    out = []
+    for e in entries:
+        if getattr(e, "teacher_id", None) == tp.id:
+            out.append(e); continue
+        _p = (getattr(e, "part", "") or "").strip()
+        if _p and _re.match(r"^day\s*\d+$", _p, _re.I):
+            out.append(e); continue
+        if not str(getattr(e, "class_name", "") or "").strip():
+            out.append(e); continue
+        if _tt_entry_key(getattr(e, "subject", ""), getattr(e, "class_name", "")) in _ck:
+            out.append(e)
+    return out
+
 def _subj_scope_for(db, model, subjects):
     """Assigned subjects + DB me stored unke variants (e.g. 'X (229)') ka map:
     {stored_subject: canonical_assigned_subject}. Exact naam ho to wahi."""
@@ -2436,19 +2460,7 @@ def my_timetable(db: Session = Depends(get_db), current_user=Depends(get_teacher
     es = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(list(scope)),
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).order_by(
         TimetableEntry.subject, TimetableEntry.entry_date).all()
-    _ck, _has = _teacher_classkeys(tp)
-    if _has:
-        import re as _re
-        def _keep(e):
-            # teacher ko khud assign (crash upload etc.) ya crash Day entry -> hamesha (batch-scoped)
-            if getattr(e, "teacher_id", None) == tp.id:
-                return True
-            if e.part and _re.match(r"^day\s*\d+$", (e.part or "").strip(), _re.I):
-                return True
-            if not str(e.class_name or "").strip():
-                return True
-            return _tt_entry_key(e.subject, e.class_name) in _ck
-        es = [e for e in es if _keep(e)]
+    es = _class_filter(tp, es)
     return [_serialize_tt(e, scope.get(e.subject)) for e in es]
 
 # ===== TEACHER: TODAY'S CLASSES with material status =====
@@ -2465,9 +2477,7 @@ def today_classes(db: Session = Depends(get_db), current_user=Depends(get_teache
     es = db.query(TimetableEntry).filter(
         TimetableEntry.subject.in_(list(scope)), TimetableEntry.entry_date == today,
         or_(TimetableEntry.status==None, TimetableEntry.status!='pending')).all()
-    _ck, _has = _teacher_classkeys(tp)
-    if _has:
-        es = [e for e in es if (not str(e.class_name or '').strip()) or _tt_entry_key(e.subject, e.class_name) in _ck]
+    es = _class_filter(tp, es)
     mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(list(_subj_scope_for(db, Material, subs)))).all()
     out = []
     _seen = set()
@@ -3906,6 +3916,7 @@ def teacher_my_classes(scope: str = "all", db: Session = Depends(get_db), curren
     if scope == "today":
         q = q.filter(TimetableEntry.entry_date == ist_today())
     es = q.order_by(TimetableEntry.entry_date, TimetableEntry.time_text).all()
+    es = _class_filter(tp, es)   # dual-class (English 10 vs 12) merge na ho — teacher ki class hi
     out = []
     for e in es:
         d = _serialize_tt(e); d["live_status"] = _class_status(e)
@@ -4120,6 +4131,7 @@ def teacher_compliance(db: Session = Depends(get_db), current_user=Depends(get_t
     classes = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
         or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
         TimetableEntry.entry_type == "chapter").all() if subs else []
+    classes = _class_filter(tp, classes)   # teacher ki class hi (dual-class merge na ho)
     due = [c for c in classes if c.entry_date and c.entry_date <= today]
     completed = [c for c in due if getattr(c, "completed", False)]
     mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all() if subs else []
@@ -4670,6 +4682,7 @@ def teacher_performance(db: Session = Depends(get_db), current_user=Depends(get_
     classes = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
         or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
         TimetableEntry.entry_type == "chapter").all() if subs else []
+    classes = _class_filter(tp, classes)   # teacher ki class hi (dual-class merge na ho)
     completed = [c for c in classes if getattr(c, "completed", False)]
     mats = db.query(Material).options(defer(Material.content_b64)).filter(Material.subject.in_(subs)).all() if subs else []
     dpp_count = sum(1 for m in mats if m.material_type == "dpp")
@@ -6395,6 +6408,7 @@ def teacher_tt_entries_lite(db: Session = Depends(get_db), current_user=Depends(
     if subs:
         conds.append(TimetableEntry.subject.in_(subs))
     es = q.filter(or_(*conds)).order_by(TimetableEntry.entry_date.desc()).limit(120).all()
+    es = _class_filter(tp, es)   # teacher ki class hi (dual-class English 10 vs 12 merge na ho)
     # skip test/event rows - only teachable chapter parts make sense to verify
     out = []
     for e in es:
@@ -6667,7 +6681,7 @@ def _delay_band(d):
     return "late"
 
 
-def _report_rows(db, subjects, teacher_map=None):
+def _report_rows(db, subjects, teacher_map=None, tp=None):
     from models import TimetableEntry
     q = db.query(TimetableEntry).filter(TimetableEntry.completed == True,
                                         TimetableEntry.entry_type == "chapter")
@@ -6679,6 +6693,9 @@ def _report_rows(db, subjects, teacher_map=None):
             return []
         q = q.filter(TimetableEntry.subject.in_(subjects))
     es = q.order_by(TimetableEntry.entry_date.desc()).limit(300).all()
+    # Teacher view (tp diya) -> sirf uski class(es). Admin (tp=None) -> sab subjects/classes.
+    if tp is not None:
+        es = _class_filter(tp, es)
     rows = []
     for e in es:
         d = _delay_of(e)
@@ -6735,7 +6752,7 @@ def _report_summary(rows):
 def teacher_class_reports(db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     """The teacher's own submitted class reports + delay/hours analytics."""
     tp = get_teacher_profile(current_user, db)
-    rows = _report_rows(db, tp.subjects or [])
+    rows = _report_rows(db, tp.subjects or [], tp=tp)
     return {"summary": _report_summary(rows), "rows": rows[:60]}
 
 
