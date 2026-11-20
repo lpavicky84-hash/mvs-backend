@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -8,6 +8,90 @@ from models import User, TeacherProfile, StudentProfile, UserRole
 from schemas import RegisterRequest, LoginRequest, TokenResponse, UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+# ---- Persistent auth cookie (iOS "Add to Home Screen" PWA bulletproof) ----
+# Login par localStorage ke saath-saath server ek long-lived httpOnly cookie bhi set karta hai.
+# iOS standalone PWA par localStorage kabhi relaunch pe kho jaata hai -> is cookie se session
+# recover ho jaata hai (bina dobara login kiye). Cookie SERVER-set hai isliye iOS ITP ke JS-cookie
+# 7-din cap se bhi bachi rehti hai. Same-origin (app.mvsfoundation.in khud API serve karta hai)
+# isliye SameSite=Lax kaafi hai.
+AUTH_COOKIE = "mvs_auth"
+
+def _auth_cookie_max_age():
+    try:
+        from security import ACCESS_TOKEN_EXPIRE_HOURS as _H
+        return int(_H) * 3600
+    except Exception:
+        return 720 * 3600
+
+def _set_auth_cookie(response, tok):
+    try:
+        response.set_cookie(key=AUTH_COOKIE, value=tok, max_age=_auth_cookie_max_age(),
+                            httponly=True, samesite="lax", secure=True, path="/")
+    except Exception:
+        pass
+
+def _clear_auth_cookie(response):
+    try:
+        response.delete_cookie(key=AUTH_COOKIE, path="/")
+    except Exception:
+        pass
+
+def _token_from_request(request):
+    """header Bearer -> ?t=/?token= -> cookie se token nikaalo."""
+    try:
+        auth = request.headers.get("authorization") or ""
+        if auth.lower().startswith("bearer "):
+            t = auth[7:].strip()
+            if t:
+                return t
+    except Exception:
+        pass
+    try:
+        t = request.query_params.get("t") or request.query_params.get("token")
+        if t:
+            return t
+    except Exception:
+        pass
+    try:
+        return request.cookies.get(AUTH_COOKIE)
+    except Exception:
+        return None
+
+
+@router.api_route("/session", methods=["GET", "POST"])
+def auth_session(request: Request, response: Response, db: Session = Depends(get_db)):
+    """iOS PWA session-recovery + cookie-refresh.
+    - Token header/query/cookie me se kahin se bhi lo, validate karo.
+    - Student single-session rule (2 slot) yahan bhi enforce (doosre device wala kick bana rahe).
+    - Persistent cookie refresh karo aur token wapas do -> frontend bina login kiye session restore kare.
+    localStorage ho ya na ho, dono case me kaam karta hai."""
+    import json as _json
+    from security import decode_token, _role_val, SESSION_SUPERSEDED
+    tok = _token_from_request(request)
+    if not tok:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(tok)   # invalid/expire -> 401
+    uid = payload.get("sub")
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user = db.query(User).filter(User.id == int(uid)).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+    if _role_val(user) == "student":
+        tsid = payload.get("sid")
+        if tsid:
+            raw = getattr(user, "active_sessions", None)
+            if raw:
+                try:
+                    slots = _json.loads(raw) or {}
+                except Exception:
+                    slots = {}
+                valid = set(v for v in slots.values() if v)
+                if valid and tsid not in valid:
+                    raise HTTPException(status_code=401, detail=SESSION_SUPERSEDED)
+    _set_auth_cookie(response, tok)   # persistent cookie plant/refresh
+    return {"access_token": tok, "role": _role_val(user), "name": user.name}
 
 def generate_user_id(name: str, db: Session) -> str:
     """Auto-generate unique user ID from name e.g. Rahul Sharma → RS001"""
@@ -515,10 +599,11 @@ def presence_ping(payload: dict = None, request: Request = None,
 
 
 @router.post("/logout")
-def presence_logout(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def presence_logout(response: Response, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Close the user's open session(s) on logout so the NEXT login starts a fresh
     live-duration from 0 (instead of reusing the old started_at) and they immediately
     drop off the Live Users view."""
+    _clear_auth_cookie(response)   # persistent auth cookie bhi hata do (explicit logout)
     from models import UserSession
     now = datetime.now()
     try:

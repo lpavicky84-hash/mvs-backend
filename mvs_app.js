@@ -1071,10 +1071,27 @@ function logout(){
 // v171: session ab PORTAL-WISE store hoti hai (mvs_sess_admin / _teacher / _student).
 // Isse ek hi browser me admin aur student dono alag-alag rah sakte hain, aur student
 // link (/) kholne par admin panel nahi khulta — jis portal ka URL hai usi ki session.
+// iOS "Add to Home Screen" PWA bulletproof: localStorage ke ALAWA server-set httpOnly cookie
+// bhi session persist karti hai. iOS standalone PWA kabhi relaunch pe localStorage uda deta hai
+// -> tab is cookie se session recover ho jaata hai (bina dobara login kiye).
+async function _fetchSession(){
+  try{
+    var h={}; if(typeof TOKEN!=='undefined' && TOKEN) h['Authorization']='Bearer '+TOKEN;
+    var r=await fetch(API+'/api/auth/session',{method:'GET',credentials:'include',headers:h});
+    if(!r||!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }
+}
+function _plantAuthCookie(){   // login/restore ke baad persistent cookie set/refresh (fire-and-forget)
+  try{ if(typeof TOKEN==='undefined' || !TOKEN) return;
+    fetch(API+'/api/auth/session',{method:'POST',credentials:'include',headers:{'Authorization':'Bearer '+TOKEN}}).catch(function(){});
+  }catch(e){}
+}
 function _saveSession(){
   try{ if(TOKEN&&ROLE){
     localStorage.setItem('mvs_sess_'+(typeof ROLE_PORTAL==='function'?ROLE_PORTAL(ROLE):ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''}));
     localStorage.removeItem('mvs_sess');   // purani shared key hata do (migration)
+    _plantAuthCookie();   // server-set persistent cookie bhi -> iOS PWA par logout na ho
   } }catch(e){}
 }
 function _clearSession(){ try{ if(ROLE) localStorage.removeItem('mvs_sess_'+(typeof ROLE_PORTAL==='function'?ROLE_PORTAL(ROLE):ROLE)); localStorage.removeItem('mvs_sess'); }catch(e){} }
@@ -1086,6 +1103,11 @@ async function _restoreSession(){
   try{ s=JSON.parse(localStorage.getItem('mvs_sess_'+want)||'null'); }catch(e){}
   // backward-compat: purani shared 'mvs_sess' agar isi role ki thi to use + migrate
   if(!s){ try{ var leg=JSON.parse(localStorage.getItem('mvs_sess')||'null'); if(leg&&leg.r===want){ s=leg; } }catch(e){} }
+  // iOS "Add to Home Screen" PWA ne relaunch pe localStorage uda diya? -> server-set httpOnly
+  // cookie se session recover karo (bina dobara login kiye). Yahi "app band karte hi logout" ka fix.
+  if(!s||!s.t||!s.r){
+    try{ var cs=await _fetchSession(); if(cs&&cs.access_token&&cs.role&&ROLE_PORTAL(cs.role)===want){ s={t:cs.access_token,r:cs.role,n:cs.name||''}; } }catch(e){}
+  }
   if(!s||!s.t||!s.r||ROLE_PORTAL(s.r)!==want) return false;
   TOKEN=s.t; ROLE=s.r; NAME=s.n||''; CURRENT_PORTAL=ROLE_PORTAL(ROLE);
   window._sessNonce=window._sessNonce||Date.now();  // v165: my-photo cache-buster restored sessions par bhi
@@ -1102,6 +1124,7 @@ async function _restoreSession(){
     if(_st===401 || _st===403){ TOKEN=null; ROLE=null; try{ localStorage.removeItem('mvs_sess_'+want); }catch(_){} return false; }
   }
   try{ localStorage.setItem('mvs_sess_'+ROLE_PORTAL(ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); localStorage.removeItem('mvs_sess'); }catch(e){}
+  try{ _plantAuthCookie(); }catch(e){}   // restore ke baad persistent cookie refresh
   try{ document.getElementById('landing').style.display='none'; }catch(e){}
   try{ const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('active'); }catch(e){}
   // refresh se pehle wala section YAAD rakho — open* functions history.state ko dashboard pe

@@ -129,6 +129,14 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     if not token:
         token = request.query_params.get("t") or request.query_params.get("token")
     if not token:
+        # iOS "Add to Home Screen" PWA par localStorage relaunch pe kho sakti hai -> student
+        # logout dikhta tha. Login par server ne jo persistent httpOnly cookie (mvs_auth) set ki
+        # thi usse auth kar lo -> session bulletproof bana rehta hai.
+        try:
+            token = request.cookies.get("mvs_auth")
+        except Exception:
+            token = None
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     payload = decode_token(token)
     user_id = payload.get("sub")
