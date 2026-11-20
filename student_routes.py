@@ -865,7 +865,18 @@ def student_set_active_batch(payload: dict = Body(...), db: Session = Depends(ge
     return {"ok": True, "active_batch_id": eff}
 
 def notify(db, user_id, title, message, notif_type, ref=None):
-    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type)
+    # In-app deep-link: jab ref diya ho (doubt -> student id, DPP -> pack id), to ek
+    # INTERNAL nav token "mvsnav:<ref>" link me store hota hai. Frontend isse pehchaan kar
+    # notification click pe SEEDHA uss item (student ka doubt / woh DPP) par le jaata hai —
+    # section pe atakta nahi. Ye token external URL nahi hai (video link se alag), isliye
+    # frontend isko naye tab me kabhi nahi kholta.
+    _link = None
+    try:
+        if ref is not None and str(ref).strip() != "":
+            _link = "mvsnav:%s" % str(ref).strip()
+    except Exception:
+        _link = None
+    n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type, link=_link)
     db.add(n)
     try:
         import push_service, re as _re
@@ -2551,8 +2562,10 @@ async def submit_answer(
     return {"id": m.id, "message": "Submitted! Thank you 🎉"}
 
 
-def _notify_submission(teacher_id, subject, title, student_name):
-    """Runs after the response is sent - notifies the teacher of a new submission."""
+def _notify_submission(teacher_id, subject, title, student_name, ref=None):
+    """Runs after the response is sent - notifies the teacher of a new submission.
+    ref = DPP pack id (DppPack flow) -> notification click teacher ko SEEDHA us DPP par le
+    jaata hai. Material/test flow ref=None bhejta hai -> section-level fallback (purana behaviour)."""
     from database import SessionLocal
     from models import TeacherProfile
     db = SessionLocal()
@@ -2560,7 +2573,7 @@ def _notify_submission(teacher_id, subject, title, student_name):
         tp = db.query(TeacherProfile).filter(TeacherProfile.id == teacher_id).first()
         if tp and tp.user:
             notify(db, tp.user_id, "📥 Submission: %s" % subject,
-                   "%s submitted an answer for %s." % (student_name, title), "submission")
+                   "%s submitted an answer for %s." % (student_name, title), "submission", ref=ref)
             db.commit()
     except Exception:
         db.rollback()
@@ -4107,7 +4120,7 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
     if background_tasks is not None and getattr(pk, "teacher_id", None):
         try:
             background_tasks.add_task(_notify_submission, pk.teacher_id, pk.subject,
-                                      (pk.title or pk.subject or "DPP"), current_user.name)
+                                      (pk.title or pk.subject or "DPP"), current_user.name, pack_id)
         except Exception:
             pass
     return {"ok": True, "status": "submitted"}
@@ -4316,7 +4329,7 @@ def student_dpp_submit_staged(pack_id: int, data: dict = Body(...),
     if background_tasks is not None and pk is not None and getattr(pk, "teacher_id", None):
         try:
             background_tasks.add_task(_notify_submission, pk.teacher_id, pk.subject,
-                                      (pk.title or pk.subject or "DPP"), current_user.name)
+                                      (pk.title or pk.subject or "DPP"), current_user.name, pack_id)
         except Exception:
             pass
     return {"ok": True, "status": "submitted"}

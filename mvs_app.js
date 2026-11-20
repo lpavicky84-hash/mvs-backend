@@ -1582,6 +1582,64 @@ function _openDoubtByStudentDL(sid){
     tries++; setTimeout(poll, 420);
   })();
 }
+// ===== IN-APP NOTIFICATION DEEP-LINK: click karte hi SEEDHA us item par (section pe atke bina). =====
+// notifGo jaisa hi section-redirect, PLUS item-level open (doubt chat / DPP panel). ref backend ke
+// "mvsnav:<ref>" token se aata hai (doubt=student id, DPP=pack id).
+async function notifDeepGo(role,nid,type,fbPage,hint,ref){
+  var page=''; try{ page=_notifResolvePage(role,type,fbPage,hint); }catch(e){}
+  closeModal();
+  if(page){
+    var navTo=(role==='teacher')?tPage:(role==='admin')?aPage:sPage;
+    try{ navTo(page,null); }catch(e){}
+    var appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+    try{ document.querySelectorAll('#'+appId+' .nav-item').forEach(function(el){ el.classList.remove('active'); if((el.getAttribute('onclick')||'').indexOf("'"+page+"'")>=0) el.classList.add('active'); }); }catch(e){}
+  }
+  try{ _notifOpenItem(role,type,ref); }catch(e){}
+  if(nid){ try{ api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH').catch(function(){}); }catch(e){} }
+  try{ refreshNotifBadge(role); }catch(e){}
+}
+// type ke hisaab se item khol do. Abhi teacher ke doubt + DPP submission deep-link hain;
+// baaki types section-level hi rehte hain (notifGo wala behaviour).
+function _notifOpenItem(role,type,ref){
+  if(!ref) return;
+  var t=(type||'').toLowerCase();
+  if(role==='teacher'){
+    if(t.indexOf('doubt')>=0){ _openDoubtByStudentDL(ref); return; }
+    if(t.indexOf('submission')>=0 || t.indexOf('dpp')>=0){ _openDppByRefDL(ref); return; }
+  }
+}
+// DPP page load hone ka intezaar karo (packs aa jaayein), fir woh DPP panel kholo + zoom pulse.
+function _openDppByRefDL(ref){
+  var pid=parseInt(String(ref).split(':')[0],10)||0; if(!pid) return;
+  var tries=0;
+  (function poll(){
+    var ready=false; try{ ready=(window._dppPacks||[]).some(function(p){ return p.id===pid; }); }catch(e){}
+    if(ready){
+      try{
+        var r=(typeof openTDppPanel==='function')?openTDppPanel(pid):null;
+        if(r && typeof r.then==='function') r.then(function(){ _dppZoomPulse(); });
+        else setTimeout(function(){ _dppZoomPulse(); }, 360);
+      }catch(e){}
+      return;
+    }
+    if(tries>=12) return;   // page nahi khula to chup-chaap chhodo (section pe to pahunch hi gaye)
+    tries++; setTimeout(poll, 420);
+  })();
+}
+// "zoom in -> zoom out" visual cue: DPP panel par dhyaan khinchne ke liye ek halki pulse.
+function _dppZoomPulse(){
+  try{
+    var el=document.getElementById('t-dpp-content'); if(!el) return;
+    if(!document.getElementById('dpp-zoom-css')){
+      var s=document.createElement('style'); s.id='dpp-zoom-css';
+      s.textContent='@keyframes dppZoomPulse{0%{transform:scale(.975)}28%{transform:scale(1.02);box-shadow:0 16px 44px -18px rgba(201,162,39,.6)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(201,162,39,0)}}.dpp-zoom-hit{animation:dppZoomPulse 1.15s cubic-bezier(.22,1,.36,1);transform-origin:top center}';
+      document.head.appendChild(s);
+    }
+    el.classList.remove('dpp-zoom-hit'); void el.offsetWidth; el.classList.add('dpp-zoom-hit');
+    try{ el.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+    setTimeout(function(){ try{ el.classList.remove('dpp-zoom-hit'); }catch(e){} }, 1400);
+  }catch(e){}
+}
 function _notifAvHtml(n,fb){
   if(!n.image_url) return '';
   return `<div class="notif-av" data-nimg="${esc(n.image_url)}">${esc(initials(fb||'MVS'))}<span class="mvs-b">M</span></div>`;
@@ -1623,8 +1681,10 @@ function _notifItemClick(ev,el){
     var hasLink=el.getAttribute('data-nhas')==='1';
     var encLink=el.getAttribute('data-nlink')||'';
     var ttl=el.getAttribute('data-ntitle')||'';   // title -> blank-type notifications ka section nikalne ke liye
-    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' → '+(hasLink?'notifLinkOpen':'notifGo')); }catch(_){} }
-    if(hasLink) notifLinkOpen(role,id,encLink,type,fb,ttl);
+    var navRef=el.getAttribute('data-nref')||'';  // "mvsnav:<ref>" -> SEEDHA us item (doubt/DPP) par
+    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' navRef='+navRef+' → '+(navRef?'notifDeepGo':(hasLink?'notifLinkOpen':'notifGo'))); }catch(_){} }
+    if(navRef) notifDeepGo(role,id,type,fb,ttl,navRef);
+    else if(hasLink) notifLinkOpen(role,id,encLink,type,fb,ttl);
     else notifGo(role,id,type,fb,ttl);
   }catch(e){ try{ _notifDbg('ITEMCLICK THREW: '+((e&&e.message)||e)); }catch(_){} try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
   return false;
@@ -1722,8 +1782,11 @@ async function openNotifPanel(role){
   _ensureNotifCss();
   const fbPage=role==='admin'?'dashboard':'notifications';
   const html=list.length?('<div class="npnl">'+list.map(n=>{
-    const hasLink=!!n.link;
-    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
+    // "mvsnav:<ref>" = INTERNAL deep-link (doubt/DPP item) — external URL nahi. Isko alag
+    // data-nref me rakho; hasLink sirf ASLI external link (video) ke liye true rahe.
+    const navRef=(typeof n.link==='string'&&n.link.indexOf('mvsnav:')===0)?n.link.slice(7):'';
+    const hasLink=!!n.link&&!navRef;
+    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
     const unread=!n.is_read;
     const ico=_notifIconFor(n);
     const isBroadcast=(n.notif_type==='admin_broadcast');
@@ -1731,7 +1794,7 @@ async function openNotifPanel(role){
     const imgPrev=(isBroadcast&&n.image_url)?`<img loading="lazy" data-nimg-full="${esc(n.image_url)}" alt="" class="npnl-img">`:'';
     const dot=unread?'<span class="npnl-dot"></span>':'';
     const openPill=hasLink?'<span class="npnl-open">Open &#8250;</span>':'';
-    return `<div class="npnl-it ${unread?'unread':''}" data-go="1" ${_da} onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}">${avatar}<div class="npnl-bd"><div class="npnl-tl"><span class="t">${esc(n.title)}</span>${openPill}</div><div class="npnl-msg">${_msgHtml(n.message)}</div>${imgPrev}<div class="npnl-tm">${fmtNice(n.created_at)}</div></div>${dot}</div>`;
+    return `<div class="npnl-it ${unread?'unread':''}" data-go="1" ${_da} onclick="_notifItemClick(event,this)" title="${hasLink?'Tap to open the link':'Tap to open this section'}">${avatar}<div class="npnl-bd"><div class="npnl-tl"><span class="t">${esc(n.title)}</span>${openPill}</div><div class="npnl-msg">${_msgHtml(n.message)}</div>${imgPrev}<div class="npnl-tm">${_istFmt(n.created_at)}</div></div>${dot}</div>`;
   }).join('')+'</div>'):`<div class="npnl-empty"><div class="ne-ic">${ic('bell')}</div><p>No notifications yet</p></div>`;
   showModal(' Notifications',html,`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   _notifImgs(document.getElementById('modal-body'));
@@ -27201,10 +27264,12 @@ async function loadNotif(path,elId){
  const fbPage=role==='admin'?'dashboard':'notifications';
  ns.forEach(n=>{
    const av=_notifAvHtml(n,'MVS');
-   const hasLink=!!n.link;
+   // "mvsnav:<ref>" = INTERNAL deep-link (doubt/DPP item) — external URL nahi.
+   const navRef=(typeof n.link==='string'&&n.link.indexOf('mvsnav:')===0)?n.link.slice(7):'';
+   const hasLink=!!n.link&&!navRef;
    // same robust, link-aware, title-fallback handler as the bell panel (data-attrs -> _notifItemClick)
-   const _da=`data-nrole="${role}" data-nid="${n.id||0}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}"`;
-   const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)} <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span></h4><small style="color:var(--text-muted);flex-shrink:0">${new Date(n.created_at).toLocaleString()}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${_msgHtml(n.message)}</p>`;
+   const _da=`data-nrole="${role}" data-nid="${n.id||0}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
+   const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)} <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span></h4><small style="color:var(--text-muted);flex-shrink:0">${_istFmt(n.created_at)}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${_msgHtml(n.message)}</p>`;
    html+=`<div class="doubt-card notif-click" ${_da} style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'};cursor:pointer" onclick="_notifItemClick(event,this)" title="Tap to open">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
  });
  html+=`</div></div>`;
