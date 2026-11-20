@@ -1556,9 +1556,10 @@ async def ask_doubt(
                   image_b64=img_b64, attach_mime=attach_mime, attach_name=attach_name,
                   audio_b64=audio_b64)
     db.add(doubt)
+    db.flush()   # doubt.id abhi assign ho jaaye -> notification deep-link SEEDHA isi doubt card par le jaata hai
     if tp and tp.user:
         notify(db, tp.user_id, f"New Doubt — {current_user.name}",
-               f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt", ref=sp.id)
+               f"Subject: {subject} | Topic: {topic} | {question[:100]}", "new_doubt", ref=doubt.id)
     else:
         # Is subject ka koi teacher assign nahi — doubt kisi ke paas nahi jaayega.
         # Admin ko batao taaki Admin Inbox (Doubts page) se reply de sake.

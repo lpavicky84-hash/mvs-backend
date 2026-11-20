@@ -1574,17 +1574,26 @@ try{
     });
   }
 }catch(e){}
-// Push deep-link (phone) is path se doubt chat kholta hai — ab naam-fallback + blink bhi mil jaata hai.
-function _openDoubtByStudentDL(sid){ _openDoubtDL(sid,''); }
+// Push deep-link (phone) bhi ab SEEDHA us doubt card par (ref = doubt id).
+function _openDoubtByStudentDL(x){ _openDoubtDL(x,'',''); }
 // ye notification "deep-openable" hai kya? (teacher ke doubt + DPP submission) — backend ref na ho tab bhi.
 function _notifDeepable(type,title){
   var t=((type||'')+' '+(title||'')).toLowerCase();
   return t.indexOf('doubt')>=0 || t.indexOf('submission')>=0 || t.indexOf('dpp')>=0;
 }
-// ===== IN-APP NOTIFICATION DEEP-LINK: click karte hi SEEDHA us item par (section pe atke bina). =====
-// notifGo jaisa hi section-redirect, PLUS item-level open (doubt chat / DPP panel). ref backend ke
-// "mvsnav:<ref>" token se aata hai (doubt=student id, DPP=pack id); ref na ho to hint(title) se item dhundo.
-async function notifDeepGo(role,nid,type,fbPage,hint,ref){
+// title "New Doubt — Gauri" me se student ka naam.
+function _nameFromTitle(hint){
+  var w=''; try{ var h=String(hint||'').trim(); if(h){ var parts=h.split(/[—–:\-·|]/); w=(parts[parts.length-1]||'').trim(); } }catch(e){}
+  return w;
+}
+// message "… submitted an answer for DPP Ch-03." me se DPP ka title.
+function _dppTitleFromMsg(msg){
+  try{ var m=String(msg||'').match(/for\s+(.+?)[.\s]*$/i); return m?m[1].trim():''; }catch(e){ return ''; }
+}
+// ===== IN-APP NOTIFICATION DEEP-LINK: click karte hi SEEDHA us item (card) par + blink. =====
+// notifGo jaisa section-redirect, PLUS us exact card ko kholna + blink. ref backend ke "mvsnav:<ref>"
+// se (doubt=doubt id, DPP=pack id); ref na ho to notification ke title/message se item dhundo.
+async function notifDeepGo(role,nid,type,fbPage,hint,ref,msg){
   var page=''; try{ page=_notifResolvePage(role,type,fbPage,hint); }catch(e){}
   closeModal();
   if(page){
@@ -1593,90 +1602,109 @@ async function notifDeepGo(role,nid,type,fbPage,hint,ref){
     var appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
     try{ document.querySelectorAll('#'+appId+' .nav-item').forEach(function(el){ el.classList.remove('active'); if((el.getAttribute('onclick')||'').indexOf("'"+page+"'")>=0) el.classList.add('active'); }); }catch(e){}
   }
-  try{ _notifOpenItem(role,type,ref,hint); }catch(e){}
+  try{ _notifOpenItem(role,type,ref,hint,msg); }catch(e){}
   if(nid){ try{ api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH').catch(function(){}); }catch(e){} }
   try{ refreshNotifBadge(role); }catch(e){}
 }
-// type ke hisaab se item khol do. Abhi teacher ke doubt + DPP submission deep-link hain;
-// baaki types section-level hi rehte hain (notifGo wala behaviour).
-function _notifOpenItem(role,type,ref,hint){
-  var t=(type||'').toLowerCase();
+// type ke hisaab se item khol do (teacher: doubt card / DPP card). baaki types section-level.
+function _notifOpenItem(role,type,ref,hint,msg){
   var tt=((type||'')+' '+(hint||'')).toLowerCase();
   if(role==='teacher'){
-    if(tt.indexOf('doubt')>=0){ _openDoubtDL(ref,hint); return; }        // ref=student id (ya hint ke naam se)
-    if(ref && (tt.indexOf('submission')>=0 || tt.indexOf('dpp')>=0)){ _openDppByRefDL(ref); return; }  // ref=DPP pack id
+    if(tt.indexOf('doubt')>=0){ _openDoubtDL(ref,hint,msg); return; }                         // ref=doubt id
+    if(tt.indexOf('submission')>=0 || tt.indexOf('dpp')>=0){ _openDppByRefDL(ref,hint,msg); return; }  // ref=DPP pack id
   }
 }
-// DOUBT deep-open: student ka doubt chat kholo + blink. ref=student id; na ho to notification ke
-// TITLE me se student ka naam nikaal kar _tDoubts se match karo. Isliye backend deploy par depend nahi.
-function _openDoubtDL(ref,hint){
-  var sid0=parseInt(ref,10)||0;
-  var wantName='';
-  try{ var h=String(hint||'').trim(); if(h){ var parts=h.split(/[—–:\-·|]/); wantName=(parts[parts.length-1]||'').trim(); } }catch(e){}
+// ===== DOUBT deep-open: SEEDHA us doubt ke card par (modal nahi) + blink. =====
+// ref = doubt id (naya backend). Purani notification / fallback: ref ko student id ki tarah, ya title
+// ke naam se match. _tDoubts (teacher ke saare doubts) me se doubt dhundo -> uske subject me jaao -> card blink.
+function _openDoubtDL(ref,hint,msg){
+  var want=parseInt(ref,10)||0;
+  var wantName=_nameFromTitle(hint);
   var tries=0;
   (function poll(){
-    var sid=sid0, nm='';
+    var d=null, list=window._tDoubts||[];
     try{
-      var list=window._tDoubts||[];
-      if(sid){ for(var i=0;i<list.length;i++){ if(String(list[i].student_id)===String(sid)){ nm=list[i].student_name||nm; break; } } }
-      if(!sid && wantName){
-        var wl=wantName.toLowerCase();
-        for(var j=0;j<list.length;j++){ if(String(list[j].student_name||'').trim().toLowerCase()===wl){ sid=list[j].student_id; nm=list[j].student_name; break; } }
-        if(!sid){ for(var k=0;k<list.length;k++){ if(String(list[k].student_name||'').toLowerCase().indexOf(wl)>=0){ sid=list[k].student_id; nm=list[k].student_name; break; } } }
+      if(want){ for(var i=0;i<list.length;i++){ if(String(list[i].id)===String(want)){ d=list[i]; break; } } }       // 1) doubt id
+      if(!d && want){ for(var j=0;j<list.length;j++){ if(String(list[j].student_id)===String(want)){ d=list[j]; break; } } }  // 2) purana: student id
+      if(!d && wantName){ var wl=wantName.toLowerCase();                                                                 // 3) title ke naam se
+        for(var k=0;k<list.length;k++){ var nm=String(list[k].student_name||'').trim().toLowerCase(); if(nm===wl){ d=list[k]; break; } }
+        if(!d){ for(var m=0;m<list.length;m++){ if(String(list[m].student_name||'').toLowerCase().indexOf(wl)>=0){ d=list[m]; break; } } }
       }
     }catch(e){}
-    // ref diya hai -> naam mil jaaye ya 6 try (chat API khud load karega); ref nahi -> sid resolve hone tak.
-    var done = sid0 ? (nm || tries>=6) : (!!sid || tries>=14);
-    if(done){
-      if(sid){ try{ openDoubtChat('teacher', parseInt(sid,10)||0, encodeURIComponent(nm||wantName||'')); }catch(e){} setTimeout(_doubtBlink, 680); }
-      return;
-    }
-    tries++; setTimeout(poll, 350);
+    if(d){ _openDoubtCard(d); return; }
+    if(tries>=16) return;   // doubts list nahi aayi / match nahi — chup-chaap chhodo (section pe to pahunch gaye)
+    tries++; setTimeout(poll, 320);
   })();
 }
-// doubt chat modal par dhyaan khinchne ke liye ek blink (zoom/glow).
-function _doubtBlink(){
+function _openDoubtCard(d){
   try{
-    var el=document.querySelector('.dchat-modal-wrap'); if(!el) return;
-    if(!document.getElementById('dchat-blink-css')){
-      var s=document.createElement('style'); s.id='dchat-blink-css';
-      s.textContent='@keyframes dchatBlink{0%{box-shadow:0 0 0 0 rgba(201,162,39,0);transform:scale(.99)}22%{box-shadow:0 0 0 4px rgba(201,162,39,.55);transform:scale(1.012)}50%{box-shadow:0 0 0 2px rgba(201,162,39,.22);transform:scale(1)}72%{box-shadow:0 0 0 4px rgba(201,162,39,.5);transform:scale(1.008)}100%{box-shadow:0 0 0 0 rgba(201,162,39,0);transform:scale(1)}}.dchat-blink{animation:dchatBlink 1.35s ease-in-out 1;border-radius:14px}';
-      document.head.appendChild(s);
-    }
-    el.classList.remove('dchat-blink'); void el.offsetWidth; el.classList.add('dchat-blink');
-    setTimeout(function(){ try{ el.classList.remove('dchat-blink'); }catch(e){} }, 1600);
+    var key=(d.subject||'Other')+'␟'+(d.student_class||'');
+    try{ tPickDoubtSub(encodeURIComponent(key)); }catch(e){}   // us subject ka drill-view (Pending+Resolved) khol do
   }catch(e){}
+  _scrollBlinkByQid('tdq-'+d.id, '.dbt-card', true);
 }
-// DPP page load hone ka intezaar karo (packs aa jaayein), fir woh DPP panel kholo + zoom pulse.
-function _openDppByRefDL(ref){
-  var pid=parseInt(String(ref).split(':')[0],10)||0; if(!pid) return;
+// ===== DPP deep-open: SEEDHA us DPP ke card par + blink (panel nahi). =====
+// ref = DPP pack id; na ho to message "… for DPP Ch-03" ke title se pack match.
+function _openDppByRefDL(ref,hint,msg){
+  var pid=parseInt(String(ref).split(':')[0],10)||0;
+  var wantTitle=_dppTitleFromMsg(msg);
   var tries=0;
   (function poll(){
-    var ready=false; try{ ready=(window._dppPacks||[]).some(function(p){ return p.id===pid; }); }catch(e){}
-    if(ready){
-      try{
-        var r=(typeof openTDppPanel==='function')?openTDppPanel(pid):null;
-        if(r && typeof r.then==='function') r.then(function(){ _dppZoomPulse(); });
-        else setTimeout(function(){ _dppZoomPulse(); }, 360);
-      }catch(e){}
-      return;
-    }
-    if(tries>=12) return;   // page nahi khula to chup-chaap chhodo (section pe to pahunch hi gaye)
-    tries++; setTimeout(poll, 420);
+    var pk=null, list=window._dppPacks||[];
+    try{
+      if(pid){ for(var i=0;i<list.length;i++){ if(list[i].id===pid){ pk=list[i]; break; } } }
+      if(!pk && wantTitle){ var wl=wantTitle.toLowerCase(); for(var j=0;j<list.length;j++){ if(String(list[j].title||'').trim().toLowerCase()===wl){ pk=list[j]; break; } } }
+    }catch(e){}
+    if(pk){ _openDppCard(pk); return; }
+    if(tries>=16) return;
+    tries++; setTimeout(poll, 320);
   })();
 }
-// "zoom in -> zoom out" visual cue: DPP panel par dhyaan khinchne ke liye ek halki pulse.
-function _dppZoomPulse(){
+function _openDppCard(pk){
   try{
-    var el=document.getElementById('t-dpp-content'); if(!el) return;
-    if(!document.getElementById('dpp-zoom-css')){
-      var s=document.createElement('style'); s.id='dpp-zoom-css';
-      s.textContent='@keyframes dppZoomPulse{0%{transform:scale(.975)}28%{transform:scale(1.02);box-shadow:0 16px 44px -18px rgba(201,162,39,.6)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(201,162,39,0)}}.dpp-zoom-hit{animation:dppZoomPulse 1.15s cubic-bezier(.22,1,.36,1);transform-origin:top center}';
+    var key=(pk.subject||'General')+'||'+String(pk.class_name||'').replace(/\D/g,'');
+    window._tDppSub=key;                       // us subject ko select
+    try{ _renderTDpp(); }catch(e){}
+  }catch(e){}
+  _scrollBlinkByPackId(pk.id);
+}
+// #<qid> wale element ka parent card dhundo -> scroll + blink. pagination se chhupa ho to usse khol do.
+function _scrollBlinkByQid(qid, cardSel, bumpable){
+  var bumped=false, tries=0;
+  (function go(){
+    var node=document.getElementById(qid);
+    var card=node?node.closest(cardSel):null;
+    if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} _cardBlink(card); return; }
+    if(bumpable && !bumped && tries>=3){ bumped=true; try{ window._tdDoneN=500; window._tdAwayN=500; window._tdLateN=500; tRenderDoubts(); }catch(e){} }
+    if(tries>=14) return;
+    tries++; setTimeout(go, 170);
+  })();
+}
+// DPP card (data-pack-ids me pack id) dhundo -> scroll + blink.
+function _scrollBlinkByPackId(pid){
+  var tries=0;
+  (function go(){
+    var card=null;
+    try{
+      var cards=document.querySelectorAll('#t-dpp-content .dpp-card[data-pack-ids]');
+      for(var i=0;i<cards.length;i++){ if((cards[i].getAttribute('data-pack-ids')||'').split(',').indexOf(String(pid))>=0){ card=cards[i]; break; } }
+    }catch(e){}
+    if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} _cardBlink(card); return; }
+    if(tries>=14) return;
+    tries++; setTimeout(go, 170);
+  })();
+}
+// premium blink: card par 2 baar golden glow + halki zoom (doubt card / DPP card dono ke liye).
+function _cardBlink(el){
+  try{
+    if(!el) return;
+    if(!document.getElementById('mvs-card-blink-css')){
+      var s=document.createElement('style'); s.id='mvs-card-blink-css';
+      s.textContent='@keyframes mvsCardBlink{0%{box-shadow:0 0 0 0 rgba(201,162,39,0);transform:scale(1)}16%{box-shadow:0 0 0 4px rgba(201,162,39,.6),0 18px 46px -20px rgba(201,162,39,.7);transform:scale(1.014)}44%{box-shadow:0 0 0 2px rgba(201,162,39,.18);transform:scale(1)}70%{box-shadow:0 0 0 4px rgba(201,162,39,.5);transform:scale(1.008)}100%{box-shadow:0 0 0 0 rgba(201,162,39,0);transform:scale(1)}}.mvs-card-blink{animation:mvsCardBlink 1.5s ease-in-out 2;border-radius:16px;position:relative;z-index:2}';
       document.head.appendChild(s);
     }
-    el.classList.remove('dpp-zoom-hit'); void el.offsetWidth; el.classList.add('dpp-zoom-hit');
-    try{ el.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
-    setTimeout(function(){ try{ el.classList.remove('dpp-zoom-hit'); }catch(e){} }, 1400);
+    el.classList.remove('mvs-card-blink'); void el.offsetWidth; el.classList.add('mvs-card-blink');
+    setTimeout(function(){ try{ el.classList.remove('mvs-card-blink'); }catch(e){} }, 3200);
   }catch(e){}
 }
 function _notifAvHtml(n,fb){
@@ -1720,12 +1748,13 @@ function _notifItemClick(ev,el){
     var hasLink=el.getAttribute('data-nhas')==='1';
     var encLink=el.getAttribute('data-nlink')||'';
     var ttl=el.getAttribute('data-ntitle')||'';   // title -> blank-type notifications ka section nikalne ke liye
+    var nmsg=el.getAttribute('data-nmsg')||'';    // message -> DPP title / doubt topic parse ke liye
     var navRef=el.getAttribute('data-nref')||'';  // "mvsnav:<ref>" -> SEEDHA us item (doubt/DPP) par
     if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' navRef='+navRef+' → '+(navRef?'notifDeepGo':(hasLink?'notifLinkOpen':'notifGo'))); }catch(_){} }
-    if(navRef) notifDeepGo(role,id,type,fb,ttl,navRef);
+    if(navRef) notifDeepGo(role,id,type,fb,ttl,navRef,nmsg);
     // Backend ref na bhi ho (purani notification), teacher ke doubt/submission ko notification ke
-    // CONTENT se hi deep-open karo — doubt: title ke naam se; DPP: section tak (pack-id ke bina).
-    else if(role==='teacher' && !hasLink && _notifDeepable(type,ttl)) notifDeepGo(role,id,type,fb,ttl,'');
+    // CONTENT se hi deep-open karo — doubt: title ke naam se; DPP: message ke title se.
+    else if(role==='teacher' && !hasLink && _notifDeepable(type,ttl)) notifDeepGo(role,id,type,fb,ttl,'',nmsg);
     else if(hasLink) notifLinkOpen(role,id,encLink,type,fb,ttl);
     else notifGo(role,id,type,fb,ttl);
   }catch(e){ try{ _notifDbg('ITEMCLICK THREW: '+((e&&e.message)||e)); }catch(_){} try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
@@ -1828,7 +1857,7 @@ async function openNotifPanel(role){
     // data-nref me rakho; hasLink sirf ASLI external link (video) ke liye true rahe.
     const navRef=(typeof n.link==='string'&&n.link.indexOf('mvsnav:')===0)?n.link.slice(7):'';
     const hasLink=!!n.link&&!navRef;
-    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
+    const _da=`data-nrole="${role}" data-nid="${n.id}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nmsg="${esc(n.message||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
     const unread=!n.is_read;
     const ico=_notifIconFor(n);
     const isBroadcast=(n.notif_type==='admin_broadcast');
@@ -6325,7 +6354,7 @@ function _tDppGroupCardHTML(g){
   const batchChip=multi
     ? `<span class="xm-chip xm-chip-hl2" title="Shared in ${nb} batches — tap to see them" style="color:#9a7d1a;cursor:pointer" onclick="event.stopPropagation();openDppBatches('${idsCsv}')">${ic('folder')} ${nb} batches ›</span>`
     : (bdist.length?`<span class="xm-chip xm-chip-hl2" title="Batch" style="color:#9a7d1a">${ic('folder')} ${esc(bdist[0].label)}</span>`:'');
-  return `<div class="dpp-card premium${nc>0?' tx-newblink':''}">
+  return `<div class="dpp-card premium${nc>0?' tx-newblink':''}" data-pack-ids="${idsCsv}">
   <div style="display:flex;gap:13px;align-items:flex-start">
     ${window._myPhotoUrl?`<div class="dpp-ava" title="${esc(pk.subject)}" style="background-image:url('${window._myPhotoUrl}');background-size:cover;background-position:center"></div>`:`<div class="dpp-ava-init" title="${esc(pk.subject)}">${ini}</div>`}
     <div style="flex:1;min-width:0">
@@ -27310,7 +27339,7 @@ async function loadNotif(path,elId){
    const navRef=(typeof n.link==='string'&&n.link.indexOf('mvsnav:')===0)?n.link.slice(7):'';
    const hasLink=!!n.link&&!navRef;
    // same robust, link-aware, title-fallback handler as the bell panel (data-attrs -> _notifItemClick)
-   const _da=`data-nrole="${role}" data-nid="${n.id||0}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
+   const _da=`data-nrole="${role}" data-nid="${n.id||0}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nmsg="${esc(n.message||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
    const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)} <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span></h4><small style="color:var(--text-muted);flex-shrink:0">${_istFmt(n.created_at)}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${_msgHtml(n.message)}</p>`;
    html+=`<div class="doubt-card notif-click" ${_da} style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'};cursor:pointer" onclick="_notifItemClick(event,this)" title="Tap to open">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
  });
