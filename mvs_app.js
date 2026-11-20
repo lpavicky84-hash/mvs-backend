@@ -1450,7 +1450,7 @@ const NOTIF_GO={
     reschedule_approved:'timetable',reschedule_rejected:'timetable',reschedule_request:'timetable',leave:'attendance',
     doubt:'doubts',new_doubt:'doubts',admin_message:'notifications',admin_broadcast:'notifications',broadcast:'notifications',
     video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',video_review:'vtasks',
-    payout:'payout',attendance:'attendance',dpp:'dpp',test:'tests',warning:'dashboard'},
+    payout:'payout',attendance:'attendance',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',submission:'dpp',dpp_submission:'dpp',new_submission:'dpp',test:'tests',warning:'dashboard'},
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
     reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
     video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
@@ -1574,17 +1574,16 @@ try{
     });
   }
 }catch(e){}
-function _openDoubtByStudentDL(sid){
-  var tries=0;
-  (function poll(){
-    var nm=''; try{ (window._tDoubts||[]).forEach(function(d){ if(String(d.student_id)===String(sid)) nm=d.student_name||nm; }); }catch(e){}
-    if(nm || tries>=7){ try{ openDoubtChat('teacher', parseInt(sid,10)||0, encodeURIComponent(nm||'')); }catch(e){} return; }
-    tries++; setTimeout(poll, 420);
-  })();
+// Push deep-link (phone) is path se doubt chat kholta hai — ab naam-fallback + blink bhi mil jaata hai.
+function _openDoubtByStudentDL(sid){ _openDoubtDL(sid,''); }
+// ye notification "deep-openable" hai kya? (teacher ke doubt + DPP submission) — backend ref na ho tab bhi.
+function _notifDeepable(type,title){
+  var t=((type||'')+' '+(title||'')).toLowerCase();
+  return t.indexOf('doubt')>=0 || t.indexOf('submission')>=0 || t.indexOf('dpp')>=0;
 }
 // ===== IN-APP NOTIFICATION DEEP-LINK: click karte hi SEEDHA us item par (section pe atke bina). =====
 // notifGo jaisa hi section-redirect, PLUS item-level open (doubt chat / DPP panel). ref backend ke
-// "mvsnav:<ref>" token se aata hai (doubt=student id, DPP=pack id).
+// "mvsnav:<ref>" token se aata hai (doubt=student id, DPP=pack id); ref na ho to hint(title) se item dhundo.
 async function notifDeepGo(role,nid,type,fbPage,hint,ref){
   var page=''; try{ page=_notifResolvePage(role,type,fbPage,hint); }catch(e){}
   closeModal();
@@ -1594,19 +1593,59 @@ async function notifDeepGo(role,nid,type,fbPage,hint,ref){
     var appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
     try{ document.querySelectorAll('#'+appId+' .nav-item').forEach(function(el){ el.classList.remove('active'); if((el.getAttribute('onclick')||'').indexOf("'"+page+"'")>=0) el.classList.add('active'); }); }catch(e){}
   }
-  try{ _notifOpenItem(role,type,ref); }catch(e){}
+  try{ _notifOpenItem(role,type,ref,hint); }catch(e){}
   if(nid){ try{ api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH').catch(function(){}); }catch(e){} }
   try{ refreshNotifBadge(role); }catch(e){}
 }
 // type ke hisaab se item khol do. Abhi teacher ke doubt + DPP submission deep-link hain;
 // baaki types section-level hi rehte hain (notifGo wala behaviour).
-function _notifOpenItem(role,type,ref){
-  if(!ref) return;
+function _notifOpenItem(role,type,ref,hint){
   var t=(type||'').toLowerCase();
+  var tt=((type||'')+' '+(hint||'')).toLowerCase();
   if(role==='teacher'){
-    if(t.indexOf('doubt')>=0){ _openDoubtByStudentDL(ref); return; }
-    if(t.indexOf('submission')>=0 || t.indexOf('dpp')>=0){ _openDppByRefDL(ref); return; }
+    if(tt.indexOf('doubt')>=0){ _openDoubtDL(ref,hint); return; }        // ref=student id (ya hint ke naam se)
+    if(ref && (tt.indexOf('submission')>=0 || tt.indexOf('dpp')>=0)){ _openDppByRefDL(ref); return; }  // ref=DPP pack id
   }
+}
+// DOUBT deep-open: student ka doubt chat kholo + blink. ref=student id; na ho to notification ke
+// TITLE me se student ka naam nikaal kar _tDoubts se match karo. Isliye backend deploy par depend nahi.
+function _openDoubtDL(ref,hint){
+  var sid0=parseInt(ref,10)||0;
+  var wantName='';
+  try{ var h=String(hint||'').trim(); if(h){ var parts=h.split(/[—–:\-·|]/); wantName=(parts[parts.length-1]||'').trim(); } }catch(e){}
+  var tries=0;
+  (function poll(){
+    var sid=sid0, nm='';
+    try{
+      var list=window._tDoubts||[];
+      if(sid){ for(var i=0;i<list.length;i++){ if(String(list[i].student_id)===String(sid)){ nm=list[i].student_name||nm; break; } } }
+      if(!sid && wantName){
+        var wl=wantName.toLowerCase();
+        for(var j=0;j<list.length;j++){ if(String(list[j].student_name||'').trim().toLowerCase()===wl){ sid=list[j].student_id; nm=list[j].student_name; break; } }
+        if(!sid){ for(var k=0;k<list.length;k++){ if(String(list[k].student_name||'').toLowerCase().indexOf(wl)>=0){ sid=list[k].student_id; nm=list[k].student_name; break; } } }
+      }
+    }catch(e){}
+    // ref diya hai -> naam mil jaaye ya 6 try (chat API khud load karega); ref nahi -> sid resolve hone tak.
+    var done = sid0 ? (nm || tries>=6) : (!!sid || tries>=14);
+    if(done){
+      if(sid){ try{ openDoubtChat('teacher', parseInt(sid,10)||0, encodeURIComponent(nm||wantName||'')); }catch(e){} setTimeout(_doubtBlink, 680); }
+      return;
+    }
+    tries++; setTimeout(poll, 350);
+  })();
+}
+// doubt chat modal par dhyaan khinchne ke liye ek blink (zoom/glow).
+function _doubtBlink(){
+  try{
+    var el=document.querySelector('.dchat-modal-wrap'); if(!el) return;
+    if(!document.getElementById('dchat-blink-css')){
+      var s=document.createElement('style'); s.id='dchat-blink-css';
+      s.textContent='@keyframes dchatBlink{0%{box-shadow:0 0 0 0 rgba(201,162,39,0);transform:scale(.99)}22%{box-shadow:0 0 0 4px rgba(201,162,39,.55);transform:scale(1.012)}50%{box-shadow:0 0 0 2px rgba(201,162,39,.22);transform:scale(1)}72%{box-shadow:0 0 0 4px rgba(201,162,39,.5);transform:scale(1.008)}100%{box-shadow:0 0 0 0 rgba(201,162,39,0);transform:scale(1)}}.dchat-blink{animation:dchatBlink 1.35s ease-in-out 1;border-radius:14px}';
+      document.head.appendChild(s);
+    }
+    el.classList.remove('dchat-blink'); void el.offsetWidth; el.classList.add('dchat-blink');
+    setTimeout(function(){ try{ el.classList.remove('dchat-blink'); }catch(e){} }, 1600);
+  }catch(e){}
 }
 // DPP page load hone ka intezaar karo (packs aa jaayein), fir woh DPP panel kholo + zoom pulse.
 function _openDppByRefDL(ref){
@@ -1684,6 +1723,9 @@ function _notifItemClick(ev,el){
     var navRef=el.getAttribute('data-nref')||'';  // "mvsnav:<ref>" -> SEEDHA us item (doubt/DPP) par
     if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' navRef='+navRef+' → '+(navRef?'notifDeepGo':(hasLink?'notifLinkOpen':'notifGo'))); }catch(_){} }
     if(navRef) notifDeepGo(role,id,type,fb,ttl,navRef);
+    // Backend ref na bhi ho (purani notification), teacher ke doubt/submission ko notification ke
+    // CONTENT se hi deep-open karo — doubt: title ke naam se; DPP: section tak (pack-id ke bina).
+    else if(role==='teacher' && !hasLink && _notifDeepable(type,ttl)) notifDeepGo(role,id,type,fb,ttl,'');
     else if(hasLink) notifLinkOpen(role,id,encLink,type,fb,ttl);
     else notifGo(role,id,type,fb,ttl);
   }catch(e){ try{ _notifDbg('ITEMCLICK THREW: '+((e&&e.message)||e)); }catch(_){} try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
