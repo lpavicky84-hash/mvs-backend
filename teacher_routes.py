@@ -1095,6 +1095,22 @@ def _teacher_classkeys(tp):
             keys.add(_tt_entry_key(nm, cl))
     return keys, bool(keys)
 
+def _teacher_subj_class_map(tp):
+    """{subject_norm: set(class_digits)} teacher ke subject_classes se. Empty -> None (legacy
+    teacher jisne class set nahi ki -> caller class filter skip kare, koi regression na ho).
+    Isse dual-class subject (English/Hindi/DEO) ke Class 10 vs 12 ka material/content alag rehta."""
+    import re as _re
+    m = {}
+    for sc in (getattr(tp, "subject_classes", None) or []):
+        try:
+            nm = _subj_norm(sc.get("subject") or "")
+            cl = _re.sub(r"[^0-9]", "", str(sc.get("class") or ""))
+        except Exception:
+            continue
+        if nm and cl:
+            m.setdefault(nm, set()).add(cl)
+    return m or None
+
 def _class_filter(tp, entries):
     """Teacher ke timetable entries ko unki ASSIGNED class(es) tak scope karo — EK hi jagah se,
     taaki har section me behaviour same rahe. Isse dual-class subjects (English/Hindi/DEO —
@@ -6784,7 +6800,7 @@ def teacher_my_report_pdf(period: str = "month", db: Session = Depends(get_db),
 # counts and the actual student lists behind those counts. Shared shape so the
 # teacher portal and the admin portal render from the same renderer.
 
-def _material_tree(db, subjects=None, only_batch=None):
+def _material_tree(db, subjects=None, only_batch=None, tp=None):
     from models import Material, MaterialView, StudentProfile
     q = db.query(Material).options(defer(Material.content_b64)).filter(Material.material_type != "answer")
     if subjects is not None:
@@ -6853,6 +6869,18 @@ def _material_tree(db, subjects=None, only_batch=None):
     def _ecd(m):
         fx = _fixed_cls.get(_cn(m.subject))
         return fx if fx else _cls_d(getattr(m, "class_name", ""))
+    # TEACHER view: sirf UNKI class ka material (dual-class English 10 vs 12 ka content merge
+    # na ho — Pooja=Class 12 ko Class 10 ka material/PPT bilkul na dikhe). subject_classes na
+    # ho (legacy) -> skip (koi regression nahi). Class pata na chale -> rakho (chhupaao mat).
+    _tcmap = _teacher_subj_class_map(tp) if tp is not None else None
+    if _tcmap:
+        def _mat_cls_ok(mm):
+            _a = _tcmap.get(_subj_norm(getattr(mm, "subject", "")))
+            if not _a:
+                return True
+            _d = _ecd(mm)
+            return (not _d) or (_d in _a)
+        mats = [mm for mm in mats if _mat_cls_ok(mm)]
     # Same-naam subjects (e.g. English / Data Entry Operations) Class 10 & 12 dono
     # me ho to tree me alag-alag node banao: "Subject (Class 10)" / "Subject (Class 12)".
     raw = {}
@@ -6904,6 +6932,14 @@ def _material_tree(db, subjects=None, only_batch=None):
             _allowed |= {_subj_norm(x) for x in (subjects or [])}
             _dpacks = [pk for pk in _dpacks
                        if _subj_norm(pk.subject) in _allowed or _subj_norm(_cn(pk.subject)) in _allowed]
+        if _tcmap:   # teacher ki class ka hi DPP (Class 10 vs 12 merge na ho)
+            def _dpp_cls_ok(pk):
+                _a = _tcmap.get(_subj_norm(getattr(pk, "subject", "")))
+                if not _a:
+                    return True
+                _d = _fixed_cls.get(_cn(pk.subject)) or _cls_d(getattr(pk, "class_name", ""))
+                return (not _d) or (_d in _a)
+            _dpacks = [pk for pk in _dpacks if _dpp_cls_ok(pk)]
         for pk in _dpacks:
             nm = _cn(pk.subject)
             cd = _fixed_cls.get(nm) or _cls_d(getattr(pk, "class_name", ""))
@@ -6964,7 +7000,7 @@ def _material_audience(db, material_id):
 @router.get("/materials-tree")
 def teacher_materials_tree(batch: int = 0, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     tp = get_teacher_profile(current_user, db)
-    return {"subjects": _material_tree(db, tp.subjects or [], (batch or None))}
+    return {"subjects": _material_tree(db, tp.subjects or [], (batch or None), tp=tp)}
 
 
 @router.get("/material/{mid}/audience")
