@@ -1450,7 +1450,8 @@ const NOTIF_GO={
     reschedule_approved:'timetable',reschedule_rejected:'timetable',reschedule_request:'timetable',leave:'attendance',
     doubt:'doubts',new_doubt:'doubts',admin_message:'notifications',admin_broadcast:'notifications',broadcast:'notifications',
     video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',video_review:'vtasks',
-    payout:'payout',attendance:'attendance',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',submission:'dpp',dpp_submission:'dpp',new_submission:'dpp',test:'tests',warning:'dashboard'},
+    payout:'payout',attendance:'attendance',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',submission:'dpp',dpp_submission:'dpp',new_submission:'dpp',
+    homework:'homework',homework_reply:'homework',homework_check:'homework',hw:'homework',test:'tests',warning:'dashboard'},
   admin:{class_request:'approvals',teacher_to_admin:'reports',app_review:'approvals',new_class:'timetable',timetable:'timetable',
     reschedule_request:'approvals',class_rescheduled:'timetable',leave:'attendance',
     video_task:'vtasks',video_proposal:'vtasks',new_video_proposal:'vtasks',video_submitted:'vtasks',
@@ -1478,7 +1479,8 @@ function _notifResolvePage(role,type,fbPage,hint){
   // batch/subject change request -> Student Requests page (generic 'request' se PEHLE, warna approvals chala jaata)
   else if(role==='admin' && (has('batch')||has('student request')||(has('subject')&&has('request'))||(has('request')&&has('change')))) g='requests';
   else if(has('doubt')) g='doubts';
-  else if(has('video')||has('proposal')||has('reshoot')||has('task manager')) g='vtasks';
+  else if(has('homework')||has('hw check')) g='homework';
+  else if(has('video')||has('proposal')||has('reshoot')||has('task manager')||has('video task')||has('one shot')||has('rapid revision')) g='vtasks';
   else if(role==='admin' && (has('material submit')||has('material resubmit')||has('material checked')||has('material checker'))) g='matcheck';
   else if(has('reschedule')||has('class')||has('timetable')||has('slot')) g='timetable';
   else if(has('payout')||has('salary')||has('incentive')) g=(role==='admin'?'payouts':'payout');
@@ -1576,10 +1578,12 @@ try{
 }catch(e){}
 // Push deep-link (phone) bhi ab SEEDHA us doubt card par (ref = doubt id).
 function _openDoubtByStudentDL(x){ _openDoubtDL(x,'',''); }
-// ye notification "deep-openable" hai kya? (teacher ke doubt + DPP submission) — backend ref na ho tab bhi.
+// ye notification "deep-openable" hai kya? (teacher: doubt / DPP submission / homework / video-task)
 function _notifDeepable(type,title){
   var t=((type||'')+' '+(title||'')).toLowerCase();
-  return t.indexOf('doubt')>=0 || t.indexOf('submission')>=0 || t.indexOf('dpp')>=0;
+  return t.indexOf('doubt')>=0 || t.indexOf('submission')>=0 || t.indexOf('dpp')>=0
+      || t.indexOf('homework')>=0 || t.indexOf('video')>=0 || t.indexOf('task')>=0
+      || t.indexOf('proposal')>=0 || t.indexOf('one shot')>=0 || t.indexOf('rapid revision')>=0;
 }
 // title "New Doubt — Gauri" me se student ka naam.
 function _nameFromTitle(hint){
@@ -1589,6 +1593,10 @@ function _nameFromTitle(hint){
 // message "… submitted an answer for DPP Ch-03." me se DPP ka title.
 function _dppTitleFromMsg(msg){
   try{ var m=String(msg||'').match(/for\s+(.+?)[.\s]*$/i); return m?m[1].trim():''; }catch(e){ return ''; }
+}
+// message me pehla "..." me likha title (homework / video task ka naam yahan hota hai).
+function _quotedFromMsg(msg){
+  try{ var m=String(msg||'').match(/[“”"]([^“”"]+)[“”"]/); return m?m[1].trim():''; }catch(e){ return ''; }
 }
 // ===== IN-APP NOTIFICATION DEEP-LINK: click karte hi SEEDHA us item (card) par + blink. =====
 // notifGo jaisa section-redirect, PLUS us exact card ko kholna + blink. ref backend ke "mvsnav:<ref>"
@@ -1606,12 +1614,14 @@ async function notifDeepGo(role,nid,type,fbPage,hint,ref,msg){
   if(nid){ try{ api(notifEp(role,'/notifications/'+nid+'/read'),'PATCH').catch(function(){}); }catch(e){} }
   try{ refreshNotifBadge(role); }catch(e){}
 }
-// type ke hisaab se item khol do (teacher: doubt card / DPP card). baaki types section-level.
+// type ke hisaab se item khol do (teacher: doubt / DPP / homework / video-task card). baaki section-level.
 function _notifOpenItem(role,type,ref,hint,msg){
   var tt=((type||'')+' '+(hint||'')).toLowerCase();
   if(role==='teacher'){
     if(tt.indexOf('doubt')>=0){ _openDoubtDL(ref,hint,msg); return; }                         // ref=doubt id
+    if(tt.indexOf('homework')>=0){ _openHomeworkDL(ref,hint,msg); return; }                    // homework card (title se)
     if(tt.indexOf('submission')>=0 || tt.indexOf('dpp')>=0){ _openDppByRefDL(ref,hint,msg); return; }  // ref=DPP pack id
+    if(tt.indexOf('video')>=0 || tt.indexOf('task')>=0 || tt.indexOf('proposal')>=0 || tt.indexOf('one shot')>=0 || tt.indexOf('rapid revision')>=0){ _openVTaskDL(ref,hint,msg); return; }  // ref=task id / title
   }
 }
 // ===== DOUBT deep-open: SEEDHA us doubt ke card par (modal nahi) + blink. =====
@@ -1707,6 +1717,50 @@ function _cardBlink(el){
     setTimeout(function(){ try{ el.classList.remove('mvs-card-blink'); }catch(e){} }, 3200);
   }catch(e){}
 }
+// ===== HOMEWORK deep-open: Homework Checker page -> us homework ka card + blink. =====
+// homework notif me id nahi aati -> message ke "..." title se hw-card match. filter ko 'all' karke sab dikhao.
+function _openHomeworkDL(ref,hint,msg){
+  var hid=parseInt(ref,10)||0;
+  var wantTitle=_quotedFromMsg(msg);
+  var bumped=false, tries=0;
+  (function go(){
+    var card=null;
+    try{
+      var cards=document.querySelectorAll('#t-hw-content .hw-card');
+      for(var i=0;i<cards.length;i++){
+        var c=cards[i];
+        if(hid && String(c.getAttribute('data-hid'))===String(hid)){ card=c; break; }
+        if(!hid && wantTitle){ var ht=String(c.getAttribute('data-hwtitle')||'').trim().toLowerCase(); if(ht===wantTitle.toLowerCase() || ht.indexOf(wantTitle.toLowerCase())>=0){ card=c; break; } }
+      }
+    }catch(e){}
+    if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} _cardBlink(card); return; }
+    // card filter ke peeche ho sakta hai -> ek baar 'All' filter laga ke dobara dhundo
+    if(!bumped && tries>=3){ bumped=true; try{ if(typeof _tHwSetFilter==='function'){ _tHwSetFilter(''); } }catch(e){} }
+    if(tries>=16) return;
+    tries++; setTimeout(go, 200);
+  })();
+}
+// ===== VIDEO-TASK deep-open: My Tasks (vtasks) -> us task ka card + blink. =====
+// ref = task id (link me aata ho to); warna message ke "..." title se vt-card match.
+function _openVTaskDL(ref,hint,msg){
+  var tid=parseInt(ref,10)||0;
+  var wantTitle=_quotedFromMsg(msg) || _quotedFromMsg(hint);
+  var tries=0;
+  (function go(){
+    var card=null;
+    try{
+      var cards=document.querySelectorAll('.vt-card[data-tid-card]');
+      for(var i=0;i<cards.length;i++){
+        var c=cards[i];
+        if(tid && String(c.getAttribute('data-tid-card'))===String(tid)){ card=c; break; }
+        if(!tid && wantTitle){ var vt=String(c.getAttribute('data-vttitle')||'').trim().toLowerCase(); if(vt===wantTitle.toLowerCase() || (wantTitle.length>4 && vt.indexOf(wantTitle.toLowerCase())>=0)){ card=c; break; } }
+      }
+    }catch(e){}
+    if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){} _cardBlink(card); return; }
+    if(tries>=16) return;   // grid nahi aaya / match nahi -> chup-chaap (My Tasks section pe to pahunch gaye)
+    tries++; setTimeout(go, 200);
+  })();
+}
 function _notifAvHtml(n,fb){
   if(!n.image_url) return '';
   return `<div class="notif-av" data-nimg="${esc(n.image_url)}">${esc(initials(fb||'MVS'))}<span class="mvs-b">M</span></div>`;
@@ -1750,11 +1804,15 @@ function _notifItemClick(ev,el){
     var ttl=el.getAttribute('data-ntitle')||'';   // title -> blank-type notifications ka section nikalne ke liye
     var nmsg=el.getAttribute('data-nmsg')||'';    // message -> DPP title / doubt topic parse ke liye
     var navRef=el.getAttribute('data-nref')||'';  // "mvsnav:<ref>" -> SEEDHA us item (doubt/DPP) par
-    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' navRef='+navRef+' → '+(navRef?'notifDeepGo':(hasLink?'notifLinkOpen':'notifGo'))); }catch(_){} }
+    // link ka asli roop: mvsnav(doubt/dpp), plain number(task/homework id), ya external URL(video).
+    var rawLink=''; try{ rawLink=encLink?decodeURIComponent(encLink):''; }catch(_){ rawLink=encLink||''; }
+    var isUrl=/^https?:\/\//i.test(rawLink);
+    var numRef=/^\d+$/.test(rawLink)?rawLink:'';   // e.g. video-task ka task id link me aata hai
+    if(role==='admin'){ try{ _notifDbg('ITEMCLICK role='+role+' type='+(type||'(blank)')+' title="'+ttl+'" hasLink='+hasLink+' navRef='+navRef+' num='+numRef+' → '+(navRef?'notifDeepGo':(hasLink?'notifLinkOpen':'notifGo'))); }catch(_){} }
     if(navRef) notifDeepGo(role,id,type,fb,ttl,navRef,nmsg);
-    // Backend ref na bhi ho (purani notification), teacher ke doubt/submission ko notification ke
-    // CONTENT se hi deep-open karo — doubt: title ke naam se; DPP: message ke title se.
-    else if(role==='teacher' && !hasLink && _notifDeepable(type,ttl)) notifDeepGo(role,id,type,fb,ttl,'',nmsg);
+    // Teacher ke doubt/submission/homework/video-task — notification se SEEDHA us card par + blink.
+    // ref: mvsnav ho to wo, warna plain-number link (task id). External URL ko chhedte nahi.
+    else if(role==='teacher' && !isUrl && _notifDeepable(type,ttl)) notifDeepGo(role,id,type,fb,ttl,numRef,nmsg);
     else if(hasLink) notifLinkOpen(role,id,encLink,type,fb,ttl);
     else notifGo(role,id,type,fb,ttl);
   }catch(e){ try{ _notifDbg('ITEMCLICK THREW: '+((e&&e.message)||e)); }catch(_){} try{ if(window.console&&console.error) console.error('notif click',e); }catch(_){} }
@@ -15383,7 +15441,7 @@ async function loadTVTasks(){ try{ window._hbUrl='/api/teacher/heartbeat'; }catc
           ${t.reject_count>0?`<span style="color:var(--text-muted);font-weight:700">Reshoot/Rejection count: ${t.reject_count}</span>`:''}
         </div>
         ${reviewBox}${_tExtras}${thumbBox}${rejNote}${subBox}${finalRejBox}${doneBox}`;
-      return `<div class="vt-card st-${t.status} vt-col vt-collapsed${_tAttn?' vt-attn':''}" data-tid-card="${t.id}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}"${_tAttn?` style="--tatt:${_tAttnCol}"`:''}>${_vtThumb(t,'t')}<div class="vt-body">
+      return `<div class="vt-card st-${t.status} vt-col vt-collapsed${_tAttn?' vt-attn':''}" data-tid-card="${t.id}" data-vttitle="${esc(t.title||'')}" data-treview="${_rev?(_revApproved?'done':'pending'):''}" data-fstatus="${esc(t.status||'')}" data-fsub="${t.submitted_at?'1':'0'}" data-fontime="${t.on_time===true?'1':(t.on_time===false?'0':'')}"${_tAttn?` style="--tatt:${_tAttnCol}"`:''}>${_vtThumb(t,'t')}<div class="vt-body">
         <div class="vt-chips">${propNote}${t.is_collab?_vtCollabChip(t,'t'):''}${t.kind==='urgent'?`<span class="vt-pill" style="background:rgba(220,38,38,.15);color:#dc2626;font-weight:800">${ic('alert')} URGENT</span>`:''}${reviewNote}${_vtTypeBadge(t)}${t.channel?`<span class="vt-pill editing_soon">${ic('play')} ${esc(t.channel)}</span>`:''}</div>
         <div class="vt-title">${esc(t.title)}</div>
         <button type="button" class="vt-viewdet" onclick="event.stopPropagation();tCardToggle(this)">${ic('chev-down')}<span>View Details</span></button>
@@ -48972,7 +49030,7 @@ async function loadTHomework(){
       var isnew=(m.status==='submitted'||m.status==='resubmitted');
       var blink=isnew?' hw-pend':'';
       var slbl={submitted:'Pending',resubmitted:'Pending',under_review:'Under Review',changes_required:'Changes',checking_done:'Done'}[m.status]||m.status;
-      return '<div class="hw-card"><div class="hw-card-top" onclick="tHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(isnew?'<span class="hw-new">NEW</span>':'')+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+'<span class="hw-pill '+m.status+blink+'">'+slbl+'</span></div>'
+      return '<div class="hw-card" data-hid="'+m.id+'" data-hwtitle="'+esc(m.title||'')+'"><div class="hw-card-top" onclick="tHwOpen('+m.id+')"><div class="hw-title">'+esc(m.title)+'</div>'+(isnew?'<span class="hw-new">NEW</span>':'')+(m.unread?'<span class="hw-unread">'+m.unread+'</span>':'')+'<span class="hw-pill '+m.status+blink+'">'+slbl+'</span></div>'
         +'<div class="hw-sub"><span class="hw-chip">'+esc(m.subject)+'</span><span class="hw-stud" onclick="event.stopPropagation();tHwStudent('+m.student_id+')">'+esc(m.student_name||'Student')+'</span><span>v'+(m.current_version||1)+'</span><span>'+esc((m.created_at||'').slice(0,10))+'</span></div></div>';
     }).join('')+'</div>'):'<div class="hw-empty"><p>'+(_tHwFilter?'Nothing in this filter.':'No homework yet.')+'</p></div>';
     el.innerHTML='<div class="hw-wrap"><div class="hw-head"><div><h2 style="margin:0;font-size:1.3rem">Homework Checker</h2><p style="color:var(--text-muted);font-size:.84rem;margin:3px 0 0">Homework students have sent you to check.</p></div></div>'+stats+'<div>'+cards+'</div></div>';
