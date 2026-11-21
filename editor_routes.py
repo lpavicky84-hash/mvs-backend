@@ -527,7 +527,19 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     sp = _me_staff(db, me)
     now = datetime.utcnow()
     today = date.today()
-    base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
+    from sqlalchemy import or_ as _or
+    # COLLAB FIX: editor ki apni videos = primary (editor_id) + collab (collab_editor_ids).
+    # collab ids ko pehle EXACT nikaalo (LIKE 7, 17/70 ko bhi match karti) taaki niche ke saare
+    # .count()/.filter() precise rahein aur dusre editor ki video galti se count na ho.
+    _collab_cand = db.query(VideoTask).filter(
+        VideoTask.cancelled == False,
+        VideoTask.collab_editor_ids.like('%' + str(sp.id) + '%')).all()
+    _collab_ids = [t.id for t in _collab_cand
+                   if pc.editor_can_access(t, sp.id) and getattr(t, "editor_id", None) != sp.id]
+    _mine = (VideoTask.editor_id == sp.id)
+    if _collab_ids:
+        _mine = _or(VideoTask.editor_id == sp.id, VideoTask.id.in_(_collab_ids))
+    base = db.query(VideoTask).filter(VideoTask.cancelled == False, _mine)
 
     def c(*st):
         return base.filter(VideoTask.lifecycle.in_(st)).count()
@@ -574,7 +586,7 @@ def editor_dashboard(db: Session = Depends(get_db), me=Depends(get_editor)):
     soon = now + timedelta(hours=24)
     _not_done = ["uploaded", "completed", "ready_for_youtube", "qc_pending"]
     total_views = db.query(func.coalesce(func.sum(VideoTask.yt_views), 0)).filter(
-        VideoTask.cancelled == False, VideoTask.editor_id == sp.id).scalar() or 0
+        VideoTask.cancelled == False, _mine).scalar() or 0
     cards = {
         "assigned_today": base.filter(or_(VideoTask.lifecycle.in_(["editor_assigned", "editing_soon", "approved"]), _legacy_ready)).count(),
         "editing_now": c("editing", "editing_paused"),
@@ -1209,7 +1221,18 @@ def editor_uploads(db: Session = Depends(get_db), me=Depends(get_editor)):
     """Editor's published videos + realtime views. Reuses the shared YouTube views data
     (yt_views), never a separate API. Real data only."""
     sp = _me_staff(db, me)
-    base = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id)
+    from sqlalchemy import or_ as _or
+    # COLLAB FIX: Published + views me collab editor (collab_editor_ids) ki videos bhi aayein.
+    # collab ids EXACT nikaalo (LIKE over-match guard) taaki counts/sum sahi rahein.
+    _collab_cand = db.query(VideoTask).filter(
+        VideoTask.cancelled == False,
+        VideoTask.collab_editor_ids.like('%' + str(sp.id) + '%')).all()
+    _collab_ids = [t.id for t in _collab_cand
+                   if pc.editor_can_access(t, sp.id) and getattr(t, "editor_id", None) != sp.id]
+    _mine = (VideoTask.editor_id == sp.id)
+    if _collab_ids:
+        _mine = _or(VideoTask.editor_id == sp.id, VideoTask.id.in_(_collab_ids))
+    base = db.query(VideoTask).filter(VideoTask.cancelled == False, _mine)
     _edited = ["editing_done", "qc_pending", "qc_changes", "ready_for_youtube", "uploaded", "completed"]
     total_edited = base.filter(VideoTask.lifecycle.in_(_edited)).count()
     uploaded_rows = base.filter(VideoTask.lifecycle.in_(["uploaded", "completed"]),
@@ -1247,9 +1270,14 @@ def editor_refresh_views(db: Session = Depends(get_db), me=Depends(get_editor)):
         from models import VideoViewSnapshot
     except Exception:
         return {"ok": False, "updated": 0}
-    rows = db.query(VideoTask).filter(VideoTask.cancelled == False, VideoTask.editor_id == sp.id,
+    # COLLAB FIX: collab editor ki uploaded videos ke views bhi refresh ho (primary OR collab).
+    from sqlalchemy import or_ as _or
+    rows = db.query(VideoTask).filter(VideoTask.cancelled == False,
+                                      _or(VideoTask.editor_id == sp.id,
+                                          VideoTask.collab_editor_ids.like('%' + str(sp.id) + '%')),
                                       VideoTask.yt_video_id != None,
                                       VideoTask.yt_video_id != "").all()
+    rows = [t for t in rows if pc.editor_can_access(t, sp.id)]
     idmap = {t.yt_video_id: t for t in rows if t.yt_video_id}
     if not idmap:
         return {"ok": True, "updated": 0}
@@ -1305,10 +1333,15 @@ def editor_performance(period: str = "month", db: Session = Depends(get_db), me=
     perf = PC.compute_editor_performance(sp, items, period, ref=now)
 
     # total YouTube views (keep the legacy KPI alive — engine is item-state based)
+    # COLLAB FIX: primary editor_id ke alawa collab editor (collab_editor_ids) ki videos ke
+    # views bhi jodo — warna collab video ki views editor ko 0 dikhti thi.
     try:
-        yt_views = sum(int(t.yt_views or 0) for t in
-                       db.query(VideoTask).filter(VideoTask.cancelled == False,  # noqa: E712
-                                                  VideoTask.editor_id == sp.id).all())
+        from sqlalchemy import or_ as _or
+        _vv = db.query(VideoTask).filter(
+            VideoTask.cancelled == False,  # noqa: E712
+            _or(VideoTask.editor_id == sp.id,
+                VideoTask.collab_editor_ids.like('%' + str(sp.id) + '%'))).all()
+        yt_views = sum(int(t.yt_views or 0) for t in _vv if pc.editor_can_access(t, sp.id))
     except Exception:
         yt_views = 0
 

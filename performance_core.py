@@ -199,14 +199,22 @@ def get_editor_work_items(db, staff_id, now=None):
       NEVER counted — avoids double counting).
     """
     from models import VideoTask, VideoTaskChapter
+    from sqlalchemy import or_ as _or
+    import production_core as _pc
     now = now or datetime.utcnow()
     items = []
 
     # ---- normal VideoTask (exclude project containers) ----
+    # COLLAB FIX: ek video par primary editor ke alawa collab editor (collab_editor_ids) bhi ho
+    # sakta hai. Pehle sirf editor_id match hota tha -> collab editor ki video uske performance,
+    # published aur rating se gायब thi. Ab primary OR collab dono — LIKE se candidates, fir exact.
     vts = (db.query(VideoTask)
            .filter(VideoTask.cancelled == False,  # noqa: E712
-                   VideoTask.editor_id == staff_id).all())
+                   _or(VideoTask.editor_id == staff_id,
+                       VideoTask.collab_editor_ids.like('%' + str(staff_id) + '%'))).all())
     for t in vts:
+        if not _pc.editor_can_access(t, staff_id):
+            continue  # LIKE substring over-match guard (7 vs 17/70) — exact membership only
         if (getattr(t, "kind", "normal") or "normal") in _SPECIAL_KINDS:
             continue  # container — its chapters count instead
         lc = (getattr(t, "lifecycle", "") or "")
