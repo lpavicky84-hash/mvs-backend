@@ -2105,6 +2105,10 @@ async function markAllRead(role){
 let _notifInt=null, _lastUnread={};
 function showNotifPop(role,unread){
   const appId=role==='teacher'?'teacher-app':role==='admin'?'admin-app':'student-app';
+  // Student phone (naya mobile home): hero me bell + blinking badge already hai, aur poori
+  // notifications list bell pe khul jaati hai. Purana gold "N new notifications" banner us premium
+  // UI ke UPAR aa jaata tha (do alag notification system dikhte the). Phone student pe banner skip.
+  try{ if(role==='student' && window.innerWidth<=900 && document.getElementById('student-app')){ var _oldnp=document.getElementById('notif-pop'); if(_oldnp)_oldnp.remove(); return; } }catch(e){}
   const main=document.querySelector('#'+appId+' .main'); if(!main) return;
   const old=document.getElementById('notif-pop'); if(old) old.remove();
   if(!unread.length) return;
@@ -51416,9 +51420,30 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     '#student-app .hamburger{display:none!important}'+        /* phone: sidebar not needed (bottom nav + More cover all) */
     '#student-app .s-botnav{display:flex}'+
     '#student-app .main{padding-bottom:calc(74px + env(safe-area-inset-bottom))}'+
+    /* home: hero ko bilkul top tak le jao — .main ka default padding-top white strip (fade/blur
+       jaisa) chhod raha tha hero ke upar. Isse blue header premium, edge-to-edge dikhta hai. */
+    '#student-app.s-on-home .main{padding-top:0!important}'+
+    '#student-app.s-on-home .s-home{margin-top:0}'+
+    /* ===== NOTIFICATIONS page — phone pe premium app-style cards (portal .card/.doubt-card override) ===== */
+    '#student-app #s-notif-content .card{background:transparent;border:none;box-shadow:none;padding:0;margin:0}'+
+    '#student-app #s-notif-content .card-header{padding:2px 2px 10px;border:none;background:transparent}'+
+    '#student-app #s-notif-content .card-header h3{font-size:18px;font-weight:800;color:var(--text);letter-spacing:-.2px}'+
+    '#student-app #s-notif-content .card-body{padding:0;display:flex;flex-direction:column;gap:11px}'+
+    '#student-app #s-notif-content .doubt-card{background:#fff;border:1px solid var(--border);border-left:4px solid var(--border);border-radius:16px;padding:14px 15px;box-shadow:0 6px 16px -10px rgba(16,31,54,.3);transition:transform .12s ease,box-shadow .12s ease;position:relative}'+
+    'body.dark #student-app #s-notif-content .doubt-card{background:#182233}'+
+    '#student-app #s-notif-content .doubt-card:active{transform:scale(.985)}'+
+    '#student-app #s-notif-content .doubt-card[style*="--primary"]{border-left-color:var(--primary)}'+
+    '#student-app #s-notif-content .notif-row{display:flex;gap:12px;align-items:flex-start}'+
+    '#student-app #s-notif-content .notif-row .notif-av,#student-app #s-notif-content .notif-row img{width:42px;height:42px;border-radius:12px;flex:0 0 auto;object-fit:cover;font-size:13px;font-weight:800}'+
+    '#student-app #s-notif-content .doubt-card h4{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.3;margin:0}'+
+    '#student-app #s-notif-content .doubt-card small{font-size:11px;color:var(--text-muted);font-weight:600;white-space:nowrap}'+
+    '#student-app #s-notif-content .doubt-card p{font-size:12.8px;color:var(--text-muted);line-height:1.45;margin-top:5px}'+
+    '#student-app #s-notif-content .empty-state{padding:48px 16px;text-align:center;color:var(--text-muted)}'+
+    /* notifications page: purana gold banner yahan bhi na aaye (bell badge + list kaafi hai) */
+    '#student-app #notif-pop{display:none!important}'+
   '}'+
   /* hero */
-  '#student-app .s-hero{background:linear-gradient(155deg,#132238 0%,#1a3053 55%,#244063 100%);color:#fff;padding:16px 16px 42px;border-radius:0 0 26px 26px;position:relative;overflow:hidden;margin:-2px -2px 0}'+
+  '#student-app .s-hero{background:linear-gradient(160deg,#0f1f36 0%,#172c4c 48%,#244063 100%);color:#fff;padding:calc(14px + env(safe-area-inset-top)) 16px 58px;border-radius:0 0 28px 28px;position:relative;overflow:hidden;margin:0 -2px 0;box-shadow:0 10px 26px -12px rgba(15,31,54,.55)}'+
   '#student-app .s-hero::after{content:"";position:absolute;right:-40px;top:-36px;width:180px;height:180px;background:radial-gradient(circle,rgba(231,191,85,.36),transparent 68%);border-radius:50%}'+
   '#student-app .s-htop{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:2}'+
   '#student-app .s-hi{display:flex;align-items:center;gap:11px;min-width:0}'+
@@ -51435,7 +51460,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-search span{font-size:13.5px;color:#8a7c55}'+
   '#student-app .s-batchslot:not(:empty){margin:14px 16px 0}'+
   /* lift continue */
-  '#student-app .s-lift{margin:-30px 16px 0;position:relative;z-index:3}'+
+  '#student-app .s-lift{margin:-38px 16px 0;position:relative;z-index:3}'+
   '#student-app .s-cont{background:linear-gradient(135deg,#e7bf55,#a97f1e);border-radius:18px;padding:14px;color:#fff;box-shadow:0 12px 24px rgba(201,154,46,.35);display:flex;align-items:center;gap:13px;cursor:pointer}'+
   '#student-app .s-cont .ci{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex:0 0 auto}'+
   '#student-app .s-cont .ci svg{width:24px;height:24px;stroke:#fff;fill:#fff}'+
