@@ -51506,7 +51506,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttc .tm{font-size:11px;font-weight:800;color:var(--primary)}'+
   '#student-app .s-ttc .sb{font-size:14.5px;font-weight:800;margin:5px 0 3px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
   /* chapter+teacher line ab EK lambi line me overflow nahi — 2 line tak wrap (card compact rehta hai) */
-  '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
+  '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}'+
   '#student-app .s-ttc.live{background:linear-gradient(145deg,#132238,#213c5e);border:none;color:#fff}'+
   '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}'+
   '#student-app .s-ltag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;color:#fff;background:#e25555;padding:2px 7px;border-radius:7px;margin-bottom:7px}'+
@@ -51637,7 +51637,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ccard .cc-mid{flex:1;min-width:0}'+
   '#student-app .s-ccard .cc-t{font-size:15px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
   '#student-app .s-ccard .cc-live{flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.05em;color:#c23a30;background:rgba(226,87,78,.14);padding:2px 7px;border-radius:999px;animation:sbellpulse 1.2s infinite}'+
-  '#student-app .s-ccard .cc-sub{font-size:12px;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+  '#student-app .s-ccard .cc-sub{font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
   '#student-app .s-ccard .cc-act{flex:0 0 auto;border:none;font-family:inherit;font-size:13px;font-weight:800;padding:9px 18px;border-radius:12px;cursor:pointer}'+
   '#student-app .s-ccard .cc-act.join{background:linear-gradient(135deg,#e7bf55,#a97f1e);color:#2a2205;box-shadow:0 6px 14px -6px rgba(201,154,46,.6)}'+
   '#student-app .s-ccard .cc-act.soon{background:var(--border);color:var(--text-muted);cursor:default}'+
@@ -51649,6 +51649,28 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-cempty .ei svg{width:28px;height:28px;stroke:var(--text-muted);fill:none;stroke-width:2}'+
   '#student-app .s-cempty .et{font-size:15px;font-weight:800;color:var(--text)}'+
   '#student-app .s-cempty .es{font-size:12.5px;margin-top:3px}'+
+  /* ===== premium date-picker calendar popup ===== */
+  '#student-app .s-cal-ov{position:fixed;inset:0;z-index:2000;background:rgba(12,20,34,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;align-items:flex-end;justify-content:center;padding:0}'+
+  '#student-app .s-cal-ov.show{display:flex;animation:scalFade .18s ease}'+
+  '@keyframes scalFade{from{opacity:0}to{opacity:1}}'+
+  '#student-app .s-cal{width:100%;max-width:440px;background:var(--card);border-radius:24px 24px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -14px 40px rgba(0,0,0,.25);animation:scalUp .24s cubic-bezier(.22,1,.36,1)}'+
+  '@keyframes scalUp{from{transform:translateY(40px)}to{transform:translateY(0)}}'+
+  '#student-app .s-cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}'+
+  '#student-app .s-cal-t{font-size:17px;font-weight:800;color:var(--text)}'+
+  '#student-app .s-cal-nav{width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer}'+
+  '#student-app .s-cal-nav svg{width:18px;height:18px;stroke:var(--text);fill:none;stroke-width:2.4}'+
+  '#student-app .s-cal-nav:active{transform:scale(.92)}'+
+  '#student-app .s-cal-w{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px}'+
+  '#student-app .s-cal-w span{text-align:center;font-size:11px;font-weight:800;color:var(--text-muted)}'+
+  '#student-app .s-cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}'+
+  '#student-app .s-cal-e{height:42px}'+
+  '#student-app .s-cal-d{height:42px;border:1px solid transparent;border-radius:12px;background:transparent;font-family:inherit;font-size:14.5px;font-weight:700;color:var(--text);cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center}'+
+  '#student-app .s-cal-d:active{transform:scale(.92)}'+
+  '#student-app .s-cal-d.has{border-color:#e7cf8f}'+
+  '#student-app .s-cal-d.has::after{content:"";position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#c99a2e}'+
+  '#student-app .s-cal-d.today{background:linear-gradient(135deg,#e7bf55,#a97f1e);color:#2a2205;border-color:transparent}'+
+  '#student-app .s-cal-d.today::after{background:#2a2205}'+
+  '#student-app .s-cal-x{width:100%;margin-top:16px;padding:14px;border:none;border-radius:14px;background:var(--border);color:var(--text);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer}'+
   '#student-app .s-botnav{position:fixed;left:0;right:0;bottom:0;height:72px;z-index:940;background:var(--card);border-top:1px solid var(--border);align-items:flex-start;justify-content:space-around;padding:8px 6px 0;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -6px 20px rgba(0,0,0,.08)}'+
   '#student-app .s-botnav .nbi{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:none;cursor:pointer;position:relative;padding:3px 0;font-family:inherit}'+
   '#student-app .s-botnav .nbi svg{width:23px;height:23px;stroke:var(--text-muted);fill:none;stroke-width:2;transition:stroke .15s}'+
@@ -52001,6 +52023,10 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
     // new for you — newly uploaded class materials (correct source, deduped, recent first)
     apiGet('/api/student/materials-v2'+bq()).then(function(mats){ mats=mats||[];
+      // _sMatNew (NEW/unseen materials) KHUD yahin compute karo — pehle ye main app ke dashboard
+      // load par depend karta tha jo module ke home se alag/late chalta tha, isliye Classes Material
+      // ki counting aur "New for you" blink 1-2 min late aata tha. Ab materials-v2 aate hi turant.
+      try{ if(typeof window._matNewIds==='function'){ window._sMatNew=window._matNewIds('student',mats); if(typeof window._matBadge==='function') window._matBadge('student'); } }catch(e){}
       var newSet=null; try{ newSet=window._sMatNew; }catch(e){}
       var seen={}, items=[];
       mats.forEach(function(m){ if(!m||(m.type!=='notes'&&m.type!=='dpp')) return;
@@ -52047,7 +52073,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>'));
         var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||rawSub[0]||'C').toUpperCase();
         var pid='stph_'+i; if(tid) photos.push([pid, tid]);
-        return '<div class="s-ttc'+(live?' live':'')+'"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div></div>';
+        // card clickable -> us class ke notes/material par (Classes Material section)
+        return '<div class="s-ttc'+(live?' live':'')+'" style="cursor:pointer" onclick="_sGo(\'materials\')"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div></div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
@@ -52113,8 +52140,47 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var cur=el.querySelector('.s-cday.on'); var k=cur?cur.getAttribute('data-k'):_cToday(); var l=cur?cur.getAttribute('data-l'):'Today';
     renderClassesDay(k,l);
   }
-  // date picker
-  window._sClassPick=function(){ var inp=document.getElementById('s-cdate'); if(inp){ try{ inp.showPicker?inp.showPicker():inp.click(); }catch(e){ inp.click(); } } };
+  // date picker — premium custom calendar popup (native input iOS standalone PWA me reliably nahi khulta)
+  window._sClassPick=function(){ _calOpen(window._sCalMonth||new Date()); };
+  function _calClose(){ var ov=document.getElementById('s-cal-ov'); if(ov) ov.classList.remove('show'); }
+  window._sCalClose=_calClose;
+  window._sCalNav=function(delta){ var m=window._sCalMonth||new Date(); _calOpen(new Date(m.getFullYear(), m.getMonth()+delta, 1)); };
+  window._sCalPick=function(dk){ _calClose();
+    var days=document.getElementById('s-cdays'); if(days){ days.querySelectorAll('.s-cday').forEach(function(b){ b.classList.remove('on'); }); }
+    var d=new Date(dk+'T00:00:00'); var lab=(dk===_cToday())?'Today':(_cDayShort(d)+' '+d.getDate());
+    renderClassesDay(dk, lab);
+  };
+  function _pad2(n){ return (n<10?'0':'')+n; }
+  function _calOpen(m){
+    window._sCalMonth=m; var app=document.getElementById('student-app'); if(!app) return;
+    var ov=document.getElementById('s-cal-ov');
+    if(!ov){ ov=document.createElement('div'); ov.id='s-cal-ov'; ov.className='s-cal-ov'; ov.onclick=function(e){ if(e.target===ov) _calClose(); }; app.appendChild(ov); }
+    ov.innerHTML=_calHTML(m); ov.classList.add('show'); _calMarkClasses(m);
+  }
+  function _calHTML(m){
+    var y=m.getFullYear(), mo=m.getMonth();
+    var startDow=(new Date(y,mo,1).getDay()+6)%7;   // Monday-first
+    var dim=new Date(y,mo+1,0).getDate(); var today=_cToday();
+    var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var h='<div class="s-cal" onclick="event.stopPropagation()">'+
+      '<div class="s-cal-h"><button class="s-cal-nav" onclick="_sCalNav(-1)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>'+
+      '<div class="s-cal-t">'+MN[mo]+' '+y+'</div>'+
+      '<button class="s-cal-nav" onclick="_sCalNav(1)"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button></div>'+
+      '<div class="s-cal-w"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>'+
+      '<div class="s-cal-g">';
+    for(var i=0;i<startDow;i++) h+='<span class="s-cal-e"></span>';
+    for(var dn=1;dn<=dim;dn++){ var dk=y+'-'+_pad2(mo+1)+'-'+_pad2(dn);
+      h+='<button class="s-cal-d'+(dk===today?' today':'')+'" data-dk="'+dk+'" onclick="_sCalPick(\''+dk+'\')">'+dn+'</button>'; }
+    h+='</div><button class="s-cal-x" onclick="_sCalClose()">Close</button></div>';
+    return h;
+  }
+  function _calMarkClasses(m){
+    apiGet('/api/student/timetable-plan'+bq()).then(function(plan){ plan=plan||[];
+      var set={}; plan.forEach(function(e){ if(e&&e.date) set[e.date]=1; });
+      var ov=document.getElementById('s-cal-ov'); if(!ov) return;
+      ov.querySelectorAll('.s-cal-d').forEach(function(b){ if(set[b.getAttribute('data-dk')]) b.classList.add('has'); });
+    }).catch(function(){});
+  }
   window._sClassPicked=function(v){ if(!v) return; var app=document.getElementById('student-app'); var days=document.getElementById('s-cdays');
     if(days){ days.querySelectorAll('.s-cday').forEach(function(b){ b.classList.remove('on'); }); }
     var d=new Date(v+'T00:00:00'); var lab=(v===_cToday())?'Today':(_cDayShort(d)+' '+d.getDate()+'/'+(d.getMonth()+1));
@@ -52155,7 +52221,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         return '<div class="s-ccard'+(live?' live':'')+'">'+
           '<div class="cc-tm"><b>'+esc(tp.hhmm)+'</b>'+(tp.ap?('<span>'+tp.ap+'</span>'):'')+'</div>'+
           '<div class="cc-bar"></div>'+
-          '<div class="cc-mid"><div class="cc-t">'+esc(rawSub)+(live?' <span class="cc-live">LIVE</span>':'')+'</div>'+(sub?('<div class="cc-sub">'+esc(sub)+'</div>'):'')+'</div>'+
+          '<div class="cc-mid" style="cursor:pointer" onclick="_sGo(\'materials\')"><div class="cc-t">'+esc(rawSub)+(live?' <span class="cc-live">LIVE</span>':'')+'</div>'+(sub?('<div class="cc-sub">'+esc(sub)+'</div>'):'')+'</div>'+
           act+'</div>';
       }).join('');
       box2.innerHTML=html;
