@@ -41349,6 +41349,12 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     }
     if(ch.youtube_url) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.youtube_url)+'\',\'_blank\',\'noopener\')">'+ic('play')+' On YouTube</button>');
     if(ch.edited_link) b.push('<button class="'+cls+'" onclick="'+stop+'window.open(\''+_esc1(ch.edited_link)+'\',\'_blank\',\'noopener\')">Edited</button>');
+    // RATE EDITOR — QC paas ho chuki ho (qc_status approved) + editor + edited video ho, to card pe hi
+    // seedha editor rating ka button (TASK system jaisa). Pehle rating di hai to "Rated N★" dikhao.
+    if(_isPM && (ch.editor_id||ch.editor_name) && (''+(ch.edited_link||'')).trim() && ch.qc_status==='approved'){
+      var _qr=ch.quality_rating||0;
+      b.push('<button class="'+cls+(_qr?'':okc)+'" onclick="'+stop+'prodChapRate('+cid+')">'+(_qr?('★ Rated '+_qr):('★ Rate Editor'))+'</button>');
+    }
     if(ch.thumbnail_link) b.push('<button class="'+cls+'" onclick="'+stop+'prodThumbView(\''+_esc1(ch.thumbnail_link)+'\')">Thumbnail</button>');
     b.push('<button class="'+cls+'" onclick="'+stop+'_pjChatOpen(\''+pf+'\','+cid+',\''+tnm+'\',\''+role+'\')">💬 Chat</button>');
     b.push('<button class="'+cls+'" onclick="'+stop+'prodChapTimeline('+cid+',\''+pf+'\')">Timeline</button>');
@@ -41781,6 +41787,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
       toast(action==='approve'?'QC approved':'Sent back to editor for changes');
       if(document.getElementById('prod-chap-drawer') && (window._pjChapOpen||{}).cid==cid){ _chapAfter(); }
       else { try{ prodCloseChapter(); }catch(e){} _chapRefresh(portal, taskId); }
+      // QC paas hote hi editor rating ka premium prompt — normal TASK system jaisa (pmRateModal auto-pop).
+      // One-shot/project ke chapters me ab rating PM ko turant maangi jayegi, buried button nahi.
+      if(action==='approve'){ setTimeout(function(){ try{ prodChapRate(cid); }catch(e){} }, 350); }
     }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   // PM/Admin posts the YouTube URL for a QC-approved chapter -> uploaded/completed
@@ -41987,7 +41996,9 @@ window.addEventListener('DOMContentLoaded', mvsSsoFromHash);
     api(P.production.api+'/chapter-link-youtube','POST',body).then(function(){ prodDismiss(); toast('Linked \u2713'); _chapAfter(); }).catch(function(e){ toast((e&&e.message)||'Failed',true); });
   };
   window.prodChapRate=function(cid){
-    var wi=_chWi(); var R=wi.ratings||{};
+    // card se bhi call ho sakta hai (drawer khuli na ho) -> _chWiFor cache se wi uthata hai, isliye
+    // rating hamesha khulti hai, aur pehle ki rating (agar hai) preselect bhi ho jaati hai.
+    var wi=(typeof _chWiFor==='function')?_chWiFor(cid):_chWi(); var R=wi.ratings||{};
     _rateCapture({role:'editor',title:'Rate the Editor',allowRemove:!!R.pm_editor,
       cur:{stars:R.pm_editor||0,note:R.pm_editor_note||'',dims:R.pm_editor_dims||{}},
       onSubmit:function(stars,note,dims){ api(P.production.api+'/chapter-rate','POST',{chapter_id:cid,quality_rating:stars,quality_note:note,quality_dims:dims}).then(function(){ prodDismiss(); toast('Rating saved \u2713'); _chapAfter(); }).catch(function(e){ var bb=document.getElementById('rc-sub'); if(bb){bb.disabled=false;bb.style.opacity='1';} toast((e&&e.message)||'Failed',true); }); },

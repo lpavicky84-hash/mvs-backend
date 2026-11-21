@@ -4472,6 +4472,7 @@ def prod_task_chapters(tid: int, db: Session = Depends(get_db), me=Depends(get_p
                           "edit_review_note": (getattr(c, "edit_review_note", "") or ""),
                           "edit_reviewer_name": (getattr(c, "edit_reviewer_name", "") or ""),
                           "edit_review_rating": (getattr(c, "edit_review_rating", None)),
+                          "quality_rating": (getattr(c, "quality_rating", None)),
                           "thumbnail_link": (getattr(c, "thumbnail_link", "") or ""),
                           "gfx_state": (getattr(c, "gfx_state", "") or ""),
                           "assigned": bool(c.editor_id or c.graphics_id)} for c in rows]}
