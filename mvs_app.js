@@ -51611,6 +51611,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   /* ===== CLASSES page (schedule) ===== */
   '#student-app .s-classes{padding:calc(14px + env(safe-area-inset-top)) 16px 20px}'+
   '#student-app .s-chead{display:flex;align-items:center;gap:13px;margin-bottom:15px}'+
+  '#student-app .s-chtx{flex:1;min-width:0}'+
+  '#student-app .s-cacts{flex:0 0 auto;display:flex;gap:8px}'+
+  '#student-app .s-cabtn{width:42px;height:42px;border-radius:13px;border:1px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.04)}'+
+  '#student-app .s-cabtn svg{width:19px;height:19px;stroke:#8a6f16;fill:none;stroke-width:2}'+
+  '#student-app .s-cabtn:active{transform:scale(.94)}'+
   '#student-app .s-chi{width:50px;height:50px;border-radius:15px;background:linear-gradient(135deg,#f0994f,#d06d22);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 8px 18px -8px rgba(208,109,34,.6)}'+
   '#student-app .s-chi svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:2}'+
   '#student-app .s-cht{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.3px}'+
@@ -52086,16 +52091,21 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var el=main.querySelector(':scope > .s-classes');
     if(!el){ el=document.createElement('div'); el.className='s-classes'; main.appendChild(el); }
     if(!el.querySelector('.s-chead')){
-      // day tabs: Today + next 3 days + Pick date + Calendar
+      // day tabs: Today + next 5 days (sirf din — Pick date / Calendar header me icon button hain,
+      // taaki tab row me kuch cut na ho)
       var base=new Date(); var tabs='';
-      for(var i=0;i<4;i++){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
+      for(var i=0;i<6;i++){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
         var key=_cDateKey(d); var lab=(i===0)?'Today':_cDayShort(d);
         tabs+='<button class="s-cday'+(i===0?' on':'')+'" data-k="'+key+'" data-l="'+lab+'" onclick="_sClassDay(this)">'+lab+'</button>';
       }
-      tabs+='<button class="s-cday pick" onclick="_sClassPick()"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Pick date</button>';
-      tabs+='<button class="s-cday cal" onclick="_sGo(\'acalendar\')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M8 14h2M14 14h2M8 18h2"/></svg>Calendar</button>';
       el.innerHTML=
-        '<div class="s-chead"><div class="s-chi">'+svg('timetable')+'</div><div><div class="s-cht">Classes</div><div class="s-chs">Aaj ki aur aane waali saari classes</div></div></div>'+
+        '<div class="s-chead"><div class="s-chi">'+svg('timetable')+'</div>'+
+          '<div class="s-chtx"><div class="s-cht">Classes</div><div class="s-chs">Today\'s and upcoming classes</div></div>'+
+          '<div class="s-cacts">'+
+            '<button class="s-cabtn" title="Pick a date" onclick="_sClassPick()"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></button>'+
+            '<button class="s-cabtn" title="Academic calendar" onclick="_sGo(\'acalendar\')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M8 14h2M14 14h2M8 18h2"/></svg></button>'+
+          '</div>'+
+        '</div>'+
         '<div class="s-cdays" id="s-cdays">'+tabs+'</div>'+
         '<input type="date" id="s-cdate" style="position:absolute;left:-9999px;opacity:0" onchange="_sClassPicked(this.value)">'+
         '<div class="s-clist" id="s-clist"></div>';
@@ -52122,8 +52132,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       list.sort(function(a,b){ return tkey(a.time)-tkey(b.time); });
       var box2=document.getElementById('s-clist'); if(!box2) return;
       if(!list.length){
-        box2.innerHTML='<div class="s-cempty"><div class="ei">'+svg('timetable')+'</div><div class="et">'+esc(label||'Is din')+' koi class nahi</div><div class="es">Doosra din chuno ya Calendar dekho.</div></div>'+
-          '<div class="s-chint"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Upar "Calendar" tap karo — poore mahine ka Academic Calendar (exam dates, holidays) yahin dikhega.</div>';
+        box2.innerHTML='<div class="s-cempty"><div class="ei">'+svg('timetable')+'</div><div class="et">No classes on '+esc(label||'this day')+'</div><div class="es">Select another day or pick a date.</div></div>';
         return;
       }
       var nowMin=new Date().getHours()*60+new Date().getMinutes();
@@ -52149,8 +52158,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
           '<div class="cc-mid"><div class="cc-t">'+esc(rawSub)+(live?' <span class="cc-live">LIVE</span>':'')+'</div>'+(sub?('<div class="cc-sub">'+esc(sub)+'</div>'):'')+'</div>'+
           act+'</div>';
       }).join('');
-      box2.innerHTML=html+'<div class="s-chint"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Upar "Calendar" tap karo — poore mahine ka Academic Calendar (exam dates, holidays) yahin dikhega.</div>';
-    }).catch(function(){ var b=document.getElementById('s-clist'); if(b) b.innerHTML='<div class="s-cempty"><div class="et">Load nahi hua</div><div class="es">Dobara try karo.</div></div>'; });
+      box2.innerHTML=html;
+    }).catch(function(){ var b=document.getElementById('s-clist'); if(b) b.innerHTML='<div class="s-cempty"><div class="et">Couldn\'t load classes</div><div class="es">Please try again.</div></div>'; });
     }).catch(function(){});
   }
   function showClassesPage(app){
