@@ -51059,7 +51059,13 @@ function _installMetaInit(){
     m.setAttribute('href','/manifest.webmanifest?start='+encodeURIComponent(path));
     _metaTag('apple-mobile-web-app-capable','yes');
     _metaTag('mobile-web-app-capable','yes');
-    _metaTag('apple-mobile-web-app-status-bar-style','default');
+    // Student portal: premium mobile home ka blue hero status-bar ke PEECHE tak jaaye (edge-to-edge).
+    // 'default' pe iOS upar ek WHITE status-bar strip chhod deta tha (content ke upar fade/blur jaisa).
+    // 'black-translucent' -> status bar transparent, content poore upar tak; neeche ek dark safe-area
+    // filler (#student-app::before) status bar region ko dark rakhta hai taaki white text har page par
+    // readable rahe. Baaki portals (teacher/admin/etc.) pe pehle jaisa 'default'.
+    var _isStu=(path!=='/teacher' && path!=='/admin' && path!=='/production' && path!=='/editor' && path!=='/youtuber' && path!=='/graphics');
+    _metaTag('apple-mobile-web-app-status-bar-style', _isStu?'black-translucent':'default');
     _metaTag('apple-mobile-web-app-title', (path==='/teacher')?'MVS Teacher':(path==='/admin')?'MVS Admin':'MVS');
     _metaTag('theme-color','#14213d');
     // apple-touch-icon = har portal ka apna PREMIUM app-icon -> iPhone "Add to Home Screen" par
@@ -51411,8 +51417,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '}'+
   'body:not(.dark) #student-app .topbar{background:#ffffff}'+
   '#student-app .s-home{display:none}'+
+  '#student-app .s-classes{display:none}'+
   '#student-app .s-botnav{display:none}'+
   '#student-app .s-sheet{display:none}'+
+  /* status-bar safe-area filler (iOS black-translucent): status bar region dark blue rahe -> white
+     text har page par readable; home pe hero (#0f1f36) se bilkul seamless, koi white fade nahi. */
+  '#student-app::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:#0f1f36;z-index:900;pointer-events:none}'+
+  'body.dark #student-app::before{background:#0b1626}'+
   '@media(max-width:'+BREAK+'px){'+
     '#student-app.s-on-home .s-home{display:block}'+
     '#student-app.s-on-home #s-page-dashboard{display:none!important}'+
@@ -51424,6 +51435,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
        jaisa) chhod raha tha hero ke upar. Isse blue header premium, edge-to-edge dikhta hai. */
     '#student-app.s-on-home .main{padding-top:0!important}'+
     '#student-app.s-on-home .s-home{margin-top:0}'+
+    /* Classes page (premium schedule) — home jaisa overlay */
+    '#student-app.s-on-classes .s-classes{display:block}'+
+    '#student-app.s-on-classes #s-page-dashboard{display:none!important}'+
+    '#student-app.s-on-classes .s-home{display:none!important}'+
+    '#student-app.s-on-classes .topbar{display:none}'+
+    '#student-app.s-on-classes .main{padding-top:0!important}'+
     /* ===== NOTIFICATIONS page — phone pe premium app-style cards (portal .card/.doubt-card override) ===== */
     '#student-app #s-notif-content .card{background:transparent;border:none;box-shadow:none;padding:0;margin:0}'+
     '#student-app #s-notif-content .card-header{padding:2px 2px 10px;border:none;background:transparent}'+
@@ -51485,10 +51502,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttnav button{width:30px;height:30px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:17px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;line-height:1}'+
   '#student-app .s-tt{display:flex;gap:11px;overflow-x:auto;padding:1px 0 4px;scrollbar-width:none}'+
   '#student-app .s-tt::-webkit-scrollbar{display:none}'+
-  '#student-app .s-ttc{min-width:158px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px;flex:0 0 auto;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
+  '#student-app .s-ttc{width:210px;min-width:210px;max-width:210px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px;flex:0 0 auto;box-shadow:0 5px 14px rgba(0,0,0,.05);overflow:hidden;box-sizing:border-box}'+
   '#student-app .s-ttc .tm{font-size:11px;font-weight:800;color:var(--primary)}'+
-  '#student-app .s-ttc .sb{font-size:14.5px;font-weight:800;margin:5px 0 3px;color:var(--text)}'+
-  '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted)}'+
+  '#student-app .s-ttc .sb{font-size:14.5px;font-weight:800;margin:5px 0 3px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+  /* chapter+teacher line ab EK lambi line me overflow nahi — 2 line tak wrap (card compact rehta hai) */
+  '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
   '#student-app .s-ttc.live{background:linear-gradient(145deg,#132238,#213c5e);border:none;color:#fff}'+
   '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}'+
   '#student-app .s-ltag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;color:#fff;background:#e25555;padding:2px 7px;border-radius:7px;margin-bottom:7px}'+
@@ -51498,7 +51516,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttdots i{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .2s}'+
   '#student-app .s-ttdots i.on{width:18px;border-radius:4px;background:var(--primary)}'+
   /* today card: teacher photo + status (premium) */
-  '#student-app .s-ttc{min-width:172px}'+
+  '#student-app .s-ttc{width:210px;min-width:210px;max-width:210px}'+
   '#student-app .s-ttc .ttc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}'+
   '#student-app .s-tph{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#4a6fa0,#263f66);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex:0 0 auto;box-shadow:0 4px 10px rgba(0,0,0,.18)}'+
   '#student-app .s-ttc.live .s-tph{border:2px solid rgba(255,255,255,.3)}'+
@@ -51590,6 +51608,42 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-sr-empty{text-align:center;color:var(--text-muted);font-size:13px;padding:40px 16px}'+
   '#student-app .s-pad{height:14px}'+
   /* bottom nav */
+  /* ===== CLASSES page (schedule) ===== */
+  '#student-app .s-classes{padding:calc(14px + env(safe-area-inset-top)) 16px 20px}'+
+  '#student-app .s-chead{display:flex;align-items:center;gap:13px;margin-bottom:15px}'+
+  '#student-app .s-chi{width:50px;height:50px;border-radius:15px;background:linear-gradient(135deg,#f0994f,#d06d22);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 8px 18px -8px rgba(208,109,34,.6)}'+
+  '#student-app .s-chi svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:2}'+
+  '#student-app .s-cht{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.3px}'+
+  '#student-app .s-chs{font-size:12.5px;color:var(--text-muted);margin-top:1px}'+
+  '#student-app .s-cdays{display:flex;gap:9px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}'+
+  '#student-app .s-cdays::-webkit-scrollbar{display:none}'+
+  '#student-app .s-cday{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13.5px;font-weight:800;padding:9px 16px;border-radius:13px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.04)}'+
+  '#student-app .s-cday svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}'+
+  '#student-app .s-cday.on{background:linear-gradient(135deg,#e7bf55,#a97f1e);color:#2a2205;border-color:transparent;box-shadow:0 8px 18px -8px rgba(201,154,46,.6)}'+
+  '#student-app .s-cday.cal,#student-app .s-cday.pick{color:#8a6f16}'+
+  '#student-app .s-clist{display:flex;flex-direction:column;gap:12px;margin-top:4px}'+
+  '#student-app .s-ccard{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--border);border-radius:17px;padding:14px 15px;box-shadow:0 6px 16px -10px rgba(16,31,54,.28)}'+
+  '#student-app .s-ccard.live{border-color:transparent;box-shadow:0 12px 26px -12px rgba(201,154,46,.5);background:linear-gradient(135deg,#fffdf5,var(--card))}'+
+  '#student-app .s-ccard .cc-tm{flex:0 0 auto;text-align:center;min-width:52px}'+
+  '#student-app .s-ccard .cc-tm b{display:block;font-size:15px;font-weight:800;color:var(--text)}'+
+  '#student-app .s-ccard .cc-tm span{font-size:10.5px;font-weight:700;color:var(--text-muted)}'+
+  '#student-app .s-ccard .cc-bar{width:3px;align-self:stretch;border-radius:3px;background:linear-gradient(#e7bf55,#c99a2e);flex:0 0 auto}'+
+  '#student-app .s-ccard.live .cc-bar{background:linear-gradient(#e2574e,#c23a30)}'+
+  '#student-app .s-ccard .cc-mid{flex:1;min-width:0}'+
+  '#student-app .s-ccard .cc-t{font-size:15px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+  '#student-app .s-ccard .cc-live{flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.05em;color:#c23a30;background:rgba(226,87,78,.14);padding:2px 7px;border-radius:999px;animation:sbellpulse 1.2s infinite}'+
+  '#student-app .s-ccard .cc-sub{font-size:12px;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+  '#student-app .s-ccard .cc-act{flex:0 0 auto;border:none;font-family:inherit;font-size:13px;font-weight:800;padding:9px 18px;border-radius:12px;cursor:pointer}'+
+  '#student-app .s-ccard .cc-act.join{background:linear-gradient(135deg,#e7bf55,#a97f1e);color:#2a2205;box-shadow:0 6px 14px -6px rgba(201,154,46,.6)}'+
+  '#student-app .s-ccard .cc-act.soon{background:var(--border);color:var(--text-muted);cursor:default}'+
+  '#student-app .s-ccard .cc-act.done{background:rgba(52,192,138,.14);color:#1c8f63}'+
+  '#student-app .s-chint{display:flex;gap:9px;align-items:flex-start;background:linear-gradient(135deg,#fffdf5,#fcf6e6);border:1px solid #efe2bf;border-radius:14px;padding:13px 14px;font-size:12.5px;color:#8a6f16;line-height:1.45;margin-top:4px}'+
+  '#student-app .s-chint svg{width:17px;height:17px;stroke:#b8941f;fill:none;stroke-width:2;flex:0 0 auto;margin-top:1px}'+
+  '#student-app .s-cempty{text-align:center;padding:40px 16px 20px;color:var(--text-muted)}'+
+  '#student-app .s-cempty .ei{width:58px;height:58px;border-radius:17px;background:var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 12px}'+
+  '#student-app .s-cempty .ei svg{width:28px;height:28px;stroke:var(--text-muted);fill:none;stroke-width:2}'+
+  '#student-app .s-cempty .et{font-size:15px;font-weight:800;color:var(--text)}'+
+  '#student-app .s-cempty .es{font-size:12.5px;margin-top:3px}'+
   '#student-app .s-botnav{position:fixed;left:0;right:0;bottom:0;height:72px;z-index:940;background:var(--card);border-top:1px solid var(--border);align-items:flex-start;justify-content:space-around;padding:8px 6px 0;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -6px 20px rgba(0,0,0,.08)}'+
   '#student-app .s-botnav .nbi{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:none;cursor:pointer;position:relative;padding:3px 0;font-family:inherit}'+
   '#student-app .s-botnav .nbi svg{width:23px;height:23px;stroke:var(--text-muted);fill:none;stroke-width:2;transition:stroke .15s}'+
@@ -51649,6 +51703,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
   function sGo(page){
     try{ var app=document.getElementById('student-app');
+      // "classes" = module ka premium schedule page (real sPage nahi) — isse khud handle karo.
+      if(page==='classes'){ if(app) showClassesPage(app); closeSheet(); return; }
       var el=app?app.querySelector('.sidebar-nav .nav-item[onclick*="sPage(\''+page+'\'"]'):null;
       if(typeof window.sPage==='function') window.sPage(page, el);
     }catch(e){}
@@ -51832,10 +51888,20 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     try{ window._sTileBadges=window._sTileBadges||{};
       var s=null; try{ s=window._sMatNew; }catch(e){}
       var hasS=(s && typeof s.size==='number');
+      // Classes Material tile — NEW (unseen) uploads ka count.
       if(hasS && s.size>0) window._sTileBadges.materials=(s.size>99?'99+':String(s.size)); else delete window._sTileBadges.materials;
-      var mats=window._sHomeMats||window._sMats||[]; var dn=0;
-      if(hasS && mats && mats.length){ mats.forEach(function(m){ if(m&&m.type==='dpp'&&m.id!=null&&s.has(m.id)) dn++; }); }
-      if(dn>0) window._sTileBadges.dpp=dn; else delete window._sTileBadges.dpp;
+      // DPP + Tests tiles ke badge ab workspace.pending se aate hain (updateTileBadgesFromWs) — ye
+      // "pending/attempt karne wale" ka asli count hai. Yahan dpp ko touch nahi karte.
+    }catch(e){}
+  }
+  /* DPP + Tests (aur jo bhi pending-content tiles) ke blink badge — workspace.pending se.
+     pending.dpps = attempt karne wale DPP, pending.tests = attempt karne wale test/exam. */
+  function updateTileBadgesFromWs(w){
+    try{ window._sTileBadges=window._sTileBadges||{};
+      var pend=(w&&w.pending)||{};
+      var dp=parseInt(pend.dpps,10)||0; var ts=parseInt(pend.tests,10)||0;
+      if(dp>0) window._sTileBadges.dpp=(dp>99?'99+':String(dp)); else delete window._sTileBadges.dpp;
+      if(ts>0) window._sTileBadges.tests=(ts>99?'99+':String(ts)); else delete window._sTileBadges.tests;
     }catch(e){}
   }
 
@@ -51919,6 +51985,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
     // continue (priority)
     apiGet('/api/student/workspace'+bq()).then(function(w){ w=w||{};
+      // DPP + Tests tiles ke blink count badge (pending content) — Classes Material jaisa.
+      safe(function(){ updateTileBadgesFromWs(w); var app3=document.getElementById('student-app'); if(app3) renderTiles(app3); });
       var p=w.priority; var cc=document.getElementById('s-continue');
       if(cc && p && (p.label||p.title)){
         var act=(p.action||p.kind||'materials');
@@ -52006,9 +52074,97 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     dots();
   }
 
+  /* ======================= CLASSES page (premium daily/weekly schedule) =======================
+     Bottom-nav "Classes" yahi kholta hai: day tabs (Today + agle din + Pick date) + us din ki
+     saari classes (time, teacher, chapter, LIVE/Soon/Done). Full Time Table alag (Time Table tile). */
+  function _cDateKey(d){ try{ return (typeof window.istDateKey==='function' && !d)?window.istDateKey():d.toLocaleDateString('en-CA'); }catch(e){ return d.toLocaleDateString('en-CA'); } }
+  function _cDayShort(d){ return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]; }
+  function _cToday(){ var k=(typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); return k; }
+  function _cParseTime(t){ t=String(t||'').trim(); var m=t.match(/^(\d{1,2}:\d{2})\s*(am|pm)?/i); if(!m) return {hhmm:t,ap:''}; return {hhmm:m[1], ap:(m[2]||'').toUpperCase()}; }
+  function buildClasses(app){
+    var main=app.querySelector('.main'); if(!main) return;
+    var el=main.querySelector(':scope > .s-classes');
+    if(!el){ el=document.createElement('div'); el.className='s-classes'; main.appendChild(el); }
+    if(!el.querySelector('.s-chead')){
+      // day tabs: Today + next 3 days + Pick date + Calendar
+      var base=new Date(); var tabs='';
+      for(var i=0;i<4;i++){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
+        var key=_cDateKey(d); var lab=(i===0)?'Today':_cDayShort(d);
+        tabs+='<button class="s-cday'+(i===0?' on':'')+'" data-k="'+key+'" data-l="'+lab+'" onclick="_sClassDay(this)">'+lab+'</button>';
+      }
+      tabs+='<button class="s-cday pick" onclick="_sClassPick()"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Pick date</button>';
+      tabs+='<button class="s-cday cal" onclick="_sGo(\'acalendar\')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4M8 14h2M14 14h2M8 18h2"/></svg>Calendar</button>';
+      el.innerHTML=
+        '<div class="s-chead"><div class="s-chi">'+svg('timetable')+'</div><div><div class="s-cht">Classes</div><div class="s-chs">Aaj ki aur aane waali saari classes</div></div></div>'+
+        '<div class="s-cdays" id="s-cdays">'+tabs+'</div>'+
+        '<input type="date" id="s-cdate" style="position:absolute;left:-9999px;opacity:0" onchange="_sClassPicked(this.value)">'+
+        '<div class="s-clist" id="s-clist"></div>';
+    }
+    var cur=el.querySelector('.s-cday.on'); var k=cur?cur.getAttribute('data-k'):_cToday(); var l=cur?cur.getAttribute('data-l'):'Today';
+    renderClassesDay(k,l);
+  }
+  // date picker
+  window._sClassPick=function(){ var inp=document.getElementById('s-cdate'); if(inp){ try{ inp.showPicker?inp.showPicker():inp.click(); }catch(e){ inp.click(); } } };
+  window._sClassPicked=function(v){ if(!v) return; var app=document.getElementById('student-app'); var days=document.getElementById('s-cdays');
+    if(days){ days.querySelectorAll('.s-cday').forEach(function(b){ b.classList.remove('on'); }); }
+    var d=new Date(v+'T00:00:00'); var lab=(v===_cToday())?'Today':(_cDayShort(d)+' '+d.getDate()+'/'+(d.getMonth()+1));
+    renderClassesDay(v, lab);
+  };
+  window._sClassDay=function(btn){ var days=document.getElementById('s-cdays'); if(days){ days.querySelectorAll('.s-cday').forEach(function(b){ b.classList.remove('on'); }); } btn.classList.add('on');
+    renderClassesDay(btn.getAttribute('data-k'), btn.getAttribute('data-l')); };
+  window._sClassJoin=function(btn){ try{ var l=(btn&&btn.getAttribute('data-ln'))||''; if(l) window.open(l,'_blank'); else _sGo('timetable'); }catch(e){} };
+  function renderClassesDay(dateKey, label){
+    var box=document.getElementById('s-clist'); if(!box) return;
+    box.innerHTML='<div class="s-cload"><div class="spinner" style="margin:24px auto"></div></div>';
+    loadTeacherMap().then(function(tmap){ tmap=tmap||{};
+    apiGet('/api/student/timetable-plan'+bq()).then(function(plan){ plan=plan||[];
+      var list=plan.filter(function(e){ return e && e.date===dateKey; });
+      list.sort(function(a,b){ return tkey(a.time)-tkey(b.time); });
+      var box2=document.getElementById('s-clist'); if(!box2) return;
+      if(!list.length){
+        box2.innerHTML='<div class="s-cempty"><div class="ei">'+svg('timetable')+'</div><div class="et">'+esc(label||'Is din')+' koi class nahi</div><div class="es">Doosra din chuno ya Calendar dekho.</div></div>'+
+          '<div class="s-chint"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Upar "Calendar" tap karo — poore mahine ka Academic Calendar (exam dates, holidays) yahin dikhega.</div>';
+        return;
+      }
+      var nowMin=new Date().getHours()*60+new Date().getMinutes();
+      var isToday=(dateKey===_cToday());
+      var photos=[];
+      var html=list.map(function(c,i){
+        var rawSub=String(c.subject||c.subject_name||'Class');
+        var tea=String(c.teacher_name||c.teacher||'').trim();
+        var look=teaLookup(tmap, rawSub); if(look && !tea){ tea=(look.name+' '+(look.suffix||'')).trim(); }
+        var ch=String(c.chapter||''); var pt=String(c.part||''); var topic=[ch,pt].filter(Boolean).join(' · ');
+        var sub=[tea,topic].filter(Boolean).join(' · ');
+        var st=tkey(c.time); var done=!!c.class_done;
+        var live=(isToday && !done && st<=nowMin && nowMin<=st+90);
+        var tp=_cParseTime(c.time);
+        var link=String(c.youtube_link||'');
+        var act;
+        if(live){ act='<button class="cc-act join" data-ln="'+esc(link)+'" onclick="_sClassJoin(this)">Join</button>'; }
+        else if(done){ act=link?('<button class="cc-act done" data-ln="'+esc(link)+'" onclick="_sClassJoin(this)">Watch</button>'):'<button class="cc-act done" disabled>Done</button>'; }
+        else { act='<button class="cc-act soon" disabled>Soon</button>'; }
+        return '<div class="s-ccard'+(live?' live':'')+'">'+
+          '<div class="cc-tm"><b>'+esc(tp.hhmm)+'</b>'+(tp.ap?('<span>'+tp.ap+'</span>'):'')+'</div>'+
+          '<div class="cc-bar"></div>'+
+          '<div class="cc-mid"><div class="cc-t">'+esc(rawSub)+(live?' <span class="cc-live">LIVE</span>':'')+'</div>'+(sub?('<div class="cc-sub">'+esc(sub)+'</div>'):'')+'</div>'+
+          act+'</div>';
+      }).join('');
+      box2.innerHTML=html+'<div class="s-chint"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Upar "Calendar" tap karo — poore mahine ka Academic Calendar (exam dates, holidays) yahin dikhega.</div>';
+    }).catch(function(){ var b=document.getElementById('s-clist'); if(b) b.innerHTML='<div class="s-cempty"><div class="et">Load nahi hua</div><div class="es">Dobara try karo.</div></div>'; });
+    }).catch(function(){});
+  }
+  function showClassesPage(app){
+    try{ if(typeof window.sPage==='function') window.sPage('dashboard', null); }catch(e){}  // known hidden base page
+    app.classList.remove('s-on-home'); app.classList.add('s-on-classes');
+    buildClasses(app); syncActive('classes');
+    safe(function(){ var m=app.querySelector('.main'); if(m) m.scrollTop=0; try{ window.scrollTo(0,0); }catch(e){} });
+  }
+
   /* -------- bottom nav -------- */
-  var BOT=[['dashboard','Home'],['timetable','Classes'],['tests','Tests'],['dpp','DPP'],['__more','More']];
-  function syncActive(page){ var app=document.getElementById('student-app'); if(!app) return; var map={acalendar:'timetable'}; var act=map[page]||page;
+  // "Classes" ab FULL time table nahi kholta — ek premium daily/weekly schedule page (s-classes)
+  // kholta hai (day tabs + date pick). Poora Time Table "Time Table" tile (timetable) par hi rehta hai.
+  var BOT=[['dashboard','Home'],['classes','Classes'],['tests','Tests'],['dpp','DPP'],['__more','More']];
+  function syncActive(page){ var app=document.getElementById('student-app'); if(!app) return; var map={}; var act=map[page]||page;
     app.querySelectorAll('.s-botnav .nbi').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-p')===act); }); }
   function buildBar(app){ if(app.querySelector('.s-botnav')) return;
     var bar=document.createElement('div'); bar.className='s-botnav';
@@ -52055,7 +52211,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
   function wrapSPage(){ if(window._sPageWrapped || typeof window.sPage!=='function') return; var orig=window.sPage; window._sPageWrapped=true;
     window.sPage=function(page,el){ var r=orig.apply(this,arguments);
-      try{ syncActive(page); var app=document.getElementById('student-app'); if(app){ var onHome=(page==='dashboard'); app.classList.toggle('s-on-home',onHome);
+      try{ syncActive(page); var app=document.getElementById('student-app'); if(app){ app.classList.remove('s-on-classes'); var onHome=(page==='dashboard'); app.classList.toggle('s-on-home',onHome);
         if(onHome){ buildHome(app);
           // section se back aane par home hamesha UPAR se (hero) dikhe — warna scroll section wali
           // position pe atak jaata tha aur hero gayab lagta tha (image 2 wala issue).
