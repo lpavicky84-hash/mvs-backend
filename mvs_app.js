@@ -51059,13 +51059,9 @@ function _installMetaInit(){
     m.setAttribute('href','/manifest.webmanifest?start='+encodeURIComponent(path));
     _metaTag('apple-mobile-web-app-capable','yes');
     _metaTag('mobile-web-app-capable','yes');
-    // Student portal: premium mobile home ka blue hero status-bar ke PEECHE tak jaaye (edge-to-edge).
-    // 'default' pe iOS upar ek WHITE status-bar strip chhod deta tha (content ke upar fade/blur jaisa).
-    // 'black-translucent' -> status bar transparent, content poore upar tak; neeche ek dark safe-area
-    // filler (#student-app::before) status bar region ko dark rakhta hai taaki white text har page par
-    // readable rahe. Baaki portals (teacher/admin/etc.) pe pehle jaisa 'default'.
-    var _isStu=(path!=='/teacher' && path!=='/admin' && path!=='/production' && path!=='/editor' && path!=='/youtuber' && path!=='/graphics');
-    _metaTag('apple-mobile-web-app-status-bar-style', _isStu?'black-translucent':'default');
+    // iOS status bar: BLACK (white text) -> upar ka white strip/fade khatam, har portal pe clean.
+    // ASLI jagah static HTML meta hai (iOS launch par wahi padhta hai); ye JS sirf consistency ke liye.
+    _metaTag('apple-mobile-web-app-status-bar-style','black');
     _metaTag('apple-mobile-web-app-title', (path==='/teacher')?'MVS Teacher':(path==='/admin')?'MVS Admin':'MVS');
     _metaTag('theme-color','#14213d');
     // apple-touch-icon = har portal ka apna PREMIUM app-icon -> iPhone "Add to Home Screen" par
@@ -51502,11 +51498,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttnav button{width:30px;height:30px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:17px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;line-height:1}'+
   '#student-app .s-tt{display:flex;gap:11px;overflow-x:auto;padding:1px 0 4px;scrollbar-width:none}'+
   '#student-app .s-tt::-webkit-scrollbar{display:none}'+
-  '#student-app .s-ttc{width:210px;min-width:210px;max-width:210px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:13px;flex:0 0 auto;box-shadow:0 5px 14px rgba(0,0,0,.05);overflow:hidden;box-sizing:border-box}'+
+  '#student-app .s-ttc{width:min(84vw,320px);min-width:min(84vw,320px);max-width:320px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 15px;flex:0 0 auto;box-shadow:0 5px 14px rgba(0,0,0,.05);overflow:hidden;box-sizing:border-box}'+
   '#student-app .s-ttc .tm{font-size:11px;font-weight:800;color:var(--primary)}'+
   '#student-app .s-ttc .sb{font-size:14.5px;font-weight:800;margin:5px 0 3px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
   /* chapter+teacher line ab EK lambi line me overflow nahi — 2 line tak wrap (card compact rehta hai) */
-  '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}'+
+  '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
   '#student-app .s-ttc.live{background:linear-gradient(145deg,#132238,#213c5e);border:none;color:#fff}'+
   '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}'+
   '#student-app .s-ltag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;color:#fff;background:#e25555;padding:2px 7px;border-radius:7px;margin-bottom:7px}'+
@@ -51516,7 +51512,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttdots i{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .2s}'+
   '#student-app .s-ttdots i.on{width:18px;border-radius:4px;background:var(--primary)}'+
   /* today card: teacher photo + status (premium) */
-  '#student-app .s-ttc{width:210px;min-width:210px;max-width:210px}'+
+  '#student-app .s-ttc{width:min(84vw,320px);min-width:min(84vw,320px);max-width:320px}'+
   '#student-app .s-ttc .ttc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}'+
   '#student-app .s-tph{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#4a6fa0,#263f66);background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex:0 0 auto;box-shadow:0 4px 10px rgba(0,0,0,.18)}'+
   '#student-app .s-ttc.live .s-tph{border:2px solid rgba(255,255,255,.3)}'+
@@ -51573,7 +51569,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-morebar .mg svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2.4}'+
   /* new-for-you */
   '#student-app .s-new{display:flex;flex-direction:column;gap:10px}'+
-  '#student-app .s-ni{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;gap:12px;align-items:center;box-shadow:0 5px 14px rgba(0,0,0,.05);cursor:pointer}'+
+  '#student-app .s-ni{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;gap:12px;align-items:center;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
+  '#student-app .s-niacts{display:flex;gap:7px;flex:0 0 auto}'+
+  '#student-app .s-nib{width:40px;height:40px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}'+
+  '#student-app .s-nib svg{width:18px;height:18px;fill:none;stroke-width:2}'+
+  '#student-app .s-nib.view{background:rgba(90,160,230,.14)}#student-app .s-nib.view svg{stroke:#2f6cb5}'+
+  '#student-app .s-nib.dl{background:linear-gradient(135deg,#e7bf55,#a97f1e)}#student-app .s-nib.dl svg{stroke:#2a2205}'+
+  '#student-app .s-nib:active{transform:scale(.9)}'+
   '#student-app .s-ni .nt{width:46px;height:46px;border-radius:13px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}'+
   '#student-app .s-ni .nt svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2}'+
   '#student-app .s-ni .nb{flex:1;min-width:0}'+
@@ -51622,7 +51624,10 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-chs{font-size:12.5px;color:var(--text-muted);margin-top:1px}'+
   '#student-app .s-cdays{display:flex;gap:9px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}'+
   '#student-app .s-cdays::-webkit-scrollbar{display:none}'+
-  '#student-app .s-cday{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:13.5px;font-weight:800;padding:9px 16px;border-radius:13px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.04)}'+
+  '#student-app .s-cday{flex:0 0 auto;display:inline-flex;flex-direction:column;align-items:center;gap:1px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;padding:8px 15px;border-radius:14px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.04);min-width:60px}'+
+  '#student-app .s-cday .d1{font-size:13px;font-weight:800;line-height:1.18}'+
+  '#student-app .s-cday .d2{font-size:10.5px;font-weight:700;color:var(--text-muted);line-height:1.1}'+
+  '#student-app .s-cday.on .d2{color:#5a4a0e}'+
   '#student-app .s-cday svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}'+
   '#student-app .s-cday.on{background:linear-gradient(135deg,#e7bf55,#a97f1e);color:#2a2205;border-color:transparent;box-shadow:0 8px 18px -8px rgba(201,154,46,.6)}'+
   '#student-app .s-cday.cal,#student-app .s-cday.pick{color:#8a6f16}'+
@@ -52032,7 +52037,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       mats.forEach(function(m){ if(!m||(m.type!=='notes'&&m.type!=='dpp')) return;
         var title=String(m.title||m.name||m.chapter||'').trim(); if(!title) return;
         var key=(m.id!=null?('id'+m.id):title.toLowerCase()); if(seen[key]) return; seen[key]=1;
-        items.push({title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||'')});
+        items.push({id:(m.id!=null?m.id:null), title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||'')});
       });
       // Classes Material + DPP tile ke blink badge — materials-v2 + _sMatNew se KHUD compute,
       // readNav/sidebar badge pe depend nahi (phone pe wo reliable nahi tha).
@@ -52042,7 +52047,14 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       items=items.slice(0,4);
       var nn=document.getElementById('s-new'), ns=document.getElementById('s-newsec'); if(!nn||!ns) return;
       if(!items.length){ ns.style.display='none'; return; }
-      nn.innerHTML=items.map(function(it){ return '<div class="s-ni" onclick="(window.wsGo&&wsGo(\'materials\'))"><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(it.title)+(it.isNew?' <span class="s-nbadge">NEW</span>':'')+'</div><div class="s">'+esc(it.subject||'Class Material')+'</div></div><svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg></div>'; }).join('');
+      nn.innerHTML=items.map(function(it){
+        // click karne ki zaroorat nahi — har item par seedha View + Download icon.
+        var acts=(it.id!=null)
+          ? '<div class="s-niacts"><button class="s-nib view" data-mid="'+it.id+'" data-mt="'+esc(it.title)+'" onclick="_sMatView(this)" title="View"><svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
+            + '<button class="s-nib dl" data-mid="'+it.id+'" data-mt="'+esc(it.title)+'" onclick="_sMatDl(this)" title="Download"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></button></div>'
+          : '<svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg>';
+        return '<div class="s-ni"'+(it.id==null?' onclick="(window.wsGo&&wsGo(\'materials\'))" style="cursor:pointer"':'')+'><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(it.title)+(it.isNew?' <span class="s-nbadge">NEW</span>':'')+'</div><div class="s">'+esc(it.subject||'Class Material')+'</div></div>'+acts+'</div>';
+      }).join('');
       ns.style.display='';
     }).catch(function(){});
 
@@ -52113,6 +52125,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function _cDayShort(d){ return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]; }
   function _cToday(){ var k=(typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); return k; }
   function _cParseTime(t){ t=String(t||'').trim(); var m=t.match(/^(\d{1,2}:\d{2})\s*(am|pm)?/i); if(!m) return {hhmm:t,ap:''}; return {hhmm:m[1], ap:(m[2]||'').toUpperCase()}; }
+  function _calHintHTML(){ return '<div class="s-chint"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg> Tap the calendar icon at the top to open your full Academic Calendar — exam dates, holidays & important dates.</div>'; }
   function buildClasses(app){
     var main=app.querySelector('.main'); if(!main) return;
     var el=main.querySelector(':scope > .s-classes');
@@ -52120,10 +52133,10 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     if(!el.querySelector('.s-chead')){
       // day tabs: Today + next 5 days (sirf din — Pick date / Calendar header me icon button hain,
       // taaki tab row me kuch cut na ho)
-      var base=new Date(); var tabs='';
-      for(var i=0;i<6;i++){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
-        var key=_cDateKey(d); var lab=(i===0)?'Today':_cDayShort(d);
-        tabs+='<button class="s-cday'+(i===0?' on':'')+'" data-k="'+key+'" data-l="'+lab+'" onclick="_sClassDay(this)">'+lab+'</button>';
+      var base=new Date(); var tabs=''; var _MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      for(var i=0;i<5;i++){ var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
+        var key=_cDateKey(d); var lab=(i===0)?'Today':_cDayShort(d); var dsub=d.getDate()+' '+_MON[d.getMonth()];
+        tabs+='<button class="s-cday'+(i===0?' on':'')+'" data-k="'+key+'" data-l="'+lab+'" onclick="_sClassDay(this)"><span class="d1">'+lab+'</span><span class="d2">'+dsub+'</span></button>';
       }
       el.innerHTML=
         '<div class="s-chead"><div class="s-chi">'+svg('timetable')+'</div>'+
@@ -52189,6 +52202,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   window._sClassDay=function(btn){ var days=document.getElementById('s-cdays'); if(days){ days.querySelectorAll('.s-cday').forEach(function(b){ b.classList.remove('on'); }); } btn.classList.add('on');
     renderClassesDay(btn.getAttribute('data-k'), btn.getAttribute('data-l')); };
   window._sClassJoin=function(btn){ try{ var l=(btn&&btn.getAttribute('data-ln'))||''; if(l) window.open(l,'_blank'); else _sGo('timetable'); }catch(e){} };
+  // "New for you" item ke View / Download — seedha (section me jaane ki zaroorat nahi)
+  window._sMatView=function(b){ try{ var id=+b.getAttribute('data-mid'); var t=b.getAttribute('data-mt')||'material.pdf'; if(typeof window.viewMaterial==='function') window.viewMaterial('student',id,t); }catch(e){} };
+  window._sMatDl=function(b){ try{ var id=+b.getAttribute('data-mid'); var t=b.getAttribute('data-mt')||'material.pdf'; if(typeof window.downloadMaterial==='function') window.downloadMaterial('student',id,t); }catch(e){} };
   function renderClassesDay(dateKey, label){
     var box=document.getElementById('s-clist'); if(!box) return;
     box.innerHTML='<div class="s-cload"><div class="spinner" style="margin:24px auto"></div></div>';
@@ -52198,7 +52214,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       list.sort(function(a,b){ return tkey(a.time)-tkey(b.time); });
       var box2=document.getElementById('s-clist'); if(!box2) return;
       if(!list.length){
-        box2.innerHTML='<div class="s-cempty"><div class="ei">'+svg('timetable')+'</div><div class="et">No classes on '+esc(label||'this day')+'</div><div class="es">Select another day or pick a date.</div></div>';
+        box2.innerHTML='<div class="s-cempty"><div class="ei">'+svg('timetable')+'</div><div class="et">No classes on '+esc(label||'this day')+'</div><div class="es">Select another day or pick a date.</div></div>'+_calHintHTML();
         return;
       }
       var nowMin=new Date().getHours()*60+new Date().getMinutes();
@@ -52224,7 +52240,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
           '<div class="cc-mid" style="cursor:pointer" onclick="_sGo(\'materials\')"><div class="cc-t">'+esc(rawSub)+(live?' <span class="cc-live">LIVE</span>':'')+'</div>'+(sub?('<div class="cc-sub">'+esc(sub)+'</div>'):'')+'</div>'+
           act+'</div>';
       }).join('');
-      box2.innerHTML=html;
+      box2.innerHTML=html+_calHintHTML();
     }).catch(function(){ var b=document.getElementById('s-clist'); if(b) b.innerHTML='<div class="s-cempty"><div class="et">Couldn\'t load classes</div><div class="es">Please try again.</div></div>'; });
     }).catch(function(){});
   }
