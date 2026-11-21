@@ -49414,7 +49414,7 @@ async function scSubmit(){
   var title=((document.getElementById('sc-title')||{}).value||'').trim();
   var descEl=document.getElementById('cmpt-sccmp');
   var desc=((descEl&&descEl.value)||'').trim();
-  var st=(window._cmpState&&_cmpState['sccmp'])||{};
+  var st=(_cmpState&&_cmpState['sccmp'])||{};
   if(!desc && !st.file && !st.voice){ toast('Please describe your complaint, attach a photo or record a voice note.',true); return; }
   if(!title){
     if(desc) title=desc.replace(/\s+/g,' ').slice(0,60);
@@ -49755,7 +49755,7 @@ function amcRefresh(cid){
 async function amcInlineReply(cid){
   var key='ac'+cid;
   var txt=((document.getElementById('cmpt-'+key)||{}).value||'').trim();
-  var st=(window._cmpState&&_cmpState[key])||{};
+  var st=(_cmpState&&_cmpState[key])||{};
   if(!txt&&!st.file&&!st.voice){ toast('Type a message',true); return; }
   var btn=document.getElementById('cmps-'+key); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
   try{
@@ -50041,7 +50041,7 @@ async function scComposerReply(){
   if(!cid) return;
   var txtEl=document.getElementById('cmpt-'+key);
   var txt=((txtEl&&txtEl.value)||'').trim();
-  var st=(window._cmpState&&_cmpState[key])||{};
+  var st=(_cmpState&&_cmpState[key])||{};
   if(!txt && !st.file && !st.voice){ toast('Type a message',true); return; }
   var btn=document.getElementById('cmps-'+key); if(btn){ btn.disabled=true; btn.textContent='Sending...'; }
   try{
