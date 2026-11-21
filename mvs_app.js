@@ -3134,14 +3134,19 @@ function _docViewerCss(){
   if(document.getElementById('docviewer-css')) return;
   var s=document.createElement('style'); s.id='docviewer-css';
   s.textContent=[
-    '.docviewer{position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.9);display:flex;flex-direction:column}',
-    '.dv-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#141414;color:#fff;flex:none}',
+    '.docviewer{position:fixed;inset:0;z-index:100050;background:#111;display:flex;flex-direction:column}',
+    '.dv-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:#141414;color:#fff;flex:none}',
     '.dv-name{font-weight:700;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
     '.dv-acts{display:flex;gap:8px;flex:none;align-items:center}',
     '.dv-btn{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:9px;padding:8px 12px;font-size:.82rem;font-weight:700;cursor:pointer;text-decoration:none}',
     '.dv-btn:hover{background:rgba(255,255,255,.27)}',
     '.dv-btn svg{width:15px;height:15px}',
     '.dv-body{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:auto}',
+    /* PDF viewer ko docviewer ke andar FULL-SCREEN banao (inline-card .pvw ki tarah float na kare) — isi se mobile par upar/neeche ka bada black gap aur cut hat-ta hai */
+    '#dv-pdf{width:100%;height:100%;display:flex;min-height:0}',
+    '#dv-pdf .pvw{width:100%;height:100%;display:flex;flex-direction:column;border:0;border-radius:0;background:#2b2e33;min-height:0}',
+    '#dv-pdf .pvw-head{flex:none;flex-wrap:nowrap}',
+    '#dv-pdf .pvw-body{flex:1 1 auto;max-height:none;min-height:0;padding:10px 8px calc(14px + env(safe-area-inset-bottom))}',
     '.dv-frame{width:100%;height:100%;border:0;background:#fff}',
     '.dv-img{max-width:100%;max-height:100%;object-fit:contain;display:block}',
     '.dv-load{color:#fff;display:flex;flex-direction:column;gap:12px;align-items:center;font-size:.9rem}',
