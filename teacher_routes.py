@@ -752,7 +752,7 @@ def teacher_doubt_respond(doubt_id: int, payload: dict, db: Session = Depends(ge
                          attach_key=_att[0], attach_mime=_att[1], attach_name=_att[2]))
     if d.student and d.student.user:
         notify(db, d.student.user.id, "💬 New Reply on Your Doubt",
-               f"{current_user.name} added a reply on your {d.subject or ''} doubt: {(body or 'sent an image')[:120]}", "doubt")
+               f"{current_user.name} added a reply on your {d.subject or ''} doubt: {(body or 'sent an image')[:120]}", "doubt", ref=d.id)
     db.commit()
     return {"message": "Reply added", "responses": _doubt_resp_json(db, d.id, "teacher", tp.id)}
 
@@ -809,6 +809,92 @@ def _student_chat_payload(db, student_id, subjects=None):
         })
     return {"student_id": student_id, "name": name, "has_photo": has_photo,
             "total": len(out), "resolved": resolved_n, "doubts": out}
+
+
+# Doubt notification types — clear chat ke waqt in dono users ke notification section se hatti hain.
+_DOUBT_NTYPES = ["new_doubt", "doubt", "doubt_resolved", "doubt_reply", "doubt_reassigned"]
+
+
+def _clear_student_subject_doubts(db, student_id, subject, restrict_subjects=None):
+    """WhatsApp-style 'Clear chat' — ek student ke EK subject ke SAARE doubts + unke poore
+    threads (DoubtResponse) permanently delete. doubts/doubt_responses dono portals (student +
+    teacher) ke liye SAME rows hain -> delete karte hi dono taraf se chat clear ho jaata hai.
+    Saath me un doubts se judi notifications (dono user ke notification section se) bhi hatti hain.
+
+    restrict_subjects=None -> admin (koi bhi subject). restrict_subjects=[...] -> teacher: sirf
+    apne subject(s) ka clear kar sakta hai (doosre subject wale teacher ki chat ko nahi)."""
+    from models import (Doubt, DoubtResponse, StudentProfile, Notification,
+                        TeacherProfile, User as _U)
+    sp = db.query(StudentProfile).filter(StudentProfile.id == student_id).first()
+    if not sp:
+        return {"ok": False, "error": "Student not found", "deleted": 0}
+    tgt = _subj_norm(subject or "")
+    if not tgt:
+        return {"ok": False, "error": "Subject required", "deleted": 0}
+    if restrict_subjects is not None:
+        _allow = {_subj_norm(s) for s in (restrict_subjects or []) if s}
+        if tgt not in _allow:
+            return {"ok": False, "error": "You can only clear your own subject's chat.", "deleted": 0}
+
+    ds = [d for d in db.query(Doubt).filter(Doubt.student_id == student_id).all()
+          if _subj_norm(d.subject) == tgt]
+    canon = _subj_canon(subject) or subject
+    if not ds:
+        return {"ok": True, "deleted": 0, "subject": canon}
+    ids = [d.id for d in ds]
+
+    # Notification cleanup ke liye involved users: student + in doubts ke owning teacher(s).
+    student_uid = sp.user_id or (sp.user.id if sp.user else None)
+    user_ids = set()
+    if student_uid:
+        user_ids.add(student_uid)
+    _tpids = {d.teacher_id for d in ds if d.teacher_id}
+    if _tpids:
+        for tp in db.query(TeacherProfile).filter(TeacherProfile.id.in_(list(_tpids))).all():
+            if tp.user_id:
+                user_ids.add(tp.user_id)
+
+    # 1) Thread replies delete.
+    db.query(DoubtResponse).filter(DoubtResponse.doubt_id.in_(ids)).delete(synchronize_session=False)
+
+    # 2) Notifications delete.
+    #    (a) PRECISE — har doubt notification ab 'mvsnav:<doubt_id>' deep-link rakhti hai.
+    links = ["mvsnav:%s" % i for i in ids]
+    if user_ids and links:
+        db.query(Notification).filter(
+            Notification.user_id.in_(list(user_ids)),
+            Notification.link.in_(links)).delete(synchronize_session=False)
+    #    (b) LEGACY safety-net — purani doubt notifications (jinme deep-link nahi tha) sirf
+    #        STUDENT ke notification section se, subject-match karke. Student-only isliye ki
+    #        student ki saari is-subject doubt notifications ab stale hain (hum ne us subject ke
+    #        saare doubts delete kar diye). Teacher par subject-match NAHI karte — warna doosre
+    #        students ke same-subject notifications bhi galti se hat jaate.
+    if student_uid:
+        for pat in ("%" + canon + " doubt%", canon + " —%", "%" + canon + " —%",
+                    "%" + (subject or "") + " doubt%"):
+            if not pat.strip("% —"):
+                continue
+            db.query(Notification).filter(
+                Notification.user_id == student_uid,
+                Notification.notif_type.in_(_DOUBT_NTYPES),
+                Notification.message.ilike(pat)).delete(synchronize_session=False)
+
+    # 3) Doubts delete (dono portal se chat gayab).
+    db.query(Doubt).filter(Doubt.id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    return {"ok": True, "deleted": len(ids), "subject": canon}
+
+
+@router.post("/doubts/clear")
+def teacher_clear_doubts(payload: dict = Body(...), db: Session = Depends(get_db),
+                         current_user=Depends(get_teacher)):
+    """Teacher: ek student ke apne subject ki poori doubt-chat clear kare (dono portal + notifications)."""
+    tp = get_teacher_profile(current_user, db)
+    sid = payload.get("student_id")
+    subject = (payload.get("subject") or "").strip()
+    if not sid or not subject:
+        raise HTTPException(400, "student_id and subject required")
+    return _clear_student_subject_doubts(db, int(sid), subject, restrict_subjects=(tp.subjects or []))
 
 
 @router.get("/student-doubts")
@@ -872,7 +958,7 @@ def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get
     # student ko batao ki unka doubt ab kiske paas hai
     if d.student and d.student.user:
         notify(db, d.student.user.id, "🔀 Your Doubt Has Been Reassigned",
-               f"Your {d.subject or ''} doubt is now with {target_name} — you will get the answer from them.", "doubt")
+               f"Your {d.subject or ''} doubt is now with {target_name} — you will get the answer from them.", "doubt", ref=d.id)
     # naye owner ko notify — Doubts section wale admins ko (full + sub-admins jinhe 'doubts' allowed).
     # Defensive: agar admin_routes purana ho (helper na ho) to crash na ho — sabhi admins ko bhej do.
     if to_admin:
@@ -886,12 +972,12 @@ def teacher_doubt_assign(doubt_id: int, payload: dict, db: Session = Depends(get
             notify(db, au.id, "📥 Doubt Assigned to Admin",
                    f"{current_user.name} assigned a {d.subject or ''} doubt by "
                    f"{d.student.user.name if d.student and d.student.user else 'a student'} to MVS Foundation. "
-                   f"Please reply from the Doubts page.", "doubt")
+                   f"Please reply from the Doubts page.", "doubt", ref=d.id)
     elif new_tp.user:
         notify(db, new_tp.user.id, "📥 Doubt Reassigned to You",
                f"{current_user.name} assigned a {d.subject or ''} doubt by "
                f"{d.student.user.name if d.student and d.student.user else 'a student'} to you. "
-               f"It is now your responsibility to resolve it.", "new_doubt")
+               f"It is now your responsibility to resolve it.", "new_doubt", ref=d.id)
     db.commit()
     return {"message": f"Doubt assigned to {target_name}", "assigned_to": target_name}
 
@@ -985,7 +1071,7 @@ def resolve_doubt(
         notify(db, student_user.id,
                "Your Doubt Is Resolved! ✅",
                f"{doubt.subject} — {doubt.topic}: {current_user.name} has replied.",
-               "doubt_resolved")
+               "doubt_resolved", ref=doubt.id)
     db.commit()
     return {"message": "Doubt resolved! The student has been notified."}
 

@@ -14341,7 +14341,24 @@ function _ensureDoubtChatCss(){
   .dbtcd-sub{font-size:.76rem;color:var(--text-muted,#8a8272);margin-top:4px}
   .dbtcd-ok{color:#059669;font-weight:800;font-size:1.1rem;margin:10px 0 4px}
   .dbtcd-hint{display:inline-flex;gap:6px;align-items:center;font-size:.72rem;color:var(--text-muted,#8a8272);
-    background:var(--bg,#efe8d6);padding:5px 11px;border-radius:20px;margin-top:8px}`;
+    background:var(--bg,#efe8d6);padding:5px 11px;border-radius:20px;margin-top:8px}
+  .dchat-clr{color:#b42318 !important}
+  .dchat-clr svg{width:15px;height:15px}
+  .dcl-wrap{margin:-2px 0 2px}
+  .dcl-note{font-size:.84rem;line-height:1.5;color:var(--text-muted,#6b6456);background:var(--bg,#f6f1e4);
+    border:1px solid var(--border,#e4dcc8);border-radius:13px;padding:11px 13px;margin-bottom:12px}
+  .dcl-note b{color:var(--text,#2a2619)}
+  .dcl-row{display:flex;align-items:center;gap:12px;justify-content:space-between;
+    border:1px solid var(--border,#e4dcc8);border-radius:13px;padding:11px 13px;margin-bottom:9px;
+    background:var(--card,#fffdf7);box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .dcl-info{min-width:0}
+  .dcl-sub{font-weight:800;font-size:.96rem;color:var(--text,#2a2619)}
+  .dcl-meta{font-size:.76rem;color:var(--text-muted,#8a836f);margin-top:2px}
+  .dcl-btn{flex:none;background:#fdeceb;color:#b42318;border:1px solid #f3c9c4;font-weight:700;
+    padding:7px 13px;border-radius:10px;display:inline-flex;align-items:center;gap:6px}
+  .dcl-btn:hover{background:#b42318;color:#fff;border-color:#b42318}
+  .dcl-btn:disabled{opacity:.5;cursor:default}
+  .dcl-btn svg{width:14px;height:14px}`;
   document.head.appendChild(st);
 }
 // IST-safe clock/day straight from the +05:30 ISO string (browser tz se independent)
@@ -14409,13 +14426,20 @@ async function openDoubtChat(role,sid,encName){
   // profile ek click me (My Students section jaaye bina).
   const _profBtn=(role==='teacher' && window._tCanSeeStudents)
     ? `<button class="btn btn-primary" onclick="openTStudentProfile(${sid},'${encName}')">${ic('user')} Profile</button>` : '';
+  // Clear chat \u2014 sirf teacher/admin ko (student ke portal pe ye modal nahi khulta).
+  const _clrBtn=(role==='teacher'||role==='admin')
+    ? `<button class="btn btn-ghost dchat-clr" id="dchat-clear-btn" onclick="openDoubtClear()">${ic('trash')} Clear chat</button>` : '';
+  window._dchatCtx=null;
   showModal(esc(name)+' \u2014 Doubts',
     `<div class="dchat-modal-wrap"><div class="dchat-hdr"><div class="av" id="dchat-av">${esc(initials(name))}</div><div><div class="nm">${esc(name)}</div><div class="sub" id="dchat-sub">Loading chat\u2026</div></div></div><div class="dchat-scroll" id="dchat-scroll"><div class="dchat-empty">Loading\u2026</div></div></div>`,
-    _profBtn+`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
+    _clrBtn+_profBtn+`<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
   try{
     const d=await api('/api/'+role+'/student-doubts?student_id='+sid);
     const sub=document.getElementById('dchat-sub');
     if(sub) sub.textContent=`${d.total} doubt${d.total===1?'':'s'} \u00b7 ${d.resolved} resolved`;
+    // Clear chat ke liye context + subject list stash karo (picker isi se banta hai).
+    window._dchatCtx={role:role, sid:parseInt(sid,10), name:name, subjects:_dchatSubjectsFrom(d.doubts)};
+    try{ const _cb=document.getElementById('dchat-clear-btn'); if(_cb && !(d.doubts&&d.doubts.length)) _cb.style.display='none'; }catch(e){}
     const sc=document.getElementById('dchat-scroll'); if(!sc) return;
     if(!d.doubts||!d.doubts.length){ sc.innerHTML='<div class="dchat-empty">This student has not asked any doubts yet.</div>'; return; }
     sc.innerHTML=d.doubts.map(x=>_dchatDoubtBlock(role,x)).join('');
@@ -14424,6 +14448,58 @@ async function openDoubtChat(role,sid,encName){
     if(d.has_photo){ const base=role==='teacher'?'/api/teacher/student/':'/api/admin/student/'; loadImgInto('dchat-av',base+sid+'/photo'); }
     sc.scrollTop=sc.scrollHeight;
   }catch(e){ const sc=document.getElementById('dchat-scroll'); if(sc) sc.innerHTML=`<div class="dchat-empty">${esc(e.message||'Could not load chat')}</div>`; }
+}
+
+// ---- Clear chat (subject-wise) — teacher/admin doubt modal ----
+function _dchatSubjectsFrom(doubts){
+  var m={}, order=[];
+  (doubts||[]).forEach(function(d){
+    var s=(d.subject||'General');
+    if(!m[s]){ m[s]={subject:s,count:0,resolved:0}; order.push(s); }
+    m[s].count++; if(d.status==='resolved') m[s].resolved++;
+  });
+  return order.map(function(k){return m[k];});
+}
+// Subject picker — har subject ka ek "Clear" button (ek click me us subject ki poori chat jaaye).
+function openDoubtClear(){
+  _ensureDoubtChatCss();
+  var c=window._dchatCtx;
+  if(!c){ toast('Please wait, chat is still loading…'); return; }
+  if(!c.subjects||!c.subjects.length){ toast('No chats to clear.'); return; }
+  var rows=c.subjects.map(function(s){
+    return '<div class="dcl-row">'
+      +'<div class="dcl-info"><div class="dcl-sub">'+esc(s.subject)+'</div>'
+      +'<div class="dcl-meta">'+s.count+' doubt'+(s.count===1?'':'s')+' · '+s.resolved+' resolved</div></div>'
+      +'<button class="btn btn-danger dcl-btn" onclick="_doubtClearDo(\''+encodeURIComponent(s.subject)+'\')">'+ic('trash')+' Clear</button>'
+      +'</div>';
+  }).join('');
+  showModal('Clear chat — '+esc(c.name),
+    '<div class="dcl-wrap">'
+    +'<div class="dcl-note">Pick a subject to permanently clear its entire chat with <b>'+esc(c.name)+'</b>. '
+    +'This removes every doubt &amp; reply from <b>both the student\'s and the teacher\'s portals</b>, '
+    +'and deletes the related notifications on both sides. This cannot be undone.</div>'
+    +rows+'</div>',
+    '<button class="btn btn-ghost" onclick="openDoubtChat(\''+c.role+'\','+c.sid+',\''+encodeURIComponent(c.name)+'\')">‹ Back to chat</button>'
+    +'<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+}
+async function _doubtClearDo(encSub){
+  var c=window._dchatCtx; if(!c) return;
+  var subject=decodeURIComponent(encSub||''); if(!subject) return;
+  if(!confirm('Clear ALL '+subject+' doubts with '+c.name+'?\n\nThis permanently deletes the chat from BOTH portals and removes its notifications on both sides. This cannot be undone.')) return;
+  var btns=document.querySelectorAll('.dcl-btn'); btns.forEach(function(b){ b.disabled=true; });
+  try{
+    var r=await api('/api/'+c.role+'/doubts/clear','POST',{student_id:c.sid,subject:subject});
+    var n=(r&&r.deleted!=null)?r.deleted:0;
+    toast(n?((n+' '+subject+' doubt'+(n===1?'':'s'))+' cleared from both portals.'):(subject+' chat cleared.'));
+    // local list se hatao + notification badge refresh (dono taraf ka server pe ho chuka)
+    c.subjects=(c.subjects||[]).filter(function(s){return s.subject!==subject;});
+    try{ refreshNotifBadge(c.role); }catch(e){}
+    if(c.subjects.length) openDoubtClear();
+    else openDoubtChat(c.role,c.sid,encodeURIComponent(c.name)); // sab clear -> wapas chat (ab empty)
+  }catch(e){
+    toast((e&&e.message)||'Could not clear chat',true);
+    btns.forEach(function(b){ b.disabled=false; });
+  }
 }
 
 // ---- Doubt rate-limit cooldown popup (student) ----

@@ -6271,12 +6271,14 @@ def admin_doubt_respond(did: int, payload: dict, db: Session = Depends(get_db),
     sp = db.query(StudentProfile).filter(StudentProfile.id == d.student_id).first()
     if sp and sp.user:
         notify(db, sp.user_id, "🏛️ MVS Foundation Replied to Your Doubt",
-               f"Your {d.subject or ''} doubt got an official response: {body[:120]}", "doubt_resolved")
+               f"Your {d.subject or ''} doubt got an official response: {body[:120]}", "doubt_resolved",
+               link="mvsnav:%s" % d.id)
     tp = db.query(TeacherProfile).filter(TeacherProfile.id == d.teacher_id).first() if d.teacher_id else None
     if tp and tp.user:
         notify(db, tp.user_id, "🏛️ Admin Replied on a Doubt",
                f"MVS Foundation posted an official reply on the {d.subject or ''} doubt by "
-               f"{sp.user.name if sp and sp.user else 'a student'}.", "doubt")
+               f"{sp.user.name if sp and sp.user else 'a student'}.", "doubt",
+               link="mvsnav:%s" % d.id)
     db.commit()
     return {"message": "Official response posted",
             "responses": _admin_doubt_resps(db, d.id),
@@ -6390,6 +6392,17 @@ def admin_student_doubts(student_id: int, db: Session = Depends(get_db), _=Depen
     (WhatsApp-style). Full thread + media flags ke saath."""
     from teacher_routes import _student_chat_payload
     return _student_chat_payload(db, student_id)
+
+@router.post("/doubts/clear")
+def admin_clear_doubts(payload: dict = Body(default={}), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Admin: ek student ke kisi bhi subject ki poori doubt-chat clear kare (dono portal +
+    notifications). Admin par koi subject-restriction nahi — saare subjects clear kar sakta hai."""
+    from teacher_routes import _clear_student_subject_doubts
+    sid = payload.get("student_id")
+    subject = (payload.get("subject") or "").strip()
+    if not sid or not subject:
+        raise HTTPException(400, "student_id and subject required")
+    return _clear_student_subject_doubts(db, int(sid), subject, restrict_subjects=None)
 
 @router.get("/doubt-rate-config")
 def admin_doubt_rate_get(db: Session = Depends(get_db), _=Depends(get_admin)):
