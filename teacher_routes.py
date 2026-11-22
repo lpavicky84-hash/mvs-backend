@@ -7097,25 +7097,42 @@ def teacher_material_audience(mid: int, db: Session = Depends(get_db), current_u
 def _exam_audience(db, exam_id):
     """Kis student ne test open kiya (view) / paper download kiya — engagement popup ke liye.
     Material audience jaisa hi shape return karta hai taaki frontend _paintAudience chal jaaye."""
-    from models import Exam, ExamView, StudentProfile
+    from models import Exam, ExamView, ExamAttempt, StudentProfile
     e = db.query(Exam).filter(Exam.id == exam_id).first()
     if not e:
         raise HTTPException(404, "Test not found")
     rows = db.query(ExamView).filter(ExamView.exam_id == exam_id).all()
-    sids = list({r.student_id for r in rows})
+    # BUG FIX: card ka "views" count attempt karne walon ko bhi viewer maanta hai (jisne test
+    # diya usne obviously dekha). Pehle ye popup sirf ExamView rows padhta tha -> jin tests me
+    # sirf attempts the (ExamView row nahi), card par 10 aur popup me 0 dikhta tha. Ab popup bhi
+    # attempters ko viewers me milata hai -> count aur list dono match.
+    atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).all()
+    name_from_att = {a.student_id: (a.student_name or "") for a in atts if a.student_id}
+    sids = list({r.student_id for r in rows} | {a.student_id for a in atts if a.student_id})
     smap = {}
     if sids:
         for sp in db.query(StudentProfile).filter(StudentProfile.id.in_(sids)).all():
-            smap[sp.id] = (sp.user.name if sp.user else ("Student #%d" % sp.id))
-    seen, viewers, downloaders = {}, [], []
+            smap[sp.id] = (sp.user.name if sp.user else None)
+
+    def _nm(sid):
+        return smap.get(sid) or name_from_att.get(sid) or ("Student #%d" % sid if sid else "Student")
+
+    viewer_at, downloaders, dl_seen = {}, [], set()
     for r in rows:
-        nm = smap.get(r.student_id, "Student")
-        key = (r.student_id, r.action)
-        if key in seen:
-            continue
-        seen[key] = True
-        entry = {"student_id": r.student_id, "name": nm, "at": str(r.created_at)[:16]}
-        (downloaders if r.action == "download" else viewers).append(entry)
+        if r.action == "download":
+            if r.student_id in dl_seen:
+                continue
+            dl_seen.add(r.student_id)
+            downloaders.append({"student_id": r.student_id, "name": _nm(r.student_id), "at": str(r.created_at)[:16]})
+        else:
+            if r.student_id not in viewer_at:
+                viewer_at[r.student_id] = str(r.created_at)[:16]
+    for a in atts:
+        if a.student_id and a.student_id not in viewer_at:
+            viewer_at[a.student_id] = (str(a.submitted_at)[:16] if getattr(a, "submitted_at", None) else "")
+    viewers = [{"student_id": sid, "name": _nm(sid), "at": viewer_at[sid]} for sid in viewer_at]
+    viewers.sort(key=lambda x: (x["name"] or "").lower())
+    downloaders.sort(key=lambda x: (x["name"] or "").lower())
     return {"material": {"id": e.id, "title": (e.title or "Test"), "type": "test",
                          "subject": e.subject, "chapter": None, "part": None},
             "viewers": viewers, "downloaders": downloaders}
