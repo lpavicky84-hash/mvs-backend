@@ -7098,15 +7098,25 @@ def _exam_audience(db, exam_id):
     """Kis student ne test open kiya (view) / paper download kiya — engagement popup ke liye.
     Material audience jaisa hi shape return karta hai taaki frontend _paintAudience chal jaaye."""
     from models import Exam, ExamView, ExamAttempt, StudentProfile
-    e = db.query(Exam).filter(Exam.id == exam_id).first()
+    # exam_id ek single id YA list/csv ho sakti hai (grouped test = ek test jo kai batch me diya).
+    if isinstance(exam_id, (list, tuple, set)):
+        id_list = [int(x) for x in exam_id if str(x).strip().lstrip("-").isdigit()]
+    else:
+        id_list = [int(x) for x in str(exam_id).split(",") if str(x).strip().lstrip("-").isdigit()]
+    id_list = list(dict.fromkeys(id_list))  # de-dup, order preserve
+    if not id_list:
+        raise HTTPException(404, "Test not found")
+    e = db.query(Exam).filter(Exam.id.in_(id_list)).first()
     if not e:
         raise HTTPException(404, "Test not found")
-    rows = db.query(ExamView).filter(ExamView.exam_id == exam_id).all()
-    # BUG FIX: card ka "views" count attempt karne walon ko bhi viewer maanta hai (jisne test
-    # diya usne obviously dekha). Pehle ye popup sirf ExamView rows padhta tha -> jin tests me
-    # sirf attempts the (ExamView row nahi), card par 10 aur popup me 0 dikhta tha. Ab popup bhi
-    # attempters ko viewers me milata hai -> count aur list dono match.
-    atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id == exam_id).all()
+    rows = db.query(ExamView).filter(ExamView.exam_id.in_(id_list)).all()
+    # BUG FIX 1: card ka "views" count attempt karne walon ko bhi viewer maanta hai (jisne test
+    # diya usne obviously dekha). Pehle ye popup sirf ExamView rows padhta tha -> attempters chhoot
+    # jaate the, card par 10 aur popup me 0.
+    # BUG FIX 2: grouped test (2 batches) ka card saare batch-copies ke views JOD ke dikhata hai,
+    # par popup pehle sirf EK copy padhta tha -> doosri batch ke viewers 0 dikhte the. Ab popup
+    # poore group (saare exam ids) ko union karta hai -> count aur list match.
+    atts = db.query(ExamAttempt).filter(ExamAttempt.exam_id.in_(id_list)).all()
     name_from_att = {a.student_id: (a.student_name or "") for a in atts if a.student_id}
     sids = list({r.student_id for r in rows} | {a.student_id for a in atts if a.student_id})
     smap = {}
@@ -7139,8 +7149,9 @@ def _exam_audience(db, exam_id):
 
 
 @router.get("/exam/{eid}/audience")
-def teacher_exam_audience(eid: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
-    return _exam_audience(db, eid)
+def teacher_exam_audience(eid: int, ids: str = "", db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    # ids = grouped test ke saare batch-copy exam ids (csv). Na ho to single eid.
+    return _exam_audience(db, (ids if (ids or "").strip() else eid))
 
 # ==================================================================
 #  SMART EXTRA CLASS — auto-shift ke saath

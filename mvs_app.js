@@ -6190,7 +6190,10 @@ function _mtPaint(wrapId){
 async function openExamAudience(eid,which){
   showModal('Student Engagement','<div id="ma-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{
-    const d=await api('/api/teacher/exam/'+eid+'/audience');
+    // eid single id ya grouped test ki csv (2 batches) ho sakti hai -> poore group ka engagement.
+    const _ids=String(eid||'');
+    const _first=_ids.split(',')[0]||_ids;
+    const d=await api('/api/teacher/exam/'+_first+'/audience'+(_ids.indexOf(',')>=0?('?ids='+encodeURIComponent(_ids)):''));
     _paintAudience(d,which);
   }catch(e){ document.getElementById('ma-body').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; }
 }
@@ -7682,8 +7685,8 @@ function _tExamCardHTML(e){
       </div>
     </div>
     <div class="tx-acts" style="display:flex;gap:8px;margin-top:13px;justify-content:flex-end;flex-wrap:wrap;align-items:center">
-      <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience(${e.id},'view')">${ic('users')} ${e.views||0}</button>
-      <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience(${e.id},'download')">${ic('download')} ${e.downloads||0}</button>
+      <button class="mt-eng" title="Students who opened this test" onclick="openExamAudience('${idsCsv}','view')">${ic('users')} ${e.views||0}</button>
+      <button class="mt-eng" title="Students who downloaded the paper" onclick="openExamAudience('${idsCsv}','download')">${ic('download')} ${e.downloads||0}</button>
       <button class="btn btn-ghost btn-sm" title="Edit title / schedule / duration" onclick="examEditTest(${e.id})">${ic('edit')} Edit</button>
       <button class="btn btn-ghost btn-sm" title="Isi test ko doosre batch (e.g. Crash Course) ke liye nayi date pe copy karo" onclick="openCopyToBatch('test',${e.id})">${ic('copy')} Copy to batch</button>
       <button class="btn btn-ghost btn-sm tx-del" title="${grp?'Delete this test from all its batches':'Delete this test'}" onclick="${delClick}">${ic('trash')} Delete</button>
@@ -25931,6 +25934,7 @@ function sSubOpen(s){ window._sTestSub=decodeURIComponent(s); loadSTests(); }
 function sSubBack(){ window._sTestSub=null; loadSTests(); }
 async function loadSTests(){
   window._examPlayerOpen=false;
+  _plTestMode(false);   // tests list pe wapas -> bottom nav dikhao
   const el=document.getElementById('s-tests-content');
   softSpin(el);
   try{
@@ -26540,6 +26544,7 @@ async function _plRender(id){
   const upload=!isM?`<div class="pl-upload"><div class="pl-up-title">Upload your handwritten answer sheet</div><div class="pl-up-desc">Write all answers on paper with question numbers, then upload a clear photo (or PDF). Your teacher will check each question and give marks with remarks.</div><input type="file" id="pl-file" accept="image/*,application/pdf" onchange="_examPickFile(this)"><div id="pl-file-name" class="pl-file-name"></div></div>`:'';
   const reupBanner=ex.reupload_allowed?`<div style="display:flex;gap:11px;align-items:flex-start;background:linear-gradient(135deg,rgba(184,148,31,.13),rgba(184,148,31,.03));border:1px solid rgba(184,148,31,.4);border-left:4px solid var(--primary,#b8941f);border-radius:14px;padding:13px 15px;margin:4px 0 14px">${ic('refresh')}<div style="min-width:0"><div style="font-weight:800;font-size:.95rem;color:var(--text,#2e2716)">Re-upload allowed by your teacher</div>${ex.reupload_remark?`<div style="font-size:.88rem;color:var(--text,#2e2716);margin-top:3px;line-height:1.45">“${esc(ex.reupload_remark)}”</div>`:''}<div style="font-size:.78rem;color:var(--text-muted,#8a7c55);margin-top:5px">Please upload your complete answer sheet again below, then submit.</div></div></div>`:'';
   el.innerHTML=`<div class="pl-head pl-sticky"><div class="pl-band"><button class="btn btn-ghost btn-sm" title="Back" onclick="loadSTests()">${ic('back')}</button><div style="flex:1;min-width:180px"><div class="pl-title">${esc(ex.title)}</div><div class="pl-info">${ex.subject?`<span class="pl-sub">${esc(ex.subject)}</span> · `:''}${ex.questions.length} questions · ${ex.total_marks} marks${ex.teacher_name?' · <span class="pl-tlogo" data-tid="'+(ex.teacher_id||'')+'"></span>By '+esc(ex.teacher_name):''}</div></div><div class="pl-head-r">${medToggle}${timer}</div></div></div>${reupBanner}<div class="pls-exam"><div class="pls-main">${(ex.has_qpdf?`<div style="border:1px solid var(--border,#e8e0cf);border-radius:14px;padding:14px 15px;margin:6px 0 14px;background:var(--card,#fffdf7)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:11px"><div style="font-weight:800;font-size:1rem">${ic('book')} Question Paper</div><button type="button" class="btn btn-ghost btn-sm" onclick="_m75View(${id},'student','q')">${ic('download')} Download</button></div><div style="font-size:.8rem;color:var(--text-muted);margin-bottom:11px">Read the paper below, solve it on paper, then upload a clear photo (or PDF) of your answer sheet.</div><div id="pl-qpdf-frame"><div class="spinner" style="margin:30px auto"></div></div></div>`:'')}<div class="pl-qs">${qs}</div>${upload}<button class="btn btn-primary" style="width:100%;margin-top:14px" onclick="_plReview(${id})">Review & Submit</button></div>${side}</div>${mbar}`;
+  _plTestMode(true);   // test active -> bottom nav hide
   renderMath(el); _plPal(); _plTimerStart(ex); _txLoadLogos(el);
   if(isM){
     try{ if(window.innerWidth>920) window.scrollTo(0,0); }catch(e){}
@@ -26605,9 +26610,20 @@ function _plObserve(){
   },{root:root,rootMargin:(frame?'-6px 0px -60% 0px':'-96px 0px -55% 0px'),threshold:0.01});
   document.querySelectorAll('.pl-q').forEach(function(q){ window._plIO.observe(q); });
 }
+// Test dete waqt phone ka bottom nav (Home/Classes/Tests/DPP/More) HIDE karo — warna wo test ke
+// apne "Questions / Review" bar (.pls-mbar) ko dhak deta tha (z-index 940 vs 38). Back/submit pe
+// nav wapas. _plTestMode(true) = test chal raha hai; (false) = chhod diya.
+function _plTestMode(on){
+  try{
+    var a=document.getElementById('student-app'); if(a) a.classList.toggle('pl-testmode', !!on);
+    document.body.classList.toggle('pl-testmode', !!on);
+  }catch(e){}
+}
 function _plExamCss(){
   if(document.getElementById('pls-exam-css')) return;
   var s=document.createElement('style'); s.id='pls-exam-css'; s.textContent=[
+    /* test chal raha ho to student ka bottom tab-bar chhupao (nahi to Questions/Review bar cut hota tha) */
+    '#student-app.pl-testmode .s-botnav{display:none!important}',
     '.pls-exam{display:flex;gap:18px;align-items:flex-start}',
     '.pls-main{flex:1 1 auto;min-width:0}',
     '.pls-side{flex:0 0 288px;width:288px;position:sticky;top:92px;align-self:flex-start;background:var(--card,#fffdf7);border:1px solid var(--border,#e8e0cf);border-radius:16px;box-shadow:0 10px 28px -16px rgba(40,30,10,.4);overflow:hidden}',
@@ -26852,6 +26868,7 @@ async function _plSubmitSend(id, body){
   if(window._plSaveT){ clearTimeout(window._plSaveT); window._plSaveT=null; }
   window._plSessionOn=false;
   window._plRetryBody=null; window._examPlayerOpen=false;
+  _plTestMode(false);   // test submit ho gaya -> Thank-you/result pe bottom nav wapas
   let attM=0,skM=0;
   if(!ex.has_qpdf){ ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; }); }
   const attempted=body.attempted||[], skipped=body.skipped||[];
@@ -26915,6 +26932,7 @@ async function downloadMyAnswer(id){
 }
 async function openExamResult(id){
   navPushView('result');
+  _plTestMode(false);   // result screen -> bottom nav dikhao
   const el=document.getElementById('s-tests-content'); softSpin(el);
   try{
     const r=await api('/api/student/exam/'+id+'/result');
