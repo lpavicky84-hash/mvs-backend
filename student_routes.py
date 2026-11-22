@@ -3061,6 +3061,21 @@ def student_exam_paper(exam_id: int, medium: str = "english", db: Session = Depe
                     headers={"Content-Disposition": 'attachment; filename="%s.pdf"' % (ex.title or "paper")})
 
 
+@router.post("/exam/{exam_id}/track-download")
+def student_track_download(exam_id: int, db: Session = Depends(get_db),
+                           current_user=Depends(get_student)):
+    """Paper download ko track karo. Student portal ka 'Paper' button PDF ko ON-DEVICE (blob) banata
+    hai -> backend ka /paper endpoint hit nahi hota tha, isliye download count hamesha 0 rehta tha.
+    Ab frontend paper download hote hi ye call karta hai -> ExamView me 'download' row (ek baar per
+    student) -> card ka download count aur 'Downloaded by' popup dono sahi bharte hain."""
+    sp = get_student_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.is_active == True).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    _log_exam_action(db, exam_id, sp.id, "download")
+    return {"ok": True}
+
+
 @router.get("/exam/{exam_id}")
 def student_get_exam(exam_id: int, db: Session = Depends(get_db), current_user=Depends(get_student)):
     _ensure_exam_columns(db)

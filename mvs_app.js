@@ -26038,6 +26038,11 @@ async function _ttCardLogo(el){
   }catch(e){ window._ttSelfPhoto=false; }
 }
 function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
+// Paper download ko backend pe track karo (fire-and-forget). PDF on-device banta hai isliye
+// alag se log karna padta hai — warna teacher ke card/popup me download count 0 rehta tha.
+function _trackPaperDl(id){
+  try{ api('/api/student/exam/'+id+'/track-download','POST',{}).catch(function(){}); }catch(e){}
+}
 function downloadPaper(id){
   showModal('Paper ka Medium?',
   `<div class="pm-grid" style="margin-top:4px">
@@ -26066,12 +26071,14 @@ async function examPdfStudent(id,medium,withSol){
     // ke andar bhi dikhti hai. (_m75View khud answer-lock 403 handle karta hai.)
     if(ex.has_qpdf){
       try{ w.close(); }catch(_){}
+      if(!withSol) _trackPaperDl(id);   // paper download track (solution nahi)
       try{ _m75View(id, 'student', withSol?'a':'q'); }catch(e){ toast('Could not open the PDF',true); }
       return;
     }
     const qs=ex.questions||[];
     if(!qs.length){ toast('No questions found.',true); try{w.close();}catch(_){} return; }
     if(withSol&&!ex.expired){ toast('Solutions will be available after the test window ends.',true); try{w.close();}catch(_){} return; }
+    if(!withSol) _trackPaperDl(id);   // paper download track (yaha se paper pakka banega)
     const isM=(ex.test_type==='mcq');
     let logo=null;
     try{ if(ex.teacher_id){ const lr=await fetch(API+'/api/student/teacher/'+ex.teacher_id+'/photo',{headers:{'Authorization':'Bearer '+TOKEN}}); if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>res(null);fr.readAsDataURL(lb);}); } } }catch(e){}
