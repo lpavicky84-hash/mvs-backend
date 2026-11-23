@@ -8916,8 +8916,8 @@ async function openCreateExam(type,editData){
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div id="mbf-slot"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
-    +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. Every question loads into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Load into editor</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
-    +((type==='subjective'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — Question &amp; Model Answer in English, with optional Hindi) and upload. Works for every type — MCQ, fill in the blanks, match the following, passage, short &amp; long answers, and numericals. Questions load into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_subjBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-subjbulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_subjBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-subjbulk-import" onclick="_subjBulkImport()" style="display:none">Load into editor</button></div><div id="ex-subjbulk-out" style="margin-top:8px"></div></div>`:'')
+    +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. <b>Images too:</b> insert a picture on a question's row in the <b>Question Image</b> column and it uploads automatically. Every question loads into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Load into editor</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
+    +((type==='subjective'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — Question &amp; Model Answer in English, with optional Hindi) and upload. Works for every type — MCQ, fill in the blanks, match the following, passage, short &amp; long answers, and numericals. <b>Images too:</b> insert a picture on a question's row in the <b>Question Image</b> or <b>Answer Image</b> column and it uploads automatically. Questions load into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_subjBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-subjbulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_subjBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-subjbulk-import" onclick="_subjBulkImport()" style="display:none">Load into editor</button></div><div id="ex-subjbulk-out" style="margin-top:8px"></div></div>`:'')
     +tools
     +`<div id="ex-qs"></div><button class="btn btn-ghost btn-sm" onclick="addExamQ()" style="margin:4px 0 14px">+ Add Question</button>`,
     // STICKY FOOTER: Create/Update button ab modal ke neeche pinned rehta hai — teacher kitna bhi
@@ -9034,14 +9034,35 @@ function _mcqBulkCss(){
   ].join('');
   document.head.appendChild(s);
 }
+// Image instructions — har template ke saath ek "How to add images" sheet jaata hai.
+function _bulkImgHelpAOA(){
+  return [
+    ['How to add images to your questions'],
+    [''],
+    ['1. Fill the question text columns normally (one row per question).'],
+    ['2. To add a picture to a question: in Excel click  Insert → Pictures → This Device,'],
+    ['   and drop the picture ON the SAME ROW as that question, in the image column.'],
+    ['3. Put the QUESTION diagram in the "Question Image" column cell of that row.'],
+    ['4. Put the ANSWER / solution diagram (if any) in the "Answer Image" column cell.'],
+    ['5. You can add image-only or text-only or both — all work.'],
+    ['6. Save as .xlsx and upload. Images upload automatically; review them in the editor.'],
+    [''],
+    ['Tip: keep the top-left corner of each picture inside the correct row.'],
+    ['Note: .csv files cannot carry images — use .xlsx for picture support.'],
+  ];
+}
+function _bulkAddHelpSheet(wb){
+  try{ var hs=XLSX.utils.aoa_to_sheet(_bulkImgHelpAOA()); hs['!cols']=[{wch:70}]; XLSX.utils.book_append_sheet(wb,hs,'How to add images'); }catch(e){}
+}
 function _mcqBulkTemplate(){
   try{
-    var head=['Q.No','Question (English)','Question (Hindi)','Option A (English)','Option A (Hindi)','Option B (English)','Option B (Hindi)','Option C (English)','Option C (Hindi)','Option D (English)','Option D (Hindi)','Correct Answer','Marks'];
-    var r1=['1','Which of these is a vector quantity?','','Speed','','Velocity','','Mass','','Distance','','B','1'];
-    var r2=['2','SI unit of force is?','','Joule','','Newton','','Watt','','Pascal','','B','1'];
+    var head=['Q.No','Question (English)','Question (Hindi)','Option A (English)','Option A (Hindi)','Option B (English)','Option B (Hindi)','Option C (English)','Option C (Hindi)','Option D (English)','Option D (Hindi)','Correct Answer','Marks','Question Image'];
+    var r1=['1','Which of these is a vector quantity?','','Speed','','Velocity','','Mass','','Distance','','B','1','(optional: insert picture here)'];
+    var r2=['2','SI unit of force is?','','Joule','','Newton','','Watt','','Pascal','','B','1',''];
     var ws=XLSX.utils.aoa_to_sheet([head,r1,r2]);
     ws['!cols']=head.map(function(h){return {wch:Math.max(13,h.length+1)};});
     var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'MCQ Questions');
+    _bulkAddHelpSheet(wb);
     XLSX.writeFile(wb,'MVS_MCQ_Bulk_Template.xlsx');
     toast('Template downloaded');
   }catch(e){ toast('Could not generate template',true); }
@@ -9076,16 +9097,40 @@ async function _mcqBulkPick(){
   _mcqBulkCss();
   var fi=document.getElementById('ex-bulk-file'); var out=document.getElementById('ex-bulk-out'); var imp=document.getElementById('ex-bulk-import');
   if(!fi.files.length){ if(out)out.innerHTML=''; if(imp)imp.style.display='none'; return; }
+  var f=fi.files[0];
   try{
-    var data=await fi.files[0].arrayBuffer(); var wb=XLSX.read(data,{type:'array'});
-    var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    var parsed=_mcqParseRows(rows); window._mcqBulk=parsed.ok;
-    if(!parsed.ok.length){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question, all 4 options and a Correct Answer (A/B/C/D).</div>'; if(imp)imp.style.display='none'; return; }
+    if(out) out.innerHTML='<div class="alert alert-info" style="font-size:.82rem">Reading file…</div>';
+    var parsed;
+    if(/\.xlsx$/i.test(f.name)){
+      parsed=await _bulkParseServer(f,'mcq');          // images bhi aati hain
+    } else {
+      var data=await f.arrayBuffer(); var wb=XLSX.read(data,{type:'array'});
+      var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      parsed=_mcqParseRows(rows);                        // CSV/.xls -> text only
+    }
+    window._mcqBulk=parsed.ok||[];
+    if(!(parsed.ok&&parsed.ok.length)){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question, all 4 options and a Correct Answer (A/B/C/D).</div>'; if(imp)imp.style.display='none'; return; }
     var hi=parsed.ok.filter(function(q){return q.question_text_hi;}).length;
-    var badHtml=parsed.bad.length?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
-    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'. Load them below to review &amp; edit, then press Create Test.</div>'+badHtml;
+    var im=(parsed.img_count!=null)?parsed.img_count:parsed.ok.filter(function(q){return q.image_b64||q.alt_image_b64;}).length;
+    var badHtml=(parsed.bad&&parsed.bad.length)?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(im?(' &middot; '+im+' with image'+(im>1?'s':'')):'')+((parsed.bad&&parsed.bad.length)?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'. Load them below to review &amp; edit, then press Create Test.</div>'+badHtml;
     if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Load into editor'; }
   }catch(e){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">File read error: '+esc(e.message)+'</div>'; if(imp)imp.style.display='none'; }
+}
+// .xlsx ko SERVER pe parse karo (openpyxl) — kyunki SheetJS embedded images nahi padh sakta.
+// Server text + pictures (anchor row/col se) wapas deta hai image_b64 data-URL ke saath.
+function _bulkParseServer(file, kind){
+  return new Promise(function(res,rej){
+    var fd=new FormData(); fd.append('file',file); fd.append('kind',kind);
+    var xhr=new XMLHttpRequest(); xhr.open('POST',API+'/api/teacher/bulk-parse');
+    xhr.setRequestHeader('Authorization','Bearer '+TOKEN);
+    xhr.onload=function(){
+      if(xhr.status>=200&&xhr.status<300){ try{res(JSON.parse(xhr.responseText||'{}'));}catch(x){rej(new Error('Bad response'));} }
+      else { var d=null; try{d=JSON.parse(xhr.responseText);}catch(x){} rej(new Error((d&&d.detail)||('HTTP '+xhr.status))); }
+    };
+    xhr.onerror=function(){ rej(new Error('Network error')); };
+    xhr.send(fd);
+  });
 }
 function _mcqXhrPost(url,bodyObj,onprog){
   return new Promise(function(res,rej){
@@ -9128,7 +9173,7 @@ function _mcqBulkImport(){
     var ci=opts.findIndex(function(o){ return o&&q.correct_option&&String(o).trim()===String(q.correct_option).trim(); });
     return {q:(q.question_text||''), q_hi:(q.question_text_hi||''), opts:opts, opts_hi:ohi,
             correct:(ci>=0?ci:0), marks:(q.max_marks||1), expl:(q.explanation||''), expl_hi:(q.explanation_hi||''),
-            image_b64:null, alt_image_b64:null, _ipart:'a', _tab:'en'};
+            image_b64:(q.image_b64||null), alt_image_b64:(q.alt_image_b64||null), _ipart:'a', _tab:'en'};
   });
   _examLoadBulk(mapped, qs.some(function(q){return q.question_text_hi;}));
 }
@@ -9136,12 +9181,13 @@ function _mcqBulkImport(){
 /* ============ MISSION 75 (SUBJECTIVE) BULK UPLOAD (Excel) ============ */
 function _subjBulkTemplate(){
   try{
-    var head=['Q.No','Question (English)','Question (Hindi)','Model Answer (English)','Model Answer (Hindi)','Marks'];
-    var r1=['1','Explain the importance of Public Interest Litigation (PIL).','लोक हित याचिका (PIL) का महत्व समझाइए।','PIL allows any citizen to approach the court for the protection of public interest. It makes justice accessible to the poor and weaker sections, and holds the government accountable.','जनहित याचिका किसी भी नागरिक को जनहित की रक्षा के लिए न्यायालय में जाने की अनुमति देती है। यह गरीब और कमजोर वर्ग तक न्याय पहुंचाती है।','3'];
-    var r2=['2','Describe the role of the Prime Minister of India.','भारत के प्रधानमंत्री की भूमिका का वर्णन कीजिए।','The Prime Minister is the head of government and leader of the Council of Ministers. He/she advises the President, allocates portfolios, coordinates between ministries and represents the nation.','प्रधानमंत्री सरकार का प्रमुख और मंत्रिपरिषद का नेता होता है। वह राष्ट्रपति को सलाह देता है और मंत्रालयों में समन्वय करता है।','6'];
+    var head=['Q.No','Question (English)','Question (Hindi)','Model Answer (English)','Model Answer (Hindi)','Marks','Question Image','Answer Image'];
+    var r1=['1','Explain the importance of Public Interest Litigation (PIL).','लोक हित याचिका (PIL) का महत्व समझाइए।','PIL allows any citizen to approach the court for the protection of public interest. It makes justice accessible to the poor and weaker sections, and holds the government accountable.','जनहित याचिका किसी भी नागरिक को जनहित की रक्षा के लिए न्यायालय में जाने की अनुमति देती है। यह गरीब और कमजोर वर्ग तक न्याय पहुंचाती है।','3','(optional: insert picture here)',''];
+    var r2=['2','Describe the role of the Prime Minister of India.','भारत के प्रधानमंत्री की भूमिका का वर्णन कीजिए।','The Prime Minister is the head of government and leader of the Council of Ministers. He/she advises the President, allocates portfolios, coordinates between ministries and represents the nation.','प्रधानमंत्री सरकार का प्रमुख और मंत्रिपरिषद का नेता होता है। वह राष्ट्रपति को सलाह देता है और मंत्रालयों में समन्वय करता है।','6','',''];
     var ws=XLSX.utils.aoa_to_sheet([head,r1,r2]);
-    ws['!cols']=[{wch:7},{wch:46},{wch:46},{wch:56},{wch:56},{wch:7}];
+    ws['!cols']=[{wch:7},{wch:46},{wch:46},{wch:56},{wch:56},{wch:7},{wch:26},{wch:26}];
     var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Mission 75 Questions');
+    _bulkAddHelpSheet(wb);
     XLSX.writeFile(wb,'MVS_Mission75_Bulk_Template.xlsx');
     toast('Template downloaded');
   }catch(e){ toast('Could not generate template',true); }
@@ -9168,14 +9214,23 @@ async function _subjBulkPick(){
   _mcqBulkCss();
   var fi=document.getElementById('ex-subjbulk-file'); var out=document.getElementById('ex-subjbulk-out'); var imp=document.getElementById('ex-subjbulk-import');
   if(!fi||!fi.files.length){ if(out)out.innerHTML=''; if(imp)imp.style.display='none'; return; }
+  var f=fi.files[0];
   try{
-    var data=await fi.files[0].arrayBuffer(); var wb=XLSX.read(data,{type:'array'});
-    var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    var parsed=_subjParseRows(rows); window._subjBulk=parsed.ok;
-    if(!parsed.ok.length){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question (English) and a Model Answer (English). Hindi columns are optional.</div>'; if(imp)imp.style.display='none'; return; }
+    if(out) out.innerHTML='<div class="alert alert-info" style="font-size:.82rem">Reading file…</div>';
+    var parsed;
+    if(/\.xlsx$/i.test(f.name)){
+      parsed=await _bulkParseServer(f,'subjective');     // images bhi aati hain
+    } else {
+      var data=await f.arrayBuffer(); var wb=XLSX.read(data,{type:'array'});
+      var rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      parsed=_subjParseRows(rows);                         // CSV/.xls -> text only
+    }
+    window._subjBulk=parsed.ok||[];
+    if(!(parsed.ok&&parsed.ok.length)){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">No valid questions found. Use the template: each row needs a Question (English) and a Model Answer (English). Hindi columns are optional.</div>'; if(imp)imp.style.display='none'; return; }
     var hi=parsed.ok.filter(function(q){return q.question_text_hi;}).length;
-    var badHtml=parsed.bad.length?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
-    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(parsed.bad.length?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'. Load them below to review &amp; edit, then press Create Test.</div>'+badHtml;
+    var im=(parsed.img_count!=null)?parsed.img_count:parsed.ok.filter(function(q){return q.image_b64||q.model_answer_image||q.alt_image_b64;}).length;
+    var badHtml=(parsed.bad&&parsed.bad.length)?('<div style="font-size:.73rem;color:#b45309;max-height:110px;overflow:auto;margin-top:4px">'+parsed.bad.map(function(b){return 'Row '+b.row+': '+esc(b.reason);}).join('<br>')+'</div>'):'';
+    if(out) out.innerHTML='<div class="alert alert-success" style="font-size:.82rem"><b>'+parsed.ok.length+'</b> questions ready'+(hi?(' &middot; '+hi+' with Hindi (Bilingual)'):'')+(im?(' &middot; '+im+' with image'+(im>1?'s':'')):'')+((parsed.bad&&parsed.bad.length)?(' &middot; '+parsed.bad.length+' rows skipped'):'')+'. Load them below to review &amp; edit, then press Create Test.</div>'+badHtml;
     if(imp){ imp.style.display=''; imp.disabled=false; imp.textContent='Load into editor'; }
   }catch(e){ if(out)out.innerHTML='<div class="alert alert-danger" style="font-size:.82rem">File read error: '+esc(e.message)+'</div>'; if(imp)imp.style.display='none'; }
 }
@@ -9187,7 +9242,7 @@ function _subjBulkImport(){
   var qs=window._subjBulk||[]; if(!qs.length){ toast('No questions to load',true); return; }
   var mapped=qs.map(function(q){
     return {q:(q.question_text||''), q_hi:(q.question_text_hi||''), model:(q.model_answer||''), model_hi:(q.model_answer_hi||''),
-            marks:(q.max_marks||5), image_b64:null, alt_image_b64:null, model_answer_image:null,
+            marks:(q.max_marks||5), image_b64:(q.image_b64||null), alt_image_b64:(q.alt_image_b64||null), model_answer_image:(q.model_answer_image||null),
             _ipart:'a', qtype:'general', _tab:'en'};
   });
   _examLoadBulk(mapped, qs.some(function(q){return q.question_text_hi;}));

@@ -897,6 +897,226 @@ def teacher_clear_doubts(payload: dict = Body(...), db: Session = Depends(get_db
     return _clear_student_subject_doubts(db, int(sid), subject, restrict_subjects=(tp.subjects or []))
 
 
+# ============ BULK UPLOAD PARSER (Excel -> questions, WITH embedded images) ============
+# SheetJS (frontend) embedded images nahi padh sakta, isliye .xlsx ko yahan openpyxl se parse
+# karte hain: text columns + jo pictures teacher ne row par daali hain (Insert > Picture) unhe
+# anchor row/col se sahi question par map karke base64 data-URL me return karte hain. Yahi flow
+# DPP, Mission 75 (subjective) aur Objective (MCQ) teeno ke liye.
+
+def _bp_norm_head(s):
+    import re as _re
+    return _re.sub(r"[^a-z0-9]", "", str(s or "").strip().lower())
+
+
+def _bp_img_to_dataurl(raw_bytes):
+    """Embedded image bytes -> compressed JPEG/PNG data-URL (editor image_b64 format)."""
+    import io as _io
+    import base64 as _b64
+    try:
+        from PIL import Image as _Image
+        im = _Image.open(_io.BytesIO(raw_bytes))
+        has_alpha = (im.mode in ("RGBA", "LA")) or (im.mode == "P" and "transparency" in im.info)
+        if has_alpha:
+            im = im.convert("RGBA")
+            bg = _Image.new("RGBA", im.size, (255, 255, 255, 255))
+            bg.alpha_composite(im)
+            im = bg.convert("RGB")
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+        _MAX = 1500
+        if max(im.size) > _MAX:
+            im.thumbnail((_MAX, _MAX))
+        out = _io.BytesIO()
+        im.save(out, format="JPEG", quality=82, optimize=True)
+        return "data:image/jpeg;base64," + _b64.b64encode(out.getvalue()).decode("ascii")
+    except Exception:
+        try:
+            return "data:image/png;base64," + _b64.b64encode(raw_bytes).decode("ascii")
+        except Exception:
+            return None
+
+
+def _bp_images_by_row(ws):
+    """{data_row_index(0-based among DATA rows) -> [(col, data_url), ...]} for floating images."""
+    out = {}
+    for img in list(getattr(ws, "_images", []) or []):
+        try:
+            anchor = getattr(img, "anchor", None)
+            frm = getattr(anchor, "_from", None)
+            if frm is None:
+                continue
+            arow = int(getattr(frm, "row", -1))   # 0-based; header is row 0
+            acol = int(getattr(frm, "col", 0))
+            if arow <= 0:
+                continue  # on/above header -> ignore
+            try:
+                data = img._data()
+            except Exception:
+                data = getattr(img, "ref", None)
+                data = data.getvalue() if hasattr(data, "getvalue") else None
+            if not data:
+                continue
+            url = _bp_img_to_dataurl(data)
+            if not url:
+                continue
+            out.setdefault(arow - 1, []).append((acol, url))
+        except Exception:
+            continue
+    for k in out:
+        out[k].sort(key=lambda t: t[0])
+    return out
+
+
+def _bp_pick(cell_map, header_norm, names):
+    for nm in names:
+        idx = header_norm.get(_bp_norm_head(nm))
+        if idx is not None:
+            v = cell_map.get(idx)
+            if v is not None and str(v).strip() != "":
+                return str(v).strip()
+    return ""
+
+
+@router.post("/bulk-parse")
+async def teacher_bulk_parse(file: UploadFile = File(...), kind: str = Form("subjective"),
+                             current_user=Depends(get_teacher)):
+    """Parse an uploaded .xlsx (text + embedded images) into questions for the review editor.
+    kind: 'mcq' (Objective) or 'subjective' (DPP / Mission 75)."""
+    import io as _io
+    raw = await file.read()
+    fn = (file.filename or "").lower()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if not fn.endswith(".xlsx"):
+        raise HTTPException(400, "Please upload a .xlsx file (image support needs the .xlsx format).")
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(_io.BytesIO(raw), data_only=True)
+    except Exception as e:
+        raise HTTPException(400, "Could not read the Excel file: %s" % str(e)[:120])
+    ws = wb[wb.sheetnames[0]]
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        return {"ok": [], "bad": [], "count": 0, "hi_count": 0}
+    header = list(all_rows[0])
+    header_norm = {}
+    for i, h in enumerate(header):
+        hn = _bp_norm_head(h)
+        if hn and hn not in header_norm:
+            header_norm[hn] = i
+    imgs_by_row = _bp_images_by_row(ws)
+
+    # image columns (far right) -> field snapping
+    def _img_col(names):
+        for nm in names:
+            idx = header_norm.get(_bp_norm_head(nm))
+            if idx is not None:
+                return idx
+        return None
+    q_img_col = _img_col(["Question Image", "Question Image 1", "Image", "Q Image"])
+    a_img_col = _img_col(["Answer Image", "Model Answer Image", "Diagram Image", "Diagram", "Solution Image"])
+    q_img2_col = _img_col(["Question Image 2", "Part B Image", "Image 2"])
+
+    def _assign_images(row_imgs):
+        """Return (question_img, answer_img, alt_img) from a row's images, snapped by column
+        when image columns exist, else by order."""
+        qd = ad = altd = None
+        cols = [c for c in (q_img_col, a_img_col, q_img2_col) if c is not None]
+        if cols and row_imgs:
+            used = set()
+            for (c, url) in row_imgs:
+                # nearest declared image column
+                best = min(cols, key=lambda ic: abs(ic - c))
+                if best == q_img_col and qd is None:
+                    qd = url
+                elif best == a_img_col and ad is None:
+                    ad = url
+                elif best == q_img2_col and altd is None:
+                    altd = url
+                else:
+                    # column already filled -> spill into next empty in order
+                    if qd is None: qd = url
+                    elif ad is None: ad = url
+                    elif altd is None: altd = url
+                used.add(c)
+            return qd, ad, altd
+        # no declared columns -> order: 1st question, 2nd answer, 3rd alt
+        urls = [u for (_c, u) in row_imgs]
+        if len(urls) > 0: qd = urls[0]
+        if len(urls) > 1: ad = urls[1]
+        if len(urls) > 2: altd = urls[2]
+        return qd, ad, altd
+
+    ok, bad = [], []
+    LI = {"A": 0, "B": 1, "C": 2, "D": 3, "1": 0, "2": 1, "3": 2, "4": 3}
+    for di, rowvals in enumerate(all_rows[1:]):   # di = 0-based data index
+        cell_map = {i: v for i, v in enumerate(rowvals)}
+        rn = di + 2  # 1-based sheet row for error messages
+        row_imgs = imgs_by_row.get(di, [])
+        q_img, a_img, alt_img = _assign_images(row_imgs)
+        q_en = _bp_pick(cell_map, header_norm, ["Question (English)", "Question English", "Question", "Q"])
+        q_hi = _bp_pick(cell_map, header_norm, ["Question (Hindi)", "Question Hindi", "Hindi Question"])
+
+        if kind == "mcq":
+            oa = _bp_pick(cell_map, header_norm, ["Option A (English)", "Option A", "A"])
+            ob = _bp_pick(cell_map, header_norm, ["Option B (English)", "Option B", "B"])
+            oc = _bp_pick(cell_map, header_norm, ["Option C (English)", "Option C", "C"])
+            od = _bp_pick(cell_map, header_norm, ["Option D (English)", "Option D", "D"])
+            oah = _bp_pick(cell_map, header_norm, ["Option A (Hindi)"])
+            obh = _bp_pick(cell_map, header_norm, ["Option B (Hindi)"])
+            och = _bp_pick(cell_map, header_norm, ["Option C (Hindi)"])
+            odh = _bp_pick(cell_map, header_norm, ["Option D (Hindi)"])
+            corr = (_bp_pick(cell_map, header_norm, ["Correct Answer", "Correct Option", "Correct", "Answer"]) or "").strip().upper()[:1]
+            try:
+                marks = int(float(_bp_pick(cell_map, header_norm, ["Marks", "Mark"]) or 1))
+            except Exception:
+                marks = 1
+            if not q_en and not q_img:
+                if oa or ob or oc or od or q_hi:
+                    bad.append({"row": rn, "reason": "missing question (add question text or a Question Image)"})
+                continue
+            opts = [oa, ob, oc, od]
+            if any(not o for o in opts):
+                bad.append({"row": rn, "reason": "all 4 options required"})
+                continue
+            if corr not in LI:
+                bad.append({"row": rn, "reason": "Correct Answer must be A / B / C / D"})
+                continue
+            opts_hi = [oah, obh, och, odh]
+            has_hi = bool(q_hi) and all(opts_hi)
+            ok.append({
+                "question_text": q_en, "max_marks": marks or 1,
+                "options": opts, "correct_option": opts[LI[corr]],
+                "question_text_hi": (q_hi or None), "options_hi": (opts_hi if has_hi else None),
+                "explanation": None, "explanation_hi": None,
+                "image_b64": q_img, "alt_image_b64": (a_img or alt_img),
+            })
+        else:
+            a_en = _bp_pick(cell_map, header_norm, ["Model Answer (English)", "Model Answer English", "Model Answer", "Answer (English)", "Answer English", "Answer", "Model"])
+            a_hi = _bp_pick(cell_map, header_norm, ["Model Answer (Hindi)", "Model Answer Hindi", "Answer (Hindi)", "Answer Hindi", "Hindi Answer"])
+            try:
+                marks = int(float(_bp_pick(cell_map, header_norm, ["Marks", "Mark", "Max Marks"]) or 1))
+            except Exception:
+                marks = 1
+            if not q_en and not q_img:
+                if q_hi or a_en or a_hi:
+                    bad.append({"row": rn, "reason": "missing question (add question text or a Question Image)"})
+                continue
+            if not a_en and not a_img:
+                bad.append({"row": rn, "reason": "model answer (English) required"})
+                continue
+            ok.append({
+                "question_text": q_en, "max_marks": marks or 1,
+                "model_answer": a_en, "model_answer_hi": (a_hi or None),
+                "question_text_hi": (q_hi or None),
+                "image_b64": q_img, "alt_image_b64": alt_img, "model_answer_image": a_img,
+            })
+
+    hi_count = sum(1 for q in ok if q.get("question_text_hi"))
+    img_count = sum(1 for q in ok if q.get("image_b64") or q.get("model_answer_image") or q.get("alt_image_b64"))
+    return {"ok": ok, "bad": bad, "count": len(ok), "hi_count": hi_count, "img_count": img_count}
+
+
 @router.get("/student-doubts")
 def teacher_student_doubts(student_id: int, db: Session = Depends(get_db),
                            current_user=Depends(get_teacher)):
