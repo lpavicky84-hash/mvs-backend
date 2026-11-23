@@ -543,6 +543,7 @@ class DppPack(Base):
     batch_id    = Column(Integer, ForeignKey("batches.id"), nullable=True)  # batch-scoped DPP (NULL = global/legacy)
     archive_gen_id = Column(Integer, nullable=True, index=True)  # Batch Restart: NULL = active; set = archived generation
     copy_group  = Column(String(40), nullable=True)  # fresh copy ko alag card (NULL = purani sig-based grouping)
+    arrange     = Column(String(10), nullable=True)  # NULL/auto = type-wise auto arrange; manual = teacher ka order
     created_at  = Column(DateTime, default=func.now())
 
 

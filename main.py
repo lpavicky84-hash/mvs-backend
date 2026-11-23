@@ -380,6 +380,8 @@ def ensure_columns():
         # (Phase 5 ab automatic hai — ranking visibility scheduling se tay hoti hai, koi column nahi.)
         # Doubt on-time/late: forward-only SLA snapshot per doubt
         "ALTER TABLE doubts ADD COLUMN sla_snapshot FLOAT",
+        # DPP question arrangement: NULL/auto = type-wise auto arrange, manual = teacher ka order
+        "ALTER TABLE dpp_packs ADD COLUMN arrange VARCHAR(10) NULL",
     ]
     for s in stmts:
         try:

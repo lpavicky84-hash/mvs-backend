@@ -3053,6 +3053,92 @@ def _dpp_sig(pk):
                      (pk.part or "").strip().lower()])
 
 
+def _dpp_is_mcq(text):
+    """JS _dppSplitOptions ki MCQ-detection ka Python mirror (sirf boolean). Uppercase/number
+    (A)(B)(C).. ya lowercase (a)(b)(c)(d) jo chhote options ho — sub-questions/sub-parts nahi."""
+    import re as _re
+    t = str(text or "")
+    marks = [(m.group(1), m.start(), m.end()) for m in _re.finditer(r"\(\s*([A-Da-d1-4])\s*\)", t)]
+    if len(marks) < 3:
+        return False
+    best = None
+    for s in range(len(marks)):
+        k0 = marks[s][0]
+        is_num = k0 in "1234"
+        is_lower = k0 in "abcd"
+        base = "1" if is_num else ("a" if is_lower else "A")
+        if k0 != base:
+            continue
+        seq = [marks[s]]
+        for j in range(s + 1, len(marks)):
+            expected = str(1 + len(seq)) if is_num else chr(ord(base) + len(seq))
+            if marks[j][0] == expected:
+                seq.append(marks[j])
+            else:
+                break
+        if len(seq) >= 3:
+            best = (seq, is_lower)
+    if not best:
+        return False
+    seq, is_lower = best
+    opts = []
+    for i in range(len(seq)):
+        frm = seq[i][2]
+        to = seq[i + 1][1] if i + 1 < len(seq) else len(t)
+        opts.append(t[frm:to].strip())
+    if is_lower:
+        if len(seq) < 4:
+            return False
+        _verb = _re.compile(r"^(define|explain|derive|state|write|find|calculate|prove|describe|give|name|list|draw|show|discuss|mention|what|why|how|when|which|solve)\b", _re.I)
+        if any((len(o) > 40 or _re.search(r"[?\n]", o) or _verb.match(o)) for o in opts):
+            return False
+        if (sum(len(o) for o in opts) / len(opts)) > 24:
+            return False
+    return True
+
+
+def _dpp_q_type_rank(q):
+    """1 MCQ, 2 fill-in-blanks, 3 true/false, 4 match, 5 very short, 6 short, 7 long."""
+    import re as _re
+    qt = str((q or {}).get("q") or (q or {}).get("question_text") or "")
+    low = qt.lower()
+    if _dpp_is_mcq(qt):
+        return 1
+    if ("fill in the blank" in low) or _re.search(r"_{3,}", qt) or _re.search(r"\.{4,}", qt) or _re.search(r"…{2,}", qt):
+        return 2
+    if _re.search(r"\btrue\b[\s\S]{0,6}\bfalse\b|\bfalse\b[\s\S]{0,6}\btrue\b|state whether[\s\S]*true|write true or false", low):
+        return 3
+    if _re.search(r"match the following|match the column|match list|match column", low):
+        return 4
+    try:
+        m = int((q or {}).get("marks") or (q or {}).get("max_marks") or 0)
+    except Exception:
+        m = 0
+    if m >= 4:
+        return 7
+    if m in (2, 3):
+        return 6
+    if m == 1:
+        return 5
+    n = len(qt)
+    if n > 220:
+        return 7
+    if n > 90:
+        return 6
+    return 5
+
+
+def _dpp_sort_questions(questions, arrange):
+    """arrange=='manual' -> teacher ka order waisa hi. Warna (default/auto, aur purane DPPs jinme
+    arrange NULL hai) type-wise STABLE sort: same type ke andar original order bana rehta hai."""
+    qs = list(questions or [])
+    if str(arrange or "").strip().lower() == "manual":
+        return qs
+    indexed = list(enumerate(qs))
+    indexed.sort(key=lambda p: (_dpp_q_type_rank(p[1]), p[0]))
+    return [q for _, q in indexed]
+
+
 def _dpp_pack_out(db, pk, with_counts=True, qn=None):
     # qn = questions ka count. List endpoint ek lightweight batch-query se bhejta hai (heavy JSON
     # blob load kiye bina). None aaye to hi fallback me lazy-load karke count karte hain — warna
@@ -3404,7 +3490,7 @@ def _dpp_build_pdf(db, pk, kind="q", med=None):
             except Exception:
                 db.rollback()
     qobjs = []
-    for i, q in enumerate(pk.questions or [], 1):
+    for i, q in enumerate(_dpp_sort_questions(pk.questions, getattr(pk, "arrange", None)), 1):
         base = dict(q_no=i, question_text=q.get("q"), max_marks=q.get("marks"),
                     options=None, correct_option=None, image_b64=_r2img(q.get("image")),
                     alt_image_b64=_r2img(q.get("alt_image")), question_text_hi=q.get("q_hi"),
@@ -3471,6 +3557,8 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
     title = (data.get("title") or "").strip() or ("DPP - " + (part or chapter or subject))
     medium = (data.get("medium") or "English").strip()
     questions = data.get("questions") or []
+    _arr = str(data.get("arrange") or "").strip().lower()
+    arrange = "manual" if _arr == "manual" else ("auto" if _arr == "auto" else None)
     if not subject:
         raise HTTPException(status_code=400, detail="Subject is required")
     if not questions:
@@ -3501,7 +3589,7 @@ def teacher_dpp_create(data: dict, db: Session = Depends(get_db), current_user=D
             made.append((dup, _tb)); continue
         pk = DppPack(teacher_id=tp.id, subject=subject, class_name=(data.get("class_name") or ""),
                      chapter=chapter, part=part, title=title, medium=medium,
-                     source="created", questions=questions, batch_id=_tb)
+                     source="created", questions=questions, batch_id=_tb, arrange=arrange)
         # PDFs LAZY banenge (view/download pe on-demand) — create instant + crash-proof.
         db.add(pk); db.flush()
         made.append((pk, _tb))
@@ -3551,6 +3639,9 @@ def teacher_dpp_update(pack_id: int, data: dict = Body(...), db: Session = Depen
         pk.title = (data.get("title") or "").strip()
     if (data.get("medium") or "").strip():
         pk.medium = (data.get("medium") or "").strip()
+    if "arrange" in data:                                      # edit pe arrangement preference bhi update
+        _arr = str(data.get("arrange") or "").strip().lower()
+        pk.arrange = "manual" if _arr == "manual" else ("auto" if _arr == "auto" else None)
     if "batch_id" in data:                                     # edit pe batch re-target
         _bv = data.get("batch_id")
         try:
@@ -3695,7 +3786,7 @@ def teacher_dpp_questions(pack_id: int, db: Session = Depends(get_db), current_u
     if not pk:
         raise HTTPException(status_code=404, detail="DPP not found")
     qs = []
-    for i, q in enumerate(pk.questions or [], 1):
+    for i, q in enumerate(_dpp_sort_questions(pk.questions, getattr(pk, "arrange", None)), 1):
         qs.append({"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
                    "image": q.get("image"), "alt_image": q.get("alt_image"),
                    "model": q.get("model") or "", "model_hi": q.get("model_hi") or "",
@@ -3726,7 +3817,7 @@ def admin_dpp_questions_any(pack_id: int, db: Session = Depends(get_db), _=Depen
     if not pk:
         raise HTTPException(status_code=404, detail="DPP not found")
     qs = []
-    for i, q in enumerate(pk.questions or [], 1):
+    for i, q in enumerate(_dpp_sort_questions(pk.questions, getattr(pk, "arrange", None)), 1):
         qs.append({"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
                    "image": q.get("image"), "alt_image": q.get("alt_image"),
                    "model": q.get("model") or "", "model_hi": q.get("model_hi") or "",

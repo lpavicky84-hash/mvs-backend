@@ -4380,8 +4380,9 @@ def student_dpp_questions(pack_id: int, db: Session = Depends(get_db),
             .first())
     submitted = _ans is not None
     can_re = bool(_ans and getattr(_ans, "allow_resubmit", False))
+    from teacher_routes import _dpp_sort_questions
     qs = []
-    for i, q in enumerate(pk.questions or [], 1):
+    for i, q in enumerate(_dpp_sort_questions(pk.questions, getattr(pk, "arrange", None)), 1):
         item = {"qno": i, "q": q.get("q") or "", "q_hi": q.get("q_hi") or "",
                 "image": q.get("image"), "alt_image": q.get("alt_image")}
         if submitted:

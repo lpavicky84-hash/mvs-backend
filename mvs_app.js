@@ -12469,15 +12469,19 @@ async function submitExam(){
     if(!window._dppEditId && !_batchGateOK()) return;   // naya DPP -> kam-se-kam 1 batch zaroori
     // Naya DPP: submit par premium popup se arrangement poochho. Default = auto-arrange by type.
     // Edit mode me nahi poochte (teacher ka maujooda order waise hi rehta hai).
+    // NOTE: client-side sort nahi — sirf teacher ki choice ('auto'|'manual') backend ko bhejte hain;
+    // backend read/PDF dono pe isi preference se order karta hai (purane DPPs bhi default auto).
+    let _dppArrange=null;
     if(!window._dppEditId){
       const _arr=await _dppAskArrange();
       if(_arr==='cancel') return;                 // flow safe — draft bana rehta hai
-      if(_arr==='auto') _examQs=_dppSortByType(_examQs);
+      _dppArrange=(_arr==='manual')?'manual':'auto';
     }
     const _em=window._dppEditMeta||{};
     const payload={ subject:(val('ex-sub')||_em.subject||''), class_name:((val('ex-cls-sel')||_em.class_name)||''),
       chapter:((val('ex-ch-sel')!==undefined&&val('ex-ch-sel')!=='')?val('ex-ch-sel'):(val('ex-ch')||_em.chapter||'')), part:((val('ex-part-sel')||_em.part)||''),
       title, medium:_examMedium||_em.medium||'English', client_key:(window._dppCk||''),
+      arrange:(window._dppEditId?undefined:_dppArrange),
       batch_ids:(window._dppEditId?undefined:_multiBatchIds()),
       batch_id:(window._dppEditId?_singleBatchId():undefined),
       questions:_examQs.map(q=>({ q:q.q||'', q_hi:q.q_hi||'', model:q.model||'', model_hi:q.model_hi||'',
