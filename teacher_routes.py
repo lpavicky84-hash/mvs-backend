@@ -3053,12 +3053,23 @@ def _dpp_sig(pk):
                      (pk.part or "").strip().lower()])
 
 
-def _dpp_pack_out(db, pk, with_counts=True):
+def _dpp_pack_out(db, pk, with_counts=True, qn=None):
+    # qn = questions ka count. List endpoint ek lightweight batch-query se bhejta hai (heavy JSON
+    # blob load kiye bina). None aaye to hi fallback me lazy-load karke count karte hain — warna
+    # card par "0 Questions" dikhta tha (questions_n set hi nahi ho raha tha). created DPP ke liye.
+    if qn is None:
+        try:
+            qn = len(pk.questions or [])
+        except Exception:
+            qn = 0
+    qn = int(qn or 0)
     out = {"id": pk.id, "subject": pk.subject, "class_name": pk.class_name,
            "chapter": pk.chapter, "part": pk.part, "title": pk.title,
            "medium": pk.medium, "source": pk.source,
            "batch_id": getattr(pk, "batch_id", None),
            "group_key": _dpp_sig(pk),
+           "questions_n": qn,
+           "has_questions": bool(getattr(pk, "q_pdf", None)) or qn > 0,
            "created_at": pk.created_at.strftime("%d %b %Y") if pk.created_at else None}
     if with_counts:
         from models import DppAnswer, DppEvent
@@ -3084,7 +3095,19 @@ def teacher_dpp_packs(db: Session = Depends(get_db), current_user=Depends(get_te
     tp = get_teacher_profile(current_user, db)
     packs = (db.query(DppPack).options(defer(DppPack.questions), defer(DppPack.q_pdf), defer(DppPack.s_pdf)).filter(DppPack.teacher_id == tp.id)
              .order_by(DppPack.created_at.desc()).all())
-    return {"packs": [_dpp_pack_out(db, pk) for pk in packs]}
+    # questions-count ek hi lightweight query me (heavy JSON blob load kiye bina) — card ka
+    # "N Questions" isi se bharta hai. student list wala hi proven pattern (json_length + fallback).
+    from sqlalchemy import func as _func
+    qmap = {}
+    pack_ids = [pk.id for pk in packs]
+    if pack_ids:
+        try:
+            for pid, qn in db.query(DppPack.id,
+                                    _func.coalesce(_func.json_length(DppPack.questions), 0)).filter(DppPack.id.in_(pack_ids)):
+                qmap[pid] = int(qn or 0)
+        except Exception:
+            qmap = {}
+    return {"packs": [_dpp_pack_out(db, pk, qn=qmap.get(pk.id)) for pk in packs]}
 
 
 @router.post("/dpp-pack/{pid}/copy")
