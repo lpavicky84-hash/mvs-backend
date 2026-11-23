@@ -25260,9 +25260,9 @@ async function openSDppView(pid){
     +qs.map(q=>`<div class="card" style="margin-bottom:10px"><div class="card-body" style="padding:14px 16px">
       <div style="font-size:.68rem;font-weight:800;letter-spacing:.06em;color:#8a6d10;margin-bottom:6px">QUESTION ${q.qno}</div>
       <div class="pl-qtext" id="dq-${q.qno}">${_fmtRich(q.q||'')}</div>
-      ${q.image?`<img loading="lazy" src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-      ${q.alt_image?`<img loading="lazy" src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-      ${d.submitted&&q.model?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${q.qno}">${_fmtRich(q.model)}</div>${q.model_image?`<img loading="lazy" src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+      ${q.image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.image)}">`:''}
+      ${q.alt_image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.alt_image)}">`:''}
+      ${d.submitted&&q.model?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div class="rt-ans" id="da-${q.qno}">${_fmtRich(q.model)}</div>${q.model_image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.model_image)}">`:''}</div>`:''}
       <div style="margin-top:11px"><button class="btn btn-ghost btn-sm" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>
     </div></div>`).join('');
     showModal(esc(d.title), html, `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`);
@@ -25293,9 +25293,9 @@ function _dppQCards(qs,showModel,pid,lang){
     const mBothHtml=(both&&mHi)?`<div class="q-alt-lang">${_fmtRich(mHi)}</div>`:'';
     return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
     <div class="pl-qtext" id="dq-${pid}-${q.qno}">${qHtml}</div>
-    ${q.image?`<img loading="lazy" src="${_imgSrc(q.image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-    ${q.alt_image?`<img loading="lazy" src="${_imgSrc(q.alt_image)}" style="max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--border)">`:''}
-    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div id="da-${pid}-${q.qno}">${_fmtRich(mtx)}${mBothHtml}</div>${q.model_image?`<img loading="lazy" src="${_imgSrc(q.model_image)}" style="max-width:100%;margin-top:8px;border-radius:8px">`:''}</div>`:''}
+    ${q.image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.image)}">`:''}
+    ${q.alt_image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.alt_image)}">`:''}
+    ${showModel&&(mtx||q.model_image)?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div class="rt-ans" id="da-${pid}-${q.qno}">${_fmtRich(mtx)}${mBothHtml}</div>${q.model_image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.model_image)}">`:''}</div>`:''}
     ${pid?`<div style="margin-top:11px"><button class="btn btn-ghost btn-sm btn-blink" title="Send your doubt here — the question text and image go to the teacher automatically" onclick="sDppDoubtOpen(${pid},${q.qno},${q.qno})">${ic('headset')} Raise Doubt</button></div>`:''}
   </div>`;}).join('');
 }
