@@ -25259,7 +25259,7 @@ async function openSDppView(pid){
     </div></div>`
     +qs.map(q=>`<div class="card" style="margin-bottom:10px"><div class="card-body" style="padding:14px 16px">
       <div style="font-size:.68rem;font-weight:800;letter-spacing:.06em;color:#8a6d10;margin-bottom:6px">QUESTION ${q.qno}</div>
-      <div class="pl-qtext" id="dq-${q.qno}">${_fmtRich(q.q||'')}</div>
+      <div class="pl-qtext" id="dq-${q.qno}">${_fmtDppQ(q.q||'')}</div>
       ${q.image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.image)}">`:''}
       ${q.alt_image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.alt_image)}">`:''}
       ${d.submitted&&q.model?`<div style="margin-top:12px;padding:10px 12px;border-left:3px solid #15803d;background:rgba(21,128,61,.06);border-radius:8px"><div style="font-size:.68rem;font-weight:800;color:#15803d;margin-bottom:5px">MODEL ANSWER</div><div class="rt-ans" id="da-${q.qno}">${_fmtRich(q.model)}</div>${q.model_image?`<img loading="lazy" class="rt-qimg" src="${_imgSrc(q.model_image)}">`:''}</div>`:''}
@@ -25283,12 +25283,65 @@ function _dppBandMin(ev){
   if(ev&&ev.target&&ev.target.closest('button,a,select,input,textarea')) return;
   sDppClosePanel();
 }
+// ===== DPP question auto-formatting: PYQ year -> premium pill, MCQ options -> premium cards =====
+function _dppPyqPill(inner){
+  var parts=String(inner).split(/\s*[·|]\s*/).map(function(s){return s.trim();}).filter(Boolean);
+  var key='', rest=parts;
+  if(parts.length && /^pyq$/i.test(parts[0])){ key='PYQ'; rest=parts.slice(1); }
+  var restTxt=rest.join(' · ');
+  var _medal='<svg class="pyq-ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"></circle><path d="M8.21 13.89 7 22l5-3 5 3-1.21-8.11"></path></svg>';
+  return '<div class="pyq-row"><span class="pyq-pill">'+_medal
+    +(key?'<span class="pyq-k">'+esc(key)+'</span>':'')
+    +(restTxt?'<span class="pyq-rest">'+esc(restTxt)+'</span>':'')+'</span></div>';
+}
+// text me se MCQ options (A)(B)(C)(D) ya (1)(2)(3)(4) ka tail nikaalo. Lowercase (a)(b) wale
+// inline sub-parts (jaise "force (a) constant and (b) variable") ko ignore karta hai (uppercase +
+// kam-se-kam 3 ascending). Return {body, options:[{k,t}]} ya null.
+function _dppSplitOptions(text){
+  var re=/\(\s*([A-D1-4])\s*\)/g, marks=[], m;
+  while((m=re.exec(text))!==null){ marks.push({k:m[1],idx:m.index,end:re.lastIndex}); }
+  if(marks.length<3) return null;
+  var best=null;
+  for(var s=0;s<marks.length;s++){
+    var k0=marks[s].k; if(k0!=='A'&&k0!=='1') continue;
+    var isNum=/[1-4]/.test(k0); var seq=[marks[s]];
+    for(var j=s+1;j<marks.length;j++){
+      var expected=isNum?String(1+seq.length):String.fromCharCode(65+seq.length);
+      if(marks[j].k===expected){ seq.push(marks[j]); } else break;
+    }
+    if(seq.length>=3) best=seq;   // aakhri qualifying run lo
+  }
+  if(!best) return null;
+  var start=best[0].idx, body=text.slice(0,start).replace(/\s+$/,''), opts=[];
+  for(var i=0;i<best.length;i++){
+    var from=best[i].end, to=(i+1<best.length)?best[i+1].idx:text.length;
+    opts.push({k:best[i].k, t:text.slice(from,to).trim()});
+  }
+  return {body:body, options:opts};
+}
+function _fmtDppQ(raw){
+  raw=String(raw||''); var pill='';
+  var lines=raw.split('\n'), i=0; while(i<lines.length&&lines[i].trim()==='') i++;
+  var mt=(lines[i]||'').trim().match(/^\[(.+)\]$/);
+  if(mt && (/pyq/i.test(mt[1]) || /\b(19|20)\d{2}\b/.test(mt[1]))){
+    pill=_dppPyqPill(mt[1]); lines.splice(0,i+1); raw=lines.join('\n').replace(/^\n+/,'');
+  }
+  var sp=_dppSplitOptions(raw);
+  if(sp){
+    var bodyHtml=sp.body.trim()?_fmtRich(sp.body):'';
+    var optsHtml='<div class="dpp-opts">'+sp.options.map(function(o){
+      return '<div class="dpp-opt"><span class="dpp-opt-k">'+esc(o.k)+'</span><span class="dpp-opt-t">'+_fmtRich(o.t)+'</span></div>';
+    }).join('')+'</div>';
+    return pill+bodyHtml+optsHtml;
+  }
+  return pill+_fmtRich(raw);
+}
 function _dppQCards(qs,showModel,pid,lang){
   const hi=(lang==='hi'), both=(lang==='both');
   return qs.map(q=>{
     const qEn=q.q||'', qHi=q.q_hi||'';
     const mEn=q.model||'', mHi=q.model_hi||'';
-    const qHtml=hi?_fmtRich(qHi||qEn):(both?(_fmtRich(qEn)+(qHi?`<div class="q-alt-lang">${_fmtRich(qHi)}</div>`:'')):_fmtRich(qEn));
+    const qHtml=hi?_fmtDppQ(qHi||qEn):(both?(_fmtDppQ(qEn)+(qHi?`<div class="q-alt-lang">${_fmtDppQ(qHi)}</div>`:'')):_fmtDppQ(qEn));
     const mtx=hi?(mHi||mEn):mEn;
     const mBothHtml=(both&&mHi)?`<div class="q-alt-lang">${_fmtRich(mHi)}</div>`:'';
     return `<div class="exp-q"><div class="pl-qtop"><div class="exp-qt"><b>Q${q.qno}.</b></div></div>
