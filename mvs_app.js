@@ -12411,6 +12411,53 @@ function downloadStudentAnswer(attId,name){
     try{ window.open(API+'/api/teacher/attempt/'+attId+'/answer?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }catch(e2){}
   });
 }
+// ===== DPP auto-arrange by question type =====
+// Order: MCQ -> Fill in the blanks -> True/False -> Match the following -> Very short -> Short -> Long
+function _dppQTypeRank(q){
+  var qt=String((q&&q.q)||''); var low=qt.toLowerCase();
+  if(_dppSplitOptions(qt)) return 1;                                              // MCQ
+  if(/fill in the blank/.test(low) || /_{3,}/.test(qt) || /\.{4,}/.test(qt) || /[…]{2,}/.test(qt)) return 2;  // fill in the blanks
+  if(/\btrue\b[\s\S]{0,6}\bfalse\b|\bfalse\b[\s\S]{0,6}\btrue\b|state whether[\s\S]*true|write true or false/.test(low)) return 3;  // true/false
+  if(/match the following|match the column|match list|match column/.test(low)) return 4;  // match the following
+  var m=parseInt(q&&q.marks,10)||0;
+  if(m>=4) return 7;                       // long
+  if(m===2||m===3) return 6;               // short
+  if(m===1) return 5;                      // very short
+  var len=qt.length;                        // marks na ho to length se andaaza
+  if(len>220) return 7; if(len>90) return 6; return 5;
+}
+// STABLE sort: same type ke andar teacher ka original order bana rehta hai.
+function _dppSortByType(qs){
+  return (qs||[]).map(function(q,i){ return {q:q,i:i,r:_dppQTypeRank(q)}; })
+    .sort(function(a,b){ return (a.r-b.r) || (a.i-b.i); })
+    .map(function(x){ return x.q; });
+}
+// Premium popup: teacher se poochho arrangement — Auto (default) ya Keep my order. Resolve 'auto' | 'manual' | 'cancel'.
+function _dppAskArrange(){
+  return new Promise(function(resolve){
+    var ov=document.createElement('div'); ov.className='dpp-arr-ov';
+    var done=function(v){ try{ document.removeEventListener('keydown',onKey); ov.remove(); }catch(e){} resolve(v); };
+    var onKey=function(e){ if(e.key==='Escape') done('cancel'); };
+    document.addEventListener('keydown',onKey);
+    ov.innerHTML=
+      '<div class="dpp-arr-box" role="dialog" aria-modal="true">'
+      +'<div class="dpp-arr-head"><div class="dpp-arr-title">Arrange the questions</div>'
+      +'<button class="dpp-arr-x" title="Cancel" data-act="cancel">×</button></div>'
+      +'<div class="dpp-arr-sub">Choose how the questions should be ordered in this DPP.</div>'
+      +'<button class="dpp-arr-opt dpp-arr-rec" data-act="auto">'
+      +'<div class="dpp-arr-opt-h"><span class="dpp-arr-k">Auto-arrange by type</span><span class="dpp-arr-badge">Recommended</span></div>'
+      +'<div class="dpp-arr-opt-d">Questions are grouped and ordered automatically: <b>MCQs</b> first, then <b>fill in the blanks</b>, <b>true / false</b>, <b>match the following</b>, and finally <b>very short</b>, <b>short</b> and <b>long</b> answer questions.</div></button>'
+      +'<button class="dpp-arr-opt" data-act="manual">'
+      +'<div class="dpp-arr-opt-h"><span class="dpp-arr-k">Keep my order</span></div>'
+      +'<div class="dpp-arr-opt-d">Questions stay exactly in the order you added them. Nothing is moved.</div></button>'
+      +'</div>';
+    ov.addEventListener('click',function(e){
+      var b=e.target.closest('[data-act]'); if(b){ done(b.getAttribute('data-act')); return; }
+      if(e.target===ov) done('cancel');
+    });
+    document.body.appendChild(ov);
+  });
+}
 async function submitExam(){
   // ---- DPP mode: editor se DPP banao (answers already mandatory) ----
   if(window._dppMode){
@@ -12420,6 +12467,13 @@ async function submitExam(){
       if(!(q.q||'').trim()&&!q.image_b64){ toast('Question '+(i+1)+': please fill the question',true); return; }
       if(!(q.model||'').trim()&&!q.model_answer_image){ toast('Question '+(i+1)+': model answer MANDATORY hai — answer bharo',true); return; } }
     if(!window._dppEditId && !_batchGateOK()) return;   // naya DPP -> kam-se-kam 1 batch zaroori
+    // Naya DPP: submit par premium popup se arrangement poochho. Default = auto-arrange by type.
+    // Edit mode me nahi poochte (teacher ka maujooda order waise hi rehta hai).
+    if(!window._dppEditId){
+      const _arr=await _dppAskArrange();
+      if(_arr==='cancel') return;                 // flow safe — draft bana rehta hai
+      if(_arr==='auto') _examQs=_dppSortByType(_examQs);
+    }
     const _em=window._dppEditMeta||{};
     const payload={ subject:(val('ex-sub')||_em.subject||''), class_name:((val('ex-cls-sel')||_em.class_name)||''),
       chapter:((val('ex-ch-sel')!==undefined&&val('ex-ch-sel')!=='')?val('ex-ch-sel'):(val('ex-ch')||_em.chapter||'')), part:((val('ex-part-sel')||_em.part)||''),
@@ -25289,8 +25343,7 @@ function _dppPyqPill(inner){
   var key='', rest=parts;
   if(parts.length && /^pyq$/i.test(parts[0])){ key='PYQ'; rest=parts.slice(1); }
   var restTxt=rest.join(' · ');
-  var _medal='<svg class="pyq-ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"></circle><path d="M8.21 13.89 7 22l5-3 5 3-1.21-8.11"></path></svg>';
-  return '<div class="pyq-row"><span class="pyq-pill">'+_medal
+  return '<div class="pyq-row"><span class="pyq-pill">'
     +(key?'<span class="pyq-k">'+esc(key)+'</span>':'')
     +(restTxt?'<span class="pyq-rest">'+esc(restTxt)+'</span>':'')+'</span></div>';
 }
@@ -25298,24 +25351,38 @@ function _dppPyqPill(inner){
 // inline sub-parts (jaise "force (a) constant and (b) variable") ko ignore karta hai (uppercase +
 // kam-se-kam 3 ascending). Return {body, options:[{k,t}]} ya null.
 function _dppSplitOptions(text){
-  var re=/\(\s*([A-D1-4])\s*\)/g, marks=[], m;
+  var re=/\(\s*([A-Da-d1-4])\s*\)/g, marks=[], m;
   while((m=re.exec(text))!==null){ marks.push({k:m[1],idx:m.index,end:re.lastIndex}); }
   if(marks.length<3) return null;
   var best=null;
   for(var s=0;s<marks.length;s++){
-    var k0=marks[s].k; if(k0!=='A'&&k0!=='1') continue;
-    var isNum=/[1-4]/.test(k0); var seq=[marks[s]];
+    var k0=marks[s].k, isNum=/[1-4]/.test(k0), isLower=/[a-d]/.test(k0);
+    var base=isNum?'1':(isLower?'a':'A');
+    if(k0!==base) continue;   // run A/a/1 se hi shuru ho
+    var seq=[marks[s]];
     for(var j=s+1;j<marks.length;j++){
-      var expected=isNum?String(1+seq.length):String.fromCharCode(65+seq.length);
+      var expected=isNum?String(1+seq.length):String.fromCharCode(base.charCodeAt(0)+seq.length);
       if(marks[j].k===expected){ seq.push(marks[j]); } else break;
     }
-    if(seq.length>=3) best=seq;   // aakhri qualifying run lo
+    if(seq.length>=3) best={seq:seq,isLower:isLower};   // aakhri qualifying run
   }
   if(!best) return null;
-  var start=best[0].idx, body=text.slice(0,start).replace(/\s+$/,''), opts=[];
-  for(var i=0;i<best.length;i++){
-    var from=best[i].end, to=(i+1<best.length)?best[i+1].idx:text.length;
-    opts.push({k:best[i].k, t:text.slice(from,to).trim()});
+  var seq=best.seq, start=seq[0].idx, body=text.slice(0,start).replace(/\s+$/,''), opts=[];
+  for(var i=0;i<seq.length;i++){
+    var from=seq[i].end, to=(i+1<seq.length)?seq[i+1].idx:text.length;
+    opts.push({k:seq[i].k, t:text.slice(from,to).trim()});
+  }
+  // lowercase (a)(b).. aksar sub-parts/sub-questions bhi hote hain. MCQ tabhi maano jab a..d (>=4)
+  // ho, har option CHHOTA ho, koi '?'/newline na ho, average length chhoti ho, aur koi option
+  // imperative verb (define/explain/...) se shuru na ho — warna ye sub-questions hain, MCQ nahi.
+  if(best.isLower){
+    if(seq.length<4) return null;
+    var _tot=0;
+    for(var k=0;k<opts.length;k++){ _tot+=opts[k].t.length; }
+    var _avg=_tot/opts.length;
+    var _verb=/^(define|explain|derive|state|write|find|calculate|prove|describe|give|name|list|draw|show|discuss|mention|what|why|how|when|which|solve)\b/i;
+    if(opts.some(function(o){ return o.t.length>40 || /[?\n]/.test(o.t) || _verb.test(o.t); })) return null;
+    if(_avg>24) return null;
   }
   return {body:body, options:opts};
 }
@@ -25330,7 +25397,7 @@ function _fmtDppQ(raw){
   if(sp){
     var bodyHtml=sp.body.trim()?_fmtRich(sp.body):'';
     var optsHtml='<div class="dpp-opts">'+sp.options.map(function(o){
-      return '<div class="dpp-opt"><span class="dpp-opt-k">'+esc(o.k)+'</span><span class="dpp-opt-t">'+_fmtRich(o.t)+'</span></div>';
+      return '<div class="dpp-opt"><span class="dpp-opt-k">'+esc(String(o.k).toUpperCase())+'</span><span class="dpp-opt-t">'+_fmtRich(o.t)+'</span></div>';
     }).join('')+'</div>';
     return pill+bodyHtml+optsHtml;
   }
