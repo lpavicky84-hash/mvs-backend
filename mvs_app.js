@@ -51834,7 +51834,22 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   /* chapter+teacher line ab EK lambi line me overflow nahi — 2 line tak wrap (card compact rehta hai) */
   '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
   '#student-app .s-ttc.live{background:linear-gradient(145deg,#132238,#213c5e);border:none;color:#fff}'+
-  '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}'+
+  '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}#student-app .s-ttc.live .sb{color:#fff}'+
+  /* DONE class — premium "completed" look (success-tinted, green left accent + corner check).
+     Light aur dark dono theme compatible (var(--card) + rgba overlays). */
+  '#student-app .s-ttc.done{position:relative;background:linear-gradient(150deg,rgba(28,143,99,.10),var(--card) 55%);border-color:rgba(28,143,99,.32);box-shadow:0 8px 20px -10px rgba(28,143,99,.35)}'+
+  '#student-app .s-ttc.done::before{content:"";position:absolute;left:0;top:13px;bottom:13px;width:4px;border-radius:0 4px 4px 0;background:linear-gradient(180deg,#34c08a,#1c8f63)}'+
+  '#student-app .s-ttc.done .tm{color:#1c8f63}'+
+  '#student-app .s-ttc-check{position:absolute;top:0;right:0;width:46px;height:46px;overflow:hidden;border-radius:0 16px 0 0;pointer-events:none}'+
+  '#student-app .s-ttc-check::after{content:"";position:absolute;top:-23px;right:-23px;width:46px;height:46px;transform:rotate(45deg);background:linear-gradient(135deg,#34c08a,#1c8f63)}'+
+  '#student-app .s-ttc-check svg{position:absolute;top:6px;right:6px;width:13px;height:13px;stroke:#fff;fill:none;stroke-width:3;z-index:1}'+
+  '#student-app .s-ttc-nhint{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:10.5px;font-weight:800;color:#1c8f63;background:rgba(28,143,99,.12);border-radius:999px;padding:3px 9px}'+
+  '#student-app .s-ttc-nhint svg{width:12px;height:12px;stroke:#1c8f63;fill:none;stroke-width:2}'+
+  'body.dark #student-app .s-ttc.done{background:linear-gradient(150deg,rgba(52,192,138,.16),var(--card) 58%);border-color:rgba(52,192,138,.4)}'+
+  'body.dark #student-app .s-ttc.done .tm{color:#5fe0ad}body.dark #student-app .s-ttc-nhint{color:#5fe0ad;background:rgba(52,192,138,.16)}'+
+  /* UPCOMING class — subtle gold left accent so teeno states clearly alag dikhein */
+  '#student-app .s-ttc.up{position:relative;border-color:rgba(184,148,31,.3)}'+
+  '#student-app .s-ttc.up::before{content:"";position:absolute;left:0;top:13px;bottom:13px;width:4px;border-radius:0 4px 4px 0;background:linear-gradient(180deg,#e7bf55,#b8941f);opacity:.75}'+
   /* class card footer: report duration/time-range + Class Notes download */
   '#student-app .s-ttc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}'+
   '#student-app .s-ttc.live .s-ttc-foot{border-top-color:rgba(255,255,255,.16)}'+
@@ -52467,8 +52482,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
           ? '<button class="s-ttc-notes" onclick="event.stopPropagation();_sClassNotesDl('+c.lecture_id+')" title="Download class notes"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Class Notes</button>'
           : '';
         var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
+        // 3 alag premium states: live (chal rahi), done (ho chuki), up/over (aane wali/nikal gayi)
+        var stateCls=done?' done':(live?' live':(up?' up':' over'));
+        var notesHint=(done&&c.has_notes)?'<div class="s-ttc-nhint">'+svg('materials')+' Notes ready</div>':'';
         // card clickable -> us class ke notes/material par (Classes Material section)
-        return '<div class="s-ttc'+(live?' live':'')+'" style="cursor:pointer" onclick="_sGo(\'materials\')"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+foot+'</div>';
+        return '<div class="s-ttc'+stateCls+'" style="cursor:pointer" onclick="_sGo(\'materials\')">'+(done?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+notesHint+foot+'</div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });

@@ -976,7 +976,28 @@ def student_workspace(batch: int = 0, db: Session = Depends(get_db), current_use
             for _r in db.query(ExamAttempt.exam_id).filter(
                     ExamAttempt.student_id == sp.id, ExamAttempt.exam_id.in_(_eids)).all():
                 _attempted.add(_r[0])
-        pending_exams = [ex for ex in exams if ex.id not in _attempted]
+        # DEDUP (same as /exams Tests page): ek hi logical test ke multiple batch copies ko EK maano.
+        # Pehle dedup nahi hota tha -> ek copy attempt karne ke baad bhi uski DOOSRI (un-attempted)
+        # copy "pending" me reh jaati thi, jisse "Do this next" ek DONE test (e.g. Biology) dikhata
+        # tha. Ab: group me koi bhi copy attempt ho gayi -> poora group done (pending me nahi).
+        import re as _re_ws
+        def _esig_ws(e):
+            _cl = _re_ws.sub(r"\D", "", str(getattr(e, "class_name", "") or ""))
+            return "|".join([_subj_norm(e.subject or ""), _cl, (e.title or "").strip().lower(),
+                             (e.chapter or "").strip().lower(), (e.test_type or "").strip().lower(),
+                             str(getattr(e, "total_marks", 0) or 0)])
+        _done_sg = set()
+        for ex in exams:
+            if ex.id in _attempted:
+                _done_sg.add(_esig_ws(ex))
+        pending_exams = []
+        _seen_sg = set()
+        for ex in exams:
+            _sg = _esig_ws(ex)
+            if _sg in _done_sg or _sg in _seen_sg:
+                continue
+            _seen_sg.add(_sg)
+            pending_exams.append(ex)
     except Exception:
         pass
 
