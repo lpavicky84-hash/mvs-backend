@@ -2348,6 +2348,29 @@ def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), 
     lec_by_tt = {}
     for l in lecs:
         lec_by_tt.setdefault(l.timetable_entry_id, l)   # first active lecture per entry
+    # FALLBACK (per-batch copies): timetable me har batch ka ALAG entry copy hota hai, par report
+    # TEACHER ek hi entry/batch pe submit karta hai -> lecture us EK entry_id se link hoti hai.
+    # Doosre batch ke student ka entry id alag hota hai -> direct link miss -> "Class Notes" button
+    # gayab (notes unhe Material me to mil jaate the par card pe button nahi aata tha). Isliye jo
+    # entries entry_id se link nahi hui, unhe subject+chapter+date se pdf-wali lecture se match karo.
+    _need = [e for e in es if e.id not in lec_by_tt]
+    if _need:
+        _need_subs = list({e.subject for e in _need if e.subject})
+        _fb = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(
+            Lecture.is_active == True, Lecture.pdf_b64.isnot(None),
+            Lecture.subject.in_(_need_subs)
+        ).all() if _need_subs else []
+        def _lk(subj, chap, d):
+            return (_subj_norm(subj or ""), str(chap or "").strip().lower(), (str(d) if d else ""))
+        _fidx = {}
+        for l in _fb:
+            _fidx.setdefault(_lk(l.subject, l.chapter, l.lecture_date), l)
+        for e in _need:
+            l = _fidx.get(_lk(e.subject, e.chapter, e.entry_date))
+            if l:
+                lec_by_tt[e.id] = l
+                if l not in lecs:
+                    lecs.append(l)
     my_verif = {}
     if lecs:
         lec_ids = [l.id for l in lecs]

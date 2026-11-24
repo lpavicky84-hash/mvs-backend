@@ -50245,10 +50245,14 @@ function _afListHTML(l){
       +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span class="af-new-pill">NEW</span>':'')
       +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
       +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
-      +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
+      +'<div class="sup-meta">'+esc(f.created_at)+'</div>'
+      // Testimonial toggle: sirf review wale feedback app home pe testimonial ban sakte hain.
+      +(f.review?('<div style="margin-top:9px"><button class="btn btn-sm af-testi'+(f.testimonial?' on':'')+'" onclick="afTestimonial('+f.id+','+(f.testimonial?'false':'true')+')">'+(typeof ic==='function'?ic('star'):'\u2605')+' '+(f.testimonial?'Showing on app home':'Show on app home')+'</button></div>'):'')
+      +'</div>'
       +'<button class="btn btn-ghost btn-sm af-del" onclick="afDelete('+f.id+')">Delete</button></div></div>';
   }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
-  return '<div class="ac-list">'+rows+'</div>';
+  var note=list.length?('<div class="af-testi-note">'+(typeof ic==='function'?ic('star'):'\u2605')+' Turn on \u201cShow on app home\u201d for the reviews you want students to see as testimonials on their home screen. Only reviews (not star-only) can be shown.</div>'):'';
+  return note+'<div class="ac-list">'+rows+'</div>';
 }
 function _renderAFeedback(a, l){
   var el=document.getElementById('a-feedback-content'); if(!el) return;
@@ -52486,8 +52490,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
        '<div class="s-row" onclick="(window.toggleDark&&toggleDark());_sCloseSheet()"><div class="ri c-teal">'+svg('theme')+'</div><div class="rl">Dark / Light Theme</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
        vidRow('tutorial','App Tutorial')+vidRow('live','Live Classes')+
        '<div class="s-row" onclick="(window.openDownloads&&openDownloads());_sCloseSheet()"><div class="ri '+colStyle('download')+'">'+svg('download')+'</div><div class="rl">Downloads</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+'</div>';
+    // NOTE: duplicate rating row hata diya — "Feedback" (Community & Help) wahi kaam karta hai (same
+    // feedback form). Do same-kaam ke buttons confusing the, isliye ek hi rakha.
     h+='<div class="s-glab">Support MVS</div><div class="s-box">'+
-       '<div class="s-row" onclick="_sGo(\'feedback\')"><div class="ri '+colStyle('rate')+'">'+svg('rate')+'</div><div class="rl">Rate the App</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
        '<div class="s-row" onclick="_sShare()"><div class="ri c-green">'+svg('share')+'</div><div class="rl">Share with Friends</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>';
     h+='<div class="s-box" style="margin-top:12px"><div class="s-row lg" onclick="_sLogout()"><div class="ri">'+svg('logout')+'</div><div class="rl">Logout</div></div></div>';
     // social icons ab ADMIN ke set kiye links se aate hain (demo links hata diye). Sirf jo
