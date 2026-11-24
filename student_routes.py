@@ -1808,12 +1808,47 @@ def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_st
         pass
     return rows
 
+def _community_mark_seen_from_notifs(db, user_id, post_ids):
+    """Broadcast/popup bell notification padhte hi matching CommunityRead.seen_at set karo,
+    taaki admin ka 'Seen' count sahi dikhe (pehle broadcast kabhi seen mark hi nahi hota tha
+    kyunki broadcast bell me dikhta hai, kisi group me nahi -> Seen hamesha 0 rehta tha)."""
+    if not post_ids:
+        return
+    try:
+        from models import CommunityRead as _CR
+        db.query(_CR).filter(_CR.user_id == user_id,
+                             _CR.post_id.in_(list(post_ids)),
+                             _CR.seen_at.is_(None)).update(
+            {"seen_at": datetime.now()}, synchronize_session=False)
+    except Exception:
+        pass
+
+
+def _pids_from_batch_keys(rows):
+    pids = set()
+    for (bk,) in rows:
+        if bk and str(bk).startswith("cp_"):
+            try:
+                pids.add(int(str(bk)[3:]))
+            except Exception:
+                pass
+    return pids
+
+
 @router.patch("/notifications/read-all")
 def mark_all_read(db: Session = Depends(get_db), current_user=Depends(get_student)):
     """Panel/bell view karte hi sab notifications ek saath read — badge/blink clear."""
     db.query(Notification).filter(Notification.user_id == current_user.id,
                                   Notification.is_read == False).update(
         {"is_read": True, "read_at": datetime.now()}, synchronize_session=False)
+    # bell dekh li -> uske saare community broadcasts/popups ko bhi "seen" maano
+    try:
+        rows = db.query(Notification.batch_key).filter(
+            Notification.user_id == current_user.id,
+            Notification.batch_key.like("cp_%")).all()
+        _community_mark_seen_from_notifs(db, current_user.id, _pids_from_batch_keys(rows))
+    except Exception:
+        pass
     db.commit()
     return {"ok": True}
 
@@ -1825,6 +1860,13 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), current_user=Depends
         n.is_read = True
         if not n.read_at:
             n.read_at = datetime.now()
+        # agar ye community broadcast/popup ka notification hai -> us post ko seen mark karo
+        try:
+            if n.batch_key and str(n.batch_key).startswith("cp_"):
+                _community_mark_seen_from_notifs(db, current_user.id,
+                                                 _pids_from_batch_keys([(n.batch_key,)]))
+        except Exception:
+            pass
         db.commit()
     return {"ok": True}
 
@@ -1836,6 +1878,22 @@ def mark_notif_clicked(notif_id: int, db: Session = Depends(get_db), current_use
     if n:
         if not n.clicked_at:
             n.clicked_at = datetime.now()
+        # community broadcast/popup -> CommunityRead.clicked_at bhi set (clicked count ke liye)
+        try:
+            if n.batch_key and str(n.batch_key).startswith("cp_"):
+                from models import CommunityRead as _CR
+                pids = _pids_from_batch_keys([(n.batch_key,)])
+                if pids:
+                    _now = datetime.now()
+                    db.query(_CR).filter(_CR.user_id == current_user.id,
+                                         _CR.post_id.in_(list(pids)),
+                                         _CR.seen_at.is_(None)).update(
+                        {"seen_at": _now}, synchronize_session=False)
+                    db.query(_CR).filter(_CR.user_id == current_user.id,
+                                         _CR.post_id.in_(list(pids))).update(
+                        {"clicked_at": _now}, synchronize_session=False)
+        except Exception:
+            pass
         n.is_read = True
         if not n.read_at:
             n.read_at = datetime.now()

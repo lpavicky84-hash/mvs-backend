@@ -384,6 +384,10 @@ def ensure_columns():
         "ALTER TABLE dpp_packs ADD COLUMN arrange VARCHAR(10) NULL",
         # Feedback -> testimonial: admin ON kare tab app home pe testimonial dikhega
         "ALTER TABLE feedback ADD COLUMN show_as_testimonial BOOLEAN DEFAULT 0",
+        # Community message edit: admin bheja hua message edit kare to timestamp
+        "ALTER TABLE community_posts ADD COLUMN edited_at DATETIME NULL",
+        # Community poll: options list (JSON) -> post ek poll hai; votes alag table me
+        "ALTER TABLE community_posts ADD COLUMN poll_options JSON NULL",
     ]
     for s in stmts:
         try:

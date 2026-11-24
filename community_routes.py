@@ -14,7 +14,7 @@ from database import get_db
 from security import get_admin, get_student, get_current_user
 from models import (User, UserRole, StudentProfile, StudentBatch, Batch, Notification,
                     CommunityGroup, CommunityGroupMember, CommunityPost,
-                    CommunityAttachment, CommunityRead)
+                    CommunityAttachment, CommunityRead, CommunityPollVote)
 
 try:
     from admin_routes import admin_section_guard as _admin_guard
@@ -98,8 +98,10 @@ def _save_attachments(db, post_id, images, files):
             continue
         name = (f.get("name") or "file").strip()[:230]
         mime = (f.get("mime") or mime or "application/octet-stream")
-        kind = "pdf" if ("pdf" in mime.lower() or name.lower().endswith(".pdf")) else \
-               ("image" if mime.lower().startswith("image") else "file")
+        _ml = mime.lower()
+        kind = "pdf" if ("pdf" in _ml or name.lower().endswith(".pdf")) else \
+               ("image" if _ml.startswith("image") else
+                ("audio" if (_ml.startswith("audio") or name.lower().endswith((".webm", ".ogg", ".mp3", ".m4a", ".wav"))) else "file"))
         try:
             url = r2.store_file_value(r2.new_key("community/file", name or ("f." + _ext_for(mime, name))), raw, mime)
         except Exception:
@@ -109,14 +111,34 @@ def _save_attachments(db, post_id, images, files):
     return n
 
 
-def _att_out(db, post_id):
+def _att_row(a):
+    return {"id": a.id, "kind": a.kind or "image", "name": a.name or "",
+            "mime": a.mime or "", "url": "/api/community-file?id=" + str(a.id)}
+
+
+def _att_out(db, post_id, att_cache=None):
+    # att_cache: {post_id: [CommunityAttachment,...]} -> no DB hit (N+1 se bachao).
+    if att_cache is not None:
+        return [_att_row(a) for a in att_cache.get(post_id, [])]
     out = []
     for a in (db.query(CommunityAttachment)
               .filter(CommunityAttachment.post_id == post_id)
               .order_by(CommunityAttachment.id.asc()).all()):
-        out.append({"id": a.id, "kind": a.kind or "image", "name": a.name or "",
-                    "mime": a.mime or "", "url": "/api/community-file?id=" + str(a.id)})
+        out.append(_att_row(a))
     return out
+
+
+def _att_map(db, post_ids):
+    """One query -> {post_id: [attachments ordered]} for a batch of posts."""
+    from collections import defaultdict
+    m = defaultdict(list)
+    if not post_ids:
+        return m
+    for a in (db.query(CommunityAttachment)
+              .filter(CommunityAttachment.post_id.in_(list(post_ids)))
+              .order_by(CommunityAttachment.id.asc()).all()):
+        m[a.post_id].append(a)
+    return m
 
 
 def _batch_label(b):
@@ -273,6 +295,23 @@ def _fanout(db, post, uids, sender, link=None, image_url=None):
     return len(uids)
 
 
+def _parse_poll(payload):
+    """payload['poll'] = {question, options:[...]} -> (question, [options]) ya ('', [])."""
+    poll = payload.get("poll") or {}
+    if not isinstance(poll, dict):
+        return "", []
+    q = (poll.get("question") or "").strip()[:240]
+    opts = []
+    for o in (poll.get("options") or [])[:10]:
+        t = str(o or "").strip()[:120]
+        if t:
+            opts.append(t)
+    # need a question + at least 2 options to be a valid poll
+    if q and len(opts) >= 2:
+        return q, opts
+    return "", []
+
+
 def _first_image_url(db, post_id):
     a = (db.query(CommunityAttachment)
          .filter(CommunityAttachment.post_id == post_id, CommunityAttachment.kind == "image")
@@ -280,22 +319,81 @@ def _first_image_url(db, post_id):
     return ("/api/community-file?id=" + str(a.id)) if a else None
 
 
-def _post_out(db, p, with_counts=False):
+def _counts_map(db, post_ids):
+    """One grouped query -> {post_id: {'sent':n,'seen':n,'clicked':n}} for a batch of
+    posts. Pehle har post ke liye 3 alag COUNT(*) chalte the (admin group view par bada
+    N+1). Ab ek hi aggregate query."""
+    from sqlalchemy import func, case
+    out = {}
+    if not post_ids:
+        return out
+    rows = (db.query(
+                CommunityRead.post_id,
+                func.count(CommunityRead.id),
+                func.sum(case((CommunityRead.seen_at.isnot(None), 1), else_=0)),
+                func.sum(case((CommunityRead.clicked_at.isnot(None), 1), else_=0)))
+            .filter(CommunityRead.post_id.in_(list(post_ids)))
+            .group_by(CommunityRead.post_id).all())
+    for pid, sent, seen, clicked in rows:
+        out[pid] = {"sent": int(sent or 0), "seen": int(seen or 0), "clicked": int(clicked or 0)}
+    return out
+
+
+def _poll_counts_map(db, post_ids):
+    """One grouped query -> {post_id: {option_idx: count}} for poll posts."""
+    from collections import defaultdict
+    from sqlalchemy import func
+    out = defaultdict(dict)
+    if not post_ids:
+        return out
+    rows = (db.query(CommunityPollVote.post_id, CommunityPollVote.option_idx,
+                     func.count(CommunityPollVote.id))
+            .filter(CommunityPollVote.post_id.in_(list(post_ids)))
+            .group_by(CommunityPollVote.post_id, CommunityPollVote.option_idx).all())
+    for pid, idx, n in rows:
+        out[pid][int(idx)] = int(n or 0)
+    return out
+
+
+def _post_out(db, p, with_counts=False, att_cache=None, counts_cache=None,
+              poll_cache=None, my_vote_map=None):
     out = {"id": p.id, "kind": p.kind, "group_id": p.group_id, "title": p.title or "",
            "body": p.body or "", "link": p.link or "", "popup_style": p.popup_style or "info",
            "sender_name": p.sender_name or "", "at": _ist_str(p.created_at),
+           "edited": bool(getattr(p, "edited_at", None)),
            "pinned": bool(getattr(p, "is_pinned", False)),
            "target_label": p.target_label or "", "target_count": p.target_count or 0,
-           "attachments": _att_out(db, p.id)}
+           "attachments": _att_out(db, p.id, att_cache)}
+    opts = getattr(p, "poll_options", None)
+    if opts:
+        if poll_cache is None:
+            poll_cache = _poll_counts_map(db, [p.id])
+        counts = poll_cache.get(p.id, {}) if poll_cache else {}
+        total = sum(counts.values())
+        mv = None
+        if my_vote_map is not None:
+            mv = my_vote_map.get(p.id)
+        out["poll"] = {
+            "question": (p.body or p.title or "Poll"),
+            "options": [{"text": o, "count": int(counts.get(i, 0))} for i, o in enumerate(opts)],
+            "total": int(total),
+            "my_vote": mv,
+        }
     if with_counts:
-        seen = db.query(CommunityRead).filter(CommunityRead.post_id == p.id,
-                                              CommunityRead.seen_at.isnot(None)).count()
-        clicked = db.query(CommunityRead).filter(CommunityRead.post_id == p.id,
-                                                 CommunityRead.clicked_at.isnot(None)).count()
-        sent = db.query(CommunityRead).filter(CommunityRead.post_id == p.id).count()
-        out["sent"] = sent or (p.target_count or 0)
-        out["seen"] = seen
-        out["clicked"] = clicked
+        if counts_cache is not None:
+            c = counts_cache.get(p.id) or {"sent": 0, "seen": 0, "clicked": 0}
+            out["sent"] = c["sent"] or (p.target_count or 0)
+            out["seen"] = c["seen"]
+            out["clicked"] = c["clicked"]
+        else:
+            seen = db.query(CommunityRead).filter(CommunityRead.post_id == p.id,
+                                                  CommunityRead.seen_at.isnot(None)).count()
+            clicked = db.query(CommunityRead).filter(CommunityRead.post_id == p.id,
+                                                     CommunityRead.clicked_at.isnot(None)).count()
+            sent = db.query(CommunityRead).filter(CommunityRead.post_id == p.id).count()
+            out["sent"] = sent or (p.target_count or 0)
+            out["seen"] = seen
+            out["clicked"] = clicked
     return out
 
 
@@ -493,10 +591,15 @@ def community_group_posts_admin(gid: int, db: Session = Depends(get_db), _=Depen
     g = db.query(CommunityGroup).filter(CommunityGroup.id == gid).first()
     if not g:
         raise HTTPException(404, "Group not found")
-    posts = [_post_out(db, p, with_counts=True) for p in
-             (db.query(CommunityPost).filter(CommunityPost.kind == "group",
-                                             CommunityPost.group_id == gid, CommunityPost.is_active == True)  # noqa: E712
-              .order_by(CommunityPost.is_pinned.desc(), CommunityPost.id.asc()).all())]
+    prows = (db.query(CommunityPost).filter(CommunityPost.kind == "group",
+                                            CommunityPost.group_id == gid, CommunityPost.is_active == True)  # noqa: E712
+             .order_by(CommunityPost.is_pinned.desc(), CommunityPost.id.asc()).all())
+    _pids = [p.id for p in prows]
+    acache = _att_map(db, _pids)
+    ccache = _counts_map(db, _pids)
+    pcache = _poll_counts_map(db, _pids)
+    posts = [_post_out(db, p, with_counts=True, att_cache=acache, counts_cache=ccache,
+                       poll_cache=pcache) for p in prows]
     return {"group": {"id": g.id, "name": g.name, "members": len(_group_member_uids(db, g))},
             "posts": posts}
 
@@ -510,11 +613,15 @@ def community_group_post(gid: int, payload: dict = Body(...), db: Session = Depe
     link = (payload.get("link") or "").strip()
     images = payload.get("images") or []
     files = payload.get("files") or []
-    if not body and not link and not images and not files:
+    poll_q, poll_opts = _parse_poll(payload)
+    if poll_q:
+        body = poll_q
+    if not body and not link and not images and not files and not poll_opts:
         raise HTTPException(400, "Message is empty")
     p = CommunityPost(kind="group", group_id=gid, title=(payload.get("title") or "")[:240],
                       body=body, link=link[:600], sender_id=getattr(me, "id", None),
-                      sender_name=getattr(me, "name", "Admin"), target_label=g.name or "Group")
+                      sender_name=getattr(me, "name", "Admin"), target_label=g.name or "Group",
+                      poll_options=(poll_opts or None))
     db.add(p); db.flush()
     _save_attachments(db, p.id, images, files)
     uids = _group_member_uids(db, g)
@@ -533,11 +640,14 @@ def community_broadcast(payload: dict = Body(...), db: Session = Depends(get_db)
     images = payload.get("images") or []
     files = payload.get("files") or []
     target = payload.get("target") or {"scope": "all"}
-    if not title and not body and not images and not files:
+    poll_q, poll_opts = _parse_poll(payload)
+    if poll_q:
+        body = poll_q
+    if not title and not body and not images and not files and not poll_opts:
         raise HTTPException(400, "Nothing to send")
     p = CommunityPost(kind="broadcast", title=title[:240], body=body, link=link[:600],
                       sender_id=getattr(me, "id", None), sender_name=getattr(me, "name", "Admin"),
-                      target_label=_target_label(db, target))
+                      target_label=_target_label(db, target), poll_options=(poll_opts or None))
     db.add(p); db.flush()
     _save_attachments(db, p.id, images, files)
     uids = _resolve_targets(db, target)
@@ -585,8 +695,13 @@ def community_posts_admin(kind: str = "", db: Session = Depends(get_db), _=Depen
         q = q.filter(CommunityPost.kind == k)
     else:
         q = q.filter(CommunityPost.kind.in_(["broadcast", "popup"]))
-    posts = [_post_out(db, p, with_counts=True) for p in
-             q.order_by(CommunityPost.id.desc()).limit(100).all()]
+    prows = q.order_by(CommunityPost.id.desc()).limit(100).all()
+    _pids = [p.id for p in prows]
+    acache = _att_map(db, _pids)
+    ccache = _counts_map(db, _pids)
+    pcache = _poll_counts_map(db, _pids)
+    posts = [_post_out(db, p, with_counts=True, att_cache=acache, counts_cache=ccache,
+                       poll_cache=pcache) for p in prows]
     return {"posts": posts}
 
 
@@ -671,19 +786,52 @@ def community_post_pin(pid: int, payload: dict = Body(...), db: Session = Depend
     return {"ok": True, "pinned": bool(p.is_pinned)}
 
 
+@router.patch("/admin/community/posts/{pid}/edit", dependencies=[Depends(_admin_guard)])
+def community_post_edit(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(get_admin)):
+    """Edit a sent message's title/body/link for EVERYONE (group thread + the bell
+    notification text). Edited message par 'edited' tag dikhta hai."""
+    p = db.query(CommunityPost).filter(CommunityPost.id == pid, CommunityPost.is_active == True).first()  # noqa: E712
+    if not p:
+        raise HTTPException(404, "Not found")
+    title = (payload.get("title") or "").strip()
+    body = (payload.get("body") or "").strip()
+    link = (payload.get("link") or "").strip()
+    if not title and not body and not link and not db.query(CommunityAttachment).filter(
+            CommunityAttachment.post_id == pid).first():
+        raise HTTPException(400, "Message cannot be empty")
+    p.title = title[:240]
+    p.body = body
+    p.link = link[:600]
+    p.edited_at = datetime.utcnow()
+    # keep the students' bell notification text in sync with the edit
+    try:
+        ttl = (title or "").strip() or ("New broadcast" if p.kind == "broadcast"
+                                        else ("Important" if p.kind == "popup" else "New message"))
+        prefix = "" if p.kind == "group" else "\U0001F4E2 "
+        full_title = (prefix + ttl)[:190]
+        db.query(Notification).filter(Notification.batch_key == ("cp_" + str(pid))).update(
+            {"title": full_title, "message": (body or "")[:180]}, synchronize_session=False)
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "post": _post_out(db, p, with_counts=True)}
+
+
 # =========================================================== STUDENT SIDE
 @router.get("/student/community/groups")
 def student_community_groups(db: Session = Depends(get_db), me=Depends(get_student)):
     sp = db.query(StudentProfile).filter(StudentProfile.user_id == me.id).first()
     if not sp:
         return {"groups": []}
-    my_bids = set(e.batch_id for e in db.query(StudentBatch).filter(StudentBatch.student_id == sp.id).all())
+    my_bids = set(bid for (bid,) in db.query(StudentBatch.batch_id)
+                  .filter(StudentBatch.student_id == sp.id).all())
     if getattr(sp, "batch_id", None):
         my_bids.add(sp.batch_id)   # primary link always counts (sales-imported students)
-    my_gids = set(m.group_id for m in db.query(CommunityGroupMember)
+    my_gids = set(gid for (gid,) in db.query(CommunityGroupMember.group_id)
                   .filter(CommunityGroupMember.user_id == me.id).all())
     my_sess = (getattr(sp, "exam_session", "") or "").strip()
-    out = []
+    # 1) decide membership in a single groups scan (no per-group DB calls)
+    in_groups = []
     for g in (db.query(CommunityGroup).filter(CommunityGroup.is_active == True)  # noqa: E712
               .order_by(CommunityGroup.id.desc()).all()):
         _in = (g.batch_id and g.batch_id in my_bids) or (g.id in my_gids)
@@ -694,24 +842,36 @@ def student_community_groups(db: Session = Depends(get_db), me=Depends(get_stude
             elif sk:
                 _in = (my_sess == sk)
         if _in:
-            last = (db.query(CommunityPost).filter(CommunityPost.kind == "group",
-                                                   CommunityPost.group_id == g.id, CommunityPost.is_active == True)  # noqa: E712
-                    .order_by(CommunityPost.id.desc()).first())
-            # unread = group posts newer than the student's last-seen read row
-            unread = 0
-            try:
-                seen_ids = set(r.post_id for r in db.query(CommunityRead)
-                               .filter(CommunityRead.user_id == me.id, CommunityRead.seen_at.isnot(None)).all())
-                for pp in db.query(CommunityPost.id).filter(CommunityPost.kind == "group",
-                                                            CommunityPost.group_id == g.id, CommunityPost.is_active == True).all():  # noqa: E712
-                    if pp.id not in seen_ids:
-                        unread += 1
-            except Exception:
-                unread = 0
-            out.append({"id": g.id, "name": g.name or "", "description": g.description or "",
-                        "icon_color": g.icon_color or "",
-                        "last": (last.title or last.body or "\U0001F4CE Attachment")[:80] if last else "",
-                        "last_at": _ist_str(last.created_at) if last else "", "unread": unread})
+            in_groups.append(g)
+    if not in_groups:
+        return {"groups": []}
+    gids = [g.id for g in in_groups]
+    # 2) ONE query for every post of these groups + ONE query for this student's seen rows.
+    #    (pehle ye dono kaam HAR group ke liye dobara hote the -> bada hang. Ab total 2 query.)
+    from collections import defaultdict
+    posts_by_group = defaultdict(list)
+    for pid, g_id, cat, title, body in (
+            db.query(CommunityPost.id, CommunityPost.group_id, CommunityPost.created_at,
+                     CommunityPost.title, CommunityPost.body)
+            .filter(CommunityPost.kind == "group", CommunityPost.group_id.in_(gids),
+                    CommunityPost.is_active == True)  # noqa: E712
+            .order_by(CommunityPost.id.asc()).all()):
+        posts_by_group[g_id].append((pid, cat, title, body))
+    try:
+        seen_ids = set(pid for (pid,) in db.query(CommunityRead.post_id)
+                       .filter(CommunityRead.user_id == me.id,
+                               CommunityRead.seen_at.isnot(None)).all())
+    except Exception:
+        seen_ids = set()
+    out = []
+    for g in in_groups:
+        plist = posts_by_group.get(g.id, [])
+        last = plist[-1] if plist else None
+        unread = sum(1 for (pid, _c, _t, _b) in plist if pid not in seen_ids)
+        out.append({"id": g.id, "name": g.name or "", "description": g.description or "",
+                    "icon_color": g.icon_color or "",
+                    "last": ((last[2] or last[3] or "\U0001F4CE Attachment")[:80] if last else ""),
+                    "last_at": (_ist_str(last[1]) if last else ""), "unread": unread})
     return {"groups": out}
 
 
@@ -744,13 +904,28 @@ def student_community_group_posts(gid: int, db: Session = Depends(get_db), me=De
     g = db.query(CommunityGroup).filter(CommunityGroup.id == gid).first()
     if not g or not _student_in_group(db, me, g):
         raise HTTPException(403, "Not in this group")
-    posts = [_post_out(db, p) for p in
-             (db.query(CommunityPost).filter(CommunityPost.kind == "group",
-                                             CommunityPost.group_id == gid, CommunityPost.is_active == True)  # noqa: E712
-              .order_by(CommunityPost.is_pinned.desc(), CommunityPost.id.asc()).all())]
+    prows = (db.query(CommunityPost).filter(CommunityPost.kind == "group",
+                                            CommunityPost.group_id == gid, CommunityPost.is_active == True)  # noqa: E712
+             .order_by(CommunityPost.is_pinned.desc(), CommunityPost.id.asc()).all())
+    _pids = [p.id for p in prows]
+    acache = _att_map(db, _pids)                    # one query for all attachments (no N+1)
+    pcache = _poll_counts_map(db, _pids)
+    myvotes = _my_votes_map(db, me.id, _pids)
+    posts = [_post_out(db, p, att_cache=acache, poll_cache=pcache, my_vote_map=myvotes) for p in prows]
     # mark seen for this student
     _mark_seen(db, me, [p["id"] for p in posts])
     return {"group": {"id": g.id, "name": g.name}, "posts": posts}
+
+
+def _my_votes_map(db, user_id, post_ids):
+    out = {}
+    if not post_ids:
+        return out
+    for pid, idx in (db.query(CommunityPollVote.post_id, CommunityPollVote.option_idx)
+                     .filter(CommunityPollVote.user_id == user_id,
+                             CommunityPollVote.post_id.in_(list(post_ids))).all()):
+        out[pid] = int(idx)
+    return out
 
 
 def _mark_seen(db, me, post_ids):
@@ -821,6 +996,44 @@ def student_community_click(pid: int, db: Session = Depends(get_db), me=Depends(
     except Exception:
         db.rollback()
     return {"ok": True}
+
+
+@router.post("/student/community/posts/{pid}/vote")
+def student_community_vote(pid: int, payload: dict = Body(...), db: Session = Depends(get_db), me=Depends(get_student)):
+    """Student ne poll me vote diya (single choice; dobara vote = option change)."""
+    p = db.query(CommunityPost).filter(CommunityPost.id == pid, CommunityPost.is_active == True).first()  # noqa: E712
+    opts = getattr(p, "poll_options", None) if p else None
+    if not p or not opts:
+        raise HTTPException(404, "Poll not found")
+    try:
+        idx = int(payload.get("option_idx"))
+    except Exception:
+        raise HTTPException(400, "Invalid option")
+    if idx < 0 or idx >= len(opts):
+        raise HTTPException(400, "Invalid option")
+    # gate: recipient hona chahiye (CommunityRead row) ya us group ka member
+    allowed = db.query(CommunityRead).filter(CommunityRead.post_id == pid,
+                                             CommunityRead.user_id == me.id).first()
+    if not allowed and p.group_id:
+        g = db.query(CommunityGroup).filter(CommunityGroup.id == p.group_id).first()
+        allowed = bool(g and _student_in_group(db, me, g))
+    if not allowed:
+        raise HTTPException(403, "Not allowed to vote on this poll")
+    try:
+        v = db.query(CommunityPollVote).filter(CommunityPollVote.post_id == pid,
+                                               CommunityPollVote.user_id == me.id).first()
+        if v:
+            v.option_idx = idx
+        else:
+            db.add(CommunityPollVote(post_id=pid, user_id=me.id, option_idx=idx,
+                                     created_at=datetime.utcnow()))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(500, "Could not record your vote")
+    _mark_seen(db, me, [pid])   # voting == seen
+    pcache = _poll_counts_map(db, [pid])
+    return {"ok": True, "poll": _post_out(db, p, poll_cache=pcache, my_vote_map={pid: idx}).get("poll")}
 
 
 # =========================================================== FILE SERVE (any logged-in user)

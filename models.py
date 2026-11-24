@@ -2514,7 +2514,19 @@ class CommunityPost(Base):
     target_count = Column(Integer, default=0)                       # how many recipients at send time
     is_active    = Column(Boolean, default=True)
     is_pinned    = Column(Boolean, default=False, index=True)        # pinned message -> top of the group
+    edited_at    = Column(DateTime, nullable=True)                   # set when admin edits the message
+    poll_options = Column(JSON, nullable=True)                       # list[str] -> is post ek POLL hai
     created_at   = Column(DateTime, default=func.now(), index=True)
+
+
+class CommunityPollVote(Base):
+    """One student's vote on a poll post (single choice; re-vote updates the row)."""
+    __tablename__ = "community_poll_votes"
+    id         = Column(Integer, primary_key=True)
+    post_id    = Column(Integer, index=True)
+    user_id    = Column(Integer, index=True)
+    option_idx = Column(Integer, default=0)
+    created_at = Column(DateTime, default=func.now())
 
 
 class CommunityAttachment(Base):
