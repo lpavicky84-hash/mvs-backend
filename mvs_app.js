@@ -19669,8 +19669,22 @@ function _commRich(text){
   return out;
 }
 // Rich link preview card (Telegram/WhatsApp style) — thumbnail + title + desc + domain.
+function _ytIdClient(u){ var m=/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/.exec(u||''); return m?m[1]:''; }
+// Fallback: agar backend se link_preview na aaye (network block), to YouTube link ka
+// thumbnail client-side hi bana do (link ya body me se video id nikaal kar).
+function _commYtFallback(p){
+  var id=_ytIdClient(p.link||'')||_ytIdClient(p.body||'');
+  if(!id) return '';
+  _ensureLinkCss();
+  var url=(p.link&&_ytIdClient(p.link))?p.link:((/https?:\/\/[^\s<]+/.exec(p.body||'')||[''])[0]);
+  return '<a class="cxlc" href="'+esc(url)+'" target="_blank" rel="noopener">'
+    +'<div class="cxlc-th"><img src="https://i.ytimg.com/vi/'+id+'/hqdefault.jpg" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">'
+    +'<span class="cxlc-play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.55)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></span></div>'
+    +'<div class="cxlc-b"><div class="cxlc-s">youtube.com</div></div></a>';
+}
+function _commLinkPreviewHtml(p){ return (p&&p.link_preview)?_commLinkCard(p):_commYtFallback(p); }
 function _commLinkCard(p){
-  var lp=p&&p.link_preview; var url=(p&&p.link)||'';
+  var lp=p&&p.link_preview; var url=(lp&&lp.url)||(p&&p.link)||'';
   if(!lp || !url) return '';
   _ensureLinkCss();
   var img=lp.image?('<div class="cxlc-th"><img src="'+esc(lp.image)+'" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">'+(lp.is_video?'<span class="cxlc-play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.55)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></span>':'')+'</div>'):'';
@@ -19713,7 +19727,7 @@ function _commBubble(p){
   var imgH=imgs.map(function(a){return '<div class="b-img" data-cimg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"></div>';}).join('');
   var audH=auds.map(function(a){return _commAudioHtml(a.url);}).join('');
   var fileH=files.map(function(a){return '<div class="cmy-fileline" style="margin-top:6px" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
-  var linkH=p.link_preview?_commLinkCard(p):(p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'');
+  var linkH=(p.link_preview||_ytIdClient((p.link||'')+' '+(p.body||'')))?_commLinkPreviewHtml(p):(p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'');
   var isPoll=!!(p.poll&&p.poll.options);
   var pollH=isPoll?_commPollAdminHtml(p):'';
   var seen='<span class="b-seen" onclick="_commReceipts('+p.id+')">✓✓ '+(p.seen||0)+'/'+(p.sent||0)+'</span>';
@@ -19856,7 +19870,7 @@ function _commMsgHtml(p){
   var imgH=imgs.length?'<div class="cmy-msg-imgs">'+imgs.map(function(a){return '<div class="cmy-msg-img" data-cimg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"></div>';}).join('')+'</div>':'';
   var audH=auds.map(function(a){return _commAudioHtml(a.url);}).join('');
   var fileH=files.map(function(a){return '<div class="cmy-fileline" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
-  var linkH=p.link_preview?_commLinkCard(p):(p.link?'<a class="cmy-linkline" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'');
+  var linkH=(p.link_preview||_ytIdClient((p.link||'')+' '+(p.body||'')))?_commLinkPreviewHtml(p):(p.link?'<a class="cmy-linkline" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'');
   var isPoll=!!(p.poll&&p.poll.options);
   var pollH=isPoll?_commPollAdminHtml(p):'';
   var isAdmin=(p.sent!=null);   // admin payload carries sent/seen; student feed does not
@@ -20244,7 +20258,7 @@ function _sCommBubble(p){
   var imgH=imgs.length?'<div class="scmt-imgs'+(imgs.length>1?' multi':'')+'">'+imgs.map(function(a){return '<div class="scmt-img" data-climg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"><div class="scmt-imgld"><div class="spinner"></div></div></div>';}).join('')+'</div>':'';
   var audH=auds.map(function(a){return _commAudioHtml(a.url);}).join('');
   var fileH=files.map(function(a){return '<div class="scmt-file" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')"><span class="scmt-fic">'+ic('folder')+'</span><span class="scmt-fnm">'+esc(a.name||'Attachment')+'</span></div>';}).join('');
-  var linkH=p.link_preview?_commLinkCard(p):(p.link?'<a class="scmt-link" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+'<span>'+esc(p.link)+'</span></a>':'');
+  var linkH=(p.link_preview||_ytIdClient((p.link||'')+' '+(p.body||'')))?_commLinkPreviewHtml(p):(p.link?'<a class="scmt-link" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+'<span>'+esc(p.link)+'</span></a>':'');
   var sender=p.sender_name?('<div class="scmt-sender">'+esc(p.sender_name)+'</div>'):'';
   var pin=p.pinned?'<div class="scmt-pinbadge">'+ic('pin')+' Pinned</div>':'';
   var isPoll=!!(p.poll&&p.poll.options);

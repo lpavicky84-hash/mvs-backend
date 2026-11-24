@@ -189,6 +189,11 @@ def ensure_columns():
         # ---- PERFORMANCE INDEXES (data badhne par queries fast rahein; dobara run par duplicate ignore) ----
         "CREATE INDEX ix_notif_user_read ON notifications (user_id, is_read)",
         "CREATE INDEX ix_notif_user_id2 ON notifications (user_id, id)",
+        # Community 'delete for everyone' + broadcast seen-sync: batch_key (cp_<pid>) pe delete/update
+        # pehle poori notifications table scan karta tha (40-50s). Index -> turant.
+        "CREATE INDEX ix_notif_batch_key ON notifications (batch_key)",
+        "CREATE INDEX ix_cpvote_post ON community_poll_votes (post_id)",
+        "CREATE INDEX ix_catt_post ON community_attachments (post_id)",
         "CREATE INDEX ix_doubts_teacher_status ON doubts (teacher_id, status)",
         "CREATE INDEX ix_doubts_student ON doubts (student_id)",
         "CREATE INDEX ix_doubts_subject_status ON doubts (subject, status)",

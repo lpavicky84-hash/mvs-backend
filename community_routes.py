@@ -296,11 +296,22 @@ def _fanout(db, post, uids, sender, link=None, image_url=None):
 
 
 _YT_RE = re.compile(r"(?:youtube\.com/(?:watch\?v=|embed/|shorts/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})")
+_URL_RE = re.compile(r"https?://[^\s<>\"']+")
 
 
 def _yt_video_id(url):
     m = _YT_RE.search(url or "")
     return m.group(1) if m else ""
+
+
+def _first_url(text):
+    """Message body me se pehla http(s) URL — taaki chat box me type kiya link bhi
+    preview card bana sake (sirf alag 'Link' field hi nahi)."""
+    m = _URL_RE.search(text or "")
+    if not m:
+        return ""
+    u = m.group(0).rstrip(".,;:!?)]}")
+    return u
 
 
 def _fetch_link_preview(url):
@@ -321,13 +332,13 @@ def _fetch_link_preview(url):
             req = urllib.request.Request(o, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=5) as r:
                 d = _json.loads(r.read(100000).decode("utf-8", "ignore"))
-            return {"title": (d.get("title") or "")[:200],
+            return {"url": url, "title": (d.get("title") or "")[:200],
                     "image": "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg",
                     "description": (d.get("author_name") or "")[:300],
                     "site": "youtube.com", "is_video": True}
         except Exception:
             # oEmbed fail -> at least thumbnail + domain
-            return {"title": "", "image": "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg",
+            return {"url": url, "title": "", "image": "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg",
                     "description": "", "site": "youtube.com", "is_video": True}
     # 2) Other sites -> Open Graph
     html = ""
@@ -361,9 +372,17 @@ def _fetch_link_preview(url):
             site = ""
     if not title and not image:
         return None
-    return {"title": _html.unescape(title)[:200], "image": image[:500],
+    return {"url": url, "title": _html.unescape(title)[:200], "image": image[:500],
             "description": _html.unescape(desc)[:300], "site": site[:80],
             "is_video": ("video" in (otype or "").lower())}
+
+
+def _preview_for(link, body):
+    """Alag 'Link' field diya ho to usse, warna message body ke pehle URL se preview banao."""
+    u = (link or "").strip()
+    if not u.startswith("http"):
+        u = _first_url(body or "")
+    return _fetch_link_preview(u) if u else None
 
 
 def _parse_poll(payload):
@@ -694,7 +713,7 @@ def community_group_post(gid: int, payload: dict = Body(...), db: Session = Depe
                       body=body, link=link[:600], sender_id=getattr(me, "id", None),
                       sender_name=getattr(me, "name", "Admin"), target_label=g.name or "Group",
                       poll_options=(poll_opts or None),
-                      link_preview=(_fetch_link_preview(link) if link.startswith("http") else None))
+                      link_preview=_preview_for(link, body))
     db.add(p); db.flush()
     _save_attachments(db, p.id, images, files)
     uids = _group_member_uids(db, g)
@@ -721,7 +740,7 @@ def community_broadcast(payload: dict = Body(...), db: Session = Depends(get_db)
     p = CommunityPost(kind="broadcast", title=title[:240], body=body, link=link[:600],
                       sender_id=getattr(me, "id", None), sender_name=getattr(me, "name", "Admin"),
                       target_label=_target_label(db, target), poll_options=(poll_opts or None),
-                      link_preview=(_fetch_link_preview(link) if link.startswith("http") else None))
+                      link_preview=_preview_for(link, body))
     db.add(p); db.flush()
     _save_attachments(db, p.id, images, files)
     uids = _resolve_targets(db, target)
@@ -874,9 +893,9 @@ def community_post_edit(pid: int, payload: dict = Body(...), db: Session = Depen
             CommunityAttachment.post_id == pid).first():
         raise HTTPException(400, "Message cannot be empty")
     p.title = title[:240]
+    if body != (p.body or "") or link != (p.link or ""):
+        p.link_preview = _preview_for(link, body)
     p.body = body
-    if link != (p.link or ""):
-        p.link_preview = (_fetch_link_preview(link) if link.startswith("http") else None)
     p.link = link[:600]
     p.edited_at = datetime.utcnow()
     # keep the students' bell notification text in sync with the edit
