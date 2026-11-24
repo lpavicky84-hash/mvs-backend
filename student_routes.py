@@ -2508,6 +2508,79 @@ def student_download(mid: int, db: Session = Depends(get_db), current_user=Depen
     _log_material(db, mid, sp.id, "download")
     return __import__("r2_storage").proxy_response(m.content_b64, "application/pdf", _hsafe(m.filename or "file.pdf"), True, sniff=True)
 
+
+# ===== STUDENT: DOWNLOADS HISTORY (app Downloads section + share) =====
+_DL_KINDS = ("material", "lecture_notes", "lecture_dpp", "dpp")
+
+@router.post("/downloads/track")
+def student_track_download(payload: dict = Body(...), db: Session = Depends(get_db),
+                           current_user=Depends(get_student)):
+    """Student ne kuch download kiya -> history me upsert (ek (kind,ref,sub) ki ek hi row;
+    dobara download -> sirf timestamp update). Best-effort; fail ho to download block na ho."""
+    from models import StudentDownload
+    try:
+        sp = get_student_profile(current_user, db)
+        kind = str(payload.get("kind") or "").strip()
+        if kind not in _DL_KINDS:
+            return {"ok": False}
+        try:
+            ref_id = int(payload.get("ref_id"))
+        except Exception:
+            return {"ok": False}
+        sub = (str(payload.get("sub_kind") or "").strip() or None)
+        title = (str(payload.get("title") or "").strip() or "Download")[:300]
+        filename = (str(payload.get("filename") or "file.pdf").strip() or "file.pdf")[:250]
+        row = db.query(StudentDownload).filter(
+            StudentDownload.student_id == sp.id, StudentDownload.kind == kind,
+            StudentDownload.ref_id == ref_id,
+            (StudentDownload.sub_kind == sub) if sub is not None else StudentDownload.sub_kind.is_(None)
+        ).first()
+        if row:
+            row.title = title
+            row.filename = filename
+            row.updated_at = datetime.now()
+        else:
+            db.add(StudentDownload(student_id=sp.id, kind=kind, ref_id=ref_id, sub_kind=sub,
+                                   title=title, filename=filename))
+        db.commit()
+        return {"ok": True}
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return {"ok": False}
+
+
+@router.get("/downloads")
+def student_downloads(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    from models import StudentDownload
+    sp = get_student_profile(current_user, db)
+    rows = (db.query(StudentDownload)
+            .filter(StudentDownload.student_id == sp.id)
+            .order_by(StudentDownload.updated_at.desc())
+            .limit(200).all())
+    out = []
+    for r in rows:
+        out.append({"id": r.id, "kind": r.kind, "ref_id": r.ref_id, "sub_kind": r.sub_kind or "",
+                    "title": r.title or "Download", "filename": r.filename or "file.pdf",
+                    "at": str(r.updated_at or r.created_at or "")[:19]})
+    return {"downloads": out}
+
+
+@router.delete("/downloads/{dl_id}")
+def student_download_delete(dl_id: int, db: Session = Depends(get_db),
+                            current_user=Depends(get_student)):
+    from models import StudentDownload
+    sp = get_student_profile(current_user, db)
+    r = db.query(StudentDownload).filter(StudentDownload.id == dl_id,
+                                         StudentDownload.student_id == sp.id).first()
+    if r:
+        db.delete(r)
+        db.commit()
+    return {"ok": True}
+
+
 # ===== STUDENT: DPP / TEST LIST (download + submit) =====
 def _my_submission(db, sp, parent_id):
     from models import Material

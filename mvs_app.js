@@ -3716,6 +3716,7 @@ function _tLoadPage(page){
 // ===== TEACHER STUDY MATERIAL =====
 let _matEntries=[], _matActiveSub='';
 async function downloadMaterial(role,id,name){
+  if(role==='student'){ try{ _trackDownload('material', id, '', name||'Material', name||'file.pdf'); }catch(e){} }
   // App ke WebView me app.mvsfoundation.in par download navigate karne se SPA (592KB HTML)
   // mil jaata tha -> corrupt. Saari files R2 (public: mvsdatabase.com) par hain, to WebView me
   // DIRECT R2 URL (external domain) se download karo -> app intercept nahi karta, valid file.
@@ -6667,7 +6668,7 @@ async function sDppGo(pid,action,kind,med){
     const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
     if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':(med==='both'?' — English + हिंदी':' — English')),fname);
-    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); toast('Downloaded.'); }
+    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), fname); }catch(e){} toast('Downloaded.'); }
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
     toast('The PDF could not be generated — the server is busy. Please try again in a minute.',true);
@@ -25011,7 +25012,9 @@ async function tcMatDl(lid,kind){
     if(!r.ok) throw new Error('nf');
     const bl=await r.blob();
     const a=document.createElement('a'); a.href=URL.createObjectURL(bl);
-    a.download=(kind==='dpp'?'DPP':'Class-Notes')+'.pdf'; a.click();
+    const _fn=(kind==='dpp'?'DPP':'Class-Notes')+'.pdf';
+    a.download=_fn; a.click();
+    try{ _trackDownload(kind==='dpp'?'lecture_dpp':'lecture_notes', lid, '', (kind==='dpp'?'Class DPP':'Class Notes'), _fn); }catch(e){}
     toast((kind==='dpp'?'DPP':'Class notes')+' download started.');
   }catch(e){ toast('File not available yet.'); }
 }
@@ -50448,6 +50451,85 @@ async function openAppVideos(section){
   }catch(e){ var b=document.getElementById('svid-body'); if(b) b.innerHTML='<div style="padding:28px;text-align:center;color:var(--danger)">Could not load. Please try again.</div>'; }
 }
 
+/* ---- STUDENT: Downloads history + share (app + portal) ---- */
+// Jo bhi download ho, history me track (best-effort). kind: material|lecture_notes|lecture_dpp|dpp
+function _trackDownload(kind, ref_id, sub, title, filename){
+  try{ if(ref_id==null) return; api('/api/student/downloads/track','POST',{kind:kind, ref_id:ref_id, sub_kind:sub||'', title:title||'Download', filename:filename||'file.pdf'}).catch(function(){}); }catch(e){}
+}
+function _dlUrlFor(d){
+  if(!d) return null;
+  if(d.kind==='material') return API+'/api/student/material/'+d.ref_id+'/download';
+  if(d.kind==='lecture_notes') return API+'/api/student/lecture/'+d.ref_id+'/file?kind=pdf';
+  if(d.kind==='lecture_dpp') return API+'/api/student/lecture/'+d.ref_id+'/file?kind=dpp';
+  if(d.kind==='dpp'){ var sk=String(d.sub_kind||'q').split('|'); var k=sk[0]||'q'; var med=sk[1]||''; return API+'/api/student/dpp-packs/'+d.ref_id+'/file?kind='+k+(med?('&med='+encodeURIComponent(med)):''); }
+  return null;
+}
+function _dlKindLabel(k){ return ({material:'Study material',lecture_notes:'Class notes',lecture_dpp:'DPP (class)',dpp:'DPP'})[k]||'File'; }
+function _sdlCss(){
+  if(document.getElementById('sdl-css')) return;
+  var s=document.createElement('style'); s.id='sdl-css'; s.textContent=[
+    '.sdl-list{display:flex;flex-direction:column;gap:11px}',
+    '.sdl-item{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:14px;background:var(--card);padding:12px 13px;min-width:0}',
+    '.sdl-ic{width:42px;height:42px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e2554e,#b91c1c);color:#fff;font-weight:800;font-size:.64rem}',
+    '.sdl-ic svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2}',
+    '.sdl-mid{flex:1;min-width:0}',
+    '.sdl-t{font-weight:800;font-size:.92rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.sdl-m{font-size:.72rem;color:var(--text-muted);margin-top:2px}',
+    '.sdl-acts{display:flex;gap:7px;flex:0 0 auto}',
+    '.sdl-b{width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}',
+    '.sdl-b svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}',
+    '.sdl-b.share{border-color:transparent;background:linear-gradient(135deg,#b8941f,#e7bf55);color:#2a2200}',
+    '.sdl-b.rm{color:#c0392b}'
+  ].join(''); document.head.appendChild(s);
+}
+function _sdlItemHtml(d){
+  return '<div class="sdl-item"><div class="sdl-ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>'
+    +'<div class="sdl-mid"><div class="sdl-t">'+esc(d.title||'Download')+'</div><div class="sdl-m">'+esc(_dlKindLabel(d.kind))+' · '+esc(d.at||'')+'</div></div>'
+    +'<div class="sdl-acts">'
+    +'<button class="sdl-b share" title="Share" onclick="dlShare('+d.id+')"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></button>'
+    +'<button class="sdl-b" title="Download again" onclick="dlRedownload('+d.id+')"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></button>'
+    +'<button class="sdl-b rm" title="Remove" onclick="dlRemove('+d.id+')"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>'
+    +'</div></div>';
+}
+async function openDownloads(){
+  showModal('Downloads','<div id="sdl-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
+  try{
+    var r=await api('/api/student/downloads');
+    var list=(r&&r.downloads)||[]; window._sDownloads=list;
+    var body=document.getElementById('sdl-body'); if(!body) return;
+    if(!list.length){ body.innerHTML='<div style="padding:42px 22px;text-align:center;color:var(--text-muted);line-height:1.6">Aapne abhi tak kuch download nahi kiya.<br>Jo bhi PDF (class notes, study material, DPP) download karoge woh yahan aa jayega — aur yahin se <b>share</b> bhi kar paoge.</div>'; return; }
+    _sdlCss();
+    body.innerHTML='<div class="sdl-list">'+list.map(_sdlItemHtml).join('')+'</div>';
+  }catch(e){ var b=document.getElementById('sdl-body'); if(b) b.innerHTML='<div style="padding:28px;text-align:center;color:var(--danger)">Could not load your downloads.</div>'; }
+}
+async function dlShare(id){
+  var d=(window._sDownloads||[]).find(function(x){return x.id===id;}); if(!d) return;
+  var url=_dlUrlFor(d); if(!url){ toast('Cannot share this item',true); return; }
+  toast('Preparing to share…');
+  try{
+    var bl=await _dlPdfBlob(url);
+    var file=new File([bl], d.filename||'file.pdf', {type:bl.type||'application/pdf'});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:d.title||'MVS Foundation', text:d.title||''});
+      return;
+    }
+    var u=URL.createObjectURL(bl); var a=document.createElement('a'); a.href=u; a.download=d.filename||'file.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},60000);
+    toast('Direct share yahan support nahi — file download ho gayi, use share kar do.');
+  }catch(e){ if(e&&e.name==='AbortError') return; toast('Could not prepare the file. Try again.',true); }
+}
+async function dlRedownload(id){
+  var d=(window._sDownloads||[]).find(function(x){return x.id===id;}); if(!d) return;
+  var url=_dlUrlFor(d); if(!url) return;
+  toast('Downloading…');
+  try{ var bl=await _dlPdfBlob(url); var u=URL.createObjectURL(bl); var a=document.createElement('a'); a.href=u; a.download=d.filename||'file.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},60000); toast('Downloaded.'); }
+  catch(e){ toast('Could not download. Try again.',true); }
+}
+async function dlRemove(id){
+  try{ await api('/api/student/downloads/'+id,'DELETE'); }catch(e){}
+  openDownloads();
+}
+
 /* ============================================================
    COMPLAINTS — Media: clipboard paste + voice (Phase 6)
    Reusable, composer-scoped. No global clipboard hijack.
@@ -52372,7 +52454,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     // App group (theme real; others coming soon)
     h+='<div class="s-glab">App</div><div class="s-box">'+
        '<div class="s-row" onclick="(window.toggleDark&&toggleDark());_sCloseSheet()"><div class="ri c-teal">'+svg('theme')+'</div><div class="rl">Dark / Light Theme</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
-       vidRow('tutorial','App Tutorial')+vidRow('live','Live Classes')+soonRow('download','Downloads')+'</div>';
+       vidRow('tutorial','App Tutorial')+vidRow('live','Live Classes')+
+       '<div class="s-row" onclick="(window.openDownloads&&openDownloads());_sCloseSheet()"><div class="ri '+colStyle('download')+'">'+svg('download')+'</div><div class="rl">Downloads</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+'</div>';
     h+='<div class="s-glab">Support MVS</div><div class="s-box">'+
        '<div class="s-row" onclick="_sGo(\'feedback\')"><div class="ri '+colStyle('rate')+'">'+svg('rate')+'</div><div class="rl">Rate the App</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
        '<div class="s-row" onclick="_sShare()"><div class="ri c-green">'+svg('share')+'</div><div class="rl">Share with Friends</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>';

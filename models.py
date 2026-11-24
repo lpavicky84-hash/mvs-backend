@@ -547,6 +547,23 @@ class DppPack(Base):
     created_at  = Column(DateTime, default=func.now())
 
 
+class StudentDownload(Base):
+    """Student ne app/portal se jo bhi PDF download kiya uski history — Downloads section
+    me dikhti hai (re-download + share). File dobara store nahi hoti; kind+ref_id se original
+    endpoint se wapas laayi jaati hai. (student, kind, ref_id, sub_kind) pe ek hi row (upsert)."""
+    __tablename__ = "student_downloads"
+
+    id          = Column(Integer, primary_key=True)
+    student_id  = Column(Integer, ForeignKey("student_profiles.id"), index=True)
+    kind        = Column(String(20))                 # material | lecture_notes | lecture_dpp | dpp
+    ref_id      = Column(Integer)                     # material/lecture/dpp id
+    sub_kind    = Column(String(16), nullable=True)   # dpp: q/s + medium, etc.
+    title       = Column(String(300))
+    filename    = Column(String(250))
+    created_at  = Column(DateTime, default=func.now(), index=True)
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now(), index=True)
+
+
 class AppVideo(Base):
     """Admin-managed video content (App Tutorial / Live Classes) — YouTube link.
     Thumbnail YouTube se auto (video_id se), title admin manual deta hai (fetch nahi hota).
