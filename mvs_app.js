@@ -228,7 +228,7 @@ async function _smartPdfPick(f,dzId,onDone){
     toast('Could not process this PDF. Please try another file.',true);
   }
 }
-const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check','mvs services':'bag'};
+const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','predicted report card':'trophy','predicted report':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check','mvs services':'bag'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -21374,7 +21374,7 @@ async function openEditStudent(sid,data){
          <input class="form-control" id="es-niosref" value="${esc(data.nios_ref||'')}" placeholder="e.g. B1126300356" style="flex:1">
          ${data.nios_ref?`<button type="button" class="btn btn-danger btn-sm" onclick="eraseStudentRef(${sid})" title="Remove this reference number from everywhere">Erase</button>`:''}
        </div>
-       ${data.nios_ref?`<small style="font-size:.68rem;opacity:.6">Erase removes the reference from the student's profile, result cards and every admin view at once.</small>`:''}
+       ${data.nios_ref?`<small style="font-size:.68rem;opacity:.6">Erase removes the reference from the student's profile, report cards and every admin view at once.</small>`:''}
      </div>
      <div id="es-status"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="es-btn" onclick="saveEditStudent(${sid})">Save</button>`);
@@ -21411,11 +21411,11 @@ async function saveEditStudent(sid){
   }catch(e){ document.getElementById('es-status').innerHTML=`<div class="alert alert-danger">${esc(e.message)}</div>`; btn.disabled=false; btn.textContent='Save'; }
 }
 /* Admin — student ka NIOS reference number poori tarah hatao (test/dummy refs).
-   student_profiles.nios_ref hi single source hai — profile, result cards aur
+   student_profiles.nios_ref hi single source hai — profile, report cards aur
    saare admin views wahi live padhte hain, isliye sab jagah se update ho jaata hai */
 async function eraseStudentRef(sid){
   const cur=val('es-niosref');
-  if(!confirm(`Reference number "${cur}" will be removed from this student everywhere (profile, result cards, admin views). Continue?`)) return;
+  if(!confirm(`Reference number "${cur}" will be removed from this student everywhere (profile, report cards, admin views). Continue?`)) return;
   try{
     await api('/api/admin/student/'+sid,'PATCH',{nios_ref_clear:true});
     const inp=document.getElementById('es-niosref'); if(inp) inp.value='';
@@ -24189,7 +24189,7 @@ function sPage(page,el){
   document.querySelectorAll('#student-app .page').forEach(p=>p.classList.remove('active'));
   document.getElementById('s-page-'+page).classList.add('active');
   if(el){ document.querySelectorAll('#student-app .nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active'); }
-  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',services:'MVS Services',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Result Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check',community:'Community',acalendar:'Academic Calendar'};
+  const titles={dashboard:'Home',timetable:'Time Table',materials:'Classes Material',services:'MVS Services',teachers:'Know Your Teacher',dpp:'DPP Submit',tests:'Tests',doubts:'Doubts',progress:'Progress',syllabus:'Syllabus Tracker',resultcard:'Predicted Report Card',notifications:'Notifications',profile:'My Profile',qbank:'Study Material',complaints:'Complaints',feedback:'Feedback & Ratings',homework:'Homework Check',community:'Community',acalendar:'Academic Calendar'};
   _setPage(titles[page]||page);
   document.getElementById('s-title').textContent=titles[page]||page;
   stopCountdown();
@@ -24785,6 +24785,9 @@ function dismissPrio(ev){
 }
 async function loadSDashboard(){
   _restoreSelBatch();
+  // Slow sections (Academic Calendar, Syllabus Tracker, Progress, Predicted Report Card) ko
+  // home/dashboard par hi IDLE me warm karo -> click karte hi khulein (app + portal dono).
+  try{ if(window._sPrefetchSections) window._sPrefetchSections(); }catch(e){}
   const el=document.getElementById('s-dashboard-content');
   try{
     let w={},prof={};
@@ -52468,6 +52471,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     // testimonials (admin ne ON kiye feedback) — New for you ke neeche premium auto-scroll
     apiGet('/api/student/testimonials').then(function(t){ _sRenderTesti((t&&t.testimonials)||[]); }).catch(function(){});
 
+    // PREFETCH (warm cache) — Academic Calendar, Syllabus Tracker, Progress, Predicted Report Card
+    // ke endpoints home par hi IDLE time me pehle se fetch kar lo. Isse jab student in tiles pe
+    // click kare to data pehle se api-cache me hota hai -> section TURANT khulta hai (spinner/wait
+    // nahi). Progress ke baaki (batch-board/performance) to home khud load karta hai.
+    _sPrefetchSections();
+
     // new for you — DEFAULT sirf AAJ ke naye material; upar calendar se kisi bhi din ka dekh sakte ho.
     apiGet('/api/student/materials-v2'+bq()).then(function(mats){ mats=mats||[];
       // _sMatNew (NEW/unseen materials) KHUD yahin compute karo — pehle ye main app ke dashboard
@@ -52653,6 +52662,19 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var d=new Date(v+'T00:00:00'); var lab=(v===_cToday())?'Today':(_cDayShort(d)+' '+d.getDate()+'/'+(d.getMonth()+1));
     renderClassesDay(v, lab);
   };
+
+  /* Slow sections ko IDLE me pehle se warm karo (api() GET cache me aa jaate hain). Ek session me
+     ek hi baar; home ke critical fetches ke BAAD chalta hai taaki unse compete na kare. Paths bilkul
+     wahi jo loaders use karte hain (warna cache-key match nahi hoga). */
+  function _sPrefetchSections(){
+    if(window._sPrefetchedAt && (Date.now()-window._sPrefetchedAt)<120000) return;  // 2 min me dobara nahi
+    window._sPrefetchedAt=Date.now();
+    var paths=['/api/syllabus/me','/api/syllabus/overview','/api/syllabus/predicted/mine','/api/student/academic-calendar'];
+    var run=function(){ paths.forEach(function(p,i){ setTimeout(function(){ try{ apiGet(p); }catch(e){} }, i*450); }); };
+    try{ if(window.requestIdleCallback){ window.requestIdleCallback(function(){ run(); }, {timeout:4000}); } else { setTimeout(run, 1800); } }
+    catch(e){ setTimeout(run, 1800); }
+  }
+  window._sPrefetchSections=_sPrefetchSections;   // portal (desktop) dashboard bhi isi se warm karta hai
 
   /* ===================== Testimonials (premium auto-scroll carousel) ===================== */
   function _sTestiInitials(nm){ nm=String(nm||'S').replace(/^(mr|mrs|ms|dr)\.?\s*/i,'').trim(); var p=nm.split(/\s+/); return ((p[0]||'')[0]||'S').toUpperCase()+((p[1]||'')[0]||'').toUpperCase(); }
