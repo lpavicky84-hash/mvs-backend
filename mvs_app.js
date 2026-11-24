@@ -19981,17 +19981,110 @@ function loadSCommunity(){
 }
 window._sCommOpen=function(gid){
   var el=document.getElementById('s-community-content'); if(!el) return; el.innerHTML='<div class="spinner"></div>';
+  _commCss(); _scmtCss();
   api('/api/student/community/groups/'+gid+'/posts').then(function(r){
     var g=r.group||{}; var posts=(r.posts||[]);
-    el.innerHTML='<div class="cmy-wrap"><button class="cmy-abtn" style="margin-bottom:12px" onclick="loadSCommunity()">‹ All Groups</button>'+
-      '<div class="cmy-card" style="display:flex;align-items:center;gap:12px"><div class="cmy-gav" style="margin:0;background:'+_ccolor(g.name)+'">'+esc((g.name||'G').slice(0,1).toUpperCase())+'</div><div class="cmy-gname">'+esc(g.name||'')+'</div></div>'+
-      '<div class="cmy-feed" id="s-cmy-feed">'+(posts.length?posts.map(_commMsgHtml).join(''):'<div class="cmy-empty">No messages yet.</div>')+'</div></div>';
-    _commHydrateImgs(el);
+    var av=(g.name||'G').slice(0,1).toUpperCase();
+    var head='<div class="scmt-head"><button class="scmt-back" onclick="loadSCommunity()"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>'
+      +'<div class="scmt-hav" style="background:'+_ccolor(g.name)+'">'+esc(av)+'</div>'
+      +'<div class="scmt-hmeta"><div class="scmt-hname">'+esc(g.name||'Group')+'</div><div class="scmt-hsub"><span class="scmt-dot"></span>Announcements</div></div></div>';
+    var bubbles='', lastDate='';
+    if(!posts.length){ bubbles='<div class="scmt-empty">No announcements yet.</div>'; }
+    else{
+      posts.forEach(function(p){
+        var dk=_scmtDateKey(p.at);
+        if(dk && dk!==lastDate){ bubbles+='<div class="scmt-datesep"><span>'+esc(dk)+'</span></div>'; lastDate=dk; }
+        bubbles+=_sCommBubble(p);
+      });
+    }
+    el.innerHTML='<div class="scmt-wrap">'+head+'<div class="scmt-body" id="s-cmy-feed">'+bubbles+'</div></div>';
+    _commLazyImgs(document.getElementById('s-cmy-feed'));   // images sirf visible hone par load (hang fix)
     var f=document.getElementById('s-cmy-feed'); if(f) f.scrollTop=f.scrollHeight;
     try{ refreshNotifBadge('student'); }catch(e){}
     try{ refreshCommunityBadge(); }catch(e){}
   }).catch(function(e){ el.innerHTML='<div class="cmy-empty">Could not open group.</div>'; });
 };
+function _scmtDateKey(at){ return String(at||'').split(',')[0].trim(); }
+function _scmtTime(at){ var p=String(at||'').split(','); return (p[1]||'').trim()||String(at||''); }
+function _sCommBubble(p){
+  var imgs=(p.attachments||[]).filter(function(a){return a.kind==='image';});
+  var files=(p.attachments||[]).filter(function(a){return a.kind!=='image';});
+  var imgH=imgs.length?'<div class="scmt-imgs'+(imgs.length>1?' multi':'')+'">'+imgs.map(function(a){return '<div class="scmt-img" data-climg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"><div class="scmt-imgld"><div class="spinner"></div></div></div>';}).join('')+'</div>':'';
+  var fileH=files.map(function(a){return '<div class="scmt-file" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')"><span class="scmt-fic">'+ic('folder')+'</span><span class="scmt-fnm">'+esc(a.name||'Attachment')+'</span></div>';}).join('');
+  var linkH=p.link?'<a class="scmt-link" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+'<span>'+esc(p.link)+'</span></a>':'';
+  var sender=p.sender_name?('<div class="scmt-sender">'+esc(p.sender_name)+'</div>'):'';
+  var pin=p.pinned?'<div class="scmt-pinbadge">'+ic('pin')+' Pinned</div>':'';
+  return '<div class="scmt-row"><div class="scmt-bubble'+(p.pinned?' pinned':'')+'">'+pin+sender
+    +(p.title?'<div class="scmt-title">'+esc(p.title)+'</div>':'')
+    +(p.body?'<div class="scmt-text">'+_linkify(p.body)+'</div>':'')
+    +imgH+fileH+linkH
+    +'<div class="scmt-time">'+esc(_scmtTime(p.at))+'</div></div></div>';
+}
+// Lazy image load — IntersectionObserver se sirf visible images fetch (ek saath saari images
+// fetch hone se phone hang ho jaata tha; ab scroll par aane par hi load hoti hain).
+function _commLazyImgs(root){
+  if(!root) return;
+  var els=root.querySelectorAll('[data-climg]');
+  var load=function(elm){
+    if(elm._done) return; elm._done=1;
+    var u=elm.getAttribute('data-climg'); if(!u) return;
+    try{ fetch(API+u,{headers:{Authorization:'Bearer '+TOKEN}}).then(function(r){return r.blob();}).then(function(bl){
+      var o=URL.createObjectURL(bl); elm.style.backgroundImage='url('+o+')'; elm.classList.add('loaded');
+      var ld=elm.querySelector('.scmt-imgld'); if(ld) ld.remove();
+    }).catch(function(){ var ld=elm.querySelector('.scmt-imgld'); if(ld) ld.remove(); }); }catch(e){}
+  };
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(ents){ ents.forEach(function(en){ if(en.isIntersecting){ load(en.target); io.unobserve(en.target); } }); }, {root:root, rootMargin:'250px'});
+    els.forEach(function(e){ io.observe(e); });
+  } else { els.forEach(load); }
+}
+function _scmtCss(){
+  if(document.getElementById('scmt-css')) return;
+  var s=document.createElement('style'); s.id='scmt-css'; s.textContent=[
+    '#student-app .scmt-wrap{display:flex;flex-direction:column;height:calc(100dvh - 118px);min-height:380px;margin:-4px -2px 0;border-radius:16px;overflow:hidden;border:1px solid var(--border);background:var(--card)}',
+    '#student-app .scmt-head{display:flex;align-items:center;gap:11px;padding:10px 12px;background:linear-gradient(135deg,#1e2a4a,#2563eb);color:#fff;flex:0 0 auto}',
+    '#student-app .scmt-back{width:34px;height:34px;flex:0 0 auto;border:none;background:rgba(255,255,255,.16);border-radius:10px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}',
+    '#student-app .scmt-back svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2.2}',
+    '#student-app .scmt-hav{width:40px;height:40px;flex:0 0 auto;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.05rem;box-shadow:0 2px 8px rgba(0,0,0,.25)}',
+    '#student-app .scmt-hmeta{min-width:0}',
+    '#student-app .scmt-hname{font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#student-app .scmt-hsub{font-size:.74rem;opacity:.85;display:flex;align-items:center;gap:5px}',
+    '#student-app .scmt-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 2px rgba(74,222,128,.3)}',
+    // chat background — warm doodle feel (light) / deep (dark)
+    '#student-app .scmt-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 12px 18px;background:#ece5da;background-image:radial-gradient(rgba(0,0,0,.04) 1px,transparent 1px);background-size:18px 18px}',
+    '#student-app .scmt-datesep{display:flex;justify-content:center;margin:10px 0 12px}',
+    '#student-app .scmt-datesep span{background:rgba(255,255,255,.9);color:#5a6270;font-size:.72rem;font-weight:700;padding:4px 12px;border-radius:999px;box-shadow:0 1px 2px rgba(0,0,0,.1)}',
+    '#student-app .scmt-row{display:flex;margin-bottom:10px}',
+    '#student-app .scmt-bubble{position:relative;max-width:86%;background:#fff;border-radius:4px 14px 14px 14px;padding:8px 11px 20px;box-shadow:0 1px 1.5px rgba(0,0,0,.14);word-break:break-word}',
+    '#student-app .scmt-bubble.pinned{box-shadow:0 0 0 1.5px #e6c07a,0 1px 2px rgba(0,0,0,.14)}',
+    '#student-app .scmt-bubble::before{content:"";position:absolute;left:-7px;top:0;width:0;height:0;border:7px solid transparent;border-top-color:#fff;border-right:0;border-left-width:8px;border-left-color:transparent}',
+    '#student-app .scmt-pinbadge{display:inline-flex;align-items:center;gap:4px;font-size:.66rem;font-weight:800;color:#8a5a12;background:rgba(230,192,122,.25);border-radius:6px;padding:2px 7px;margin-bottom:5px}',
+    '#student-app .scmt-pinbadge svg{width:11px;height:11px;stroke:#8a5a12;fill:none;stroke-width:2}',
+    '#student-app .scmt-sender{font-size:.8rem;font-weight:800;color:#1e7a4d;margin-bottom:3px}',
+    '#student-app .scmt-title{font-weight:800;font-size:.95rem;color:#14213d;margin-bottom:3px;line-height:1.35}',
+    '#student-app .scmt-text{font-size:.9rem;line-height:1.5;color:#2b3240;white-space:pre-wrap}',
+    '#student-app .scmt-text a{color:#2563eb;word-break:break-all}',
+    '#student-app .scmt-imgs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}',
+    '#student-app .scmt-img{width:100%;max-width:230px;aspect-ratio:4/3;border-radius:10px;background:#d9d2c7 center/cover no-repeat;cursor:pointer;position:relative;overflow:hidden}',
+    '#student-app .scmt-imgs.multi .scmt-img{width:calc(50% - 2px);max-width:none}',
+    '#student-app .scmt-imgld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}',
+    '#student-app .scmt-file{display:flex;align-items:center;gap:8px;margin-top:6px;background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.18);border-radius:10px;padding:8px 10px;cursor:pointer}',
+    '#student-app .scmt-file .scmt-fic svg{width:17px;height:17px;stroke:#2563eb;fill:none;stroke-width:2}',
+    '#student-app .scmt-fnm{font-size:.82rem;font-weight:700;color:#14213d;word-break:break-all}',
+    '#student-app .scmt-link{display:flex;align-items:center;gap:7px;margin-top:6px;color:#2563eb;font-size:.82rem;font-weight:700;text-decoration:none;word-break:break-all}',
+    '#student-app .scmt-link svg{width:15px;height:15px;stroke:#2563eb;fill:none;stroke-width:2;flex:0 0 auto}',
+    '#student-app .scmt-time{position:absolute;right:10px;bottom:6px;font-size:.64rem;color:#9aa0ab;font-weight:600}',
+    '#student-app .scmt-empty{text-align:center;color:#8a8578;padding:40px 16px;font-size:.9rem}',
+    // dark theme
+    'body.dark #student-app .scmt-body{background:#0b141a;background-image:radial-gradient(rgba(255,255,255,.03) 1px,transparent 1px)}',
+    'body.dark #student-app .scmt-datesep span{background:#1f2c33;color:#8aa0ad}',
+    'body.dark #student-app .scmt-bubble{background:#1f2c33}',
+    'body.dark #student-app .scmt-bubble::before{border-top-color:#1f2c33}',
+    'body.dark #student-app .scmt-title{color:#e9edf1}body.dark #student-app .scmt-text{color:#cdd5dd}',
+    'body.dark #student-app .scmt-sender{color:#53d08a}',
+    'body.dark #student-app .scmt-fnm{color:#e9edf1}'
+  ].join(''); document.head.appendChild(s);
+}
 // ---- Popup on portal open ----
 function communityPopupOnOpen(){
   try{
@@ -50270,18 +50363,28 @@ function _renderAFeedback(a, l){
       +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
       +'<div class="sup-meta">'+esc(f.created_at)+'</div>'
       // Testimonial toggle: sirf review wale feedback app home pe testimonial ban sakte hain.
-      +(f.review?('<div style="margin-top:9px"><button class="btn btn-sm af-testi'+(f.testimonial?' on':'')+'" onclick="afTestimonial('+f.id+','+(f.testimonial?'false':'true')+')">'+(typeof ic==='function'?ic('star'):'★')+' '+(f.testimonial?'Showing on app home':'Show on app home')+'</button></div>'):'')
+      +(f.review?('<div style="margin-top:9px"><button class="btn btn-sm af-testi'+(f.testimonial?' on':'')+'" onclick="afTestimonial(this,'+f.id+','+(f.testimonial?'false':'true')+')">'+(typeof ic==='function'?ic('star'):'★')+' '+(f.testimonial?'Showing on app home':'Show on app home')+'</button></div>'):'')
       +'</div>'
       +'<button class="btn btn-ghost btn-sm af-del" onclick="afDelete('+f.id+')">Delete</button></div></div>';
   }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
   var note='<div class="af-testi-note">'+(typeof ic==='function'?ic('star'):'★')+' Turn on “Show on app home” for the reviews you want students to see as testimonials on their home screen. Only reviews (not star-only) can be shown.</div>';
   el.innerHTML=cards+distBlock+filt+note+'<div class="ac-list">'+rows+'</div>';
 }
-async function afTestimonial(fid, on){
+async function afTestimonial(btn, fid, on){
+  // IN-PLACE toggle — poora feedback section refresh NAHI hota (pehle loadAFeedback() se list
+  // dobara load hoti thi -> scroll upar chala jaata tha). Ab sirf isi button ko update karte hain.
+  if(btn){ btn.disabled=true; btn.style.opacity='.6'; }
   try{ await api('/api/admin/feedback/'+fid+'/testimonial','POST',{on:!!on});
+    if(btn){
+      btn.classList.toggle('on', !!on);
+      var _st=(typeof ic==='function'?ic('star'):'★');
+      btn.innerHTML=_st+' '+(on?'Showing on app home':'Show on app home');
+      btn.setAttribute('onclick','afTestimonial(this,'+fid+','+(on?'false':'true')+')');
+      btn.disabled=false; btn.style.opacity='';
+    }
     toast(on?'Added to app home testimonials.':'Removed from app home testimonials.');
-    _apiForget('feedback'); loadAFeedback();
-  }catch(e){ toast((e&&e.message)||'Could not update',true); }
+    _apiForget('feedback');   // cache clear (agli baar fresh), par abhi list reload nahi
+  }catch(e){ if(btn){ btn.disabled=false; btn.style.opacity=''; } toast((e&&e.message)||'Could not update',true); }
 }
 function afDelete(fid){
   showModal('Delete this feedback?','<div style="padding:6px 2px;color:var(--text-muted)">This action cannot be undone. The review will be removed and excluded from the average rating.</div>',
@@ -52249,7 +52352,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-new-empty{padding:16px 14px;text-align:center;color:var(--text-muted);font-size:12.5px;background:var(--card);border:1px dashed var(--border);border-radius:14px;line-height:1.5}'+
   /* ---- Testimonials carousel (premium, auto-scroll) ---- */
   '#student-app .s-testi-badge{font-size:10px;font-weight:800;color:#8a6d10;background:linear-gradient(135deg,rgba(231,191,85,.3),rgba(184,148,31,.14));border:1px solid rgba(184,148,31,.3);border-radius:999px;padding:4px 10px;letter-spacing:.03em}'+
-  '#student-app .s-testi{display:flex;gap:13px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px}'+
+  '#student-app .s-testi{display:flex;gap:13px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;overscroll-behavior-x:contain}'+
   '#student-app .s-testi::-webkit-scrollbar{display:none}'+
   '#student-app .s-tcard{position:relative;scroll-snap-align:start;flex:0 0 auto;width:min(86vw,330px);box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:30px 17px 16px;box-shadow:0 12px 30px -16px rgba(20,33,61,.4);overflow:hidden}'+
   '#student-app .s-tcard::before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:linear-gradient(90deg,#b8941f,#e7bf55,#b8941f)}'+
@@ -52986,11 +53089,14 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     box.innerHTML=list.map(function(t){
       var rt=Math.max(0,Math.min(5,parseInt(t.rating,10)||0));
       var stars='<span class="on">'+'★'.repeat(rt)+'</span><span class="off">'+'★'.repeat(5-rt)+'</span>';
+      var avId='tcav_'+t.id;
       return '<div class="s-tcard"><div class="s-tc-q">“</div><div class="s-tc-stars">'+stars+'</div>'
         +'<div class="s-tc-text">'+esc(String(t.review||'').trim())+'</div>'
-        +'<div class="s-tc-who"><div class="s-tc-av">'+esc(_sTestiInitials(t.name))+'</div><div class="s-tc-meta"><div class="s-tc-nm">'+esc(t.name||'Student')+'</div><div class="s-tc-vf"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Verified Student</div></div></div></div>';
+        +'<div class="s-tc-who"><div class="s-tc-av" id="'+avId+'">'+esc(_sTestiInitials(t.name))+'</div><div class="s-tc-meta"><div class="s-tc-nm">'+esc(t.name||'Student')+'</div><div class="s-tc-vf"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Verified Student</div></div></div></div>';
     }).join('');
     sec.style.display='';
+    // Student ne photo lagayi ho to avatar me wahi dikhao (auth-fetch, initials fallback)
+    try{ if(typeof window._loadPhotoInto==='function'){ list.forEach(function(t){ if(t.has_photo) window._loadPhotoInto('tcav_'+t.id, '/api/student/testimonial-photo/'+t.id); }); } }catch(e){}
     _sTestiDots();
     _sTestiAuto();
   }
@@ -53002,24 +53108,25 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function _sTestiAuto(){
     if(window._sTestiTimer){ clearInterval(window._sTestiTimer); window._sTestiTimer=null; }
     var box=document.getElementById('s-testi'); if(!box) return;
-    // user touch/scroll kare to thodi der auto-scroll pause
+    // user TAP/touch/scroll/drag kare -> auto-scroll turant ruk jaaye (8s), manual scroll free rahe
     if(!box._pauseHooked){ box._pauseHooked=true;
-      ['touchstart','pointerdown','wheel'].forEach(function(ev){ box.addEventListener(ev, function(){ window._sTestiPauseUntil=Date.now()+6000; }, {passive:true}); });
+      var pause=function(){ window._sTestiPauseUntil=Date.now()+8000; };
+      ['touchstart','pointerdown','mousedown','wheel','scroll'].forEach(function(ev){ box.addEventListener(ev, pause, {passive:true}); });
     }
     window._sTestiTimer=setInterval(function(){
       var b=document.getElementById('s-testi'); var app=document.getElementById('student-app');
-      if(!b || !app || !app.classList.contains('s-on-home')){ return; }   // sirf home pe chale
-      if(window._sTestiPauseUntil && Date.now()<window._sTestiPauseUntil) return;
+      if(!b || !app || !app.classList.contains('s-on-home')) return;   // sirf home pe
+      if(document.hidden) return;
+      if(window._sTestiPauseUntil && Date.now()<window._sTestiPauseUntil) return;  // tap/scroll ke baad pause
       var cards=b.querySelectorAll('.s-tcard'); if(cards.length<=1) return;
       var max=b.scrollWidth-b.clientWidth;
       if(b.scrollLeft >= max-6){ b.scrollTo({left:0, behavior:'smooth'}); }
       else{
-        // agle card tak scroll
         var cur=b.scrollLeft, next=cur+10;
         for(var i=0;i<cards.length;i++){ if(cards[i].offsetLeft>cur+6){ next=cards[i].offsetLeft-14; break; } }
         b.scrollTo({left:next, behavior:'smooth'});
       }
-    }, 3400);
+    }, 4200);
   }
 
   /* ===================== "New for you" — aaj default + kisi bhi din calendar se ===================== */

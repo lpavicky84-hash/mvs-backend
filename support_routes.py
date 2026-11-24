@@ -431,8 +431,24 @@ def student_testimonials(db: Session = Depends(get_db), me=Depends(get_student))
         sp = db.query(StudentProfile).filter(StudentProfile.id == f.student_id).first()
         u = db.query(User).filter(User.id == sp.user_id).first() if sp else None
         out.append({"id": f.id, "rating": f.rating, "review": (f.review or "").strip(),
-                    "name": (u.name if u else "Student")})
+                    "name": (u.name if u else "Student"),
+                    "has_photo": bool(sp and getattr(sp, "photo_b64", None))})
     return {"testimonials": out}
+
+
+@router.get("/api/student/testimonial-photo/{fid}")
+def student_testimonial_photo(fid: int, db: Session = Depends(get_db), _=Depends(get_student)):
+    """Testimonial likhne wale student ki photo — sirf jab wo feedback testimonial (ON) ho.
+    Isse doosre students ki photo randomly expose nahi hoti."""
+    f = db.query(SM.Feedback).filter(
+        SM.Feedback.id == fid, SM.Feedback.status == "active",
+        SM.Feedback.show_as_testimonial == True).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Not found")
+    sp = db.query(StudentProfile).filter(StudentProfile.id == f.student_id).first()
+    if not sp or not getattr(sp, "photo_b64", None):
+        raise HTTPException(status_code=404, detail="No photo")
+    return __import__("r2_storage").photo_response(sp.photo_b64)
 
 
 # ===========================================================================
