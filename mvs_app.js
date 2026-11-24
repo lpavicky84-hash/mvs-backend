@@ -15264,7 +15264,7 @@ async function openUserSessions(uid){
 // Master list of admin section titles (page key -> title). SINGLE SOURCE OF TRUTH:
 // koi bhi naya section yahan add karo -> nav title bhi milega AUR admin-user access
 // dropdown (ADMIN_SECTIONS) mein apne aap aa jaayega (neeche derive hota hai).
-const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice',services:'MVS Services',acalendar:'Academic Calendar'};
+const ADMIN_PAGE_TITLES={dashboard:'Dashboard',chatmgr:'Chat Manager',community:'Community',approvals:'Approvals',teachers:'Teachers',tranks:'Teacher Ranking',vtasks:'Task Manager',ytasks:'YouTuber Tasks',urgent:'Urgent Videos',students:'Students',admins:'Admin Users',subjects:'Subjects',syllabus:'Syllabus Manager',timetable:'Time Table',counts:'Student Count',live:'Live Users',compliance:'Class Compliance',material:'Classes Material',qbank:'Study Material',tests:'Tests Tracker',dpptracker:'DPP Tracker',batches:'Batches',attendance:'Teacher Attendance',payouts:'Payouts',prodteam:'Production Team',prodtrack:'Live Tracker',prodmon:'Production Overview',prodboard:'Production Board',upsched:'Upload Schedule',translation:'Translation Center',categories:'Teacher Categories',matcheck:'Material Checker',complaints:'Complaints & Resolution',feedback:'Feedback & Ratings',doubts:'Doubts',reports:'Teacher Reports',requests:'Student Requests',notify:'Send Notice',services:'MVS Services',acalendar:'Academic Calendar',appcontent:'App Content'};
 // Dynamic admin pages: inka page-div STATIC HTML me nahi hota — openAdmin() ke init me banta hai.
 // page-key -> uska init function (jo a-page-<key> div banata hai). aPage() navigate se PEHLE isse
 // ensure karta hai ki div zaroor exist kare. (Teacher/Student ke notification-target pages — timetable,
@@ -15318,6 +15318,7 @@ function _aLoadPage(page){
   else if(page==='matcheck') loadAMatCheck();
   else if(page==='complaints') loadAComplaints();
   else if(page==='feedback') loadAFeedback();
+  else if(page==='appcontent') loadAAppContent();
   else if(page==='prodmon') loadAProdMonitor();
   else if(page==='prodtrack') loadAProdTracker();
   else if(page==='prodboard') loadAProdBoard();
@@ -50285,6 +50286,169 @@ async function afDoDelete(fid){
 }
 
 /* ============================================================
+   APP CONTENT — App Tutorial / Live Classes (YouTube videos)
+   Admin link + title deta hai; thumbnail YouTube se auto (title fetch nahi hota).
+   ============================================================ */
+// YouTube video id — backend _yt_id ka mirror (watch/youtu.be/shorts/live/embed/bare id).
+function _ytVidId(url){
+  var u=String(url||'').trim(); if(!u) return null;
+  var m=u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^&]*&)*v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/);
+  if(m) return m[1];
+  if(/^[A-Za-z0-9_-]{11}$/.test(u)) return u;
+  return null;
+}
+function _ytThumb(vid){ return vid?('https://i.ytimg.com/vi/'+vid+'/hqdefault.jpg'):''; }
+var _ACV_SEC='tutorial';
+function _acvCss(){
+  if(document.getElementById('acv-css')) return;
+  var s=document.createElement('style'); s.id='acv-css'; s.textContent=[
+    '.acv-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}',
+    '.acv-tab{border:1.5px solid var(--border);background:var(--card);color:var(--text-muted);border-radius:22px;padding:9px 20px;font-weight:800;font-size:.88rem;cursor:pointer;font-family:inherit}',
+    '.acv-tab.on{background:linear-gradient(135deg,#b8941f,#e7bf55);border-color:transparent;color:#2a2200}',
+    '.acv-form{border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;margin-bottom:18px;display:grid;gap:12px}',
+    '.acv-form label{font-weight:800;font-size:.78rem;color:var(--text);display:block;margin-bottom:5px}',
+    '.acv-in{width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2,#faf9f5);color:var(--text);font-size:.92rem;font-family:inherit;outline:none}',
+    '.acv-in:focus{border-color:#b8941f}',
+    '.acv-prevwrap{display:flex;gap:13px;align-items:center;flex-wrap:wrap}',
+    '.acv-prev{width:160px;aspect-ratio:16/9;border-radius:12px;background:#0f1722 center/cover no-repeat;border:1px solid var(--border);flex:0 0 auto;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:.72rem;text-align:center}',
+    '.acv-prev .pl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}',
+    '.acv-prev .pl svg{width:40px;height:40px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}',
+    '.acv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px}',
+    '.acv-card{border:1px solid var(--border);border-radius:16px;background:var(--card);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 6px 16px -10px rgba(18,20,45,.3)}',
+    '.acv-thumb{width:100%;aspect-ratio:16/9;background:#0f1722 center/cover no-repeat;position:relative}',
+    '.acv-thumb .pl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}',
+    '.acv-thumb .pl svg{width:46px;height:46px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}',
+    '.acv-off{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);color:#fff;font-size:.64rem;font-weight:800;padding:3px 9px;border-radius:999px}',
+    '.acv-cbody{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1}',
+    '.acv-ctitle{font-weight:800;font-size:.95rem;color:var(--text);line-height:1.35}',
+    '.acv-cmeta{font-size:.72rem;color:var(--text-muted)}',
+    '.acv-cacts{display:flex;gap:8px;margin-top:auto;flex-wrap:wrap}',
+    '.acv-empty{padding:34px 18px;text-align:center;color:var(--text-muted);border:1px dashed var(--border);border-radius:14px}'
+  ].join(''); document.head.appendChild(s);
+}
+function loadAAppContent(){
+  var el=document.getElementById('a-appcontent-content'); if(!el) return;
+  _acvCss();
+  el.innerHTML='<div class="acv-tabs">'
+    +'<button class="acv-tab'+(_ACV_SEC==='tutorial'?' on':'')+'" onclick="acvTab(\'tutorial\')">'+ic('tutorial')+' App Tutorial</button>'
+    +'<button class="acv-tab'+(_ACV_SEC==='live'?' on':'')+'" onclick="acvTab(\'live\')">'+ic('play')+' Live Classes</button>'
+    +'</div><div id="acv-body"><div class="spinner"></div></div>';
+  _acvRender();
+}
+function acvTab(sec){ _ACV_SEC=sec; loadAAppContent(); }
+function acvPrev(){
+  var v=_ytVidId(val('acv-url')); var p=document.getElementById('acv-preview'); if(!p) return;
+  if(v){ p.style.backgroundImage='url('+_ytThumb(v)+')'; p.innerHTML='<span class="pl"><svg viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.45)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></span>'; }
+  else { p.style.backgroundImage=''; p.innerHTML=(val('acv-url')?'Invalid YouTube link':'Thumbnail preview'); }
+}
+function _acvRender(){
+  var secName=(_ACV_SEC==='live')?'Live Classes':'App Tutorial';
+  var body=document.getElementById('acv-body'); if(body) body.innerHTML='<div class="spinner"></div>';
+  api('/api/admin/app-videos?section='+_ACV_SEC).catch(function(){return {videos:[]};}).then(function(r){
+    var list=(r&&r.videos)||[];
+    var form='<div class="acv-form"><div style="font-weight:800;font-size:1rem">Add a '+esc(secName)+' video</div>'
+      +'<div><label>Title (students yahi dekhenge)</label><input class="acv-in" id="acv-title" maxlength="300" placeholder="e.g. How to attempt a test on the app"></div>'
+      +'<div><label>YouTube link</label><input class="acv-in" id="acv-url" oninput="acvPrev()" placeholder="https://youtu.be/... or https://www.youtube.com/watch?v=..."></div>'
+      +'<div class="acv-prevwrap"><div class="acv-prev" id="acv-preview">Thumbnail preview</div>'
+      +'<div style="font-size:.78rem;color:var(--text-muted);max-width:320px;line-height:1.5">Thumbnail YouTube se apne-aap aa jaayega. Sirf title aapka likha hua dikhega — link valid hona chahiye.</div></div>'
+      +'<div><button class="btn btn-primary" id="acv-add" onclick="acvAdd()">'+ic('upload')+' Add video</button></div></div>';
+    var cards=list.length?('<div class="acv-grid">'+list.map(_acvCardHtml).join('')+'</div>')
+      :'<div class="acv-empty">No '+esc(secName)+' videos yet. Add one above — students ko tab tak “SOON” dikhega.</div>';
+    var body2=document.getElementById('acv-body'); if(body2) body2.innerHTML=form+'<div style="font-weight:800;margin:16px 0 10px">Published ('+list.length+')</div>'+cards;
+  });
+}
+function _acvCardHtml(v){
+  var thumb=v.thumb||_ytThumb(v.video_id);
+  return '<div class="acv-card"><div class="acv-thumb" style="background-image:url('+esc(thumb)+')">'
+    +(v.active?'':'<span class="acv-off">Hidden</span>')
+    +'<span class="pl"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.4)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></span></div>'
+    +'<div class="acv-cbody"><div class="acv-ctitle">'+esc(v.title||'')+'</div>'
+    +'<div class="acv-cmeta">'+esc(v.created_at||'')+'</div>'
+    +'<div class="acv-cacts">'
+    +'<button class="btn btn-ghost btn-sm" onclick="window.open(\''+esc(v.youtube_url)+'\',\'_blank\')">'+ic('eye')+' Open</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="acvEdit('+v.id+')">'+ic('edit')+' Edit</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="acvToggle('+v.id+','+(v.active?'false':'true')+')">'+(v.active?'Hide':'Show')+'</button>'
+    +'<button class="btn btn-danger btn-sm" onclick="acvDelete('+v.id+')">'+ic('trash')+'</button>'
+    +'</div></div></div>';
+}
+async function acvAdd(){
+  var title=(val('acv-title')||'').trim(), url=(val('acv-url')||'').trim();
+  if(!title){ toast('Title likho',true); return; }
+  if(!_ytVidId(url)){ toast('Valid YouTube link daalo',true); return; }
+  var btn=document.getElementById('acv-add'); if(btn){ btn.disabled=true; btn.textContent='Adding...'; }
+  try{ await api('/api/admin/app-videos','POST',{section:_ACV_SEC,title:title,youtube_url:url});
+    toast('Video added — students ko ab NEW blink dikhega.'); _acvRender();
+  }catch(e){ toast((e&&e.message)||'Could not add',true); if(btn){ btn.disabled=false; btn.textContent='Add video'; } }
+}
+function acvEdit(id){
+  var list=[]; try{ list=(window._acvLast||[]); }catch(e){}
+  api('/api/admin/app-videos?section='+_ACV_SEC).then(function(r){
+    var v=((r&&r.videos)||[]).filter(function(x){return x.id===id;})[0]; if(!v){ toast('Not found',true); return; }
+    showModal('Edit video',
+      '<div style="display:grid;gap:12px"><div><label style="font-weight:800;font-size:.78rem">Title</label><input class="form-control" id="acve-title" maxlength="300" value="'+esc(v.title||'')+'"></div>'
+      +'<div><label style="font-weight:800;font-size:.78rem">YouTube link</label><input class="form-control" id="acve-url" value="'+esc(v.youtube_url||'')+'"></div></div>',
+      '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="acvSaveEdit('+id+')">Save</button>');
+  });
+}
+async function acvSaveEdit(id){
+  var title=(val('acve-title')||'').trim(), url=(val('acve-url')||'').trim();
+  if(!title){ toast('Title khaali nahi',true); return; }
+  if(!_ytVidId(url)){ toast('Valid YouTube link daalo',true); return; }
+  try{ await api('/api/admin/app-videos/'+id,'PATCH',{title:title,youtube_url:url}); closeModal(); toast('Updated'); _acvRender(); }
+  catch(e){ toast((e&&e.message)||'Could not update',true); }
+}
+async function acvToggle(id,on){
+  try{ await api('/api/admin/app-videos/'+id,'PATCH',{active:!!on}); toast(on?'Now visible to students':'Hidden from students'); _acvRender(); }
+  catch(e){ toast((e&&e.message)||'Failed',true); }
+}
+function acvDelete(id){
+  showModal('Delete this video?','<div style="padding:6px 2px;color:var(--text-muted)">Students ko ye video dikhna band ho jayega. Ye undo nahi hoga.</div>',
+    '<button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-danger" onclick="acvDoDelete('+id+')">Delete</button>');
+}
+async function acvDoDelete(id){
+  try{ await api('/api/admin/app-videos/'+id,'DELETE'); closeModal(); toast('Deleted'); _acvRender(); }
+  catch(e){ toast((e&&e.message)||'Could not delete',true); }
+}
+
+/* ---- STUDENT: App Tutorial / Live Classes video viewer (app + portal) ---- */
+function _appVidSeenLoad(){ try{ var v=JSON.parse(localStorage.getItem('mvs_appvid_seen')||'null'); return new Set((v&&Array.isArray(v.ids))?v.ids:[]); }catch(e){ return new Set(); } }
+function _appVidSeenSave(set){ try{ localStorage.setItem('mvs_appvid_seen', JSON.stringify({ids:[].slice.call(set).slice(-3000)})); }catch(e){} }
+function _appVidMarkSeen(videos){ var s=_appVidSeenLoad(); (videos||[]).forEach(function(v){ if(v&&v.id!=null) s.add(v.id); }); _appVidSeenSave(s); }
+function _appVidUnseen(videos){ var s=_appVidSeenLoad(); var n=0; (videos||[]).forEach(function(v){ if(v&&v.id!=null&&!s.has(v.id)) n++; }); return n; }
+function _svidCss(){
+  if(document.getElementById('svid-css')) return;
+  var s=document.createElement('style'); s.id='svid-css'; s.textContent=[
+    '.svid-list{display:flex;flex-direction:column;gap:14px}',
+    '.svid-card{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card);cursor:pointer;box-shadow:0 6px 16px -10px rgba(18,20,45,.3);transition:transform .12s}',
+    '.svid-card:active{transform:scale(.98)}',
+    '.svid-thumb{width:100%;aspect-ratio:16/9;background:#0f1722 center/cover no-repeat;position:relative}',
+    '.svid-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}',
+    '.svid-play svg{width:52px;height:52px;filter:drop-shadow(0 2px 10px rgba(0,0,0,.6))}',
+    '.svid-t{padding:12px 14px;font-weight:800;font-size:.95rem;color:var(--text);line-height:1.4}'
+  ].join(''); document.head.appendChild(s);
+}
+async function openAppVideos(section){
+  section=(section==='live')?'live':'tutorial';
+  var title=(section==='live')?'Live Classes':'App Tutorial';
+  showModal(title,'<div id="svid-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
+  try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
+  try{
+    var r=await api('/api/student/app-videos?section='+section);
+    var list=(r&&r.videos)||[];
+    var body=document.getElementById('svid-body'); if(!body) return;
+    if(!list.length){ body.innerHTML='<div style="padding:40px 20px;text-align:center;color:var(--text-muted)">Coming soon — content will appear here.</div>'; return; }
+    _svidCss();
+    body.innerHTML='<div class="svid-list">'+list.map(function(v){
+      var thumb=v.thumb||('https://i.ytimg.com/vi/'+(v.video_id||'')+'/hqdefault.jpg');
+      return '<div class="svid-card" onclick="window.open(\''+esc(v.youtube_url)+'\',\'_blank\')"><div class="svid-thumb" style="background-image:url('+esc(thumb)+')"><span class="svid-play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.45)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></span></div><div class="svid-t">'+esc(v.title||'')+'</div></div>';
+    }).join('')+'</div>';
+    _appVidMarkSeen(list);                                  // dekh liya -> NEW clear
+    try{ window._sVidCache=window._sVidCache||{}; window._sVidCache[section]=list; }catch(e){}
+    try{ if(window._sRefreshVidRows) window._sRefreshVidRows(); }catch(e){}
+  }catch(e){ var b=document.getElementById('svid-body'); if(b) b.innerHTML='<div style="padding:28px;text-align:center;color:var(--danger)">Could not load. Please try again.</div>'; }
+}
+
+/* ============================================================
    COMPLAINTS — Media: clipboard paste + voice (Phase 6)
    Reusable, composer-scoped. No global clipboard hijack.
    ============================================================ */
@@ -52124,6 +52288,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-row .rc{width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto}'+
   '#student-app .s-row .rtag{font-size:9px;font-weight:800;color:#fff;background:#3f86cc;padding:2px 7px;border-radius:7px}'+
   '#student-app .s-row .rtag.soon{background:#aab4c2}'+
+  '#student-app .s-row .rtag.newblink{background:#e2554e;animation:srownew 1s infinite}'+
+  '@keyframes srownew{0%,100%{opacity:1}50%{opacity:.35}}'+
   '#student-app .s-row.lg .ri{background:rgba(226,85,85,.16)}#student-app .s-row.lg .ri svg{stroke:#e25555}#student-app .s-row.lg .rl{color:#e25555}'+
   '#student-app .s-soc{display:flex;justify-content:center;gap:13px;margin:18px 0 6px}'+
   '#student-app .s-soc a{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;box-shadow:0 5px 14px rgba(0,0,0,.08)}'+
@@ -52206,7 +52372,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     // App group (theme real; others coming soon)
     h+='<div class="s-glab">App</div><div class="s-box">'+
        '<div class="s-row" onclick="(window.toggleDark&&toggleDark());_sCloseSheet()"><div class="ri c-teal">'+svg('theme')+'</div><div class="rl">Dark / Light Theme</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
-       soonRow('tutorial','App Tutorial')+soonRow('live','Live Classes')+soonRow('download','Downloads')+'</div>';
+       vidRow('tutorial','App Tutorial')+vidRow('live','Live Classes')+soonRow('download','Downloads')+'</div>';
     h+='<div class="s-glab">Support MVS</div><div class="s-box">'+
        '<div class="s-row" onclick="_sGo(\'feedback\')"><div class="ri '+colStyle('rate')+'">'+svg('rate')+'</div><div class="rl">Rate the App</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
        '<div class="s-row" onclick="_sShare()"><div class="ri c-green">'+svg('share')+'</div><div class="rl">Share with Friends</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>';
@@ -52273,6 +52439,16 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     try{ window.api('/api/admin/social-links','POST',payload).then(function(){ fin(true); }).catch(function(){ fin(false); }); }catch(e){ fin(false); }
   };
   function soonRow(ic,lab){ return '<div class="s-row" style="opacity:.7"><div class="ri '+colStyle(ic)+'">'+svg(ic)+'</div><div class="rl">'+esc(lab)+'</div><span class="rtag soon">SOON</span><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'; }
+  // App Tutorial / Live Classes row: video na ho to SOON; ho to active + (unseen ho to) NEW blink.
+  function vidRow(section,lab){
+    var cache=null; try{ cache=(window._sVidCache||{})[section]; }catch(e){}
+    if(!cache || !cache.length) return soonRow(section, lab);
+    var unseen=0; try{ unseen=(typeof window._appVidUnseen==='function')?window._appVidUnseen(cache):0; }catch(e){}
+    var badge=unseen>0?'<span class="rtag newblink">NEW</span>':'';
+    return '<div class="s-row" onclick="(window.openAppVideos&&openAppVideos(\''+section+'\'));_sCloseSheet()"><div class="ri '+colStyle(section)+'">'+svg(section)+'</div><div class="rl">'+esc(lab)+'</div>'+badge+'<svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>';
+  }
+  // Sheet khula ho to App-group rows dobara banao (video dekhne ke baad NEW hat jaaye).
+  window._sRefreshVidRows=function(){ try{ var app=document.getElementById('student-app'); var sheet=app&&app.querySelector('.s-sheet'); if(sheet && sheet.classList.contains('show')) openSheet(); }catch(e){} };
   function closeSheet(){ var s=document.querySelector('#student-app .s-sheet'); if(s) s.classList.remove('show'); }
   function hash(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return h; }
   function colStyle(id){ var map={mybatches:'c-blue',homework:'c-green',notifications:'c-gold',community:'c-purple',complaints:'c-red',feedback:'c-orange',profile:'c-navy',theme:'c-teal',tutorial:'c-orange',live:'c-red',download:'c-purple',rate:'c-gold',share:'c-green'}; return map[id]||'c-navy'; }
@@ -52470,6 +52646,12 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
     // testimonials (admin ne ON kiye feedback) — New for you ke neeche premium auto-scroll
     apiGet('/api/student/testimonials').then(function(t){ _sRenderTesti((t&&t.testimonials)||[]); }).catch(function(){});
+
+    // App Tutorial / Live Classes videos — More sheet ke row ka SOON/NEW decide karne ke liye cache
+    window._sVidCache=window._sVidCache||{};
+    ['tutorial','live'].forEach(function(sec){
+      apiGet('/api/student/app-videos?section='+sec).then(function(r){ window._sVidCache[sec]=(r&&r.videos)||[]; }).catch(function(){});
+    });
 
     // PREFETCH (warm cache) — Academic Calendar, Syllabus Tracker, Progress, Predicted Report Card
     // ke endpoints home par hi IDLE time me pehle se fetch kar lo. Isse jab student in tiles pe

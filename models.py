@@ -547,6 +547,25 @@ class DppPack(Base):
     created_at  = Column(DateTime, default=func.now())
 
 
+class AppVideo(Base):
+    """Admin-managed video content (App Tutorial / Live Classes) — YouTube link.
+    Thumbnail YouTube se auto (video_id se), title admin manual deta hai (fetch nahi hota).
+    section='tutorial' (App Tutorial) ya 'live' (Live Classes). Link na ho to app/portal pe
+    us section pe 'SOON' dikhta hai; link aate hi 'NEW' (seen-set se per-student clear)."""
+    __tablename__ = "app_videos"
+
+    id          = Column(Integer, primary_key=True)
+    section     = Column(String(20), default="tutorial", index=True)  # tutorial | live
+    title       = Column(String(300))
+    youtube_url = Column(String(500))
+    video_id    = Column(String(32), nullable=True)   # YouTube video id -> thumbnail
+    sort_order  = Column(Integer, default=0)
+    active      = Column(Boolean, default=True, index=True)
+    created_by  = Column(Integer, nullable=True)
+    created_at  = Column(DateTime, default=func.now(), index=True)
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class DppAnswer(Base):
     """Student ka submitted DPP — checked + remarks flow (no marks)."""
     __tablename__ = "dpp_answers"

@@ -990,6 +990,11 @@ app.include_router(homework_routes.router)
 app.include_router(service_chat_routes.router)
 app.include_router(push_routes.router)
 app.include_router(support_routes.router)
+try:
+    import app_content_routes   # App Tutorial / Live Classes video content (additive)
+    app.include_router(app_content_routes.router)
+except Exception as _e:
+    print("app_content_routes not loaded:", _e)
 import academic_calendar
 app.include_router(academic_calendar.router)
 try:
