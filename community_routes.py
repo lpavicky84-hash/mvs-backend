@@ -295,6 +295,77 @@ def _fanout(db, post, uids, sender, link=None, image_url=None):
     return len(uids)
 
 
+_YT_RE = re.compile(r"(?:youtube\.com/(?:watch\?v=|embed/|shorts/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})")
+
+
+def _yt_video_id(url):
+    m = _YT_RE.search(url or "")
+    return m.group(1) if m else ""
+
+
+def _fetch_link_preview(url):
+    """Link ka rich preview (title/image/description/site). YouTube -> oEmbed (reliable),
+    baaki sites -> Open Graph meta tags. Best-effort: 5s timeout, fail -> None. Prod backend
+    ke paas internet hai; sandbox me network na ho to None (koi crash nahi)."""
+    if not url or not url.startswith("http"):
+        return None
+    import urllib.request
+    import urllib.parse
+    import html as _html
+    import json as _json
+    vid = _yt_video_id(url)
+    # 1) YouTube -> oEmbed
+    if vid:
+        try:
+            o = "https://www.youtube.com/oembed?format=json&url=" + urllib.parse.quote(url, safe="")
+            req = urllib.request.Request(o, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                d = _json.loads(r.read(100000).decode("utf-8", "ignore"))
+            return {"title": (d.get("title") or "")[:200],
+                    "image": "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg",
+                    "description": (d.get("author_name") or "")[:300],
+                    "site": "youtube.com", "is_video": True}
+        except Exception:
+            # oEmbed fail -> at least thumbnail + domain
+            return {"title": "", "image": "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg",
+                    "description": "", "site": "youtube.com", "is_video": True}
+    # 2) Other sites -> Open Graph
+    html = ""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; MVSBot/1.0)"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            ct = (r.headers.get("Content-Type") or "").lower()
+            if "html" in ct or "text" in ct or not ct:
+                html = r.read(300000).decode("utf-8", "ignore")
+    except Exception:
+        html = ""
+
+    def _meta(prop):
+        m = re.search(r'<meta[^>]+(?:property|name)=["\']' + re.escape(prop) + r'["\'][^>]*content=["\']([^"\']*)["\']', html, re.I)
+        if not m:
+            m = re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']' + re.escape(prop) + r'["\']', html, re.I)
+        return (m.group(1).strip() if m else "")
+
+    title = _meta("og:title")
+    if not title:
+        tm = re.search(r"<title[^>]*>([^<]+)</title>", html, re.I)
+        title = tm.group(1).strip() if tm else ""
+    image = _meta("og:image")
+    desc = _meta("og:description")
+    site = _meta("og:site_name")
+    otype = _meta("og:type")
+    if not site:
+        try:
+            site = urllib.parse.urlparse(url).netloc.replace("www.", "")
+        except Exception:
+            site = ""
+    if not title and not image:
+        return None
+    return {"title": _html.unescape(title)[:200], "image": image[:500],
+            "description": _html.unescape(desc)[:300], "site": site[:80],
+            "is_video": ("video" in (otype or "").lower())}
+
+
 def _parse_poll(payload):
     """payload['poll'] = {question, options:[...]} -> (question, [options]) ya ('', [])."""
     poll = payload.get("poll") or {}
@@ -363,6 +434,7 @@ def _post_out(db, p, with_counts=False, att_cache=None, counts_cache=None,
            "edited": bool(getattr(p, "edited_at", None)),
            "pinned": bool(getattr(p, "is_pinned", False)),
            "target_label": p.target_label or "", "target_count": p.target_count or 0,
+           "link_preview": (getattr(p, "link_preview", None) or None),
            "attachments": _att_out(db, p.id, att_cache)}
     opts = getattr(p, "poll_options", None)
     if opts:
@@ -621,7 +693,8 @@ def community_group_post(gid: int, payload: dict = Body(...), db: Session = Depe
     p = CommunityPost(kind="group", group_id=gid, title=(payload.get("title") or "")[:240],
                       body=body, link=link[:600], sender_id=getattr(me, "id", None),
                       sender_name=getattr(me, "name", "Admin"), target_label=g.name or "Group",
-                      poll_options=(poll_opts or None))
+                      poll_options=(poll_opts or None),
+                      link_preview=(_fetch_link_preview(link) if link.startswith("http") else None))
     db.add(p); db.flush()
     _save_attachments(db, p.id, images, files)
     uids = _group_member_uids(db, g)
@@ -647,7 +720,8 @@ def community_broadcast(payload: dict = Body(...), db: Session = Depends(get_db)
         raise HTTPException(400, "Nothing to send")
     p = CommunityPost(kind="broadcast", title=title[:240], body=body, link=link[:600],
                       sender_id=getattr(me, "id", None), sender_name=getattr(me, "name", "Admin"),
-                      target_label=_target_label(db, target), poll_options=(poll_opts or None))
+                      target_label=_target_label(db, target), poll_options=(poll_opts or None),
+                      link_preview=(_fetch_link_preview(link) if link.startswith("http") else None))
     db.add(p); db.flush()
     _save_attachments(db, p.id, images, files)
     uids = _resolve_targets(db, target)
@@ -801,6 +875,8 @@ def community_post_edit(pid: int, payload: dict = Body(...), db: Session = Depen
         raise HTTPException(400, "Message cannot be empty")
     p.title = title[:240]
     p.body = body
+    if link != (p.link or ""):
+        p.link_preview = (_fetch_link_preview(link) if link.startswith("http") else None)
     p.link = link[:600]
     p.edited_at = datetime.utcnow()
     # keep the students' bell notification text in sync with the edit

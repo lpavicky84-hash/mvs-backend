@@ -2516,6 +2516,7 @@ class CommunityPost(Base):
     is_pinned    = Column(Boolean, default=False, index=True)        # pinned message -> top of the group
     edited_at    = Column(DateTime, nullable=True)                   # set when admin edits the message
     poll_options = Column(JSON, nullable=True)                       # list[str] -> is post ek POLL hai
+    link_preview = Column(JSON, nullable=True)                       # {title,image,description,site,is_video}
     created_at   = Column(DateTime, default=func.now(), index=True)
 
 

@@ -388,6 +388,8 @@ def ensure_columns():
         "ALTER TABLE community_posts ADD COLUMN edited_at DATETIME NULL",
         # Community poll: options list (JSON) -> post ek poll hai; votes alag table me
         "ALTER TABLE community_posts ADD COLUMN poll_options JSON NULL",
+        # Community link preview: {title,image,description,site,is_video} (link bhejne par)
+        "ALTER TABLE community_posts ADD COLUMN link_preview JSON NULL",
     ]
     for s in stmts:
         try:

@@ -19668,6 +19668,33 @@ function _commRich(text){
   out+=_mdInline(e.slice(last));
   return out;
 }
+// Rich link preview card (Telegram/WhatsApp style) — thumbnail + title + desc + domain.
+function _commLinkCard(p){
+  var lp=p&&p.link_preview; var url=(p&&p.link)||'';
+  if(!lp || !url) return '';
+  _ensureLinkCss();
+  var img=lp.image?('<div class="cxlc-th"><img src="'+esc(lp.image)+'" alt="" loading="lazy" onerror="this.parentNode.style.display=\'none\'">'+(lp.is_video?'<span class="cxlc-play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.55)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></span>':'')+'</div>'):'';
+  var title=lp.title?('<div class="cxlc-t">'+esc(lp.title)+'</div>'):'';
+  var desc=lp.description?('<div class="cxlc-d">'+esc(lp.description)+'</div>'):'';
+  var site=lp.site?('<div class="cxlc-s">'+esc(lp.site)+'</div>'):'';
+  return '<a class="cxlc" href="'+esc(url)+'" target="_blank" rel="noopener">'+img+'<div class="cxlc-b">'+title+desc+site+'</div></a>';
+}
+function _ensureLinkCss(){
+  if(document.getElementById('cxlc-css')) return;
+  var s=document.createElement('style'); s.id='cxlc-css'; s.textContent=[
+    '.cxlc{display:block;margin-top:7px;border-radius:14px;overflow:hidden;background:rgba(255,255,255,.55);border:1px solid rgba(0,0,0,.09);text-decoration:none;max-width:330px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
+    '.cxlc-th{position:relative;width:100%;aspect-ratio:16/9;background:#0f1722 center/cover no-repeat;line-height:0}',
+    '.cxlc-th img{width:100%;height:100%;object-fit:cover;display:block}',
+    '.cxlc-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}',
+    '.cxlc-play svg{width:48px;height:48px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))}',
+    '.cxlc-b{padding:9px 12px}',
+    '.cxlc-t{font-weight:800;font-size:.88rem;color:#14213d;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+    '.cxlc-d{font-size:.78rem;color:#5a6270;margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+    '.cxlc-s{font-size:.72rem;color:#8a90a0;margin-top:5px;font-weight:700;text-transform:lowercase}',
+    'body.dark .cxlc{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12)}',
+    'body.dark .cxlc-t{color:#e9edf1}body.dark .cxlc-d{color:#aeb6c0}'
+  ].join(''); document.head.appendChild(s);
+}
 function _commPollAdminHtml(p){
   var poll=p.poll||{}; var opts=poll.options||[]; var total=poll.total||0;
   var rows=opts.map(function(o){
@@ -19686,7 +19713,7 @@ function _commBubble(p){
   var imgH=imgs.map(function(a){return '<div class="b-img" data-cimg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"></div>';}).join('');
   var audH=auds.map(function(a){return _commAudioHtml(a.url);}).join('');
   var fileH=files.map(function(a){return '<div class="cmy-fileline" style="margin-top:6px" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
-  var linkH=p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'';
+  var linkH=p.link_preview?_commLinkCard(p):(p.link?'<a class="cmy-linkline" style="margin-top:6px" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'');
   var isPoll=!!(p.poll&&p.poll.options);
   var pollH=isPoll?_commPollAdminHtml(p):'';
   var seen='<span class="b-seen" onclick="_commReceipts('+p.id+')">✓✓ '+(p.seen||0)+'/'+(p.sent||0)+'</span>';
@@ -19829,7 +19856,7 @@ function _commMsgHtml(p){
   var imgH=imgs.length?'<div class="cmy-msg-imgs">'+imgs.map(function(a){return '<div class="cmy-msg-img" data-cimg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"></div>';}).join('')+'</div>':'';
   var audH=auds.map(function(a){return _commAudioHtml(a.url);}).join('');
   var fileH=files.map(function(a){return '<div class="cmy-fileline" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')">'+ic('folder')+' '+esc(a.name||'Attachment')+'</div>';}).join('');
-  var linkH=p.link?'<a class="cmy-linkline" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'';
+  var linkH=p.link_preview?_commLinkCard(p):(p.link?'<a class="cmy-linkline" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+' '+esc(p.link)+'</a>':'');
   var isPoll=!!(p.poll&&p.poll.options);
   var pollH=isPoll?_commPollAdminHtml(p):'';
   var isAdmin=(p.sent!=null);   // admin payload carries sent/seen; student feed does not
@@ -20217,7 +20244,7 @@ function _sCommBubble(p){
   var imgH=imgs.length?'<div class="scmt-imgs'+(imgs.length>1?' multi':'')+'">'+imgs.map(function(a){return '<div class="scmt-img" data-climg="'+esc(a.url)+'" onclick="_commLightbox(\''+esc(a.url)+'\')"><div class="scmt-imgld"><div class="spinner"></div></div></div>';}).join('')+'</div>':'';
   var audH=auds.map(function(a){return _commAudioHtml(a.url);}).join('');
   var fileH=files.map(function(a){return '<div class="scmt-file" onclick="_commOpenFile(\''+esc(a.url)+'\',\''+esc(a.name||'file')+'\')"><span class="scmt-fic">'+ic('folder')+'</span><span class="scmt-fnm">'+esc(a.name||'Attachment')+'</span></div>';}).join('');
-  var linkH=p.link?'<a class="scmt-link" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+'<span>'+esc(p.link)+'</span></a>':'';
+  var linkH=p.link_preview?_commLinkCard(p):(p.link?'<a class="scmt-link" href="'+esc(p.link)+'" target="_blank" rel="noopener">'+ic('link2')+'<span>'+esc(p.link)+'</span></a>':'');
   var sender=p.sender_name?('<div class="scmt-sender">'+esc(p.sender_name)+'</div>'):'';
   var pin=p.pinned?'<div class="scmt-pinbadge">'+ic('pin')+' Pinned</div>':'';
   var isPoll=!!(p.poll&&p.poll.options);
@@ -50873,13 +50900,15 @@ function _svidEmptyHtml(section){
 async function openAppVideos(section){
   section=(section==='live')?'live':'tutorial';
   var title=(section==='live')?'Live Events':'App Tutorial';
+  // NOTE: modal-fs (full-screen) sirf content hone par lagta hai — warna khaali modal pehle
+  // full-screen flash hoke chhota hota tha (glitch). Spinner + empty state normal size me.
   showModal(title,'<div id="svid-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
-  try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
   try{
     var r=await api('/api/student/app-videos?section='+section);
     var list=(r&&r.videos)||[];
     var body=document.getElementById('svid-body'); if(!body) return;
-    if(!list.length){ try{ var _m=document.querySelector('#modal .modal'); if(_m) _m.classList.remove('modal-fs'); }catch(e){} body.innerHTML=_svidEmptyHtml(section); return; }
+    if(!list.length){ body.innerHTML=_svidEmptyHtml(section); return; }
+    try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
     _svidCss();
     body.innerHTML='<div class="svid-list">'+list.map(function(v){
       var thumb=v.thumb||('https://i.ytimg.com/vi/'+(v.video_id||'')+'/hqdefault.jpg');
@@ -50933,12 +50962,12 @@ function _sdlItemHtml(d){
 }
 async function openDownloads(){
   showModal('Downloads','<div id="sdl-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
-  try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
   try{
     var r=await api('/api/student/downloads');
     var list=(r&&r.downloads)||[]; window._sDownloads=list;
     var body=document.getElementById('sdl-body'); if(!body) return;
     if(!list.length){ body.innerHTML='<div style="padding:42px 22px;text-align:center;color:var(--text-muted);line-height:1.6">Aapne abhi tak kuch download nahi kiya.<br>Jo bhi PDF (class notes, study material, DPP) download karoge woh yahan aa jayega — aur yahin se <b>share</b> bhi kar paoge.</div>'; return; }
+    try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
     _sdlCss();
     body.innerHTML='<div class="sdl-list">'+list.map(_sdlItemHtml).join('')+'</div>';
   }catch(e){ var b=document.getElementById('sdl-body'); if(b) b.innerHTML='<div style="padding:28px;text-align:center;color:var(--danger)">Could not load your downloads.</div>'; }
