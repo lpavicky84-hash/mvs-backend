@@ -2336,10 +2336,15 @@ def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), 
     _my_cls = _cls_norm(sp.class_level) or _cls_norm(sp.class_name)
     if _my_cls:
         es = [e for e in es if (not _cls_norm(e.class_name)) or _cls_norm(e.class_name) == _my_cls]
-    # lectures linked to timetable entries (for the "Mark Done" verification)
+    # lectures linked to timetable entries (notes/DPP + "Mark Done" verification).
+    # FIX: pehle Lecture.subject == sp.subjects (EXACT) match hota tha -> agar lecture ka subject
+    # string timetable ke subject se thoda alag ho (e.g. "Mathematics" vs "Maths"/canon) to notes
+    # link hi nahi hoti thi aur done class pe "Class Notes" button gayab tha. Ab seedha in ENTRIES
+    # ke timetable_entry_id se match karte hain (authoritative) — subject string pe depend nahi.
+    _ent_ids = [e.id for e in es]
     lecs = db.query(Lecture).options(defer(Lecture.pdf_b64), defer(Lecture.dpp_b64)).filter(
-        Lecture.is_active == True, Lecture.subject.in_(sp.subjects or []),
-        Lecture.timetable_entry_id != None).all() if (sp.subjects or []) else []
+        Lecture.is_active == True, Lecture.timetable_entry_id.in_(_ent_ids)
+    ).all() if _ent_ids else []
     lec_by_tt = {}
     for l in lecs:
         lec_by_tt.setdefault(l.timetable_entry_id, l)   # first active lecture per entry

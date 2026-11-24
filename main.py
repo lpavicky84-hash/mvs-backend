@@ -382,6 +382,8 @@ def ensure_columns():
         "ALTER TABLE doubts ADD COLUMN sla_snapshot FLOAT",
         # DPP question arrangement: NULL/auto = type-wise auto arrange, manual = teacher ka order
         "ALTER TABLE dpp_packs ADD COLUMN arrange VARCHAR(10) NULL",
+        # Feedback -> testimonial: admin ON kare tab app home pe testimonial dikhega
+        "ALTER TABLE feedback ADD COLUMN show_as_testimonial BOOLEAN DEFAULT 0",
     ]
     for s in stmts:
         try:

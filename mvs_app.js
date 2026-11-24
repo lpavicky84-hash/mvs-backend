@@ -19429,14 +19429,23 @@ function _commCss(){
     '.cmy-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}',
     '.cmy-tab{border:1.5px solid var(--border,#e5ddcb);background:var(--card,#fff);color:var(--text-muted,#8a7d5c);border-radius:22px;padding:9px 20px;font-weight:800;font-size:.88rem;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:7px}',
     '.cmy-tab.on{background:linear-gradient(135deg,#7c3aed,#2563eb);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(124,58,237,.3)}',
-    '.cmy-wrap{max-width:900px}',
-    '.cmy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}',
-    '.cmy-gcard{background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:16px;padding:16px;cursor:pointer;transition:.15s;box-shadow:0 4px 16px rgba(18,20,45,.05);position:relative}',
-    '.cmy-gcard:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(18,20,45,.12)}',
-    '.cmy-gav{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.15rem;margin-bottom:10px}',
-    '.cmy-gname{font-weight:800;font-size:1.02rem;color:var(--text,#14213d);margin-bottom:3px}',
-    '.cmy-gmeta{font-size:.8rem;color:var(--muted,#8a8578)}',
-    '.cmy-glast{font-size:.82rem;color:#5a6270;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid rgba(0,0,0,.05);padding-top:8px}',
+    '.cmy-wrap{max-width:900px;width:100%;box-sizing:border-box;margin:0 auto}',
+    '.cmy-shead{display:flex;align-items:center;gap:13px;background:linear-gradient(135deg,#2a1e55,#2563eb);border-radius:18px;padding:16px 18px;margin-bottom:16px;box-shadow:0 12px 28px -14px rgba(37,99,235,.6);color:#fff}',
+    '.cmy-shead-ic{width:42px;height:42px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.16)}',
+    '.cmy-shead-ic svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2}',
+    '.cmy-shead-t{font-weight:800;font-size:1.15rem}',
+    '.cmy-shead-s{font-size:.8rem;opacity:.82;margin-top:2px}',
+    '.cmy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}',
+    // premium group card — mobile-safe: min-width:0 taaki nowrap text se grid overflow (right cut) na ho
+    '.cmy-gcard{display:flex;flex-direction:column;min-width:0;box-sizing:border-box;background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:18px;padding:16px 16px 14px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s;box-shadow:0 6px 18px -8px rgba(18,20,45,.14);position:relative;overflow:hidden}',
+    '.cmy-gcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#7c3aed,#2563eb)}',
+    '.cmy-gcard:hover{transform:translateY(-2px);box-shadow:0 14px 30px -12px rgba(18,20,45,.26);border-color:#c9b7f0}',
+    '.cmy-gtop{display:flex;align-items:center;gap:12px;min-width:0;padding-right:30px}',
+    '.cmy-gav{width:46px;height:46px;border-radius:13px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:1.15rem;box-shadow:0 6px 14px -6px rgba(37,99,235,.5)}',
+    '.cmy-gname{font-weight:800;font-size:1.02rem;color:var(--text,#14213d);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.cmy-gmeta{font-size:.8rem;color:var(--text-muted,#8a8578);margin-top:2px}',
+    '.cmy-glast{font-size:.82rem;color:var(--text-muted,#5a6270);margin-top:11px;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45;border-top:1px solid var(--border,rgba(0,0,0,.06));padding-top:9px;padding-right:24px}',
+    '.cmy-gchev{position:absolute;right:14px;bottom:14px;width:22px;height:22px;color:var(--text-muted)}.cmy-gchev svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.2}',
     '.cmy-card{background:var(--card,#fff);border:1px solid var(--border,#ece7d8);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:0 4px 16px rgba(18,20,45,.05)}',
     '.cmy-fld{margin-bottom:13px}',
     '.cmy-fld label{display:block;font-weight:800;font-size:.8rem;color:var(--text,#14213d);margin-bottom:6px}',
@@ -19959,12 +19968,13 @@ function loadSCommunity(){
     var gs=(r&&r.groups)||[];
     if(!gs.length){ el.innerHTML='<div class="cmy-empty">You are not in any group yet. Your batch groups will appear here.</div>'; return; }
     var cards=gs.map(function(g){ return '<div class="cmy-gcard" onclick="_sCommOpen('+g.id+')">'+
-      (g.unread>0?'<span style="position:absolute;top:12px;right:12px;background:#dc2626;color:#fff;border-radius:20px;font-size:.72rem;font-weight:800;padding:2px 8px">'+g.unread+'</span>':'')+
-      '<div class="cmy-gav" style="background:'+(g.icon_color||_ccolor(g.name))+'">'+esc((g.name||'G').slice(0,1).toUpperCase())+'</div>'+
-      '<div class="cmy-gname">'+esc(g.name)+'</div>'+
-      (g.last?'<div class="cmy-glast">'+esc(g.last)+(g.last_at?' · '+esc(g.last_at):'')+'</div>':'<div class="cmy-gmeta">No messages yet</div>')+
+      (g.unread>0?'<span style="position:absolute;top:12px;right:12px;background:#dc2626;color:#fff;border-radius:20px;font-size:.72rem;font-weight:800;padding:2px 8px;z-index:1">'+g.unread+'</span>':'')+
+      '<div class="cmy-gtop"><div class="cmy-gav" style="background:'+(g.icon_color||_ccolor(g.name))+'">'+esc((g.name||'G').slice(0,1).toUpperCase())+'</div>'+
+        '<div style="min-width:0"><div class="cmy-gname">'+esc(g.name)+'</div><div class="cmy-gmeta">'+(g.last_at?esc(g.last_at):'Group')+'</div></div></div>'+
+      (g.last?'<div class="cmy-glast">'+esc(g.last)+'</div>':'<div class="cmy-glast" style="font-style:italic">No messages yet</div>')+
+      '<span class="cmy-gchev"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span>'+
     '</div>'; }).join('');
-    el.innerHTML='<div class="cmy-wrap"><div style="font-weight:800;font-size:1.1rem;margin-bottom:14px">'+ic('megaphone')+' Community</div><div class="cmy-grid">'+cards+'</div></div>';
+    el.innerHTML='<div class="cmy-wrap"><div class="cmy-shead"><div class="cmy-shead-ic">'+ic('megaphone')+'</div><div><div class="cmy-shead-t">Community</div><div class="cmy-shead-s">Your batch groups & announcements</div></div></div><div class="cmy-grid">'+cards+'</div></div>';
   }).catch(function(){ el.innerHTML='<div class="cmy-empty">Could not load community.</div>'; });
 }
 window._sCommOpen=function(gid){
@@ -49632,6 +49642,11 @@ function _supCss(){
   s.textContent=[
     '.sup-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}',
     '.sup-list{display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 240px);overflow:auto;padding:2px}',
+    '.sf-req{border-color:#e2554e!important;box-shadow:0 0 0 3px rgba(226,85,85,.15)!important}',
+    '.af-testi{border:1px solid var(--border);background:var(--card);color:var(--text);font-weight:700}',
+    '.af-testi.on{border-color:transparent;background:linear-gradient(135deg,#b8941f,#e7bf55);color:#2a2200}',
+    '.af-testi-note{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--text-muted);background:linear-gradient(135deg,rgba(184,148,31,.1),rgba(184,148,31,.02));border:1px solid rgba(184,148,31,.25);border-radius:12px;padding:10px 13px;margin-bottom:12px;line-height:1.45}',
+    '.af-testi-note svg{width:15px;height:15px;flex:0 0 auto;stroke:#b8941f;fill:none;stroke-width:2}',
     '.sup-card{border:1px solid var(--border);border-radius:14px;padding:15px 16px;background:var(--card);cursor:pointer;transition:.14s}',
     '.sup-card:hover{border-color:#d9b978;transform:translateY(-1px);box-shadow:0 8px 22px rgba(15,23,42,.06)}',
     '.sup-num{font-family:ui-monospace,monospace;font-size:.72rem;color:var(--text-muted)}',
@@ -49849,7 +49864,7 @@ function loadSFeedback(){
     +'<div style="font-size:.84rem;color:var(--text-muted);margin-top:4px">Your feedback helps us improve MVS Foundation.</div>'
     +'<div class="sup-stars" id="sf-stars">'+stars+'</div>'
     +'<div id="sf-label" style="font-size:.8rem;color:var(--text-muted);min-height:1em">Tap a star to rate</div>'
-    +'<textarea id="sf-review" class="form-control" rows="3" maxlength="1000" placeholder="Tell us more (optional)" style="margin-top:12px"></textarea>'
+    +'<textarea id="sf-review" class="form-control" rows="3" maxlength="1000" placeholder="Share your experience — what you liked, what can improve… (required)" style="margin-top:12px"></textarea>'
     +'<div style="margin-top:12px"><button class="btn btn-primary" id="sf-submit" onclick="sfSubmit()" style="min-width:180px">Submit Feedback</button></div>'
     +'<div id="sf-status" style="font-size:.82rem;margin-top:8px"></div></div>'
     +'<div id="sf-mine" style="margin-top:16px"></div></div>';
@@ -49863,23 +49878,28 @@ function sfSetRating(n){
 }
 async function sfSubmit(){
   if(!window._sfRating){ toast('Please choose a star rating',true); return; }
+  var _rev=(document.getElementById('sf-review').value||'').trim();
+  if(!_rev){ toast('Please write a few words with your rating.',true);
+    var ta=document.getElementById('sf-review'); if(ta){ ta.classList.add('sf-req'); try{ta.focus();}catch(e){} } return; }
   var btn=document.getElementById('sf-submit'); btn.disabled=true; btn.textContent='Submitting...';
   try{
-    await api('/api/student/feedback','POST',{rating:window._sfRating,review:document.getElementById('sf-review').value||''});
-    document.getElementById('sf-status').innerHTML='<span style="color:#059669;font-weight:700">\u2705 Thank you for your feedback!</span>';
-    document.getElementById('sf-review').value=''; sfSetRating(0); window._sfRating=0;
+    var r=await api('/api/student/feedback','POST',{rating:window._sfRating,review:_rev});
+    document.getElementById('sf-status').innerHTML='<span style="color:#059669;font-weight:700">\u2705 '+((r&&r.updated)?'Your feedback has been updated!':'Thank you for your feedback!')+'</span>';
     _sfLoadMine();
-    setTimeout(function(){ btn.disabled=false; btn.textContent='Submit Feedback'; },400);
+    setTimeout(function(){ btn.disabled=false; btn.textContent='Update Feedback'; },400);
   }catch(e){ document.getElementById('sf-status').innerHTML='<span style="color:#c1443a">'+esc((e&&e.message)||'Could not submit')+'</span>'; btn.disabled=false; btn.textContent='Submit Feedback'; }
 }
 function _sfLoadMine(){
   api('/api/student/feedback').then(function(r){
     var list=(r&&r.feedback)||[]; var el=document.getElementById('sf-mine'); if(!el)return;
-    if(!list.length){ el.innerHTML=''; return; }
-    el.innerHTML='<div style="font-weight:700;font-size:.9rem;margin-bottom:8px">Your Feedback</div>'+list.map(function(f){
-      var st='<span style="color:#e6ad4e">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span>';
-      return '<div class="sup-card" style="cursor:default;margin-bottom:8px">'+st+(f.review?'<div style="margin-top:6px;font-size:.88rem">'+esc(f.review)+'</div>':'')+'<div class="sup-meta">'+esc(f.created_at)+'</div></div>';
-    }).join('');
+    // EK student = EK feedback. Pehle se hai to form me PREFILL karo + button "Update" ho jaaye.
+    if(!list.length){ el.innerHTML=''; var _b=document.getElementById('sf-submit'); if(_b) _b.textContent='Submit Feedback'; return; }
+    var f=list[0];
+    try{ sfSetRating(f.rating); var ta=document.getElementById('sf-review'); if(ta && !ta.value) ta.value=f.review||''; }catch(e){}
+    var _b2=document.getElementById('sf-submit'); if(_b2) _b2.textContent='Update Feedback';
+    var st='<span style="color:#e6ad4e">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span>';
+    el.innerHTML='<div style="font-weight:700;font-size:.9rem;margin-bottom:8px">Your Feedback</div>'
+      +'<div class="sup-card" style="cursor:default;margin-bottom:8px">'+st+(f.review?'<div style="margin-top:6px;font-size:.88rem">'+esc(f.review)+'</div>':'')+'<div class="sup-meta">Last updated: '+esc(f.created_at)+' \u00b7 You can edit it above anytime.</div></div>';
   }).catch(function(){});
 }
 
@@ -50237,10 +50257,20 @@ function _renderAFeedback(a, l){
       +'<span class="ac-name" onclick="_supDrawer('+(f.student&&f.student.id)+')">'+esc(f.student&&f.student.name||'Student')+'</span> <span class="sup-num">'+esc(f.student&&f.student.student_id||'')+'</span>'+(f.new?' <span class="af-new-pill">NEW</span>':'')
       +'<div style="margin-top:4px"><span class="ac-star">'+'\u2605'.repeat(f.rating)+'</span><span style="color:#d9c9a0">'+'\u2605'.repeat(5-f.rating)+'</span></div>'
       +(f.review?'<div style="font-size:.9rem;margin-top:6px;word-break:break-word;line-height:1.5">'+esc(f.review)+'</div>':'')
-      +'<div class="sup-meta">'+esc(f.created_at)+'</div></div>'
+      +'<div class="sup-meta">'+esc(f.created_at)+'</div>'
+      // Testimonial toggle: sirf review wale feedback app home pe testimonial ban sakte hain.
+      +(f.review?('<div style="margin-top:9px"><button class="btn btn-sm af-testi'+(f.testimonial?' on':'')+'" onclick="afTestimonial('+f.id+','+(f.testimonial?'false':'true')+')">'+(typeof ic==='function'?ic('star'):'★')+' '+(f.testimonial?'Showing on app home':'Show on app home')+'</button></div>'):'')
+      +'</div>'
       +'<button class="btn btn-ghost btn-sm af-del" onclick="afDelete('+f.id+')">Delete</button></div></div>';
   }).join(''):'<div class="sup-empty">No feedback received yet.</div>';
-  el.innerHTML=cards+distBlock+filt+'<div class="ac-list">'+rows+'</div>';
+  var note='<div class="af-testi-note">'+(typeof ic==='function'?ic('star'):'★')+' Turn on “Show on app home” for the reviews you want students to see as testimonials on their home screen. Only reviews (not star-only) can be shown.</div>';
+  el.innerHTML=cards+distBlock+filt+note+'<div class="ac-list">'+rows+'</div>';
+}
+async function afTestimonial(fid, on){
+  try{ await api('/api/admin/feedback/'+fid+'/testimonial','POST',{on:!!on});
+    toast(on?'Added to app home testimonials.':'Removed from app home testimonials.');
+    _apiForget('feedback'); loadAFeedback();
+  }catch(e){ toast((e&&e.message)||'Could not update',true); }
 }
 function afDelete(fid){
   showModal('Delete this feedback?','<div style="padding:6px 2px;color:var(--text-muted)">This action cannot be undone. The review will be removed and excluded from the average rating.</div>',
@@ -51934,6 +51964,23 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-newcal svg{width:15px;height:15px;stroke:var(--primary,#b8941f);fill:none;stroke-width:2}'+
   '#student-app .s-newcal:active{transform:scale(.96)}'+
   '#student-app .s-new-empty{padding:16px 14px;text-align:center;color:var(--text-muted);font-size:12.5px;background:var(--card);border:1px dashed var(--border);border-radius:14px;line-height:1.5}'+
+  /* ---- Testimonials carousel (premium, auto-scroll) ---- */
+  '#student-app .s-testi-badge{font-size:10px;font-weight:800;color:#8a6d10;background:linear-gradient(135deg,rgba(231,191,85,.3),rgba(184,148,31,.14));border:1px solid rgba(184,148,31,.3);border-radius:999px;padding:4px 10px;letter-spacing:.03em}'+
+  '#student-app .s-testi{display:flex;gap:13px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px}'+
+  '#student-app .s-testi::-webkit-scrollbar{display:none}'+
+  '#student-app .s-tcard{position:relative;scroll-snap-align:start;flex:0 0 auto;width:min(86vw,330px);box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:30px 17px 16px;box-shadow:0 12px 30px -16px rgba(20,33,61,.4);overflow:hidden}'+
+  '#student-app .s-tcard::before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:linear-gradient(90deg,#b8941f,#e7bf55,#b8941f)}'+
+  '#student-app .s-tc-q{position:absolute;top:6px;right:16px;font-size:52px;line-height:1;font-weight:900;color:rgba(184,148,31,.18);font-family:Georgia,serif}'+
+  '#student-app .s-tc-stars{font-size:14px;letter-spacing:1px}#student-app .s-tc-stars .on{color:#e7bf55}#student-app .s-tc-stars .off{color:var(--border)}'+
+  '#student-app .s-tc-text{margin-top:9px;font-size:13.5px;line-height:1.5;color:var(--text);font-weight:600;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:60px}'+
+  '#student-app .s-tc-who{display:flex;align-items:center;gap:11px;margin-top:13px;padding-top:12px;border-top:1px solid var(--border)}'+
+  '#student-app .s-tc-av{width:38px;height:38px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#2a2200;background:linear-gradient(135deg,#e7bf55,#b8941f)}'+
+  '#student-app .s-tc-nm{font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+  '#student-app .s-tc-vf{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:#1c8f63;margin-top:2px}'+
+  '#student-app .s-tc-vf svg{width:12px;height:12px;stroke:#1c8f63;fill:none;stroke-width:2}'+
+  '#student-app .s-testidots{display:flex;justify-content:center;gap:6px;margin-top:11px}'+
+  '#student-app .s-testidots i{width:6px;height:6px;border-radius:50%;background:var(--border);transition:.2s}'+
+  '#student-app .s-testidots i.on{width:18px;border-radius:3px;background:linear-gradient(90deg,#b8941f,#e7bf55)}'+
   '#student-app .s-ni{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;gap:12px;align-items:center;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
   '#student-app .s-niacts{display:flex;gap:7px;flex:0 0 auto}'+
   '#student-app .s-nib{width:40px;height:40px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}'+
@@ -52158,7 +52205,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
        '<div class="s-row" onclick="(window.toggleDark&&toggleDark());_sCloseSheet()"><div class="ri c-teal">'+svg('theme')+'</div><div class="rl">Dark / Light Theme</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
        soonRow('tutorial','App Tutorial')+soonRow('live','Live Classes')+soonRow('download','Downloads')+'</div>';
     h+='<div class="s-glab">Support MVS</div><div class="s-box">'+
-       soonRow('rate','Rate the App')+
+       '<div class="s-row" onclick="_sGo(\'feedback\')"><div class="ri '+colStyle('rate')+'">'+svg('rate')+'</div><div class="rl">Rate the App</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
        '<div class="s-row" onclick="_sShare()"><div class="ri c-green">'+svg('share')+'</div><div class="rl">Share with Friends</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>';
     h+='<div class="s-box" style="margin-top:12px"><div class="s-row lg" onclick="_sLogout()"><div class="ri">'+svg('logout')+'</div><div class="rl">Logout</div></div></div>';
     // social icons ab ADMIN ke set kiye links se aate hain (demo links hata diye). Sirf jo
@@ -52262,6 +52309,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         '<div class="s-morebar" onclick="_sOpenSheet()"><div class="mi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div><div class="mt"><div class="a">More Options</div><div class="b" id="s-moresub">All sections</div></div><div class="mg"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>'+
       '</div>'+
       '<div class="s-sec" id="s-newsec" style="display:none"><div class="s-sec-h"><h3>New for you</h3><button class="s-newcal" onclick="_sNewCalOpen()" title="Pick a date"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span id="s-new-datelbl">Today</span></button></div><div class="s-new" id="s-new"></div></div>'+
+      '<div class="s-sec" id="s-testisec" style="display:none"><div class="s-sec-h"><h3>What students say</h3><span class="s-testi-badge">★ Reviews</span></div><div class="s-testi" id="s-testi" onscroll="_sTestiDots()"></div><div class="s-testidots" id="s-testidots"></div></div>'+
       '<div class="s-pad"></div>';
     }   // end build-once shell
 
@@ -52416,6 +52464,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
     // DPP + Doubts quick-action tiles ka asli NEW-count badge (workspace legacy se nahi).
     safe(function(){ refreshDppDoubtBadges(app); });
+
+    // testimonials (admin ne ON kiye feedback) — New for you ke neeche premium auto-scroll
+    apiGet('/api/student/testimonials').then(function(t){ _sRenderTesti((t&&t.testimonials)||[]); }).catch(function(){});
 
     // new for you — DEFAULT sirf AAJ ke naye material; upar calendar se kisi bhi din ka dekh sakte ho.
     apiGet('/api/student/materials-v2'+bq()).then(function(mats){ mats=mats||[];
@@ -52602,6 +52653,52 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var d=new Date(v+'T00:00:00'); var lab=(v===_cToday())?'Today':(_cDayShort(d)+' '+d.getDate()+'/'+(d.getMonth()+1));
     renderClassesDay(v, lab);
   };
+
+  /* ===================== Testimonials (premium auto-scroll carousel) ===================== */
+  function _sTestiInitials(nm){ nm=String(nm||'S').replace(/^(mr|mrs|ms|dr)\.?\s*/i,'').trim(); var p=nm.split(/\s+/); return ((p[0]||'')[0]||'S').toUpperCase()+((p[1]||'')[0]||'').toUpperCase(); }
+  function _sRenderTesti(list){
+    var sec=document.getElementById('s-testisec'), box=document.getElementById('s-testi'); if(!sec||!box) return;
+    list=(list||[]).filter(function(t){ return t && String(t.review||'').trim(); });
+    if(!list.length){ sec.style.display='none'; if(window._sTestiTimer){ clearInterval(window._sTestiTimer); window._sTestiTimer=null; } return; }
+    window._sTestiList=list;
+    box.innerHTML=list.map(function(t){
+      var rt=Math.max(0,Math.min(5,parseInt(t.rating,10)||0));
+      var stars='<span class="on">'+'★'.repeat(rt)+'</span><span class="off">'+'★'.repeat(5-rt)+'</span>';
+      return '<div class="s-tcard"><div class="s-tc-q">“</div><div class="s-tc-stars">'+stars+'</div>'
+        +'<div class="s-tc-text">'+esc(String(t.review||'').trim())+'</div>'
+        +'<div class="s-tc-who"><div class="s-tc-av">'+esc(_sTestiInitials(t.name))+'</div><div class="s-tc-meta"><div class="s-tc-nm">'+esc(t.name||'Student')+'</div><div class="s-tc-vf"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>Verified Student</div></div></div></div>';
+    }).join('');
+    sec.style.display='';
+    _sTestiDots();
+    _sTestiAuto();
+  }
+  window._sTestiDots=function(){ var box=document.getElementById('s-testi'), d=document.getElementById('s-testidots'); if(!box||!d) return;
+    var cards=box.querySelectorAll('.s-tcard'); var n=cards.length; if(n<=1){ d.innerHTML=''; return; }
+    var max=box.scrollWidth-box.clientWidth; var r=max>0?box.scrollLeft/max:0; var idx=Math.round(r*(n-1));
+    var h=''; for(var i=0;i<n;i++) h+='<i class="'+(i===idx?'on':'')+'"></i>'; d.innerHTML=h;
+  };
+  function _sTestiAuto(){
+    if(window._sTestiTimer){ clearInterval(window._sTestiTimer); window._sTestiTimer=null; }
+    var box=document.getElementById('s-testi'); if(!box) return;
+    // user touch/scroll kare to thodi der auto-scroll pause
+    if(!box._pauseHooked){ box._pauseHooked=true;
+      ['touchstart','pointerdown','wheel'].forEach(function(ev){ box.addEventListener(ev, function(){ window._sTestiPauseUntil=Date.now()+6000; }, {passive:true}); });
+    }
+    window._sTestiTimer=setInterval(function(){
+      var b=document.getElementById('s-testi'); var app=document.getElementById('student-app');
+      if(!b || !app || !app.classList.contains('s-on-home')){ return; }   // sirf home pe chale
+      if(window._sTestiPauseUntil && Date.now()<window._sTestiPauseUntil) return;
+      var cards=b.querySelectorAll('.s-tcard'); if(cards.length<=1) return;
+      var max=b.scrollWidth-b.clientWidth;
+      if(b.scrollLeft >= max-6){ b.scrollTo({left:0, behavior:'smooth'}); }
+      else{
+        // agle card tak scroll
+        var cur=b.scrollLeft, next=cur+10;
+        for(var i=0;i<cards.length;i++){ if(cards[i].offsetLeft>cur+6){ next=cards[i].offsetLeft-14; break; } }
+        b.scrollTo({left:next, behavior:'smooth'});
+      }
+    }, 3400);
+  }
 
   /* ===================== "New for you" — aaj default + kisi bhi din calendar se ===================== */
   function _sTodayKey(){ return safe(function(){ return (typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); })||new Date().toLocaleDateString('en-CA'); }

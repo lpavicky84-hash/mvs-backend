@@ -101,6 +101,7 @@ class Feedback(Base):
     review        = Column(Text, nullable=True)
     status        = Column(String(12), default="active", index=True)  # active | deleted
     read_by_admin = Column(Boolean, default=False)
+    show_as_testimonial = Column(Boolean, default=False, index=True)  # admin ON kare -> app home pe testimonial
     created_at    = Column(DateTime, default=ist_now, index=True)
     updated_at    = Column(DateTime, default=ist_now, onupdate=ist_now)
     deleted_at    = Column(DateTime, nullable=True)

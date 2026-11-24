@@ -380,15 +380,29 @@ def student_feedback(payload: dict = Body(...), db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail="Please choose a star rating.")
     if rating < 1 or rating > 5:
         raise HTTPException(status_code=400, detail="Rating must be 1–5.")
-    fb = SM.Feedback(student_id=sp.id, rating=rating,
-                     review=(str(payload.get("review") or "").strip() or None),
-                     status="active", read_by_admin=False)
-    db.add(fb)
+    # Review ab MANDATORY hai — sirf star se feedback submit nahi hoga.
+    review = str(payload.get("review") or "").strip()
+    if not review:
+        raise HTTPException(status_code=400, detail="Please write a few words with your rating.")
+    # EK student = EK feedback. Pehle se hai to usi ko UPDATE (edit) karo, naya nahi banta.
+    fb = db.query(SM.Feedback).filter(SM.Feedback.student_id == sp.id,
+                                      SM.Feedback.status == "active").order_by(
+        SM.Feedback.created_at.desc()).first()
+    if fb:
+        fb.rating = rating
+        fb.review = review
+        fb.read_by_admin = False      # edit -> admin ko dobara review karna ho
+        _edited = True
+    else:
+        fb = SM.Feedback(student_id=sp.id, rating=rating, review=review,
+                         status="active", read_by_admin=False)
+        db.add(fb)
+        _edited = False
     for aid in _admin_ids_for_section(db, "feedback"):
-        _notify(db, aid, "New feedback", "%d★ from a student" % rating, "feedback_new",
-                "/support/feedback")
+        _notify(db, aid, ("Feedback updated" if _edited else "New feedback"),
+                "%d★ from a student" % rating, "feedback_new", "/support/feedback")
     db.commit()
-    return {"ok": True, "id": fb.id}
+    return {"ok": True, "id": fb.id, "updated": _edited}
 
 
 @router.get("/api/student/feedback")
@@ -399,6 +413,26 @@ def student_my_feedback(db: Session = Depends(get_db), me=Depends(get_student)):
         SM.Feedback.created_at.desc()).all()
     return {"feedback": [{"id": f.id, "rating": f.rating, "review": f.review or "",
                           "created_at": str(f.created_at or "")[:19]} for f in rows]}
+
+
+@router.get("/api/student/testimonials")
+def student_testimonials(db: Session = Depends(get_db), me=Depends(get_student)):
+    """App home ke liye testimonials — SIRF wahi feedback jinhe admin ne ON kiya hai
+    (show_as_testimonial). Student ka naam + rating + review."""
+    rows = db.query(SM.Feedback).filter(
+        SM.Feedback.status == "active",
+        SM.Feedback.show_as_testimonial == True,
+        SM.Feedback.review.isnot(None)
+    ).order_by(SM.Feedback.updated_at.desc()).limit(30).all()
+    out = []
+    for f in rows:
+        if not (f.review or "").strip():
+            continue
+        sp = db.query(StudentProfile).filter(StudentProfile.id == f.student_id).first()
+        u = db.query(User).filter(User.id == sp.user_id).first() if sp else None
+        out.append({"id": f.id, "rating": f.rating, "review": (f.review or "").strip(),
+                    "name": (u.name if u else "Student")})
+    return {"testimonials": out}
 
 
 # ===========================================================================
@@ -781,11 +815,28 @@ def admin_feedback(rating: int = 0, page: int = 1, page_size: int = 20,
         u = db.query(User).filter(User.id == sp.user_id).first() if sp else None
         out.append({"id": f.id, "rating": f.rating, "review": f.review or "",
                     "created_at": str(f.created_at or "")[:19], "new": not f.read_by_admin,
+                    "testimonial": bool(getattr(f, "show_as_testimonial", False)),
                     "student": {"id": sp.id if sp else None,
                                 "name": (u.name if u else "Student"),
                                 "student_id": (u.user_id if u else "")}})
     return {"feedback": out, "total": total, "page": page, "page_size": page_size,
             "has_more": page * page_size < total}
+
+
+@router.post("/api/admin/feedback/{fid}/testimonial")
+def admin_feedback_testimonial(fid: int, payload: dict = Body(default={}),
+                               db: Session = Depends(get_db), _=Depends(admin_guard)):
+    """Is feedback ko app home ke testimonials me dikhana ON/OFF. Review hona zaroori hai
+    (sirf-star feedback testimonial nahi ban sakta)."""
+    f = db.query(SM.Feedback).filter(SM.Feedback.id == fid).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Feedback not found.")
+    on = bool(payload.get("on"))
+    if on and not (f.review or "").strip():
+        raise HTTPException(status_code=400, detail="Only feedback with a written review can be shown as a testimonial.")
+    f.show_as_testimonial = on
+    db.commit()
+    return {"ok": True, "on": on}
 
 
 @router.post("/api/admin/feedback/{fid}/read")
