@@ -50503,26 +50503,56 @@ async function openDownloads(){
     body.innerHTML='<div class="sdl-list">'+list.map(_sdlItemHtml).join('')+'</div>';
   }catch(e){ var b=document.getElementById('sdl-body'); if(b) b.innerHTML='<div style="padding:28px;text-align:center;color:var(--danger)">Could not load your downloads.</div>'; }
 }
+function _dlSaveBlob(bl,fname){ try{ var u=URL.createObjectURL(bl); var a=document.createElement('a'); a.href=u; a.download=fname||'file.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},60000); }catch(e){} }
+// Material ka DIRECT public R2 URL (cross-origin). /download endpoint R2 par 302 redirect karta
+// hai, isliye same-origin fetch().blob() CORS se fail hota tha — isiliye share/redownload material
+// ke liye ye public URL use karte hain.
+async function _dlPublicUrl(d){ if(!d||d.kind!=='material') return null; try{ var r=await api('/api/student/material/'+d.ref_id+'/dl-url'); return (r&&r.url)||null; }catch(e){ return null; } }
+// Share ke liye blob laao: material -> R2 public (agar CORS GET allow ho); baaki (dpp/lecture) ->
+// same-origin proxied endpoint. Fail ho to null (tab link/download fallback chalta hai).
+async function _dlShareBlob(d){
+  try{
+    if(d.kind==='material'){
+      var link=await _dlPublicUrl(d);
+      if(link){ try{ var resp=await fetch(link); if(resp&&resp.ok){ var b=await resp.blob(); if(b&&b.size>200) return b; } }catch(e){} }
+      return null;
+    }
+    var url=_dlUrlFor(d); if(!url) return null;
+    return await _dlPdfBlob(url);
+  }catch(e){ return null; }
+}
 async function dlShare(id){
   var d=(window._sDownloads||[]).find(function(x){return x.id===id;}); if(!d) return;
-  var url=_dlUrlFor(d); if(!url){ toast('Cannot share this item',true); return; }
-  toast('Preparing to share…');
+  toast('Share ke liye ready kar rahe hain…');
+  // 1) FILE share (native share sheet) — mobile pe best
+  var blob=null;
+  try{ blob=await _dlShareBlob(d); }catch(e){ if(e&&e.name==='AbortError') return; }
+  if(blob && navigator.share && navigator.canShare){
+    try{
+      var file=new File([blob], d.filename||'file.pdf', {type:(blob.type||'application/pdf')});
+      if(navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:(d.title||'MVS Foundation'), text:(d.title||'')}); return; }
+    }catch(e){ if(e&&e.name==='AbortError') return; }
+  }
+  // 2) LINK share (material ka R2 public URL) — jab file share na ho
   try{
-    var bl=await _dlPdfBlob(url);
-    var file=new File([bl], d.filename||'file.pdf', {type:bl.type||'application/pdf'});
-    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:d.title||'MVS Foundation', text:d.title||''});
-      return;
+    var link2=await _dlPublicUrl(d);
+    if(link2){
+      if(navigator.share){ try{ await navigator.share({title:(d.title||'MVS Foundation'), text:(d.title||''), url:link2}); return; }catch(e){ if(e&&e.name==='AbortError') return; } }
+      window.open(link2,'_blank'); toast('Link khul gaya — yahan se share kar sakte ho.'); return;
     }
-    var u=URL.createObjectURL(bl); var a=document.createElement('a'); a.href=u; a.download=d.filename||'file.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},60000);
-    toast('Direct share yahan support nahi — file download ho gayi, use share kar do.');
-  }catch(e){ if(e&&e.name==='AbortError') return; toast('Could not prepare the file. Try again.',true); }
+  }catch(e){ if(e&&e.name==='AbortError') return; }
+  // 3) Last resort: file download (taaki manually share kar sako)
+  if(blob){ _dlSaveBlob(blob, d.filename); toast('Direct share yahan available nahi — file download ho gayi, ab manually share kar do.'); return; }
+  try{ await dlRedownload(id); toast('File download ho gayi — ab share kar do.'); }
+  catch(e){ toast('Abhi share nahi ho pa raha — file download karke share karein.',true); }
 }
 async function dlRedownload(id){
   var d=(window._sDownloads||[]).find(function(x){return x.id===id;}); if(!d) return;
+  // Material R2 par redirect hota hai -> downloadMaterial (dl-url/window.open) se download, warna CORS fail
+  if(d.kind==='material'){ try{ await downloadMaterial('student', d.ref_id, d.filename||'file.pdf'); }catch(e){ toast('Could not download. Try again.',true); } return; }
   var url=_dlUrlFor(d); if(!url) return;
   toast('Downloading…');
-  try{ var bl=await _dlPdfBlob(url); var u=URL.createObjectURL(bl); var a=document.createElement('a'); a.href=u; a.download=d.filename||'file.pdf'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},60000); toast('Downloaded.'); }
+  try{ var bl=await _dlPdfBlob(url); _dlSaveBlob(bl, d.filename); toast('Downloaded.'); }
   catch(e){ toast('Could not download. Try again.',true); }
 }
 async function dlRemove(id){
