@@ -228,7 +228,7 @@ async function _smartPdfPick(f,dzId,onDone){
     toast('Could not process this PDF. Please try another file.',true);
   }
 }
-const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','predicted report card':'trophy','predicted report':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check','mvs services':'bag'};
+const NAV_ICON={'task manager':'play','urgent videos':'alert','my tasks':'target','result card':'trophy','predicted report card':'trophy','predicted report':'trophy','teacher ranking':'trophy','predicted results':'chart','syllabus tracker':'clipboard','syllabus manager':'book','tests tracker':'clipboard','dashboard':'grid','home':'grid','time table':'calendar','dpp':'clipboard','dpp result':'clipboard','dpp submit':'upload','lecture reports':'play','lectures':'play','tests':'edit','study material':'book','materials':'folder','doubts':'help','performance':'chart','reschedule':'refresh','notifications':'bell','notify students':'megaphone','progress':'chart','next day':'calendar','today':'calendar','approvals':'check','teachers':'users','teacher reports':'chart','activity':'chart','send notice':'megaphone','students':'user','subjects':'book','admin users':'shield','my students':'users','student count':'chart','know your teacher':'users','my profile':'user','live students':'user','live users':'user','class compliance':'shield','message admin':'bell','question bank':'book','classes material':'folder','attendance':'clock','teacher attendance':'clock','payout':'wallet','payouts':'wallet','my attendance':'clock','my payout':'wallet','study material':'book','teacher reports':'chart','class compliance':'shield','live users':'user','admin users':'shield','send notice':'megaphone','my subjects':'book','subject materials':'folder','material checker':'check','mvs services':'bag','app tutorial':'play','live events':'calendar','live classes':'calendar','downloads':'download','app content':'play'};
 function injectNavIcons(){
   document.querySelectorAll('.nav-item').forEach(el=>{
     if(el.querySelector('svg')) return;
@@ -19645,6 +19645,29 @@ function _linkify(text){
     return '<a href="'+clean+'" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:underline;word-break:break-all">'+clean+'</a>'+tail;
   });
 }
+// WhatsApp-style inline formatting on ALREADY-ESCAPED text (no raw tags inside).
+// *bold* / **bold** -> bold, _italic_ -> italic, ~strike~ -> strikethrough.
+function _mdInline(s){
+  if(!s) return s;
+  s=s.replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>');                         // **bold**
+  s=s.replace(/(^|[^\w*])\*([^*\n]+?)\*(?=[^\w*]|$)/g,'$1<b>$2</b>');     // *bold* (WhatsApp)
+  s=s.replace(/(^|[^\w~])~([^~\n]+?)~(?=[^\w~]|$)/g,'$1<s>$2</s>');       // ~strike~
+  s=s.replace(/(^|[^\w_])_([^_\n]+?)_(?=[^\w_]|$)/g,'$1<i>$2</i>');       // _italic_
+  return s;
+}
+// Rich community text: escape -> WhatsApp formatting on non-URL parts -> linkify URLs.
+function _commRich(text){
+  var e=esc(text||'');
+  var out='', last=0, m, re=/(https?:\/\/[^\s<]+)/g;
+  while((m=re.exec(e))){
+    out+=_mdInline(e.slice(last,m.index));
+    var u=m[1]; var clean=u.replace(/[.,;:!?)\]]+$/,''); var tail=u.slice(clean.length);
+    out+='<a href="'+clean+'" target="_blank" rel="noopener" style="color:#1d4ed8;text-decoration:underline;word-break:break-all">'+clean+'</a>'+tail;
+    last=m.index+u.length;
+  }
+  out+=_mdInline(e.slice(last));
+  return out;
+}
 function _commPollAdminHtml(p){
   var poll=p.poll||{}; var opts=poll.options||[]; var total=poll.total||0;
   var rows=opts.map(function(o){
@@ -19674,7 +19697,7 @@ function _commBubble(p){
   var editedTag=p.edited?'<span class="b-edited">edited</span>':'';
   return '<div class="cmy-bub'+(pinned?' pinned':'')+'" id="cmy-bub-'+p.id+'">'+(pinned?'<div class="b-pin">'+ic('pin')+' Pinned</div>':'')+
     ((p.title&&!isPoll)?'<div class="b-h">'+esc(p.title)+'</div>':'')+
-    ((p.body&&!isPoll)?'<div class="b-b">'+_linkify(p.body)+'</div>':'')+pollH+imgH+audH+fileH+linkH+
+    ((p.body&&!isPoll)?'<div class="b-b">'+_commRich(p.body)+'</div>':'')+pollH+imgH+audH+fileH+linkH+
     '<div class="b-t">'+esc(p.at||'')+editedTag+' '+pin+' '+edit+' '+del+' '+seen+'</div></div>';
 }
 // ---- Edit a sent message (group/broadcast) for everyone ----
@@ -19824,7 +19847,7 @@ function _commMsgHtml(p){
     '</div>'):('<div class="cmy-msg-t">'+esc(p.at||'')+editedTag+'</div>');
   return '<div class="cmy-msg'+(pinned?' pinned':'')+'">'+(pinned?'<div class="m-pin">'+ic('pin')+' Pinned</div>':'')+
     ((p.title&&!isPoll)?'<div class="cmy-msg-h">'+esc(p.title)+'</div>':'')+
-    ((p.body&&!isPoll)?'<div class="cmy-msg-b">'+_linkify(p.body)+'</div>':'')+pollH+imgH+audH+(fileH||'')+linkH+
+    ((p.body&&!isPoll)?'<div class="cmy-msg-b">'+_commRich(p.body)+'</div>':'')+pollH+imgH+audH+(fileH||'')+linkH+
     adminCtrls+stats+'</div>';
 }
 // ---- Composer (group post / broadcast / popup) ----
@@ -20200,7 +20223,7 @@ function _sCommBubble(p){
   var isPoll=!!(p.poll&&p.poll.options);
   var pollH=isPoll?_sPollHtml(p):'';
   var titleH=(p.title&&!isPoll)?'<div class="scmt-title">'+esc(p.title)+'</div>':'';
-  var bodyH=(p.body&&!isPoll)?'<div class="scmt-text">'+_linkify(p.body)+'</div>':'';
+  var bodyH=(p.body&&!isPoll)?'<div class="scmt-text">'+_commRich(p.body)+'</div>':'';
   return '<div class="scmt-row"><div class="scmt-bubble'+(p.pinned?' pinned':'')+'">'+pin+sender
     +titleH+bodyH+pollH
     +imgH+audH+fileH+linkH
@@ -20404,7 +20427,7 @@ function _sPopupShow(ps,i){
     '<div style="height:6px;background:'+col+'"></div>'+imgH+
     '<div style="padding:20px">'+
       (p.title?'<div style="font-weight:800;font-size:1.25rem;color:var(--text,#14213d);margin-bottom:8px">'+esc(p.title)+'</div>':'')+
-      (p.body?'<div style="font-size:.95rem;color:#3a3527;line-height:1.6;white-space:pre-wrap">'+_linkify(p.body)+'</div>':'')+
+      (p.body?'<div style="font-size:.95rem;color:#3a3527;line-height:1.6;white-space:pre-wrap">'+_commRich(p.body)+'</div>':'')+
       fileH+linkH+
       '<button onclick="_sPopupClose('+p.id+')" style="width:100%;margin-top:16px;background:var(--surface-2,#f0ead9);border:1px solid var(--border);border-radius:12px;padding:12px;font-weight:800;cursor:pointer;color:var(--text,#14213d)">Got it</button>'+
     '</div></div>';
@@ -50733,8 +50756,8 @@ function loadAAppContent(){
   var el=document.getElementById('a-appcontent-content'); if(!el) return;
   _acvCss();
   el.innerHTML='<div class="acv-tabs">'
-    +'<button class="acv-tab'+(_ACV_SEC==='tutorial'?' on':'')+'" onclick="acvTab(\'tutorial\')">'+ic('tutorial')+' App Tutorial</button>'
-    +'<button class="acv-tab'+(_ACV_SEC==='live'?' on':'')+'" onclick="acvTab(\'live\')">'+ic('play')+' Live Classes</button>'
+    +'<button class="acv-tab'+(_ACV_SEC==='tutorial'?' on':'')+'" onclick="acvTab(\'tutorial\')">'+ic('play')+' App Tutorial</button>'
+    +'<button class="acv-tab'+(_ACV_SEC==='live'?' on':'')+'" onclick="acvTab(\'live\')">'+ic('calendar')+' Live Events</button>'
     +'</div><div id="acv-body"><div class="spinner"></div></div>';
   _acvRender();
 }
@@ -50745,7 +50768,7 @@ function acvPrev(){
   else { p.style.backgroundImage=''; p.innerHTML=(val('acv-url')?'Invalid YouTube link':'Thumbnail preview'); }
 }
 function _acvRender(){
-  var secName=(_ACV_SEC==='live')?'Live Classes':'App Tutorial';
+  var secName=(_ACV_SEC==='live')?'Live Events':'App Tutorial';
   var body=document.getElementById('acv-body'); if(body) body.innerHTML='<div class="spinner"></div>';
   api('/api/admin/app-videos?section='+_ACV_SEC).catch(function(){return {videos:[]};}).then(function(r){
     var list=(r&&r.videos)||[];
@@ -50827,19 +50850,36 @@ function _svidCss(){
     '.svid-thumb{width:100%;aspect-ratio:16/9;background:#0f1722 center/cover no-repeat;position:relative}',
     '.svid-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}',
     '.svid-play svg{width:52px;height:52px;filter:drop-shadow(0 2px 10px rgba(0,0,0,.6))}',
-    '.svid-t{padding:12px 14px;font-weight:800;font-size:.95rem;color:var(--text);line-height:1.4}'
+    '.svid-t{padding:12px 14px;font-weight:800;font-size:.95rem;color:var(--text);line-height:1.4}',
+    '.svid-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;min-height:300px}',
+    '.svid-empty-ic{width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,rgba(124,58,237,.14),rgba(37,99,235,.14));display:flex;align-items:center;justify-content:center;margin-bottom:18px}',
+    '.svid-empty-ic svg{width:40px;height:40px;stroke:#2563eb;fill:none;stroke-width:1.8}',
+    '.svid-empty-t{font-weight:800;font-size:1.25rem;color:var(--text);margin-bottom:8px}',
+    '.svid-empty-badge{display:inline-block;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;font-size:.68rem;font-weight:800;letter-spacing:.5px;padding:4px 12px;border-radius:999px;margin-bottom:14px;text-transform:uppercase}',
+    '.svid-empty-s{font-size:.92rem;color:var(--text-muted);line-height:1.6;max-width:360px}'
   ].join(''); document.head.appendChild(s);
+}
+function _svidEmptyHtml(section){
+  _svidCss();
+  var sub=(section==='live')
+    ? 'Live events ki video links jaise hi add hongi, woh turant yahan dikhne lagengi. Thodi der baad check karein.'
+    : 'App tutorial videos jaldi yahan add ki jayengi, taaki aap app ka har feature aasani se seekh sakein.';
+  return '<div class="svid-empty">'
+    +'<div class="svid-empty-ic"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 9l5 3-5 3z"/></svg></div>'
+    +'<div class="svid-empty-badge">Coming soon</div>'
+    +'<div class="svid-empty-t">Abhi koi video nahi</div>'
+    +'<div class="svid-empty-s">'+sub+'</div></div>';
 }
 async function openAppVideos(section){
   section=(section==='live')?'live':'tutorial';
-  var title=(section==='live')?'Live Classes':'App Tutorial';
+  var title=(section==='live')?'Live Events':'App Tutorial';
   showModal(title,'<div id="svid-body"><div class="spinner"></div></div>','<button class="btn btn-ghost" onclick="closeModal()">Close</button>');
   try{ var _mm=document.querySelector('#modal .modal'); if(_mm) _mm.classList.add('modal-fs'); }catch(e){}
   try{
     var r=await api('/api/student/app-videos?section='+section);
     var list=(r&&r.videos)||[];
     var body=document.getElementById('svid-body'); if(!body) return;
-    if(!list.length){ body.innerHTML='<div style="padding:40px 20px;text-align:center;color:var(--text-muted)">Coming soon — content will appear here.</div>'; return; }
+    if(!list.length){ try{ var _m=document.querySelector('#modal .modal'); if(_m) _m.classList.remove('modal-fs'); }catch(e){} body.innerHTML=_svidEmptyHtml(section); return; }
     _svidCss();
     body.innerHTML='<div class="svid-list">'+list.map(function(v){
       var thumb=v.thumb||('https://i.ytimg.com/vi/'+(v.video_id||'')+'/hqdefault.jpg');
@@ -52884,7 +52924,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     // App group (theme real; others coming soon)
     h+='<div class="s-glab">App</div><div class="s-box">'+
        '<div class="s-row" onclick="(window.toggleDark&&toggleDark());_sCloseSheet()"><div class="ri c-teal">'+svg('theme')+'</div><div class="rl">Dark / Light Theme</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+
-       vidRow('tutorial','App Tutorial')+vidRow('live','Live Classes')+
+       vidRow('tutorial','App Tutorial')+vidRow('live','Live Events')+
        '<div class="s-row" onclick="(window.openDownloads&&openDownloads());_sCloseSheet()"><div class="ri '+colStyle('download')+'">'+svg('download')+'</div><div class="rl">Downloads</div><svg class="rc" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div>'+'</div>';
     // NOTE: duplicate rating row hata diya — "Feedback" (Community & Help) wahi kaam karta hai (same
     // feedback form). Do same-kaam ke buttons confusing the, isliye ek hi rakha.
