@@ -3744,15 +3744,30 @@ function accountabilityBlock(comp,today){
   return `<div class="acct-row">${complianceCard(comp)}<div class="stats-grid" style="flex:1;margin:0">${statCard("Today's Classes",comp.stats.classes_today,'calendar','indigo',"navTo('teacher-app','today')")}${statCard('Completed Today',comp.stats.completed_today,'check','green')}${statCard('Pending DPP',pendingDpp,'clipboard','amber',"navTo('teacher-app','dpp')")}${statCard('Pending Notes',pendingNotes,'book','purple',"navTo('teacher-app','material')")}${statCard('Pending Tests',pendingTests,'edit','teal',"navTo('teacher-app','tests')")}</div></div>`;
 }
 function statusTag(s){ const m={Completed:'tag-done',Pending:'tag-pending',Missed:'tag-missed',Upcoming:'tag-upcoming',Live:'tag-live'}; return `<span class="tag ${m[s]||'tag-low'}">${s}</span>`; }
+// Timetable entry TEST hai? entry_type 'event' ya chapter me test/mission/mock/pyq/subjective/assessment.
+function _isTestEntry(c){ try{ if(!c) return false; if(String(c.type||'').toLowerCase()==='event') return true; return (typeof _isTest==='function')?_isTest(c.chapter||''):/test|mission|mock|pyq|subjective|assessment/i.test(c.chapter||''); }catch(e){ return false; } }
+// TEST entry ka "Create Test" — Test section me le jao + subject yaad rakho (openCreateExam prefill).
+// Backend test create hote hi us din ki test timetable-entry ko auto 'Done' kar deta hai.
+function tTestFromTimetable(ttid){
+  try{ var c=(window._tClasses||[]).find(function(x){return x&&x.id===ttid;})||{};
+    window._ttTestPrefill={ttid:ttid, subject:c.subject||'', chapter:c.chapter||'', class_name:c.class_name||''};
+  }catch(e){ window._ttTestPrefill={ttid:ttid}; }
+  try{ navTo('teacher-app','tests'); }catch(e){}
+  try{ toast('Is din ka test yahin banao — test create hote hi timetable pe ye apne-aap “Done” ho jayega.'); }catch(e){}
+}
 function tClassRow(c){
   const topic=c.completed?(c.topic_covered||c.chapter||'—'):(c.chapter||'—');
   // v168: report/mark-completed sirf class ka time nikalne ke baad; pehle "Upcoming"
   const _dt=parseClassDT(c.date,c.time); const _over=!_dt || istNow()>_dt;
+  // TEST entry: report ka system NAHI — "Create Test" dikhao jo Test section me le jaata hai.
+  // Test create hote hi backend us timetable test-entry ko auto 'Done' kar deta hai.
   const btn=c.completed
     ? '<span style="color:var(--success);font-size:.8rem;font-weight:600">Done ✓</span>'
-    : (_over
-        ? `<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`
-        : '<span class="tstatus upcoming">Upcoming</span>');
+    : (_isTestEntry(c)
+        ? `<button class="btn btn-primary btn-sm" onclick="tTestFromTimetable(${c.id})">${ic('edit')} Create Test</button>`
+        : (_over
+            ? `<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Mark Completed</button>`
+            : '<span class="tstatus upcoming">Upcoming</span>'));
   return `<tr><td data-label="Subject"><strong>${esc(c.subject)}</strong></td><td data-label="Batch">${esc(c.class_name||'—')}</td><td data-label="Time">${esc(c.time||'—')}</td><td data-label="Topic">${esc(topic)}</td><td data-label="Status">${c.completed?'<span class="tag tag-done">Completed</span>':statusTag(c.live_status)}</td><td data-label="" class="rt-act" style="text-align:right">${btn}</td></tr>`;
 }
 async function _renderTodayClasses(targetId){
@@ -3779,7 +3794,7 @@ async function loadTCompletion(){
   try{
     const cls=await api('/api/teacher/my-classes'); window._tClasses=cls;
     const pending=cls.filter(c=>!c.completed), done=cls.filter(c=>c.completed).reverse();
-    const pendList=pending.length?pending.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.chapter||'')}</div><div class="qb-meta">${statusTag(c.live_status)}<span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span></div></div><div class="qb-act"><button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Submit Report</button></div></div>`).join(''):'<div class="empty-state"><p>No pending classes. All caught up!</p></div>';
+    const pendList=pending.length?pending.map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.chapter||'')}</div><div class="qb-meta">${statusTag(c.live_status)}<span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span></div></div><div class="qb-act">${_isTestEntry(c)?`<button class="btn btn-primary btn-sm" onclick="tTestFromTimetable(${c.id})">${ic('edit')} Create Test</button>`:`<button class="btn btn-success btn-sm" onclick="openClassReport(${c.id})">Submit Report</button>`}</div></div>`).join(''):'<div class="empty-state"><p>No pending classes. All caught up!</p></div>';
     const doneList=done.length?done.slice(0,15).map(c=>`<div class="qb-card"><div class="qb-info"><div class="qb-title">${esc(c.subject)} — ${esc(c.topic_covered||c.chapter||'')}</div><div class="qb-meta"><span class="tag tag-done">Completed</span><span>${esc(c.class_name||'')}</span><span>· ${esc(c.date||'')}</span>${c.homework?'<span>· HW: '+esc(c.homework)+'</span>':''}${c.dpp_given?'<span>· DPP ✓</span>':''}</div></div><div class="qb-act"><button class="btn btn-ghost btn-sm" title="Is galat/duplicate entry ko timetable se hatao" onclick="_delReportEntry(${c.id})">${ic('trash')}</button></div></div>`).join(''):'<div class="empty-state"><p>No completed reports yet.</p></div>';
     el.innerHTML=`<div class="alert alert-info">Submit a class completion report. The class status becomes <strong>Completed</strong> and counts toward your compliance score.</div><div class="card"><div class="card-header"><h3>Pending Classes (${pending.length})</h3></div><div class="card-body">${pendList}</div></div><div class="card"><div class="card-header"><h3>Recently Completed</h3></div><div class="card-body">${doneList}</div></div>`;
   }catch(e){ el.innerHTML=errHtml(e); }
@@ -8932,6 +8947,13 @@ async function openCreateExam(type,editData){
   // Class select (test targeting): subject ki classes timetable + assignment se
   const _subEl=document.getElementById('ex-sub');
   if(_subEl) _subEl.addEventListener('change',()=>_examFillTestCls(true));
+  // Timetable ke "Create Test" se aaye -> us test entry ka subject pehle se select (one-time prefill).
+  try{ if(!editData && window._ttTestPrefill && window._ttTestPrefill.subject && _subEl){
+    var _pw=window._ttTestPrefill.subject;
+    var _ok=Array.prototype.some.call(_subEl.options,function(o){ return o.value===_pw; });
+    if(_ok) _subEl.value=_pw;
+  } }catch(e){}
+  window._ttTestPrefill=null;   // prefill ek hi baar use ho
   _examFillTestCls(true);
   addExamQ();
   // AUTO-DRAFT: har 2.5s me draft save (hang/close pe questions na udein). Edit pe nahi.
@@ -26050,6 +26072,7 @@ async function submitDppFile(pid){
     try{
       await api(`/api/student/dpp-packs/${pid}/submit-staged`,'POST',{answer_id:st.answer_id});
       try{ closeModal(); }catch(e){}
+      try{ window._sHomeDataAt=0; }catch(e){}   // DPP submit -> home badges/priority next buildHome par fresh
       toast('DPP submitted! Status: Checking.');
       loadSDpp(); return;
     }catch(e){
@@ -26097,6 +26120,7 @@ async function submitAnswerFile(parentId){
       x.send(fd);
     });
     st.innerHTML=`<div class="alert alert-success"><strong>Your DPP has been submitted.</strong><br>Your subject teacher will review it and update your marks soon.</div>`;
+    try{ window._sHomeDataAt=0; }catch(e){}   // home badges/priority next buildHome par fresh
     toast('DPP submitted.');
     btn.textContent=' Done'; btn.setAttribute('onclick','closeModal()'); btn.disabled=false;
     if(document.getElementById('s-page-dpp').classList.contains('active')) loadSDpp();
@@ -27054,6 +27078,7 @@ async function _plSubmitSend(id, body){
   if(window._plSaveT){ clearTimeout(window._plSaveT); window._plSaveT=null; }
   window._plSessionOn=false;
   window._plRetryBody=null; window._examPlayerOpen=false;
+  try{ window._sHomeDataAt=0; }catch(e){}   // test attempt hua -> home ka "Do this next"/badges next buildHome par fresh
   _plTestMode(false);   // test submit ho gaya -> Thank-you/result pe bottom nav wapas
   let attM=0,skM=0;
   if(!ex.has_qpdf){ ex.questions.forEach(q=>{ if(_plRev[q.q_no])attM+=q.max_marks||0; else skM+=q.max_marks||0; }); }
@@ -27318,12 +27343,21 @@ async function _solPdf(id,med){
 }
 
 
+// Doubts "new reply" badge: teacher ne jawab diya (d.answer) par student ne abhi tak dekha nahi.
+// Seen-set localStorage me (exam "NEW" pattern jaisa). Doubts section khulte hi sab seen.
+function _sDoubtSeenLoad(){ try{ var v=JSON.parse(localStorage.getItem('mvs_sdoubt_seen')||'null'); return new Set((v&&Array.isArray(v.ids))?v.ids:[]); }catch(e){ return new Set(); } }
+function _sDoubtSeenSave(set){ try{ localStorage.setItem('mvs_sdoubt_seen', JSON.stringify({ids:[...set].slice(-4000)})); }catch(e){} }
+function _sDoubtAnsweredIds(list){ var out=[]; (list||[]).forEach(function(d){ if(d&&d.id!=null&&(String(d.answer||'').trim()||d.has_answer_voice||d.has_answer_file)) out.push(d.id); }); return out; }
+function _sDoubtNewCount(list){ var seen=_sDoubtSeenLoad(); var n=0; _sDoubtAnsweredIds(list).forEach(function(id){ if(!seen.has(id)) n++; }); return n; }
+function _sDoubtMarkAllSeen(list){ var s=_sDoubtSeenLoad(); _sDoubtAnsweredIds(list).forEach(function(id){ s.add(id); }); _sDoubtSeenSave(s); }
 async function loadSDoubts(){
   window._dbtRole='student';
   const el=document.getElementById('s-doubts-content');
   softSpin(el);
   try{
     let mine=[]; try{ mine=await api('/api/student/doubts'); }catch(e){}
+    // Doubts khul gaye -> saare answered doubts "seen"; home badge next buildHome par clear ho jaata hai.
+    try{ _sDoubtMarkAllSeen(mine); window._sTileBadges=window._sTileBadges||{}; delete window._sTileBadges.doubts; window._sHomeDataAt=0; }catch(e){}
     let subs=[]; try{ const p=await api('/api/student/profile'); subs=p.subjects||[]; }catch(e){}
     let html=`<div class="grid-2"><div class="card"><div class="card-header"><h3>Ask a Doubt</h3></div><div class="card-body">
       <div class="form-group"><label>Subject <span style="color:var(--danger)">*</span></label><select class="form-control" id="sdo-subject" onchange="sdoFetchTeacher()"><option value="" selected disabled>\u2014 Select Subject \u2014</option>${subs.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
@@ -51801,6 +51835,18 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
   '#student-app .s-ttc.live{background:linear-gradient(145deg,#132238,#213c5e);border:none;color:#fff}'+
   '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}'+
+  /* class card footer: report duration/time-range + Class Notes download */
+  '#student-app .s-ttc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}'+
+  '#student-app .s-ttc.live .s-ttc-foot{border-top-color:rgba(255,255,255,.16)}'+
+  '#student-app .s-ttc-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}'+
+  '#student-app .s-ttc-rng{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:var(--text-muted)}'+
+  '#student-app .s-ttc-rng svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}'+
+  '#student-app .s-ttc-dur{font-size:10px;font-weight:800;color:#1c8f63;background:rgba(28,143,99,.12);border-radius:999px;padding:2px 8px}'+
+  '#student-app .s-ttc.live .s-ttc-rng{color:rgba(255,255,255,.8)}#student-app .s-ttc.live .s-ttc-dur{color:#9ff0cd;background:rgba(255,255,255,.14)}'+
+  '#student-app .s-ttc-notes{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--primary,#b8941f);background:transparent;color:var(--primary,#b8941f);border-radius:999px;padding:5px 11px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer}'+
+  '#student-app .s-ttc-notes svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}'+
+  '#student-app .s-ttc-notes:active{transform:scale(.95)}'+
+  '#student-app .s-ttc.live .s-ttc-notes{border-color:#e7bf55;color:#e7bf55}'+
   '#student-app .s-ltag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;color:#fff;background:#e25555;padding:2px 7px;border-radius:7px;margin-bottom:7px}'+
   '#student-app .s-ltag i{width:5px;height:5px;background:#fff;border-radius:50%;animation:sblink .9s infinite}'+
   '@keyframes sblink{50%{opacity:.3}}'+
@@ -51828,6 +51874,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}'+
   '#student-app .s-tile{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 5px 11px;text-align:center;position:relative;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.06);transition:transform .1s}'+
   '#student-app .s-tile:active{transform:scale(.93)}'+
+  /* NEW content wali quick-action tile slow-blink (gold glow) — student ko turant pata chale */
+  '#student-app .s-tile.has-new{animation:stileglow 1.8s ease-in-out infinite;border-color:#e7cf8f}'+
+  '@keyframes stileglow{0%,100%{box-shadow:0 6px 16px rgba(0,0,0,.06)}50%{box-shadow:0 6px 16px rgba(0,0,0,.06),0 0 0 3px rgba(226,85,85,.28)}}'+
   '#student-app .s-tile .ti{width:50px;height:50px;border-radius:15px;margin:0 auto 9px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 16px rgba(0,0,0,.2)}'+
   '#student-app .s-tile .ti svg{width:25px;height:25px;stroke:#fff;fill:none;stroke-width:2}'+
   '#student-app .s-tile .tl{font-size:10.5px;font-weight:700;line-height:1.15;color:var(--text)}'+
@@ -51865,6 +51914,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-morebar .mg svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2.4}'+
   /* new-for-you */
   '#student-app .s-new{display:flex;flex-direction:column;gap:10px}'+
+  /* New-for-you header ka calendar button + empty state */
+  '#student-app .s-newcal{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:5px 11px 5px 9px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,.05)}'+
+  '#student-app .s-newcal svg{width:15px;height:15px;stroke:var(--primary,#b8941f);fill:none;stroke-width:2}'+
+  '#student-app .s-newcal:active{transform:scale(.96)}'+
+  '#student-app .s-new-empty{padding:16px 14px;text-align:center;color:var(--text-muted);font-size:12.5px;background:var(--card);border:1px dashed var(--border);border-radius:14px;line-height:1.5}'+
   '#student-app .s-ni{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;display:flex;gap:12px;align-items:center;box-shadow:0 5px 14px rgba(0,0,0,.05)}'+
   '#student-app .s-niacts{display:flex;gap:7px;flex:0 0 auto}'+
   '#student-app .s-nib{width:40px;height:40px;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}'+
@@ -51969,6 +52023,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-cal-d:active{transform:scale(.92)}'+
   '#student-app .s-cal-d.has{border-color:#e7cf8f}'+
   '#student-app .s-cal-d.has::after{content:"";position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#c99a2e}'+
+  '#student-app .s-cal-d.sel{border-color:var(--primary,#b8941f);box-shadow:0 0 0 2px rgba(184,148,31,.25) inset}'+
   '#student-app .s-cal-d.today{background:linear-gradient(135deg,#e7bf55,#a97f1e);color:#2a2205;border-color:transparent}'+
   '#student-app .s-cal-d.today::after{background:#2a2205}'+
   '#student-app .s-cal-x{width:100%;margin-top:16px;padding:14px;border:none;border-radius:14px;background:var(--border);color:var(--text);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer}'+
@@ -52031,6 +52086,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
   function sGo(page){
     try{ var app=document.getElementById('student-app');
+      // Navigate ho raha hai -> test-mode leftover hatao (bottom-nav wapas; "hang" fix).
+      try{ if(app) app.classList.remove('pl-testmode'); document.body.classList.remove('pl-testmode'); }catch(_e){}
       // "classes" = module ka premium schedule page (real sPage nahi) — isse khud handle karo.
       if(page==='classes'){ if(app) showClassesPage(app); closeSheet(); return; }
       var el=app?app.querySelector('.sidebar-nav .nav-item[onclick*="sPage(\''+page+'\'"]'):null;
@@ -52189,7 +52246,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       '<div class="s-sec"><div class="s-sec-h"><h3>Quick Actions</h3></div><div class="s-tiles" id="s-tiles"></div>'+
         '<div class="s-morebar" onclick="_sOpenSheet()"><div class="mi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div><div class="mt"><div class="a">More Options</div><div class="b" id="s-moresub">All sections</div></div><div class="mg"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></div></div>'+
       '</div>'+
-      '<div class="s-sec" id="s-newsec" style="display:none"><div class="s-sec-h"><h3>New for you</h3></div><div class="s-new" id="s-new"></div></div>'+
+      '<div class="s-sec" id="s-newsec" style="display:none"><div class="s-sec-h"><h3>New for you</h3><button class="s-newcal" onclick="_sNewCalOpen()" title="Pick a date"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span id="s-new-datelbl">Today</span></button></div><div class="s-new" id="s-new"></div></div>'+
       '<div class="s-pad"></div>';
     }   // end build-once shell
 
@@ -52227,10 +52284,29 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function updateTileBadgesFromWs(w){
     try{ window._sTileBadges=window._sTileBadges||{};
       var pend=(w&&w.pending)||{};
-      var dp=parseInt(pend.dpps,10)||0; var ts=parseInt(pend.tests,10)||0;
-      if(dp>0) window._sTileBadges.dpp=(dp>99?'99+':String(dp)); else delete window._sTileBadges.dpp;
+      var ts=parseInt(pend.tests,10)||0;
       if(ts>0) window._sTileBadges.tests=(ts>99?'99+':String(ts)); else delete window._sTileBadges.tests;
+      // NOTE: DPP badge ab workspace.pending.dpps (legacy Material-based) se NAHI aata — wo naye
+      // DppPack system ko count nahi karta tha, isliye "0" dikhta tha. Ab refreshDppDoubtBadges()
+      // /api/student/dpp-packs se asli pending DPP count nikaalta hai (section ke "NEW DPP" jaisa).
     }catch(e){}
+  }
+  /* DPP + Doubts quick-action tiles ke NEW count badge — asli source se (workspace legacy se nahi).
+     DPP = jo DPP submit nahi hue (pending). Doubts = teacher ne reply kiya par student ne dekha nahi. */
+  function refreshDppDoubtBadges(app){
+    apiGet('/api/student/dpp-packs'+bq()).then(function(d){
+      var packs=(d&&d.packs)||[]; var pend=0;
+      packs.forEach(function(pk){ if(pk && !pk.submitted) pend++; });
+      window._sTileBadges=window._sTileBadges||{};
+      if(pend>0) window._sTileBadges.dpp=(pend>99?'99+':String(pend)); else delete window._sTileBadges.dpp;
+      var a=document.getElementById('student-app'); if(a&&a.classList.contains('s-on-home')) renderTiles(a);
+    }).catch(function(){});
+    apiGet('/api/student/doubts').then(function(list){
+      var n=0; try{ n=(typeof window._sDoubtNewCount==='function')?window._sDoubtNewCount(list||[]):0; }catch(e){}
+      window._sTileBadges=window._sTileBadges||{};
+      if(n>0) window._sTileBadges.doubts=(n>99?'99+':String(n)); else delete window._sTileBadges.doubts;
+      var a=document.getElementById('student-app'); if(a&&a.classList.contains('s-on-home')) renderTiles(a);
+    }).catch(function(){});
   }
 
   /* Quick-action tiles — har buildHome pe fresh (nav late-inject + badge counts pick up) */
@@ -52244,7 +52320,8 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var col=COLORS[mi%COLORS.length];
       var cb=xb[id];                                   // computed new-count (e.g. new DPP)
       var badge=(cb!=null&&cb!=='')?String(cb):(it.badge||'');
-      html+='<div class="s-tile" onclick="_sGo(\''+id+'\')"><div class="ti '+col+'">'+svg(id)+'</div>'+(badge?('<span class="tbg">'+esc(badge)+'</span>'):'')+'<div class="tl">'+esc(it.label)+'</div></div>';
+      // badge wali tile ko slow-blink (has-new) — student ko turant pata chale kuch NEW hai.
+      html+='<div class="s-tile'+(badge?' has-new':'')+'" onclick="_sGo(\''+id+'\')"><div class="ti '+col+'">'+svg(id)+'</div>'+(badge?('<span class="tbg">'+esc(badge)+'</span>'):'')+'<div class="tl">'+esc(it.label)+'</div></div>';
     });
     if(html) host.innerHTML=html;
     // more-bar subtitle (non-main items)
@@ -52322,7 +52399,10 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       }
     }).catch(function(){});
 
-    // new for you — newly uploaded class materials (correct source, deduped, recent first)
+    // DPP + Doubts quick-action tiles ka asli NEW-count badge (workspace legacy se nahi).
+    safe(function(){ refreshDppDoubtBadges(app); });
+
+    // new for you — DEFAULT sirf AAJ ke naye material; upar calendar se kisi bhi din ka dekh sakte ho.
     apiGet('/api/student/materials-v2'+bq()).then(function(mats){ mats=mats||[];
       // _sMatNew (NEW/unseen materials) KHUD yahin compute karo — pehle ye main app ke dashboard
       // load par depend karta tha jo module ke home se alag/late chalta tha, isliye Classes Material
@@ -52333,25 +52413,17 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       mats.forEach(function(m){ if(!m||(m.type!=='notes'&&m.type!=='dpp')) return;
         var title=String(m.title||m.name||m.chapter||'').trim(); if(!title) return;
         var key=(m.id!=null?('id'+m.id):title.toLowerCase()); if(seen[key]) return; seen[key]=1;
-        items.push({id:(m.id!=null?m.id:null), title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||'')});
+        var dk=String(m.date_ist||m.date||'').slice(0,10);     // IST din (backend date_ist) -> aaj/kisi din ka filter
+        items.push({id:(m.id!=null?m.id:null), title:title, subject:String(m.subject||m.chapter||''), isNew:(newSet?newSet.has(m.id):false), ts:String(m.created_at||m.uploaded_at||m.date||m.id||''), dateKey:dk});
       });
-      // Classes Material + DPP tile ke blink badge — materials-v2 + _sMatNew se KHUD compute,
-      // readNav/sidebar badge pe depend nahi (phone pe wo reliable nahi tha).
+      // Classes Material + DPP tile ke blink badge — materials-v2 + _sMatNew se KHUD compute.
       window._sHomeMats=mats;
       safe(function(){ updateMatDppBadges(); var app2=document.getElementById('student-app'); if(app2) renderTiles(app2); });
-      items.sort(function(a,b){ if(a.isNew!==b.isNew) return a.isNew?-1:1; return b.ts.localeCompare(a.ts); });
-      items=items.slice(0,4);
-      var nn=document.getElementById('s-new'), ns=document.getElementById('s-newsec'); if(!nn||!ns) return;
-      if(!items.length){ ns.style.display='none'; return; }
-      nn.innerHTML=items.map(function(it){
-        // click karne ki zaroorat nahi — har item par seedha View + Download icon.
-        var acts=(it.id!=null)
-          ? '<div class="s-niacts"><button class="s-nib view" data-mid="'+it.id+'" data-mt="'+esc(it.title)+'" onclick="_sMatView(this)" title="View"><svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
-            + '<button class="s-nib dl" data-mid="'+it.id+'" data-mt="'+esc(it.title)+'" onclick="_sMatDl(this)" title="Download"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></button></div>'
-          : '<svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg>';
-        return '<div class="s-ni"'+(it.id==null?' onclick="(window.wsGo&&wsGo(\'materials\'))" style="cursor:pointer"':'')+'><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(it.title)+(it.isNew?' <span class="s-nbadge">NEW</span>':'')+'</div><div class="s">'+esc(it.subject||'Class Material')+'</div></div>'+acts+'</div>';
-      }).join('');
-      ns.style.display='';
+      items.sort(function(a,b){ return b.ts.localeCompare(a.ts); });   // recent first
+      window._sNewAll=items;                                           // poori list -> date picker filter
+      window._sNewDays={}; items.forEach(function(it){ if(it.dateKey) window._sNewDays[it.dateKey]=1; });
+      if(!window._sNewSel) window._sNewSel=_sTodayKey();               // default: aaj
+      _sRenderNewFor(window._sNewSel);
     }).catch(function(){});
 
     // today's classes — teacher photo + name + LIVE/Upcoming/Done status (premium)
@@ -52381,8 +52453,22 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>'));
         var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||rawSub[0]||'C').toUpperCase();
         var pid='stph_'+i; if(tid) photos.push([pid, tid]);
+        // Class ho chuki (Done) -> report ke asli start–end + duration dikhao (portal jaisa).
+        var meta='';
+        if(done){
+          var _rng=''; if(c.start_time && c.end_time) _rng=esc(String(c.start_time))+' – '+esc(String(c.end_time));
+          var _dm=(c.duration_min!=null)?(parseInt(c.duration_min,10)||0):0;
+          if(_rng || _dm>0){
+            meta='<div class="s-ttc-meta">'+(_rng?('<span class="s-ttc-rng"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'+_rng+'</span>'):'')+(_dm>0?('<span class="s-ttc-dur">'+_dm+' min</span>'):'')+'</div>';
+          }
+        }
+        // Class notes yahin se download (click par section me jaane ki zaroorat nahi)
+        var noteBtn=(c.has_notes && c.lecture_id)
+          ? '<button class="s-ttc-notes" onclick="event.stopPropagation();_sClassNotesDl('+c.lecture_id+')" title="Download class notes"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Class Notes</button>'
+          : '';
+        var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
         // card clickable -> us class ke notes/material par (Classes Material section)
-        return '<div class="s-ttc'+(live?' live':'')+'" style="cursor:pointer" onclick="_sGo(\'materials\')"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div></div>';
+        return '<div class="s-ttc'+(live?' live':'')+'" style="cursor:pointer" onclick="_sGo(\'materials\')"><div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+foot+'</div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
@@ -52400,6 +52486,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     try{ var s=document.getElementById('s-tt'); if(s && typeof ResizeObserver!=='undefined' && !window._sTtRO){ window._sTtRO=new ResizeObserver(function(){ try{ updateTtNav(); }catch(e){} }); window._sTtRO.observe(s); } }catch(e){}
   }
   function tkey(t){ t=String(t||''); var m=t.match(/(\d+):(\d+)\s*(am|pm)?/i); if(!m) return 0; var h=+m[1], mi=+m[2]; var ap=(m[3]||'').toLowerCase(); if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0; return h*60+mi; }
+  // Class card se seedha class-notes download (app ka tcMatDl reuse; wahi /lecture/{id}/file endpoint)
+  window._sClassNotesDl=function(lid){ try{ if(typeof window.tcMatDl==='function'){ window.tcMatDl(lid,'pdf'); return; } }catch(e){}
+    try{ if(typeof window.toast==='function') window.toast('Notes abhi available nahi.'); }catch(e){} };
   window._sTt=function(d){ var s=document.getElementById('s-tt'); if(s) s.scrollBy({left:d*169,behavior:'smooth'}); };
   window._sTtDots=dots; function dots(){ var s=document.getElementById('s-tt'), d=document.getElementById('s-ttdots'); if(!s||!d) return;
     var n=s.querySelectorAll('.s-ttc').length; if(n<=1){ d.innerHTML=''; return; }
@@ -52495,6 +52584,59 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     var d=new Date(v+'T00:00:00'); var lab=(v===_cToday())?'Today':(_cDayShort(d)+' '+d.getDate()+'/'+(d.getMonth()+1));
     renderClassesDay(v, lab);
   };
+
+  /* ===================== "New for you" — aaj default + kisi bhi din calendar se ===================== */
+  function _sTodayKey(){ return safe(function(){ return (typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); })||new Date().toLocaleDateString('en-CA'); }
+  function _sNewDateLabel(dk){ if(dk===_sTodayKey()) return 'Today';
+    try{ var d=new Date(dk+'T00:00:00'); var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return d.getDate()+' '+MON[d.getMonth()]; }catch(e){ return dk; } }
+  function _sNewItemHTML(it){
+    var acts=(it.id!=null)
+      ? '<div class="s-niacts"><button class="s-nib view" data-mid="'+it.id+'" data-mt="'+esc(it.title)+'" onclick="_sMatView(this)" title="View"><svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
+        + '<button class="s-nib dl" data-mid="'+it.id+'" data-mt="'+esc(it.title)+'" onclick="_sMatDl(this)" title="Download"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></button></div>'
+      : '<svg class="rc" viewBox="0 0 24 24" style="width:18px;height:18px;stroke:#b7bdc8;fill:none;stroke-width:2;flex:0 0 auto"><path d="M9 18l6-6-6-6"/></svg>';
+    return '<div class="s-ni"'+(it.id==null?' onclick="(window.wsGo&&wsGo(\'materials\'))" style="cursor:pointer"':'')+'><div class="nt" style="'+gcol('c-gold')+'">'+svg('materials')+'</div><div class="nb"><div class="t">'+esc(it.title)+(it.isNew?' <span class="s-nbadge">NEW</span>':'')+'</div><div class="s">'+esc(it.subject||'Class Material')+'</div></div>'+acts+'</div>';
+  }
+  function _sRenderNewFor(dk){
+    var all=window._sNewAll||[]; var ns=document.getElementById('s-newsec'), nn=document.getElementById('s-new'); if(!ns||!nn) return;
+    if(!all.length){ ns.style.display='none'; return; }   // kabhi koi material hi nahi -> section hide
+    ns.style.display='';
+    var lbl=document.getElementById('s-new-datelbl'); if(lbl) lbl.textContent=_sNewDateLabel(dk);
+    var list=all.filter(function(it){ return it.dateKey===dk; });
+    if(!list.length){
+      nn.innerHTML='<div class="s-new-empty">'+(dk===_sTodayKey()?'Aaj abhi tak koi naya material nahi. Upar calendar se doosre din dekho.':'Is din koi naya material nahi tha.')+'</div>';
+      return;
+    }
+    nn.innerHTML=list.slice(0,20).map(_sNewItemHTML).join('');
+  }
+  window._sNewPick=function(dk){ if(!dk) return; window._sNewSel=dk; _sNewCalClose(); _sRenderNewFor(dk); };
+  function _sNewCalClose(){ var ov=document.getElementById('s-newcal-ov'); if(ov) ov.classList.remove('show'); }
+  window._sNewCalClose=_sNewCalClose;
+  window._sNewCalNav=function(delta){ var m=window._sNewCalMonth||new Date(); _sNewCalOpenM(new Date(m.getFullYear(), m.getMonth()+delta, 1)); };
+  window._sNewCalOpen=function(){ var sel=window._sNewSel||_sTodayKey(); var d=new Date(sel+'T00:00:00'); _sNewCalOpenM(new Date(d.getFullYear(), d.getMonth(), 1)); };
+  function _sNewCalOpenM(m){
+    window._sNewCalMonth=m; var app=document.getElementById('student-app'); if(!app) return;
+    var ov=document.getElementById('s-newcal-ov');
+    if(!ov){ ov=document.createElement('div'); ov.id='s-newcal-ov'; ov.className='s-cal-ov'; ov.onclick=function(e){ if(e.target===ov) _sNewCalClose(); }; app.appendChild(ov); }
+    ov.innerHTML=_sNewCalHTML(m); ov.classList.add('show');
+  }
+  function _sNewCalHTML(m){
+    var y=m.getFullYear(), mo=m.getMonth();
+    var startDow=(new Date(y,mo,1).getDay()+6)%7;   // Monday-first
+    var dim=new Date(y,mo+1,0).getDate(); var today=_sTodayKey(); var sel=window._sNewSel||today;
+    var days=window._sNewDays||{};
+    var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var h='<div class="s-cal" onclick="event.stopPropagation()">'+
+      '<div class="s-cal-h"><button class="s-cal-nav" onclick="_sNewCalNav(-1)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>'+
+      '<div class="s-cal-t">'+MN[mo]+' '+y+'</div>'+
+      '<button class="s-cal-nav" onclick="_sNewCalNav(1)"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button></div>'+
+      '<div class="s-cal-w"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>'+
+      '<div class="s-cal-g">';
+    for(var i=0;i<startDow;i++) h+='<span class="s-cal-e"></span>';
+    for(var dn=1;dn<=dim;dn++){ var dk=y+'-'+_pad2(mo+1)+'-'+_pad2(dn);
+      h+='<button class="s-cal-d'+(dk===today?' today':'')+(dk===sel?' sel':'')+(days[dk]?' has':'')+'" data-dk="'+dk+'" onclick="_sNewPick(\''+dk+'\')">'+dn+'</button>'; }
+    h+='</div><button class="s-cal-x" onclick="_sNewCalClose()">Close</button></div>';
+    return h;
+  }
   window._sClassDay=function(btn){ var days=document.getElementById('s-cdays'); if(days){ days.querySelectorAll('.s-cday').forEach(function(b){ b.classList.remove('on'); }); } btn.classList.add('on');
     renderClassesDay(btn.getAttribute('data-k'), btn.getAttribute('data-l')); };
   window._sClassJoin=function(btn){ try{ var l=(btn&&btn.getAttribute('data-ln'))||''; if(l) window.open(l,'_blank'); else _sGo('timetable'); }catch(e){} };
@@ -52598,6 +52740,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
 
   function wrapSPage(){ if(window._sPageWrapped || typeof window.sPage!=='function') return; var orig=window.sPage; window._sPageWrapped=true;
     window.sPage=function(page,el){ var r=orig.apply(this,arguments);
+      // KISI bhi section pe navigate hua (bottom-nav, back button, YA hardware/gesture back jo
+      // popstate se sPage chalata hai) -> test-mode ka leftover HATAO taaki bottom-nav wapas aaye.
+      // Pehle test se back karne par pl-testmode class atak jaati thi (skip-load ki wajah se
+      // loadSTests dobara nahi chalta tha), jisse nav gayab + app "hang" jaisa lagta tha.
+      // Player khulne par _plRender isi sPage ke BAAD _plTestMode(true) lagata hai, isliye yahan
+      // clear karna safe hai (active test ke beech sPage kabhi nahi chalta).
+      try{ var _ap=document.getElementById('student-app'); if(_ap) _ap.classList.remove('pl-testmode'); document.body.classList.remove('pl-testmode'); }catch(_e){}
       try{ syncActive(page); var app=document.getElementById('student-app'); if(app){ app.classList.remove('s-on-classes'); var onHome=(page==='dashboard'); app.classList.toggle('s-on-home',onHome);
         if(onHome){ buildHome(app);
           // section se back aane par home hamesha UPAR se (hero) dikhe — warna scroll section wali

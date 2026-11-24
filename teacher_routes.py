@@ -5514,6 +5514,68 @@ def _parse_dur(v):
     return n if n > 0 else None
 
 
+def _tt_is_test_entry(e):
+    """Timetable entry ek TEST hai? Frontend _isTest ka mirror: entry_type 'event'
+    YA chapter me test/mission/mock/pyq/subjective/assessment aata ho."""
+    import re as _re
+    if (getattr(e, "entry_type", "") or "").lower() == "event":
+        return True
+    return bool(_re.search(r"test|mission|mock|pyq|subjective|assessment", str(e.chapter or ""), _re.I))
+
+
+def _auto_complete_test_tt(db, tp, subject, class_name):
+    """Jab teacher test section me test CREATE karta hai (time pe ya delay se), us subject ki
+    jo TEST timetable-entry due/overdue hai (entry_date <= aaj) aur abhi complete nahi hui —
+    use AUTOMATIC 'Done' mark kar do. Isse timetable pe 'Report pending' nag hat jaata hai aur
+    student ko class 'Done' + test 'Attempt' dono dikhte hain. Sirf EK (sabse recent due) entry
+    mark hoti hai taaki galti se aage ke tests complete na ho jaayein. Best-effort — fail ho to
+    test creation kabhi block na ho."""
+    try:
+        from models import TimetableEntry
+        from sqlalchemy import or_
+        if not subject:
+            return
+        _sn = _subj_norm(subject)
+        _my_cls = _re_class_digits(class_name) if class_name else ""
+        today = ist_today()
+        cands = db.query(TimetableEntry).filter(
+            TimetableEntry.teacher_id == tp.id,
+            or_(TimetableEntry.completed == False, TimetableEntry.completed == None),
+            or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
+            TimetableEntry.entry_date != None,
+            TimetableEntry.entry_date <= today,
+        ).order_by(TimetableEntry.entry_date.desc()).all()
+        pick = None
+        for e in cands:
+            if _subj_norm(e.subject or "") != _sn:
+                continue
+            if _my_cls and _re_class_digits(e.class_name or "") and _re_class_digits(e.class_name or "") != _my_cls:
+                continue
+            if not _tt_is_test_entry(e):
+                continue
+            pick = e
+            break
+        if not pick:
+            return
+        pick.completed = True
+        pick.completed_at = datetime.now()
+        if not (pick.topic_covered or "").strip():
+            pick.topic_covered = (pick.chapter or "Test").strip() or "Test"
+        db.add(pick)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def _re_class_digits(x):
+    import re as _re
+    m = _re.search(r"\d+", str(x or ""))
+    return m.group(0) if m else ""
+
+
 @router.post("/exam")
 def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = None, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     _ensure_exam_columns(db)
@@ -5561,6 +5623,9 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                    explanation_hi=(q.get("explanation_hi") or None)))
         _made.append((ex.id, _tb))
     db.commit()
+    # Test ban gaya -> us subject ki due/overdue TEST timetable-entry ko AUTO 'Done' mark karo
+    # (report submit ki zaroorat nahi). Best-effort; fail ho to creation block na ho.
+    _auto_complete_test_tt(db, tp, _subj_in, _cls_name)
     # Har target batch ke students ko notification — ab BACKGROUND me (create turant return ho).
     _gender = tp.gender
     _tname = current_user.name
@@ -5646,6 +5711,8 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
                question_text="Attempt the full question paper attached above, then upload a clear photo (or PDF) of your complete answer sheet."))
         made.append((ex.id, _tb))
     db.commit()
+    # Mission 75 PDF test bhi create hote hi us subject ki due TEST timetable-entry auto 'Done'.
+    _auto_complete_test_tt(db, tp, (subject or "").strip(), (class_name or "").strip())
     for _eid, _tb in made:
         try:
             _notify_new_content(db, _tb, (subject or "").strip(), current_user.name, "test", exam_id=_eid, gender=tp.gender)

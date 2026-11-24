@@ -2439,11 +2439,20 @@ def student_materials_v2(batch: int = 0, gen: int = 0, db: Session = Depends(get
         mc = _fxcache[_nm] or _class_digits(getattr(m, "class_name", ""))
         if my_cls and mc and mc != my_cls:
             continue
+        # date = UTC day (backward compat). date_ist = IST day — "New for you" home section
+        # ab IST ke hisaab se "aaj" ka naya material filter karta hai (UTC se off-by-one na ho).
+        _dist = None
+        try:
+            if m.created_at:
+                _dist = str((m.created_at + timedelta(hours=5, minutes=30)).date())
+        except Exception:
+            _dist = None
         out.append({"id": m.id, "subject": m.subject, "chapter": m.chapter, "type": m.material_type,
                     "category": m.category, "title": m.title, "teacher_name": m.teacher_name,
                     "part": getattr(m, "part", "") or "",
                     "class_name": getattr(m, "class_name", "") or "",
-                    "filename": m.filename, "date": str(m.created_at)[:10]})
+                    "filename": m.filename, "date": str(m.created_at)[:10],
+                    "date_ist": _dist or str(m.created_at)[:10]})
     return out
 
 @router.get("/material/{mid}/dl-url")
