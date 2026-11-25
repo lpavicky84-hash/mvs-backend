@@ -52643,14 +52643,15 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttc.up{position:relative;border-color:rgba(184,148,31,.3)}'+
   '#student-app .s-ttc.up::before{content:"";position:absolute;left:0;top:13px;bottom:13px;width:4px;border-radius:0 4px 4px 0;background:linear-gradient(180deg,#e7bf55,#b8941f);opacity:.75}'+
   /* class card footer: report duration/time-range + Class Notes download */
-  '#student-app .s-ttc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}'+
+  /* footer EK single line: left=time/duration (shrink+ellipsis), right=Class Notes (fixed) -> button kabhi niche nahi jaata, card compact */
+  '#student-app .s-ttc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;margin-top:9px;padding-top:8px;border-top:1px solid var(--border)}'+
   '#student-app .s-ttc.live .s-ttc-foot{border-top-color:rgba(255,255,255,.16)}'+
-  '#student-app .s-ttc-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}'+
-  '#student-app .s-ttc-rng{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:var(--text-muted)}'+
-  '#student-app .s-ttc-rng svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}'+
-  '#student-app .s-ttc-dur{font-size:10px;font-weight:800;color:#1c8f63;background:rgba(28,143,99,.12);border-radius:999px;padding:2px 8px}'+
+  '#student-app .s-ttc-meta{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0;flex:1;overflow:hidden}'+
+  '#student-app .s-ttc-rng{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:var(--text-muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
+  '#student-app .s-ttc-rng svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;flex:0 0 auto}'+
+  '#student-app .s-ttc-dur{font-size:10px;font-weight:800;color:#1c8f63;background:rgba(28,143,99,.12);border-radius:999px;padding:2px 8px;flex:0 0 auto}'+
   '#student-app .s-ttc.live .s-ttc-rng{color:rgba(255,255,255,.8)}#student-app .s-ttc.live .s-ttc-dur{color:#9ff0cd;background:rgba(255,255,255,.14)}'+
-  '#student-app .s-ttc-notes{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--primary,#b8941f);background:transparent;color:var(--primary,#b8941f);border-radius:999px;padding:5px 11px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer}'+
+  '#student-app .s-ttc-notes{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap;border:1px solid var(--primary,#b8941f);background:transparent;color:var(--primary,#b8941f);border-radius:999px;padding:5px 11px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer}'+
   '#student-app .s-ttc-notes svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}'+
   '#student-app .s-ttc-notes:active{transform:scale(.95)}'+
   '#student-app .s-ttc.live .s-ttc-notes{border-color:#e7bf55;color:#e7bf55}'+
@@ -53312,8 +53313,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         if(done){
           var _rng=''; if(c.start_time && c.end_time) _rng=esc(String(c.start_time))+' – '+esc(String(c.end_time));
           var _dm=(c.duration_min!=null)?(parseInt(c.duration_min,10)||0):0;
-          if(_rng || _dm>0){
-            meta='<div class="s-ttc-meta">'+(_rng?('<span class="s-ttc-rng"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'+_rng+'</span>'):'')+(_dm>0?('<span class="s-ttc-dur">'+_dm+' min</span>'):'')+'</div>';
+          // EK line me saaf fit ho: range dikhao (duration range se hi samajh aati hai, isliye
+          // alag "90 min" chip nahi -> Class Notes button kabhi truncate/niche nahi jaata).
+          // Range na ho to hi duration chip dikhao.
+          if(_rng){
+            meta='<div class="s-ttc-meta"><span class="s-ttc-rng"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'+_rng+'</span></div>';
+          } else if(_dm>0){
+            meta='<div class="s-ttc-meta"><span class="s-ttc-dur">'+_dm+' min</span></div>';
           }
         }
         // Class notes yahin se download (click par section me jaane ki zaroorat nahi)
@@ -53323,9 +53329,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
         // 3 alag premium states: live (chal rahi), done (ho chuki), up/over (aane wali/nikal gayi)
         var stateCls=done?' done':(live?' live':(up?' up':' over'));
-        var notesHint=(done&&c.has_notes)?'<div class="s-ttc-nhint">'+svg('materials')+' Notes ready</div>':'';
+        // "Notes ready" badge hata diya — time + Class Notes ab ek hi line (foot) me dikhte hain.
         // card clickable -> us class ke notes/material par (Classes Material section)
-        return '<div class="s-ttc'+stateCls+'" style="cursor:pointer" onclick="_sGo(\'materials\')">'+(done?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+notesHint+foot+'</div>';
+        return '<div class="s-ttc'+stateCls+'" style="cursor:pointer" onclick="_sGo(\'materials\')">'+(done?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+foot+'</div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
