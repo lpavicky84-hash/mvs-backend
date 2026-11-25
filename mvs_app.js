@@ -6314,6 +6314,7 @@ async function loadTDpp(){
   const el=document.getElementById('t-dpp-content');
   softSpin(el);
   try{
+    try{ _apiForget('dpp-packs'); }catch(e){}   // hamesha LIVE views/downloads/submissions (stale 0 fix)
     const d=await api('/api/teacher/dpp-packs');
     window._dppPacks=d.packs||[];
     // Pehli baar: abhi ke saare submissions ko baseline "seen" -> sirf aage aane wale blink karein (test jaisa)
@@ -6451,8 +6452,8 @@ function _tDppGroupCardHTML(g){
       <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
       <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${g.submitted} submission${g.submitted===1?'':'s'}${multi?` · ${nb} batches`:''}</div>
       <div class="dpp-track">
-        <button class="dpp-trk-btn" title="Students who opened this DPP" onclick="openDppTrack('${idsCsv}','view')">${ic('eye')} <b>${g.views||0}</b> views</button>
-        <button class="dpp-trk-btn" title="Students who downloaded the PDF" onclick="openDppTrack('${idsCsv}','download')">${ic('download')} <b>${g.downloads||0}</b> downloads</button>
+        <button class="dpp-trk-btn" title="Students who opened this DPP" onclick="openDppTrack('${idsCsv}','view')">${ic('eye')} <b class="dpp-cnt" data-dk="v${g.ids[0]}">${g.views||0}</b> views</button>
+        <button class="dpp-trk-btn" title="Students who downloaded the PDF" onclick="openDppTrack('${idsCsv}','download')">${ic('download')} <b class="dpp-cnt" data-dk="d${g.ids[0]}">${g.downloads||0}</b> downloads</button>
       </div>
       <div class="dpp-foot"><div></div><div class="dpp-btns">
         <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
@@ -27072,6 +27073,8 @@ async function openDppTrack(pid,event){
   try{
     const d=await api(`/api/${role}/dpp-packs/${first}/track-list?event=${event}&ids=${encodeURIComponent(ids)}`);
     const rows=d.rows||[];
+    // card ka count LIVE truth se sync (stale 0 ko turant theek karo)
+    try{ const _b=document.querySelector(`.dpp-cnt[data-dk="${event==='view'?'v':'d'}${first}"]`); if(_b) _b.textContent=(d.count||0); }catch(e){}
     const isV=d.event==='view';
     const title=`${esc((d.pack&&d.pack.title)||'DPP')} — ${isV?'Views':'Downloads'}`;
     if(!rows.length){
