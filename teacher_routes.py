@@ -3165,10 +3165,14 @@ def _dpp_pack_out(db, pk, with_counts=True, qn=None):
         out["checked"] = sum(1 for a in subs if a.status == "checked")
         # NEW-blink (test jaisa): submission ids — frontend seen-set se naye submissions highlight karega
         out["subs"] = [{"id": a.id, "checked": (a.status == "checked")} for a in subs]
-        # tracker: kitne DISTINCT students ne view / download kiya
-        out["views"] = (db.query(DppEvent.student_id)
-                        .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view")
-                        .distinct().count())
+        # tracker: kitne DISTINCT students ne view / download kiya.
+        # FIX: created (in-app) DPP me student questions kholta hai par alag 'view' event
+        # kabhi miss ho jaata tha -> 6 submissions hone par bhi views=0 dikhta tha. Ab submit
+        # karne wale ko bhi viewer maana jaata hai (bina dekhe submit possible nahi).
+        view_ids = set(sid for (sid,) in db.query(DppEvent.student_id)
+                       .filter(DppEvent.pack_id == pk.id, DppEvent.event == "view").distinct().all())
+        sub_ids = set(a.student_id for a in subs if getattr(a, "student_id", None))
+        out["views"] = len(view_ids | sub_ids)
         out["downloads"] = (db.query(DppEvent.student_id)
                             .filter(DppEvent.pack_id == pk.id, DppEvent.event == "download")
                             .distinct().count())
@@ -3411,32 +3415,51 @@ def teacher_dpp_group_answers(ids: str = "", batch: int = 0,
 
 # ===== DPP TRACK-LIST — kis kis student ne view/download kiya (clickable chips ke liye) =====
 @router.get("/dpp-packs/{pack_id}/track-list")
-def teacher_dpp_track_list(pack_id: int, event: str = "view",
+def teacher_dpp_track_list(pack_id: int, event: str = "view", ids: str = "",
                            db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppPack, DppEvent, StudentProfile, User
     tp = get_teacher_profile(current_user, db)
-    pk = db.query(DppPack).filter(DppPack.id == pack_id, DppPack.teacher_id == tp.id).first()
-    if not pk:
+    # ids (csv) diye ho to poore group (saari batch copies) ka aggregate — warna single pack.
+    want = []
+    for x in (ids or "").split(","):
+        x = x.strip()
+        if x.isdigit():
+            want.append(int(x))
+    if not want:
+        want = [pack_id]
+    valid = [pid for (pid,) in db.query(DppPack.id)
+             .filter(DppPack.id.in_(want), DppPack.teacher_id == tp.id).all()]
+    if not valid:
         raise HTTPException(404, "DPP pack not found")
+    pk = db.query(DppPack).filter(DppPack.id == valid[0]).first()
     ev = (event or "view").lower()
     if ev not in ("view", "download"):
         raise HTTPException(400, "event must be 'view' or 'download'")
-    rows = (db.query(DppEvent)
-            .filter(DppEvent.pack_id == pack_id, DppEvent.event == ev)
-            .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all())
-    seen = set()
-    out = []
-    for e in rows:
-        if e.student_id in seen:
-            continue
-        seen.add(e.student_id)
-        nm = ""
-        srow = db.query(StudentProfile).filter(StudentProfile.id == e.student_id).first()
-        if srow:
-            u = db.query(User).filter(User.id == srow.user_id).first()
-            nm = (u.name if u else "") or ""
-        out.append({"name": nm or f"Student #{e.student_id}",
-                    "at": e.created_at.strftime("%d %b %Y, %I:%M %p") if e.created_at else ""})
+    # student_id -> latest timestamp (dedupe across all group packs). View events + submitters.
+    latest = {}
+    for e in (db.query(DppEvent)
+              .filter(DppEvent.pack_id.in_(valid), DppEvent.event == ev)
+              .order_by(DppEvent.created_at.desc(), DppEvent.id.desc()).all()):
+        if e.student_id not in latest:
+            latest[e.student_id] = e.created_at
+    if ev == "view":
+        # submission == view: submit karne walon ko bhi viewers me dikhao (list khaali na rahe)
+        from models import DppAnswer
+        for a in (db.query(DppAnswer)
+                  .filter(DppAnswer.pack_id.in_(valid), DppAnswer.status != "staged").all()):
+            if a.student_id and a.student_id not in latest:
+                latest[a.student_id] = a.submitted_at
+    # sort by time desc, resolve names in ONE query (no N+1)
+    sids = list(latest.keys())
+    names = {}
+    if sids:
+        for sp_row, u in (db.query(StudentProfile, User)
+                          .join(User, User.id == StudentProfile.user_id)
+                          .filter(StudentProfile.id.in_(sids)).all()):
+            names[sp_row.id] = (u.name if u else "") or ""
+    ordered = sorted(latest.items(), key=lambda kv: (kv[1] is not None, kv[1]), reverse=True)
+    out = [{"name": names.get(sid) or f"Student #{sid}",
+            "at": (ts.strftime("%d %b %Y, %I:%M %p") if ts else "")} for sid, ts in ordered]
     return {"pack": {"id": pk.id, "title": pk.title or "DPP"},
             "event": ev, "count": len(out), "rows": out}
 

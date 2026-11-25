@@ -6423,8 +6423,10 @@ function _dppGroup(arr){
   const m={}, order=[];
   (arr||[]).forEach(pk=>{
     const k=pk.group_key||('id:'+pk.id);
-    if(!m[k]){ m[k]={rep:pk, packs:[], ids:[], submitted:0}; order.push(k); }
+    if(!m[k]){ m[k]={rep:pk, packs:[], ids:[], submitted:0, views:0, downloads:0}; order.push(k); }
     const g=m[k]; g.packs.push(pk); g.ids.push(pk.id); g.submitted+=(pk.submitted||0);
+    // views/downloads bhi poore group ka jodो (student ek hi batch-copy me hota hai -> no double count)
+    g.views+=(pk.views||0); g.downloads+=(pk.downloads||0);
   });
   return order.map(k=>m[k]);
 }
@@ -6449,8 +6451,8 @@ function _tDppGroupCardHTML(g){
       <div class="dpp-meta"> ${esc(pk.chapter||'—')}${pk.part?` · Part: ${esc(pk.part)}`:''}</div>
       <div class="dpp-meta"> ${esc(pk.created_at||'')} · ${g.submitted} submission${g.submitted===1?'':'s'}${multi?` · ${nb} batches`:''}</div>
       <div class="dpp-track">
-        <button class="dpp-trk-btn" title="Students who opened this DPP" onclick="openDppTrack(${pk.id},'view')">${ic('eye')} <b>${pk.views||0}</b> views</button>
-        <button class="dpp-trk-btn" title="Students who downloaded the PDF" onclick="openDppTrack(${pk.id},'download')">${ic('download')} <b>${pk.downloads||0}</b> downloads</button>
+        <button class="dpp-trk-btn" title="Students who opened this DPP" onclick="openDppTrack('${idsCsv}','view')">${ic('eye')} <b>${g.views||0}</b> views</button>
+        <button class="dpp-trk-btn" title="Students who downloaded the PDF" onclick="openDppTrack('${idsCsv}','download')">${ic('download')} <b>${g.downloads||0}</b> downloads</button>
       </div>
       <div class="dpp-foot"><div></div><div class="dpp-btns">
         <button class="btn btn-primary btn-sm" onclick="openTDppPanel(${pk.id})">${ic('eye')} View</button>
@@ -7610,7 +7612,7 @@ function _tSubCss(){
     '.tsub-new{position:absolute;top:12px;right:12px;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#dc2626;color:#fff;font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 4px rgba(220,38,38,.18);animation:txBlink 1.1s ease-in-out infinite}',
     '.tx-card.tx-newblink{animation:txCardGlow 1.2s ease-in-out infinite}',
     '@keyframes txCardGlow{0%,100%{box-shadow:0 0 0 1px rgba(220,38,38,.25),0 10px 26px -18px rgba(120,90,10,.5)}50%{box-shadow:0 0 0 3px rgba(220,38,38,.5),0 10px 26px -14px rgba(220,38,38,.35)}}',
-    '.tx-newtag{display:inline-flex;align-items:center;gap:5px;background:#dc2626;color:#fff;font-weight:800;font-size:.68rem;border-radius:999px;padding:3px 9px;animation:txBlink 1.1s ease-in-out infinite}',
+    '.tx-newtag{display:inline-flex;align-items:center;gap:5px;background:#dc2626;color:#fff;font-weight:800;font-size:.68rem;border-radius:999px;padding:3px 9px;animation:txBlink 1.15s ease-in-out infinite}@keyframes txBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(220,38,38,.55)}50%{opacity:.72;box-shadow:0 0 0 5px rgba(220,38,38,0)}}',
     '.tx-newnames{font-size:.72rem;color:#b91c1c;font-weight:600;margin-top:6px;line-height:1.4}'
   ].join('');
   document.head.appendChild(s);
@@ -27064,9 +27066,11 @@ function dppRankStudent(rank){
 /* ================= DPP VIEW/DOWNLOAD TRACKER (teacher/admin — clickable chips) ================= */
 async function openDppTrack(pid,event){
   const role=(ROLE==='admin')?'admin':'teacher';
+  const ids=String(pid);           // group ki saari batch-copies (csv) ya single id
+  const first=ids.split(',')[0];
   showModal('DPP Tracker','<div class="spinner"></div>','');
   try{
-    const d=await api(`/api/${role}/dpp-packs/${pid}/track-list?event=${event}`);
+    const d=await api(`/api/${role}/dpp-packs/${first}/track-list?event=${event}&ids=${encodeURIComponent(ids)}`);
     const rows=d.rows||[];
     const isV=d.event==='view';
     const title=`${esc((d.pack&&d.pack.title)||'DPP')} — ${isV?'Views':'Downloads'}`;
