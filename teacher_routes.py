@@ -5592,8 +5592,10 @@ def _auto_complete_test_tt(db, tp, subject, class_name, chapter=None):
         _my_cls = _re_class_digits(class_name) if class_name else ""
         _ch = _tt_ch_norm(chapter) if chapter else ""
         today = ist_today()
+        # teacher_id par depend NAHI (entries subject-scope se store hoti hain, teacher_id alag/NULL
+        # ho sakta) — subject+class se match. Teacher ke apne subjects tak hi seemit rahe isliye
+        # neeche _subj_norm match already subject-specific hai.
         cands = db.query(TimetableEntry).filter(
-            TimetableEntry.teacher_id == tp.id,
             or_(TimetableEntry.completed == False, TimetableEntry.completed == None),
             TimetableEntry.entry_date != None,
             TimetableEntry.entry_date <= today,
@@ -5640,28 +5642,32 @@ def _re_class_digits(x):
 
 def _tt_slot_entries(db, tp, rep):
     """rep (ek representative timetable entry) ke LOGICAL slot ki saari batch-copies laao —
-    same teacher + subject + class + date + chapter + time = wahi class, bas alag batch.
-    Explicit connect/disconnect isi set par kaam karta hai (6 batch = 6 copies ek saath)."""
+    same subject + class + date = wahi class, bas alag batch (6 batch = 6 copies).
+    FIX: pehle `teacher_id == tp.id` se match karte the, par timetable entries SUBJECT-SCOPE se
+    store/dikhti hain (admin banata hai; teacher_id alag ya NULL ho sakta) -> match 0 aata tha aur
+    connect chup-chaap fail hota tha. Ab teacher_id par depend NAHI — subject+class+date se match,
+    aur chapter se narrow (ek hi din do test ho to), warna saare test-slots pakad lo."""
     from models import TimetableEntry
     cands = db.query(TimetableEntry).filter(
-        TimetableEntry.teacher_id == tp.id,
         TimetableEntry.entry_date == rep.entry_date,
     ).all()
     rsn = _subj_norm(rep.subject or "")
     rcls = _re_class_digits(rep.class_name or "")
     rch = _tt_ch_norm(rep.chapter or "")
-    rtime = (rep.time_text or "").strip().lower()
     out = []
     for e in cands:
         if _subj_norm(e.subject or "") != rsn:
             continue
         if rcls and _re_class_digits(e.class_name or "") and _re_class_digits(e.class_name or "") != rcls:
             continue
-        if _tt_ch_norm(e.chapter or "") != rch:
-            continue
-        if (e.time_text or "").strip().lower() != rtime:
+        if not _tt_is_test_entry(e):
             continue
         out.append(e)
+    # chapter se narrow (do alag test ek hi din ho to) — par exact chapter match na mile to saare rakho
+    if rch:
+        cm = [e for e in out if _tt_ch_norm(e.chapter or "") == rch]
+        if cm:
+            out = cm
     return out
 
 
@@ -5672,8 +5678,7 @@ def _connect_test_to_tt(db, tp, exam, rep_entry_id):
     from models import TimetableEntry, Exam
     try:
         rep = db.query(TimetableEntry).filter(
-            TimetableEntry.id == int(rep_entry_id),
-            TimetableEntry.teacher_id == tp.id).first()
+            TimetableEntry.id == int(rep_entry_id)).first()
     except Exception:
         rep = None
     if not rep:
@@ -5714,8 +5719,8 @@ def _disconnect_test_from_tt(db, tp, exam_id):
         for s in db.query(Exam).filter(Exam.teacher_id == tp.id,
                 Exam.subject == ex.subject, Exam.title == ex.title).all():
             ids.add(s.id)
+    # teacher_id par depend NAHI (entries subject-scope se hoti hain) — linked_test_id se hi match
     ents = db.query(TimetableEntry).filter(
-        TimetableEntry.teacher_id == tp.id,
         TimetableEntry.linked_test_id.in_(list(ids))).all()
     for e in ents:
         e.linked_test_id = None
@@ -5734,8 +5739,9 @@ def _reconcile_test_tt(db, tp):
         from models import TimetableEntry, Exam
         from sqlalchemy import or_
         today = ist_today()
+        # teacher_id par depend NAHI — entries subject-scope se hoti hain. Neeche match SIRF un
+        # entries ko hota hai jinka subject teacher ke apne exam se milta hai, isliye scope safe hai.
         ents = db.query(TimetableEntry).filter(
-            TimetableEntry.teacher_id == tp.id,
             or_(TimetableEntry.completed == False, TimetableEntry.completed == None),
             TimetableEntry.entry_date != None,
             TimetableEntry.entry_date <= today,
@@ -5747,17 +5753,20 @@ def _reconcile_test_tt(db, tp):
         if not exams:
             return
         exinfo = []
+        batch_exam = {}   # (subj_norm, cls_digits, batch_id) -> exam_id  (per-batch linked_test_id ke liye)
         for x in exams:
             xd = (x.scheduled_at.date() if x.scheduled_at else (x.created_at.date() if x.created_at else None))
-            exinfo.append((_subj_norm(x.subject or ""), _re_class_digits(x.class_name or ""),
-                           xd, _tt_ch_norm(x.chapter or "")))
+            _xsn = _subj_norm(x.subject or ""); _xcls = _re_class_digits(x.class_name or "")
+            exinfo.append((_xsn, _xcls, xd, _tt_ch_norm(x.chapter or ""), x.id))
+            if x.batch_id is not None:
+                batch_exam[(_xsn, _xcls, x.batch_id)] = x.id
         now = datetime.now()
         changed = False
         for e in tests:
             esn = _subj_norm(e.subject or "")
             ecls = _re_class_digits(e.class_name or "")
             ech = _tt_ch_norm(e.chapter or "")
-            for (xsn, xcls, xd, xch) in exinfo:
+            for (xsn, xcls, xd, xch, xid) in exinfo:
                 if xsn != esn:
                     continue
                 if ecls and xcls and ecls != xcls:
@@ -5767,6 +5776,9 @@ def _reconcile_test_tt(db, tp):
                 if date_ok or ch_ok:
                     e.completed = True
                     e.completed_at = now
+                    # student ko reliably "Open Test" mile — entry ko uske apne batch ka test de do
+                    if not getattr(e, "linked_test_id", None):
+                        e.linked_test_id = batch_exam.get((esn, ecls, e.batch_id), xid)
                     if not (e.topic_covered or "").strip():
                         e.topic_covered = (e.chapter or "Test").strip() or "Test"
                     db.add(e)
