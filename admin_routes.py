@@ -9359,7 +9359,8 @@ def admin_dpp_pack_pdf(pack_id: int, kind: str = "q", medium: str = "",
            else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
     fname = (pk.title or "DPP").replace("/", "-") + \
         ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
-    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), False, sniff=True)
+    # BULLETPROOF: viewer fetch() se load karta hai -> same-origin stream (CDN redirect/CORS se azaad)
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), False, sniff=True, force_proxy=True)
 
 @router.get("/office-location")
 def admin_get_office(db: Session = Depends(get_db), _=Depends(get_admin)):

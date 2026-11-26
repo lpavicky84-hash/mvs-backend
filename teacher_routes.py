@@ -3588,8 +3588,8 @@ def teacher_dpp_pdf(pack_id: int, kind: str = "q", medium: str = "",
     med = ("both" if (medium or "").lower().startswith("bo") else ("hindi" if (medium or "").lower().startswith("hin") else "english"))
     fname = (pk.title or "DPP").replace("/", "-") + \
         ("-solutions" if kind == "s" else "-questions") + "-" + med + ".pdf"
-    # R2 URL ho to redirect, base64 ho to decode (dono safe)
-    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), False, sniff=True)
+    # BULLETPROOF: viewer fetch() se load karta hai -> same-origin stream (CDN redirect/CORS se azaad)
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), False, sniff=True, force_proxy=True)
 
 
 @router.post("/dpp-packs/create")
@@ -3940,7 +3940,13 @@ def teacher_dpp_answer_file(answer_id: int, inline: int = 0, db: Session = Depen
         raise HTTPException(status_code=404, detail="File not found")
     # inline=1 -> serve inline so the in-app viewer can STREAM it (fast first page);
     # default (attachment) keeps the existing download button working unchanged.
-    return __import__("r2_storage").proxy_response(a.answer_b64, "application/pdf", _hsafe(a.filename or "dpp-answer.pdf"), (inline == 0), sniff=True)
+    # force_proxy=True (BULLETPROOF): answer-sheet ko HAMESHA server se same-origin stream karo,
+    # CDN pe 302 redirect NAHI. Wajah: viewer PDF ko fetch() se load karta hai — cross-origin CDN
+    # (r2.dev/custom domain) pe CORS headers nahi hote -> fetch block -> "Could not load the PDF",
+    # aur error-page .pdf ban ke corrupt download. Proxy+sniff se: same-origin (CORS issue khatam),
+    # authenticated R2 read (rate-limit/public-access se azaad), magic-byte validate (error-page
+    # kabhi serve nahi), sahi content-type. Kabhi fail/corrupt nahi, 1-2 ghante baad bhi nahi.
+    return __import__("r2_storage").proxy_response(a.answer_b64, "application/pdf", _hsafe(a.filename or "dpp-answer.pdf"), (inline == 0), sniff=True, force_proxy=True)
 
 
 @router.delete("/dpp-packs/{pack_id}")
@@ -3982,9 +3988,9 @@ def teacher_dpp_pack_file(pack_id: int, kind: str = "q", db: Session = Depends(g
     if not blob:
         raise HTTPException(status_code=404, detail="File not generated")
     fname = (pk.title or "DPP").replace("/", "-") + ("-solutions.pdf" if kind == "s" else "-questions.pdf")
-    # R2 URL ho to server-side stream (viewer same-origin fetch chalega, crash nahi);
-    # base64 ho to decode. Dono safe.
-    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), True)
+    # BULLETPROOF: viewer fetch() se load karta hai -> hamesha same-origin stream (CDN redirect nahi,
+    # CORS/rate-limit se azaad). sniff se content-type asal bytes se.
+    return __import__("r2_storage").proxy_response(blob, "application/pdf", _hsafe(fname), True, sniff=True, force_proxy=True)
 
 
 @router.post("/dpp-answers/{answer_id}/check")
@@ -6998,13 +7004,14 @@ def attempt_answer_image(attempt_id: int, db: Session = Depends(get_db), current
     if not att.answer_image_b64:
         raise HTTPException(404, "No answer sheet uploaded")
     safe = "".join(c for c in (att.student_name or "student") if c.isalnum() or c in " -_").strip() or "student"
-    # SPEED: R2 object ho to seedhe Cloudflare CDN par 302 redirect (browser file direct edge se
-    # leta hai -> fast, Railway par 11MB ka double-hop nahi). Content-type bhale galat label ho,
-    # client (mvs_app.js _blobKind) file ke ASAL bytes se PDF/image khud pehchaan leta hai, isliye
-    # force_proxy ki zaroorat nahi. base64 (R2 off) ho to proxy_response khud sniff karke serve karega.
+    # BULLETPROOF: viewer (openDocViewer) answer sheet ko fetch() se load karta hai. CDN par 302
+    # redirect karte to cross-origin fetch pe CORS headers na hone se "Preview couldn't load" aata
+    # aur download corrupt hota (1-2 ghante baad edge-cache expire hote hi). Isliye HAMESHA
+    # same-origin stream + sniff: server authenticated R2 read karke asal bytes (magic-byte validated)
+    # bhejta -> CORS/rate-limit/galat content-type — teeno khatam, kabhi fail/corrupt nahi.
     try:
         return __import__("r2_storage").proxy_response(att.answer_image_b64, "image/jpeg",
-                                                       "answer-" + safe, False, sniff=True)
+                                                       "answer-" + safe, False, sniff=True, force_proxy=True)
     except Exception:
         raise HTTPException(400, "The uploaded answer sheet could not be read. Ask the student to upload it again.")
 
