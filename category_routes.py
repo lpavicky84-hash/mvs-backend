@@ -746,9 +746,28 @@ def admin_typing(sid: int, db: Session = Depends(get_db), _=Depends(admin_guard)
 
 @router.get("/api/admin/r2-health")
 def admin_r2_health(_=Depends(admin_guard)):
-    """R2 storage self-test — batata hai upload/read (authenticated + public) chal rahe ya nahi."""
+    """R2 storage self-test — batata hai upload/read (authenticated + public) chal rahe ya nahi,
+    saath me abhi bucket par set CORS rules bhi."""
     try:
-        return __import__("r2_storage").r2_selftest()
+        R2 = __import__("r2_storage")
+        out = R2.r2_selftest()
+        try:
+            out["cors"] = R2.get_cors()
+        except Exception:
+            pass
+        return out
+    except Exception as e:
+        return {"error": str(e)[:300]}
+
+
+@router.post("/api/admin/r2-cors")
+def admin_r2_cors_apply(_=Depends(admin_guard)):
+    """Bucket par CORS policy ABHI apply karo (deploy par bhi apne-aap lagti hai). Verify ke liye
+    apply + current rules dono return karta hai."""
+    try:
+        R2 = __import__("r2_storage")
+        applied = R2.ensure_cors()
+        return {"applied": applied, "current": R2.get_cors()}
     except Exception as e:
         return {"error": str(e)[:300]}
 

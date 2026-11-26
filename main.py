@@ -409,6 +409,17 @@ def ensure_columns():
 ensure_columns()
 
 
+# ===== R2 CORS auto-setup (deploy par apne-aap) =====
+# Bucket par CORS laga do taaki browser fetch() CDN se bhi file padh sake -> "Could not load PDF"
+# / corrupt-download jaisa cross-origin error hamesha ke liye khatam. Idempotent, best-effort;
+# fail ho to startup kabhi na ruke (force_proxy proxy path waise bhi reliable hai).
+try:
+    _r2cors = __import__("r2_storage").ensure_cors()
+    print("[r2-cors]", _r2cors)
+except Exception as _e:
+    print("[r2-cors] skipped:", str(_e)[:160])
+
+
 # ===== DOUBT SLA SNAPSHOT BACKFILL (forward-only freeze) =====
 # Existing resolved doubts ko current SLA par freeze karo (sla_snapshot NULL -> current SLA)
 # taaki aage SLA badalne par purane doubts ka on-time/late status na badle. Idempotent.

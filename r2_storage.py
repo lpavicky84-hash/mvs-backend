@@ -483,3 +483,53 @@ def r2_selftest():
     except Exception:
         pass
     return out
+
+
+def _cors_origins():
+    """CORS ke liye allowed origins. Default '*' (files already public-readable hain, GET safe).
+    Chaho to R2_CORS_ORIGINS env me comma-separated domains do (e.g. app ka domain)."""
+    raw = (os.getenv("R2_CORS_ORIGINS") or "*").strip()
+    if raw in ("", "*"):
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()] or ["*"]
+
+
+def ensure_cors():
+    """Bucket par CORS policy set karo taaki browser ka fetch() CDN (cross-origin) se bhi PDF/image
+    padh sake. Idempotent + best-effort — kabhi app ko na roke. Deploy par apne-aap chalta hai,
+    isliye Cloudflare dashboard chhune ki zaroorat NAHI. (force_proxy wala server-proxy to waise bhi
+    chalta hi rahega; ye uske upar CDN-direct path ko bhi unlock karta hai.)"""
+    out = {"configured": is_configured(), "applied": False, "detail": ""}
+    cli = _client()
+    if not cli:
+        out["detail"] = "R2 not configured"
+        return out
+    rules = [{
+        "AllowedMethods": ["GET", "HEAD"],
+        "AllowedOrigins": _cors_origins(),
+        "AllowedHeaders": ["*"],
+        "ExposeHeaders": ["Content-Length", "Content-Type", "Content-Disposition",
+                          "ETag", "Accept-Ranges", "Content-Range"],
+        "MaxAgeSeconds": 86400,
+    }]
+    try:
+        cli.put_bucket_cors(Bucket=_cfg()["bucket"],
+                            CORSConfiguration={"CORSRules": rules})
+        out["applied"] = True
+        out["origins"] = _cors_origins()
+    except Exception as e:
+        out["detail"] = str(e)[:300]
+    return out
+
+
+def get_cors():
+    """Abhi bucket par set CORS rules padho (verify ke liye)."""
+    cli = _client()
+    if not cli:
+        return {"configured": False, "rules": []}
+    try:
+        r = cli.get_bucket_cors(Bucket=_cfg()["bucket"])
+        return {"configured": True, "rules": r.get("CORSRules", [])}
+    except Exception as e:
+        # NoSuchCORSConfiguration = abhi tak set nahi hua
+        return {"configured": True, "rules": [], "detail": str(e)[:200]}
