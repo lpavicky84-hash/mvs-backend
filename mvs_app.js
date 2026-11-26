@@ -26215,6 +26215,16 @@ async function _pdfView(container, src, opts){
       }
     } else if(src instanceof Blob){ buf=await src.arrayBuffer(); }
     else buf=src;
+    // BULLETPROOF: agar student ne single PHOTO (image) upload ki hai (PDF nahi) to usi premium
+    // viewer me IMAGE render karo. pdf.js image load nahi kar sakta — yahi "Could not load the PDF"
+    // ki asli wajah thi. Magic-bytes se pakdo (server ke content-type par bharosa nahi).
+    let _h; try{ _h=(buf instanceof Uint8Array)?buf.subarray(0,12):new Uint8Array(buf,0,Math.min(12,(buf&&buf.byteLength)||0)); }catch(_e){ _h=new Uint8Array(0); }
+    const _isPdfB=(_h[0]===0x25&&_h[1]===0x50&&_h[2]===0x44&&_h[3]===0x46);
+    const _imgMime=(_h[0]===0xFF&&_h[1]===0xD8&&_h[2]===0xFF)?'image/jpeg'
+      :(_h[0]===0x89&&_h[1]===0x50&&_h[2]===0x4E&&_h[3]===0x47)?'image/png'
+      :(_h[0]===0x47&&_h[1]===0x49&&_h[2]===0x46)?'image/gif'
+      :(_h[0]===0x52&&_h[1]===0x49&&_h[2]===0x46&&_h[3]===0x46&&_h[8]===0x57&&_h[9]===0x45&&_h[10]===0x42&&_h[11]===0x50)?'image/webp':'';
+    if(_imgMime && !_isPdfB){ _pvwShowImage(container, buf, _imgMime); return; }
     try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
     st.pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
     st.total=st.pdf.numPages;
@@ -26239,6 +26249,39 @@ async function _answerDiagMsg(srcUrl){
     const j=await r.json();
     return (j&&j.msg)?j.msg:null;
   }catch(e){ return null; }
+}
+// Student ne single photo (image) upload ki -> usi premium viewer me image dikhao (zoom ke saath).
+function _ensurePvwImgCss(){
+  if(document.getElementById('pvw-img-css')) return;
+  const s=document.createElement('style'); s.id='pvw-img-css';
+  s.textContent='.pvw-imgwrap{width:100%;display:flex;justify-content:center;align-items:flex-start;padding:8px 6px} .pvw-img{max-width:100%;width:auto;height:auto;border-radius:3px;box-shadow:0 2px 10px rgba(0,0,0,.28);background:#fff} .pvw-img.zoomed{max-width:none}';
+  document.head.appendChild(s);
+}
+function _pvwShowImage(container, buf, mime){
+  const st=container._pvw; if(!st) return;
+  try{ if(st.imgUrl) URL.revokeObjectURL(st.imgUrl); }catch(e){}
+  const u=URL.createObjectURL(new Blob([buf],{type:mime}));
+  st.isImg=true; st.imgUrl=u; st.zoom=0;
+  // download ka naam sahi extension ke saath (warna photo .pdf naam se save hoti)
+  try{ const ext=mime.split('/')[1].replace('jpeg','jpg'); if(st.opts) st.opts.downloadName=String(st.opts.downloadName||'answer').replace(/\.(pdf|jpe?g|png|webp|gif)$/i,'')+'.'+ext; }catch(e){}
+  _ensurePvwImgCss();
+  const load=container.querySelector('.pvw-load'); if(load) load.style.display='none';
+  const wrap=container.querySelector('.pvw-pages'); if(wrap) wrap.innerHTML='<div class="pvw-imgwrap"><img class="pvw-img" src="'+u+'" alt="answer sheet"></div>';
+  const pg=container.querySelector('.pvw-pg'); if(pg) pg.textContent='Image';
+  const zl=container.querySelector('.pvw-zoom'); if(zl) zl.textContent='Fit';
+  container.querySelectorAll('.pvw-btn[data-a="prev"],.pvw-btn[data-a="next"]').forEach(b=>{ b.style.opacity='.35'; b.style.cursor='default'; });
+}
+function _pvwImgZoom(container,a){
+  const st=container._pvw; if(!st) return;
+  const img=container.querySelector('.pvw-img'); const body=container.querySelector('.pvw-body');
+  const zl=container.querySelector('.pvw-zoom');
+  const ZL=[0,1.4,1.9,2.6,3.4,4.4];
+  if(a==='zin') st.zoom=Math.min((st.zoom||0)+1, ZL.length-1);
+  else if(a==='zout') st.zoom=Math.max((st.zoom||0)-1, 0);
+  else return;   // prev/next image me kuch nahi
+  if(!img) return;
+  if(st.zoom===0){ img.classList.remove('zoomed'); img.style.width=''; if(zl) zl.textContent='Fit'; }
+  else{ img.classList.add('zoomed'); img.style.width=Math.round(((body&&body.clientWidth)||360)*ZL[st.zoom])+'px'; if(zl) zl.textContent=Math.round(ZL[st.zoom]*100)+'%'; }
 }
 // CONTINUOUS SCROLL: saare pages ek ke neeche ek — chhupa hua scrollbar, label scroll-follow
 async function _pvwRenderAll(container){
@@ -26306,6 +26349,7 @@ function _pvwWatchScroll(container){
 }
 async function _pvwAct(container,a){
   const st=container._pvw; if(!st) return;
+  if(st.isImg && a!=='dl'){ _pvwImgZoom(container,a); return; }   // image: zoom/no-op (download neeche)
   if(a==='prev'&&st.page>1){ _pvwGoTo(container,st.page-1); }
   else if(a==='next'&&st.page<st.total){ _pvwGoTo(container,st.page+1); }
   else if(a==='zin'&&st.zoom<4){ st.zoom++; _pvwRenderAll(container); }
