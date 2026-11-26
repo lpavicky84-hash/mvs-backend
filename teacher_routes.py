@@ -3931,6 +3931,53 @@ def teacher_dpp_allow_resubmit(pack_id: int, answer_id: int, data: dict = Body(.
     return {"ok": True, "allow_resubmit": a.allow_resubmit}
 
 
+@router.get("/dpp-answers/{answer_id}/diag")
+def teacher_dpp_answer_diag(answer_id: int, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Kyun nahi khul raha — exact reason. Viewer fail hone par ye call karke teacher ko saaf
+    message dikhata hai (object missing / corrupt / R2 read error) aur 'Allow Re-submit' ka raasta."""
+    from models import DppAnswer
+    get_teacher_profile(current_user, db)
+    a = db.query(DppAnswer).filter(DppAnswer.id == answer_id).first()
+    if not a:
+        return {"ok": False, "reason": "missing", "msg": "Submission record nahi mila."}
+    R2 = __import__("r2_storage")
+    v = a.answer_b64 or ""
+    info = {"answer_id": a.id, "filename": a.filename or "", "stored_len": len(v),
+            "kind": ("empty" if not v else ("url" if v.startswith("http") else "inline")),
+            "stored_prefix": v[:80]}
+    if not v:
+        info.update(ok=False, reason="empty",
+                    msg="Is submission ki file blank hai (upload theek se save nahi hua). Student ko re-submit karne ko bolein.")
+        return info
+    try:
+        data = R2._resolve_bytes(v)
+    except Exception as e:
+        data = None
+        info["exc"] = str(e)[:200]
+    if not data:
+        info.update(ok=False, reason="unresolved",
+                    msg="File storage se ye file retrieve nahi ho pa rahi (R2 object missing/pahunch ke bahar). Student ko re-submit karne ko bolein; baaki students theek hain to ye sirf isi file ka issue hai.")
+        return info
+    info["resolved_bytes"] = len(data)
+    info["magic"] = data[:8].hex()
+    is_pdf = data[:4] == b"%PDF"
+    is_img = (data[:3] == b"\xff\xd8\xff" or data[:8].startswith(b"\x89PNG")
+              or (data[:4] == b"RIFF" and b"WEBP" in data[:16]) or data[:6] in (b"GIF87a", b"GIF89a"))
+    info["is_pdf"] = is_pdf
+    info["is_image"] = bool(is_img)
+    info["looks_error"] = R2._looks_like_error(data)
+    if R2._looks_like_error(data):
+        info.update(ok=False, reason="error_page",
+                    msg="File ki jagah storage error-page aa raha hai. Student ko re-submit karne ko bolein.")
+    elif not (is_pdf or is_img):
+        info.update(ok=False, reason="corrupt",
+                    msg="File ka format padha nahi ja raha (corrupt/adhoora upload). Student ko re-submit karne ko bolein.")
+    else:
+        info.update(ok=True, reason="ok",
+                    msg="File theek hai — agar viewer me nahi khuli to ek baar refresh/retry karein.")
+    return info
+
+
 @router.get("/dpp-answers/{answer_id}/file")
 def teacher_dpp_answer_file(answer_id: int, inline: int = 0, db: Session = Depends(get_db), current_user=Depends(get_teacher)):
     from models import DppAnswer

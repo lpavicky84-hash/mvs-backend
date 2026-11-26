@@ -327,6 +327,42 @@ def _resolve_bytes(value):
     return dec
 
 
+def object_ok(value):
+    """Stored value SACH-MUCH readable hai? Submit ke turant baad verify (read-after-write) —
+    taaki dud/adhoora upload kabhi store na ho (warna teacher ko baad me 'Could not load' aata).
+    R2 URL -> HEAD (authenticated), fail ho to public byte-fetch; base64/inline -> decode-length.
+    Best-effort True/False, kabhi exception nahi."""
+    if not value:
+        return False
+    v = str(value)
+    if v.startswith("http"):
+        key = _extract_key(v)
+        if key:
+            try:
+                cli = _client()
+                if cli:
+                    h = cli.head_object(Bucket=_cfg()["bucket"], Key=key)
+                    if int(h.get("ContentLength", 0) or 0) > 0:
+                        return True
+            except Exception:
+                pass
+        try:
+            d = _fetch_r2_bytes(v)
+            if d and not _looks_like_error(d):
+                return True
+        except Exception:
+            pass
+        return False
+    try:
+        import base64 as _b64
+        s = v.split(",")[-1]
+        s = "".join(s.split())
+        s += "=" * (-len(s) % 4)
+        return len(_b64.b64decode(s)) > 8
+    except Exception:
+        return False
+
+
 def _sniff_ct(raw):
     """File ke ASAL magic bytes se content-type. Unknown -> None.
     Yahi single source of truth hai taaki galat label kabhi store/serve na ho."""

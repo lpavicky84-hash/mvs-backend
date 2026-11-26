@@ -4325,6 +4325,24 @@ def student_dpp_track(pack_id: int, payload: dict = Body(...),
     return {"ok": True, "event": ev}
 
 
+def _store_answer_file(data, filename="dpp-answer.pdf"):
+    """Answer-sheet ko R2 par SAHI content-type (magic bytes se) ke saath store karo + turant
+    READ-AFTER-WRITE verify. Agar upload save nahi hua (network/storage blip) to ek retry, phir bhi
+    fail ho to saaf error raise — isse DUD/adhoora file kabhi store nahi hoti (yahi 'Could not load'
+    / corrupt-download ki asli jad thi). Caller ko stored value (URL/base64) milta hai."""
+    R2 = __import__("r2_storage")
+    ct = R2._sniff_ct(data) or "application/pdf"
+    ext = {"application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png",
+           "image/webp": ".webp", "image/gif": ".gif"}.get(ct, ".pdf")
+    stored = R2.store_file_value(R2.new_key("dpp-answers", "answer" + ext), data, ct)
+    if not R2.object_ok(stored):
+        stored = R2.store_file_value(R2.new_key("dpp-answers", "answer" + ext), data, ct)  # ek retry
+        if not R2.object_ok(stored):
+            raise HTTPException(status_code=503,
+                                detail="Upload abhi save nahi ho paaya (network/storage). Thodi der baad dobara submit karein — aapki purani submission safe hai.")
+    return stored
+
+
 @router.post("/dpp-packs/{pack_id}/submit")
 async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
                              background_tasks: BackgroundTasks = None,
@@ -4348,13 +4366,16 @@ async def student_dpp_submit(pack_id: int, file: UploadFile = File(...),
     if _old and not getattr(_old, "allow_resubmit", False):
         raise HTTPException(status_code=403,
                             detail="You have already submitted this DPP. Re-submit tabhi hoga jab teacher allow kare.")
+    # STORE + VERIFY pehle (purani submission ko haath lagane se pehle) — upload fail ho to
+    # purani file safe rehti hai aur student ko saaf error milta hai, dud store nahi hota.
+    stored = _store_answer_file(data, file.filename or "dpp-answer.pdf")
     # ek pack par ek active answer — dobara submit karein to replace
     old = (db.query(DppAnswer)
            .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all())
     for o in old:
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), data, "application/pdf"),
+                  answer_b64=stored,
                   filename=file.filename or "dpp-answer.pdf", status="submitted")
     db.add(a); db.commit()
     # Test jaisa: teacher ko DPP submission ki bell notification (NEW-blink ke alawa reliable signal)
@@ -4392,13 +4413,14 @@ async def student_dpp_stage(pack_id: int, file: UploadFile = File(...),
     if _old and not getattr(_old, "allow_resubmit", False):
         raise HTTPException(status_code=403,
                             detail="You have already submitted this DPP. Re-submit tabhi hoga jab teacher allow kare.")
+    stored = _store_answer_file(data, file.filename or "dpp-answer.pdf")   # store + verify
     # purane staged uploads saaf (replace)
     for o in (db.query(DppAnswer)
               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
                       DppAnswer.status == "staged").all()):
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), data, "application/pdf"),
+                  answer_b64=stored,
                   filename=file.filename or "dpp-answer.pdf", status="staged")
     db.add(a); db.commit()
     return {"ok": True, "answer_id": a.id, "size_kb": round(len(data) / 1024)}
@@ -4427,13 +4449,14 @@ def student_dpp_stage_json(pack_id: int, data: dict = Body(...),
     if len(blob) > 25 * 1024 * 1024:
         raise HTTPException(status_code=400,
                             detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
+    stored = _store_answer_file(blob, str((data or {}).get("filename") or "dpp-answer.pdf"))   # store + verify
     # purane staged uploads saaf (replace)
     for o in (db.query(DppAnswer)
               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id,
                       DppAnswer.status == "staged").all()):
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), blob, "application/pdf"),
+                  answer_b64=stored,
                   filename=str((data or {}).get("filename") or "dpp-answer.pdf")[:240],
                   status="staged")
     db.add(a); db.commit()
@@ -4526,11 +4549,12 @@ def student_dpp_assemble(pack_id: int, data: dict = Body(...),
         raise HTTPException(status_code=400,
                             detail="File bahut badi hai (25MB se zyada). Chhota PDF ya photo bhejo.")
     fname = (str((data or {}).get("filename") or rows[0].filename or "dpp-answer.pdf"))[:240]
+    stored = _store_answer_file(blob, fname)   # store + verify pehle (dud kabhi submit na ho)
     for o in (db.query(DppAnswer)
               .filter(DppAnswer.pack_id == pack_id, DppAnswer.student_id == sp.id).all()):
         db.delete(o)
     a = DppAnswer(pack_id=pack_id, student_id=sp.id,
-                  answer_b64=__import__("r2_storage").store_file_value(__import__("r2_storage").new_key("dpp-answers", "answer.pdf"), blob, "application/pdf"),
+                  answer_b64=stored,
                   filename=fname, status="submitted")
     db.add(a)
     for r in rows:

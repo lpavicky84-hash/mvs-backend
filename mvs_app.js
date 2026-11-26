@@ -3221,7 +3221,10 @@ async function openDocViewer(url, name, opts){
     var op2=document.getElementById('dv-open'); if(op2){ op2.onclick=function(){ try{ window.open(u,'_blank'); }catch(e){} }; }
   }catch(e){
     var tokUrl=url+(url.indexOf('?')>=0?'&':'?')+'t='+encodeURIComponent(TOKEN);
-    var body3=document.getElementById('dv-body'); if(body3) body3.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
+    var body3=document.getElementById('dv-body');
+    if(body3){ body3.innerHTML='<div class="dv-err">Preview couldn\u2019t load here. Tap Open or Download instead.</div>';
+      try{ var _dm=await _answerDiagMsg(url); if(_dm){ var _e=body3.querySelector('.dv-err'); if(_e) _e.textContent=_dm; } }catch(_e2){}
+    }
     var dl3=document.getElementById('dv-dl'); if(dl3){ dl3.href='#'; dl3.onclick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); _smartDownload(url, name||'document'); }; }
     var op3=document.getElementById('dv-open'); if(op3){ op3.onclick=function(){ try{ window.open(tokUrl,'_blank'); }catch(e){} }; }
   }
@@ -26218,8 +26221,24 @@ async function _pdfView(container, src, opts){
     await _pvwRenderAll(container);
     _pvwWatchScroll(container);
   }catch(e){
-    const l=container.querySelector('.pvw-load'); if(l) l.textContent='Could not load the PDF — please try again in a moment.';
+    const l=container.querySelector('.pvw-load');
+    if(l){ l.textContent='Could not load the PDF — please try again in a moment.';
+      try{ const _m=await _answerDiagMsg((opts&&opts.src)||(typeof src==='string'?src:'')); if(_m) l.textContent=_m; }catch(_e){}
+    }
   }
+}
+// Answer-sheet kyun nahi khuli — server se EXACT reason (object missing/corrupt/re-submit) laakar
+// generic "Could not load" ki jagah saaf, actionable message dikhao. DPP answer URL par hi chalega.
+async function _answerDiagMsg(srcUrl){
+  try{
+    if(!srcUrl||typeof srcUrl!=='string') return null;
+    const m=srcUrl.match(/\/dpp-answers\/(\d+)\//);
+    if(!m) return null;
+    const r=await fetch(API+'/api/teacher/dpp-answers/'+m[1]+'/diag',{headers:{Authorization:'Bearer '+TOKEN}});
+    if(!r.ok) return null;
+    const j=await r.json();
+    return (j&&j.msg)?j.msg:null;
+  }catch(e){ return null; }
 }
 // CONTINUOUS SCROLL: saare pages ek ke neeche ek — chhupa hua scrollbar, label scroll-follow
 async function _pvwRenderAll(container){
