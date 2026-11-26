@@ -2436,6 +2436,36 @@ def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), 
                 LectureVerification.student_id == sp.id,
                 LectureVerification.lecture_id.in_(lec_ids)).all():
             my_verif[v.lecture_id] = v
+    # TEST entries -> matching test (exam) exist karta hai? student ko "Open Test" tabhi dikhega.
+    def _is_test_e(e):
+        if (getattr(e, "entry_type", "") or "").lower() == "event":
+            return True
+        return bool(_re.search(r"test|mission|mock|pyq|subjective|assessment", str(e.chapter or ""), _re.I))
+
+    def _chn(x):
+        return _re.sub(r"[^a-z0-9]+", "", str(x or "").lower())
+    _test_ents = [e for e in es if _is_test_e(e)]
+    _exam_idx = []
+    if _test_ents:
+        from models import Exam as _Exam
+        _esubs = list({e.subject for e in _test_ents if e.subject})
+        _exs = db.query(_Exam).filter(_Exam.is_active == True, _Exam.subject.in_(_esubs)).all() if _esubs else []  # noqa: E712
+        for x in _exs:
+            xd = (x.scheduled_at.date() if x.scheduled_at else (x.created_at.date() if x.created_at else None))
+            _exam_idx.append((_subj_norm(x.subject or ""), _cls_norm(x.class_name or ""), xd, _chn(x.chapter or ""), x.id))
+
+    def _match_test(e):
+        esn = _subj_norm(e.subject or "")
+        ecls = _cls_norm(e.class_name or "")
+        ech = _chn(e.chapter or "")
+        for (xsn, xcls, xd, xch, xid) in _exam_idx:
+            if xsn != esn:
+                continue
+            if ecls and xcls and ecls != xcls:
+                continue
+            if (xd is not None and e.entry_date is not None and xd == e.entry_date) or (ech and xch and (ech in xch or xch in ech)):
+                return xid
+        return None
     # teacher naam ek hi query me (per-entry query = N+1 slow tha)
     from models import TeacherProfile, User as _User
     _tmap = {}
@@ -2470,6 +2500,8 @@ def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), 
             "has_notes": bool(lec and lec.id in _notes_ids),
             "has_dpp": bool(lec and lec.id in _dpp_ids),
             "class_done": bool(e.completed or lec),
+            "is_test": _is_test_e(e),
+            "test_id": (_match_test(e) if _is_test_e(e) else None),
             # v114: report ke asli start/end + duration — student dashboard ab
             # auto 90-min Done nahi dikhata; report aane par Done + asli minutes.
             "start_time": (e.start_time if e.completed else None),

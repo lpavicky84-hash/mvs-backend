@@ -25542,7 +25542,10 @@ function _tcPaint(){
         else if(c.has_dpp&&!c.has_notes) matBtn=`<div class="tc-mat"><button class="tc-mat-btn" onclick="event.stopPropagation();tcMatDl(${c.lecture_id},'dpp')" title="Download this class's DPP (PDF)">DPP</button></div>`;
         else matBtn=`<div class="tc-mat"><button class="tc-mat-btn" onclick="tcMatMenu(event,${c.lecture_id},${c.has_notes?1:0},${c.has_dpp?1:0})" title="Download this class's notes / DPP">Class Materials</button></div>`;
       }
-      return `<div class="tc-row tc-link" onclick="sPage('timetable',null)" title="Open Time Table"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span>${actualTm}</div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div>${chip}${matBtn}<span class="slist-go">&rsaquo;</span></div>`;
+      // TEST entry + test ban chuka hai -> "Class Held On" ki jagah "Open Test" (test section me le jata hai)
+      if(isTest && c.test_id){ chip=`<button class="tc-chip tc-opentest" onclick="event.stopPropagation();sOpenTestFromTT('${encodeURIComponent(c.subject||'')}',${c.test_id})">Open Test &rsaquo;</button>`; }
+      const _rowClick = (isTest&&c.test_id)?`sOpenTestFromTT('${encodeURIComponent(c.subject||'')}',${c.test_id})`:"sPage('timetable',null)";
+      return `<div class="tc-row tc-link" onclick="${_rowClick}" title="${isTest&&c.test_id?'Open Test':'Open Time Table'}"><div class="tc-time"><span class="tc-t">${esc(c.time||'TBA')}</span>${actualTm}</div><div class="tc-body"><div class="tc-sub">${esc(c.subject)}${isTest?'<span class="tc-tag">TEST</span>':''}</div>${topic?`<div class="tc-topic">${topic}</div>`:''}</div><div class="tc-teach">${photo}<span class="tc-tname">${esc(c.teacher_name||'\u2014')}</span></div>${chip}${matBtn}<span class="slist-go">&rsaquo;</span></div>`;
     }).join('');
   }
   setIf(wrap,`<div class="card"><div class="card-header" style="flex-wrap:wrap;gap:8px"><h3>${title}</h3><span class="tc-date">${dStr}</span><span class="tc-count">${list.length} class${list.length===1?'':'es'}</span>${dd}</div>${calHtml}<div class="card-body">${rows}</div></div>`);
@@ -25554,6 +25557,14 @@ function _tcPaint(){
     }catch(e){ im.remove(); }
   });
 }
+// TEST timetable entry se seedha Tests section -> us subject ke tests khul jaate hain.
+function sOpenTestFromTT(subjEnc, testId){
+  try{ navTo('student-app','tests'); }catch(e){}
+  setTimeout(function(){ try{ if(subjEnc) sSubOpen(subjEnc); else loadSTests(); }catch(e){ try{ loadSTests(); }catch(_){} } }, 130);
+}
+(function(){ try{ if(!document.getElementById('tc-opentest-css')){ var s=document.createElement('style'); s.id='tc-opentest-css';
+  s.textContent='.tc-chip.tc-opentest{background:linear-gradient(135deg,#b8941f,#8a6f14);color:#fff;border:none;cursor:pointer;font-weight:800;padding:6px 13px;border-radius:999px;box-shadow:0 2px 8px rgba(184,148,31,.3);animation:tcOT 1.5s ease-in-out infinite}@keyframes tcOT{0%,100%{box-shadow:0 2px 8px rgba(184,148,31,.3)}50%{box-shadow:0 2px 14px rgba(184,148,31,.55)}}';
+  document.head.appendChild(s); } }catch(e){} })();
 function tcSetDay(m){ _tcMode=m; if(m==='custom'&&!_tcDate) _tcDate=new Date().toLocaleDateString('en-CA'); _tcPaint(); }
 function tcPickDate(iso){ _tcDate=iso; _tcPaint(); }
 // Class Materials popup: Class Notes / DPP download
@@ -52796,6 +52807,9 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttc.live .s-chip.up{color:#fff;background:rgba(255,255,255,.18)}'+
   '#student-app .s-chip.done{color:#1f9d6b;background:rgba(31,157,107,.14)}'+
   '#student-app .s-chip.over{color:var(--text-muted);background:rgba(0,0,0,.06)}'+
+  '#student-app .s-chip.s-opentest{color:#fff;background:linear-gradient(135deg,#b8941f,#8a6f14);box-shadow:0 2px 8px rgba(184,148,31,.35);animation:sOT 1.5s ease-in-out infinite}'+
+  '@keyframes sOT{0%,100%{box-shadow:0 2px 8px rgba(184,148,31,.35)}50%{box-shadow:0 2px 14px rgba(184,148,31,.6)}}'+
+  '#student-app .s-ttc.istest{border-color:rgba(184,148,31,.4)}'+
   /* clickable affordances */
   '#student-app .s-av{cursor:pointer}'+
   '#student-app .s-stat{cursor:pointer;transition:transform .1s}'+
@@ -53452,9 +53466,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
         var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
         // 3 alag premium states: live (chal rahi), done (ho chuki), up/over (aane wali/nikal gayi)
         var stateCls=done?' done':(live?' live':(up?' up':' over'));
+        // TEST entry + test ban chuka -> "Open Test" chip; card click test section me le jaata hai.
+        var isTestC=!!(c.is_test || String(c.type||'').toLowerCase()==='test' || /test|exam|mission|mock|pyq|assessment/i.test(c.chapter||''));
+        var openTestC=(isTestC && c.test_id);
+        if(openTestC){ chip='<span class="s-chip s-opentest">Open Test ›</span>'; }
+        var _clk=openTestC?('_sOpenTestTT(\''+encodeURIComponent(rawSub||'')+'\','+c.test_id+')'):"_sGo('materials')";
         // "Notes ready" badge hata diya — time + Class Notes ab ek hi line (foot) me dikhte hain.
-        // card clickable -> us class ke notes/material par (Classes Material section)
-        return '<div class="s-ttc'+stateCls+'" style="cursor:pointer" onclick="_sGo(\'materials\')">'+(done?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+foot+'</div>';
+        return '<div class="s-ttc'+stateCls+(openTestC?' istest':'')+'" style="cursor:pointer" onclick="'+_clk+'">'+(done&&!openTestC?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+foot+'</div>';
       }).join('');
       sec.style.display='';
       photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
@@ -53476,6 +53494,11 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   window._sClassNotesDl=function(lid){ try{ if(typeof window.tcMatDl==='function'){ window.tcMatDl(lid,'pdf'); return; } }catch(e){}
     try{ if(typeof window.toast==='function') window.toast('Notes abhi available nahi.'); }catch(e){} };
   window._sTt=function(d){ var s=document.getElementById('s-tt'); if(s) s.scrollBy({left:d*169,behavior:'smooth'}); };
+  // phone app: TEST timetable card -> Tests section (us subject ke tests khul jaayein)
+  window._sOpenTestTT=function(subjEnc,testId){
+    try{ if(typeof _sGo==='function') _sGo('tests'); else if(typeof navTo==='function') navTo('student-app','tests'); }catch(e){}
+    setTimeout(function(){ try{ if(subjEnc&&typeof sSubOpen==='function') sSubOpen(subjEnc); else if(typeof loadSTests==='function') loadSTests(); }catch(e){} },150);
+  };
   window._sTtDots=dots; function dots(){ var s=document.getElementById('s-tt'), d=document.getElementById('s-ttdots'); if(!s||!d) return;
     var n=s.querySelectorAll('.s-ttc').length; if(n<=1){ d.innerHTML=''; return; }
     var max=s.scrollWidth-s.clientWidth; var r=max>0?s.scrollLeft/max:0; var idx=Math.round(r*(n-1));

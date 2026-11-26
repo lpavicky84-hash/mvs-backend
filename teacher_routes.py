@@ -4393,6 +4393,7 @@ def teacher_my_classes(scope: str = "all", db: Session = Depends(get_db), curren
     subs = tp.subjects or []
     if not subs:
         return []
+    _reconcile_test_tt(db, tp)   # already-banaye tests ke liye pending test-entries catch-up Done
     q = db.query(TimetableEntry).filter(TimetableEntry.subject.in_(subs),
         or_(TimetableEntry.status == None, TimetableEntry.status != "pending"))
     if scope == "today":
@@ -5569,13 +5570,18 @@ def _tt_is_test_entry(e):
     return bool(_re.search(r"test|mission|mock|pyq|subjective|assessment", str(e.chapter or ""), _re.I))
 
 
-def _auto_complete_test_tt(db, tp, subject, class_name):
+def _tt_ch_norm(x):
+    import re as _re
+    return _re.sub(r"[^a-z0-9]+", "", str(x or "").lower())
+
+
+def _auto_complete_test_tt(db, tp, subject, class_name, chapter=None):
     """Jab teacher test section me test CREATE karta hai (time pe ya delay se), us subject ki
-    jo TEST timetable-entry due/overdue hai (entry_date <= aaj) aur abhi complete nahi hui —
-    use AUTOMATIC 'Done' mark kar do. Isse timetable pe 'Report pending' nag hat jaata hai aur
-    student ko class 'Done' + test 'Attempt' dono dikhte hain. Sirf EK (sabse recent due) entry
-    mark hoti hai taaki galti se aage ke tests complete na ho jaayein. Best-effort — fail ho to
-    test creation kabhi block na ho."""
+    TEST timetable-entries ko AUTOMATIC 'Done' mark kar do — taaki timetable pe 'Create Test / Pending'
+    nag hat jaaye aur student ko bhi test dikhne lage. FIX: pehle sirf EK entry mark hoti thi, isliye
+    jab test SABHI batches me jaata hai to baaki batch-copies 'Pending' reh jaati thi. Ab us subject+class
+    ke current test-slot (sabse recent due date) ki SAARI batch-copies ek saath 'Done' hoti hain.
+    Best-effort — fail ho to test creation kabhi block na ho."""
     try:
         from models import TimetableEntry
         from sqlalchemy import or_
@@ -5583,15 +5589,15 @@ def _auto_complete_test_tt(db, tp, subject, class_name):
             return
         _sn = _subj_norm(subject)
         _my_cls = _re_class_digits(class_name) if class_name else ""
+        _ch = _tt_ch_norm(chapter) if chapter else ""
         today = ist_today()
         cands = db.query(TimetableEntry).filter(
             TimetableEntry.teacher_id == tp.id,
             or_(TimetableEntry.completed == False, TimetableEntry.completed == None),
-            or_(TimetableEntry.status == None, TimetableEntry.status != "pending"),
             TimetableEntry.entry_date != None,
             TimetableEntry.entry_date <= today,
         ).order_by(TimetableEntry.entry_date.desc()).all()
-        pick = None
+        matches = []
         for e in cands:
             if _subj_norm(e.subject or "") != _sn:
                 continue
@@ -5599,15 +5605,24 @@ def _auto_complete_test_tt(db, tp, subject, class_name):
                 continue
             if not _tt_is_test_entry(e):
                 continue
-            pick = e
-            break
-        if not pick:
+            matches.append(e)
+        if not matches:
             return
-        pick.completed = True
-        pick.completed_at = datetime.now()
-        if not (pick.topic_covered or "").strip():
-            pick.topic_covered = (pick.chapter or "Test").strip() or "Test"
-        db.add(pick)
+        # chapter mil jaaye to usi slot tak seemit karo (warna sab test-entries of latest date)
+        if _ch:
+            cm = [e for e in matches if _tt_ch_norm(e.chapter or "")
+                  and (_ch in _tt_ch_norm(e.chapter or "") or _tt_ch_norm(e.chapter or "") in _ch)]
+            if cm:
+                matches = cm
+        latest = max(e.entry_date for e in matches)
+        now = datetime.now()
+        for e in matches:
+            if e.entry_date == latest:        # current slot ki SAARI batch-copies
+                e.completed = True
+                e.completed_at = now
+                if not (e.topic_covered or "").strip():
+                    e.topic_covered = (e.chapter or "Test").strip() or "Test"
+                db.add(e)
         db.commit()
     except Exception:
         try:
@@ -5620,6 +5635,61 @@ def _re_class_digits(x):
     import re as _re
     m = _re.search(r"\d+", str(x or ""))
     return m.group(0) if m else ""
+
+
+def _reconcile_test_tt(db, tp):
+    """Catch-up: koi uncompleted TEST timetable-entry jiske liye teacher pehle se test bana chuka
+    hai (same subject+class, same date YA chapter match) -> use 'Done' mark karo. Isse purane
+    bane tests ki saari batch-copies bhi apne-aap Done ho jaati hain. Idempotent, best-effort."""
+    try:
+        from models import TimetableEntry, Exam
+        from sqlalchemy import or_
+        today = ist_today()
+        ents = db.query(TimetableEntry).filter(
+            TimetableEntry.teacher_id == tp.id,
+            or_(TimetableEntry.completed == False, TimetableEntry.completed == None),
+            TimetableEntry.entry_date != None,
+            TimetableEntry.entry_date <= today,
+        ).all()
+        tests = [e for e in ents if _tt_is_test_entry(e)]
+        if not tests:
+            return
+        exams = db.query(Exam).filter(Exam.teacher_id == tp.id, Exam.is_active == True).all()  # noqa: E712
+        if not exams:
+            return
+        exinfo = []
+        for x in exams:
+            xd = (x.scheduled_at.date() if x.scheduled_at else (x.created_at.date() if x.created_at else None))
+            exinfo.append((_subj_norm(x.subject or ""), _re_class_digits(x.class_name or ""),
+                           xd, _tt_ch_norm(x.chapter or "")))
+        now = datetime.now()
+        changed = False
+        for e in tests:
+            esn = _subj_norm(e.subject or "")
+            ecls = _re_class_digits(e.class_name or "")
+            ech = _tt_ch_norm(e.chapter or "")
+            for (xsn, xcls, xd, xch) in exinfo:
+                if xsn != esn:
+                    continue
+                if ecls and xcls and ecls != xcls:
+                    continue
+                date_ok = (xd is not None and e.entry_date is not None and xd == e.entry_date)
+                ch_ok = bool(ech and xch and (ech in xch or xch in ech))
+                if date_ok or ch_ok:
+                    e.completed = True
+                    e.completed_at = now
+                    if not (e.topic_covered or "").strip():
+                        e.topic_covered = (e.chapter or "Test").strip() or "Test"
+                    db.add(e)
+                    changed = True
+                    break
+        if changed:
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 @router.post("/exam")
@@ -5671,7 +5741,7 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
     db.commit()
     # Test ban gaya -> us subject ki due/overdue TEST timetable-entry ko AUTO 'Done' mark karo
     # (report submit ki zaroorat nahi). Best-effort; fail ho to creation block na ho.
-    _auto_complete_test_tt(db, tp, _subj_in, _cls_name)
+    _auto_complete_test_tt(db, tp, _subj_in, _cls_name, _chapter)
     # Har target batch ke students ko notification — ab BACKGROUND me (create turant return ho).
     _gender = tp.gender
     _tname = current_user.name
@@ -5758,7 +5828,7 @@ async def teacher_exam_pdf_upload(subject: str = Form(...), title: str = Form(""
         made.append((ex.id, _tb))
     db.commit()
     # Mission 75 PDF test bhi create hote hi us subject ki due TEST timetable-entry auto 'Done'.
-    _auto_complete_test_tt(db, tp, (subject or "").strip(), (class_name or "").strip())
+    _auto_complete_test_tt(db, tp, (subject or "").strip(), (class_name or "").strip(), (chapter or "").strip())
     for _eid, _tb in made:
         try:
             _notify_new_content(db, _tb, (subject or "").strip(), current_user.name, "test", exam_id=_eid, gender=tp.gender)
