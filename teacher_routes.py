@@ -1071,23 +1071,37 @@ async def teacher_bulk_parse(file: UploadFile = File(...), kind: str = Form("sub
                 marks = int(float(_bp_pick(cell_map, header_norm, ["Marks", "Mark"]) or 1))
             except Exception:
                 marks = 1
-            if not q_en and not q_img:
-                if oa or ob or oc or od or q_hi:
+            # LANGUAGE-FLEXIBLE: row valid agar question + 4 options KISI EK language (English
+            # YA Hindi) me pure ho. Hindi-subject teacher sirf Hindi columns bhar sakti hai.
+            en_opts = [oa, ob, oc, od]
+            hi_opts = [oah, obh, och, odh]
+            has_en = all(en_opts)
+            has_hi = all(hi_opts)
+            if not (q_en or q_hi) and not q_img:
+                if any(en_opts) or any(hi_opts):
                     bad.append({"row": rn, "reason": "missing question (add question text or a Question Image)"})
                 continue
-            opts = [oa, ob, oc, od]
-            if any(not o for o in opts):
-                bad.append({"row": rn, "reason": "all 4 options required"})
+            if not has_en and not has_hi:
+                bad.append({"row": rn, "reason": "all 4 options required (English ya Hindi — kisi ek bhasha me pure)"})
                 continue
             if corr not in LI:
                 bad.append({"row": rn, "reason": "Correct Answer must be A / B / C / D"})
                 continue
-            opts_hi = [oah, obh, och, odh]
-            has_hi = bool(q_hi) and all(opts_hi)
+            if has_en:
+                prim_q = q_en or q_hi
+                prim_opts = en_opts
+                sec_q = (q_hi or None) if has_hi or q_hi else None
+                sec_opts = hi_opts if has_hi else None
+            else:
+                # Hindi-only: dono slots me Hindi -> kisi bhi medium me content dikhe
+                prim_q = q_hi or q_en
+                prim_opts = hi_opts
+                sec_q = q_hi
+                sec_opts = hi_opts
             ok.append({
-                "question_text": q_en, "max_marks": marks or 1,
-                "options": opts, "correct_option": opts[LI[corr]],
-                "question_text_hi": (q_hi or None), "options_hi": (opts_hi if has_hi else None),
+                "question_text": prim_q, "max_marks": marks or 1,
+                "options": prim_opts, "correct_option": prim_opts[LI[corr]],
+                "question_text_hi": sec_q, "options_hi": sec_opts,
                 "explanation": None, "explanation_hi": None,
                 "image_b64": q_img, "alt_image_b64": (a_img or alt_img),
             })
@@ -1098,17 +1112,26 @@ async def teacher_bulk_parse(file: UploadFile = File(...), kind: str = Form("sub
                 marks = int(float(_bp_pick(cell_map, header_norm, ["Marks", "Mark", "Max Marks"]) or 1))
             except Exception:
                 marks = 1
-            if not q_en and not q_img:
-                if q_hi or a_en or a_hi:
+            # LANGUAGE-FLEXIBLE: question + model answer KISI EK bhasha me ho to valid.
+            if not (q_en or q_hi) and not q_img:
+                if a_en or a_hi:
                     bad.append({"row": rn, "reason": "missing question (add question text or a Question Image)"})
                 continue
-            if not a_en and not a_img:
-                bad.append({"row": rn, "reason": "model answer (English) required"})
+            if not a_en and not a_hi and not a_img:
+                bad.append({"row": rn, "reason": "model answer required (English ya Hindi)"})
                 continue
+            if q_en:
+                prim_q, sec_q = q_en, (q_hi or None)
+            else:
+                prim_q, sec_q = (q_hi or q_en), (q_hi or None)   # Hindi-only
+            if a_en:
+                prim_a, sec_a = a_en, (a_hi or None)
+            else:
+                prim_a, sec_a = (a_hi or None), (a_hi or None)   # Hindi-only answer
             ok.append({
-                "question_text": q_en, "max_marks": marks or 1,
-                "model_answer": a_en, "model_answer_hi": (a_hi or None),
-                "question_text_hi": (q_hi or None),
+                "question_text": prim_q, "max_marks": marks or 1,
+                "model_answer": prim_a, "model_answer_hi": sec_a,
+                "question_text_hi": sec_q,
                 "image_b64": q_img, "alt_image_b64": alt_img, "model_answer_image": a_img,
             })
 

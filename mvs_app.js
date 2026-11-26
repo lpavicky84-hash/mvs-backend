@@ -6597,7 +6597,7 @@ function dppPickLang(pid,action,kind){
   // STEP 2: paper choose karne ke baad language — jo select karo wahi khul jayega
   const info=window._dppPickInfo||{};
   const pk=info.pk||(window._dppPacks||[]).find(x=>x.id===pid)||{};
-  const meds=(pk.medium==='Hindi')?['hindi','both']:['english','hindi','both'];
+  const meds=_dppMeds(pk);
   if(meds.length===1){ closeModal(); dppPdfGo(pid,action,kind,meds[0]); return; }
   const _mlbl={english:['English','Full paper in English medium'],
                hindi:['हिंदी','पूरा पेपर हिंदी में'],
@@ -6610,7 +6610,14 @@ function dppPickLang(pid,action,kind){
     `<button class="btn btn-ghost" onclick="dppLangPick(${pid},'${action}')">Back</button>`);
 }
 // ---------- DPP premium View/Download hub (test-section jaisa) ----------
-function _dppMeds(pk){ return (pk&&pk.medium==='Hindi')?['hindi']:(pk&&pk.medium==='English')?['english']:['english','hindi','both']; }
+function _dppMeds(pk){
+  if(pk&&pk.medium==='Hindi') return ['hindi'];
+  if(pk&&pk.medium==='English') return ['english'];
+  var sl=_subjLang(pk&&(pk.subject||pk.subject_name||pk.subject_title));
+  if(sl==='en') return ['english'];
+  if(sl==='hi') return ['hindi'];
+  return ['english','hindi','both'];
+}
 function _dppHubHTML(pid,kind,action,created,goFn){
   // medium selection step (sirf created packs ke liye)
   const pk=(window._sDppPacks||[]).find(x=>x.id===pid)||(window._dppPacks||[]).find(x=>x.id===pid)||(window._sMatDppPacks||[]).find(x=>x.id===pid)||{};
@@ -8930,7 +8937,7 @@ async function openCreateExam(type,editData){
   await _ensureTBatches();
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
     `<div style="display:flex;justify-content:flex-end;margin:-4px 0 6px"><span title="Live app version. If this is not v9 or higher, hard-refresh (Ctrl+Shift+R) to load the latest fixes." style="font-size:.66rem;font-weight:700;letter-spacing:.3px;color:#0a7;background:rgba(10,160,110,.1);border:1px solid rgba(10,160,110,.3);border-radius:999px;padding:2px 9px">build ${window.MVS_BUILD||'?'}</span></div>`
-    +(editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
+    +(editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub" onchange="examSubjectChange()">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
     +`<div id="mbf-slot"></div>`
@@ -8990,6 +8997,7 @@ async function openCreateExam(type,editData){
   } else {
     _maybeShowQDraft();   // pichla adhoora draft mila to "Continue" ka option dikhao
   }
+  try{ examSubjectChange(); }catch(e){}   // language subject -> medium turant lock
 }
 function _examFillTestCls(auto){
   // Test class targeting — DPP mode me chapter row ka apna class select hota hai
@@ -9080,17 +9088,67 @@ function _bulkImgHelpAOA(){
 function _bulkAddHelpSheet(wb){
   try{ var hs=XLSX.utils.aoa_to_sheet(_bulkImgHelpAOA()); hs['!cols']=[{wch:70}]; XLSX.utils.book_append_sheet(wb,hs,'How to add images'); }catch(e){}
 }
+// Subject -> template/paper language. English subject = 'en', Hindi/Sanskrit/Urdu etc. = 'hi',
+// baaki (Physics, History...) = null (bilingual). Poore portal me reuse hota hai.
+function _subjLang(name){
+  var n=String(name||'').trim().toLowerCase();
+  if(!n) return null;
+  if(/\benglish\b/.test(n)) return 'en';
+  if(/(hindi|sanskrit|urdu|punjabi|bengali|gujarati|marathi|tamil|telugu|kannada|malayalam|odia|oriya|assamese|sindhi|nepali|arabic|persian|maithili|bodo|dogri|santhali|konkani|manipuri|मराठी|हिंदी|हिन्दी|संस्कृत|उर्दू)/.test(n)) return 'hi';
+  return null;
+}
+// Create-Test / DPP / Mission75 form me selected subject se template language. Agar koi
+// subject select nahi hai lekin teacher ke SAARE subjects ek hi language ke hain to wahi.
+function _tplLang(){
+  var ids=['ex-sub','m75-sub','ud-sub','dpp-subject','dpp-sub'];
+  for(var i=0;i<ids.length;i++){
+    var el=document.getElementById(ids[i]);
+    if(el&&el.tagName==='SELECT'&&el.selectedIndex>=0){
+      var txt=(el.options[el.selectedIndex]&&el.options[el.selectedIndex].text)||el.value||'';
+      var lg=_subjLang(txt);
+      if(lg) return lg;
+      // non-language subject explicitly selected -> bilingual
+      if(txt) return null;
+    }
+  }
+  // fallback: agar ek hi subject-select ke SAARE options ek language ke -> wahi
+  for(var j=0;j<ids.length;j++){
+    var sel=document.getElementById(ids[j]);
+    if(sel&&sel.options&&sel.options.length){
+      var langs={};
+      for(var k=0;k<sel.options.length;k++){ var l=_subjLang(sel.options[k].text); langs[l===null?'bi':l]=1; }
+      var keys=Object.keys(langs);
+      if(keys.length===1&&keys[0]!=='bi') return keys[0];
+    }
+  }
+  return null;
+}
 function _mcqBulkTemplate(){
   try{
-    var head=['Q.No','Question (English)','Question (Hindi)','Option A (English)','Option A (Hindi)','Option B (English)','Option B (Hindi)','Option C (English)','Option C (Hindi)','Option D (English)','Option D (Hindi)','Correct Answer','Marks','Question Image'];
-    var r1=['1','Which of these is a vector quantity?','','Speed','','Velocity','','Mass','','Distance','','B','1','(optional: insert picture here)'];
-    var r2=['2','SI unit of force is?','','Joule','','Newton','','Watt','','Pascal','','B','1',''];
+    var lang=_tplLang();
+    var head,r1,r2,fname;
+    if(lang==='hi'){
+      head=['Q.No','Question (Hindi)','Option A (Hindi)','Option B (Hindi)','Option C (Hindi)','Option D (Hindi)','Correct Answer','Marks','Question Image'];
+      r1=['1','इनमें से कौन सी सदिश राशि है?','चाल','वेग','द्रव्यमान','दूरी','B','1','(optional: insert picture here)'];
+      r2=['2','बल का SI मात्रक क्या है?','जूल','न्यूटन','वाट','पास्कल','B','1',''];
+      fname='MVS_MCQ_Hindi_Template.xlsx';
+    } else if(lang==='en'){
+      head=['Q.No','Question (English)','Option A (English)','Option B (English)','Option C (English)','Option D (English)','Correct Answer','Marks','Question Image'];
+      r1=['1','Which of these is a vector quantity?','Speed','Velocity','Mass','Distance','B','1','(optional: insert picture here)'];
+      r2=['2','SI unit of force is?','Joule','Newton','Watt','Pascal','B','1',''];
+      fname='MVS_MCQ_English_Template.xlsx';
+    } else {
+      head=['Q.No','Question (English)','Question (Hindi)','Option A (English)','Option A (Hindi)','Option B (English)','Option B (Hindi)','Option C (English)','Option C (Hindi)','Option D (English)','Option D (Hindi)','Correct Answer','Marks','Question Image'];
+      r1=['1','Which of these is a vector quantity?','','Speed','','Velocity','','Mass','','Distance','','B','1','(optional: insert picture here)'];
+      r2=['2','SI unit of force is?','','Joule','','Newton','','Watt','','Pascal','','B','1',''];
+      fname='MVS_MCQ_Bilingual_Template.xlsx';
+    }
     var ws=XLSX.utils.aoa_to_sheet([head,r1,r2]);
     ws['!cols']=head.map(function(h){return {wch:Math.max(13,h.length+1)};});
     var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'MCQ Questions');
     _bulkAddHelpSheet(wb);
-    XLSX.writeFile(wb,'MVS_MCQ_Bulk_Template.xlsx');
-    toast('Template downloaded');
+    XLSX.writeFile(wb,fname);
+    toast('Template downloaded'+(lang==='hi'?' (Hindi)':(lang==='en'?' (English)':'')));
   }catch(e){ toast('Could not generate template',true); }
 }
 function _mcqParseRows(rows){
@@ -9107,14 +9165,18 @@ function _mcqParseRows(rows){
     var och=_pickCol(row,['Option C (Hindi)']); var odh=_pickCol(row,['Option D (Hindi)']);
     var corr=(_pickCol(row,['Correct Answer','Correct Option','Correct','Answer'])||'').trim().toUpperCase().charAt(0);
     var marks=parseInt(_pickCol(row,['Marks','Mark']),10)||1;
-    if(!qEn){ if(oa||ob||oc||od||qHi) bad.push({row:rn,reason:'missing question'}); return; }
-    var opts=[oa,ob,oc,od];
-    if(opts.some(function(o){return !o;})){ bad.push({row:rn,reason:'all 4 options required'}); return; }
+    // LANGUAGE-FLEXIBLE: English YA Hindi, kisi ek bhasha me pura ho to valid.
+    var enOpts=[oa,ob,oc,od], hiOpts=[oah,obh,och,odh];
+    var hasEn=enOpts.every(function(o){return !!o;});
+    var hasHiOpts=hiOpts.every(function(o){return !!o;});
+    if(!qEn && !qHi){ if(enOpts.some(Boolean)||hiOpts.some(Boolean)) bad.push({row:rn,reason:'missing question'}); return; }
+    if(!hasEn && !hasHiOpts){ bad.push({row:rn,reason:'all 4 options required (English ya Hindi)'}); return; }
     if(!(corr in LI)){ bad.push({row:rn,reason:'Correct Answer must be A / B / C / D'}); return; }
-    var optsHi=[oah,obh,och,odh];
-    var hasHi=!!qHi && optsHi.every(function(o){return !!o;});
-    ok.push({question_text:qEn,max_marks:marks,options:opts,correct_option:opts[LI[corr]],
-             question_text_hi:(qHi||null),options_hi:(hasHi?optsHi:null),
+    var primOpts, primQ, secOpts, secQ;
+    if(hasEn){ primOpts=enOpts; primQ=qEn||qHi; secOpts=(hasHiOpts?hiOpts:null); secQ=((hasHiOpts||qHi)?(qHi||null):null); }
+    else { primOpts=hiOpts; primQ=qHi||qEn; secOpts=hiOpts; secQ=qHi; }   // Hindi-only -> dono slots Hindi
+    ok.push({question_text:primQ,max_marks:marks,options:primOpts,correct_option:primOpts[LI[corr]],
+             question_text_hi:secQ,options_hi:secOpts,
              explanation:null,explanation_hi:null});
   });
   return {ok:ok,bad:bad};
@@ -9207,15 +9269,33 @@ function _mcqBulkImport(){
 /* ============ MISSION 75 (SUBJECTIVE) BULK UPLOAD (Excel) ============ */
 function _subjBulkTemplate(){
   try{
-    var head=['Q.No','Question (English)','Question (Hindi)','Model Answer (English)','Model Answer (Hindi)','Marks','Question Image','Answer Image'];
-    var r1=['1','Explain the importance of Public Interest Litigation (PIL).','लोक हित याचिका (PIL) का महत्व समझाइए।','PIL allows any citizen to approach the court for the protection of public interest. It makes justice accessible to the poor and weaker sections, and holds the government accountable.','जनहित याचिका किसी भी नागरिक को जनहित की रक्षा के लिए न्यायालय में जाने की अनुमति देती है। यह गरीब और कमजोर वर्ग तक न्याय पहुंचाती है।','3','(optional: insert picture here)',''];
-    var r2=['2','Describe the role of the Prime Minister of India.','भारत के प्रधानमंत्री की भूमिका का वर्णन कीजिए।','The Prime Minister is the head of government and leader of the Council of Ministers. He/she advises the President, allocates portfolios, coordinates between ministries and represents the nation.','प्रधानमंत्री सरकार का प्रमुख और मंत्रिपरिषद का नेता होता है। वह राष्ट्रपति को सलाह देता है और मंत्रालयों में समन्वय करता है।','6','',''];
+    var lang=_tplLang();
+    var head,r1,r2,cols,fname;
+    if(lang==='hi'){
+      head=['Q.No','Question (Hindi)','Model Answer (Hindi)','Marks','Question Image','Answer Image'];
+      r1=['1','लोक हित याचिका (PIL) का महत्व समझाइए।','जनहित याचिका किसी भी नागरिक को जनहित की रक्षा के लिए न्यायालय में जाने की अनुमति देती है।','3','(optional: insert picture here)',''];
+      r2=['2','भारत के प्रधानमंत्री की भूमिका का वर्णन कीजिए।','प्रधानमंत्री सरकार का प्रमुख और मंत्रिपरिषद का नेता होता है।','6','',''];
+      cols=[{wch:7},{wch:52},{wch:60},{wch:7},{wch:26},{wch:26}];
+      fname='MVS_Mission75_Hindi_Template.xlsx';
+    } else if(lang==='en'){
+      head=['Q.No','Question (English)','Model Answer (English)','Marks','Question Image','Answer Image'];
+      r1=['1','Explain the importance of Public Interest Litigation (PIL).','PIL allows any citizen to approach the court for the protection of public interest. It makes justice accessible to the poor and weaker sections, and holds the government accountable.','3','(optional: insert picture here)',''];
+      r2=['2','Describe the role of the Prime Minister of India.','The Prime Minister is the head of government and leader of the Council of Ministers. He/she advises the President, allocates portfolios and coordinates between ministries.','6','',''];
+      cols=[{wch:7},{wch:52},{wch:62},{wch:7},{wch:26},{wch:26}];
+      fname='MVS_Mission75_English_Template.xlsx';
+    } else {
+      head=['Q.No','Question (English)','Question (Hindi)','Model Answer (English)','Model Answer (Hindi)','Marks','Question Image','Answer Image'];
+      r1=['1','Explain the importance of Public Interest Litigation (PIL).','लोक हित याचिका (PIL) का महत्व समझाइए।','PIL allows any citizen to approach the court for the protection of public interest. It makes justice accessible to the poor and weaker sections, and holds the government accountable.','जनहित याचिका किसी भी नागरिक को जनहित की रक्षा के लिए न्यायालय में जाने की अनुमति देती है।','3','(optional: insert picture here)',''];
+      r2=['2','Describe the role of the Prime Minister of India.','भारत के प्रधानमंत्री की भूमिका का वर्णन कीजिए।','The Prime Minister is the head of government and leader of the Council of Ministers.','प्रधानमंत्री सरकार का प्रमुख और मंत्रिपरिषद का नेता होता है।','6','',''];
+      cols=[{wch:7},{wch:46},{wch:46},{wch:56},{wch:56},{wch:7},{wch:26},{wch:26}];
+      fname='MVS_Mission75_Bilingual_Template.xlsx';
+    }
     var ws=XLSX.utils.aoa_to_sheet([head,r1,r2]);
-    ws['!cols']=[{wch:7},{wch:46},{wch:46},{wch:56},{wch:56},{wch:7},{wch:26},{wch:26}];
+    ws['!cols']=cols;
     var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Mission 75 Questions');
     _bulkAddHelpSheet(wb);
-    XLSX.writeFile(wb,'MVS_Mission75_Bulk_Template.xlsx');
-    toast('Template downloaded');
+    XLSX.writeFile(wb,fname);
+    toast('Template downloaded'+(lang==='hi'?' (Hindi)':(lang==='en'?' (English)':'')));
   }catch(e){ toast('Could not generate template',true); }
 }
 function _subjParseRows(rows){
@@ -9228,11 +9308,13 @@ function _subjParseRows(rows){
     var aHi=_pickCol(row,['Model Answer (Hindi)','Model Answer Hindi','Answer (Hindi)','Answer Hindi','Hindi Answer']);
     var marks=parseInt(_pickCol(row,['Marks','Mark','Max Marks']),10)||1;
     qEn=(qEn||'').trim(); qHi=(qHi||'').trim(); aEn=(aEn||'').trim(); aHi=(aHi||'').trim();
-    if(!qEn){ if(qHi||aEn||aHi) bad.push({row:rn,reason:'missing question'}); return; }
-    if(!aEn){ bad.push({row:rn,reason:'model answer (English) required'}); return; }
-    ok.push({question_text:qEn,max_marks:marks,model_answer:aEn,
+    // LANGUAGE-FLEXIBLE: question + model answer kisi ek bhasha me ho
+    if(!qEn && !qHi){ if(aEn||aHi) bad.push({row:rn,reason:'missing question'}); return; }
+    if(!aEn && !aHi){ bad.push({row:rn,reason:'model answer required (English ya Hindi)'}); return; }
+    var primQ=qEn||qHi, secQ=(qHi||null), primA=aEn||aHi, secA=(aHi||null);
+    ok.push({question_text:primQ,max_marks:marks,model_answer:primA,
              image_b64:null,alt_image_b64:null,model_answer_image:null,
-             question_text_hi:(qHi||null),model_answer_hi:(aHi||null)});
+             question_text_hi:secQ,model_answer_hi:secA});
   });
   return {ok:ok,bad:bad};
 }
@@ -9275,6 +9357,20 @@ function _subjBulkImport(){
 }
 function setExamTab(i,tab){ _examQs[i]._tab=tab; _examReplaceCard(i); }
 function examMediumChange(){ _examMedium=val('ex-medium')||'English'; renderExamQs(); }
+// Language subject (English/Hindi) chunne par medium AUTO-LOCK — kyunki English subject ka
+// test sirf English, Hindi subject ka sirf Hindi. baaki subjects me teacher khud chunता hai.
+function examSubjectChange(){
+  try{
+    var sub=document.getElementById('ex-sub'); var med=document.getElementById('ex-medium');
+    if(!sub||!med) return;
+    var txt=(sub.options[sub.selectedIndex]&&sub.options[sub.selectedIndex].text)||sub.value||'';
+    var lg=_subjLang(txt);
+    if(lg==='en'){ med.value='English'; med.disabled=true; med.title='English subject — medium English fixed'; _examMedium='English'; }
+    else if(lg==='hi'){ med.value='Hindi'; med.disabled=true; med.title='Hindi subject — medium Hindi fixed'; _examMedium='Hindi'; }
+    else { med.disabled=false; med.title=''; _examMedium=med.value||'English'; }
+    try{ renderExamQs(); }catch(e){}
+  }catch(e){}
+}
 function _setExamAnsImg(i,d){ _examQs[i].model_answer_image=d; _syncAnsImgSec(i); }
 async function examAnsImgFile(inp,i){ const f=inp.files[0]; if(f&&f.type.indexOf('image')===0) _setExamAnsImg(i, await _examReadImg(f)); }
 function examAnsImgDrop(e,i){ e.preventDefault(); const f=(e.dataTransfer.files||[])[0]; if(f&&f.type.indexOf('image')===0) _examReadImg(f).then(d=>_setExamAnsImg(i,d)); }
@@ -9935,15 +10031,28 @@ async function examTranslateAll(btn){
   toast(done?('Translated '+done+' field(s) to Hindi.'):'Nothing translated — Hindi already filled or English empty.');
 }
 /* ---- PDF medium chooser ---- */
+function _examMedList(ex){
+  var m=String((ex&&ex.medium)||'').toLowerCase();
+  if(m.indexOf('hindi')>=0||m==='hi') return ['hi'];
+  if(m.indexOf('english')>=0||m==='en') return ['en'];
+  var sl=_subjLang(ex&&(ex.subject||ex.subject_name||ex.subject_title));
+  if(sl==='en') return ['en'];
+  if(sl==='hi') return ['hi'];
+  return ['en','hi','both'];
+}
+var _EX_MED_BTN={
+  en:['A','English','Full paper in English medium'],
+  hi:['\u0905','\u0939\u093f\u0902\u0926\u0940','\u092a\u0942\u0930\u093e \u092a\u094d\u0930\u0936\u094d\u0928\u092a\u0924\u094d\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902'],
+  both:['A\u0905','English + \u0939\u093f\u0902\u0926\u0940','Bilingual \u2014 \u0926\u094b\u0928\u094b\u0902 \u092e\u093e\u0927\u094d\u092f\u092e \u090f\u0915 \u0938\u093e\u0925']
+};
 function examPdfChoose(id,mode,view){
   view=view?1:0;
   const lbl=(mode==='solutions')?'Question Paper + Solutions':'Question Paper';
-  showModal((view?'View':'Download PDF')+' — '+lbl,
-  `<div class="pm-grid">`
-  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','en',${view})"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b><small>Full paper in English medium</small></span></button>`
-  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','hi',${view})"><span class="pm-ic">\u0905</span><span class="pm-tx"><b>\u0939\u093f\u0902\u0926\u0940</b><small>\u092a\u0942\u0930\u093e \u092a\u094d\u0930\u0936\u094d\u0928\u092a\u0924\u094d\u0930 \u0939\u093f\u0902\u0926\u0940 \u092e\u0947\u0902</small></span></button>`
-  +`<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','both',${view})"><span class="pm-ic">A\u0905</span><span class="pm-tx"><b>English + \u0939\u093f\u0902\u0926\u0940</b><small>Bilingual \u2014 \u0926\u094b\u0928\u094b\u0902 \u092e\u093e\u0927\u094d\u092f\u092e \u090f\u0915 \u0938\u093e\u0925</small></span></button>`
-  +`</div>`);
+  const ex=((window._tExams||[]).find(function(e){return e.id===id;}))||{};
+  const meds=_examMedList(ex);
+  if(meds.length===1){ examPdfPremium(id,mode,meds[0],view); return; }
+  const btns=meds.map(function(k){ var b=_EX_MED_BTN[k]; return `<button class="pm-opt" onclick="closeModal();examPdfPremium(${id},'${mode}','${k}',${view})"><span class="pm-ic">${b[0]}</span><span class="pm-tx"><b>${b[1]}</b><small>${b[2]}</small></span></button>`; }).join('');
+  showModal((view?'View':'Download PDF')+' \u2014 '+lbl, `<div class="pm-grid">`+btns+`</div>`);
 }
 
 /* ================= EXAM SCHEDULING + TRACKING HELPERS =================
@@ -26716,19 +26825,26 @@ function sTestFilter(f){ window._sTestFilter=f; loadSTests(); }
 function _trackPaperDl(id){
   try{ api('/api/student/exam/'+id+'/track-download','POST',{}).catch(function(){}); }catch(e){}
 }
+function _sExamMedList(id){
+  var ex=((window._sExams||[]).find(function(e){return e.id===id;}))||{};
+  var m=String(ex.medium||'').toLowerCase();
+  var sl=_subjLang(ex.subject||ex.subject_name||ex.subject_title);
+  if(m.indexOf('hindi')>=0||sl==='hi') return ['hi'];
+  if(m.indexOf('english')>=0||sl==='en') return ['en'];
+  return ['en','hi'];
+}
+var _S_MED_BTN={en:['A','English'],hi:['\u0905','\u0939\u093f\u0902\u0926\u0940']};
 function downloadPaper(id){
-  showModal('Paper ka Medium?',
-  `<div class="pm-grid" style="margin-top:4px">
-    <button class="pm-opt" onclick="closeModal();examPdfStudent(${id},'en',false)"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b></span></button>
-    <button class="pm-opt" onclick="closeModal();examPdfStudent(${id},'hi',false)"><span class="pm-ic">\u0905</span><span class="pm-tx"><b>\u0939\u093f\u0902\u0926\u0940</b></span></button>
-  </div>`,'');
+  var meds=_sExamMedList(id);
+  if(meds.length===1){ examPdfStudent(id,meds[0],false); return; }
+  var b=meds.map(function(k){var x=_S_MED_BTN[k];return `<button class="pm-opt" onclick="closeModal();examPdfStudent(${id},'${k}',false)"><span class="pm-ic">${x[0]}</span><span class="pm-tx"><b>${x[1]}</b></span></button>`;}).join('');
+  showModal('Paper ka Medium?', `<div class="pm-grid" style="margin-top:4px">`+b+`</div>`,'');
 }
 function examSolPick(id){
-  showModal('Solutions ka Medium?',
-  `<div class="pm-grid" style="margin-top:4px">
-    <button class="pm-opt" onclick="closeModal();examPdfStudent(${id},'en',true)"><span class="pm-ic">A</span><span class="pm-tx"><b>English</b></span></button>
-    <button class="pm-opt" onclick="closeModal();examPdfStudent(${id},'hi',true)"><span class="pm-ic">\u0905</span><span class="pm-tx"><b>\u0939\u093f\u0902\u0926\u0940</b></span></button>
-  </div>`,'');
+  var meds=_sExamMedList(id);
+  if(meds.length===1){ examPdfStudent(id,meds[0],true); return; }
+  var b=meds.map(function(k){var x=_S_MED_BTN[k];return `<button class="pm-opt" onclick="closeModal();examPdfStudent(${id},'${k}',true)"><span class="pm-ic">${x[0]}</span><span class="pm-tx"><b>${x[1]}</b></span></button>`;}).join('');
+  showModal('Solutions ka Medium?', `<div class="pm-grid" style="margin-top:4px">`+b+`</div>`,'');
 }
 /* student paper/solutions PDF — built on-device from portal data (no answers unless window over) */
 async function examPdfStudent(id,medium,withSol){
