@@ -2455,6 +2455,10 @@ def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), 
             _exam_idx.append((_subj_norm(x.subject or ""), _cls_norm(x.class_name or ""), xd, _chn(x.chapter or ""), x.id))
 
     def _match_test(e):
+        # EXPLICIT link sabse pehle — teacher ne khud is slot ko test se joda hai (deterministic).
+        lt = getattr(e, "linked_test_id", None)
+        if lt:
+            return lt
         esn = _subj_norm(e.subject or "")
         ecls = _cls_norm(e.class_name or "")
         ech = _chn(e.chapter or "")
@@ -2500,8 +2504,8 @@ def timetable_plan(batch: int = 0, gen: int = 0, db: Session = Depends(get_db), 
             "has_notes": bool(lec and lec.id in _notes_ids),
             "has_dpp": bool(lec and lec.id in _dpp_ids),
             "class_done": bool(e.completed or lec),
-            "is_test": _is_test_e(e),
-            "test_id": (_match_test(e) if _is_test_e(e) else None),
+            "is_test": (_is_test_e(e) or bool(getattr(e, "linked_test_id", None))),
+            "test_id": (_match_test(e) if (_is_test_e(e) or getattr(e, "linked_test_id", None)) else None),
             # v114: report ke asli start/end + duration — student dashboard ab
             # auto 90-min Done nahi dikhata; report aane par Done + asli minutes.
             "start_time": (e.start_time if e.completed else None),

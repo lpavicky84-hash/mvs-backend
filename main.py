@@ -206,6 +206,9 @@ def ensure_columns():
         "CREATE INDEX ix_materials_batch ON materials (batch_id)",
         "CREATE INDEX ix_materials_subject ON materials (subject)",
         "ALTER TABLE timetable_entries ADD COLUMN shift_plan TEXT",
+        # ===== Explicit test<->timetable link (teacher connects test to its timetable slot) =====
+        "ALTER TABLE timetable_entries ADD COLUMN linked_test_id INTEGER NULL",
+        "CREATE INDEX ix_tt_linked_test ON timetable_entries (linked_test_id)",
         # ===== NIOS Syllabus Tracker =====
         "ALTER TABLE student_profiles ADD COLUMN exam_session VARCHAR(30)",
         "ALTER TABLE student_profiles ADD COLUMN study_target VARCHAR(10)",

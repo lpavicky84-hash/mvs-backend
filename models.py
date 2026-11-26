@@ -955,6 +955,10 @@ class TimetableEntry(Base):
     mirror_of_id    = Column(Integer, nullable=True, index=True)  # NULL = primary/standalone; set = is primary ka mirror
     resched_by      = Column(String(20), nullable=True)  # v86: kaun move kiya — teacher | admin | leave (NULL = kabhi move nahi)
     youtube_link    = Column(String(300), nullable=True)  # class on YouTube -> student gets a blinking "Watch" button
+    # EXPLICIT test<->timetable link: jab teacher test create/edit karte waqt is slot ko apni
+    # timetable se jodta hai -> yahan us test (Exam) ka id set hota hai. Set => slot DONE (test ke
+    # through), aur student ko is din "Open Test" dikhta hai (guessing nahi, deterministic).
+    linked_test_id  = Column(Integer, nullable=True, index=True)
     created_at  = Column(DateTime, default=func.now())
 
 

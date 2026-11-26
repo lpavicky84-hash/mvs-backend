@@ -8915,7 +8915,7 @@ function examImgPaste(e,i){ const items=(e.clipboardData||{}).items||[]; for(let
 function examImgRemove(i,ev){ if(ev)ev.stopPropagation(); _examQs[i].image_b64=null; _syncImgSec(i); }
 async function openCreateExam(type,editData){
   window._dppMode=(window._dppMode==='pending');
-  _examType=type; _examQs=[]; _lastField=null; _examMedium='English';
+  _examType=type; _examQs=[]; _lastField=null; _examMedium='English'; window._examTtOn=null;
   _loadAiFmtCfg(true); // v122: subject-wise AI config prefetch — paste karte tak ready rahe
   window._editExamId=editData?editData.id:null;
   let subs=[];
@@ -8937,9 +8937,10 @@ async function openCreateExam(type,editData){
   await _ensureTBatches();
   showModal(editData?('Edit '+tl+' Test'):('Create '+tl+' Test'),
     `<div style="display:flex;justify-content:flex-end;margin:-4px 0 6px"><span title="Live app version. If this is not v9 or higher, hard-refresh (Ctrl+Shift+R) to load the latest fixes." style="font-size:.66rem;font-weight:700;letter-spacing:.3px;color:#0a7;background:rgba(10,160,110,.1);border:1px solid rgba(10,160,110,.3);border-radius:999px;padding:2px 9px">build ${window.MVS_BUILD||'?'}</span></div>`
-    +(editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub" onchange="examSubjectChange()">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
+    +(editData&&editData.attempts>0?'<div class="alert alert-info">This test is live — <b>'+editData.attempts+' submission(s)</b> have already been received. You may add new questions; previous submissions and their marks will remain safe.</div>':'')+`<div style="display:flex;gap:12px;flex-wrap:wrap"><div class="form-group" style="flex:1;min-width:160px"><label>Subject</label><select class="form-control" id="ex-sub" onchange="examSubjectChange()">${subOpts}</select></div><div class="form-group" style="width:128px" id="ex-cls-test-wrap"><label>Class</label><select class="form-control" id="ex-cls-test" title="Sirf is class ke students ko test dikhega" onchange="_examRefreshTtSlots()"></select></div><div class="form-group" style="width:150px"><label>Duration (min)</label><input type="number" min="0" class="form-control" id="ex-dur" placeholder="No limit" title="Blank or 0 = no time limit. The student can take the test anytime; once they press Start, they must complete it."></div><div class="form-group" style="width:140px"><label>Medium</label><select class="form-control" id="ex-medium" onchange="examMediumChange()"><option>English</option><option>Hindi</option><option>Bilingual</option></select></div><div class="form-group" style="min-width:210px;flex:1"><label>Schedule (optional)</label><input type="datetime-local" class="form-control" id="ex-sched" title="Students can start only after this date & time"></div></div>`
     +`<div class="form-group"><label>${window._dppMode?'DPP Title':'Test Title'}</label><input class="form-control" id="ex-title" placeholder="e.g. Physics Chapter Test - Electric Charges"></div>`
     +`<div class="form-group"><label>Chapter (optional)</label><input class="form-control" id="ex-ch" placeholder="e.g. Electric Charges"></div>`
+    +(window._dppMode?'':`<div class="ex-ttc" id="ex-ttc"><div class="ex-ttc-head"><div class="ex-ttc-ic">${(typeof ic==='function'?ic('calendar'):'📅')}</div><div class="ex-ttc-txt"><div class="ex-ttc-t">Timetable se jodein</div><div class="ex-ttc-s">Kya aap timetable ke according ye test de rahe ho? <b>Yes</b> karoge to us din ka slot sabhi batches me apne-aap <b>Done</b> ho jayega — report submit karne ki zaroorat nahi, aur student ko <b>Open Test</b> dikhega.</div></div></div><div class="ex-ttc-seg"><button type="button" class="ex-ttc-opt" id="ex-ttc-yes" onclick="examTtToggle(true)">Yes</button><button type="button" class="ex-ttc-opt" id="ex-ttc-no" onclick="examTtToggle(false)">No</button></div><div class="ex-ttc-body" id="ex-ttc-body"><label class="ex-ttc-lbl">Kaunsa timetable slot?</label><select class="form-control" id="ex-ttslot"></select><div class="ex-ttc-empty" id="ex-ttc-empty">Is subject/class ka koi pending test slot timetable me nahi mila — aap bina jode bhi test bana sakte ho.</div></div></div>`)
     +`<div id="mbf-slot"></div>`
     +`<div class="ex-prog" id="ex-prog"><div class="ex-prog-top"><span class="ex-prog-label" id="ex-prog-label">Uploading\u2026</span><span class="ex-prog-pct" id="ex-prog-pct">0%</span></div><div class="ex-prog-track"><div class="ex-prog-fill" id="ex-prog-fill"></div></div></div>`
     +((type==='mcq'&&!editData)?`<div class="ex-bulk"><div class="ex-bulk-h">Bulk upload from Excel</div><div class="ex-bulk-p">Fill the template (one row per question — English, with optional Hindi) and upload. <b>Images too:</b> insert a picture on a question's row in the <b>Question Image</b> column and it uploads automatically. Every question loads into the editor below, where you can review &amp; edit each one before pressing <b>Create Test</b>.</div><div class="ex-bulk-row"><button type="button" class="btn btn-ghost btn-sm" onclick="_mcqBulkTemplate()">${(typeof ic==='function'?ic('download'):'')} Download template</button><label class="btn btn-ghost btn-sm" style="cursor:pointer;margin:0">${(typeof ic==='function'?ic('folder'):'')} Choose Excel<input type="file" id="ex-bulk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="_mcqBulkPick()"></label><button type="button" class="btn btn-primary btn-sm" id="ex-bulk-import" onclick="_mcqBulkImport()" style="display:none">Load into editor</button></div><div id="ex-bulk-out" style="margin-top:8px"></div></div>`:'')
@@ -9012,6 +9013,7 @@ function _examFillTestCls(auto){
   if(prev&&cls.includes(prev)) csel.value=prev;
   else if(cls.length===1) csel.value=cls[0];
   else if(auto&&cls.length>1) csel.value=cls[0];
+  try{ _examRefreshTtSlots(); }catch(e){}
 }
 // One blank question object for the current test type.
 function _blankExamQ(){
@@ -9369,6 +9371,7 @@ function examSubjectChange(){
     else if(lg==='hi'){ med.value='Hindi'; med.disabled=true; med.title='Hindi subject — medium Hindi fixed'; _examMedium='Hindi'; }
     else { med.disabled=false; med.title=''; _examMedium=med.value||'English'; }
     try{ renderExamQs(); }catch(e){}
+    try{ _examRefreshTtSlots(); }catch(e){}
   }catch(e){}
 }
 function _setExamAnsImg(i,d){ _examQs[i].model_answer_image=d; _syncAnsImgSec(i); }
@@ -12593,6 +12596,105 @@ function _dppAskArrange(){
     document.body.appendChild(ov);
   });
 }
+// ===== Connect test to timetable slot (premium explicit flow) =====
+function _examTtCss(){
+  if(document.getElementById('mvs-exttc-css')) return;
+  var s=document.createElement('style'); s.id='mvs-exttc-css';
+  s.textContent=`
+  .ex-ttc{border:1.5px solid var(--border);border-radius:16px;padding:14px 15px;margin:4px 0 14px;background:linear-gradient(180deg,rgba(181,145,53,.055),rgba(181,145,53,.015));box-shadow:0 1px 0 rgba(0,0,0,.02)}
+  .ex-ttc.on{border-color:rgba(181,145,53,.55);background:linear-gradient(180deg,rgba(181,145,53,.11),rgba(181,145,53,.03));box-shadow:0 6px 20px -10px rgba(181,145,53,.5)}
+  .ex-ttc-head{display:flex;gap:11px;align-items:flex-start}
+  .ex-ttc-ic{flex:0 0 auto;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(181,145,53,.14);color:var(--primary)}
+  .ex-ttc-ic svg{width:19px;height:19px}
+  .ex-ttc-txt{min-width:0}
+  .ex-ttc-t{font-weight:800;font-size:.95rem;color:var(--text);letter-spacing:.1px}
+  .ex-ttc-s{font-size:.8rem;color:var(--text-muted);margin-top:3px;line-height:1.45}
+  .ex-ttc-seg{display:inline-flex;margin-top:12px;border:1.5px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card)}
+  .ex-ttc-opt{appearance:none;border:0;background:transparent;padding:8px 24px;font-weight:800;font-size:.86rem;color:var(--text-muted);cursor:pointer;transition:background .16s,color .16s}
+  .ex-ttc-opt+.ex-ttc-opt{border-left:1.5px solid var(--border)}
+  .ex-ttc-opt.on{color:#fff}
+  #ex-ttc-yes.on{background:linear-gradient(135deg,#1e9e63,#15854f)}
+  #ex-ttc-no.on{background:linear-gradient(135deg,#b4823a,#9a6c2c)}
+  .ex-ttc-body{display:none;margin-top:13px;animation:exttcIn .22s ease}
+  .ex-ttc.on .ex-ttc-body{display:block}
+  @keyframes exttcIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .ex-ttc-lbl{display:block;font-weight:700;font-size:.8rem;color:var(--text);margin-bottom:5px}
+  .ex-ttc-empty{display:none;font-size:.8rem;color:var(--text-muted);margin-top:7px;padding:9px 11px;border:1px dashed var(--border);border-radius:9px;background:var(--card)}`;
+  document.head.appendChild(s);
+}
+function _ttNormS(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,''); }
+function _clsDigS(x){ var m=String(x||'').match(/\d+/); return m?m[0]:''; }
+function _ttIsTestE(e){ return ((e.type||'')==='event')||/test|mission|mock|pyq|subjective|assessment/i.test(e.chapter||''); }
+function _ttDateLabel(d){
+  if(!d) return '';
+  try{ var p=String(d).split('-'); var dt=new Date(+p[0],(+p[1]-1),+p[2]);
+    var mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
+    return dt.getDate()+' '+mon;
+  }catch(e){ return String(d); }
+}
+// subject+class ke matching PENDING test slots (batch-copies collapse karke)
+function _examTtSlots(){
+  var tt=window._dppTt||[]; var subN=_ttNormS(val('ex-sub')); var clsD=_clsDigS(val('ex-cls-test'));
+  var editId=window._editExamId||null;
+  var byKey={}, order=[];
+  for(var i=0;i<tt.length;i++){ var e=tt[i];
+    if(_ttNormS(e.subject||'')!==subN) continue;
+    if(clsD && _clsDigS(e.class_name||'') && _clsDigS(e.class_name||'')!==clsD) continue;
+    if(!_ttIsTestE(e)) continue;
+    var linkedHere=!!(editId && e.linked_test_id && String(e.linked_test_id)===String(editId));
+    if(e.completed && !linkedHere) continue;   // already done (kisi aur test se) -> chhipao
+    var key=(e.date||'')+'|'+(e.time||'')+'|'+_ttNormS(e.chapter||'');
+    if(byKey[key]){ byKey[key].batches++; if(linkedHere) byKey[key]._linked=true; continue; }
+    byKey[key]={id:e.id,date:e.date||'',time:e.time||'',chapter:e.chapter||'',batches:1,_linked:linkedHere,key:key};
+    order.push(key);
+  }
+  var arr=order.map(function(k){ return byKey[k]; });
+  arr.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });  // recent pehle
+  return arr;
+}
+function _examRefreshTtSlots(){
+  try{ _examTtCss(); }catch(e){}
+  var box=document.getElementById('ex-ttc'); if(!box) return;
+  if(window._dppMode){ box.style.display='none'; return; }
+  box.style.display='';
+  var sel=document.getElementById('ex-ttslot'); var empty=document.getElementById('ex-ttc-empty');
+  var slots=_examTtSlots();
+  window._examTtSlotData=slots;
+  if(sel){
+    sel.innerHTML=slots.map(function(s){
+      var lbl=_ttDateLabel(s.date)+(s.time?(' · '+s.time):'')+' · '+(s.chapter||'Test')+(s.batches>1?(' ('+s.batches+' batches)'):'');
+      return '<option value="'+s.id+'">'+esc(lbl)+'</option>';
+    }).join('');
+  }
+  if(empty) empty.style.display=slots.length?'none':'';
+  // pehli baar: edit me linked slot auto-select; create me slot mile to default Yes + recent slot.
+  if(window._examTtOn==null){
+    var linked=null; for(var i=0;i<slots.length;i++){ if(slots[i]._linked){ linked=slots[i]; break; } }
+    if(window._editExamId){
+      if(linked){ if(sel) sel.value=linked.id; examTtToggle(true,true); }
+      else if(slots.length){ if(sel) sel.value=slots[0].id; examTtToggle(true,true); }  // already-bana test ko ek-click connect
+      else { examTtToggle(false,true); }
+    }
+    else if(slots.length){ if(sel) sel.value=slots[0].id; examTtToggle(true,true); }
+  } else {
+    // state fixed hai -> agar Yes tha par ab slot nahi, to body empty dikhegi (toggle waisa hi)
+    _examTtPaint();
+  }
+}
+function _examTtPaint(){
+  var box=document.getElementById('ex-ttc'); if(!box) return;
+  var yes=document.getElementById('ex-ttc-yes'); var no=document.getElementById('ex-ttc-no');
+  var on=(window._examTtOn===true);
+  box.classList.toggle('on',on);
+  if(yes) yes.classList.toggle('on',on);
+  if(no) no.classList.toggle('on',window._examTtOn===false);
+}
+function examTtToggle(on,_silent){
+  window._examTtOn=!!on;
+  _examTtPaint();
+  if(on){ var slots=window._examTtSlotData||[]; var empty=document.getElementById('ex-ttc-empty');
+    if(empty) empty.style.display=slots.length?'none':''; }
+}
 async function submitExam(){
   // ---- DPP mode: editor se DPP banao (answers already mandatory) ----
   if(window._dppMode){
@@ -12666,6 +12768,9 @@ async function submitExam(){
   const _sched=(val('ex-sched')||'').trim(); const _chRaw=(val('ex-ch')||'').trim();
   if(!window._editExamId && !_batchGateOK()) return;   // naya test -> kam-se-kam 1 batch zaroori
   const body={subject:val('ex-sub'),class_name:(val('ex-cls-test')||''),title:title,chapter:(_sched?(_chRaw+' \u27E6S:'+_sched+'\u27E7'):_chRaw),test_type:_examType,medium:_examMedium,duration_min:(parseInt(val('ex-dur'))||0),scheduled_at:_sched||null,questions:questions};
+  // Timetable connection (explicit): Yes -> chosen slot ko jodo; No -> timetable ko haath mat lagao.
+  if(window._examTtOn===true){ var _slotV=(val('ex-ttslot')||'').trim(); if(_slotV){ body.tt_connect=true; body.tt_slot_id=parseInt(_slotV)||0; } else { body.tt_connect=false; } }
+  else if(window._examTtOn===false){ body.tt_connect=false; }
   if(!window._editExamId) body.batch_ids=_multiBatchIds();
   else { var _sb=_singleBatchId(); if(_sb!==undefined) body.batch_id=_sb; }
   try{

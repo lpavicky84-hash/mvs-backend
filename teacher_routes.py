@@ -1535,6 +1535,7 @@ def _serialize_tt(e, canon=None):
         "resched_by": getattr(e, "resched_by", None),
         "batch_id": getattr(e, "batch_id", None),
         "youtube_link": getattr(e, "youtube_link", None) or "",
+        "linked_test_id": getattr(e, "linked_test_id", None),
         "completed_at": str(getattr(e, "completed_at", "")) if getattr(e, "completed_at", None) else None
     }
 
@@ -5637,6 +5638,94 @@ def _re_class_digits(x):
     return m.group(0) if m else ""
 
 
+def _tt_slot_entries(db, tp, rep):
+    """rep (ek representative timetable entry) ke LOGICAL slot ki saari batch-copies laao —
+    same teacher + subject + class + date + chapter + time = wahi class, bas alag batch.
+    Explicit connect/disconnect isi set par kaam karta hai (6 batch = 6 copies ek saath)."""
+    from models import TimetableEntry
+    cands = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tp.id,
+        TimetableEntry.entry_date == rep.entry_date,
+    ).all()
+    rsn = _subj_norm(rep.subject or "")
+    rcls = _re_class_digits(rep.class_name or "")
+    rch = _tt_ch_norm(rep.chapter or "")
+    rtime = (rep.time_text or "").strip().lower()
+    out = []
+    for e in cands:
+        if _subj_norm(e.subject or "") != rsn:
+            continue
+        if rcls and _re_class_digits(e.class_name or "") and _re_class_digits(e.class_name or "") != rcls:
+            continue
+        if _tt_ch_norm(e.chapter or "") != rch:
+            continue
+        if (e.time_text or "").strip().lower() != rtime:
+            continue
+        out.append(e)
+    return out
+
+
+def _connect_test_to_tt(db, tp, exam, rep_entry_id):
+    """Teacher ne test ko EXPLICITLY apni timetable slot se joda. Us slot ki SAARI batch-copies ko
+    'Done' + linked_test_id set karo (har entry ko uske apne batch ka test-copy mile to best).
+    Deterministic — koi date/chapter guessing nahi. Returns kitni entries connect huin."""
+    from models import TimetableEntry, Exam
+    try:
+        rep = db.query(TimetableEntry).filter(
+            TimetableEntry.id == int(rep_entry_id),
+            TimetableEntry.teacher_id == tp.id).first()
+    except Exception:
+        rep = None
+    if not rep:
+        return 0
+    ents = _tt_slot_entries(db, tp, rep)
+    if not ents:
+        return 0
+    # is test ke saare batch-copies (same subject+class+title) -> batch:test_id map
+    sibs = db.query(Exam).filter(
+        Exam.teacher_id == tp.id, Exam.is_active == True,  # noqa: E712
+        Exam.subject == exam.subject, Exam.title == exam.title).all()
+    ex_by_batch = {}
+    for s in sibs:
+        if s.batch_id is not None:
+            ex_by_batch[s.batch_id] = s.id
+    now = datetime.now()
+    n = 0
+    for e in ents:
+        e.completed = True
+        e.completed_at = now
+        e.linked_test_id = ex_by_batch.get(e.batch_id, exam.id)
+        if not (e.topic_covered or "").strip():
+            e.topic_covered = (e.chapter or "Test").strip() or "Test"
+        db.add(e)
+        n += 1
+    db.commit()
+    return n
+
+
+def _disconnect_test_from_tt(db, tp, exam_id):
+    """Test ko timetable slot se hata do — un entries ko pending par wapas (completed False).
+    Sirf wahi entries chhuo jinhe EXPLICITLY isi test se joda gaya tha (linked_test_id match)."""
+    from models import TimetableEntry, Exam
+    # is test + uske sibling batch-copies ke saare ids (title+subject se)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    ids = {exam_id}
+    if ex:
+        for s in db.query(Exam).filter(Exam.teacher_id == tp.id,
+                Exam.subject == ex.subject, Exam.title == ex.title).all():
+            ids.add(s.id)
+    ents = db.query(TimetableEntry).filter(
+        TimetableEntry.teacher_id == tp.id,
+        TimetableEntry.linked_test_id.in_(list(ids))).all()
+    for e in ents:
+        e.linked_test_id = None
+        e.completed = False
+        e.completed_at = None
+        db.add(e)
+    db.commit()
+    return len(ents)
+
+
 def _reconcile_test_tt(db, tp):
     """Catch-up: koi uncompleted TEST timetable-entry jiske liye teacher pehle se test bana chuka
     hai (same subject+class, same date YA chapter match) -> use 'Done' mark karo. Isse purane
@@ -5739,9 +5828,27 @@ def create_exam(payload: dict = Body(...), background_tasks: BackgroundTasks = N
                    explanation_hi=(q.get("explanation_hi") or None)))
         _made.append((ex.id, _tb))
     db.commit()
-    # Test ban gaya -> us subject ki due/overdue TEST timetable-entry ko AUTO 'Done' mark karo
-    # (report submit ki zaroorat nahi). Best-effort; fail ho to creation block na ho.
-    _auto_complete_test_tt(db, tp, _subj_in, _cls_name, _chapter)
+    # Timetable connection:
+    #   tt_connect == True + tt_slot_id  -> teacher ne EXPLICITLY is slot ko joda: us slot ki saari
+    #                                       batch-copies Done + linked (deterministic, best flow).
+    #   tt_connect == False              -> teacher ne "No" kaha: timetable ko bilkul haath mat lagao.
+    #   (field absent / purana client)   -> legacy auto-complete (guess) fallback.
+    _tt_connect = payload.get("tt_connect")
+    _tt_slot_id = payload.get("tt_slot_id")
+    if _tt_connect and _tt_slot_id:
+        try:
+            _connect_test_to_tt(db, tp, ex, _tt_slot_id)
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+    elif _tt_connect is False:
+        pass   # explicit No -> koi auto-mark nahi
+    else:
+        # Test ban gaya -> us subject ki due/overdue TEST timetable-entry ko AUTO 'Done' mark karo
+        # (report submit ki zaroorat nahi). Best-effort; fail ho to creation block na ho.
+        _auto_complete_test_tt(db, tp, _subj_in, _cls_name, _chapter)
     # Har target batch ke students ko notification — ab BACKGROUND me (create turant return ho).
     _gender = tp.gender
     _tname = current_user.name
@@ -10120,8 +10227,37 @@ def update_exam(exam_id: int, payload: dict = Body(...), db: Session = Depends(g
                    explanation_hi=(q.get("explanation_hi") or None)))
         ex.total_marks = total
     db.commit()
+    # Edit pe bhi teacher apne test ko timetable slot se jod/hata sakta hai.
+    if "tt_connect" in payload:
+        try:
+            if payload.get("tt_connect") and payload.get("tt_slot_id"):
+                _connect_test_to_tt(db, tp, ex, payload.get("tt_slot_id"))
+            else:
+                _disconnect_test_from_tt(db, tp, ex.id)
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
     return {"id": ex.id, "title": ex.title, "total_marks": ex.total_marks,
             "scheduled_at": ex.scheduled_at.isoformat() if getattr(ex, "scheduled_at", None) else None}
+
+
+@router.post("/exam/{exam_id}/link-timetable")
+def link_exam_timetable(exam_id: int, payload: dict = Body(...), db: Session = Depends(get_db), current_user=Depends(get_teacher)):
+    """Test ko timetable slot se jodo/hatao (edit card ka 'Connect to timetable').
+    connect=True + slot_id -> us slot ki saari batch-copies Done + linked.
+    connect=False          -> is test se jude saare slots wapas pending."""
+    tp = get_teacher_profile(current_user, db)
+    ex = db.query(Exam).filter(Exam.id == exam_id, Exam.teacher_id == tp.id).first()
+    if not ex:
+        raise HTTPException(404, "Test not found")
+    slot = payload.get("slot_id")
+    if payload.get("connect") and slot:
+        n = _connect_test_to_tt(db, tp, ex, slot)
+        return {"status": "linked", "entries": n}
+    n = _disconnect_test_from_tt(db, tp, ex.id)
+    return {"status": "unlinked", "entries": n}
 
 
 @router.delete("/exam/{exam_id}")
