@@ -6908,17 +6908,19 @@ async function _htmlToPdfBlob(html){
   } finally { try{ f.remove(); }catch(e){} }
 }
 // blob ko phone me save: pehle native share-sheet (iOS "Save to Files"), warna <a download>.
+// DIRECT download — koi share-sheet NAHI. App wrapper (median/gonative/webtoapp...) is blob
+// <a download> ko pakad ke file ko SEEDHA phone ki storage me save karta hai + upar download
+// notification dikhata hai (bilkul portal "Save as PDF" jaisa). Hindi wahi browser-quality.
 function _savePdfBlobApp(blob, fname){
   fname=fname||'MVS.pdf';
   try{
-    var file=new File([blob], fname, {type:'application/pdf'});
-    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-      return navigator.share({files:[file], title:fname.replace(/\.pdf$/i,'')})
-        .then(function(){ return true; })
-        .catch(function(e){ if(e&&e.name==='AbortError') return true; try{ _dlSaveBlob(blob,fname); }catch(_){ } return true; });
-    }
-  }catch(e){}
-  try{ _dlSaveBlob(blob, fname); }catch(e){}
+    var u=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=u; a.download=fname; a.rel='noopener';
+    a.style.cssText='position:fixed;left:-9999px;top:0';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ try{ a.remove(); }catch(e){} try{ URL.revokeObjectURL(u); }catch(e){} }, 120000);
+  }catch(e){ try{ _dlSaveBlob(blob, fname); }catch(_){ } }
   return Promise.resolve(true);
 }
 async function _appPdfFlow(html, fname){
@@ -6970,12 +6972,12 @@ async function sDppBrowserPdf(pid,kind,med){
     }).join('');
     var _fn=(kind==='s'?'DPP-solutions':'DPP-questions')+(med?('-'+med):'')+'.pdf';
     if(typeof _isWebView==='function' && _isWebView()){
-      // APP: real PDF file seedha phone me (browser-quality, Hindi sahi) + Downloads section kholo.
-      toast('PDF ban rahi hai…');
+      // APP: browser-quality (Hindi sahi) PDF ko SEEDHA phone ki storage me download karo — koi
+      // share-sheet / preview nahi. Upar download notification aayega (portal "Save as PDF" jaisa).
+      toast('PDF download ho rahi hai…');
       try{
         await _appPdfFlow(buildPdfDoc(ex,body,withSol,false,blang,logo,{view:true,tag:'Daily Practice Paper',typeChip:'DPP'}), _fn);
-        try{ toast('PDF taiyaar — Downloads me mil jayegi.'); }catch(e){}
-        try{ setTimeout(function(){ try{ openDownloads(); }catch(e){} }, 700); }catch(e){}
+        try{ toast('PDF download ho gayi — phone ke Downloads me mil jayegi.'); }catch(e){}
       }catch(_e){
         // html2canvas/jspdf load ya gen fail (e.g. network) -> browser-print par fall back
         _pdfTarget().write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
