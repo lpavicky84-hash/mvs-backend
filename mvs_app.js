@@ -6153,6 +6153,20 @@ function _matRowSeen(role,tr,id){
   _matMarkSeen(role,[id]);
   _matBadge(role);
 }
+// Material ACTUALLY view/download karne par bhi "seen" ho jaaye -> NEW tag turant hat jaaye (View/
+// Download buttons par stopPropagation hone se row-click fire nahi hota tha, isliye NEW ruk jaata
+// tha). btn ke sabse paas wali row se NEW styling/tag hata do; subject-card pill agle render pe
+// khud clear (loadSMaterials/_mtPaint localStorage-seen se dobara compute karte hain).
+function _matSeenFromBtn(role,id,btn){
+  try{
+    const s=(role==='student'?window._sMatNew:window._mtNew);
+    if(s) s.delete(id);
+    _matMarkSeen(role,[id]);
+    _matBadge(role);
+    var row=(btn&&btn.closest)?btn.closest('.mat-item,.tmat-row,.mat-xrow,.xm-row'):null;
+    if(row){ row.classList.remove('mt-row-new'); var t=row.querySelector('.mt-new-tag'); if(t) t.remove(); }
+  }catch(e){}
+}
 // smart shortcut: ek click me saare naye uploads "read" — saari blinks/badges saaf
 function _matAllRead(role){
   if(role==='admin'||role==='teacher'){
@@ -6271,10 +6285,10 @@ function _mtPaint(wrapId){
         : `<button class="mt-eng" title="Students who viewed" onclick="event.stopPropagation();openMatAudience(${i.id},'view')">${ic('users')} ${i.views}</button><button class="mt-eng" title="Students who downloaded" onclick="event.stopPropagation();openMatAudience(${i.id},'download')">${ic('download')} ${i.downloads}</button>`;
       const dlBtn=isDpp
         ? `<button class="btn btn-primary btn-sm" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"download",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('download')} Download</button>`
-        : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button>`;
+        : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();_matSeenFromBtn('${who}',${i.id},this);downloadMaterial('${who}',${i.id},'${esc(fname)}')">${ic('download')} Download</button>`;
       const viewBtn=isDpp
         ? `<button class="btn btn-ghost btn-sm" title="View before download" onclick='event.stopPropagation();dppLangPick(${i.dpp_pack_id},"view",{id:${i.dpp_pack_id},source:${JSON.stringify(i.dpp_source||"")},medium:${JSON.stringify(i.dpp_medium||"")},title:${JSON.stringify(i.title||"DPP")}})'>${ic('eye')} View</button>`
-        : `<button class="btn btn-ghost btn-sm" title="View before download" onclick="event.stopPropagation();viewMaterial('${who}',${i.id},'${esc(fname)}')">${ic('eye')} View</button>`;
+        : `<button class="btn btn-ghost btn-sm" title="View before download" onclick="event.stopPropagation();_matSeenFromBtn('${who}',${i.id},this);viewMaterial('${who}',${i.id},'${esc(fname)}')">${ic('eye')} View</button>`;
       const delBtn=isDpp?'':`<button class="mat-del" title="Delete this file permanently" onclick="event.stopPropagation();deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       const copyBtn=isDpp?'':`<button class="btn btn-ghost btn-sm" title="Copy this material into another batch" onclick="event.stopPropagation();openCopyMatToBatch('${who}',${i.id},'${encodeURIComponent(i.title||i.filename||i.chapter||'')}')">${ic('copy')} Copy to batch</button>`;
       return `<div class="tmat-row${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
@@ -26033,7 +26047,7 @@ function openSubjectMaterials(encSub){
     const items=byCat[cat];
     html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge ${meta.badge}">${ic(meta.icon)}</div>${esc(cat)}<span class="mc-count">${items.length} file${items.length>1?'s':''}</span></div><div class="mat-scroll">`;
     items.forEach(m=>{ const fname=m.filename||((m.title||cat)+'.pdf'); const isNew=window._sMatNew&&window._sMatNew.has(m.id); const _sub=[m.part?esc(m.part):'', (m.title&&m.title!==m.chapter)?esc(m.title):''].filter(Boolean).join(' \u00b7 ');
-      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm mat-open" onclick="event.stopPropagation();viewMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></div></div>`; });
+      html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm mat-open" onclick="event.stopPropagation();_matSeenFromBtn('student',${m.id},this);viewMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();_matSeenFromBtn('student',${m.id},this);downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></div></div>`; });
     html+=`</div>`;
   });
   // NOTE: Student Class Material se DPP ka table HATA diya — DPP neeche "DPP Submit" section me
