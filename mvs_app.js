@@ -6230,11 +6230,20 @@ function _mtPaint(wrapId){
       +'.tmat-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;padding:13px 15px;border-top:1px solid var(--border);cursor:pointer}'
       +'.tmat-info{flex:1 1 260px;min-width:0}'
       +'.tmat-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-weight:700;font-size:.92rem;line-height:1.35;color:var(--text);word-break:break-word}'
-      +'.tmat-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.75rem;color:var(--text-muted);margin-top:4px}'
+      +'.tmat-sub{display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap;font-size:.75rem;color:var(--text-muted);margin-top:4px}'
+      +'.tmat-eng{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:8px}'
       +'.tmat-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto}'
       +'.tmat-more{display:block;width:100%;margin:4px 0 2px;padding:10px;border-radius:11px;border:1px dashed var(--border);background:transparent;color:#a9791f;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit}'
       +'.tmat-more:hover{background:rgba(201,162,39,.08)}'
-      +'@media(max-width:620px){.tmat-info{flex:1 1 100%}.tmat-acts{flex:1 1 100%;margin-top:4px}.tmat-acts .btn{flex:1 1 auto;justify-content:center}}'
+      // Phone: row ko stack karo (info upar full-width, actions neeche). Actions ko neat 2-per-row
+      // grid banao -> View|Download, phir Copy to batch|Delete (delete akela line pe nahi dikhe).
+      +'@media(max-width:620px){'
+      +'.tmat-row{align-items:stretch;gap:10px}'
+      +'.tmat-info{flex:1 1 100%}'
+      +'.tmat-acts{flex:1 1 100%;width:100%;gap:8px}'
+      +'.tmat-acts .btn{flex:1 1 calc(50% - 4px);justify-content:center;min-width:0;white-space:nowrap}'
+      +'.tmat-acts .mat-del{flex:0 0 46px;width:46px;height:46px}'
+      +'}'
       +'body.dark .tmat-count{background:rgba(255,255,255,.08)}';
     document.head.appendChild(_xcs);
   }
@@ -6271,7 +6280,8 @@ function _mtPaint(wrapId){
       return `<div class="tmat-row${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
         <div class="tmat-info">
           <div class="tmat-title">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
-          <div class="tmat-sub">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
+          <div class="tmat-sub">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}</div>
+          ${vChip?`<div class="tmat-eng">${vChip}</div>`:''}
         </div>
         <div class="tmat-acts">${viewBtn}${dlBtn}${copyBtn}${delBtn}</div>
       </div>`;
