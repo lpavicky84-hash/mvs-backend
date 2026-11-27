@@ -401,6 +401,8 @@ def ensure_columns():
         # Class-start push notifications dedup (scheduler): har class ki soon/live push ek baar.
         "ALTER TABLE timetable_entries ADD COLUMN notif_soon_at DATETIME NULL",
         "ALTER TABLE timetable_entries ADD COLUMN notif_live_at DATETIME NULL",
+        # Batch admission class (10/12) — profile-setup batch dropdown class-wise filter ke liye.
+        "ALTER TABLE batches ADD COLUMN class_level VARCHAR(5) NULL",
     ]
     for s in stmts:
         try:

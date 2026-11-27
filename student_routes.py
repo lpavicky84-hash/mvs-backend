@@ -2373,8 +2373,11 @@ def student_batches(db: Session = Depends(get_db), current_user=Depends(get_stud
                 continue
             if getattr(b, "active", True) is False:
                 continue
-            low = nm.lower()
-            cl = "10" if ("10" in low or "udaan" in low or "aarambh" in low or "jeet" in low) else "12"
+            # Admin ne batch pe explicit class set ki ho to WAHI use karo (naam se guess nahi).
+            cl = (getattr(b, "class_level", None) or "").strip()
+            if cl not in ("10", "12"):
+                low = nm.lower()
+                cl = "10" if ("10" in low or "udaan" in low or "aarambh" in low or "jeet" in low) else "12"
             items.append({"name": nm, "class_level": cl})
             seen.add(nm)
     except Exception:
@@ -2434,8 +2437,10 @@ def _valid_setup_batch(db, batch_name):
         from models import Batch
         b = db.query(Batch).filter(Batch.name == batch_name).first()
         if b and getattr(b, "active", True) is not False:
-            low = (batch_name or "").lower()
-            cl = "10" if ("10" in low or "udaan" in low or "aarambh" in low or "jeet" in low) else "12"
+            cl = (getattr(b, "class_level", None) or "").strip()
+            if cl not in ("10", "12"):
+                low = (batch_name or "").lower()
+                cl = "10" if ("10" in low or "udaan" in low or "aarambh" in low or "jeet" in low) else "12"
             return True, cl
     except Exception:
         pass

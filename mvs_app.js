@@ -19567,8 +19567,10 @@ function openBatchAdd(){
   _bmInjectCSS();
   showModal('Add Batch',
     '<div class="form-group"><label>Batch name</label><input id="ba-name" class="input" placeholder="e.g. Lakshya Science"></div>'
-    +'<div class="bc-two"><div class="form-group"><label>Type</label><input id="ba-type" class="input" placeholder="e.g. Science"></div><div class="form-group"><label>Session</label><input id="ba-session" class="input" placeholder="e.g. Oct 2026"></div></div>'
-    +'<div class="bc-two"><div class="form-group"><label>Mode</label><select id="ba-mode" class="input"><option value="live">\uD83D\uDD34 Live</option><option value="rec">\u25B6 Recorded</option><option value="syc">\u25B6 On-Demand</option></select></div><div class="form-group"><label>Expires (optional)</label><input id="ba-exp" type="date" class="input"></div></div>',
+    +'<div class="bc-two"><div class="form-group"><label>Class</label><select id="ba-class" class="input"><option value="12">Class 12</option><option value="10">Class 10</option><option value="">Both / Not set</option></select></div><div class="form-group"><label>Type</label><input id="ba-type" class="input" placeholder="e.g. Science / Mix"></div></div>'
+    +'<div class="bc-hint">Class se tay hota hai ki profile-setup me ye batch kis class ke students ko dikhega (Class 12 batch sirf 12th walo ko).</div>'
+    +'<div class="bc-two"><div class="form-group"><label>Session</label><input id="ba-session" class="input" placeholder="e.g. Oct 2026"></div><div class="form-group"><label>Mode</label><select id="ba-mode" class="input"><option value="live">\uD83D\uDD34 Live</option><option value="rec">\u25B6 Recorded</option><option value="syc">\u25B6 On-Demand</option></select></div></div>'
+    +'<div class="form-group"><label>Expires (optional)</label><input id="ba-exp" type="date" class="input"></div>',
     '<button class="btn btn-ghost" onclick="_batchMgrRefresh()">Cancel</button><button class="btn btn-primary" onclick="batchAddModal()">'+ic('plus')+' Create batch</button>');
 }
 async function batchAddModal(){
@@ -19576,10 +19578,11 @@ async function batchAddModal(){
   if(!name){ toast('Enter a batch name'); return; }
   var type=((document.getElementById('ba-type')||{}).value||'').trim();
   var session=((document.getElementById('ba-session')||{}).value||'').trim();
+  var cls=((document.getElementById('ba-class')||{}).value||'').trim();
   var mode=((document.getElementById('ba-mode')||{}).value||'live');
   var exp=((document.getElementById('ba-exp')||{}).value||'');
   try{
-    var r=await api('/api/admin/batches','POST',{name:name,type:type,session:session});
+    var r=await api('/api/admin/batches','POST',{name:name,type:type,session:session,class_level:cls});
     if(r&&r.id&&(mode!=='live'||exp)){ try{ await api('/api/admin/batches/'+r.id,'POST',{mode:mode,end_date:exp}); }catch(e){} }
     toast('Batch created.'); _batchMgrRefresh();
   }catch(e){ toast((e&&e.message)||'Could not add',true); }
@@ -19590,6 +19593,7 @@ function _bmInjectCSS(){
   s.textContent=[
    '.bc-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}',
    '.bc-unl{font-size:.78rem;color:#b07f1e}.bc-unl.ok{color:#166534}',
+   '.bc-hint{font-size:.74rem;color:var(--text-muted);margin:-4px 0 10px;line-height:1.4}',
    '.bc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:10px}',
    '.bc-card{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--card)}',
    '.bc-card.bc-off{opacity:.6}',

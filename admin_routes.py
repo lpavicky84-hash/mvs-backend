@@ -905,9 +905,12 @@ def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
             b0.session = session_label
             db.flush()
             return b0.id
-    # 3) create a fresh session card — inherit type from a sibling so it isn't bare
+    # 3) create a fresh session card — inherit type + CLASS from a sibling so it isn't bare
+    #    (class_level inherit hona zaroori hai -> import se bana session-card bhi profile-setup me
+    #     sahi class ke students ko dikhe, admin ne jo class set ki thi wahi).
     sib = db.query(Batch).filter(Batch.name == base_name).order_by(Batch.id.asc()).first()
     typ = ((getattr(sib, "type", "") or "") if sib else "")
+    _sib_cl = (getattr(sib, "class_level", None) if sib else None)
     base = _re.sub(r"[^a-z0-9]+", "_", (base_name + " " + session_label).lower()).strip("_") or "batch"
     code = base
     k = 1
@@ -916,6 +919,7 @@ def _resolve_session_batch_id(db, base_name, session_label, mode="live"):
         code = base + "_" + str(k)
     mx = db.query(Batch).order_by(Batch.sort.desc()).first()
     nb = Batch(code=code, name=base_name, session=session_label, type=typ, mode=mode,
+               class_level=(_sib_cl if _sib_cl in ("10", "12") else None),
                status="live", active=True, sort=((mx.sort + 1) if mx else 0))
     db.add(nb)
     db.flush()
@@ -1496,6 +1500,7 @@ def admin_list_batches(db: Session = Depends(get_db), _=Depends(get_admin)):
         _arch_ct = {}
     return {"unlinked": unlinked, "batches": [{
         "id": b.id, "code": b.code, "name": b.name, "type": b.type or "",
+        "class_level": (getattr(b, "class_level", None) or ""),
         "mode": getattr(b, "mode", "live") or "live",
         "session": getattr(b, "session", "") or "",
         "start_date": (b.start_date.isoformat() if getattr(b, "start_date", None) else ""),
@@ -1539,7 +1544,9 @@ def admin_add_batch(payload: dict = Body(...), db: Session = Depends(get_db), _=
         n += 1
         code = base + "_" + str(n)
     mx = db.query(Batch).order_by(Batch.sort.desc()).first()
+    _cl = "".join(ch for ch in str(payload.get("class_level") or "") if ch.isdigit())
     b = Batch(code=code, name=name, type=(payload.get("type") or "").strip(),
+              class_level=(_cl if _cl in ("10", "12") else None),
               description=(payload.get("description") or "").strip(),
               session=(payload.get("session") or "").strip(),
               welcome_message=(payload.get("welcome_message") or (
@@ -1582,6 +1589,9 @@ def admin_update_batch(bid: int, payload: dict = Body(...), db: Session = Depend
             setattr(b, fld, (payload.get(fld) or "").strip())
     if payload.get("is_new") is not None:
         b.is_new = bool(payload.get("is_new"))
+    if "class_level" in payload:
+        _cl = "".join(ch for ch in str(payload.get("class_level") or "") if ch.isdigit())
+        b.class_level = (_cl if _cl in ("10", "12") else None)
     if "standalone" in payload:
         _sv = payload.get("standalone")
         b.standalone = (None if _sv is None else bool(_sv))   # None=auto, True=own only, False=inherit global

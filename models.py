@@ -142,6 +142,10 @@ class Batch(Base):
     code         = Column(String(48), unique=True, index=True)   # internal slug/code — the real identifier
     name         = Column(String(160))                           # display name (may duplicate across batches)
     type         = Column(String(48), default="")                # Science / Commerce / Arts / Class 10 ... (free)
+    # Admission class ("10" / "12"). Admin yahan set karta hai -> student profile-setup ke batch
+    # dropdown me ye batch SIRF usi class ko dikhta hai (naam se guess karne ki zaroorat nahi).
+    # Khaali/None = auto (naam se guess, backward compatible).
+    class_level  = Column(String(5), nullable=True)
     mode         = Column(String(16), default="live")             # live | rec (recorded) | syc (on-demand) — drives student dashboard style
     session      = Column(String(40), default="")                 # e.g. "Oct 2026", "April 2027" — session-wise batches
     description  = Column(String(600), default="")
