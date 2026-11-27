@@ -6810,6 +6810,33 @@ async function sDppGo(pid,action,kind,med){
 // STUDENT browser-print DPP PDF — bilkul teacher/admin (dppBrowserPdf) jaisa: structured questions
 // fetch karke premium HTML browser me print karo (Hindi shaping browser karta hai -> koi font error
 // nahi). Uploaded/structured na ho -> server PDF fallback. Solutions sirf submit ke baad.
+// PDF print target: pehle ek asli popup window try karo (desktop/browser me user naya tab me
+// PDF dekhta + print/save karta hai). App WebView me popup BLOCK ho jaati hai -> tab ek HIDDEN
+// same-origin iframe me PDF-HTML likho; buildPdfDoc ka embedded auto-print (load -> window.print)
+// iframe ke ANDAR chalta hai -> native "Save as PDF" / print sheet BINA kisi popup ke khul jaati
+// hai. Isse "Popup blocked" error khatam. .write(html) ya .nav(blobUrl) se content do, .close()
+// se band.
+function _pdfTarget(){
+  var w=null; try{ w=window.open('','_blank'); }catch(e){ w=null; }
+  if(w){ return {
+    popup:true,
+    write:function(html){ try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){} },
+    nav:function(url){ try{ w.location.href=url; }catch(e){} },
+    close:function(){ try{ w.close(); }catch(e){} }
+  }; }
+  var f=document.getElementById('_mvsprintfrm'); if(f){ try{ f.remove(); }catch(_){ } }
+  f=document.createElement('iframe'); f.id='_mvsprintfrm';
+  f.setAttribute('aria-hidden','true');
+  f.style.cssText='position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;visibility:hidden';
+  document.body.appendChild(f);
+  var _cleanup=function(){ setTimeout(function(){ try{ f.remove(); }catch(e){} }, 300000); };
+  return {
+    popup:false,
+    write:function(html){ try{ var d=(f.contentWindow||f.contentDocument).document; d.open(); d.write(html); d.close(); }catch(e){} _cleanup(); },
+    nav:function(url){ try{ f.src=url; }catch(e){} _cleanup(); },
+    close:function(){ try{ f.remove(); }catch(e){} }
+  };
+}
 async function sDppBrowserPdf(pid,kind,med){
   try{
     toast('Preparing the '+(med==='hindi'?'Hindi ':'')+(kind==='s'?'solutions':'question')+' PDF…');
@@ -6849,13 +6876,10 @@ async function sDppBrowserPdf(pid,kind,med){
       }
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b></div>'+_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
     }).join('');
-    const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
-    w.document.close();
+    _pdfTarget().write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
     try{ _dppTrack(pid,'download'); }catch(e){}
     try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), 'DPP.pdf'); }catch(e){}
-  }catch(e){ toast('Print view khul nahi paya — popups allow karke dobara Download dabayein.',true); }
+  }catch(e){ toast('PDF nahi khul paya — dobara Download dabayein.',true); }
 }
 // Fallback: server-generated PDF (uploaded packs / solutions-gating) — direct download.
 async function sDppGoServer(pid,kind,med){
@@ -6940,11 +6964,8 @@ async function dppBrowserPdf(pid,kind,med){
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b></div>'
         +_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
     }).join('');
-    const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
-    w.document.close();
-  }catch(e){ toast('Print view khul nahi paya — popups allow karke dobara Download dabayein.',true); }
+    _pdfTarget().write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
+  }catch(e){ toast('PDF nahi khul paya — dobara Download dabayein.',true); }
 }
 
 async function dppPdfGoServer(pid,action,kind,med){
@@ -7536,10 +7557,7 @@ async function examPdfPremium(id,mode,medium,view){
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b><span class="q-m">'+mkLbl(q.max_marks)+'</span></div>'
         +_pdfQHTML(qMain,q.image_b64,q.alt_image_b64,'q-t')+h+'</div>';
     }).join('');
-    const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo,{view:!!view}));
-    w.document.close();
+    _pdfTarget().write(buildPdfDoc(ex,body,withSol,isM,medium==='hi'?'hi':'en',logo,{view:!!view}));
   }catch(e){ toast(e.message,true); }
 }
 
@@ -27244,9 +27262,8 @@ function examSolPick(id){
 }
 /* student paper/solutions PDF — built on-device from portal data (no answers unless window over) */
 async function examPdfStudent(id,medium,withSol){
-  var w=window.open('','_blank');
-  if(!w){ toast('Popup blocked. Please allow popups.',true); return; }
-  try{ w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing</title></head><body style="margin:0;font:16px -apple-system,Segoe UI,Roboto,sans-serif;color:#334;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><div style="font-weight:800">Preparing your PDF...</div><div style="opacity:.6;margin-top:6px">This tab will open it automatically.</div></div></body></html>'); w.document.close(); }catch(e){}
+  var t=_pdfTarget();
+  try{ t.write('<!doctype html><html><head><meta charset="utf-8"><title>Preparing</title></head><body style="margin:0;font:16px -apple-system,Segoe UI,Roboto,sans-serif;color:#334;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><div style="font-weight:800">Preparing your PDF...</div><div style="opacity:.6;margin-top:6px">This tab will open it automatically.</div></div></body></html>'); }catch(e){}
   try{
     toast('Preparing PDF\u2026');
     const ex=await api('/api/student/exam/'+id);
@@ -27255,14 +27272,14 @@ async function examPdfStudent(id,medium,withSol){
     // full question paper..." wala BLANK paper aata tha) -> seedha wahi uploaded PDF kholo jo test
     // ke andar bhi dikhti hai. (_m75View khud answer-lock 403 handle karta hai.)
     if(ex.has_qpdf){
-      try{ w.close(); }catch(_){}
+      try{ t.close(); }catch(_){}
       if(!withSol) _trackPaperDl(id);   // paper download track (solution nahi)
       try{ _m75View(id, 'student', withSol?'a':'q'); }catch(e){ toast('Could not open the PDF',true); }
       return;
     }
     const qs=ex.questions||[];
-    if(!qs.length){ toast('No questions found.',true); try{w.close();}catch(_){} return; }
-    if(withSol&&!ex.expired){ toast('Solutions will be available after the test window ends.',true); try{w.close();}catch(_){} return; }
+    if(!qs.length){ toast('No questions found.',true); try{t.close();}catch(_){} return; }
+    if(withSol&&!ex.expired){ toast('Solutions will be available after the test window ends.',true); try{t.close();}catch(_){} return; }
     if(!withSol) _trackPaperDl(id);   // paper download track (yaha se paper pakka banega)
     const isM=(ex.test_type==='mcq');
     let logo=null;
@@ -27300,9 +27317,9 @@ async function examPdfStudent(id,medium,withSol){
     const html=buildPdfDoc(ex,parts.join(''),withSol,isM,medium==='hi'?'hi':'en',logo);
     // Hand the finished doc to the tab via a Blob URL (no blocking document.write of a huge string).
     let handed=false;
-    try{ const blob=new Blob([html],{type:'text/html'}); const url=URL.createObjectURL(blob); w.location.href=url; handed=true; setTimeout(function(){ try{URL.revokeObjectURL(url);}catch(_){} },60000); }catch(e){ handed=false; }
-    if(!handed){ try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){} }
-  }catch(e){ toast(e.message,true); try{w.close();}catch(_){} }
+    try{ const blob=new Blob([html],{type:'text/html'}); const url=URL.createObjectURL(blob); t.nav(url); handed=true; setTimeout(function(){ try{URL.revokeObjectURL(url);}catch(_){} },60000); }catch(e){ handed=false; }
+    if(!handed){ try{ t.write(html); }catch(e){} }
+  }catch(e){ toast(e.message,true); try{t.close();}catch(_){} }
 }
 function examCardHTML(e, isNew){
   const isM=e.test_type==='mcq';
@@ -28321,10 +28338,7 @@ async function _solPdf(id,med){
       }
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+o.q_no+'</b><span class="q-m">[ '+o.max+' '+(med==='hi'?'अंक':'marks')+' ]</span></div>'+_pdfQHTML(qMain,o.image_b64||null,o.alt_image_b64||null,'q-t')+h+'</div>';
     }).join('');
-    const w=window.open('','_blank');
-    if(!w){ toast('Popup blocked — please allow popups.',true); return; }
-    w.document.write(buildPdfDoc(ex,body,true,isM,med==='hi'?'hi':'en',null));
-    w.document.close();
+    _pdfTarget().write(buildPdfDoc(ex,body,true,isM,med==='hi'?'hi':'en',null));
   }catch(e){ toast(e.message,true); }
 }
 
