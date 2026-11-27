@@ -6837,8 +6837,100 @@ function _pdfTarget(){
     close:function(){ try{ f.remove(); }catch(e){} }
   };
 }
+// ===== App (WebView) me generated PDF ko REAL FILE bana ke phone me DIRECT save =====
+// Portal pe print (window.open) hi rahega. App me: browser jo HTML render karta hai (Hindi BILKUL
+// sahi — device font se) usko html2canvas se capture karke jsPDF se asli multi-page PDF blob
+// banate hain -> phone me seedha save (native share-sheet "Save to Files" / download). Server ki
+// Hindi-wali PDF kabhi use nahi hoti. PDF kisi bhi viewer me khulti hai (valid %PDF), corrupt nahi.
+function _ensureH2C(){
+  return new Promise(function(res,rej){
+    try{ if(window.html2canvas) return res(window.html2canvas); }catch(e){}
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload=function(){ res(window.html2canvas); };
+    s.onerror=function(){ rej(new Error('pdf helper load failed')); };
+    (document.head||document.documentElement).appendChild(s);
+  });
+}
+// HTML ke http(s) image URLs ko base64 me badlo -> html2canvas CORS-taint se bachta hai (blank
+// canvas nahi). Same-origin pe auth header; R2/public pe plain. Fail ho to us image ko chhod do.
+async function _inlineImgs(html){
+  try{
+    var urls=[], re=/src\s*=\s*"(https?:\/\/[^"]+)"/gi, m;
+    while((m=re.exec(html))){ if(urls.indexOf(m[1])<0) urls.push(m[1]); }
+    for(var i=0;i<urls.length;i++){
+      try{
+        var u=urls[i], same=(u.indexOf(API)===0)||(u.indexOf(location.origin)===0);
+        var r=await fetch(u, same?{headers:{Authorization:'Bearer '+TOKEN}}:{});
+        if(!r||!r.ok) continue;
+        var b=await r.blob(); if(!b||!b.size) continue;
+        var d=await new Promise(function(rz){ var fr=new FileReader(); fr.onload=function(){rz(fr.result);}; fr.onerror=function(){rz(null);}; fr.readAsDataURL(b); });
+        if(d){ html=html.split('"'+u+'"').join('"'+d+'"'); }
+      }catch(e){}
+    }
+  }catch(e){}
+  return html;
+}
+// full HTML doc -> real multi-page A4 PDF blob (html2canvas capture + jsPDF). Mobile canvas-area
+// limit ke andar rehne ke liye scale adaptive.
+async function _htmlToPdfBlob(html){
+  var h2c=await _ensureH2C();
+  var J=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
+  if(!h2c||!J) throw new Error('pdf libs missing');
+  html=await _inlineImgs(html);
+  var f=document.createElement('iframe');
+  f.setAttribute('aria-hidden','true');
+  f.style.cssText='position:fixed;left:-99999px;top:0;width:800px;height:1200px;border:0;background:#fff';
+  document.body.appendChild(f);
+  try{
+    var doc=(f.contentWindow||f.contentDocument).document; doc.open(); doc.write(html); doc.close();
+    await new Promise(function(res){ var done=false, fin=function(){ if(!done){done=true;res();} };
+      try{ if(doc.readyState==='complete') setTimeout(fin,450); else f.onload=function(){ setTimeout(fin,450); }; }catch(e){ setTimeout(fin,450); }
+      setTimeout(fin,8000); });
+    try{ if(doc.fonts && doc.fonts.ready){ await Promise.race([doc.fonts.ready, new Promise(function(r){setTimeout(r,3500);})]); } }catch(e){}
+    var el=doc.body;
+    var CW=Math.max(el.scrollWidth||0,794), TH=Math.max(el.scrollHeight||0,100);
+    // iframe ko poore content-height tak bada karo -> html2canvas SAARA content capture kare
+    // (warna wo sirf iframe-viewport (1200px) tak capture karke tall DPP ko clip kar deta tha).
+    try{ f.style.height=(TH+40)+'px'; }catch(e){}
+    await new Promise(function(r){ setTimeout(r,120); });
+    TH=Math.max(el.scrollHeight||0,100);
+    var scale=2; try{ var CAP=14000000; if(CW*TH*scale*scale>CAP){ scale=Math.max(1, Math.sqrt(CAP/(CW*TH))); } }catch(e){}
+    var canvas=await h2c(el,{scale:scale,backgroundColor:'#ffffff',useCORS:true,logging:false,width:CW,height:TH,windowWidth:CW,windowHeight:TH,scrollX:0,scrollY:0});
+    var pdf=new J({unit:'pt',format:'a4',orientation:'portrait',compress:true});
+    var PW=pdf.internal.pageSize.getWidth(), PH=pdf.internal.pageSize.getHeight();
+    var imgW=PW, imgH=canvas.height*(PW/canvas.width);
+    var img=canvas.toDataURL('image/jpeg',0.92);
+    var heightLeft=imgH, pos=0;
+    pdf.addImage(img,'JPEG',0,pos,imgW,imgH,'','FAST'); heightLeft-=PH;
+    while(heightLeft>0.5){ pos-=PH; pdf.addPage(); pdf.addImage(img,'JPEG',0,pos,imgW,imgH,'','FAST'); heightLeft-=PH; }
+    return pdf.output('blob');
+  } finally { try{ f.remove(); }catch(e){} }
+}
+// blob ko phone me save: pehle native share-sheet (iOS "Save to Files"), warna <a download>.
+function _savePdfBlobApp(blob, fname){
+  fname=fname||'MVS.pdf';
+  try{
+    var file=new File([blob], fname, {type:'application/pdf'});
+    if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+      return navigator.share({files:[file], title:fname.replace(/\.pdf$/i,'')})
+        .then(function(){ return true; })
+        .catch(function(e){ if(e&&e.name==='AbortError') return true; try{ _dlSaveBlob(blob,fname); }catch(_){ } return true; });
+    }
+  }catch(e){}
+  try{ _dlSaveBlob(blob, fname); }catch(e){}
+  return Promise.resolve(true);
+}
+async function _appPdfFlow(html, fname){
+  var blob=await _htmlToPdfBlob(html);
+  if(!blob || !blob.size) throw new Error('empty pdf');
+  await _savePdfBlobApp(blob, fname);
+}
 async function sDppBrowserPdf(pid,kind,med){
   try{
+    // App: PDF-helper lib ko questions-fetch ke SAATH parallel me load kar do -> generation fast
+    // rahe aur iOS ke ~5s user-gesture window ke andar native "Save to Files" chal jaaye.
+    if(typeof _isWebView==='function' && _isWebView()){ try{ _ensureH2C(); }catch(e){} }
     toast('Preparing the '+(med==='hindi'?'Hindi ':'')+(kind==='s'?'solutions':'question')+' PDF…');
     let d=null;
     try{ d=await api('/api/student/dpp-packs/'+pid+'/questions'); }catch(e){ d=null; }
@@ -6876,10 +6968,27 @@ async function sDppBrowserPdf(pid,kind,med){
       }
       return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b></div>'+_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
     }).join('');
-    _pdfTarget().write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
-    try{ _dppTrack(pid,'download'); }catch(e){}
-    try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), 'DPP.pdf'); }catch(e){}
-  }catch(e){ toast('PDF nahi khul paya — dobara Download dabayein.',true); }
+    var _fn=(kind==='s'?'DPP-solutions':'DPP-questions')+(med?('-'+med):'')+'.pdf';
+    if(typeof _isWebView==='function' && _isWebView()){
+      // APP: real PDF file seedha phone me (browser-quality, Hindi sahi) + Downloads section kholo.
+      toast('PDF ban rahi hai…');
+      try{
+        await _appPdfFlow(buildPdfDoc(ex,body,withSol,false,blang,logo,{view:true,tag:'Daily Practice Paper',typeChip:'DPP'}), _fn);
+        try{ toast('PDF taiyaar — Downloads me mil jayegi.'); }catch(e){}
+        try{ setTimeout(function(){ try{ openDownloads(); }catch(e){} }, 700); }catch(e){}
+      }catch(_e){
+        // html2canvas/jspdf load ya gen fail (e.g. network) -> browser-print par fall back
+        _pdfTarget().write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
+      }
+      try{ _dppTrack(pid,'download'); }catch(e){}
+      try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), _fn); }catch(e){}
+    }else{
+      // PORTAL: browser print (window.open) — user ke kehne par yehi rakha.
+      _pdfTarget().write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
+      try{ _dppTrack(pid,'download'); }catch(e){}
+      try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), _fn); }catch(e){}
+    }
+  }catch(e){ toast('PDF nahi ban payi — dobara try karein.',true); }
 }
 // Fallback: server-generated PDF (uploaded packs / solutions-gating) — direct download.
 async function sDppGoServer(pid,kind,med){
@@ -51610,6 +51719,12 @@ async function dlRedownload(id){
   var d=(window._sDownloads||[]).find(function(x){return x.id===id;}); if(!d) return;
   // Material R2 par redirect hota hai -> downloadMaterial (dl-url/window.open) se download, warna CORS fail
   if(d.kind==='material'){ try{ await downloadMaterial('student', d.ref_id, d.filename||'file.pdf'); }catch(e){ toast('Could not download. Try again.',true); } return; }
+  // DPP (created pack) -> SERVER ki Hindi-wali PDF kabhi nahi; wahi browser-quality PDF dobara banao
+  // (uploaded pack ho to sDppBrowserPdf khud server file par fallback kar deta hai).
+  if(d.kind==='dpp'){
+    var _sk=String(d.sub_kind||'q').split('|');
+    try{ await sDppBrowserPdf(d.ref_id, _sk[0]||'q', _sk[1]||''); return; }catch(e){}
+  }
   var url=_dlUrlFor(d); if(!url) return;
   toast('Downloading…');
   try{ var bl=await _dlPdfBlob(url); _dlSaveBlob(bl, d.filename); toast('Downloaded.'); }
