@@ -1093,6 +1093,7 @@ function logout(){
   try{ if(window._prodLiveInt){ clearInterval(window._prodLiveInt); window._prodLiveInt=null; } }catch(e){}
   try{ if(window._prodBadgeInt){ clearInterval(window._prodBadgeInt); window._prodBadgeInt=null; } }catch(e){}
   try{ if(window._pltInt){ clearInterval(window._pltInt); window._pltInt=null; } }catch(e){}
+  try{ if(window._sTtCdTimer){ clearInterval(window._sTtCdTimer); window._sTtCdTimer=null; } }catch(e){}
   try{ window._ttSelfPhoto=null; window._tphotoCache={}; window._selfPhotoCache={}; window._m75Resize=null; }catch(e){}
   goHome();
 }
@@ -24786,7 +24787,10 @@ async function submitSetupProfile(){
   var btn=document.getElementById('su-save'); if(btn){ btn.disabled=true; btn.textContent='Saving\u2026'; }
   try{
     var body={name:name,class_level:cls,exam_session:sess,batch_name:batch,medium:med,subjects:subs,nios_ref:nios,password:pass};
-    if(!window._setupPhotoUploaded && window._setupPhotoB64){ body.photo_b64=window._setupPhotoB64; }   // R2 fail -> base64 fallback
+    // SPEED: photo alag se (R2) upload hoti hai. Sirf tab base64 bhejo jab R2 fail hua AND chhoti
+    // ho (<~300KB) — warna bada body setup POST ko slow kar deta tha. Photo optional hai, to bada
+    // ho to skip (student baad me profile se laga sakta hai) -> submit turant complete.
+    if(!window._setupPhotoUploaded && window._setupPhotoB64 && window._setupPhotoB64.length < 400000){ body.photo_b64=window._setupPhotoB64; }
     await api('/api/student/setup-profile','POST',body);
     NAME=name;
     toast('Profile set! Welcome, '+name+'.');
@@ -53016,6 +53020,18 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   /* UPCOMING class — subtle gold left accent so teeno states clearly alag dikhein */
   '#student-app .s-ttc.up{position:relative;border-color:rgba(184,148,31,.3)}'+
   '#student-app .s-ttc.up::before{content:"";position:absolute;left:0;top:13px;bottom:13px;width:4px;border-radius:0 4px 4px 0;background:linear-gradient(180deg,#e7bf55,#b8941f);opacity:.75}'+
+  /* STARTING SOON (<=30 min) — premium gold card + live countdown */
+  '#student-app .s-ttc.soon{background:linear-gradient(150deg,#1b2d49,#243e63 70%);border:none;color:#fff;box-shadow:0 14px 30px -12px rgba(20,33,61,.6)}'+
+  '#student-app .s-ttc.soon .tm{color:#ffd872}#student-app .s-ttc.soon .sb{color:#fff}#student-app .s-ttc.soon .tr{color:rgba(255,255,255,.8)}'+
+  '#student-app .s-ttc.soon .s-tph{border:2px solid rgba(255,215,114,.55)}'+
+  '#student-app .s-chip.soon{color:#1b2d49;background:#ffd166;display:inline-flex;align-items:center;gap:5px;font-weight:800}'+
+  '#student-app .s-chip.soon i{width:6px;height:6px;border-radius:50%;background:#e2574e;animation:sblink .9s infinite}'+
+  '#student-app .s-ttc-cd{margin-top:11px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,215,114,.3);border-radius:13px;padding:9px 11px}'+
+  '#student-app .s-ttc-cd .cd-row{display:flex;gap:7px}'+
+  '#student-app .s-ttc-cd .cd-box{display:flex;flex-direction:column;align-items:center;min-width:38px;background:linear-gradient(135deg,#e7bf55,#c99a2e);border-radius:9px;padding:4px 7px;color:#1b2d49}'+
+  '#student-app .s-ttc-cd .cd-box b{font-size:17px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}'+
+  '#student-app .s-ttc-cd .cd-box small{font-size:8px;font-weight:800;letter-spacing:.06em;margin-top:2px;opacity:.85}'+
+  '#student-app .s-ttc-cd .cd-note{font-size:10.5px;font-weight:700;color:#ffd872;text-align:right;line-height:1.3;flex:1}'+
   /* class card footer: report duration/time-range + Class Notes download */
   /* footer EK single line: left=time/duration (shrink+ellipsis), right=Class Notes (fixed) -> button kabhi niche nahi jaata, card compact */
   '#student-app .s-ttc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;margin-top:9px;padding-top:8px;border-top:1px solid var(--border)}'+
@@ -53578,6 +53594,82 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   function statCard(col,icid,val,lab,go){ return '<div class="s-stat"'+(go?(' onclick="_sGo(\''+go+'\')"'):'')+'><div class="si '+col+'" style="'+gcol(col)+'">'+svg(icid)+'</div><div class="sv">'+esc(val)+'</div><div class="sl">'+esc(lab)+'</div></div>'; }
   function gcol(c){ var m={'c-blue':'background:linear-gradient(135deg,#5aa0e6,#2f6cb5)','c-green':'background:linear-gradient(135deg,#34c08a,#1c8f63)','c-gold':'background:linear-gradient(135deg,#e7bf55,#c99a2e)','c-orange':'background:linear-gradient(135deg,#f0994f,#d06d22)','c-purple':'background:linear-gradient(135deg,#9b7ee0,#6244b0)','c-red':'background:linear-gradient(135deg,#f06b6b,#c53e3e)','c-teal':'background:linear-gradient(135deg,#36b9b9,#1f8c8c)','c-navy':'background:linear-gradient(135deg,#4a6fa0,#263f66)'}; return m[c]||m['c-navy']; }
 
+  // Class ke "H:MM AM/PM" ko aaj ki epoch(ms) me badlo (countdown target ke liye).
+  function _sClassEpoch(timeStr){
+    try{ var m=String(timeStr||'').trim().match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i); if(!m) return 0;
+      var h=parseInt(m[1],10)||0, mn=parseInt(m[2],10)||0, ap=(m[3]||'').toLowerCase();
+      if(ap==='pm'&&h<12) h+=12; if(ap==='am'&&h===12) h=0;
+      var d=new Date(); d.setHours(h,mn,0,0); return d.getTime();
+    }catch(e){ return 0; }
+  }
+  // Today's Classes cards — har baar FRESH state + ORDER: live/starting-soon AAGE, upcoming
+  // beech me (time se), done/over PICHHE. Starting-soon (<=30 min) par premium card + live timer.
+  function _sPaintTodayCards(){
+    var wrap=document.getElementById('s-tt'); var list=window._sTodayPlan||[]; var tmap=window._sTodayTmap||{};
+    if(!wrap||!list.length) return;
+    var nowMin=new Date().getHours()*60+new Date().getMinutes();
+    function _rank(e){ var st=tkey(e.time); if(e.class_done) return 3; if(st<=nowMin&&nowMin<=st+90) return 0; if(st>nowMin) return 1; return 2; }
+    var arr=list.slice().sort(function(a,b){ var ra=_rank(a),rb=_rank(b); if(ra!==rb) return ra-rb; return tkey(a.time)-tkey(b.time); });
+    var photos=[];
+    wrap.innerHTML=arr.map(function(c,i){
+      var rawSub=String(c.subject||c.subject_name||'Class');
+      var tea=String(c.teacher_name||c.teacher||'').trim();
+      var tid=c.teacher_id||0;
+      var look=teaLookup(tmap, rawSub);
+      if(look){ if(!tea){ tea=(look.name+' '+(look.suffix||'')).trim(); } if(!tid){ tid=look.teacher_id||0; } }
+      var ch=String(c.chapter||''); var pt=String(c.part||'');
+      var topic=[ch,pt].filter(Boolean).join(' · ');
+      var parts=[]; if(tea) parts.push(tea); if(topic) parts.push(topic);
+      var trline=esc(parts.join(' · '));
+      var st=tkey(c.time); var done=!!c.class_done;
+      var live=(!done && st<=nowMin && nowMin<=st+90);
+      var mins=st-nowMin;
+      var soon=(!done && !live && mins>0 && mins<=30);   // 30 min ya kam -> Starting Soon + timer
+      var up=(!done && !live && !soon && st>nowMin);
+      var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(soon?'<span class="s-chip soon"><i></i>Starting Soon</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>')));
+      var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||rawSub[0]||'C').toUpperCase();
+      var pid='stph_'+i; if(tid) photos.push([pid, tid]);
+      var meta='';
+      if(done){
+        var _rng=''; if(c.start_time && c.end_time) _rng=esc(String(c.start_time))+' – '+esc(String(c.end_time));
+        var _dm=(c.duration_min!=null)?(parseInt(c.duration_min,10)||0):0;
+        if(_rng){ meta='<div class="s-ttc-meta"><span class="s-ttc-rng"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'+_rng+'</span></div>'; }
+        else if(_dm>0){ meta='<div class="s-ttc-meta"><span class="s-ttc-dur">'+_dm+' min</span></div>'; }
+      }
+      var noteBtn=(c.has_notes && c.lecture_id)
+        ? '<button class="s-ttc-notes" onclick="event.stopPropagation();_sClassNotesDl('+c.lecture_id+')" title="Download class notes"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Class Notes</button>' : '';
+      // Starting-soon -> live countdown timer (portal jaisa MM:SS)
+      var cdHtml=soon?('<div class="s-ttc-cd" data-tgt="'+_sClassEpoch(c.time)+'"><div class="cd-row"><span class="cd-box"><b class="cd-mm">--</b><small>MIN</small></span><span class="cd-box"><b class="cd-ss">--</b><small>SEC</small></span></div><span class="cd-note">⏱ Live starting soon</span></div>'):'';
+      var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
+      var stateCls=done?' done':(live?' live':(soon?' soon':(up?' up':' over')));
+      var isTestC=!!(c.is_test || String(c.type||'').toLowerCase()==='test' || /test|exam|mission|mock|pyq|assessment/i.test(c.chapter||''));
+      var openTestC=(isTestC && c.test_id);
+      if(openTestC){ chip='<span class="s-chip s-opentest">Open Test ›</span>'; }
+      var _clk=openTestC?('_sOpenTestTT(\''+encodeURIComponent(rawSub||'')+'\','+c.test_id+')'):"_sGo('materials')";
+      return '<div class="s-ttc'+stateCls+(openTestC?' istest':'')+'" style="cursor:pointer" onclick="'+_clk+'">'+(done&&!openTestC?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+cdHtml+foot+'</div>';
+    }).join('');
+    photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
+  }
+  function _sStartTtCountdown(){
+    if(window._sTtCdTimer) return;
+    window._sTtLastMin=new Date().getMinutes();
+    window._sTtCdTimer=setInterval(_sTtCountdownTick,1000);
+    _sTtCountdownTick();
+  }
+  function _sTtCountdownTick(){
+    try{
+      var now=Date.now();
+      document.querySelectorAll('#s-tt .s-ttc-cd[data-tgt]').forEach(function(el){
+        var rem=Math.floor((parseInt(el.getAttribute('data-tgt'),10)-now)/1000); if(rem<0) rem=0;
+        var mm=Math.floor(rem/60), ss=rem%60;
+        var a=el.querySelector('.cd-mm'), b=el.querySelector('.cd-ss');
+        if(a) a.textContent=(mm<10?'0':'')+mm; if(b) b.textContent=(ss<10?'0':'')+ss;
+      });
+      // minute badle -> states/order refresh (upcoming->soon->live->done apne-aap).
+      var m=new Date().getMinutes();
+      if(window._sTtLastMin!==m){ window._sTtLastMin=m; _sPaintTodayCards(); }
+    }catch(e){}
+  }
   function loadHomeData(app){
     // greeting + name
     safe(function(){ var g=document.getElementById('s-hgt'); if(g&&typeof window.greetingText==='function') g.textContent=window.greetingText(); });
@@ -53663,59 +53755,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
     apiGet('/api/student/timetable-plan'+bq()).then(function(plan){ plan=plan||[];
       var today=safe(function(){ return (typeof window.istDateKey==='function')?window.istDateKey():new Date().toLocaleDateString('en-CA'); })||new Date().toLocaleDateString('en-CA');
       var list=plan.filter(function(e){ return e && e.date===today; });
-      list.sort(function(a,b){ return tkey(a.time)-tkey(b.time); });
       var wrap=document.getElementById('s-tt'), sec=document.getElementById('s-ttsec'); if(!wrap||!sec) return;
       if(!list.length){ sec.style.display='none'; return; }
-      var nowMin=new Date().getHours()*60+new Date().getMinutes();
-      var photos=[];
-      wrap.innerHTML=list.map(function(c,i){
-        var rawSub=String(c.subject||c.subject_name||'Class');
-        var tea=String(c.teacher_name||c.teacher||'').trim();
-        var tid=c.teacher_id||0;
-        // timetable entry me teacher missing ho -> subject se "Know Your Teacher" map se nikaalo
-        var look=teaLookup(tmap, rawSub);
-        if(look){ if(!tea){ tea=(look.name+' '+(look.suffix||'')).trim(); } if(!tid){ tid=look.teacher_id||0; } }
-        var ch=String(c.chapter||''); var pt=String(c.part||'');
-        var topic=[ch,pt].filter(Boolean).join(' · ');           // chapter + part dono
-        var parts=[]; if(tea) parts.push(tea); if(topic) parts.push(topic);
-        var trline=esc(parts.join(' · '));
-        var st=tkey(c.time); var done=!!c.class_done;
-        var live=(!done && st<=nowMin && nowMin<=st+90);
-        var up=(!done && st>nowMin);
-        var chip=done?'<span class="s-chip done">Done</span>':(live?'<span class="s-chip live"><i></i>LIVE</span>':(up?'<span class="s-chip up">Upcoming</span>':'<span class="s-chip over">Over</span>'));
-        var ini=((tea.replace(/^(mrs|mr|ms|dr|prof|sir|maam)\.?\s*/i,'').trim()[0])||rawSub[0]||'C').toUpperCase();
-        var pid='stph_'+i; if(tid) photos.push([pid, tid]);
-        // Class ho chuki (Done) -> report ke asli start–end + duration dikhao (portal jaisa).
-        var meta='';
-        if(done){
-          var _rng=''; if(c.start_time && c.end_time) _rng=esc(String(c.start_time))+' – '+esc(String(c.end_time));
-          var _dm=(c.duration_min!=null)?(parseInt(c.duration_min,10)||0):0;
-          // EK line me saaf fit ho: range dikhao (duration range se hi samajh aati hai, isliye
-          // alag "90 min" chip nahi -> Class Notes button kabhi truncate/niche nahi jaata).
-          // Range na ho to hi duration chip dikhao.
-          if(_rng){
-            meta='<div class="s-ttc-meta"><span class="s-ttc-rng"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'+_rng+'</span></div>';
-          } else if(_dm>0){
-            meta='<div class="s-ttc-meta"><span class="s-ttc-dur">'+_dm+' min</span></div>';
-          }
-        }
-        // Class notes yahin se download (click par section me jaane ki zaroorat nahi)
-        var noteBtn=(c.has_notes && c.lecture_id)
-          ? '<button class="s-ttc-notes" onclick="event.stopPropagation();_sClassNotesDl('+c.lecture_id+')" title="Download class notes"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Class Notes</button>'
-          : '';
-        var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
-        // 3 alag premium states: live (chal rahi), done (ho chuki), up/over (aane wali/nikal gayi)
-        var stateCls=done?' done':(live?' live':(up?' up':' over'));
-        // TEST entry + test ban chuka -> "Open Test" chip; card click test section me le jaata hai.
-        var isTestC=!!(c.is_test || String(c.type||'').toLowerCase()==='test' || /test|exam|mission|mock|pyq|assessment/i.test(c.chapter||''));
-        var openTestC=(isTestC && c.test_id);
-        if(openTestC){ chip='<span class="s-chip s-opentest">Open Test ›</span>'; }
-        var _clk=openTestC?('_sOpenTestTT(\''+encodeURIComponent(rawSub||'')+'\','+c.test_id+')'):"_sGo('materials')";
-        // "Notes ready" badge hata diya — time + Class Notes ab ek hi line (foot) me dikhte hain.
-        return '<div class="s-ttc'+stateCls+(openTestC?' istest':'')+'" style="cursor:pointer" onclick="'+_clk+'">'+(done&&!openTestC?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+foot+'</div>';
-      }).join('');
+      // plan + teacher-map yaad rakho -> _sPaintTodayCards har minute FRESH order/state se repaint kare
+      window._sTodayPlan=list; window._sTodayTmap=tmap;
+      _sPaintTodayCards();
       sec.style.display='';
-      photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
+      _sStartTtCountdown();     // live countdown (starting-soon) + minute-wise auto reorder
       scheduleTtNav();   // arrows ko layout settle hone ke baad measure karo (refresh pe gayab wala fix)
     }).catch(function(){});
     }).catch(function(){});

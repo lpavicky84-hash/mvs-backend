@@ -2256,8 +2256,7 @@ def setup_profile(payload: dict = Body(...), db: Session = Depends(get_db), curr
         missing.append("NIOS Reference Number")
     if len(password) < 4:
         missing.append("Password (min 4 chars)")
-    if not (photo_b64 or sp.photo_b64):
-        missing.append("Profile Photo")
+    # Photo ab OPTIONAL hai (frontend ke saath consistent) — iske bina bhi setup complete hoga.
     if missing:
         raise HTTPException(status_code=400, detail="Please fill: " + ", ".join(missing))
     # bulletproof class match (jaise set-subjects)
