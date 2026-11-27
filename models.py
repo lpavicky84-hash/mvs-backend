@@ -907,6 +907,78 @@ class Notification(Base):
         # Har notification title/body yaha se emoji-free ho jaata hai (write-time).
         return _notif_clean(value)
 
+
+# ===== UNIVERSAL AUTO-PUSH: har Notification pe phone push (app BAND ho tab bhi), SAB portals =====
+# Poore app me (teacher / student / admin / PM / editor / graphics / youtuber — SAB portals aur SAB
+# sections) jahan bhi Notification row banti hai, yahan se apne-aap web-push chala jaata hai -> app
+# band ho tab bhi phone par notification. Jin central helpers (notify / _emit_class_notif /
+# _vt_notify) ne PEHLE hi khud push kar diya, wo apne Notification object par `_mvs_pushed=True`
+# set karte hain -> yahan skip (double push nahi). Recipient ka SAHI app push_service worker ROLE
+# se khud route karta hai; deep-link notif_type/link se banti hai.
+#
+# Push COMMIT ke BAAD jaata hai (after_flush me fields capture, after_commit me bhejo, after_rollback
+# me clear) -> agar transaction rollback ho to jo notification save hi nahi hui uska push kabhi nahi
+# jaata (ye _vt_push wale "rollback pe spam" bug se bachne ka hi tareeqa hai, ab universal).
+from sqlalchemy import event as _sa_event
+from sqlalchemy.orm import Session as _SASession
+
+
+def _mvs_push_url(ntype, link):
+    link = link or ""
+    if isinstance(link, str) and (link.startswith("http://") or link.startswith("https://")):
+        return link                          # external (video) link -> seedha
+    ntype = (ntype or "").strip()
+    if ntype:
+        ref = ""
+        if isinstance(link, str) and link.startswith("mvsnav:"):
+            ref = link.split("mvsnav:", 1)[1] or ""
+        # portal-agnostic deep-link; worker recipient ke role se sahi portal prefix laga deta hai
+        return "/?nt=" + ntype + (("&nr=" + ref) if ref else "")
+    return "/"
+
+
+@_sa_event.listens_for(_SASession, "after_flush")
+def _mvs_collect_notif_push(session, flush_context):
+    try:
+        pend = None
+        for obj in session.new:
+            if isinstance(obj, Notification) and not getattr(obj, "_mvs_pushed", False):
+                if pend is None:
+                    pend = session.info.setdefault("_mvs_push", [])
+                pend.append((obj.user_id, obj.title, obj.message, obj.notif_type, obj.link))
+    except Exception:
+        pass
+
+
+@_sa_event.listens_for(_SASession, "after_commit")
+def _mvs_emit_notif_push(session):
+    rows = session.info.pop("_mvs_push", None)
+    if not rows:
+        return
+    try:
+        import push_service
+        if not push_service.enabled():
+            return
+        for (uid, title, body, ntype, link) in rows:
+            try:
+                if not uid:
+                    continue
+                push_service.enqueue([uid], (title or "MVS Foundation"), (body or ""),
+                                     url=_mvs_push_url(ntype, link))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+@_sa_event.listens_for(_SASession, "after_rollback")
+def _mvs_clear_notif_push(session):
+    try:
+        session.info.pop("_mvs_push", None)
+    except Exception:
+        pass
+
+
 # =============================================
 # AVAILABLE SUBJECTS (admin-managed master list per class)
 # =============================================

@@ -877,6 +877,7 @@ def notify(db, user_id, title, message, notif_type, ref=None):
     except Exception:
         _link = None
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type, link=_link)
+    n._mvs_pushed = True   # neeche khud push kar rahe hain -> models auto-push listener skip kare
     db.add(n)
     try:
         import push_service, re as _re
@@ -1935,8 +1936,10 @@ def _emit_class_notif(db, user_id, info, today):
                 subj, _m, _dash, ((" at " + tm) if tm else ""))
             ntype = "class_soon"
         # link None -> click par notifGo() type-map se Time Table / Today's Classes section par.
-        db.add(Notification(user_id=user_id, title=title, message=message,
-                            notif_type=ntype, link=None, image_url=img, batch_key=bkey))
+        _n = Notification(user_id=user_id, title=title, message=message,
+                          notif_type=ntype, link=None, image_url=img, batch_key=bkey)
+        _n._mvs_pushed = True   # neeche khud push -> models auto-push listener skip kare
+        db.add(_n)
         # Push (app BAND ho to OS notification; khula ho to bell turant). notify() jaisa hi.
         try:
             import push_service

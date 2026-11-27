@@ -6208,31 +6208,34 @@ function _mtPaint(wrapId){
   const who=_mtBase.indexOf('admin')>=0?'admin':'teacher';
   // collapsible-card CSS (ek baar) \u2014 Class Notes / DPP / Tests alag CARD, gap ke saath, DEFAULT
   // collapsed (click karke khulein). Student portal par ye render use NAHI hota (woh alag hai).
-  if(!document.getElementById('xm-card-css')){
-    var _xcs=document.createElement('style'); _xcs.id='xm-card-css';
-    _xcs.textContent='.xm-card{border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,.04)}'
-      +'.xm-card:last-child{margin-bottom:0}'
-      +'.xm-card-h{width:100%;display:flex;align-items:center;gap:11px;padding:14px 16px;background:transparent;border:none;cursor:pointer;text-align:left;font:inherit}'
-      +'.xm-card-h h3{margin:0;font-size:1.02rem;font-weight:800;flex:1;color:var(--text)}'
-      +'.xm-card-h .xm-sec-ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:rgba(201,154,46,.14);color:var(--primary);flex:0 0 auto}'
-      +'.xm-card-h .xm-sec-ic svg{width:18px;height:18px}'
-      +'.xm-card-h .xm-count{font-size:.72rem;font-weight:700;color:var(--text-muted);background:rgba(0,0,0,.05);padding:3px 10px;border-radius:999px}'
-      +'.xm-card-h .xm-caret{font-size:.8rem;color:var(--text-muted);transition:transform .22s;margin-left:2px;font-weight:800}'
-      +'.xm-card.open .xm-card-h .xm-caret{transform:rotate(180deg)}'
-      +'.xm-card-h:hover{background:rgba(201,154,46,.05)}'
-      +'.xm-card-body{display:none;border-top:1px solid var(--border);padding:2px 16px 12px}'
-      +'.xm-card.open .xm-card-body{display:block}'
-      +'.xm-card-top{display:flex;justify-content:flex-end;padding:10px 0 4px}'
-      // Rows ko card-body me premium TABLE jaisa rakho (image 5): har row me chapter/meta left,'
-      // actions right; jagah kam ho to actions neeche wrap ho — kabhi mat-xmain 0 tak collapse'
-      // na ho (teacher ke 4 buttons se char-per-line tut raha tha). SCOPED => student render safe.'
-      +'.xm-card-body .mat-xrow{padding:13px 2px;border-top:1px solid var(--border);align-items:center;gap:10px}'
-      +'.xm-card-body .mat-xrow:first-of-type{border-top:none}'
-      +'.xm-card-body .mat-xmain{flex:1 1 240px;min-width:0}'
-      +'.xm-card-body .mat-xacts{flex:0 1 auto;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto}'
-      +'.xm-card-body .mat-more{margin-top:10px}'
-      +'@media(max-width:620px){.xm-card-body .mat-xmain{flex:1 1 100%}.xm-card-body .mat-xacts{flex:1 1 100%;width:100%;justify-content:flex-start;margin-top:4px}.xm-card-body .mat-xacts .btn{flex:1 1 auto}}'
-      +'body.dark .xm-card-h .xm-count{background:rgba(255,255,255,.08)}';
+  // v2 PREMIUM collapsible table (fully self-contained .tmat-* classes -> kisi bhi purane CSS se
+  // conflict NAHI, aur naya id se stale cached style bhi bust). Student ke premium table (image 2)
+  // jaisa: header pe click -> body khulti hai, har row me title/meta LEFT + actions RIGHT, jagah
+  // kam ho to actions neeche wrap (kabhi toot-ta nahi). Student render ye use NAHI karta.
+  if(!document.getElementById('tmat-css')){
+    var _xcs=document.createElement('style'); _xcs.id='tmat-css';
+    _xcs.textContent='.tmat-card{border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden;background:var(--card);box-shadow:0 2px 10px rgba(0,0,0,.05)}'
+      +'.tmat-card:last-child{margin-bottom:0}'
+      +'.tmat-head{display:flex;align-items:center;gap:11px;width:100%;box-sizing:border-box;padding:14px 16px;background:transparent;border:0;cursor:pointer;text-align:left;font:inherit}'
+      +'.tmat-head:hover{background:rgba(201,154,46,.05)}'
+      +'.tmat-ic{width:34px;height:34px;flex:0 0 auto;border-radius:9px;display:flex;align-items:center;justify-content:center;background:rgba(201,154,46,.14);color:var(--primary)}'
+      +'.tmat-ic svg{width:18px;height:18px}'
+      +'.tmat-h3{flex:1 1 auto;min-width:0;margin:0;font-size:1.02rem;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+      +'.tmat-count{flex:0 0 auto;font-size:.72rem;font-weight:700;color:var(--text-muted);background:rgba(0,0,0,.05);padding:3px 10px;border-radius:999px}'
+      +'.tmat-car{flex:0 0 auto;font-size:.8rem;font-weight:800;color:var(--text-muted);transition:transform .22s}'
+      +'.tmat-card.open .tmat-car{transform:rotate(180deg)}'
+      +'.tmat-body{display:none;border-top:1px solid var(--border)}'
+      +'.tmat-card.open .tmat-body{display:block}'
+      +'.tmat-top{display:flex;justify-content:flex-end;padding:11px 15px 0}'
+      +'.tmat-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;padding:13px 15px;border-top:1px solid var(--border);cursor:pointer}'
+      +'.tmat-info{flex:1 1 260px;min-width:0}'
+      +'.tmat-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-weight:700;font-size:.92rem;line-height:1.35;color:var(--text);word-break:break-word}'
+      +'.tmat-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.75rem;color:var(--text-muted);margin-top:4px}'
+      +'.tmat-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto}'
+      +'.tmat-more{display:block;width:100%;margin:4px 0 2px;padding:10px;border-radius:11px;border:1px dashed var(--border);background:transparent;color:#a9791f;font-weight:800;font-size:.82rem;cursor:pointer;font-family:inherit}'
+      +'.tmat-more:hover{background:rgba(201,162,39,.08)}'
+      +'@media(max-width:620px){.tmat-info{flex:1 1 100%}.tmat-acts{flex:1 1 100%;margin-top:4px}.tmat-acts .btn{flex:1 1 auto;justify-content:center}}'
+      +'body.dark .tmat-count{background:rgba(255,255,255,.08)}';
     document.head.appendChild(_xcs);
   }
   let html=`${_mtBatchBarHTML()}<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material \u2014 tap a card to open</p></div></div><div class="card"><div class="card-body">`;
@@ -6265,19 +6268,19 @@ function _mtPaint(wrapId){
         : `<button class="btn btn-ghost btn-sm" title="View before download" onclick="event.stopPropagation();viewMaterial('${who}',${i.id},'${esc(fname)}')">${ic('eye')} View</button>`;
       const delBtn=isDpp?'':`<button class="mat-del" title="Delete this file permanently" onclick="event.stopPropagation();deleteMaterial('${who}',${i.id},'${encodeURIComponent(i.filename||i.title||'')}')">${ic('trash')}</button>`;
       const copyBtn=isDpp?'':`<button class="btn btn-ghost btn-sm" title="Copy this material into another batch" onclick="event.stopPropagation();openCopyMatToBatch('${who}',${i.id},'${encodeURIComponent(i.title||i.filename||i.chapter||'')}')">${ic('copy')} Copy to batch</button>`;
-      return `<div class="xm-row mat-xrow${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
-        <div class="mat-xmain">
-          <div class="xm-row-t">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
-          <div class="xm-row-m">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
+      return `<div class="tmat-row${isNew?' mt-row-new':''}" onclick="_matRowSeen('${who}',this,${i.id})">
+        <div class="tmat-info">
+          <div class="tmat-title">${esc(i.chapter||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}${isDpp?'<span class="mt-new-tag" style="background:#0891b2">DPP</span>':''}</div>
+          <div class="tmat-sub">${i.part?`<span>${esc(i.part)}</span>`:'<span>Whole chapter</span>'}${i.date?`<span>${esc(i.date)}</span>`:''}${vChip}</div>
         </div>
-        <div class="mat-xacts">${viewBtn}${dlBtn}${copyBtn}${delBtn}</div>
+        <div class="tmat-acts">${viewBtn}${dlBtn}${copyBtn}${delBtn}</div>
       </div>`;
     }).join('');
-    const moreBtn=_sorted.length>5?`<button class="mat-more" onclick="_mtToggleMore('${encodeURIComponent(_catKey)}','${wrapId}')">${_expanded?'Show less \u25b4':('Show all '+_sorted.length+' files \u25be')}</button>`:'';
+    const moreBtn=_sorted.length>5?`<button class="tmat-more" onclick="_mtToggleMore('${encodeURIComponent(_catKey)}','${wrapId}')">${_expanded?'Show less \u25b4':('Show all '+_sorted.length+' files \u25be')}</button>`:'';
     // Har category ek COLLAPSIBLE CARD \u2014 default CLOSED, header pe click karke khulti hai.
     const _secKey=(_mtSub||'')+'\u2016sec\u2016'+cat;
     const _secOpen=!!(window._mtOpenCat&&window._mtOpenCat.has(_secKey));
-    html+=`<div class="xm-card${_secOpen?' open':''}"><button type="button" class="xm-card-h" onclick="_mtToggleSec('${encodeURIComponent(_secKey)}','${wrapId}')"><div class="xm-sec-ic">${ic(meta.icon)}</div><h3>${esc(cat)}</h3><span class="xm-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><span class="xm-caret">\u25be</span></button><div class="xm-card-body"><div class="xm-card-top"><button class="mat-delall" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}${moreBtn}</div></div>`;
+    html+=`<div class="tmat-card${_secOpen?' open':''}"><button type="button" class="tmat-head" onclick="_mtToggleSec('${encodeURIComponent(_secKey)}','${wrapId}')"><div class="tmat-ic">${ic(meta.icon)}</div><h3 class="tmat-h3">${esc(cat)}</h3><span class="tmat-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><span class="tmat-car">\u25be</span></button><div class="tmat-body"><div class="tmat-top"><button class="mat-delall" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}${moreBtn}</div></div>`;
   });
   html+=`</div></div>`;
   wrap.innerHTML=html;

@@ -1521,8 +1521,10 @@ def _vt_notify(db, user_id, title, message, ntype="video_task", link=None, _defe
     push kare (commit rollback ho to koi push na jaaye)."""
     if not user_id:
         return
-    db.add(Notification(user_id=user_id, title=title, message=message,
-                        notif_type=ntype, link=link or None))
+    _n = Notification(user_id=user_id, title=title, message=message,
+                      notif_type=ntype, link=link or None)
+    _n._mvs_pushed = True   # _vt_push khud (commit ke baad) push karta hai -> auto-push listener skip
+    db.add(_n)
     if _defer is not None:
         _defer.append((user_id, title, message, link))
         return

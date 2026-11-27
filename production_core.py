@@ -256,8 +256,10 @@ def touch_session(db, user, page=None, active=False):
 def notify(db, user_id, title, message, ntype="production", link=None):
     if not user_id:
         return
-    db.add(Notification(user_id=user_id, title=title, message=message,
-                        notif_type=ntype, link=link or None))
+    _n = Notification(user_id=user_id, title=title, message=message,
+                      notif_type=ntype, link=link or None)
+    _n._mvs_pushed = True   # neeche khud push -> models auto-push listener skip kare (double na ho)
+    db.add(_n)
     try:
         import push_service, re as _re
         _t = _re.sub(r"^[\s\W_]*(?=[A-Za-z0-9ऀ-ॿ])", "", str(title or "")).strip() or "MVS Foundation"

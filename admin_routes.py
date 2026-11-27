@@ -1013,6 +1013,7 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str, link=Non
                 setattr(n, _a, _v)
             except Exception:
                 pass
+    n._mvs_pushed = True   # neeche khud push -> models auto-push listener skip kare (double na ho)
     db.add(n)
     # Har notification ke saath phone push (best-effort, non-blocking). Broadcast loop me
     # bhi safe — push_service queue me payload-wise coalesce kar deta hai.

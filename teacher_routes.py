@@ -269,6 +269,7 @@ def notify(db, user_id: int, title: str, message: str, notif_type: str,
     n = Notification(user_id=user_id, title=title, message=message, notif_type=notif_type,
                      sender_id=sender_id, sender_role=sender_role,
                      batch_key=batch_key, batch_label=batch_label)
+    n._mvs_pushed = True   # neeche khud push -> models auto-push listener skip kare (double na ho)
     db.add(n)
     # phone push (best-effort, non-blocking; queue coalesces bulk sends)
     try:
