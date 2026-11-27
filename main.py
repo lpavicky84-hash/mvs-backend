@@ -398,6 +398,9 @@ def ensure_columns():
         "ALTER TABLE community_posts ADD COLUMN poll_options JSON NULL",
         # Community link preview: {title,image,description,site,is_video} (link bhejne par)
         "ALTER TABLE community_posts ADD COLUMN link_preview JSON NULL",
+        # Class-start push notifications dedup (scheduler): har class ki soon/live push ek baar.
+        "ALTER TABLE timetable_entries ADD COLUMN notif_soon_at DATETIME NULL",
+        "ALTER TABLE timetable_entries ADD COLUMN notif_live_at DATETIME NULL",
     ]
     for s in stmts:
         try:
@@ -805,6 +808,108 @@ def _start_login_reminder():
         pass
 
 _start_login_reminder()
+
+
+# ===== AUTO CLASS-START PUSH — 30-min "soon" + "LIVE" notification (app band ho tab bhi) =====
+def _class_notif_loop():
+    """Har ~60s: aaj ki TimetableEntry (student ki Today's Classes ka source) me se jo class abhi
+    SOON (0<delta<=30 min) ya LIVE (-15<=delta<=0) window me aayi hai, uske liye PUSH-subscribed
+    students ko class-start notification + web-push bhejo — app BAND ho tab bhi phone par push
+    pahunchti hai. Har class ki soon/live push sirf EK baar (TimetableEntry.notif_soon_at/
+    notif_live_at marker se gate). Matching student_routes ke SAME helper se hoti hai -> notification
+    bilkul un classes par jo student ko card me dikhti hain. Per-student batch_key dedup se
+    /notifications (app-open) path ke saath kabhi double nahi hoti.
+
+    Non-subscribed students ko closed-app push milti hi nahi (browser limitation) -> unhe app
+    kholte hi /notifications self-heal se bell me notification mil jaati hai."""
+    import time
+    from datetime import datetime as _dt
+    from database import SessionLocal
+    time.sleep(45)   # boot hone do
+    while True:
+        slept = 60
+        db = SessionLocal()
+        try:
+            from models import TimetableEntry, StudentProfile, ist_now, ist_today
+            from push_models import PushSubscription
+            import student_routes as _sr
+            now = ist_now()
+            today = ist_today()
+            now_min = now.hour * 60 + now.minute
+            # aaj ki saari entries (chhota set) -> Python me filter (NULL-safe)
+            cand = db.query(TimetableEntry).filter(TimetableEntry.entry_date == today).all()
+            hot = []   # (entry, kind) — jo abhi fire karni hain
+            for e in cand:
+                if (getattr(e, "entry_type", "") or "chapter") != "chapter":
+                    continue
+                if e.completed or getattr(e, "mirror_of_id", None) or getattr(e, "archive_gen_id", None):
+                    continue
+                if (getattr(e, "status", None) or "") == "pending":
+                    continue
+                stm = _sr._parse_tt_minutes(getattr(e, "time_text", None))
+                if stm is None:
+                    continue
+                delta = stm - now_min
+                if 0 < delta <= 30 and not e.notif_soon_at:
+                    hot.append((e, "soon"))
+                elif -15 <= delta <= 0 and not e.notif_live_at:
+                    hot.append((e, "live"))
+            if hot:
+                # PUSH-subscribed user ids (students hi matter karte hain -> StudentProfile lookup
+                # non-students ko apne-aap skip kar deta hai).
+                uids = [r[0] for r in db.query(PushSubscription.user_id).distinct().all() if r[0]]
+                for i in range(0, len(uids), 300):
+                    chunk = uids[i:i + 300]
+                    try:
+                        sps = {s.user_id: s for s in db.query(StudentProfile).filter(
+                            StudentProfile.user_id.in_(chunk)).all()}
+                    except Exception:
+                        sps = {}
+                    for uid in chunk:
+                        sp = sps.get(uid)
+                        if not sp or not (sp.subjects or []):
+                            continue
+                        try:
+                            _sr._emit_window_notifs_for_sp(db, uid, sp, now_min, today)
+                        except Exception:
+                            try: db.rollback()
+                            except Exception: pass
+                    try:
+                        db.commit()
+                    except Exception:
+                        try: db.rollback()
+                        except Exception: pass
+                # markers set -> ye entries dobara heavy fan-out trigger na karein (ek class ek baar).
+                for e, kind in hot:
+                    try:
+                        if kind == "soon":
+                            e.notif_soon_at = _dt.utcnow()
+                        else:
+                            e.notif_live_at = _dt.utcnow()
+                        db.add(e)
+                    except Exception:
+                        pass
+                try:
+                    db.commit()
+                except Exception:
+                    try: db.rollback()
+                    except Exception: pass
+        except Exception:
+            try: db.rollback()
+            except Exception: pass
+        finally:
+            db.close()
+        time.sleep(slept)
+
+
+def _start_class_notif_loop():
+    import threading
+    try:
+        threading.Thread(target=_class_notif_loop, daemon=True).start()
+    except Exception:
+        pass
+
+_start_class_notif_loop()
 
 # ===== SEED AVAILABLE SUBJECTS (NIOS lists) — only if table empty =====
 def seed_subjects():

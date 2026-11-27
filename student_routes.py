@@ -1775,25 +1775,153 @@ def get_progress(
     }
 
 # ===== NOTIFICATIONS =====
-def _emit_class_notif(db, user_id, c, kind, teacher_name, img, today, mins=0):
-    """Ek class ke liye (student-wise) notification banao — agar pehle se nahi bani.
-    Dedup: Notification.batch_key = 'cls:<class_id>:<kind>:<YYYY-MM-DD>' (ek class, ek kind, ek
-    din me sirf EK baar). Bell notification + push (push_service) dono. image_url = teacher photo
-    -> premium card me teacher ka avatar dikhta hai."""
+# Class-start (30-min "soon" + "LIVE") notifications. Source = TimetableEntry (wahi jisse student
+# ki "Today's Classes" cards banti hain) -> notification EXACTLY un classes par aati hai jo student
+# ko dikhti hain. Do jagah se fire hoti hai, dono SAME helper + SAME per-student dedup key use karti
+# hain (kabhi double nahi):
+#   1) Background scheduler (main.py _class_notif_loop) -> app BAND ho tab bhi push.
+#   2) /notifications poll (request-triggered) -> app khula ho to bell turant fresh.
+def _parse_tt_minutes(tstr):
+    """'4:00 PM' / '16:00' / '4 PM' -> minutes-since-midnight, warna None."""
+    import re as _re
+    s = (tstr or "").strip()
+    if not s:
+        return None
+    m = _re.search(r"(\d{1,2})(?::(\d{2}))?\s*([ap]\.?\s*m\.?)?", s, _re.I)
+    if not m:
+        return None
     try:
-        bkey = "cls:%d:%s:%s" % (int(c.id), kind, today.isoformat())
-        if len(bkey) > 40:
-            bkey = bkey[:40]
+        h = int(m.group(1))
+        mi = int(m.group(2) or 0)
+    except Exception:
+        return None
+    ap = (m.group(3) or "").lower().replace(".", "").replace(" ", "")
+    if ap == "pm" and h != 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    if h > 23 or mi > 59:
+        return None
+    return h * 60 + mi
+
+
+def _student_window_classes(db, sp, now_min, today):
+    """Is student ko AAJ jo classes dikhti hain (timetable-plan jaisa hi matching: subject-scope +
+    batch + class-level + archive) unme se jo abhi SOON (0<delta<=30) ya LIVE (-15<=delta<=0) window
+    me hain. Returns list of dicts: {id, subject, kind, mins, teacher_id, teacher_name, time}."""
+    out = []
+    try:
+        from models import TimetableEntry, TeacherProfile, User as _User, Lecture
+        from sqlalchemy import or_ as _or
+        import re as _re
+        subs = sp.subjects or []
+        if not subs:
+            return out
+        _scope = _subj_scope_for(db, TimetableEntry, subs)
+        if not _scope:
+            return out
+        es = db.query(TimetableEntry).filter(
+            TimetableEntry.subject.in_(list(_scope.keys())),
+            TimetableEntry.entry_date == today,
+            _tt_batch_filter(db, sp, None),
+            _or(TimetableEntry.status == None, TimetableEntry.status != 'pending')  # noqa: E711
+        ).all()
+        if not es:
+            return out
+
+        def _cls_norm(x):
+            m = _re.search(r"\d+", str(x or ""))
+            return m.group(0) if m else ""
+        _my_cls = _cls_norm(sp.class_level) or _cls_norm(sp.class_name)
+        if _my_cls:
+            es = [e for e in es if (not _cls_norm(e.class_name)) or _cls_norm(e.class_name) == _my_cls]
+        if not es:
+            return out
+        # DONE detection (card jaisa): completed flag YA linked active lecture (report/notes aa gaye).
+        _ent_ids = [e.id for e in es]
+        _done_ent = set()
+        try:
+            for (eid,) in db.query(Lecture.timetable_entry_id).filter(
+                    Lecture.is_active == True, Lecture.timetable_entry_id.in_(_ent_ids)):  # noqa: E712
+                if eid:
+                    _done_ent.add(eid)
+        except Exception:
+            pass
+        _tmap = {}
+        _tids = {e.teacher_id for e in es if e.teacher_id}
+        if _tids:
+            try:
+                for _tid, _un in db.query(TeacherProfile.id, _User.name).join(
+                        _User, TeacherProfile.user_id == _User.id).filter(
+                        TeacherProfile.id.in_(_tids)):
+                    _tmap[_tid] = _un or ""
+            except Exception:
+                pass
+
+        def _is_test_e(e):
+            if (getattr(e, "entry_type", "") or "").lower() == "event":
+                return True
+            return bool(_re.search(r"test|mission|mock|pyq|subjective|assessment", str(e.chapter or ""), _re.I))
+
+        seen = set()
+        for e in es:
+            if (getattr(e, "entry_type", "") or "chapter") != "chapter":
+                continue
+            if _is_test_e(e) or getattr(e, "linked_test_id", None):
+                continue
+            if e.completed or e.id in _done_ent:
+                continue
+            st_min = _parse_tt_minutes(getattr(e, "time_text", None))
+            if st_min is None:
+                continue
+            delta = st_min - now_min
+            if -15 <= delta <= 0:
+                kind = "live"
+            elif 0 < delta <= 30:
+                kind = "soon"
+            else:
+                continue
+            # mirror/duplicate (same subject+time, alag batch copy) -> ek hi notification
+            _k = (_subj_norm(e.subject or ""), st_min, kind)
+            if _k in seen:
+                continue
+            seen.add(_k)
+            out.append({
+                "id": e.id,
+                "subject": _scope.get(e.subject, e.subject),
+                "kind": kind,
+                "mins": (max(1, delta) if kind == "soon" else 0),
+                "teacher_id": e.teacher_id or 0,
+                "teacher_name": _tmap.get(e.teacher_id, "") or "",
+                "time": getattr(e, "time_text", "") or "",
+            })
+    except Exception:
+        pass
+    return out
+
+
+def _emit_class_notif(db, user_id, info, today):
+    """Ek class (info dict from _student_window_classes) ke liye student-wise notification banao —
+    agar pehle se nahi bani. Dedup: Notification.batch_key = 'cls:<entry_id>:<kind>:<YYYY-MM-DD>'
+    (ek class, ek kind, ek din me EK hi baar — scheduler + /notifications dono safe). Bell
+    notification + push (push_service). image_url = teacher photo -> premium card me avatar.
+    Returns True agar nayi notification bani (commit caller karega)."""
+    try:
+        kind = info.get("kind")
+        eid = int(info.get("id") or 0)
+        if not eid or kind not in ("soon", "live"):
+            return False
+        bkey = ("cls:%d:%s:%s" % (eid, kind, today.isoformat()))[:40]
         exists = db.query(Notification.id).filter(
             Notification.user_id == user_id,
             Notification.batch_key == bkey).first()
         if exists:
-            return
-        subj = (c.subject or "Class").strip()
-        try:
-            tm = c.scheduled_time.strftime("%I:%M %p").lstrip("0") if c.scheduled_time else ""
-        except Exception:
-            tm = ""
+            return False
+        subj = (info.get("subject") or "Class").strip()
+        teacher_name = (info.get("teacher_name") or "").strip()
+        tm = (info.get("time") or "").strip()
+        tid = int(info.get("teacher_id") or 0)
+        img = ("/api/student/teacher/%d/photo" % tid) if tid else None
         _with = (" with " + teacher_name) if teacher_name else ""
         _dash = (" - " + teacher_name) if teacher_name else ""
         if kind == "live":
@@ -1801,18 +1929,15 @@ def _emit_class_notif(db, user_id, c, kind, teacher_name, img, today, mins=0):
             message = "%s class is LIVE now%s. Join from Today's Classes." % (subj, _with)
             ntype = "class_live"
         else:
-            _m = max(1, int(mins))
+            _m = max(1, int(info.get("mins") or 1))
             title = "Starting soon: %s" % subj
             message = "%s class starts in %d min%s%s. Get ready!" % (
                 subj, _m, _dash, ((" at " + tm) if tm else ""))
             ntype = "class_soon"
-        # link None -> click par notifGo() type-map se "Today's Classes / Time Table" section par
-        # le jaata hai (koi broken mvsnav item deep-link nahi).
-        n = Notification(user_id=user_id, title=title, message=message,
-                         notif_type=ntype, link=None,
-                         image_url=img, batch_key=bkey)
-        db.add(n)
-        # Push (app band ho to OS notification; open ho to bell turant update). notify() jaisa hi.
+        # link None -> click par notifGo() type-map se Time Table / Today's Classes section par.
+        db.add(Notification(user_id=user_id, title=title, message=message,
+                            notif_type=ntype, link=None, image_url=img, batch_key=bkey))
+        # Push (app BAND ho to OS notification; khula ho to bell turant). notify() jaisa hi.
         try:
             import push_service
             _pp = push_service.portal_for_user(db, user_id)
@@ -1820,55 +1945,35 @@ def _emit_class_notif(db, user_id, c, kind, teacher_name, img, today, mins=0):
                                  url=push_service.deeplink_url(_pp, ntype, None), portal=_pp)
         except Exception:
             pass
+        return True
+    except Exception:
+        return False
+
+
+def _emit_window_notifs_for_sp(db, user_id, sp, now_min, today):
+    """sp ke aaj ke SOON/LIVE classes nikaalo aur har ek ke liye notification emit karo.
+    Returns kitni NAYI notifications bani. (commit caller karega.)"""
+    made = 0
+    try:
+        for info in _student_window_classes(db, sp, now_min, today):
+            if _emit_class_notif(db, user_id, info, today):
+                made += 1
     except Exception:
         pass
+    return made
 
 
 def _check_class_start_notifs(db, current_user):
-    """REQUEST-TRIGGERED self-healing (koi background scheduler nahi hai). Student jab bhi
-    /notifications poll karta hai (sabse zyada hit endpoint), uske aaj ke classes dekho:
-      - 0 < (start - now) <= 30 min   -> "Starting soon" notification (ek baar)
-      - -10 <= (start - now) <= 0 min -> "LIVE now" notification (ek baar)
-    Dedup _emit_class_notif ke batch_key se. App khula ho to turant; band ho to agli baar app
-    khulte hi (ya push se) milta hai. Har student apne subjects ke hisab se self-heal karta hai."""
+    """REQUEST-TRIGGERED path: student jab /notifications poll kare to uske aaj ke SOON/LIVE classes
+    ke liye notification self-heal karo (app khula ho to bell turant fresh). Background scheduler
+    (main.py) app band hone par push sambhaalta hai; dono same batch_key se dedup -> double nahi."""
     try:
         sp = get_student_profile(current_user, db)
-        subs = (sp.subjects or []) if sp else []
-        if not subs:
+        if not sp or not (sp.subjects or []):
             return
-        today = ist_today()
         now = ist_now()
         now_min = now.hour * 60 + now.minute
-        classes = db.query(ClassEntry).filter(
-            ClassEntry.subject.in_(subs),
-            ClassEntry.scheduled_date == today).all()
-        did = False
-        for c in classes:
-            if not c.scheduled_time:
-                continue
-            status = getattr(c.status, "value", c.status)
-            if status in ("done", "rescheduled"):
-                continue
-            st_min = c.scheduled_time.hour * 60 + c.scheduled_time.minute
-            delta = st_min - now_min
-            if not (-10 <= delta <= 30):
-                continue
-            teacher_name = ""
-            teacher_id = 0
-            try:
-                if c.teacher:
-                    teacher_id = int(c.teacher.id or 0)
-                    if c.teacher.user and c.teacher.user.name:
-                        teacher_name = c.teacher.user.name.strip()
-            except Exception:
-                pass
-            img = ("/api/student/teacher/%d/photo" % teacher_id) if teacher_id else None
-            if delta <= 0:
-                _emit_class_notif(db, current_user.id, c, "live", teacher_name, img, today)
-            else:
-                _emit_class_notif(db, current_user.id, c, "soon", teacher_name, img, today, mins=delta)
-            did = True
-        if did:
+        if _emit_window_notifs_for_sp(db, current_user.id, sp, now_min, ist_today()):
             db.commit()
     except Exception:
         try:

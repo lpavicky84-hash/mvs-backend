@@ -959,6 +959,10 @@ class TimetableEntry(Base):
     # timetable se jodta hai -> yahan us test (Exam) ka id set hota hai. Set => slot DONE (test ke
     # through), aur student ko is din "Open Test" dikhta hai (guessing nahi, deterministic).
     linked_test_id  = Column(Integer, nullable=True, index=True)
+    # Class-start push notifications (scheduler dedup): ek class ki "30-min soon" aur "LIVE" push
+    # sab students ko sirf EK baar jaaye -> jab bhej di jaaye to yahan timestamp set ho jaata hai.
+    notif_soon_at   = Column(DateTime, nullable=True)
+    notif_live_at   = Column(DateTime, nullable=True)
     created_at  = Column(DateTime, default=func.now())
 
 
