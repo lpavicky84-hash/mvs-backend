@@ -6165,6 +6165,8 @@ function _matAllRead(role){
 }
 function _mtPick(wrapId,sub){ _mtSub=decodeURIComponent(sub); _mtPaint(wrapId); }
 function _mtToggleMore(key,wrapId){ key=decodeURIComponent(key); window._mtExpand=window._mtExpand||new Set(); if(window._mtExpand.has(key)) window._mtExpand.delete(key); else window._mtExpand.add(key); _mtPaint(wrapId); }
+// Category card khol/band (Class Notes / DPP / Tests) — default band, click pe toggle.
+function _mtToggleSec(key,wrapId){ key=decodeURIComponent(key); window._mtOpenCat=window._mtOpenCat||new Set(); if(window._mtOpenCat.has(key)) window._mtOpenCat.delete(key); else window._mtOpenCat.add(key); _mtPaint(wrapId); }
 function _mtBack(wrapId){ _mtSub=null; _mtPaint(wrapId); }
 function _mtToggle(el){ const c=el.closest('.mat-cat'); c.classList.toggle('closed'); }
 const _MT_CAT={notes:{label:'Class Notes',icon:'book',badge:'sc-indigo'},dpp:{label:'DPP',icon:'clipboard',badge:'sc-green'},test:{label:'Tests',icon:'edit',badge:'sc-purple'}};
@@ -6200,7 +6202,27 @@ function _mtPaint(wrapId){
   const order=['Class Notes','DPP','Tests'];
   const keys=Object.keys(byCat).sort((a,b)=>{ const ia=order.indexOf(a),ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b); });
   const who=_mtBase.indexOf('admin')>=0?'admin':'teacher';
-  let html=`${_mtBatchBarHTML()}<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material</p></div></div><div class="card"><div class="card-body">`;
+  // collapsible-card CSS (ek baar) \u2014 Class Notes / DPP / Tests alag CARD, gap ke saath, DEFAULT
+  // collapsed (click karke khulein). Student portal par ye render use NAHI hota (woh alag hai).
+  if(!document.getElementById('xm-card-css')){
+    var _xcs=document.createElement('style'); _xcs.id='xm-card-css';
+    _xcs.textContent='.xm-card{border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,.04)}'
+      +'.xm-card:last-child{margin-bottom:0}'
+      +'.xm-card-h{width:100%;display:flex;align-items:center;gap:11px;padding:14px 16px;background:transparent;border:none;cursor:pointer;text-align:left;font:inherit}'
+      +'.xm-card-h h3{margin:0;font-size:1.02rem;font-weight:800;flex:1;color:var(--text)}'
+      +'.xm-card-h .xm-sec-ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:rgba(201,154,46,.14);color:var(--primary);flex:0 0 auto}'
+      +'.xm-card-h .xm-sec-ic svg{width:18px;height:18px}'
+      +'.xm-card-h .xm-count{font-size:.72rem;font-weight:700;color:var(--text-muted);background:rgba(0,0,0,.05);padding:3px 10px;border-radius:999px}'
+      +'.xm-card-h .xm-caret{font-size:.8rem;color:var(--text-muted);transition:transform .22s;margin-left:2px;font-weight:800}'
+      +'.xm-card.open .xm-card-h .xm-caret{transform:rotate(180deg)}'
+      +'.xm-card-h:hover{background:rgba(201,154,46,.05)}'
+      +'.xm-card-body{display:none;border-top:1px solid var(--border)}'
+      +'.xm-card.open .xm-card-body{display:block}'
+      +'.xm-card-top{display:flex;justify-content:flex-end;padding:9px 14px 0}'
+      +'body.dark .xm-card-h .xm-count{background:rgba(255,255,255,.08)}';
+    document.head.appendChild(_xcs);
+  }
+  let html=`${_mtBatchBarHTML()}<div class="sm-head" style="display:flex;align-items:center;gap:14px"><button class="btn btn-ghost btn-sm" onclick="_mtBack('${wrapId}')">\u2190 Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub.subject)}</h2><p style="margin:0">Class Notes, DPP &amp; other material \u2014 tap a card to open</p></div></div><div class="card"><div class="card-body">`;
   keys.forEach(cat=>{
     const meta=Object.values(_MT_CAT).find(m=>m.label===cat)||{icon:'folder',badge:'sc-amber'};
     const _sorted=byCat[cat].slice().sort((a,b)=>{
@@ -6239,7 +6261,10 @@ function _mtPaint(wrapId){
       </div>`;
     }).join('');
     const moreBtn=_sorted.length>5?`<button class="mat-more" onclick="_mtToggleMore('${encodeURIComponent(_catKey)}','${wrapId}')">${_expanded?'Show less \u25b4':('Show all '+_sorted.length+' files \u25be')}</button>`:'';
-    html+=`<div class="xm-sec"><div class="xm-sec-h"><div class="xm-sec-ic">${ic(meta.icon)}</div><h3>${esc(cat)}</h3><span class="xm-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><button class="mat-delall" title="Delete every file in this category" onclick="deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}${moreBtn}</div>`;
+    // Har category ek COLLAPSIBLE CARD \u2014 default CLOSED, header pe click karke khulti hai.
+    const _secKey=(_mtSub||'')+'\u2016sec\u2016'+cat;
+    const _secOpen=!!(window._mtOpenCat&&window._mtOpenCat.has(_secKey));
+    html+=`<div class="xm-card${_secOpen?' open':''}"><button type="button" class="xm-card-h" onclick="_mtToggleSec('${encodeURIComponent(_secKey)}','${wrapId}')"><div class="xm-sec-ic">${ic(meta.icon)}</div><h3>${esc(cat)}</h3><span class="xm-count">${byCat[cat].length} ${byCat[cat].length===1?'file':'files'}</span><span class="xm-caret">\u25be</span></button><div class="xm-card-body"><div class="xm-card-top"><button class="mat-delall" title="Delete every file in this category" onclick="event.stopPropagation();deleteMatCategory('${who}','${encodeURIComponent(cat)}')">${ic('trash')} Delete All</button></div>${rows}${moreBtn}</div></div>`;
   });
   html+=`</div></div>`;
   wrap.innerHTML=html;
@@ -6713,18 +6738,80 @@ async function _dlPdfBlob(url){
   }
   throw lastErr||new Error('download failed');
 }
-// student PDF fetch (view ya download) — medium ke saath
+// student PDF fetch — VIEW: in-app viewer; DOWNLOAD: browser-print (teacher/admin jaisa, Hindi/
+// fonts perfect — server-PDF ka font error khatam).
 async function sDppGo(pid,action,kind,med){
+  if(action!=='view'){ return sDppBrowserPdf(pid,kind,med); }   // DOWNLOAD -> browser-print
   try{
     const bl=await _dlPdfBlob(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}&med=${med||''}`);
     const u=URL.createObjectURL(bl);
     const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
-    if(action==='view') pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':(med==='both'?' — English + हिंदी':' — English')),fname);
-    else{ const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove(); _dppTrack(pid,'download'); try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), fname); }catch(e){} toast('Downloaded.'); }
+    pdfViewerModal(u,(kind==='s'?'Solutions':'Questions')+(med==='hindi'?' — हिंदी':(med==='both'?' — English + हिंदी':' — English')),fname);
     setTimeout(()=>URL.revokeObjectURL(u),300000);
   }catch(e){
     toast('The PDF could not be generated — the server is busy. Please try again in a minute.',true);
   }
+}
+// STUDENT browser-print DPP PDF — bilkul teacher/admin (dppBrowserPdf) jaisa: structured questions
+// fetch karke premium HTML browser me print karo (Hindi shaping browser karta hai -> koi font error
+// nahi). Uploaded/structured na ho -> server PDF fallback. Solutions sirf submit ke baad.
+async function sDppBrowserPdf(pid,kind,med){
+  try{
+    toast('Preparing the '+(med==='hindi'?'Hindi ':'')+(kind==='s'?'solutions':'question')+' PDF…');
+    let d=null;
+    try{ d=await api('/api/student/dpp-packs/'+pid+'/questions'); }catch(e){ d=null; }
+    if(!d || !Array.isArray(d.questions) || !d.questions.length){
+      return sDppGoServer(pid,kind,med);   // uploaded / no structured questions -> server PDF
+    }
+    const withSol=(kind==='s');
+    if(withSol && !d.submitted){ return sDppGoServer(pid,kind,med); }   // solutions gating (server 403s)
+    const isHi=(med==='hindi'), isBoth=(med==='both'); const blang=isHi?'hi':'en';
+    // teacher photo (student-accessible endpoint) -> header "Set By"
+    let logo=null;
+    try{
+      if(d.has_teacher_photo && d.teacher_id){
+        const lr=await fetch(API+'/api/student/teacher/'+d.teacher_id+'/photo',{headers:{Authorization:'Bearer '+TOKEN}});
+        if(lr.ok){ const lb=await lr.blob(); logo=await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(lb); }); }
+      }
+    }catch(e){}
+    const ex={ title:d.title||'Daily Practice Paper', subject:d.subject||'', chapter:d.chapter||'',
+               total_marks:d.questions.length, class_name:d.class_name||'', teacher_name:d.teacher||'' };
+    const qLbl=isHi?'प्रश्न':'Question';
+    const body=d.questions.map((q,i)=>{
+      const qno=q.qno||i+1;
+      const en=q.q||'', hi=q.q_hi||'';
+      const qMain=isHi?(hi.trim()?hi:en):en;
+      let h='';
+      if(isBoth && hi.trim()) h+=_pdfQHTML(hi,null,null,'q-hi');
+      if(withSol){
+        const mdl=q.model||'', mdlHi=q.model_hi||'';
+        if((mdl||'').trim() || (mdlHi||'').trim()){
+          const solMain=isHi?((mdlHi||'').trim()?mdlHi:mdl):mdl;
+          h+='<div class="sol"><div class="sol-l">'+(isHi?'उत्तर':'Answer')+'</div><div class="sol-t">'+_fmtRich(solMain)+'</div>'
+            +((isBoth&&(mdlHi||'').trim())?'<div class="q-hi">'+_fmtRich(mdlHi)+'</div>':'')
+            +(q.model_image?'<img loading="lazy" class="qimg" src="'+q.model_image+'">':'')+'</div>';
+        }
+      }
+      return '<div class="q"><div class="q-h"><b>'+qLbl+' '+qno+'</b></div>'+_pdfQHTML(qMain,q.image,q.alt_image,'q-t')+h+'</div>';
+    }).join('');
+    const w=window.open('','_blank');
+    if(!w){ toast('Popup blocked — please allow popups for this site, then tap Download again.',true); return; }
+    w.document.write(buildPdfDoc(ex,body,withSol,false,blang,logo,{tag:'Daily Practice Paper',typeChip:'DPP'}));
+    w.document.close();
+    try{ _dppTrack(pid,'download'); }catch(e){}
+    try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), 'DPP.pdf'); }catch(e){}
+  }catch(e){ toast('Print view khul nahi paya — popups allow karke dobara Download dabayein.',true); }
+}
+// Fallback: server-generated PDF (uploaded packs / solutions-gating) — direct download.
+async function sDppGoServer(pid,kind,med){
+  try{
+    const bl=await _dlPdfBlob(API+`/api/student/dpp-packs/${pid}/file?kind=${kind}&med=${med||''}`);
+    const u=URL.createObjectURL(bl);
+    const fname=(kind==='s'?'DPP-solutions':'DPP-questions')+'-'+(med||'paper')+'.pdf';
+    const a=document.createElement('a'); a.href=u; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+    _dppTrack(pid,'download'); try{ _trackDownload('dpp', pid, kind+(med?('|'+med):''), (kind==='s'?'DPP Solutions':'DPP Questions'), fname); }catch(e){}
+    toast('Downloaded.'); setTimeout(()=>URL.revokeObjectURL(u),300000);
+  }catch(e){ toast('The PDF could not be generated — the server is busy. Please try again in a minute.',true); }
 }
 function pdfViewerModal(u,title,fname){
   showModal(esc(title||'PDF'), `<div id="pvm-view"></div>`,
@@ -25924,13 +26011,9 @@ function openSubjectMaterials(encSub){
       html+=`<div class="mat-item ${isNew?'mt-row-new':''}" onclick="_matRowSeen('student',this,${m.id})"><div class="mat-item-info"><div class="mat-item-title">${esc(m.chapter||m.title||'\u2014')}${isNew?'<span class="mt-new-tag">NEW</span>':''}</div>${_sub?`<div class="mat-item-sub">${_sub}</div>`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><button class="btn btn-ghost btn-sm mat-open" onclick="event.stopPropagation();viewMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('eye')} View</button><button class="btn btn-primary btn-sm mat-open" onclick="event.stopPropagation();downloadMaterial('student',${m.id},'${esc(fname).replace(/'/g,'')}')">${ic('download')} Download</button></div></div>`; });
     html+=`</div>`;
   });
-  // DPP packs — part-wise alag cards
-  const packs=(window._sMatDppPacks||[]).filter(p=>(p.subject||'')===sub);
-  if(packs.length){
-    html+=`<div class="mat-cat"><div class="mat-cat-head"><div class="mc-badge sc-green">${ic('clipboard')}</div>DPP (Practice Papers)<span class="mc-count">${packs.length} DPP${packs.length>1?'s':''}</span></div><div class="mat-scroll">`;
-    packs.forEach(p=>{ html+=`<div class="mat-item"><div class="mat-item-info"><div class="mat-item-title">${esc(p.title||'DPP')}</div><div class="mat-item-sub">${esc(p.chapter||'—')} · ${p.part?esc(p.part):'<b>Whole Chapter</b>'} · ${esc(p.medium||'English')}</div></div><button class="btn btn-primary btn-sm mat-open" title="Download this DPP PDF" onclick="sDppHub(${p.id},'q')">${ic('download')} Download</button></div>`; });
-    html+=`</div>`;
-  }
+  // NOTE: Student Class Material se DPP ka table HATA diya — DPP neeche "DPP Submit" section me
+  // alag se dikhta hai (yahan duplicate ki zaroorat nahi). Teacher/admin portal par DPP waise hi
+  // rehta hai (unchanged).
   html+=`</div></div>`;
   el.innerHTML=html;
 }
@@ -53026,12 +53109,14 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttc.soon .s-tph{border:2px solid rgba(255,215,114,.55)}'+
   '#student-app .s-chip.soon{color:#1b2d49;background:#ffd166;display:inline-flex;align-items:center;gap:5px;font-weight:800}'+
   '#student-app .s-chip.soon i{width:6px;height:6px;border-radius:50%;background:#e2574e;animation:sblink .9s infinite}'+
-  '#student-app .s-ttc-cd{margin-top:11px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,215,114,.3);border-radius:13px;padding:9px 11px}'+
-  '#student-app .s-ttc-cd .cd-row{display:flex;gap:7px}'+
-  '#student-app .s-ttc-cd .cd-box{display:flex;flex-direction:column;align-items:center;min-width:38px;background:linear-gradient(135deg,#e7bf55,#c99a2e);border-radius:9px;padding:4px 7px;color:#1b2d49}'+
-  '#student-app .s-ttc-cd .cd-box b{font-size:17px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}'+
-  '#student-app .s-ttc-cd .cd-box small{font-size:8px;font-weight:800;letter-spacing:.06em;margin-top:2px;opacity:.85}'+
-  '#student-app .s-ttc-cd .cd-note{font-size:10.5px;font-weight:700;color:#ffd872;text-align:right;line-height:1.3;flex:1}'+
+  '#student-app .s-ttc-cd{margin-top:11px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(0,0,0,.18);border:1px solid rgba(255,215,114,.35);border-radius:13px;padding:10px 12px}'+
+  '#student-app .s-ttc-cd .cd-timer{display:flex;align-items:flex-start;gap:7px}'+
+  '#student-app .s-ttc-cd .cd-unit{display:flex;flex-direction:column;align-items:center;min-width:42px;background:linear-gradient(135deg,#ffd675,#e7bf55);border-radius:10px;padding:5px 8px 4px;color:#1b2d49;box-shadow:0 3px 8px rgba(0,0,0,.18)}'+
+  '#student-app .s-ttc-cd .cd-unit b{font-size:19px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.5px}'+
+  '#student-app .s-ttc-cd .cd-unit i{font-size:8px;font-weight:800;letter-spacing:.08em;margin-top:3px;font-style:normal;opacity:.82}'+
+  '#student-app .s-ttc-cd .cd-colon{align-self:flex-start;color:#ffd872;font-size:19px;font-weight:800;line-height:1;padding-top:5px}'+
+  '#student-app .s-ttc-cd .cd-note{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#ffd872;text-align:right;line-height:1.3}'+
+  '#student-app .s-ttc-cd .cd-live{width:7px;height:7px;border-radius:50%;background:#e2574e;animation:sblink 1s infinite;flex:0 0 auto}'+
   /* class card footer: report duration/time-range + Class Notes download */
   /* footer EK single line: left=time/duration (shrink+ellipsis), right=Class Notes (fixed) -> button kabhi niche nahi jaata, card compact */
   '#student-app .s-ttc-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;margin-top:9px;padding-top:8px;border-top:1px solid var(--border)}'+
@@ -53639,7 +53724,7 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       var noteBtn=(c.has_notes && c.lecture_id)
         ? '<button class="s-ttc-notes" onclick="event.stopPropagation();_sClassNotesDl('+c.lecture_id+')" title="Download class notes"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Class Notes</button>' : '';
       // Starting-soon -> live countdown timer (portal jaisa MM:SS)
-      var cdHtml=soon?('<div class="s-ttc-cd" data-tgt="'+_sClassEpoch(c.time)+'"><div class="cd-row"><span class="cd-box"><b class="cd-mm">--</b><small>MIN</small></span><span class="cd-box"><b class="cd-ss">--</b><small>SEC</small></span></div><span class="cd-note">⏱ Live starting soon</span></div>'):'';
+      var cdHtml=soon?('<div class="s-ttc-cd" data-tgt="'+_sClassEpoch(c.time)+'"><div class="cd-timer"><span class="cd-unit"><b class="cd-mm">--</b><i>MIN</i></span><span class="cd-colon">:</span><span class="cd-unit"><b class="cd-ss">--</b><i>SEC</i></span></div><span class="cd-note"><span class="cd-live"></span>Live starting soon</span></div>'):'';
       var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
       var stateCls=done?' done':(live?' live':(soon?' soon':(up?' up':' over')));
       var isTestC=!!(c.is_test || String(c.type||'').toLowerCase()==='test' || /test|exam|mission|mock|pyq|assessment/i.test(c.chapter||''));
