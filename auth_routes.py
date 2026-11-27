@@ -90,8 +90,18 @@ def auth_session(request: Request, response: Response, db: Session = Depends(get
                 valid = set(v for v in slots.values() if v)
                 if valid and tsid not in valid:
                     raise HTTPException(status_code=401, detail=SESSION_SUPERSEDED)
-    _set_auth_cookie(response, tok)   # persistent cookie plant/refresh
-    return {"access_token": tok, "role": _role_val(user), "name": user.name}
+    # SLIDING SESSION: har app-load/refresh par FRESH token (wahi sid -> student device-kick nahi,
+    # slot match rehta) + cookie refresh. Isse active user ki session practically kabhi expire nahi
+    # hoti -> sirf explicit logout par band. Fresh na ban paye to purana token hi chalega (safe).
+    from security import create_access_token
+    out_tok = tok
+    try:
+        out_tok = create_access_token({"sub": str(user.id), "role": _role_val(user),
+                                       "sid": payload.get("sid")})
+    except Exception:
+        out_tok = tok
+    _set_auth_cookie(response, out_tok)   # persistent cookie plant/refresh (fresh expiry)
+    return {"access_token": out_tok, "role": _role_val(user), "name": user.name}
 
 def generate_user_id(name: str, db: Session) -> str:
     """Auto-generate unique user ID from name e.g. Rahul Sharma → RS001"""

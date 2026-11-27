@@ -1111,9 +1111,18 @@ async function _fetchSession(){
     return await r.json();
   }catch(e){ return null; }
 }
-function _plantAuthCookie(){   // login/restore ke baad persistent cookie set/refresh (fire-and-forget)
+function _plantAuthCookie(){   // login/restore ke baad persistent cookie set + SLIDING token refresh
   try{ if(typeof TOKEN==='undefined' || !TOKEN) return;
-    fetch(API+'/api/auth/session',{method:'POST',credentials:'include',headers:{'Authorization':'Bearer '+TOKEN}}).catch(function(){});
+    fetch(API+'/api/auth/session',{method:'POST',credentials:'include',headers:{'Authorization':'Bearer '+TOKEN}})
+      .then(function(r){ return (r&&r.ok)?r.json():null; })
+      .then(function(j){
+        // server ne fresh (aage-badhi expiry wala) token diya -> use save karo taaki session roll
+        // forward hoti rahe aur active user kabhi logout na ho. sid wahi rehta hai (device-kick nahi).
+        if(j&&j.access_token){ TOKEN=j.access_token;
+          try{ if(ROLE) localStorage.setItem('mvs_sess_'+(typeof ROLE_PORTAL==='function'?ROLE_PORTAL(ROLE):ROLE), JSON.stringify({t:TOKEN,r:ROLE,n:NAME||''})); }catch(e){}
+        }
+      })
+      .catch(function(){});
   }catch(e){}
 }
 function _saveSession(){

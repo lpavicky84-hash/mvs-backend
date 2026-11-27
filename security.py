@@ -13,9 +13,17 @@ load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "mvs-foundation-change-this")
 ALGORITHM = "HS256"
-# Staff/teachers/students keep the portal open for days — a 24h token logged them out
-# mid-work ("Token invalid ya expire ho gaya"). 30-day default (env can still override).
-ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 720))
+# "Ek baar login -> explicit logout tak kabhi logout na ho" (owner requirement). Token kam se kam
+# 1 SAAL valid rehta hai. Agar prod env (Railway) ne ACCESS_TOKEN_EXPIRE_HOURS ko chhota (e.g. 24)
+# set kar rakha tha, to wahi "24 ghante baad logout" / "refresh pe logout (purani session)" ka
+# karan tha -> yahan FLOOR laga diya taaki chhoti value override ho jaye. Sliding refresh
+# (/api/auth/session har app-load pe fresh token deta hai) ke saath session practically permanent.
+_MIN_EXPIRE_HOURS = 8760   # 365 days
+try:
+    _ENV_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", 0) or 0)
+except Exception:
+    _ENV_EXPIRE_HOURS = 0
+ACCESS_TOKEN_EXPIRE_HOURS = max(_ENV_EXPIRE_HOURS, _MIN_EXPIRE_HOURS)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
