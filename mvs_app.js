@@ -972,8 +972,37 @@ function _xhrJson(url,payload,onProgress){
 // ========================================================
 //  NAVIGATION
 // ========================================================
+// LOGOUT/SWITCH HANG FIX: dynamic full-screen overlays (PDF viewer, community, modals, sheets,
+// menu) body par append hote hain. Logout par ye hate nahi the -> login screen ke UPAR transparent
+// layer reh jaata -> taps block ho jaate -> "page hang, app band karke dobara kholna padta". Yahan
+// sab clean kar dete hain (fresh-app jaisa). Permanent app-shells (login/app/modal/toast/splash)
+// chhod dete hain. Isse koi bhi leftover overlay — aaj ka ya future ka — logout par survive nahi karega.
+function _teardownOverlays(){
+  try{
+    var keep={'landing':1,'login-screen':1,'student-app':1,'teacher-app':1,'admin-app':1,
+      'production-app':1,'editor-app':1,'youtuber-app':1,'graphics-app':1,'modal':1,
+      'subject-screen':1,'t-subject-screen':1,'boot-splash':1,'boot-spin':1,'toast':1};
+    Array.prototype.slice.call(document.body.children).forEach(function(el){
+      try{
+        if(!el||!el.tagName) return;
+        var tag=el.tagName;
+        if(tag==='SCRIPT'||tag==='STYLE'||tag==='LINK'||tag==='TEMPLATE'||tag==='NOSCRIPT') return;
+        if(el.id && keep[el.id]) return;
+        if(el.classList && el.classList.contains('app')) return;
+        var cs=getComputedStyle(el);
+        if((cs.position==='fixed'||cs.position==='absolute') && (parseInt(cs.zIndex,10)||0)>=50){ el.remove(); }
+      }catch(_){}
+    });
+    var m=document.getElementById('modal'); if(m) m.classList.remove('open');
+    document.querySelectorAll('.s-sheet.show').forEach(function(e){ e.classList.remove('show'); });
+    // scroll/position lock reset (modals/sheets ye set karte hain; reset na ho to page "freeze" lagta)
+    document.body.style.overflow=''; document.body.style.position=''; document.body.style.top='';
+    document.documentElement.style.overflow='';
+  }catch(e){}
+}
 function _authReset(){
   _apiBust();
+  try{ _teardownOverlays(); }catch(e){}
   // account switch par PURANA state clear karo (access + photo leak fix)
   try{ window._adminMe=null; }catch(e){}
   try{ window._pgCache={}; window._pgLoadedAt={}; }catch(e){}   // section cache + load-time reset (naye user ko purana data na dikhe)
@@ -6834,8 +6863,15 @@ async function dppAnsDl(aid){
   try{
     const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN}});
     if(!r.ok) throw new Error('nf');
-    const bl=await r.blob(); if(!bl||!bl.size) throw new Error('empty'); const a=document.createElement('a');
-    a.href=URL.createObjectURL(bl); a.download='dpp-answer.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    const bl=await r.blob(); if(!bl||!bl.size) throw new Error('empty');
+    // ASAL type se sahi extension (photo .jpg, PDF .pdf) — warna .pdf naam se save hoke
+    // "Failed to load PDF document" aata tha.
+    const k=await _blobKind(bl);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([bl],{type:k.type}));
+    a.download='dpp-answer.'+(k.ext||'pdf');
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 15000);
   }catch(e){
     try{ window.open(url+'?t='+encodeURIComponent(TOKEN),'_blank','noopener'); }
     catch(e2){ toast('File not available',true); }
@@ -24600,17 +24636,19 @@ async function showSubjectScreen(p){
   var batches=[]; try{ batches=await api('/api/student/batches'); }catch(e){ batches=[]; }
   var curBatch=p.batch_name||'';
   if(curBatch && !batches.some(function(b){return b.name===curBatch;})) batches.unshift({name:curBatch,class_level:(p.class_level||'12')});
-  var batOpts='<option value="">\u2014 Select your batch \u2014</option>'+batches.map(function(b){return '<option value="'+esc(b.name).replace(/"/g,'&quot;')+'"'+(b.name===curBatch?' selected':'')+'>'+esc(b.name)+' \u00b7 Class '+esc(b.class_level||'')+'</option>';}).join('');
+  window._suBatches=batches; window._suCurBatch=curBatch;
+  // Batch class ke hisaab se filter hota hai \u2014 class select hone tak dropdown disabled rehta hai.
+  var batOpts='<option value="">\u2014 Select class first \u2014</option>';
   var clsOpts=['','10','12'].map(function(c){return '<option value="'+c+'"'+((p.class_level||'')===c?' selected':'')+'>'+(c?('Class '+c):'\u2014 Select class \u2014')+'</option>';}).join('');
   var sessList=[['','\u2014 Select exam session \u2014'],['oct2026','October 2026'],['apr2027','April 2027'],['oct2027','October 2027'],['apr2028','April 2028']];
   var sessOpts=sessList.map(function(s){return '<option value="'+s[0]+'"'+((p.exam_session||'')===s[0]?' selected':'')+'>'+s[1]+'</option>';}).join('');
   var medOpts=['','Hindi','English'].map(function(m){return '<option value="'+m+'"'+((p.medium||'')===m?' selected':'')+'>'+(m||'\u2014 Select medium \u2014')+'</option>';}).join('');
   var initials=(function(){ var t=(p.name||'S').trim().split(/\s+/); return ((t[0]||'S')[0]+((t[1]||'')[0]||'')).toUpperCase(); })();
-  var photoState=p.has_photo?'<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>':'<span class="su-photo-hint blink">Tap to set your photo</span>';
+  var photoState=p.has_photo?'<span class="su-photo-ok">'+ic('check')+' Photo set \u2014 tap to change</span>':'<span class="su-photo-opt">Photo \u2014 optional, tap to add</span>';
   scr.innerHTML=
    '<div class="su-wrap"><div class="su-card">'
    +'<div class="su-head">'
-   +'<div class="su-avatar'+(p.has_photo?'':' needphoto')+'" id="su-avatar" onclick="document.getElementById(\'su-photo\').click()">'
+   +'<div class="su-avatar" id="su-avatar" onclick="document.getElementById(\'su-photo\').click()">'
    +'<span id="su-photo-ini">'+esc(initials)+'</span>'
    +'<span class="su-cam">'+ic('upload')+'</span></div>'
    +'<div style="flex:1;min-width:0"><h1 class="su-title">Setup Your Profile</h1>'
@@ -24618,26 +24656,42 @@ async function showSubjectScreen(p){
    +'<div id="su-photo-state">'+photoState+'</div></div></div>'
    +'<input type="file" id="su-photo" accept="image/*" style="display:none" onchange="_suPickPhoto(this)">'
    +'<div class="su-grid">'
-   +_suField('Name','<input class="form-control su-in" id="su-name" value="'+esc(p.name||'')+'" placeholder="Your full name">')
-   +_suField('Phone','<input class="form-control su-in" id="su-phone" value="'+esc(p.phone||'')+'" readonly style="opacity:.7">')
-   +_suField('Class','<select class="form-control su-in" id="su-class" onchange="_suClassChange(this.value)">'+clsOpts+'</select>')
-   +_suField('Exam Session','<select class="form-control su-in" id="su-session">'+sessOpts+'</select>')
-   +_suField('Batch','<select class="form-control su-in" id="su-batch">'+batOpts+'</select>')
-   +_suField('Medium','<select class="form-control su-in" id="su-medium">'+medOpts+'</select>')
+   +_suField('Name','<input class="form-control su-in" id="su-name" value="'+esc(p.name||'')+'" placeholder="Your full name">',1)
+   +_suField('Phone','<input class="form-control su-in" id="su-phone" value="'+esc(p.phone||'')+'" readonly style="opacity:.7">',1)
+   +_suField('Class','<select class="form-control su-in" id="su-class" onchange="_suClassChange(this.value)">'+clsOpts+'</select>',1)
+   +_suField('Exam Session','<select class="form-control su-in" id="su-session">'+sessOpts+'</select>',1)
+   +_suField('Batch','<select class="form-control su-in" id="su-batch" disabled>'+batOpts+'</select>',1)
+   +_suField('Medium','<select class="form-control su-in" id="su-medium">'+medOpts+'</select>',1)
    +'</div>'
-   +'<div class="su-lbl">Subjects <span class="su-cnt" id="su-subcnt">0/7</span></div>'
+   +'<div class="su-lbl">Subjects <span class="su-req">*</span> <span class="su-cnt" id="su-subcnt">0/7</span></div>'
    +'<div class="su-dd" id="su-subdd"><button type="button" class="su-in su-ddbtn" id="su-subbtn" onclick="_suToggleSubPanel(event)"><span id="su-sublabel" class="su-ddlabel">Select your class first</span><span class="su-ddcaret">\u25be</span></button><div class="su-ddpanel" id="su-subjects"><div class="su-muted">Select your class to load subjects.</div></div></div>'
    +'<div class="su-grid">'
-   +_suField('NIOS Reference Number','<input class="form-control su-in" id="su-nios" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. B1126300356">')
-   +_suField('Set Password','<div style="position:relative"><input class="form-control su-in" id="su-pass" type="password" placeholder="Choose a password"><button type="button" class="su-eye" onclick="_suTogglePass()">'+ic('eye')+'</button></div>')
+   +_suField('NIOS Reference Number','<input class="form-control su-in" id="su-nios" value="'+esc(p.nios_ref||'')+'" placeholder="e.g. B1126300356">',1)
+   +_suField('Set Password','<div style="position:relative"><input class="form-control su-in" id="su-pass" type="password" placeholder="Choose a password"><button type="button" class="su-eye" onclick="_suTogglePass()">'+ic('eye')+'</button></div>',1)
    +'</div>'
    +'<div id="su-err" class="su-err" style="display:none"></div>'
+   +'<div class="su-reqnote"><b>*</b> = required</div>'
    +'<button class="su-save" id="su-save" onclick="submitSetupProfile()">'+ic('check')+' Save &amp; Continue</button>'
    +'<div class="su-logout" onclick="goHome()">\u2190 Logout</div>'
    +'</div></div>';
   if(p.class_level){ _suClassChange(p.class_level); }
 }
-function _suField(label,inner){ return '<div class="su-fld" data-lbl="'+esc(label)+'"><label class="su-flbl">'+esc(label)+'</label>'+inner+'</div>'; }
+function _suField(label,inner,req){ return '<div class="su-fld" data-lbl="'+esc(label)+'"><label class="su-flbl">'+esc(label)+(req?'<span class="su-req">*</span>':'')+'</label>'+inner+'</div>'; }
+// Batch dropdown ko selected class ke hisaab se bharta hai. Class select na ho to disabled +
+// "Select class first". Sirf usi class ke batches dikhte hain (image 6 jaisa).
+function _suFillBatches(cls, keep){
+  var sel=document.getElementById('su-batch'); if(!sel) return;
+  var dig=function(x){ var m=String(x||'').match(/\d+/); return m?m[0]:''; };
+  var cd=dig(cls);
+  if(!cd){ sel.innerHTML='<option value="">— Select class first —</option>'; sel.disabled=true; sel.value=''; return; }
+  var list=(window._suBatches||[]).filter(function(b){ return dig(b.class_level)===cd; });
+  sel.disabled=false;
+  if(!list.length){ sel.innerHTML='<option value="">No batch for this class — contact admin</option>'; return; }
+  var cur=keep||'';
+  sel.innerHTML='<option value="">— Select your batch —</option>'+list.map(function(b){
+    return '<option value="'+esc(b.name).replace(/"/g,'&quot;')+'"'+(b.name===cur?' selected':'')+'>'+esc(b.name)+'</option>';
+  }).join('');
+}
 function _suTogglePass(){ var i=document.getElementById('su-pass'); if(i) i.type=i.type==='password'?'text':'password'; }
 async function _suPickPhoto(inp){
   var f=inp.files&&inp.files[0]; if(!f) return;
@@ -24672,6 +24726,7 @@ async function _suPickPhoto(inp){
 }
 async function _suClassChange(cls){
   window._suClass=cls;
+  try{ _suFillBatches(cls, window._suCurBatch); }catch(e){}   // batch class-wise filter + enable
   var wrap=document.getElementById('su-subjects'); var lbl=document.getElementById('su-sublabel'); if(!wrap) return;
   if(!cls){ wrap.innerHTML='<div class="su-muted">Select your class to load subjects.</div>'; if(lbl){ lbl.textContent='Select your class first'; lbl.classList.add('ph'); } return; }
   wrap.innerHTML='<div class="spinner" style="margin:14px auto"></div>';
@@ -24713,9 +24768,8 @@ async function submitSetupProfile(){
   if(!med) mark('Medium');
   if(!nios) mark('NIOS Reference Number');
   if(pass.length<4) mark('Set Password');
-  var photoOk=window._setupHasPhoto;
   if(!subs.length) miss.push('Subjects');
-  if(!photoOk) miss.push('Photo');
+  // Photo ab OPTIONAL hai — iske bina bhi profile save hoga.
   var err=document.getElementById('su-err');
   if(miss.length){ if(err){ err.style.display='block'; err.innerHTML='Please complete: <b>'+miss.map(esc).join(', ')+'</b>'; } toast('Some required fields are missing.',true);
     if(!subs.length){ var sw=document.getElementById('su-subdd'); if(sw) sw.classList.add('bad'); } return; }
@@ -24749,6 +24803,15 @@ function _suInjectCss(){
    '.su-avatar.needphoto .su-cam{animation:suPhotoPulse 1.4s ease-in-out infinite}',
    '@keyframes suBlink{0%,100%{opacity:1}50%{opacity:.35}}',
    '.su-photo-hint.blink{animation:suBlink 1s ease-in-out infinite}',
+   '.su-photo-opt{color:rgba(255,255,255,.5);font-size:.74rem;font-weight:600;margin-top:5px;display:inline-flex;align-items:center;gap:5px}',
+   '.su-photo-opt::before{content:"";width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.3)}',
+   '.su-req{color:#e0b84d;margin-left:3px;font-weight:900}',
+   '.su-in:disabled{opacity:.5;cursor:not-allowed;background:#201f18 !important}',
+   /* premium polish */
+   '.su-card{position:relative}',
+   '.su-card::before{content:"";position:absolute;top:0;left:26px;right:26px;height:3px;border-radius:0 0 4px 4px;background:linear-gradient(90deg,#e0b84d,#c9a227,#8a6d15)}',
+   '.su-head{padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,.07)}',
+   '.su-reqnote{color:rgba(255,255,255,.4);font-size:.72rem;margin:16px 0 0;text-align:right}.su-reqnote b{color:#e0b84d}',
    '.su-dd{position:relative}',
    '.su-ddbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;text-align:left;width:100%}',
    '.su-ddlabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.su-ddlabel.ph{color:rgba(255,255,255,.4)}',
