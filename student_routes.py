@@ -1775,8 +1775,118 @@ def get_progress(
     }
 
 # ===== NOTIFICATIONS =====
+def _emit_class_notif(db, user_id, c, kind, teacher_name, img, today, mins=0):
+    """Ek class ke liye (student-wise) notification banao — agar pehle se nahi bani.
+    Dedup: Notification.batch_key = 'cls:<class_id>:<kind>:<YYYY-MM-DD>' (ek class, ek kind, ek
+    din me sirf EK baar). Bell notification + push (push_service) dono. image_url = teacher photo
+    -> premium card me teacher ka avatar dikhta hai."""
+    try:
+        bkey = "cls:%d:%s:%s" % (int(c.id), kind, today.isoformat())
+        if len(bkey) > 40:
+            bkey = bkey[:40]
+        exists = db.query(Notification.id).filter(
+            Notification.user_id == user_id,
+            Notification.batch_key == bkey).first()
+        if exists:
+            return
+        subj = (c.subject or "Class").strip()
+        try:
+            tm = c.scheduled_time.strftime("%I:%M %p").lstrip("0") if c.scheduled_time else ""
+        except Exception:
+            tm = ""
+        _with = (" with " + teacher_name) if teacher_name else ""
+        _dash = (" - " + teacher_name) if teacher_name else ""
+        if kind == "live":
+            title = "LIVE now: %s" % subj
+            message = "%s class is LIVE now%s. Join from Today's Classes." % (subj, _with)
+            ntype = "class_live"
+        else:
+            _m = max(1, int(mins))
+            title = "Starting soon: %s" % subj
+            message = "%s class starts in %d min%s%s. Get ready!" % (
+                subj, _m, _dash, ((" at " + tm) if tm else ""))
+            ntype = "class_soon"
+        # link None -> click par notifGo() type-map se "Today's Classes / Time Table" section par
+        # le jaata hai (koi broken mvsnav item deep-link nahi).
+        n = Notification(user_id=user_id, title=title, message=message,
+                         notif_type=ntype, link=None,
+                         image_url=img, batch_key=bkey)
+        db.add(n)
+        # Push (app band ho to OS notification; open ho to bell turant update). notify() jaisa hi.
+        try:
+            import push_service
+            _pp = push_service.portal_for_user(db, user_id)
+            push_service.enqueue([user_id], title, message,
+                                 url=push_service.deeplink_url(_pp, ntype, None), portal=_pp)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _check_class_start_notifs(db, current_user):
+    """REQUEST-TRIGGERED self-healing (koi background scheduler nahi hai). Student jab bhi
+    /notifications poll karta hai (sabse zyada hit endpoint), uske aaj ke classes dekho:
+      - 0 < (start - now) <= 30 min   -> "Starting soon" notification (ek baar)
+      - -10 <= (start - now) <= 0 min -> "LIVE now" notification (ek baar)
+    Dedup _emit_class_notif ke batch_key se. App khula ho to turant; band ho to agli baar app
+    khulte hi (ya push se) milta hai. Har student apne subjects ke hisab se self-heal karta hai."""
+    try:
+        sp = get_student_profile(current_user, db)
+        subs = (sp.subjects or []) if sp else []
+        if not subs:
+            return
+        today = ist_today()
+        now = ist_now()
+        now_min = now.hour * 60 + now.minute
+        classes = db.query(ClassEntry).filter(
+            ClassEntry.subject.in_(subs),
+            ClassEntry.scheduled_date == today).all()
+        did = False
+        for c in classes:
+            if not c.scheduled_time:
+                continue
+            status = getattr(c.status, "value", c.status)
+            if status in ("done", "rescheduled"):
+                continue
+            st_min = c.scheduled_time.hour * 60 + c.scheduled_time.minute
+            delta = st_min - now_min
+            if not (-10 <= delta <= 30):
+                continue
+            teacher_name = ""
+            teacher_id = 0
+            try:
+                if c.teacher:
+                    teacher_id = int(c.teacher.id or 0)
+                    if c.teacher.user and c.teacher.user.name:
+                        teacher_name = c.teacher.user.name.strip()
+            except Exception:
+                pass
+            img = ("/api/student/teacher/%d/photo" % teacher_id) if teacher_id else None
+            if delta <= 0:
+                _emit_class_notif(db, current_user.id, c, "live", teacher_name, img, today)
+            else:
+                _emit_class_notif(db, current_user.id, c, "soon", teacher_name, img, today, mins=delta)
+            did = True
+        if did:
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 @router.get("/notifications")
 def get_notifications(db: Session = Depends(get_db), current_user=Depends(get_student)):
+    # Best-effort: class-start (30-min + LIVE) notifications — request-triggered self-healing.
+    try:
+        _check_class_start_notifs(db, current_user)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
     # Best-effort: fire any due academic-calendar reminders (throttled + idempotent). This
     # is the most-hit student endpoint, so tentative-date reminders go out reliably even if
     # nobody opens the calendar page that day.

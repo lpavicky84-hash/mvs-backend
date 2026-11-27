@@ -1481,6 +1481,7 @@ async function sendMessageAdmin(){
 const NOTIF_GO={
   student:{new_material:'materials',new_notes:'materials',questionbank:'qbank',test_reminder:'tests',exam_result:'tests',marks:'tests',
     doubt_resolved:'doubts',new_doubt:'doubts',doubt:'doubts',timetable:'timetable',new_class:'timetable',class:'timetable',
+    class_live:'timetable',class_soon:'timetable',
     reschedule_approved:'timetable',reschedule_rejected:'timetable',class_rescheduled:'timetable',dpp:'dpp',new_dpp:'dpp',dpp_checked:'dpp',
     result:'resultcard',predicted:'resultcard',warning:'dashboard',
     mvs_service:'services',mvs_services:'services',service:'services',
@@ -1905,6 +1906,8 @@ function _notifIconFor(n){
   const t=(n.notif_type||'').toLowerCase();
   const ttl=((n.title||'')+' '+(n.message||'')).toLowerCase();
   const has=s=>t.indexOf(s)>=0||ttl.indexOf(s)>=0;
+  if(t==='class_live') return {ic:'play',c:'#c01d4e'};      // LIVE class -> crimson
+  if(t==='class_soon') return {ic:'calendar',c:'#b8941f'};  // starting soon -> gold
   if(has('complaint')) return {ic:'alert',c:'#c0392b'};
   if(has('feedback')||has('rating')) return {ic:'trophy',c:'#d4a017'};
   if(has('brief')) return {ic:'clipboard',c:'#7c3aed'};
@@ -1958,7 +1961,8 @@ async function openNotifPanel(role){
     const unread=!n.is_read;
     const ico=_notifIconFor(n);
     const isBroadcast=(n.notif_type==='admin_broadcast');
-    const avatar=(isBroadcast&&n.image_url)?`<div class="npnl-ic notif-av" data-nimg="${esc(n.image_url)}" style="background:var(--primary-50,rgba(201,162,39,.14))"></div>`:`<div class="npnl-ic" style="background:linear-gradient(135deg,${ico.c},${ico.c}cc)">${ic(ico.ic)||ic('bell')}</div>`;
+    const _isClsN=(n.notif_type==='class_live'||n.notif_type==='class_soon');  // teacher photo avatar
+    const avatar=((isBroadcast||_isClsN)&&n.image_url)?`<div class="npnl-ic notif-av" data-nimg="${esc(n.image_url)}" style="background:var(--primary-50,rgba(201,162,39,.14))"></div>`:`<div class="npnl-ic" style="background:linear-gradient(135deg,${ico.c},${ico.c}cc)">${ic(ico.ic)||ic('bell')}</div>`;
     const imgPrev=(isBroadcast&&n.image_url)?`<img loading="lazy" data-nimg-full="${esc(n.image_url)}" alt="" class="npnl-img">`:'';
     const dot=unread?'<span class="npnl-dot"></span>':'';
     const openPill=hasLink?'<span class="npnl-open">Open &#8250;</span>':'';
@@ -6216,9 +6220,18 @@ function _mtPaint(wrapId){
       +'.xm-card-h .xm-caret{font-size:.8rem;color:var(--text-muted);transition:transform .22s;margin-left:2px;font-weight:800}'
       +'.xm-card.open .xm-card-h .xm-caret{transform:rotate(180deg)}'
       +'.xm-card-h:hover{background:rgba(201,154,46,.05)}'
-      +'.xm-card-body{display:none;border-top:1px solid var(--border)}'
+      +'.xm-card-body{display:none;border-top:1px solid var(--border);padding:2px 16px 12px}'
       +'.xm-card.open .xm-card-body{display:block}'
-      +'.xm-card-top{display:flex;justify-content:flex-end;padding:9px 14px 0}'
+      +'.xm-card-top{display:flex;justify-content:flex-end;padding:10px 0 4px}'
+      // Rows ko card-body me premium TABLE jaisa rakho (image 5): har row me chapter/meta left,'
+      // actions right; jagah kam ho to actions neeche wrap ho — kabhi mat-xmain 0 tak collapse'
+      // na ho (teacher ke 4 buttons se char-per-line tut raha tha). SCOPED => student render safe.'
+      +'.xm-card-body .mat-xrow{padding:13px 2px;border-top:1px solid var(--border);align-items:center;gap:10px}'
+      +'.xm-card-body .mat-xrow:first-of-type{border-top:none}'
+      +'.xm-card-body .mat-xmain{flex:1 1 240px;min-width:0}'
+      +'.xm-card-body .mat-xacts{flex:0 1 auto;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto}'
+      +'.xm-card-body .mat-more{margin-top:10px}'
+      +'@media(max-width:620px){.xm-card-body .mat-xmain{flex:1 1 100%}.xm-card-body .mat-xacts{flex:1 1 100%;width:100%;justify-content:flex-start;margin-top:4px}.xm-card-body .mat-xacts .btn{flex:1 1 auto}}'
       +'body.dark .xm-card-h .xm-count{background:rgba(255,255,255,.08)}';
     document.head.appendChild(_xcs);
   }
@@ -25958,18 +25971,17 @@ async function loadSMaterials(){
     const mats=await api('/api/student/materials-v2'+_bq());
     window._sMats=mats;
     window._sMatNew=_matNewIds('student',mats); _matBadge('student');
-    const packCount=(window._sMatDppPacks||[]).length;
-    if(mats.length===0&&packCount===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No study material uploaded yet. Once teachers add notes or DPP, they will appear here.</p></div></div></div>`; return; }
+    // DPP ab Class Material section se HATA diya gaya hai (student ko DPP sirf "DPP Submit" section me
+    // dikhta hai). Isliye yaha na "DPP" badge banega, na DPP-only subject card, na detail me DPP category.
+    const _sMatsV=mats.filter(m=>m.type!=='dpp');
+    if(_sMatsV.length===0){ el.innerHTML=`<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon"></div><p>No study material uploaded yet. Once teachers add notes, they will appear here.</p></div></div></div>`; return; }
     const bySub={};
-    mats.forEach(m=>{ (bySub[m.subject]=bySub[m.subject]||[]).push(m); });
-    (window._sMatDppPacks||[]).forEach(p=>{ const s=p.subject||'Other'; if(!bySub[s]) bySub[s]=[]; });  // sirf DPP wala subject bhi dikhe
+    _sMatsV.forEach(m=>{ (bySub[m.subject]=bySub[m.subject]||[]).push(m); });
     const cards=Object.keys(bySub).sort().map(sub=>{
       const items=bySub[sub];
-      const nPacks=(window._sMatDppPacks||[]).filter(p=>(p.subject||'')===sub).length;
-      const nNotes=items.filter(m=>m.type==='notes').length, nDpp=items.filter(m=>m.type==='dpp').length+nPacks, nTest=items.filter(m=>m.type==='test').length, nOther=items.filter(m=>!['notes','dpp','test'].includes(m.type)).length;
+      const nNotes=items.filter(m=>m.type==='notes').length, nTest=items.filter(m=>m.type==='test').length, nOther=items.filter(m=>!['notes','dpp','test'].includes(m.type)).length;
       let badges='';
       if(nNotes) badges+=`<span class="sm-badge sm-notes">${nNotes} Class Notes</span>`;
-      if(nDpp) badges+=`<span class="sm-badge sm-dpp">${nDpp} DPP</span>`;
       if(nTest) badges+=`<span class="sm-badge sm-test">${nTest} Tests</span>`;
       if(nOther) badges+=`<span class="sm-badge sm-other">${nOther} Other</span>`;
       const nNew=items.filter(m=>window._sMatNew&&window._sMatNew.has(m.id)).length;
@@ -25982,10 +25994,10 @@ async function loadSMaterials(){
 function openSubjectMaterials(encSub){
   const sub=decodeURIComponent(encSub);
   const el=document.getElementById('s-materials-content');
-  const mats=(window._sMats||[]).filter(m=>m.subject===sub);
-  const catMeta={'Class Notes':{icon:'book',badge:'sc-indigo'},'DPP':{icon:'clipboard',badge:'sc-green'},'Tests':{icon:'edit',badge:'sc-purple'}};
+  const mats=(window._sMats||[]).filter(m=>m.subject===sub&&m.type!=='dpp');  // DPP yaha nahi (DPP Submit section me)
+  const catMeta={'Class Notes':{icon:'book',badge:'sc-indigo'},'Tests':{icon:'edit',badge:'sc-purple'}};
   const byCat={};
-  mats.forEach(m=>{ const cat=m.type==='notes'?'Class Notes':m.type==='dpp'?'DPP':m.type==='test'?'Tests':(m.category||'Other Material'); (byCat[cat]=byCat[cat]||[]).push(m); });
+  mats.forEach(m=>{ const cat=m.type==='notes'?'Class Notes':m.type==='test'?'Tests':(m.category||'Other Material'); (byCat[cat]=byCat[cat]||[]).push(m); });
   // ek baar CSS inject — card rows (table nahi, isliye phone par overflow/side-scroll nahi)
   if(!document.getElementById('mat-item-css')){
     var mst=document.createElement('style'); mst.id='mat-item-css';
@@ -26002,7 +26014,7 @@ function openSubjectMaterials(encSub){
       +'.mat-scroll::-webkit-scrollbar-track{background:rgba(0,0,0,.05);border-radius:99px}';
     document.head.appendChild(mst);
   }
-  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Class Notes, DPP &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
+  let html=`<div class="sm-head" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="loadSMaterials()">← Back</button><div><h2 style="margin:0;font-size:1.4rem">${esc(sub)}</h2><p style="margin:0">Class Notes &amp; Tests</p></div></div><div class="card"><div class="card-body">`;
   Object.keys(byCat).forEach(cat=>{
     const meta=catMeta[cat]||{icon:'folder',badge:'sc-amber'};
     const items=byCat[cat];
@@ -28633,6 +28645,48 @@ async function loadSNotif(){ await loadNotif('/api/student/notifications','s-not
 // ========================================================
 //  SHARED
 // ========================================================
+// Premium CLASS-START notification card (class_live / class_soon). Teacher photo avatar +
+// LIVE(crimson) / SOON(navy) look — Today's Classes ke cards se match karta hai.
+function _clsNotifCss(){
+  if(document.getElementById('clsnotif-css')) return;
+  var s=document.createElement('style'); s.id='clsnotif-css';
+  s.textContent=[
+    '@keyframes cnblink{0%,100%{opacity:1}50%{opacity:.3}}',
+    '.clsnotif{padding:0!important;border:none!important;border-left:none!important;border-radius:16px!important;overflow:hidden;position:relative;box-shadow:0 14px 30px -16px rgba(0,0,0,.5)}',
+    '.clsnotif .cn-wrap{display:flex;gap:13px;align-items:center;padding:14px 15px}',
+    '.clsnotif.cn-live{background:linear-gradient(150deg,#2b0b1c,#9c1c48 82%);color:#fff}',
+    '.clsnotif.cn-soon{background:linear-gradient(150deg,#1b2d49,#243e63 72%);color:#fff}',
+    '.clsnotif .cn-avwrap{position:relative;flex:0 0 auto}',
+    '.clsnotif .cn-av{width:52px;height:52px;border-radius:50%;background-size:cover;background-position:center;background-color:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff}',
+    '.clsnotif .cn-av .mvs-b{display:none}',
+    '.clsnotif .cn-badge{position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:800;letter-spacing:.04em;padding:2px 7px;border-radius:999px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.35)}',
+    '.clsnotif.cn-live .cn-badge{background:#fff;color:#c01d4e}',
+    '.clsnotif.cn-soon .cn-badge{background:#ffd166;color:#1b2d49}',
+    '.clsnotif .cn-main{min-width:0;flex:1}',
+    '.clsnotif .cn-top{display:flex;align-items:center;justify-content:space-between;gap:8px}',
+    '.clsnotif .cn-tag{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.16)}',
+    '.clsnotif.cn-live .cn-tag{color:#fff}.clsnotif.cn-soon .cn-tag{color:#ffd872}',
+    '.clsnotif .cn-tag i{width:6px;height:6px;border-radius:50%;background:#ff5c6c;animation:cnblink 1s infinite}',
+    '.clsnotif.cn-soon .cn-tag i{background:#ffd166}',
+    '.clsnotif .cn-time{font-size:.64rem;color:rgba(255,255,255,.62);font-weight:600;white-space:nowrap;flex:0 0 auto}',
+    '.clsnotif .cn-sub{margin:7px 0 2px;font-size:1.05rem;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.clsnotif .cn-msg{font-size:.78rem;color:rgba(255,255,255,.84);line-height:1.42;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
+  ].join('');
+  document.head.appendChild(s);
+}
+function _clsNotifCard(n,_da){
+  var live=(n.notif_type==='class_live');
+  var subj=String(n.title||'').split(':').slice(1).join(':').trim()||String(n.title||'Class');
+  var ini=((subj.trim()[0])||'C').toUpperCase();
+  var tag=live?'<span class="cn-tag"><i></i>LIVE NOW</span>':'<span class="cn-tag"><i></i>STARTING SOON</span>';
+  var badge=live?'LIVE':'SOON';
+  var av=n.image_url?('<div class="cn-av" data-nimg="'+esc(n.image_url)+'">'+esc(ini)+'</div>'):('<div class="cn-av">'+esc(ini)+'</div>');
+  return '<div class="doubt-card notif-click clsnotif '+(live?'cn-live':'cn-soon')+'" '+_da+' style="cursor:pointer" onclick="_notifItemClick(event,this)" title="Tap to open Today\'s Classes">'
+    +'<div class="cn-wrap"><div class="cn-avwrap">'+av+'<span class="cn-badge">'+badge+'</span></div>'
+    +'<div class="cn-main"><div class="cn-top">'+tag+'<small class="cn-time">'+_istFmt(n.created_at)+'</small></div>'
+    +'<div class="cn-sub">'+esc(subj)+'</div>'
+    +'<div class="cn-msg">'+_msgHtml(n.message)+'</div></div></div></div>';
+}
 async function loadNotif(path,elId){
   const el=document.getElementById(elId);
   try{
@@ -28649,6 +28703,8 @@ async function loadNotif(path,elId){
    const hasLink=!!n.link&&!navRef;
    // same robust, link-aware, title-fallback handler as the bell panel (data-attrs -> _notifItemClick)
    const _da=`data-nrole="${role}" data-nid="${n.id||0}" data-ntype="${esc(n.notif_type||'')}" data-ntitle="${esc(n.title||'')}" data-nmsg="${esc(n.message||'')}" data-nfb="${fbPage}" data-nhas="${hasLink?1:0}" data-nlink="${hasLink?esc(encodeURIComponent(n.link)):''}" data-nref="${esc(navRef)}"`;
+   // CLASS-START notification -> premium LIVE/SOON card (teacher avatar + Today's Classes jaisa look)
+   if(n.notif_type==='class_live'||n.notif_type==='class_soon'){ _clsNotifCss(); html+=_clsNotifCard(n,_da); return; }
    const core=`<div style="display:flex;justify-content:space-between;gap:8px"><h4 style="font-size:.9rem">${esc(n.title)} <span style="font-size:.7rem;color:var(--primary);font-weight:800">&#8250;</span></h4><small style="color:var(--text-muted);flex-shrink:0">${_istFmt(n.created_at)}</small></div><p style="font-size:.82rem;color:var(--text-muted);margin-top:6px">${_msgHtml(n.message)}</p>`;
    html+=`<div class="doubt-card notif-click" ${_da} style="border-left-color:${n.is_read?'var(--border)':'var(--primary)'};cursor:pointer" onclick="_notifItemClick(event,this)" title="Tap to open">${av?`<div class="notif-row">${av}<div style="min-width:0;flex:1">${core}</div></div>`:core}</div>`;
  });
@@ -53086,8 +53142,15 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
   '#student-app .s-ttc .sb{font-size:14.5px;font-weight:800;margin:5px 0 3px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
   /* chapter+teacher line ab EK lambi line me overflow nahi — 2 line tak wrap (card compact rehta hai) */
   '#student-app .s-ttc .tr{font-size:11.5px;color:var(--text-muted);line-height:1.34;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'+
-  '#student-app .s-ttc.live{background:linear-gradient(145deg,#132238,#213c5e);border:none;color:#fff}'+
-  '#student-app .s-ttc.live .tm{color:#e7bf55}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.78)}#student-app .s-ttc.live .sb{color:#fff}'+
+  /* LIVE class — premium "ON AIR" look: rich crimson/rose gradient (soon ke navy-blue se bilkul
+     alag), halka red glow. "LIVE" universally red hota hai -> student turant pehchaan le. */
+  '#student-app .s-ttc.live{background:linear-gradient(150deg,#2b0b1c,#9c1c48 82%);border:none;color:#fff;box-shadow:0 16px 34px -14px rgba(156,28,72,.6)}'+
+  '#student-app .s-ttc.live .tm{color:#ffc978}#student-app .s-ttc.live .tr{color:rgba(255,255,255,.82)}#student-app .s-ttc.live .sb{color:#fff}'+
+  /* LIVE chip crimson card par pop kare -> white bg + red text + pulsing red dot. */
+  '#student-app .s-ttc.live .s-chip.live{background:#fff;color:#c01d4e;box-shadow:0 2px 8px rgba(0,0,0,.22)}'+
+  '#student-app .s-ttc.live .s-chip.live i{background:#e2574e}'+
+  '#student-app .s-ttc.live .s-ttc-cd.live-cd{border-color:rgba(255,150,150,.42);background:rgba(0,0,0,.22)}'+
+  '#student-app .s-ttc.live .s-ttc-cd.live-cd .cd-note{color:#ffd0b0}'+
   /* DONE class — premium "completed" look (success-tinted, green left accent + corner check).
      Light aur dark dono theme compatible (var(--card) + rgba overlays). */
   '#student-app .s-ttc.done{position:relative;background:linear-gradient(150deg,rgba(28,143,99,.10),var(--card) 55%);border-color:rgba(28,143,99,.32);box-shadow:0 8px 20px -10px rgba(28,143,99,.35)}'+
@@ -53723,15 +53786,17 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       }
       var noteBtn=(c.has_notes && c.lecture_id)
         ? '<button class="s-ttc-notes" onclick="event.stopPropagation();_sClassNotesDl('+c.lecture_id+')" title="Download class notes"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Class Notes</button>' : '';
-      // Starting-soon -> live countdown timer (portal jaisa MM:SS)
+      // Starting-soon -> COUNT-DOWN timer (MM:SS ghat-ta hua, "live kab start hogi").
       var cdHtml=soon?('<div class="s-ttc-cd" data-tgt="'+_sClassEpoch(c.time)+'"><div class="cd-timer"><span class="cd-unit"><b class="cd-mm">--</b><i>MIN</i></span><span class="cd-colon">:</span><span class="cd-unit"><b class="cd-ss">--</b><i>SEC</i></span></div><span class="cd-note"><span class="cd-live"></span>Live starting soon</span></div>'):'';
+      // LIVE -> COUNT-UP elapsed timer (class start hue kitna time ho gaya). data-up se tick count-up karta hai.
+      var liveHtml=live?('<div class="s-ttc-cd live-cd" data-up="'+_sClassEpoch(c.time)+'"><div class="cd-timer"><span class="cd-unit"><b class="cd-mm">--</b><i>MIN</i></span><span class="cd-colon">:</span><span class="cd-unit"><b class="cd-ss">--</b><i>SEC</i></span></div><span class="cd-note"><span class="cd-live"></span>Live • running now</span></div>'):'';
       var foot=(meta||noteBtn)?('<div class="s-ttc-foot">'+meta+noteBtn+'</div>'):'';
       var stateCls=done?' done':(live?' live':(soon?' soon':(up?' up':' over')));
       var isTestC=!!(c.is_test || String(c.type||'').toLowerCase()==='test' || /test|exam|mission|mock|pyq|assessment/i.test(c.chapter||''));
       var openTestC=(isTestC && c.test_id);
       if(openTestC){ chip='<span class="s-chip s-opentest">Open Test ›</span>'; }
       var _clk=openTestC?('_sOpenTestTT(\''+encodeURIComponent(rawSub||'')+'\','+c.test_id+')'):"_sGo('materials')";
-      return '<div class="s-ttc'+stateCls+(openTestC?' istest':'')+'" style="cursor:pointer" onclick="'+_clk+'">'+(done&&!openTestC?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+cdHtml+foot+'</div>';
+      return '<div class="s-ttc'+stateCls+(openTestC?' istest':'')+'" style="cursor:pointer" onclick="'+_clk+'">'+(done&&!openTestC?'<span class="s-ttc-check"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>':'')+'<div class="ttc-top"><div class="s-tph" id="'+pid+'">'+esc(ini)+'</div>'+chip+'</div><div class="tm">'+esc(c.time||'')+'</div><div class="sb">'+esc(rawSub)+'</div><div class="tr">'+trline+'</div>'+(cdHtml||liveHtml)+foot+'</div>';
     }).join('');
     photos.forEach(function(p){ try{ if(typeof window._loadPhotoInto==='function') window._loadPhotoInto(p[0], '/api/student/teacher/'+p[1]+'/photo'); }catch(e){} });
   }
@@ -53747,6 +53812,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ try{ _installMeta
       document.querySelectorAll('#s-tt .s-ttc-cd[data-tgt]').forEach(function(el){
         var rem=Math.floor((parseInt(el.getAttribute('data-tgt'),10)-now)/1000); if(rem<0) rem=0;
         var mm=Math.floor(rem/60), ss=rem%60;
+        var a=el.querySelector('.cd-mm'), b=el.querySelector('.cd-ss');
+        if(a) a.textContent=(mm<10?'0':'')+mm; if(b) b.textContent=(ss<10?'0':'')+ss;
+      });
+      // LIVE elapsed count-UP (data-up = class start epoch). now - start = kitna time ho gaya.
+      document.querySelectorAll('#s-tt .s-ttc-cd[data-up]').forEach(function(el){
+        var el2=Math.floor((now-parseInt(el.getAttribute('data-up'),10))/1000); if(el2<0) el2=0;
+        var mm=Math.floor(el2/60), ss=el2%60;
         var a=el.querySelector('.cd-mm'), b=el.querySelector('.cd-ss');
         if(a) a.textContent=(mm<10?'0':'')+mm; if(b) b.textContent=(ss<10?'0':'')+ss;
       });
